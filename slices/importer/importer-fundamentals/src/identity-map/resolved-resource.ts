@@ -8,21 +8,21 @@
  * to, a provisional one, a decoded resource other referents link to, and a
  * decoded resource a mention links to by its stored copy are all the same
  * thing to the resolution: the resource under that literal reference, as
- * written. It is made from the links that landed on it, each a
+ * written. It is made from the links redirected to it, each a
  * {@link LinkedResource}.
  *
  * @packageDocumentation
  */
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Array, Effect, HashMap, HashSet, Option, pipe, Record } from 'effect'
+import { Array, Effect, Option, pipe, Record } from 'effect'
 
 import * as LinkTarget from './link-target.ts'
 import type * as Link from './link.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as Referent from './referent.ts'
 
-/** A link that landed on a resource: the referent, and its target, which holds one. */
+/** A link whose target holds a resource: the referent, and that target. */
 interface LinkedResource {
   readonly referent: Referent.Type
   readonly target: Exclude<LinkTarget.Type, LinkTarget.UnlinkedType>
@@ -34,6 +34,8 @@ const tryIntoLinkedResource = ({ referent, target }: Link.Type): Option.Option<L
 
 /** The resource under one resolved literal reference, as it will be written. */
 interface Type {
+  /** The literal reference it is written under, `Type/<id>`. */
+  readonly resolvedLiteralReference: string
   /**
    * The copy written, having assumed every identifier its other copies carry
    * and the referents linked to it bring.
@@ -53,12 +55,21 @@ interface Type {
    * reference): the title of an entry it replaces or is appended as.
    */
   readonly label: string
+  /**
+   * The referent whose record it is, when the copy written is a record the
+   * batch makes: the one with a resource whose decoded resource it is, or
+   * the one named only by mentions whose provisional resource it is
+   * (`Referent.maybeOwnResource`). `None` when the copy written is a stored
+   * resource, even one under the literal reference a referent's own record
+   * would have, such as the provisional record an earlier import wrote.
+   */
+  readonly ownerReferent: Option.Option<Referent.Type>
 }
 
 /**
- * The copy of the resource under one resolved literal reference that is
- * written: the decoded one when a referent's link lands on it, else the last
- * link's.
+ * The link whose target holds the copy of the resource under one resolved
+ * literal reference that is written: the decoded one when it is a referent's
+ * link target, else the last link.
  *
  * @remarks
  * On a re-import a decoded resource and its stored copy share a literal
@@ -68,13 +79,12 @@ interface Type {
  * so it is the one written. Should two referents carry different stored
  * copies of one resource, the last one's is written.
  */
-const writtenCopyOf = (
+const writtenLinkOf = (
   linkedResources: Array.NonEmptyReadonlyArray<LinkedResource>
-): LinkableResource.WithId =>
-  pipe(
+): LinkedResource =>
+  Option.getOrElse(
     Array.findLast(linkedResources, ({ target }) => LinkTarget.is('Decoded')(target)),
-    Option.getOrElse(() => Array.lastNonEmpty(linkedResources)),
-    ({ target }) => target.resource
+    () => Array.lastNonEmpty(linkedResources)
   )
 
 /** The stored copies the links of `linkedResources` update: each `Decoded` target's, when it has one. */
@@ -86,12 +96,38 @@ const storedCopiesUpdatedBy = (
   )
 
 /**
+ * The referent of `linkedResources` whose own record `writtenLink`'s target
+ * holds (`Referent.maybeOwnResource`), when that target is a record the
+ * batch makes, `Decoded` or `Provisional`; `None` for a `Stored` one, which
+ * is the device's whatever its id.
+ */
+const ownerReferentOf = (
+  linkedResources: readonly LinkedResource[],
+  writtenLink: LinkedResource
+): Option.Option<Referent.Type> =>
+  pipe(
+    Option.liftPredicate(
+      writtenLink.target,
+      (target) => LinkTarget.is('Decoded')(target) || LinkTarget.is('Provisional')(target)
+    ),
+    Option.flatMap(({ resource }) =>
+      Array.findFirst(linkedResources, ({ referent }) =>
+        pipe(
+          Referent.maybeOwnResource(referent),
+          Option.filter((ownResource) => LinkableResource.sameRecord(ownResource, resource)),
+          Option.as(referent)
+        )
+      )
+    )
+  )
+
+/**
  * The resolved resource under `resolvedLiteralReference`, from the links that
- * landed on it, given the literal references of the decoded resources the
+ * are redirected to it, given the literal references of the decoded resources the
  * batch writes where they were decoded.
  *
  * @remarks
- * The copy written ({@link writtenCopyOf}) assumes, once, its own derived
+ * The copy written ({@link writtenLinkOf}) assumes, once, its own derived
  * identifier (so a name-and-birth-date match finds it next time), then the
  * identifiers of every other copy of the resource the links carry: a stored
  * copy a mention links to, and the stored copy a re-import's decode updates
@@ -102,9 +138,10 @@ const storedCopiesUpdatedBy = (
 const make = (
   resolvedLiteralReference: string,
   linkedResources: Array.NonEmptyReadonlyArray<LinkedResource>,
-  literalReferencesWrittenAsDecoded: HashSet.HashSet<string>
+  literalReferencesWrittenAsDecoded: readonly string[]
 ): Effect.Effect<Type> => {
-  const resource = writtenCopyOf(linkedResources)
+  const writtenLink = writtenLinkOf(linkedResources)
+  const resource = writtenLink.target.resource
   return Effect.all({
     derivedIdentifier: LinkableResource.maybeDerivedIdentifier(resource),
     label: LinkableResource.labelOf(resource, resolvedLiteralReference),
@@ -122,39 +159,37 @@ const make = (
         ...linkedResources.flatMap(({ referent }) => Referent.identifiersOf(referent)),
       ]
       return {
+        resolvedLiteralReference,
         resource: LinkableResource.assumesIdentifiers(resource, identifiersToAssume),
         identifiersToAssume,
         resourceExistsInBatch:
-          HashSet.has(literalReferencesWrittenAsDecoded, resolvedLiteralReference) ||
+          Array.contains(literalReferencesWrittenAsDecoded, resolvedLiteralReference) ||
           linkedResources.some(({ referent }) => Referent.is('AsResource')(referent)),
         label,
+        ownerReferent: ownerReferentOf(linkedResources, writtenLink),
       }
     })
   )
 }
 
 /**
- * The resolved resource under each literal reference the links land on, given
- * the literal references of the decoded resources the batch writes where they
- * were decoded.
+ * One resolved resource per literal reference `links` redirect to, in the
+ * order the links first reach it, given the literal references of the
+ * decoded resources the batch writes where they were decoded.
  */
-const byResolvedLiteralReference = (
+const fromLinks = (
   links: readonly Link.Type[],
-  literalReferencesWrittenAsDecoded: HashSet.HashSet<string>
-): Effect.Effect<HashMap.HashMap<string, Type>> =>
+  literalReferencesWrittenAsDecoded: readonly string[]
+): Effect.Effect<readonly Type[]> =>
   pipe(
     links,
     Array.filterMap(tryIntoLinkedResource),
     Array.groupBy(({ target }) => LinkableResource.literalReferenceOf(target.resource)),
     Record.toEntries,
     Effect.forEach(([resolvedLiteralReference, linkedResources]) =>
-      Effect.map(
-        make(resolvedLiteralReference, linkedResources, literalReferencesWrittenAsDecoded),
-        (resolvedResource) => [resolvedLiteralReference, resolvedResource] as const
-      )
-    ),
-    Effect.map(HashMap.fromIterable)
+      make(resolvedLiteralReference, linkedResources, literalReferencesWrittenAsDecoded)
+    )
   )
 
-export { byResolvedLiteralReference, make }
+export { fromLinks, make }
 export type { LinkedResource, Type }

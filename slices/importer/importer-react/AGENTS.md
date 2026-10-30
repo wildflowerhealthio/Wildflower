@@ -92,9 +92,17 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/importer-screen.tsx`** — the flow, top to bottom. Reads everything from
   router context (no props): `SourcePicker` → `useImportRun` → `PreviewPanel` →
   `useConfirmImport` → `ImportResults`. It holds each format's
-  `StagedImport.Selection`, keyed by format kind (absent = the server-diff
-  seed, every `new` or `changed` resource included, so an untouched format
-  still imports everything its decode yielded). A cancel or "import
+  `StagedImport.Selection`, keyed by format kind (absent = untouched), which
+  holds only what the reviewer did. What a row they never ticked or unticked
+  does is the default, derived afresh from the batch, its verdicts and the
+  edits on every change (`formatExcludedByDefault`): every `unchanged`
+  resource and every one left without a patient as it will be written (its
+  edit, else its resolved resource) is out, so an untouched format imports
+  what its decode yielded that is new and has a patient, and a link that
+  gives a row its patient takes it back in. The panel and the confirm read
+  the same `excludedByDefaultFor`. A referent's link change reverts the edit
+  override on every row holding a copy of the referent's resource, in every
+  format, since that row now writes another record. A cancel or "import
   another" discards the read, every review edit, and any confirm outcome, and
   returns to the picker; the per-format settings persist across it.
 - **`src/registry.ts`** — the React half of the closed format registry (above).
@@ -103,7 +111,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   - `use-link-choice-review.ts` — `useLinkChoiceReview`
     discovers the batch's referents (`discoverReferents`) and memoizes the
     **resolved** batch (one whose mentions are resolved) with each
-    referent's `LinkTarget`, the resolved batch's `linkTargetsByReferentKey`.
+    the plan it was resolved on (`ResolvedBatch.plan`), which the rows ask
+    each referent's `LinkTarget` of (`LinkPlan.linkTargetIfReferentKey`).
     Both are Effects on the clock, run synchronously in the memo;
     their failures are states: a `DuplicateReferent` is `refused`, with the
     batch's last resolving that succeeded when a re-decode is what refused
@@ -118,9 +127,22 @@ The importer has no HTTP wire union to derive, so there is no separate
     `ResolvedBatch` and so see what gets written; a failed search shows an
     alert and leaves every referent on its kind's default.
   - `link-choice-review-state.ts` — the `LinkChoiceReviewState` types: the
-    `Mapped` batch (referents, choices, link targets, search hits, resolved
-    batch), the `Type` of states (`loading`, `ready`, `error`, `refused`) and
-    the hook's `Review` surface.
+    `Mapped` batch (referents, choices, search hits, the resolved batch with
+    its plan, and the `mentionLinkOptions` the rows' mention selects offer), the
+    `Type` of states (`loading`, `ready`, `error`, `refused`) and the hook's
+    `Review` surface: `choose` for a referent, `chooseMention` for one
+    mention of one resource.
+  - `mention-link-options.ts` — `MentionLinkOptions`, the pure half of the
+    per-resource mention selects, read off the plan (`fromPlan`): exactly
+    its resolved resources (`LinkPlan.resolvedResources`), one per record
+    that will exist once the batch is written, by the type it is, each a
+    link choice option labelled by the resolved resource's `label` and
+    paired with the `LinkChoice.MentionLinkChoice` picking it makes
+    (`LinkToDecodedReferent` of its `ownerReferent`, so the mention follows
+    that referent's later link; `LinkToStoredResource` for a stored record no
+    referent owns, which no referent's later choice moves), plus each
+    record's label by literal reference, which `describeResource` names a
+    row's subject by.
   - `use-default-link-choices-search.ts` — `useDefaultLinkChoicesSearch`
     reads each referent's default once per batch
     (`ReferentSearch.defaultChoices`, a TanStack query keyed by the batch id,
@@ -128,8 +150,10 @@ The importer has no HTTP wire union to derive, so there is no separate
     the stored lists the rows offer beside it.
   - `use-reviewer-link-choices.ts` — `useReviewerLinkChoices` keeps the
     reviewer's choices on top of the defaults by `Referent.key` across a
-    settings re-decode in a `ReferentLinkChoices`, and the referents of the
-    batch's first decode the search reads; a fresh pick starts over.
+    settings re-decode in a `ReferentLinkChoiceSet`, their link choice set
+    by mention beside it in a `MentionLinkChoiceSet` (by
+    `MentionLinkChoiceSet.key`, set by `chooseMention`), and the referents of
+    the batch's first decode the search reads; a fresh pick starts over.
   - `use-last-resolved-batch.ts` — `useLastResolvedBatch`, the batch's last
     resolving that succeeded, which a refusal is shown over.
 
@@ -137,9 +161,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   per job:
   - `referent-rows.tsx` — the block the panel renders above the format
     groups (its `referentRows` slot): a tally of the records the referents
-    land on (`ReferentTally`: a stored record, or one this import writes, is
-    counted once however many referents share it) and the referents that
-    land nowhere, then one group per `LinkableLogicalReference.RESOURCE_TYPES`
+    are linked to (`ReferentTally`: a stored record, or one this import
+    writes, is counted once however many referents share it) and the
+    referents that are unlinked, then one group per `LinkableLogicalReference.RESOURCE_TYPES`
     entry that has referents. A list that failed is said under its group,
     and only the search's hits are offered; a list the page limit cut off is
     said too. While the batch is `refused` the selects are disabled, since a
@@ -197,7 +221,7 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/preview/`** — the review view and the state it needs.
   `use-server-diff.ts` pre-classifies every previewed resource against the
   server (`new` / `unchanged` / `changed`) for the row badges and the "already
-  there, so pre-excluded" seed, keyed **by review group and then by resource
+  there, so out by default" rule (`unchangedKeysOf`), keyed **by review group and then by resource
   key** (`GroupComparisons`, over `importer-core`'s `ReviewGroup`) — two
   formats can carry the same resource key, so
   a flat map would let one format's verdict overwrite another's. Within one
@@ -208,7 +232,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   focus of whatever control the reviewer is using; the verdicts the batch last
   settled on stay on screen (`refreshing`), a failed classification having
   settled on "every id is new", and the confirm waits for the new ones, since
-  the pre-exclusions are read off them. A failed classification is retried
+  the defaults are read off them. A failed classification is retried
   twice before it is reported; a fresh pick carries nothing over.
   `preview-panel.tsx` renders the batch grouped by format — one group per
   `claimedFormats` entry, its settings form (the registry's own
@@ -222,7 +246,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   and the `Excluded` ones. Which linked records are written is that plan's
   too, not a toggle: none the server holds unchanged (`Unchanged`; the
   screen hands the panel and the confirm the same `unchangedLinked`, the
-  linked group's `initialExclusionsFor`); otherwise every stored copy,
+  linked group's `unchangedKeysOf`); otherwise every stored copy,
   whatever the reviewer excluded, since the link choice is the consent to
   it, and a new record only when an included resource names it, else
   `Unreferenced`. The diff keys its verdicts by
@@ -234,7 +258,36 @@ The importer has no HTTP wire union to derive, so there is no separate
   across every file that format claimed (per-type tallies, one titled section
   per decoded section with include checkbox and one-line `describeResource`
   summary, Edit/Revert, unreadable-file rows, and the notes folded into a
-  collapsed details block). A section's tri-state heading toggle is
+  collapsed details block). Above the sections it lists every resource the
+  referent links leave a mention unlinked in again
+  (`UnlinkedMention.leftByReferentLinks` on the batch's plan, asked by
+  `unlinked-mentions.ts` of each row as edited, else as decoded in the
+  batch's `decodedBatch`, a format's own source file never),
+  under **Needs a patient** (an unlinked or empty `subject`) or else **Needs
+  a provider**, each with why in one phrase ("names no patient", "names an
+  account you chose not to link", "names a provider you chose not to link",
+  "points outside this import", as the row reads now); the group is a second
+  view of the same rows, so a pick, which is no edit, keeps the row there
+  and in focus, while an edit that gives its subject a record of the device
+  takes it out. Every row whose resource makes a mention the
+  map can link (`Mention.linkableIn`) carries an inline select per mention,
+  read as part of its summary line ("for Tyra Banks", "requested by …"):
+  the records offered for the type the mention names
+  (`MentionLinkOptions`), the one it names now when none of them is it, plus
+  Don't link where the mention keeps something to name or the referent
+  choices leave it unlinked. A pick is a mention link choice in the identity
+  map (`onChooseMention`), never an edit: the resolved resource redirects
+  the mention there and the row is not marked edited; a row with an edit
+  override shows and writes the override resolved on the plan
+  (`StagedImport.resolvedResourceOf`), so the pick, and any later link of a
+  referent it names, moves it too. Whether a row is included is the
+  reviewer's tick, else the screen's default, so a patient picked for a
+  resource without one takes it in, Don't link leaves it out again, and
+  Revert leaves one out again when the resolved resource has no patient
+  either, unless the reviewer ticked or unticked it themselves.
+  `describe-resource.ts` reads a decoded resource in its wire form and names
+  its subject by the label of the resource it is redirected to, else its `display`,
+  never by its `Patient/<id>`. A section's tri-state heading toggle is
   `section-toggle.tsx` — `{ title, keys, isIncluded, onSetIncluded }`, the
   `indeterminate`-via-ref pattern — shared with the server source-file list's
   study sections, which passes its own selected-id set where the review body
@@ -325,7 +378,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   re-decode re-mints it at the same deterministic id, so the review key and the
   `meta.source` links survive — and so does re-picking the same file off the
   server, which is why its row comes back `unchanged` from the diff and
-  pre-excluded from the initial selection. The source-file list query is
+  out by default. The source-file list query is
   invalidated once at end-of-batch (a fresh source file is a new
   `DocumentReference` the picker should see next pick — cheap even when none
   wrote).
@@ -536,7 +589,11 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   pins the identity map: the reads to reach a review, a confirm linked to a
   stored Patient (only the stored one written, carrying the source's
   identifier, every subject on it), a re-import that defaults the Patient to
-  an update of the copy it stored and is `unchanged` and left out, and one referent for one identity two files name.
+  an update of the copy it stored and is `unchanged` and left out, one referent for one identity two files name,
+  a resource naming no patient left out until one is assigned, a subject
+  picked onto the Patient redirected to the stored record the Patient is later
+  linked to, and an edit on a Patient's row dropped when that Patient is
+  linked to a stored one.
   Its stub refuses a `transaction` one of whose entries fails as a whole, as
   HFS does, which pins the confirm landing nothing and saying so.
 - `identity/referent-rows.test.tsx` drives `useLinkChoiceReview` and the rows over a
@@ -544,6 +601,17 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   providers, `New` without a hit, a hit pre-selected, an update over the copy
   found under the decoded id, the demographics warning,
   and a changed select resolving the batch.
+- `preview/format-review-body.test.tsx` drives one format's body over a file
+  resolved on the identity map: Needs a patient only when a subject is
+  unlinked, a pick that is a mention link choice and includes the row, Don't
+  link leaving it out again, a pick following its referent's later link,
+  where Don't link is offered, an edit override resolved on the plan (a
+  pick, or a later link of the patient it names, moves it), Revert leaving
+  a row without a patient out again, an untouched row taken back in when its
+  patient is linked, and a ticked row kept in.
+  `identity/mention-link-options.test.ts` pins what a select offers: the
+  plan's resolved resources, a record two referents are linked to once, as
+  the choice of the referent whose record it is.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a claimed format renders each decoded section under its own
   title with per-resource checkboxes, that an unreadable file renders its own

@@ -13,7 +13,7 @@ import { Array, Either, HashMap, Match, Option, Order, pipe } from 'effect'
 import * as LinkChoice from './link-choice.ts'
 import * as LinkTarget from './link-target.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import * as ReferentLinkChoices from './referent-link-choices.ts'
+import * as ReferentLinkChoiceSet from './referent-link-choice-set.ts'
 import * as Referent from './referent.ts'
 
 /** One referent and the resource it is linked to, or none. */
@@ -79,15 +79,15 @@ const decodedTarget = ({ referent }: Cell<'CreateResource:AsResource'>): LocalLi
   Either.right(LinkTarget.Decoded({ resource: referent.resource, storedCopy: Option.none() }))
 
 /**
- * `CreateResource` named only by mentions: the provisional resource its
- * logical reference stands for, when there is one.
+ * `CreateResource` named only by mentions: the referent's own record, the
+ * provisional resource its logical reference stands for, when there is one.
  */
 const provisionalTarget = ({
   choice,
   referent,
 }: Cell<'CreateResource:ByMentionOnly'>): LocalLinkTarget =>
   Either.fromOption(
-    Option.map(LinkableResource.tryProvisionalFrom(referent.logicalReference), (resource) =>
+    Option.map(Referent.maybeOwnResource(referent), (resource) =>
       LinkTarget.Provisional({ resource })
     ),
     () => invalid(referent, choice, 'NotAllowedForReferent')
@@ -188,13 +188,13 @@ const linkTargetOfCycle = (cycle: readonly Referent.Type[]): LinkTarget.Type =>
  */
 const linkTargetAlong = (
   referentsByKey: HashMap.HashMap<string, Referent.Type>,
-  linkChoices: ReferentLinkChoices.Type,
+  byReferent: ReferentLinkChoiceSet.Type,
   path: Array.NonEmptyReadonlyArray<Referent.Type>
 ): LinkTargetOrInvalid => {
   const current = Array.lastNonEmpty(path)
   return Either.flatMap(
     localLinkTargetOf(
-      choiceForReferent(ReferentLinkChoices.forReferent(linkChoices, current), current)
+      choiceForReferent(ReferentLinkChoiceSet.forReferent(byReferent, current), current)
     ),
     (local) =>
       isLinkTarget(local)
@@ -212,7 +212,7 @@ const linkTargetAlong = (
                 {
                   onSome: (cycleStart) => Either.right(linkTargetOfCycle(path.slice(cycleStart))),
                   onNone: () =>
-                    linkTargetAlong(referentsByKey, linkChoices, Array.append(path, linked)),
+                    linkTargetAlong(referentsByKey, byReferent, Array.append(path, linked)),
                 }
               )
             )
@@ -222,7 +222,7 @@ const linkTargetAlong = (
 
 /**
  * Every referent of `referents` linked to the target its choice under
- * `linkChoices` gives, in the order given; the first choice that cannot be
+ * `byReferent` gives, in the order given; the first choice that cannot be
  * followed, as the failure it is, otherwise.
  *
  * @remarks
@@ -240,17 +240,17 @@ const linkTargetAlong = (
  * it, named for the referent whose choice it is. A cycle is linked as
  * `CreateResource` for the first of its members, in key order, that it links
  * to a resource, whichever member the chain entered at, so every referent in
- * it lands on the same one resource. Each referent's chain is followed on
+ * it is redirected to the same one resource. Each referent's chain is followed on
  * its own; none is longer than `referents`.
  */
 const fromChoices = (
   referents: readonly Referent.Type[],
-  linkChoices: ReferentLinkChoices.Type
+  byReferent: ReferentLinkChoiceSet.Type
 ): Either.Either<readonly Type[], LinkChoice.InvalidLinkChoice> => {
   const referentsByKey = Referent.byKey(referents)
   return Either.all(
     referents.map((referent) =>
-      Either.map(linkTargetAlong(referentsByKey, linkChoices, [referent]), (target): Type => ({
+      Either.map(linkTargetAlong(referentsByKey, byReferent, [referent]), (target): Type => ({
         referent,
         target,
       }))
@@ -258,5 +258,14 @@ const fromChoices = (
   )
 }
 
-export { fromChoices }
+/** The link target of the referent keyed `referentKey` among `links`, when one of them is its link. */
+const targetIfReferentKey = (
+  links: readonly Type[],
+  referentKey: string
+): Option.Option<LinkTarget.Type> =>
+  Array.findFirst(links, ({ referent, target }) =>
+    Option.liftPredicate(target, () => Referent.key(referent) === referentKey)
+  )
+
+export { fromChoices, targetIfReferentKey }
 export type { Type }

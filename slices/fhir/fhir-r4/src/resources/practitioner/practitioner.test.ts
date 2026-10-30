@@ -151,6 +151,12 @@ describe('FhirR4Practitioner', () => {
 describe('Practitioner.nameIdentifier', () => {
   const decodeIdentifier = Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)
 
+  test('keeps the practitioner-name system stored identifiers carry', () => {
+    expect(Practitioner.NAME_IDENTIFIER_SYSTEM).toBe(
+      'https://wildflowerhealth.io/fhir/identifier/practitioner-name'
+    )
+  })
+
   test('names a provider by their printed name under the practitioner-name system', () => {
     expect(Option.getOrThrow(Practitioner.nameIdentifier('Dr. A Prescriber'))).toSchemaEqual(
       IdentifierAndReference.IdentifierSchema,
@@ -239,5 +245,36 @@ describe('Practitioner.tryReferenceFromName', () => {
 
   test('is None for a blank name', () => {
     expect(Option.isNone(Practitioner.tryReferenceFromName('  '))).toBe(true)
+  })
+})
+
+describe('Practitioner.tryReferenceWireFromName', () => {
+  test('is the wire tryReferenceFromName encodes to', () => {
+    expect(Option.getOrThrow(Practitioner.tryReferenceWireFromName('Jane  Smith'))).toEqual({
+      extension: [],
+      type: 'Practitioner',
+      display: 'Jane  Smith',
+      identifier: {
+        extension: [],
+        system: 'https://wildflowerhealth.io/fhir/identifier/practitioner-name',
+        value: 'Jane Smith',
+      },
+    })
+  })
+
+  test('property: decodes back to tryReferenceFromName', () => {
+    const decodeReference = Schema.decodeSync(IdentifierAndReference.ReferenceSchema)
+    fc.assert(
+      fc.property(fc.string(), (name) => {
+        expect(Option.map(Practitioner.tryReferenceWireFromName(name), decodeReference)).toEqual(
+          Practitioner.tryReferenceFromName(name)
+        )
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  test('is None for a blank name', () => {
+    expect(Option.isNone(Practitioner.tryReferenceWireFromName('   '))).toBe(true)
   })
 })

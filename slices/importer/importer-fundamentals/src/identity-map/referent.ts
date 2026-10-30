@@ -119,6 +119,18 @@ const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.
     LinkableLogicalReference.equivalence
   )
 
+/**
+ * The resource that is `referent`'s own record: the decoded resource of one
+ * with a resource, or the provisional one a logical reference alone stands
+ * for (`LinkableResource.tryProvisionalFrom`); `None` for a referent named
+ * only by mentions that nothing provisional stands for.
+ */
+const maybeOwnResource = (referent: Type): Option.Option<LinkableResource.WithId> =>
+  match(referent, {
+    AsResource: ({ resource }) => Option.some(resource),
+    ByMentionOnly: ({ logicalReference }) => LinkableResource.tryProvisionalFrom(logicalReference),
+  })
+
 /** The identifiers `referent` brings to whatever it links to. */
 const identifiersOf = (referent: Type): readonly IdentifierAndReference.IdentifierType[] =>
   match(referent, {
@@ -268,7 +280,6 @@ const discover = (
 
 export {
   byKey,
-  byLogicalReferenceKey,
   discover,
   DuplicateReferent,
   identifiersOf,
@@ -277,6 +288,7 @@ export {
   logicalReferencesOf,
   match,
   maybeDerivedLogicalReferenceOf,
+  maybeOwnResource,
   ownLogicalReferencesOf,
 }
 export type { AsResource, ByMentionOnly, Type }

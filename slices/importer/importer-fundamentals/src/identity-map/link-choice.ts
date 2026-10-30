@@ -13,7 +13,10 @@
  * reference (`LinkableResource.tryProvisionalFrom`). Following
  * `LinkToDecodedReferent` to the end gives a `LinkTarget`. A referent the
  * reviewer has made no choice for takes its default
- * (`ReferentLinkChoices.defaultFor`).
+ * (`ReferentLinkChoiceSet.defaultFor`). A choice that writes nothing is a
+ * {@link MentionLinkChoice}, one that writes a resource a
+ * {@link WritingLinkChoice}; a mention choice is a referent choice with the
+ * writing options taken away.
  *
  * @packageDocumentation
  */
@@ -54,12 +57,17 @@ interface DontLink {
   readonly _tag: 'DontLink'
 }
 
-type Type =
-  | CreateResource
-  | UpdateStoredResource
-  | LinkToStoredResource
-  | LinkToDecodedReferent
-  | DontLink
+/**
+ * A choice that writes nothing: it links to a resource that exists, or will,
+ * or to none. What the reviewer may choose for one mention as well as for a
+ * referent (`MentionLinkChoiceSet`).
+ */
+type MentionLinkChoice = LinkToStoredResource | LinkToDecodedReferent | DontLink
+
+/** A choice that writes a resource: the referent's own, as decoded or over its stored copy. */
+type WritingLinkChoice = CreateResource | UpdateStoredResource
+
+type Type = MentionLinkChoice | WritingLinkChoice
 
 const {
   CreateResource,
@@ -111,6 +119,8 @@ export type {
   InvalidLinkChoiceReason,
   LinkToDecodedReferent as LinkToDecodedReferentType,
   LinkToStoredResource as LinkToStoredResourceType,
+  MentionLinkChoice,
   Type,
   UpdateStoredResource as UpdateStoredResourceType,
+  WritingLinkChoice,
 }

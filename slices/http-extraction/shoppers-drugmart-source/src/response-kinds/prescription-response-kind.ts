@@ -1,4 +1,5 @@
-import { FhirString, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { FhirString } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   MedicationDispense,
   MedicationRequest,
@@ -234,19 +235,16 @@ const statusReasonWire = (rx: SourcePrescription): Record<string, unknown> | und
   }
 }
 
-const encodeReference = Schema.encodeSync(IdentifierAndReference.ReferenceSchema)
-
 /**
  * The `requester` wire for a prescriber the portal knows only by name:
- * `fhir-r4`'s `Practitioner.tryReferenceFromName`, a logical reference that
- * states its type and names the provider by the name identifier, so the
+ * `fhir-r4`'s `Practitioner.tryReferenceWireFromName`, a logical reference
+ * that states its type and names the provider by the name identifier, so the
  * importer's identity map can resolve it. `undefined` for a blank name.
  */
 const requesterWireOfName: (
   prescriberName: string
 ) => typeof IdentifierAndReference.ReferenceSchema.Encoded | undefined = flow(
-  Practitioner.tryReferenceFromName,
-  Option.map(encodeReference),
+  Practitioner.tryReferenceWireFromName,
   Option.getOrUndefined
 )
 

@@ -96,7 +96,7 @@ A member's `sourceFile.id` is where a format whose synthesized resources name th
 stored file (DICOM's `ImagingStudy` `gridfsFileId` extension) reads it, rather
 than recomputing it.
 
-Three obligations:
+Four obligations:
 
 - **Stable resource keys.** A `DecodedFile.Resource`'s `key` must be stable
   across settings changes where the underlying resource is unchanged (HAR keys
@@ -112,6 +112,18 @@ Three obligations:
 - **Notes, not silence.** Anything the decode dropped (a response no kind
   matched, a body the archive never captured, a duplicate) becomes one note
   string, so the reviewer's opt-in stays informed.
+- **Every patient and provider names its identity.** The shell's identity map
+  links the people and providers a batch names to the device's; it can only
+  link what a resource identifies. A `subject`, `requester` or `performer`
+  carries a literal to a `Patient` or `Practitioner` the same decode emits, or
+  is a logical reference: `type` stated, and an `identifier` with both
+  `system` and `value`. A provider known only by a printed name is `fhir-r4`'s
+  `Practitioner.tryReferenceFromName(<name>)` (or its
+  `tryReferenceWireFromName`), the name identifier beside the `display`, as
+  the Shoppers and Rexall prescribers and DICOM's referring physician are. A
+  `display`-only reference, or an identifier-only one that states no type,
+  names nobody the map can link. See the
+  [Source Identity Explanation](../../http-extraction/fhir-r4-adoption/docs/Source%20Identity%20Explanation.md#the-identity-map).
 
 ## 2. The settings
 

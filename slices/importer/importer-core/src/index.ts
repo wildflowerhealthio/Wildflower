@@ -29,6 +29,7 @@ export {
 } from './read-batch.ts'
 export {
   type Disposition,
+  type ExcludedByDefaultFor,
   planWrite,
   type SelectionFor,
   type SkipReason,
@@ -38,6 +39,7 @@ export {
 export { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
 export {
   discoverReferents,
+  isSourceFileOf,
   resolveMentions,
   resolveMentionsWithFallback,
   type ResolvedBatch,

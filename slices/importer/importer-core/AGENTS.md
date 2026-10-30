@@ -71,37 +71,52 @@ write plan with this package alone.
   against what is **stored** on the device, the identity map's three states
   (`importer-fundamentals`' AGENTS).
   **`ResolvedBatch`** is a decoded batch, each format slot's `decoded`
-  holding the resolved file, plus the two fields a decoded batch cannot hold:
-  its **`linkedRecords`** (the resources it only mentions, written beside the
-  files, no format's) and **`linkTargetsByReferentKey`** (each referent's
-  link target by `Referent.key`, what the referent rows show a choice
-  resolved to). Only `resolveMentions` makes one, and the diff, the preview
-  and the confirm take nothing else.
+  holding the resolved file, plus its **`linkedRecords`** (the resources it
+  only mentions, written beside the files, no format's), **`plan`** (the
+  `LinkPlan` it was resolved on, which the referent rows ask each referent's
+  link target of, and the review asks what its referent links leave
+  unlinked, `UnlinkedMention.leftByReferentLinks`) and **`decodedBatch`**
+  (the batch as decoded, whose rows that question is asked of, since a
+  resolved row also carries the mention links). **`isSourceFileOf(kind,
+  resource)`** says whether a resource is a format's own source file, which
+  the review never asks a patient for.
+  Only `resolveMentions` makes one, and the diff, the preview and the confirm
+  take nothing else.
   **`discoverReferents(batch)`** is `Referent.discover` over every claimed
   format's `decoded`: one referent per identity across formats,
   format-then-review order, those with a resource first.
-  **`resolveMentions(batch, linkChoices)`** resolves every mention in every
+  **`resolveMentions(batch, linkChoiceSet)`** (a `LinkChoiceSet`, by
+  referent and by mention) resolves every mention in every
   claimed format's `decoded` on one plan over the batch's referents
-  (`LinkPlan.make` once, over every claimed format's decoded file), resolving
-  each format in its own slot (`FileResolution.resolveFile(plan)`), so a mention in one format
-  links to a referent another holds; it fills `linkedRecords` with the
+  (`LinkPlan.make` once, over every claimed format's decoded file, the
+  link choice set by mention laid on it with
+  `LinkPlan.withMentionLinkChoiceSet`), resolving
+  each format once, in its own slot (`resolveFormat`, over
+  `FileResolution.resolveFile(plan)`), so a mention in one format
+  links to a referent another holds, and a review key being unique across
+  the batch, a mention link choice names one mention of one format's
+  resource; it fills `linkedRecords` with the
   records the batch only mentions, each with its `origin`, `Stored` or
   `Provisional` (`FileResolution.linkedRecords`), so a
-  stored person several formats mention is written once, and
-  `linkTargetsByReferentKey` from the plan's links, so the screen's hook
-  reads each referent's link target without planning again. Keys and section
+  stored person several formats mention is written once, and `plan`, so
+  the screen's hook reads each referent's link target without planning
+  again. Keys and section
   titles are kept; the format slots are reassembled through `collectFormats`,
   a slot nothing moved in coming back as it was, and a batch with no claimed
-  format comes back with no linked records and no link targets. It fails with
+  format comes back with no linked records, an empty plan and nothing
+  unlinked. It fails with
   `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`, as the plan
-  does.
-  **`resolveMentionsWithFallback(batch, defaults, chosen)`** is what the
-  screen resolves: `resolveMentions` on the reviewer's choices over the
-  searched defaults (`ReferentLinkChoices.union`), as `{ batch, linkChoices }`: the `ResolvedBatch` and the
-  choices it was resolved on. A choice that
+  does; a mention link choice its mention cannot take is no choice, never a
+  failure.
+  **`resolveMentionsWithFallback(batch, defaults, chosen, byMention)`** is
+  what the screen resolves: `resolveMentions` on the link choice set built
+  from the reviewer's choices over the searched defaults
+  (`ReferentLinkChoiceSet.union`) and their link choice set by mention, as
+  `{ batch, linkChoices }`: the `ResolvedBatch` and the referent
+  choices it was resolved on. A referent choice that
   cannot be resolved (`InvalidLinkChoice`) falls back: the reviewer's own
   choice to its searched default, a default to its kind's default
-  (`ReferentLinkChoices.remove`); a failure
+  (`ReferentLinkChoiceSet.remove`); a failure
   naming a referent with no choice dies. Its one failure is
   `Referent.DuplicateReferent`.
 - `src/review-group.ts` — **`ReviewGroup`**, the group a reviewed resource
@@ -109,23 +124,25 @@ write plan with this package alone.
   records, which no format holds. A resource key is unique within a group,
   not across groups, so the server diff, the preview and the write plan each
   scope a resource by its group.
-- `src/plan-write.ts` — **`planWrite(batch, selectionFor, unchangedLinked)`**,
+- `src/plan-write.ts` — **`planWrite(batch, selectionFor,
+  excludedByDefaultFor, unchangedLinked)`**,
   the pure half of the confirm: one **`WriteDecision`** per reviewed
-  resource — its `ReviewGroup`, its `entry` as reviewed (the inline edit
-  substituted), and its **`Disposition`** — in submit order: the linked
+  resource — its `ReviewGroup`, its `entry` as reviewed (the inline edit,
+  resolved on the batch's plan, substituted), and its **`Disposition`** — in submit order: the linked
   records first, then each claimed format in registry order, rows in review
   order. It adds no provenance and rewrites nothing: the format's `decode`
   already minted the source file and stamped `meta.source`. The five
   dispositions, in the order they are decided:
-  - **`Excluded`** — a format row the reviewer toggled off. Every other
-    format row is a candidate.
+  - **`Excluded`** — a format row that is not included: the reviewer
+    unticked it, or never ticked one `excludedByDefaultFor` leaves out.
+    Every other format row is a candidate.
   - **`Unchanged`** — a linked record the server holds as it is (its key in
     `unchangedLinked`, the server diff's `unchanged`).
   - **`Unreferenced`** — a linked record of `Provisional` origin, made from a
     mention alone, that no candidate format row names by its literal
     `Type/<id>` in any reference field (`Mention.madeIn`), so it is never an
     orphan. A changed linked record of `Stored` origin — a stored resource a
-    link lands on, the batch's identifiers assumed — is a candidate whatever
+    link targets, the batch's identifiers assumed — is a candidate whatever
     the reviewer excluded, the link choice being the consent to it, so a
     batch can write stored copies and no format's resources.
   - **`Superseded`** — a candidate a later candidate shares its `Type/id`
