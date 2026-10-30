@@ -89,7 +89,7 @@ jobs:
           mv "$tmp" "$conf"
 
       - name: Install cargo-edit (cargo set-version)
-        uses: taiki-e/install-action@v2.87.31
+        uses: taiki-e/install-action@v2.87.32
         with:
           # Built from source with rust-toolchain.toml's rustc, so the newest
           # release can outpace it. Bump this alongside the toolchain.
