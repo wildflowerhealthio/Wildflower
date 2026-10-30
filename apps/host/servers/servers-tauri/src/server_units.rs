@@ -160,7 +160,11 @@ impl ServerUnits {
         &self,
         domain: &str,
     ) -> Option<ServerSignInCodeMinter> {
-        self.statuses()
+        // Borrowed from the statuses' channel, so only this server's minter
+        // is cloned, not every server's status.
+        self.runner
+            .subscribe()
+            .borrow()
             .get(&UnitId::new(domain))?
             .detail
             .as_ref()?
