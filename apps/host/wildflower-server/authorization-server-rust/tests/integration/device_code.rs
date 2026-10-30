@@ -537,6 +537,7 @@ async fn token_endpoint_rejects_grant_outside_client_allow_list() {
                 registered_at: Utc::now(),
                 disabled_at: None,
                 registration_source: RegistrationSource::TrustedOnFirstUse,
+                refresh_policy: CEILING_ONLY_REFRESH_POLICY,
             })
         })
         .expect("register code-only client");

@@ -132,6 +132,25 @@ impl RefreshTokensTx for SqliteGrantTx<'_> {
             .map_err(|e| AuthorizationServerError::infrastructure("has_refresh_token failed", e))
     }
 
+    /// One update of the family's `expires_at`.
+    fn set_refresh_token_family_expires_at(
+        &mut self,
+        family_id: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::update(refresh_token_families::table.find(family_id))
+            .set(refresh_token_families::expires_at.eq(expires_at))
+            .execute(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure(
+                    "set_refresh_token_family_expires_at failed",
+                    e,
+                )
+            })?;
+        Ok(())
+    }
+
     /// End a token family by pulling its `expires_at` back to `now`, and
     /// stamp its still-live token consumed at the same instant so no row in
     /// a dead family looks live. Used by reuse detection and by
@@ -248,7 +267,7 @@ impl RefreshTokensTx for SqliteGrantTx<'_> {
         })
     }
 
-    /// Delete every refresh-token family whose absolute deadline fell before
+    /// Delete every refresh-token family whose deadline fell before
     /// `cutoff`, along with the `refresh_tokens` rows descended from them, and
     /// return how many **families** were removed. Children first, so the delete
     /// passes under `PRAGMA foreign_keys = ON`.

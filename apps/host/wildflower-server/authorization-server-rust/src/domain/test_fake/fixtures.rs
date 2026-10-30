@@ -23,7 +23,9 @@ use crate::domain::authorization_request::pairing::{
 use crate::domain::authorization_request::polled::Polled as _;
 use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
 use crate::domain::browser_session::BrowserSession;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
+use crate::domain::client::{
+    AllowedGrantType, Client, ClientKind, RefreshPolicy, RegistrationSource,
+};
 use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::grant::AuthorizationCodeGrant;
 use crate::domain::grant_store::*;
@@ -248,8 +250,17 @@ pub(crate) fn code_request(
     )
 }
 
-/// A public-client fixture with a caller-chosen `allowed_scopes` set and the
-/// `https://example.com/cb` redirect the request fixtures use.
+/// A refresh policy with no limit of its own and no tie to a browser
+/// session: only the ceiling ends its families.
+pub(crate) const CEILING_ONLY_REFRESH_POLICY: RefreshPolicy = RefreshPolicy {
+    idle_ttl: None,
+    max_ttl: None,
+    ends_with_browser_session: false,
+};
+
+/// A public-client fixture with a caller-chosen `allowed_scopes` set, the
+/// `https://example.com/cb` redirect the request fixtures use, and
+/// [`CEILING_ONLY_REFRESH_POLICY`].
 pub(crate) fn client(client_id: &str, registered_client_scopes: &[&str]) -> Client {
     Client {
         client_id: client_id.to_owned(),
@@ -265,6 +276,7 @@ pub(crate) fn client(client_id: &str, registered_client_scopes: &[&str]) -> Clie
         registered_at: Utc::now(),
         disabled_at: None,
         registration_source: RegistrationSource::TrustedOnFirstUse,
+        refresh_policy: CEILING_ONLY_REFRESH_POLICY,
     }
 }
 

@@ -20,6 +20,7 @@ export {
   useGrantsQuery,
   useClientsQuery,
   useUpdateClientMutation,
+  useUpdateRefreshPolicyMutation,
   useRevokeGrantMutation,
   useBrowserSessionsQuery,
   useRevokeBrowserSessionMutation,

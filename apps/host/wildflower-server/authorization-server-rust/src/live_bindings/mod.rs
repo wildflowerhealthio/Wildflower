@@ -35,7 +35,7 @@ mod session;
 pub mod state;
 
 pub(crate) use access::{
-    LiveBrowserSessionsReader, LiveBrowserSessionsRevoker, LiveClientsDisabler, LiveClientsReader,
+    LiveBrowserSessionsReader, LiveBrowserSessionsRevoker, LiveClientsReader, LiveClientsUpdater,
     LiveConsentDecider, LiveConsentRaiser, LiveConsentReader, LiveGrantsReader, LiveGrantsRevoker,
     LiveTokenRevoker,
 };

@@ -241,6 +241,7 @@ const clientBody = {
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
   essential: false,
+  refreshPolicy: { idleTtlSeconds: 604800, maxTtlSeconds: 2592000, endsWithBrowserSession: false },
 }
 
 const host = decodeClient({

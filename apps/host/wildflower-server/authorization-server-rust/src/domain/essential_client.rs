@@ -3,7 +3,7 @@
 //! at all, and the browser-session client, which is how a browser on the
 //! Owner's device signs in as the Owner. Disabling either would leave the
 //! Owner no way in, so
-//! [`ClientsDisabler`](crate::domain::capabilities::ClientsDisabler) refuses
+//! [`ClientsUpdater`](crate::domain::capabilities::ClientsUpdater) refuses
 //! to, and the "Trusted apps" list flags them `essential`.
 
 use crate::{BROWSER_SESSION_CLIENT_ID, WILDFLOWER_HOST_APP_CLIENT_ID};

@@ -66,7 +66,8 @@
         "tags": [
           "Access management"
         ],
-        "summary": "`PATCH /authorization/clients/{clientId}` — disable (stamped with the server's now,\nwhatever time is sent) or re-enable a client by writing its `disabledAt`;\nanswers with the client as stored. A disabled client is refused at\n`/oauth/authorize` and `/oauth/token`. Idempotent (a client that already\nhas a `disabledAt` keeps it). Disabling an essential client — the host\napp's or the browser-session client — is refused with `409 EssentialClient`.\nAcquired through [`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
+        "summary": "`PATCH /authorization/clients/{clientId}` — disable or re-enable a client,\nor replace its refresh policy; answers with the client as stored.",
+        "description": "- A disable is stamped with the server's now, whatever time is sent. A\n  disabled client is refused at `/oauth/authorize` and `/oauth/token`.\n  Idempotent (a client that already has a `disabledAt` keeps it).\n  Disabling an essential client — the host app's or the browser-session\n  client — is refused with `409 EssentialClient`.\n- A new `refreshPolicy` applies to the client's refresh-token families on\n  their next refresh.\n\nAcquired through [`LiveClientsUpdater`] (scope `wildflower/Client.u`).",
         "operationId": "handle_update_client",
         "parameters": [
           {
@@ -920,7 +921,7 @@
       },
       "ClientBody": {
         "type": "object",
-        "description": "A registered OAuth client as the Owner's \"Trusted apps\" list reads it. Every\ncolumn of the `clients` row **except `secret_hash`**, which never leaves the\nserver, and `registration_source`, plus `essential` — whether this is the\nhost app's client or the browser-session client, which can't be disabled,\nso the list offers no switch for them.",
+        "description": "A registered OAuth client as the Owner's \"Trusted apps\" list reads it. Every\ncolumn of the `clients` row **except `secret_hash`**, which never leaves the\nserver, and `registration_source`, with the three refresh columns as one\n`refreshPolicy`, plus `essential` — whether this is the\nhost app's client or the browser-session client, which can't be disabled,\nso the list offers no switch for them.",
         "required": [
           "clientId",
           "name",
@@ -930,7 +931,8 @@
           "allowedGrantTypes",
           "registeredAt",
           "disabledAt",
-          "essential"
+          "essential",
+          "refreshPolicy"
         ],
         "properties": {
           "clientId": {
@@ -982,6 +984,10 @@
           "essential": {
             "type": "boolean",
             "description": "Whether the Owner needs this app to get in (the host app's client or\nthe browser-session client); disabling it is refused."
+          },
+          "refreshPolicy": {
+            "$ref": "#/components/schemas/RefreshPolicyBody",
+            "description": "How long the app's refresh-token families last once it has signed in."
           }
         }
       },
@@ -1076,6 +1082,24 @@
             "description": "Seconds the device waits between polls; polling sooner is answered\n`slow_down` (RFC 8628 §3.5)."
           }
         }
+      },
+      "DisabledAtChange": {
+        "type": "object",
+        "description": "Disable or re-enable a client.",
+        "required": [
+          "disabledAt"
+        ],
+        "properties": {
+          "disabledAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Any time to disable the client now, or `null` to re-enable it. The\nserver stamps its own now whatever time is sent, so a disable can't be\nscheduled or backdated. Required, `null` included."
+          }
+        },
+        "additionalProperties": false
       },
       "EssentialClientBody": {
         "type": "object",
@@ -1192,6 +1216,52 @@
             "description": "RSA public exponent `e`, base64url-encoded."
           }
         }
+      },
+      "RefreshPolicyBody": {
+        "type": "object",
+        "description": "A client's refresh policy on the wire, each limit in whole seconds. Every\nfield is required, `null` included.",
+        "required": [
+          "idleTtlSeconds",
+          "maxTtlSeconds",
+          "endsWithBrowserSession"
+        ],
+        "properties": {
+          "idleTtlSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long a family may go unrefreshed, from its last rotation, in\nseconds; `null` for no idle limit."
+          },
+          "maxTtlSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long a family may last from when it was issued, in seconds;\n`null` for only the 365-day ceiling."
+          },
+          "endsWithBrowserSession": {
+            "type": "boolean",
+            "description": "Whether a family ends when the browser session it was minted under\nexpires."
+          }
+        },
+        "additionalProperties": false
+      },
+      "RefreshPolicyChange": {
+        "type": "object",
+        "description": "Replace a client's refresh policy.",
+        "required": [
+          "refreshPolicy"
+        ],
+        "properties": {
+          "refreshPolicy": {
+            "$ref": "#/components/schemas/RefreshPolicyBody",
+            "description": "The whole new policy. Each limit is at least a second and at most the\n365-day ceiling; a body outside that is refused."
+          }
+        },
+        "additionalProperties": false
       },
       "SessionShortfallBody": {
         "type": "object",
@@ -1462,22 +1532,17 @@
         }
       },
       "UpdateClientBody": {
-        "type": "object",
-        "description": "Body of `PATCH /authorization/clients/{clientId}` — the one client field the Owner\ncan edit.",
-        "required": [
-          "disabledAt"
-        ],
-        "properties": {
-          "disabledAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Any time to disable the client now, or `null` to re-enable it. The\nserver stamps its own now whatever time is sent, so a disable can't be\nscheduled or backdated. Required, `null` included."
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/DisabledAtChange",
+            "description": "Disable or re-enable the client."
+          },
+          {
+            "$ref": "#/components/schemas/RefreshPolicyChange",
+            "description": "Replace the client's refresh policy."
           }
-        },
-        "additionalProperties": false
+        ],
+        "description": "Body of `PATCH /authorization/clients/{clientId}` — one of the two things\nthe Owner can change about a client, each its own shape: whether it is\ndisabled, or its refresh policy."
       }
     }
   }

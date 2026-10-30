@@ -13,7 +13,7 @@ use crate::domain::authorization_request::polled::PolledRequest;
 use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
-use crate::domain::client::Client;
+use crate::domain::client::{Client, RefreshPolicy};
 use crate::domain::consent_key::ConsentKey;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::grant_store::{
@@ -43,11 +43,32 @@ impl ClientsTx for FakeGrantTx<'_> {
     }
 
     fn upsert_client(&mut self, client: &Client) -> Result<(), AuthorizationServerError> {
-        self.store
+        let mut clients = self.store.clients.borrow_mut();
+        let refresh_policy = clients
+            .get(&client.client_id)
+            .map_or(client.refresh_policy, |existing| existing.refresh_policy);
+        clients.insert(
+            client.client_id.clone(),
+            Client {
+                refresh_policy,
+                ..client.clone()
+            },
+        );
+        Ok(())
+    }
+
+    fn set_client_refresh_policy(
+        &mut self,
+        client_id: &str,
+        refresh_policy: &RefreshPolicy,
+    ) -> Result<bool, AuthorizationServerError> {
+        Ok(self
+            .store
             .clients
             .borrow_mut()
-            .insert(client.client_id.clone(), client.clone());
-        Ok(())
+            .get_mut(client_id)
+            .map(|client| client.refresh_policy = *refresh_policy)
+            .is_some())
     }
 
     fn list_clients(&mut self) -> Result<Vec<Client>, AuthorizationServerError> {
@@ -686,6 +707,17 @@ impl RefreshTokensTx for FakeGrantTx<'_> {
 
     fn has_refresh_token(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError> {
         Ok(self.store.tokens.borrow().contains_key(token_hash))
+    }
+
+    fn set_refresh_token_family_expires_at(
+        &mut self,
+        family_id: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError> {
+        if let Some(family) = self.store.families.borrow_mut().get_mut(family_id) {
+            family.expires_at = expires_at;
+        }
+        Ok(())
     }
 
     fn expire_refresh_token_family(

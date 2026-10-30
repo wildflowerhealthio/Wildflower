@@ -17,7 +17,7 @@ which this doc assumes rather than repeats.
 | Launcher / Authorization app bearer | Page memory                                     | 15 min, refreshed under a `sid` | Owner-equivalent for data and approvals, less what its browser session lacks. |
 | Paired browser session              | A paired browser                                | 24 h                            | Exactly the scopes the Owner ticked, all of `OWNER_SCOPES` unless unticked.   |
 | A SMART app's access token          | The app                                         | 15 min                          | The granted resource scopes its browser session holds, on this origin only.   |
-| A refresh token                     | The app, if granted `offline_access`            | Family 90 days, rotating        | New access tokens for the same grant.                                         |
+| A refresh token                     | The app, if granted `offline_access`            | App's policy, ≤ 365 d, rotating | New access tokens for the same grant.                                         |
 | An authorization code               | The redirect                                    | 60 s, single use                | One token exchange, with the PKCE verifier.                                   |
 | A pairing or request id             | The requesting page                             | 5 min                           | Polls one request's state.                                                    |
 

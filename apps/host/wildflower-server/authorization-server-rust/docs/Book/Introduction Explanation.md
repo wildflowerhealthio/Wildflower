@@ -36,7 +36,7 @@ The order matters. A browser **signs in or pairs first** and then makes app requ
 | [**Grant**](<Domain/Grant Explanation.md>)                           | Until revoked                                                                   | "The Owner already said yes to this app at this redirect." Lets a later request skip asking.    |
 | [**Authorization code**](<Domain/Authorization Code Explanation.md>) | 60 seconds, single use                                                          | Carries the approval from the browser to the app's back end without putting a token in a URL.   |
 | [**Access token**](<Domain/Access Token Explanation.md>)             | 15 minutes                                                                      | What the app shows the FHIR server. Signed, so anything holding the public key can check it.    |
-| [**Refresh family**](<Domain/Refresh Token Explanation.md>)          | 90 days from the authorization; rotation never extends it                       | One chain of refresh tokens from one authorization. Replaying an old link ends the whole chain. |
+| [**Refresh family**](<Domain/Refresh Token Explanation.md>)          | The app's refresh policy, at most 365 days from the authorization               | One chain of refresh tokens from one authorization. Replaying an old link ends the whole chain. |
 | [**Browser session**](<Domain/Browser Session Explanation.md>)       | Eight hours for a same-device session, a day for a paired one, or until revoked | The browser's standing permission. It caps what any app requested in that browser can receive.  |
 
 ## How the code is layered
