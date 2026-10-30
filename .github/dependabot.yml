@@ -54,6 +54,19 @@ updates:
       - dependency-name: '@tauri-apps/*'
         update-types:
           - version-update:semver-minor
+      # OpenTelemetry JS 3.0 moves as one set: `resources` 3 and the 0.300
+      # exporters peer `api` 1.10, which `sdk-trace-base` 2.x refuses. And
+      # `@effect/opentelemetry` (0.64 and 4.x alike) still peers the 2.x SDK, so the
+      # set waits for an `@effect/opentelemetry` release that accepts 3.0.
+      - dependency-name: '@opentelemetry/*'
+        update-types:
+          - version-update:semver-major
+      - dependency-name: '@opentelemetry/api'
+        versions:
+          - '>=1.10.0'
+      - dependency-name: '@opentelemetry/exporter-trace-otlp-http'
+        versions:
+          - '>=0.300.0'
     groups:
       js-minor-patch:
         update-types:
