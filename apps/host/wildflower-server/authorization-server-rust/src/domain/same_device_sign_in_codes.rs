@@ -137,7 +137,8 @@ impl SameDeviceSignInCodes {
     }
 
     /// The session the redeemed `code` started wasn't stored: forget the
-    /// code, which is spent. A code that is outstanding, as one whose
+    /// code, which is spent. Only the sign-in that [took](Self::take) `code`
+    /// says so; another presentation of it leaves its sign-in be. A code that is outstanding, as one whose
     /// presentation was refused before it was redeemed, stays so.
     pub(crate) fn session_not_stored(&self, code: &str) {
         let mut sign_in_by_code_hash = self.sign_in_by_code_hash.lock();

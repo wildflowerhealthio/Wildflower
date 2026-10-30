@@ -110,8 +110,10 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
     /// it once the view it opened closes. A code the base withdrew while the
     /// session was being stored, as its view closed, signs nobody in: the
     /// session is expired at once and the token never handed out. A failure
-    /// after the code is taken spends it: the code leaves memory even when the
-    /// scope rolls back, so signing in again takes a new code.
+    /// after this call takes the code spends it: the code leaves memory even
+    /// when the scope rolls back, so signing in again takes a new code. A
+    /// failure before then leaves the code as it stood, so a second
+    /// presentation of a code mid-sign-in can't clear its withdrawal.
     ///
     /// # Errors
     ///
@@ -135,6 +137,7 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             .ok_or(SameDeviceSignInError::Refused(
                 SignInRefusal::RedirectNotAllowed,
             ))?;
+        let mut code_taken = false;
         let stored = self.store.write(|tx| {
             if is_browser_session_client_disabled(tx)? {
                 return Err(SameDeviceSignInError::Refused(
@@ -151,6 +154,7 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             .ok_or(SameDeviceSignInError::Refused(
                 SignInRefusal::CodeNotRedeemable,
             ))?;
+            code_taken = true;
             BrowserSessionWriter::within(tx)
                 .start_same_device_session(&redeemed_sign_in_code)
                 .map_err(SameDeviceSignInError::SessionNotStored)?;
@@ -168,7 +172,9 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
         let (session_token, session) = match stored {
             Ok(stored) => stored,
             Err(error) => {
-                self.codes.session_not_stored(presented_code);
+                if code_taken {
+                    self.codes.session_not_stored(presented_code);
+                }
                 return Err(error);
             }
         };
@@ -216,6 +222,7 @@ mod tests {
 
     use super::*;
     use crate::domain::access_token::{verify_access_token, AccessTokenVerifyOptions};
+    use crate::domain::browser_session::BrowserSession;
     use crate::domain::same_device_sign_in_codes::SAME_DEVICE_SIGN_IN_CODE_TTL;
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{client, seed_active_signing_key, FakeGrantStore};
@@ -374,6 +381,34 @@ mod tests {
         ));
         let sessions = sign_in.store.store.tx().live_browser_sessions(now);
         assert!(sessions.expect("read").is_empty(), "no session stands");
+    }
+
+    /// A second presentation of a code whose first is still signing in is
+    /// refused, and leaves the first's sign-in as it stood: withdrawn
+    /// meanwhile, the first still signs nobody in.
+    #[test]
+    fn a_second_presentation_mid_sign_in_keeps_the_withdrawal() {
+        let now = Utc::now();
+        let (sign_in, _signing_key) = sign_in_with_a_code(now);
+        // The first presentation has redeemed the code and is storing its
+        // session when the view closes.
+        assert!(sign_in.codes.take("code-1", now));
+        sign_in.codes.withdraw("code-1");
+        assert!(matches!(
+            sign_in.sign_in("code-1", "/", now),
+            Err(SameDeviceSignInError::Refused(
+                SignInRefusal::CodeNotRedeemable
+            ))
+        ));
+        let first_session = BrowserSession::new_same_device_session(
+            sign_in.owner_grant.render(),
+            SAME_DEVICE_SESSION_TTL,
+            now,
+        );
+        assert!(
+            !sign_in.codes.session_stored("code-1", &first_session),
+            "the first sign-in finds its code withdrawn"
+        );
     }
 
     /// A redeemed code is spent: presenting it again is
