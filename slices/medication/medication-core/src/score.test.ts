@@ -18,6 +18,10 @@ describe('scoreName', () => {
     expect(scoreName('risedronate', 'risedronate sodium')).toBe('partial')
   })
 
+  it('should score the same tokens in another order as exact', () => {
+    expect(scoreName('sodium risedronate', 'Risedronate Sodium')).toBe('exact')
+  })
+
   it('should return null when the names share no containment', () => {
     expect(scoreName('ibuprofen', 'Abilify')).toBeNull()
   })
