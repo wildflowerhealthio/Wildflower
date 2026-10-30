@@ -19,6 +19,7 @@ const APEX_REDIRECT_PATHS: Readonly<Record<HostedAppId, string>> = {
   watchLifts: 'watch-lifts',
   launcher: 'launcher',
   authorization: 'authorization',
+  appCatalog: 'app-catalog',
 }
 
 /** One redirect page in this site's build. */

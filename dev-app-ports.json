@@ -10,5 +10,6 @@
   "synthetic-data-dev": 5198,
   "strength-dev": 5199,
   "launcher-dev": 5200,
-  "authorization-dev": 5201
+  "authorization-dev": 5201,
+  "app-catalog-dev": 5202
 }

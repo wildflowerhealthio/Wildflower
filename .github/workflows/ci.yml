@@ -105,6 +105,9 @@ jobs:
               # admin UI's TypeScript signer committed here. (The UI itself
               # is stubbed for the Rust job, so its sources don't count.)
               - 'apps/relay/relay-core-js/src/signing/fixtures/*.json'
+              # wildflowerhealthio-authorization-server holds the App Catalog's
+              # preassigned clients to the rows its migrations seed.
+              - 'apps/app-catalog/app-catalog-web/public/apps.json'
               # What the jobs run, how the test shards are planned, and the
               # stub placeholders they compile against.
               - 'scripts/checks/rust.sh'

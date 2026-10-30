@@ -31,6 +31,7 @@ describe('APP_REDIRECTS', () => {
   it('should pin the apex redirect paths', () => {
     expect(Object.values(APEX_REDIRECT_PATHS).toSorted()).toEqual(
       [
+        'app-catalog',
         'authorization',
         'fhir-sync-pebble',
         'health-viewer',

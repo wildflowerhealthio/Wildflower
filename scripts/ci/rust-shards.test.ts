@@ -105,6 +105,19 @@ describe('rust-shards / cratesReading', () => {
     ])
   })
 
+  it('gives the App Catalog to the authorization server, which checks its clients', () => {
+    const withAuthorizationServer = [
+      ...crates,
+      crate(
+        'wildflowerhealthio-authorization-server',
+        'apps/host/wildflower-server/authorization-server-rust'
+      ),
+    ]
+    expect(
+      cratesReading('apps/app-catalog/app-catalog-web/public/apps.json', withAuthorizationServer)
+    ).toEqual(['wildflowerhealthio-authorization-server'])
+  })
+
   it('gives files no crate reads nothing, the repo root included', () => {
     for (const file of [
       'apps/launcher/src/index.ts',

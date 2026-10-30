@@ -24,7 +24,8 @@ const hostedAppIdArb = fc.constantFrom<HostedAppId>(
   'strength',
   'watchLifts',
   'launcher',
-  'authorization'
+  'authorization',
+  'appCatalog'
 )
 
 describe('APP_SLUGS', () => {
@@ -41,6 +42,7 @@ describe('APP_SLUGS', () => {
       watchLifts: 'watch-lifts',
       launcher: 'launcher',
       authorization: 'authorization',
+      appCatalog: 'app-catalog',
     })
   })
 

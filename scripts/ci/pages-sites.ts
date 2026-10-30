@@ -79,6 +79,8 @@ interface AppSite {
   readonly packageName: string
   readonly buildDir: string
   readonly sentryDsnVariable: string
+  /** The site's {@link PagesSite.requiredFiles}, when more than its `index.html`. */
+  readonly requiredFiles?: readonly string[]
 }
 
 const APP_SITES: Readonly<Record<HostedAppId, AppSite>> = {
@@ -141,6 +143,16 @@ const APP_SITES: Readonly<Record<HostedAppId, AppSite>> = {
     buildDir: 'apps/authorization/authorization-web/dist',
     sentryDsnVariable: 'VITE_SENTRY_DSN_AUTHORIZATION_WEB',
   },
+  appCatalog: {
+    packageName: '@wildflowerhealthio/app-catalog-web',
+    buildDir: 'apps/app-catalog/app-catalog-web/dist',
+    sentryDsnVariable: '',
+    // The HALO catalog at `/apps`, and the same bytes at `/apps.json`, which
+    // Pages serves as `application/json`: `app-catalog-core-js`'s
+    // `CATALOG_PATH` and `CATALOG_JSON_PATH`, which pages-sites.test.ts holds
+    // these to.
+    requiredFiles: ['index.html', 'apps', 'apps.json'],
+  },
 }
 
 /** Every hosted app, in {@link APP_SLUGS} order. */
@@ -158,7 +170,7 @@ const APP_PAGES_SITES: readonly PagesSite[] = HOSTED_APP_IDS.map((app) => ({
   section: app,
   name: APP_SLUGS[app],
   ...APP_SITES[app],
-  requiredFiles: ['index.html'],
+  requiredFiles: APP_SITES[app].requiredFiles ?? ['index.html'],
   pagesRepository: `${APP_SLUGS[app]}-web`,
   pagesBranch: 'gh-pages',
   siteUrl: sectionUrl(app),

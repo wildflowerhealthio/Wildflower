@@ -6,6 +6,10 @@ import { Effect } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import {
+  CATALOG_JSON_PATH,
+  CATALOG_PATH,
+} from '../../apps/app-catalog/app-catalog-core-js/src/location.ts'
 import { APP_SLUGS, sectionUrl } from '../../slices/branding/branding-core/src/site.ts'
 import { findAffectedPackages, loadPackages, type Pkg } from '../affected-packages.ts'
 import {
@@ -107,6 +111,14 @@ describe('pages-sites / the sites', () => {
     expect(MARKETING_PAGES_SITE.requiredFiles).toContain('suggested_apps.json')
     expect(existsSync(join(dir, 'public', 'suggested_apps.json'))).toBe(true)
     expect(MARKETING_PAGES_SITE.requiredFiles).toContain('health-viewer/index.html')
+  })
+
+  it('should require the App Catalog at both its HALO path and its .json name', () => {
+    const site = APP_PAGES_SITES.find(({ section }) => section === 'appCatalog')
+    if (site === undefined) throw new Error('No App Catalog site')
+    expect(site.requiredFiles).toEqual(['index.html', CATALOG_PATH, CATALOG_JSON_PATH])
+    const dir = join(repoRoot, packageOf(site).relDir)
+    expect(existsSync(join(dir, 'public', CATALOG_JSON_PATH))).toBe(true)
   })
 
   it('should name a Sentry DSN variable only for an app whose build reads it', () => {

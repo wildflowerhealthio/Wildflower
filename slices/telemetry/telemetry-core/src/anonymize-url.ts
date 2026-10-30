@@ -47,6 +47,7 @@ const HOSTED_APP_SLUGS = [
   'watch-lifts',
   'launcher',
   'authorization',
+  'app-catalog',
 ] as const
 
 /**

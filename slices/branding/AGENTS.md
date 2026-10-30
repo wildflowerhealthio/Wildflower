@@ -51,7 +51,8 @@ preview is not found rather than handed to production with a route it lacks.
 `not-found-page.test.ts` runs the page's script against both.
 `restoreRedirectedUrl(window)` is the other half: each
 first-party SPA entry (`apps/medications/medications-web`, `apps/importer-web`,
-`apps/fhir-sync-pebble/fhir-sync-pebble-web`, `apps/strength/strength-web`, `apps/watch-lifts/watch-lifts-web`, `apps/server-docs-web`, `apps/authorization/authorization-web`) calls it as its first statement,
+`apps/fhir-sync-pebble/fhir-sync-pebble-web`, `apps/strength/strength-web`, `apps/watch-lifts/watch-lifts-web`, `apps/server-docs-web`, `apps/authorization/authorization-web`,
+`apps/app-catalog/app-catalog-web`) calls it as its first statement,
 before the router, the SMART callback check, or the `?server=` read — it puts
 the route back in the address bar with `history.replaceState` and drops the
 `redirect` parameter, leaving every other parameter and the fragment alone.
