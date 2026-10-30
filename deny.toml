@@ -38,10 +38,10 @@ ignore = [
   # branch on secret values (subtraction, division, Montgomery multiplication),
   # a timing side channel. The fix is only in 0.7.6+, but 0.5.5 is pinned by
   # `elliptic-curve` 0.13, which `p256`/`p384` 0.13 pull in for
-  # `jsonwebtoken` (`rust_crypto` backend, still on 0.13 in 11.1) and the
-  # `helios-rest`/`helios-ui` pins. Our JWT code signs and verifies only RS256,
-  # so the elliptic-curve path is never exercised with our keys. Reviewed,
-  # temporary — drop once helios and jsonwebtoken move to `p256`/`p384` 0.14.
+  # `jsonwebtoken` 10 (`rust_crypto` backend) in the authorization server. Our
+  # JWT code signs and verifies only RS256, so the elliptic-curve path is never
+  # exercised with our keys. Reviewed, temporary — drop once jsonwebtoken moves
+  # to `p256`/`p384` 0.14.
   "RUSTSEC-2026-0387",
   # zstd < 0.14.3 — a reused compression context can leak data from an
   # abandoned stream into the next one (0391); `Seekable::decompress` and
