@@ -259,8 +259,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     resource, or one a decoded resource is replaced by), its `label`, the
     title of an entry it replaces or is appended as, and its
     `ownerReferent`: the referent whose own record it is
-    (`Referent.maybeOwnResource`), `None` for a stored resource no referent
-    of the batch owns. **`make`** builds one from the **`LinkedResource`**s
+    (`Referent.maybeOwnResource`) when the copy written comes from a
+    `Decoded` or `Provisional` target, `None` when it is a stored resource,
+    even one under the id a referent's own record would have (a re-import's
+    stored provisional record). **`make`** builds one from the **`LinkedResource`**s
     under a literal reference (a link whose target holds a resource: the
     referent and that target); **`fromLinks`** groups a batch's links by the
     literal reference they redirect to and makes one per group, in the order

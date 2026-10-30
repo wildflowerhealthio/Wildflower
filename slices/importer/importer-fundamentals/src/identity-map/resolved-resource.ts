@@ -56,18 +56,20 @@ interface Type {
    */
   readonly label: string
   /**
-   * The referent whose record it is: the one with a resource whose decoded
-   * resource it is, or the one named only by mentions whose provisional
-   * resource it is (`Referent.maybeOwnResource`). `None` for a stored
-   * resource no referent of the batch owns.
+   * The referent whose record it is, when the copy written is a record the
+   * batch makes: the one with a resource whose decoded resource it is, or
+   * the one named only by mentions whose provisional resource it is
+   * (`Referent.maybeOwnResource`). `None` when the copy written is a stored
+   * resource, even one under the literal reference a referent's own record
+   * would have, such as the provisional record an earlier import wrote.
    */
   readonly ownerReferent: Option.Option<Referent.Type>
 }
 
 /**
- * The copy of the resource under one resolved literal reference that is
- * written: the decoded one when it is a referent's link target, else the last
- * link's.
+ * The link whose target holds the copy of the resource under one resolved
+ * literal reference that is written: the decoded one when it is a referent's
+ * link target, else the last link.
  *
  * @remarks
  * On a re-import a decoded resource and its stored copy share a literal
@@ -77,13 +79,12 @@ interface Type {
  * so it is the one written. Should two referents carry different stored
  * copies of one resource, the last one's is written.
  */
-const writtenCopyOf = (
+const writtenLinkOf = (
   linkedResources: Array.NonEmptyReadonlyArray<LinkedResource>
-): LinkableResource.WithId =>
-  pipe(
+): LinkedResource =>
+  Option.getOrElse(
     Array.findLast(linkedResources, ({ target }) => LinkTarget.is('Decoded')(target)),
-    Option.getOrElse(() => Array.lastNonEmpty(linkedResources)),
-    ({ target }) => target.resource
+    () => Array.lastNonEmpty(linkedResources)
   )
 
 /** The stored copies the links of `linkedResources` update: each `Decoded` target's, when it has one. */
@@ -94,16 +95,29 @@ const storedCopiesUpdatedBy = (
     LinkTarget.is('Decoded')(target) ? target.storedCopy : Option.none()
   )
 
-/** The referent of `linkedResources` whose own record `resource` is (`Referent.maybeOwnResource`), if any. */
-const ownerReferentAmong = (
+/**
+ * The referent of `linkedResources` whose own record `writtenLink`'s target
+ * holds (`Referent.maybeOwnResource`), when that target is a record the
+ * batch makes, `Decoded` or `Provisional`; `None` for a `Stored` one, which
+ * is the device's whatever its id.
+ */
+const ownerReferentOf = (
   linkedResources: readonly LinkedResource[],
-  resource: LinkableResource.WithId
+  writtenLink: LinkedResource
 ): Option.Option<Referent.Type> =>
-  Array.findFirst(linkedResources, ({ referent }) =>
-    pipe(
-      Referent.maybeOwnResource(referent),
-      Option.filter((ownResource) => LinkableResource.sameRecord(ownResource, resource)),
-      Option.as(referent)
+  pipe(
+    Option.liftPredicate(
+      writtenLink.target,
+      (target) => LinkTarget.is('Decoded')(target) || LinkTarget.is('Provisional')(target)
+    ),
+    Option.flatMap(({ resource }) =>
+      Array.findFirst(linkedResources, ({ referent }) =>
+        pipe(
+          Referent.maybeOwnResource(referent),
+          Option.filter((ownResource) => LinkableResource.sameRecord(ownResource, resource)),
+          Option.as(referent)
+        )
+      )
     )
   )
 
@@ -113,7 +127,7 @@ const ownerReferentAmong = (
  * batch writes where they were decoded.
  *
  * @remarks
- * The copy written ({@link writtenCopyOf}) assumes, once, its own derived
+ * The copy written ({@link writtenLinkOf}) assumes, once, its own derived
  * identifier (so a name-and-birth-date match finds it next time), then the
  * identifiers of every other copy of the resource the links carry: a stored
  * copy a mention links to, and the stored copy a re-import's decode updates
@@ -126,7 +140,8 @@ const make = (
   linkedResources: Array.NonEmptyReadonlyArray<LinkedResource>,
   literalReferencesWrittenAsDecoded: readonly string[]
 ): Effect.Effect<Type> => {
-  const resource = writtenCopyOf(linkedResources)
+  const writtenLink = writtenLinkOf(linkedResources)
+  const resource = writtenLink.target.resource
   return Effect.all({
     derivedIdentifier: LinkableResource.maybeDerivedIdentifier(resource),
     label: LinkableResource.labelOf(resource, resolvedLiteralReference),
@@ -151,7 +166,7 @@ const make = (
           Array.contains(literalReferencesWrittenAsDecoded, resolvedLiteralReference) ||
           linkedResources.some(({ referent }) => Referent.is('AsResource')(referent)),
         label,
-        ownerReferent: ownerReferentAmong(linkedResources, resource),
+        ownerReferent: ownerReferentOf(linkedResources, writtenLink),
       }
     })
   )

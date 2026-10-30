@@ -554,6 +554,33 @@ describe('the identity map on a printed name set to New', () => {
     expect(leftByReferentLinksOnTestClock(file, map).map(pathOf)).toEqual(['subject', 'subject'])
   })
 
+  it('links the name on a re-import to the record the first import wrote there as Stored, keeping what it carries', () => {
+    const storedProvisional = storedOf(
+      Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))({
+        resourceType: 'Practitioner',
+        id: PROVISIONAL_ID,
+        identifier: [
+          { system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: 'Dr. A Smith' },
+          { system: DEVICE, value: 'kept' },
+        ],
+        name: [{ text: 'Dr. A Smith' }],
+      })
+    )
+
+    const linked = linkedRecordsOnTestClock(
+      file,
+      HashMap.make([PRESCRIBER, LinkChoice.LinkToStoredResource({ resource: storedProvisional })])
+    )
+
+    expect(linked.map((entry) => [entry.key, entry.origin])).toEqual([
+      [`linked:Practitioner/${PROVISIONAL_ID}`, 'Stored'],
+    ])
+    expect(identifiersOf(linkedAt(linked, `linked:Practitioner/${PROVISIONAL_ID}`))).toEqual([
+      `${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`,
+      `${DEVICE}|kept`,
+    ])
+  })
+
   it('defaults a name referent to Don’t link, refuses New for anything but a name, and makes one record for a whole cycle', () => {
     const jones = `Practitioner|${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. B Jones`
     const referents = discoverOnTestClock(

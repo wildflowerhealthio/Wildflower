@@ -1,4 +1,5 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   type FhirResourceWithId,
   MedicationRequest,
@@ -33,6 +34,7 @@ const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
 
 const decodePatient = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))
 const decodeRequest = Schema.decodeUnknownSync(withMandatoryId(MedicationRequest.Schema))
+const decodePractitioner = Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))
 
 const prescribedBy = (id: string, name: string, subject: object): FhirResourceWithId =>
   decodeRequest({
@@ -145,6 +147,39 @@ describe('MentionLinkOptions.fromPlan', () => {
       ])
     ).toEqual([
       ['Dr. A Smith', LinkChoice.LinkToDecodedReferent({ referentKey: nameKey('Dr. A Smith') })],
+    ])
+  })
+
+  it('offers the stored record a re-import finds at a name’s provisional id as LinkToStoredResource', () => {
+    const provisionalId = localResourceId(
+      Practitioner.NAME_IDENTIFIER_SYSTEM,
+      'Practitioner',
+      'Dr. A Smith'
+    )
+    const storedProvisional: LinkableResource.WithId = decodePractitioner({
+      resourceType: 'Practitioner',
+      id: provisionalId,
+      identifier: [{ system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: 'Dr. A Smith' }],
+      name: [{ text: 'Dr. A Smith' }],
+    })
+
+    const options = optionsUnder(
+      HashMap.make([
+        nameKey('Dr. A Smith'),
+        LinkChoice.LinkToStoredResource({ resource: storedProvisional }),
+      ])
+    )
+
+    expect(
+      MentionLinkOptions.forType(options, 'Practitioner').map(({ value, choice }) => [
+        value,
+        choice,
+      ])
+    ).toEqual([
+      [
+        `stored:Practitioner/${provisionalId}`,
+        LinkChoice.LinkToStoredResource({ resource: storedProvisional }),
+      ],
     ])
   })
 
