@@ -110,7 +110,10 @@ impl<S: GrantStore> SessionShortfall<S> {
     ///
     /// # Errors
     ///
-    /// See [`load_code_request_awaiting_limited_page`]; the store's.
+    /// See [`load_code_request_awaiting_limited_page`];
+    /// [`AuthorizationServerError::AuthorizationRequestNotFound`] too once the
+    /// session has ended, as the ask answers, since no code is issued under
+    /// it; the store's.
     pub(crate) fn read(
         &self,
         id: &str,
@@ -119,9 +122,10 @@ impl<S: GrantStore> SessionShortfall<S> {
     ) -> Result<SessionShortfallView, AuthorizationServerError> {
         self.store.read(|tx| {
             let request = load_code_request_awaiting_limited_page(tx, id, sid, now)?;
-            // An ended session holds nothing, so it lacks all the request asks.
             let session_grant = browser_session_grant(tx, sid, &self.stale_session_cutoff, now)?
-                .unwrap_or_default();
+                .ok_or_else(|| AuthorizationServerError::AuthorizationRequestNotFound {
+                    id: id.to_owned(),
+                })?;
             let client_name = tx
                 .client_by_id(&request.client_id)?
                 .map_or_else(|| request.client_id.clone(), |client| client.name);
@@ -264,8 +268,8 @@ mod tests {
     }
 
     /// What the session lacks is read from its row as it stands: a session
-    /// the Owner widened since lacks only the rest, and one that has ended
-    /// holds nothing, so it lacks every held access the request asks for.
+    /// the Owner widened since lacks only the rest, and once it has ended the
+    /// request reads as not found.
     #[test]
     fn the_read_takes_what_the_session_holds_from_its_row_now() {
         let store = FakeGrantStore::default();
@@ -296,11 +300,10 @@ mod tests {
             .revoke_browser_session(FIXTURE_SID, now)
             .unwrap();
         assert_eq!(
-            session_shortfall
-                .read("req-1", FIXTURE_SID, now)
-                .expect("reads")
-                .missing_scopes,
-            ["patient/Patient.r", "patient/Observation.r"]
+            session_shortfall.read("req-1", FIXTURE_SID, now),
+            Err(AuthorizationServerError::AuthorizationRequestNotFound {
+                id: "req-1".to_owned()
+            })
         );
     }
 
