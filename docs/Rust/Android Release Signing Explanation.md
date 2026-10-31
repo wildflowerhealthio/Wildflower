@@ -119,12 +119,14 @@ Release — Publish with that `tag` and `platforms` set to `android`.
 
 The build itself is the `.github/actions/build-android-bundle` action, which
 `.github/workflows/ci-android.yml` runs too: on every pull request that touches
-the host app's Tauri crate, its Gradle project, `Cargo.lock`,
-`rust-toolchain.toml` or the action, and on demand for any branch. Without the
-`android-play` environment there is no `keystore.properties`, so that build is
-unsigned, but it is otherwise the release's, symbol table check included. A
-change that breaks the Android build shows up on its pull request rather than
-in the next release.
+the host app's Tauri crate, its Gradle project, `rust-toolchain.toml` or the
+action, and on demand for any branch. Without the `android-play` environment
+there is no `keystore.properties`, so that build is unsigned, but it is
+otherwise the release's, symbol table check included. A change to those paths
+that breaks the Android build shows up on its pull request rather than in the
+next release. A dependency bump in `Cargo.lock` doesn't run it, because the
+build holds a runner for over half an hour; dispatch it on that branch when a
+bump touches what the host app compiles for Android.
 
 **Which version Play sees.** `tauri android build` writes
 `gen/android/app/tauri.properties`, which `build.gradle.kts` reads, from the

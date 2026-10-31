@@ -166,14 +166,15 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/workflows/lint-shell.yml'
             # The host app's Android build: its Tauri crate and Gradle
-            # project, the toolchain and lockfile that pin what compiles for
-            # the Android targets, and the action the release builds with too.
-            # A change elsewhere in the Rust workspace can break it as well,
-            # but runs only the Rust checks.
+            # project, the toolchain that compiles for the Android targets,
+            # and the action the release builds with too. The build takes
+            # over half an hour, so a change elsewhere in the Rust workspace,
+            # `Cargo.lock` included, runs only the Rust checks, though it can
+            # break this build too; ci-android.yml's workflow_dispatch builds
+            # such a branch on demand.
             android:
               - 'apps/host/host-app/src-tauri/**'
               - 'apps/host/host-app/package.json'
-              - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
               - '.github/workflows/ci-android.yml'
