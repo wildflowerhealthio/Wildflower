@@ -17,6 +17,19 @@ impl Revocation for RevocationStore {
         RevocationStore::revoke_jti(self, jti, expires_at, reason).map_err(|e| e.to_string())
     }
 
+    /// Put `jti` on the shared store's denylist from `revoked_from` until
+    /// `expires_at`, recording `reason`.
+    fn revoke_jti_from(
+        &self,
+        jti: &str,
+        revoked_from: DateTime<Utc>,
+        expires_at: DateTime<Utc>,
+        reason: &str,
+    ) -> Result<(), String> {
+        RevocationStore::revoke_jti_from(self, jti, revoked_from, expires_at, reason)
+            .map_err(|e| e.to_string())
+    }
+
     /// Bump `subject`'s revocation epoch to now in the shared store, revoking
     /// every token issued to it before this instant.
     fn revoke_subject_as_of_now(&self, subject: &str) -> Result<(), String> {

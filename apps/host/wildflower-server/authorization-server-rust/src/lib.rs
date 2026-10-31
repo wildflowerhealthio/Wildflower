@@ -410,6 +410,7 @@ fn spawn_retention_sweep(store: SqliteGrantStore) {
                     refresh_token_families = purged.refresh_token_families,
                     code_authorization_requests = purged.code_authorization_requests,
                     user_code_requests = purged.user_code_requests,
+                    session_widening_requests = purged.session_widening_requests,
                     authorization_codes = purged.authorization_codes,
                     browser_sessions = purged.browser_sessions,
                     "swept the authorization server rows past their retention window",

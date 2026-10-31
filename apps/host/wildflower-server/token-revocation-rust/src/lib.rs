@@ -14,8 +14,8 @@
 //! - [`revocation_epochs`](#) — a per-subject `not_before` lever for bulk
 //!   revocation without a per-issued-`jti` registry.
 //!
-//! The verdict is: **revoked** iff `jti ∈ revoked_jtis` **or**
-//! `iat < not_before(subject)`.
+//! The verdict is: **revoked** iff `jti ∈ revoked_jtis` (from the row's
+//! `revoked_at` on) **or** `iat < not_before(subject)`.
 //!
 //! It carries no auth policy and no helios dependency. The host builds it on
 //! the shared database and hands it to `authorization-server-rust`, which
@@ -113,7 +113,8 @@ impl RevocationStore {
         })
     }
 
-    /// The **denylist-only** check: whether `jti` itself was revoked.
+    /// The **denylist-only** check: whether `jti` itself is revoked now — on
+    /// the denylist, from its row's `revoked_at` on.
     ///
     /// # Errors
     ///
@@ -121,16 +122,30 @@ impl RevocationStore {
     pub fn is_revoked_by_jti(&self, jti: &str) -> DbResult<bool> {
         let conn = &self.conn;
         conn.lock().query_row(
-            "SELECT EXISTS(SELECT 1 FROM revoked_jtis WHERE jti = ?1)",
-            params![jti],
+            "SELECT EXISTS(SELECT 1 FROM revoked_jtis WHERE jti = ?1 AND revoked_at <= ?2)",
+            params![jti, Utc::now().timestamp()],
             |row| row.get(0),
         )
     }
 
-    /// Add `jti` to the denylist, recording the token's own `expires_at` (a sweep
-    /// hint) and an audit `reason`. Idempotent. On a re-revoke the **audit fields
-    /// stay first-write** (`revoked_at`/`reason` are the operative first record),
-    /// but `expires_at` is bumped **monotonically** (`MAX`) — never walked back.
+    /// Add `jti` to the denylist as of now, recording the token's own
+    /// `expires_at` (a sweep hint) and an audit `reason`: [`Self::revoke_jti_from`]
+    /// from now.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the insert fails.
+    pub fn revoke_jti(&self, jti: &str, expires_at: DateTime<Utc>, reason: &str) -> DbResult<()> {
+        self.revoke_jti_from(jti, Utc::now(), expires_at, reason)
+    }
+
+    /// Add `jti` to the denylist from `revoked_from` on (a later instant leaves
+    /// the token working until then), recording the token's own `expires_at` (a
+    /// sweep hint) and an audit `reason`. Idempotent. On a re-revoke the
+    /// **reason stays first-write**, `revoked_at` keeps the **earlier** of the
+    /// two (`MIN`), so a revocation taking effect now overrides one scheduled
+    /// later, and `expires_at` is bumped **monotonically** (`MAX`) — never
+    /// walked back.
     /// Monotonicity is the safe direction: a later, more-correct `expires_at` can
     /// extend how long the row is retained, but a stale or too-early re-revoke can
     /// never shorten it and let the sweep drop the row while the token is still
@@ -140,14 +155,26 @@ impl RevocationStore {
     /// # Errors
     ///
     /// Returns a `rusqlite::Error` if the insert fails.
-    pub fn revoke_jti(&self, jti: &str, expires_at: DateTime<Utc>, reason: &str) -> DbResult<()> {
+    pub fn revoke_jti_from(
+        &self,
+        jti: &str,
+        revoked_from: DateTime<Utc>,
+        expires_at: DateTime<Utc>,
+        reason: &str,
+    ) -> DbResult<()> {
         let conn = &self.conn;
         conn.lock().execute(
             "INSERT INTO revoked_jtis (jti, expires_at, revoked_at, reason)
              VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(jti) DO UPDATE SET
-                 expires_at = MAX(revoked_jtis.expires_at, excluded.expires_at)",
-            params![jti, expires_at.timestamp(), Utc::now().timestamp(), reason],
+                 expires_at = MAX(revoked_jtis.expires_at, excluded.expires_at),
+                 revoked_at = MIN(revoked_jtis.revoked_at, excluded.revoked_at)",
+            params![
+                jti,
+                expires_at.timestamp(),
+                revoked_from.timestamp(),
+                reason
+            ],
         )?;
         Ok(())
     }
@@ -269,6 +296,39 @@ mod tests {
         store.revoke_jti("jti-1", exp, "logout").expect("first");
         // A second revoke (e.g. a double logout) must not error on the PK.
         store.revoke_jti("jti-1", exp, "admin").expect("second");
+        assert!(store.is_revoked_by_jti("jti-1").expect("query"));
+    }
+
+    /// A revocation from a later instant leaves the token working until then;
+    /// one taking effect now overrides it.
+    #[test]
+    fn a_later_revocation_takes_effect_from_its_instant() {
+        let store = store();
+        let exp = Utc::now() + Duration::hours(1);
+        store
+            .revoke_jti_from(
+                "jti-1",
+                Utc::now() + Duration::minutes(1),
+                exp,
+                "superseded",
+            )
+            .expect("revoke later");
+        assert!(!store.is_revoked_by_jti("jti-1").expect("query"));
+        assert!(!store
+            .is_revoked(Some("jti-1"), Some(Utc::now()), "client")
+            .expect("query"));
+        store
+            .revoke_jti_from(
+                "jti-2",
+                Utc::now() - Duration::seconds(1),
+                exp,
+                "superseded",
+            )
+            .expect("revoke past");
+        assert!(store.is_revoked_by_jti("jti-2").expect("query"));
+        store
+            .revoke_jti("jti-1", exp, "logout")
+            .expect("revoke now");
         assert!(store.is_revoked_by_jti("jti-1").expect("query"));
     }
 

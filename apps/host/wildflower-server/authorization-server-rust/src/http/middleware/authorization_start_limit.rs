@@ -1,11 +1,12 @@
-//! The limit on starting authorization requests: the layer on the two routes
-//! that start one, `GET /oauth/authorize` and
-//! `POST /oauth/device_authorization`, which asks the host's
+//! The limit on starting authorization requests: the layer on the three
+//! routes that start one, `GET /oauth/authorize`,
+//! `POST /oauth/device_authorization` and the limited page's
+//! `POST /oauth/authorize/{id}/ask-to-widen`, which asks the host's
 //! [`AuthorizationStartGate`].
 //!
 //! Anyone who knows the server's domain can start a request, and each one
 //! the server parks raises the Owner's approval popup on the server's device.
-//! The layer sits on those two routes alone, so it covers every method axum
+//! The layer sits on those three routes alone, so it covers every method axum
 //! serves them on (`HEAD /oauth/authorize` too) and no other route. Two kinds
 //! of request pass without asking the gate yet: the layer hands the route a
 //! [`DeferredStartLimit`] instead, and the route asks the gate only once it
@@ -22,6 +23,10 @@
 //! other request asks the gate, before the request is parsed, so every
 //! attempt counts, however malformed; one it refuses is answered
 //! `429 Too Many Requests`.
+//!
+//! `POST /oauth/authorize/{id}/ask-to-widen` always defers: the route asks its
+//! [`DeferredStartLimit`] only when it files a new session widening, so asking
+//! again for a widening that still waits for the Owner spends nothing.
 //!
 //! A request `/oauth/authorize` parks for its browser's limited page has
 //! spent from the limit by then, the deferred kind included: the route asks
@@ -66,6 +71,10 @@ pub(crate) enum AuthorizationStartRoute {
     Authorize,
     /// `/oauth/device_authorization`, which parks every request it accepts.
     DeviceAuthorization,
+    /// `/oauth/authorize/{id}/ask-to-widen`, which files a session widening
+    /// for the Owner unless one for the same ask still waits: always
+    /// deferred, and asked by the route only when it files one.
+    AskToWidenSession,
 }
 
 /// The answer to a start the gate refuses: `429 Too Many Requests`, uncached.
@@ -74,8 +83,9 @@ pub(crate) fn start_limited_response() -> Response {
 }
 
 /// The authorization start limit, deferred by [`limit_authorization_starts`]
-/// for a request carrying a browser session that can decide consents, or an
-/// `/oauth/authorize` request carrying no browser session, and by
+/// for a request carrying a browser session that can decide consents, an
+/// `/oauth/authorize` request carrying no browser session, or any
+/// `/oauth/authorize/{id}/ask-to-widen` request, and by
 /// [`defer_authorization_start_limit`] for every ask-owner request, as the
 /// request's extension: the route asks it once a request is to be raised for
 /// the Owner.
@@ -133,9 +143,10 @@ pub(crate) async fn defer_authorization_start_limit(
 }
 
 /// Pass `request` on with a [`DeferredStartLimit`] for the route to ask when
-/// it carries a live browser session that can decide consents, or when it is
+/// it carries a live browser session that can decide consents, when it is
 /// a `start_route` of [`AuthorizationStartRoute::Authorize`] that carries no
-/// live browser session; pass it on when the state's
+/// live browser session, or when it is an
+/// [`AuthorizationStartRoute::AskToWidenSession`]; pass it on when the state's
 /// [`AuthorizationStartGate`] admits it; answer it
 /// `429 Too Many Requests`, uncached, otherwise.
 pub(crate) async fn limit_authorization_starts(
@@ -144,11 +155,12 @@ pub(crate) async fn limit_authorization_starts(
     next: Next,
 ) -> Response {
     let token_verifier = LiveTokenVerifier::from_state(&state);
-    let defers = match carried_browser_session(&token_verifier, request.headers()) {
-        Ok(Some(claims)) => can_decide_consents(&claims),
-        Ok(None) => matches!(start_route, AuthorizationStartRoute::Authorize),
-        Err(_) => false,
-    };
+    let defers = matches!(start_route, AuthorizationStartRoute::AskToWidenSession)
+        || match carried_browser_session(&token_verifier, request.headers()) {
+            Ok(Some(claims)) => can_decide_consents(&claims),
+            Ok(None) => matches!(start_route, AuthorizationStartRoute::Authorize),
+            Err(_) => false,
+        };
     if defers {
         let deferred_start_limit = DeferredStartLimit {
             gate: state.authorization_start_gate.clone(),

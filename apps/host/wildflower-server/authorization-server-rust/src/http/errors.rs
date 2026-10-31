@@ -196,6 +196,17 @@ pub(crate) struct AuthorizationRequestNotFoundBody {
     pub(crate) id: String,
 }
 
+/// Wire shape for `SessionWideningNotFound` (404) — no session widening the
+/// caller may see has this id.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct SessionWideningNotFoundBody {
+    /// Always `"SessionWideningNotFound"`.
+    pub(crate) error: &'static str,
+    /// The widening id the caller asked for: unknown, decided or expired for
+    /// the Owner's card; another session's for the limited page's poll.
+    pub(crate) id: String,
+}
+
 /// The `/authorization` surface's failures as HTTP responses.
 impl IntoResponse for AuthorizationServerError {
     /// Render the domain's failure vocabulary onto the wire, the same way from
@@ -203,7 +214,8 @@ impl IntoResponse for AuthorizationServerError {
     /// variant's name, and one key, the identifier the caller sent:
     ///
     /// - each `*NotFound` variant is a `404` naming what wasn't found: `id` for an
-    ///   OAuth consent, an authorization request or a grant, `userCode` for a
+    ///   OAuth consent, an authorization request, a session widening or a
+    ///   grant, `userCode` for a
     ///   device consent, `sid` for a browser session, `clientId` for a client;
     /// - a refusal of an otherwise valid request is a `409` of the same shape:
     ///   `EssentialClient` (`clientId`), a request to disable a client the Owner
@@ -275,6 +287,14 @@ impl IntoResponse for AuthorizationServerError {
                 StatusCode::NOT_FOUND,
                 Json(AuthorizationRequestNotFoundBody {
                     error: "AuthorizationRequestNotFound",
+                    id,
+                }),
+            )
+                .into_response(),
+            AuthorizationServerError::SessionWideningNotFound { id } => (
+                StatusCode::NOT_FOUND,
+                Json(SessionWideningNotFoundBody {
+                    error: "SessionWideningNotFound",
                     id,
                 }),
             )

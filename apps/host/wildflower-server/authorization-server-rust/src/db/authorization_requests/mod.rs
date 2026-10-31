@@ -1,11 +1,14 @@
-//! The requests the Owner decides, in two tables by how a request is keyed:
+//! The requests the Owner decides, in three tables by how a request is keyed:
 //!
 //! - `code_authorization_requests`: the code flow's, keyed by id;
 //! - `user_code_requests`: device requests and browser pairings, keyed by
 //!   the `user_code` the Owner enters and claimed by a poll, told apart by a
-//!   `flow` column. Only this module knows they share a table.
+//!   `flow` column. Only this module knows they share a table;
+//! - `session_widening_requests`: session widenings, keyed by id and claimed
+//!   by a poll.
 //!
-//! Each table's row file (`code_request_row`, `user_code_request_row`) holds
+//! Each table's row file (`code_request_row`, `user_code_request_row`,
+//! `session_widening_request_row`) holds
 //! its `table!`, its row struct, and the `TryFrom`
 //! conversions that read a row into the flow's struct: the one place the
 //! columns are checked against the flow and status, so a row whose approval
@@ -15,12 +18,14 @@
 //! cross flows reading both tables.
 
 mod code_request_row;
+mod session_widening_request_row;
 mod user_code_request_row;
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 
 use code_request_row::{code_authorization_requests, CodeAuthorizationRequestRow};
+use session_widening_request_row::{session_widening_requests, SessionWideningRequestRow};
 use user_code_request_row::{user_code_requests, UserCodeRequestRow};
 
 use crate::db::clients::clients;
@@ -31,6 +36,7 @@ use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_request::device::DeviceRequest;
 use crate::domain::authorization_request::pairing::PairingRequest;
 use crate::domain::authorization_request::polled::PolledRequest;
+use crate::domain::authorization_request::session_widening::SessionWideningRequest;
 use crate::domain::authorization_request::{AuthorizationRequest, FlowType, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::consent_key::ConsentKey;
@@ -82,18 +88,17 @@ fn replaced_by_another(read_id: &str, changed_id: &str) -> AuthorizationServerEr
 /// name.
 type PromptCandidate = (AuthorizationRequest, Option<String>);
 
-/// Of the newest pending code request and the newest pending user-code
-/// request, the later by `requested_at`; on a tie, the code request.
+/// Of two prompt candidates, the later by `requested_at`; on a tie, `first`.
 fn later_of(
-    code: Option<PromptCandidate>,
-    polled: Option<PromptCandidate>,
+    first: Option<PromptCandidate>,
+    second: Option<PromptCandidate>,
 ) -> Option<PromptCandidate> {
-    match (code, polled) {
-        (Some(code), Some(polled)) if polled.0.requested_at() > code.0.requested_at() => {
-            Some(polled)
+    match (first, second) {
+        (Some(first), Some(second)) if second.0.requested_at() > first.0.requested_at() => {
+            Some(second)
         }
-        (Some(code), _) => Some(code),
-        (None, polled) => polled,
+        (Some(first), _) => Some(first),
+        (None, second) => second,
     }
 }
 
@@ -224,16 +229,55 @@ impl SqliteGrantTx<'_> {
             })
             .transpose()
     }
+
+    /// The newest pending, unexpired session widening whose app isn't
+    /// disabled; of two started at once, the greater id.
+    fn newest_pending_session_widening_request(
+        &mut self,
+        now: DateTime<Utc>,
+    ) -> Result<Option<PromptCandidate>, AuthorizationServerError> {
+        session_widening_requests::table
+            .left_join(
+                clients::table.on(clients::client_id.eq(session_widening_requests::client_id)),
+            )
+            .filter(session_widening_requests::status.eq(RequestStatus::Pending))
+            .filter(session_widening_requests::expires_at.gt(now))
+            .filter(clients::disabled_at.is_null())
+            .order((
+                session_widening_requests::requested_at.desc(),
+                session_widening_requests::id.desc(),
+            ))
+            .select((
+                SessionWideningRequestRow::as_select(),
+                clients::name.nullable(),
+            ))
+            .first::<(SessionWideningRequestRow, Option<String>)>(self.conn)
+            .optional()
+            .map_err(failed("owner_prompt failed"))?
+            .map(|(row, registered_client_name)| {
+                Ok((
+                    AuthorizationRequest::SessionWidening(SessionWideningRequest::try_from(row)?),
+                    registered_client_name,
+                ))
+            })
+            .transpose()
+    }
 }
 
 impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
-    /// The code table first, then the user-code table.
+    /// The code table first, then the session-widening table, then the
+    /// user-code table.
     fn authorization_request_by_id(
         &mut self,
         id: &str,
     ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
         if let Some(code_request) = self.code_request_by_id(id)? {
             return Ok(Some(AuthorizationRequest::Code(code_request)));
+        }
+        if let Some(widening_request) = self.session_widening_request_by_id(id)? {
+            return Ok(Some(AuthorizationRequest::SessionWidening(
+                widening_request,
+            )));
         }
         user_code_requests::table
             .find(id)
@@ -281,6 +325,43 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
         )
     }
 
+    fn session_widening_request_by_id(
+        &mut self,
+        id: &str,
+    ) -> Result<Option<SessionWideningRequest>, AuthorizationServerError> {
+        session_widening_requests::table
+            .find(id)
+            .select(SessionWideningRequestRow::as_select())
+            .first(self.conn)
+            .optional()
+            .map_err(failed("session_widening_request_by_id failed"))?
+            .map(SessionWideningRequest::try_from)
+            .transpose()
+    }
+
+    fn pending_session_widening_requests_for_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<SessionWideningRequest>, AuthorizationServerError> {
+        session_widening_requests::table
+            .filter(session_widening_requests::sid.eq(sid))
+            .filter(session_widening_requests::status.eq(RequestStatus::Pending))
+            .filter(session_widening_requests::expires_at.gt(now))
+            .order((
+                session_widening_requests::requested_at.desc(),
+                session_widening_requests::id.desc(),
+            ))
+            .select(SessionWideningRequestRow::as_select())
+            .load(self.conn)
+            .map_err(failed(
+                "pending_session_widening_requests_for_session failed",
+            ))?
+            .into_iter()
+            .map(SessionWideningRequest::try_from)
+            .collect()
+    }
+
     fn polled_request_by_user_code(
         &mut self,
         user_code: &str,
@@ -310,9 +391,9 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
             .transpose()
     }
 
-    /// Two reads, the newest candidate from each table, keeping the later by
-    /// `requested_at` (on a tie, the code request; within a table, the
-    /// greater id). The client's name comes from its registration through a
+    /// Three reads, the newest candidate from each table, keeping the latest
+    /// by `requested_at` (on a tie, the code request, then the user-code
+    /// request; within a table, the greater id). The client's name comes from its registration through a
     /// left join: a client trusted on first use has none until the Owner
     /// approves it. A disabled client's request is skipped, a client with no
     /// row's kept (the rule on [`OwnerPrompt`]). Only `pending` rows are
@@ -324,8 +405,9 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
     ) -> Result<Option<OwnerPrompt>, AuthorizationServerError> {
         let code = self.newest_pending_code_request(now)?;
         let polled = self.newest_pending_user_code_request(now)?;
+        let widening = self.newest_pending_session_widening_request(now)?;
         Ok(
-            later_of(code, polled).map(|(request, registered_client_name)| {
+            later_of(later_of(code, polled), widening).map(|(request, registered_client_name)| {
                 OwnerPrompt::for_request(&request, registered_client_name)
             }),
         )
@@ -345,6 +427,9 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
             ConsentKey::AuthorizationCode { id } => {
                 self.code_request_by_id(id)?.map(AuthorizationRequest::Code)
             }
+            ConsentKey::SessionWidening { id } => self
+                .session_widening_request_by_id(id)?
+                .map(AuthorizationRequest::SessionWidening),
         };
         match request {
             Some(request) if request.is_undecided_at(now) => {
@@ -370,6 +455,17 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
         request: &DeviceRequest,
     ) -> Result<(), AuthorizationServerError> {
         self.insert_user_code_row(&UserCodeRequestRow::from(request))
+    }
+
+    fn insert_session_widening_request(
+        &mut self,
+        request: &SessionWideningRequest,
+    ) -> Result<(), AuthorizationServerError> {
+        diesel::insert_into(session_widening_requests::table)
+            .values(SessionWideningRequestRow::from(request))
+            .execute(self.conn)
+            .map_err(failed("insert_session_widening_request failed"))?;
+        Ok(())
     }
 
     fn insert_pairing_request(
@@ -424,6 +520,27 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
         )
     }
 
+    /// One `UPDATE` of every column but the key to `changed`, guarded on the
+    /// key and the status `read` has.
+    fn replace_session_widening_request(
+        &mut self,
+        read: &SessionWideningRequest,
+        changed: &SessionWideningRequest,
+    ) -> Result<bool, AuthorizationServerError> {
+        if changed.id != read.id {
+            return Err(replaced_by_another(&read.id, &changed.id));
+        }
+        let affected = diesel::update(
+            session_widening_requests::table
+                .find(&read.id)
+                .filter(session_widening_requests::status.eq(read.state.status())),
+        )
+        .set(SessionWideningRequestRow::from(changed))
+        .execute(self.conn)
+        .map_err(failed("replace_authorization_request failed"))?;
+        Ok(affected == 1)
+    }
+
     fn delete_code_requests_expired_before(
         &mut self,
         cutoff: DateTime<Utc>,
@@ -444,6 +561,20 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
             .execute(self.conn)
             .map_err(failed("delete_polled_requests_expired_before failed"))
     }
+
+    fn delete_session_widening_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        diesel::delete(
+            session_widening_requests::table
+                .filter(session_widening_requests::expires_at.lt(cutoff)),
+        )
+        .execute(self.conn)
+        .map_err(failed(
+            "delete_session_widening_requests_expired_before failed",
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -458,6 +589,9 @@ mod tests {
     use crate::domain::authorization_request::device::NewDeviceRequestArgs;
     use crate::domain::authorization_request::pairing::{NewPairingRequestArgs, PairingApproval};
     use crate::domain::authorization_request::polled::PolledState;
+    use crate::domain::authorization_request::session_widening::{
+        NewSessionWideningRequestArgs, SessionWideningApproval,
+    };
     use crate::domain::client::Client;
     use crate::domain::grant_store::*;
     use crate::domain::test_fake::{
@@ -591,12 +725,40 @@ mod tests {
         }
     }
 
-    /// A request of any of the three flows.
+    prop_compose! {
+        /// A session widening in any polled state.
+        fn arb_session_widening_request()(
+            id in "[a-zA-Z0-9_-]{1,40}",
+            sid in "[a-z0-9-]{1,16}",
+            client_id in "[a-zA-Z0-9_-]{1,32}",
+            browser_name in "[ -~]{1,40}",
+            requested_scopes in arb_scopes(),
+            requested_at in arb_timestamp(),
+            expires_at in arb_timestamp(),
+            state in arb_polled_state(
+                || arb_scopes().prop_map(|granted_scopes| SessionWideningApproval { granted_scopes })
+            ),
+        ) -> SessionWideningRequest {
+            SessionWideningRequest {
+                id,
+                sid,
+                client_id,
+                browser_name,
+                requested_scopes,
+                requested_at,
+                expires_at,
+                state,
+            }
+        }
+    }
+
+    /// A request of any of the four flows.
     fn arb_authorization_request() -> impl Strategy<Value = AuthorizationRequest> {
         prop_oneof![
             arb_code_request().prop_map(AuthorizationRequest::Code),
             arb_device_request().prop_map(AuthorizationRequest::Device),
             arb_pairing_request().prop_map(AuthorizationRequest::Pairing),
+            arb_session_widening_request().prop_map(AuthorizationRequest::SessionWidening),
         ]
     }
 
@@ -612,6 +774,9 @@ mod tests {
             }
             AuthorizationRequest::Pairing(pairing_request) => {
                 tx.insert_pairing_request(pairing_request)
+            }
+            AuthorizationRequest::SessionWidening(widening_request) => {
+                tx.insert_session_widening_request(widening_request)
             }
         }
     }
@@ -1123,6 +1288,91 @@ mod tests {
                 user_code: "UC-2".to_owned(),
                 browser_name: "Firefox on Linux".to_owned(),
             })
+        );
+        let widening = SessionWideningRequest::new(
+            NewSessionWideningRequestArgs {
+                id: "widen-1".to_owned(),
+                sid: "sid-1".to_owned(),
+                client_id: "app".to_owned(),
+                browser_name: "Safari on iOS".to_owned(),
+                requested_scopes: vec!["wildflower/Apps.r".to_owned()],
+                ttl: Duration::minutes(5),
+            },
+            now + Duration::seconds(2),
+        );
+        store
+            .write(|tx| tx.insert_session_widening_request(&widening))
+            .expect("insert");
+        assert_eq!(
+            newest(&store),
+            Some(OwnerPrompt::SessionWidening {
+                id: "widen-1".to_owned(),
+                browser_name: "Safari on iOS".to_owned(),
+            })
+        );
+        assert!(store
+            .read(|tx| tx.is_awaiting_owner(
+                &ConsentKey::SessionWidening {
+                    id: "widen-1".to_owned()
+                },
+                Utc::now()
+            ))
+            .expect("query"));
+        let denied = widening.deny(Utc::now()).expect("denies");
+        assert!(store
+            .write(|tx| tx.replace_session_widening_request(&widening, &denied))
+            .expect("replace"));
+        assert!(!store
+            .read(|tx| tx.is_awaiting_owner(
+                &ConsentKey::SessionWidening {
+                    id: "widen-1".to_owned()
+                },
+                Utc::now()
+            ))
+            .expect("query"));
+        assert!(!store
+            .write(|tx| tx.replace_session_widening_request(&widening, &denied))
+            .expect("replace"));
+    }
+
+    /// A session's widenings still waiting for the Owner are listed newest
+    /// first; a decided one, an expired one and another session's are not.
+    #[test]
+    fn pending_session_widenings_are_the_session_s_undecided_unexpired_ones() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        let now = Utc::now();
+        let widening = |id: &str, sid: &str, asked_at: DateTime<Utc>| {
+            SessionWideningRequest::new(
+                NewSessionWideningRequestArgs {
+                    id: id.to_owned(),
+                    sid: sid.to_owned(),
+                    client_id: "app".to_owned(),
+                    browser_name: "Firefox on Linux".to_owned(),
+                    requested_scopes: vec!["wildflower/Apps.r".to_owned()],
+                    ttl: Duration::minutes(5),
+                },
+                asked_at,
+            )
+        };
+        let older = widening("older", "sid-1", now - Duration::minutes(2));
+        let newer = widening("newer", "sid-1", now - Duration::minutes(1));
+        let denied = widening("denied", "sid-1", now);
+        let expired = widening("expired", "sid-1", now - Duration::minutes(6));
+        let other = widening("other", "sid-2", now);
+        for request in [&older, &newer, &denied, &expired, &other] {
+            store
+                .write(|tx| tx.insert_session_widening_request(request))
+                .expect("insert");
+        }
+        let denial = denied.deny(now).expect("denies");
+        assert!(store
+            .write(|tx| tx.replace_session_widening_request(&denied, &denial))
+            .expect("replace"));
+        assert_eq!(
+            store
+                .read(|tx| tx.pending_session_widening_requests_for_session("sid-1", now))
+                .expect("query"),
+            [newer, older]
         );
     }
 

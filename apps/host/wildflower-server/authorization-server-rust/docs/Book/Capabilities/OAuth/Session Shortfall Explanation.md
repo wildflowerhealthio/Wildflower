@@ -4,7 +4,7 @@
 
 A browser paired with read-only access may run an app that asks for write. A code earned in that browser carries only what its session holds, so **the person at the browser is told first, on the limited page, before the Owner is asked anything**. The [code authorization starter](<Code Authorization Starter Explanation.md>) parks such a request [awaiting the limited page](<../../Domain/Authorization Request/Code Request Explanation.md#the-limited-page>) and sends the browser there. The page reads what the session lacks, and the person goes on (the starter's [`continue_past_session_shortfall`](<Code Authorization Starter Explanation.md#item-CodeAuthorizationStarter--continue_past_session_shortfall>)) or cancels (here).
 
-**Every operation answers only the browser session the request was made in**, so a leaked request id reads, continues and cancels nothing. No scope opens the capability: the caller is the browser that made the request, known by its browser session's `sid`. **What the session holds is read from its row**, not from its token, as `/oauth/authorize` reads it, so the page and the starter judge the session alike.
+**Every operation answers only the browser session the request was made in**, so a leaked request id reads, continues and cancels nothing. No scope opens the capability: the caller is the browser that made the request, known by its browser session's `sid`. **What the session holds is read from its row**, not from its token, so a session the Owner widened since ([session widening](<Session Widening Explanation.md>)) lacks only what it still lacks, before the browser has taken its wider token.
 
 The tests park code requests from the [session shortfall fixtures](<../Test Fixtures Explanation.md#session-shortfall>).
 

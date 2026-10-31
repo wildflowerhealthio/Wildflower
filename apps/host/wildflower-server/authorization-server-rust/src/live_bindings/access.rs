@@ -208,6 +208,7 @@ impl FixedScopeCapability for LiveBrowserSessionsRevoker {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        BrowserSessionsRevoker::new(state.store.clone())
+        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
+        BrowserSessionsRevoker::new(state.store.clone(), owner_approval)
     }
 }

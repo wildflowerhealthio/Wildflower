@@ -1,14 +1,15 @@
 //! [`RequestApprover`] — the writer that moves a pending authorization request
 //! to approved (the flow's own `approve` transition —
-//! [`CodeRequest::approve`], [`DeviceRequest::approve`] or
-//! [`PairingRequest::approve`] — written with the flow's guarded replace)
-//! and, for the code flow, issues the authorization code the
-//! client redeems at `/oauth/token`. Every write demands a proof — the device
-//! flow and a browser pairing a [`DelegatedScopes`], the code flow a
-//! [`CodeAuthority`] (delegated scopes or standing-grant coverage) — so the
-//! scopes recorded on the request are exactly the proof's, never a slice the
-//! flow assembled, and a code carries the proof's scopes bounded by the
-//! browser session the request was made in.
+//! [`CodeRequest::approve`], [`DeviceRequest::approve`],
+//! [`PairingRequest::approve`] or [`SessionWideningRequest::approve`] —
+//! written with the flow's guarded replace) and, for the code flow, issues
+//! the authorization code the client redeems at `/oauth/token`, and for a
+//! session widening, widens the browser session. Every write demands a proof
+//! — the device flow, a browser pairing and a session widening a
+//! [`DelegatedScopes`], the code flow a [`CodeAuthority`] (delegated scopes
+//! or standing-grant coverage) — so the scopes recorded on the request are
+//! exactly the proof's, never a slice the flow assembled, and a code carries
+//! the proof's scopes bounded by the browser session the request was made in.
 
 use chrono::{DateTime, Utc};
 
@@ -20,8 +21,11 @@ use crate::domain::authorization_request::approval::Approval;
 use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_request::device::DeviceRequest;
 use crate::domain::authorization_request::pairing::{PairingApproval, PairingRequest};
+use crate::domain::authorization_request::session_widening::{
+    SessionWideningApproval, SessionWideningRequest,
+};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::StaleSessionCutoff;
+use crate::domain::browser_session::{BrowserSession, StaleSessionCutoff};
 use crate::domain::GrantTx;
 
 /// On whose authority a code-flow request is approved — the two proofs that
@@ -65,10 +69,37 @@ pub(crate) enum CodeApproval {
     BrowserSessionEnded,
 }
 
-/// Approve pending requests of all three flows and, for the code flow, issue
-/// the request's authorization code, inside the caller's transaction. The gate
-/// is the proof each method takes: a [`DelegatedScopes`] for a device request
-/// or a browser pairing, a [`CodeAuthority`] (delegated scopes or a
+/// What [`RequestApprover::approve_session_widening`] did with a pending
+/// session widening.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum SessionWideningOutcome {
+    /// The widening was approved, and its browser session widened.
+    Widened,
+    /// The widening was no longer pending (a concurrent decision or expiry
+    /// won); nothing changed.
+    RequestNotPending,
+    /// The browser session the widening was asked in has ended — revoked,
+    /// expired, or no longer stored — so there is nothing to widen: the
+    /// widening was denied instead.
+    BrowserSessionEnded,
+}
+
+/// What [`RequestApprover::live_session_or_deny`] found of a request's
+/// browser session.
+enum RequestSession {
+    /// The session is live: the request may be approved under it.
+    Live(BrowserSession),
+    /// The session has ended, and the request was denied.
+    EndedAndDenied,
+    /// The session has ended, and the request was no longer pending to deny.
+    RequestNotPending,
+}
+
+/// Approve pending requests of every flow and, for the code flow, issue the
+/// request's authorization code, and for a session widening, widen its
+/// session, inside the caller's transaction. The gate is the proof each method
+/// takes: a [`DelegatedScopes`] for a device request, a browser pairing or a
+/// session widening, a [`CodeAuthority`] (delegated scopes or a
 /// [`StandingGrantCoverage`]) for a code.
 pub(crate) struct RequestApprover<'a, T: GrantTx> {
     /// The caller's open write scope; the approval and the code land with the
@@ -122,20 +153,17 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         now: DateTime<Utc>,
     ) -> Result<CodeApproval, AuthorizationServerError> {
         let authorized_scopes = authority.authorized_scopes();
-        let Some(browser_session) = self
-            .tx
-            .browser_session_by_sid(&request.sid)?
-            .filter(|browser_session| browser_session.is_live_at(now, stale_session_cutoff))
-        else {
-            let Ok(denied) = request.deny(now) else {
-                return Ok(CodeApproval::RequestNotPending);
+        let browser_session =
+            match self.live_session_or_deny(&request.sid, stale_session_cutoff, now, |tx| {
+                match request.deny(now) {
+                    Ok(denied) => tx.replace_code_request(request, &denied),
+                    Err(_) => Ok(false),
+                }
+            })? {
+                RequestSession::Live(browser_session) => browser_session,
+                RequestSession::EndedAndDenied => return Ok(CodeApproval::BrowserSessionEnded),
+                RequestSession::RequestNotPending => return Ok(CodeApproval::RequestNotPending),
             };
-            return Ok(if self.tx.replace_code_request(request, &denied)? {
-                CodeApproval::BrowserSessionEnded
-            } else {
-                CodeApproval::RequestNotPending
-            });
-        };
         let approval = Approval {
             granted_scopes: authorized_scopes.to_vec(),
             patient: patient.map(str::to_owned),
@@ -220,6 +248,102 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
             Ok(approved) => self.tx.replace_pairing_request(request, &approved),
             Err(_) => Ok(false),
         }
+    }
+
+    /// Approve the session widening `request`, as read, under
+    /// `delegated_scopes` at `now`, and widen the browser session it was
+    /// asked in by them: the session's scopes grow by what the Owner granted
+    /// ([`widened_scopes`](wildflowerhealthio_scopes::widened_scopes), so
+    /// they never shrink), and its `sid`, expiry and everything minted under
+    /// it stay as they are. Every client the session went on past its limited
+    /// page for is forgotten, so its next sign-in carries the wider session,
+    /// or stops at the page again for what it still lacks.
+    ///
+    /// A widening whose session is no longer live at `now` under
+    /// `stale_session_cutoff` is denied rather than approved
+    /// ([`SessionWideningOutcome::BrowserSessionEnded`]).
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
+    pub(crate) fn approve_session_widening(
+        &mut self,
+        delegated_scopes: &DelegatedScopes,
+        request: &SessionWideningRequest,
+        stale_session_cutoff: &StaleSessionCutoff,
+        now: DateTime<Utc>,
+    ) -> Result<SessionWideningOutcome, AuthorizationServerError> {
+        let browser_session =
+            match self.live_session_or_deny(&request.sid, stale_session_cutoff, now, |tx| {
+                match request.deny(now) {
+                    Ok(denied) => tx.replace_session_widening_request(request, &denied),
+                    Err(_) => Ok(false),
+                }
+            })? {
+                RequestSession::Live(browser_session) => browser_session,
+                RequestSession::EndedAndDenied => {
+                    return Ok(SessionWideningOutcome::BrowserSessionEnded)
+                }
+                RequestSession::RequestNotPending => {
+                    return Ok(SessionWideningOutcome::RequestNotPending)
+                }
+            };
+        let approval = SessionWideningApproval {
+            granted_scopes: delegated_scopes.scopes().to_vec(),
+        };
+        let Ok(approved) = request.approve(approval, now) else {
+            return Ok(SessionWideningOutcome::RequestNotPending);
+        };
+        if !self
+            .tx
+            .replace_session_widening_request(request, &approved)?
+        {
+            return Ok(SessionWideningOutcome::RequestNotPending);
+        }
+        let widened_session_scopes = wildflowerhealthio_scopes::widened_scopes(
+            &browser_session.scopes,
+            delegated_scopes.scopes(),
+        );
+        if !self
+            .tx
+            .update_browser_session_scopes(&browser_session.sid, &widened_session_scopes)?
+        {
+            // The row was read live in this same scope, so a miss is the
+            // store breaking its word: fail, rolling the approval back.
+            return Err(AuthorizationServerError::Infrastructure {
+                context: "approve_session_widening: the live session's row wasn't updated",
+                source: format!("no browser session {}", browser_session.sid),
+            });
+        }
+        self.tx
+            .forget_session_shortfall_acknowledgements(&browser_session.sid)?;
+        Ok(SessionWideningOutcome::Widened)
+    }
+
+    /// The browser session `sid` a pending request was made in, when it is
+    /// live at `now` under `stale_session_cutoff`. Otherwise the request is
+    /// denied with `deny_request` — the flow's deny transition and guarded
+    /// replace, `true` when the denial landed — so no approval outlives the
+    /// session it was for.
+    fn live_session_or_deny(
+        &mut self,
+        sid: &str,
+        stale_session_cutoff: &StaleSessionCutoff,
+        now: DateTime<Utc>,
+        deny_request: impl FnOnce(&mut T) -> Result<bool, AuthorizationServerError>,
+    ) -> Result<RequestSession, AuthorizationServerError> {
+        if let Some(browser_session) = self
+            .tx
+            .browser_session_by_sid(sid)?
+            .filter(|browser_session| browser_session.is_live_at(now, stale_session_cutoff))
+        {
+            return Ok(RequestSession::Live(browser_session));
+        }
+        Ok(if deny_request(self.tx)? {
+            RequestSession::EndedAndDenied
+        } else {
+            RequestSession::RequestNotPending
+        })
     }
 }
 

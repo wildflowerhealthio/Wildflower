@@ -99,12 +99,15 @@ impl TryFrom<GrantViewRow> for Grant {
                     device_name,
                 }))
             }
-            // The view unions the two grant tables only, and a browser
-            // pairing records no grant, so no row carries this tag.
-            FlowType::BrowserPairing => Err(AuthorizationServerError::infrastructure(
-                "grants view row tagged as a browser pairing, which records no grant",
-                &row.id,
-            )),
+            // The view unions the two grant tables only, and neither a
+            // browser pairing nor a session widening records a grant, so no
+            // row carries either tag.
+            FlowType::BrowserPairing | FlowType::SessionWidening => {
+                Err(AuthorizationServerError::infrastructure(
+                    "grants view row tagged with a flow that records no grant",
+                    &row.id,
+                ))
+            }
         }
     }
 }

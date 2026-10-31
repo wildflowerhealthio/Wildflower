@@ -41,6 +41,13 @@ export type { BrowserSession, RevokeBrowserSessionVariables } from './browser-se
 export { ExpiredDeviceConsent, deviceConsentMutationOptions } from './device-consent.ts'
 export type { DeviceConsent, DeviceConsentDecision, DeviceConsentResult } from './device-consent.ts'
 
+export { sessionWideningMutationOptions } from './session-widening.ts'
+export type {
+  SessionWideningConsent,
+  SessionWideningDecision,
+  SessionWideningResult,
+} from './session-widening.ts'
+
 export { oauthConsentMutationOptions } from './oauth-consent.ts'
 export type {
   ApproveOAuthPayload,

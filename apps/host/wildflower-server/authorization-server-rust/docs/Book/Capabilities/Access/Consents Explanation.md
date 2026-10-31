@@ -86,6 +86,12 @@ What the consent card renders. Its [presented client change](<../../Domain/Clien
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/consents/mod.rs DeviceConsentView}}
 
+### `SessionWideningConsentView`
+
+What a [session widening's card](<Session Widening Consents Explanation.md>) renders.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/consents/mod.rs SessionWideningConsentView}}
+
 ### `ConsentOutcome`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/consents/mod.rs ConsentOutcome}}

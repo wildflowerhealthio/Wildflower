@@ -9,7 +9,7 @@ Why the server deletes rows on a timer, why the windows are 90 days, 7 days and 
 Most of the server's tables limit themselves: a grant is deleted when it is revoked, and an authorization code when it is redeemed. These don't:
 
 - **`refresh_token_families` and `refresh_tokens`.** Rotation adds a link per generation, and ending a [family](<Refresh Token Explanation.md>) deliberately deletes nothing: it pulls the family's deadline back and spends its live link. Keeping the rows is what lets a replayed link still resolve to its dead family, which is how reuse detection knows to end a lineage rather than shrug at an unknown hash.
-- **`code_authorization_requests` and `user_code_requests`.** Nothing moves a request the person simply walked away from. It stays pending, and expired, for good.
+- **`code_authorization_requests`, `user_code_requests` and `session_widening_requests`.** Nothing moves a request the person simply walked away from. It stays pending, and expired, for good.
 - **`authorization_codes`.** Redemption deletes a code, so only the codes nobody came back for pile up.
 - **`browser_sessions`.** Every sign-in and pairing adds a row, and revoking a [session](<Browser Session Explanation.md>) stamps it rather than deleting it, so the tokens it minted can still be refused by its `sid`.
 

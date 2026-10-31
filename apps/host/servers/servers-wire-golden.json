@@ -442,6 +442,11 @@
       "kind": "browser",
       "userCode": "WXYZ-BCDF",
       "requesterName": "Firefox on Linux"
+    },
+    {
+      "kind": "widening",
+      "id": "widen-1",
+      "requesterName": "Firefox on Linux"
     }
   ],
   "enteredRelays": {

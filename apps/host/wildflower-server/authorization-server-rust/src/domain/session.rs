@@ -59,6 +59,16 @@ mod tests {
             }
         }
 
+        fn revoke_jti_from(
+            &self,
+            _jti: &str,
+            _revoked_from: DateTime<Utc>,
+            _expires_at: DateTime<Utc>,
+            _reason: &str,
+        ) -> Result<(), String> {
+            unreachable!("logout revokes a jti at once")
+        }
+
         fn revoke_subject_as_of_now(&self, _subject: &str) -> Result<(), String> {
             unreachable!("logout revokes a jti, never a subject")
         }

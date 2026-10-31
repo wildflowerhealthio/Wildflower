@@ -20,7 +20,7 @@ The tests build prompts and approvers with the [delegated-scopes fixtures](<Test
 
 ### `ApprovalFlow`
 
-A prompt belongs to one of three flows, and the flow decides both its ceiling and its approval scopes.
+A prompt belongs to one of four flows, and the flow decides both its ceiling and its approval scopes.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/delegated_scopes.rs ApprovalFlow}}
 
@@ -67,6 +67,10 @@ Not every scope is access. A resource scope (`patient/Observation.rs`, `system/*
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/delegated_scopes.rs ApprovableScopes::for_device tests="tests::a_device_prompt_grants_within_the_client_allowance"}}
 
 End to end, the [Device Code](<../Integration Tests/Device Code Explanation.md>) tests hold the same rule at the consent route: `device_consent_allows_expansion_beyond_requested` and `device_consent_clamps_granted_scopes_to_client_allowed`.
+
+#### `for_session_widening`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/delegated_scopes.rs ApprovableScopes::for_session_widening tests="tests::a_widening_prompt_grants_only_what_was_asked"}}
 
 #### `for_browser_pairing`
 

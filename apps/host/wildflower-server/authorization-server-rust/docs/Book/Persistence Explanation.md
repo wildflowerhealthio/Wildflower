@@ -15,7 +15,7 @@ The domain's row types are the diesel rows. [`Client`](<Domain/Client Explanatio
 
 - [Clients](<Persistence/Clients Explanation.md>), `db/clients.rs`: the `clients` table, the registered apps.
 - [Browser Sessions](<Persistence/Browser Sessions Explanation.md>), `db/browser_sessions.rs`: `browser_sessions`, and `session_shortfall_acknowledgements` beside it.
-- [Authorization Requests](<Persistence/Authorization Requests Explanation.md>), `db/authorization_requests/`: `code_authorization_requests` for code requests, and `user_code_requests` for device requests and browser pairings.
+- [Authorization Requests](<Persistence/Authorization Requests Explanation.md>), `db/authorization_requests/`: `code_authorization_requests` for code requests, `user_code_requests` for device requests and browser pairings, and `session_widening_requests` for session widenings.
 - [Launch Contexts](<Persistence/Launch Contexts Explanation.md>), `db/launch_contexts.rs`: `launch_contexts`, each consumed once.
 - [Grants](<Persistence/Grants Explanation.md>), `db/grants/`: `authorization_code_grants`, `device_grants`, and the `grants` view across them.
 - [Authorization Codes](<Persistence/Authorization Codes Explanation.md>), `db/authorization_codes.rs`: `authorization_codes`, the one-minute codes.
