@@ -19,6 +19,7 @@ import {
   readBatch,
   resolveMentions,
   type ReviewGroup,
+  type WriteDecision,
 } from '@wildflowerhealthio/importer-core'
 import {
   DecodedFile,
@@ -32,9 +33,10 @@ import { Effect, Order, Schema } from 'effect'
  * A picked batch imported headless through `importer-core` with every
  * default accepted, onto a device that holds nothing: read (`readBatch`),
  * resolve (`resolveMentions`) with every referent on its default link
- * choice, and the write plan (`planWrite`) with no reviewer change. What comes back is what
- * the confirm would write, and the review it would be written from, as the
- * golden JSON the import golden pin compares.
+ * choice, and the write plan (`planWrite`) with no reviewer change. What
+ * comes back is what the confirm would write, what the review leaves out,
+ * and the review it is written from, as the golden JSON the import golden
+ * pin compares.
  *
  * @packageDocumentation
  */
@@ -58,6 +60,11 @@ interface SourceFileRePick {
 interface DefaultImport {
   /** Every resource the transaction writes, as JSON, in `Type/id` order. */
   readonly written: readonly unknown[]
+  /**
+   * Every resource the review leaves out, as JSON, in `Type/id` order: not
+   * written, but what a reviewer's tick would write.
+   */
+  readonly excluded: readonly unknown[]
   /** Every reviewed row, in submit order. */
   readonly review: readonly ReviewRow[]
   /** Every claimed format's decode notes, by format. */
@@ -76,6 +83,17 @@ const SETTINGS: FormatSettings = {
 }
 
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
+
+/** The resources of `plan`'s decisions of `disposition`, as JSON, in `Type/id` order. */
+const encodedResourcesOf = (
+  plan: readonly WriteDecision[],
+  disposition: Disposition
+): readonly unknown[] =>
+  plan
+    .filter((decision) => decision.disposition === disposition)
+    .map(({ entry }) => entry.resource)
+    .toSorted(Order.mapInput(Order.string, literalReferenceOf))
+    .map((resource) => encodeResource(resource))
 
 /** Every source file of `kind` in `batch`'s decode. */
 const sourceFilesOf = (batch: DecodedBatch, kind: FormatKind): readonly FhirResourceWithId[] =>
@@ -152,10 +170,8 @@ const importWithDefaults = (
         }))
     )
     return {
-      written: included
-        .map(({ entry }) => entry.resource)
-        .toSorted(Order.mapInput(Order.string, literalReferenceOf))
-        .map((resource) => encodeResource(resource)),
+      written: encodedResourcesOf(plan, 'Included'),
+      excluded: encodedResourcesOf(plan, 'Excluded'),
       review: plan.map(({ group, entry, disposition }) => ({
         group,
         key: entry.key,

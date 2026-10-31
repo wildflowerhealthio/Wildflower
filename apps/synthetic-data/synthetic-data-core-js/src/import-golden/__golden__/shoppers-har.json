@@ -1,4 +1,614 @@
 {
+  "excluded": [
+    {
+      "authorizingPrescription": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/prescription-number",
+            "value": "5964322"
+          },
+          "reference": "MedicationRequest/wf-ba9068d7efb6816e1e7b23d6c4022493"
+        }
+      ],
+      "contained": [],
+      "detectedIssue": [],
+      "dosageInstruction": [],
+      "eventHistory": [],
+      "extension": [],
+      "id": "wf-262a6756468b4ae176f647c18434e4c6",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/shoppers-drugmart",
+          "value": "40be38e5-d76f-4743-8f2d-582e10c91fe0"
+        },
+        {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/dispense-id",
+          "value": "40be38e5-d76f-4743-8f2d-582e10c91fe0"
+        }
+      ],
+      "location": {
+        "display": "Shoppers Drug Mart #1234",
+        "extension": [],
+        "reference": "https://www.shoppersdrugmart.ca/store-locator/store/1234"
+      },
+      "medicationCodeableConcept": {
+        "coding": [
+          {
+            "code": "00456790",
+            "display": "Lumipril 10mg",
+            "extension": [],
+            "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+          }
+        ],
+        "extension": [],
+        "text": "Teva-Lumipril"
+      },
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-0e1e698b827b1113735d4b7a0d260788",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "quantity": {
+        "extension": [],
+        "value": 30
+      },
+      "receiver": [],
+      "resourceType": "MedicationDispense",
+      "status": "completed",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
+          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+        },
+        "type": "Patient"
+      },
+      "supportingInformation": [],
+      "whenHandedOver": "2026-09-15T00:00:00.000Z"
+    },
+    {
+      "authorizingPrescription": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/prescription-number",
+            "value": "7012229"
+          },
+          "reference": "MedicationRequest/wf-9db909202d9ad31df6d3bc77de9b8f9c"
+        }
+      ],
+      "contained": [],
+      "detectedIssue": [],
+      "dosageInstruction": [],
+      "eventHistory": [],
+      "extension": [],
+      "id": "wf-2ed205ca58d681d8709086ed74625a1f",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/shoppers-drugmart",
+          "value": "c6f8ee98-37f9-42c5-9928-b4b52bf09301"
+        },
+        {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/dispense-id",
+          "value": "c6f8ee98-37f9-42c5-9928-b4b52bf09301"
+        }
+      ],
+      "location": {
+        "display": "Shoppers Drug Mart #1234",
+        "extension": [],
+        "reference": "https://www.shoppersdrugmart.ca/store-locator/store/1234"
+      },
+      "medicationCodeableConcept": {
+        "coding": [
+          {
+            "code": "02345678",
+            "display": "Alvastatin 20mg",
+            "extension": [],
+            "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+          }
+        ],
+        "extension": [],
+        "text": "Apo-Alvastatin"
+      },
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-0e1e698b827b1113735d4b7a0d260788",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "quantity": {
+        "extension": [],
+        "value": 90
+      },
+      "receiver": [],
+      "resourceType": "MedicationDispense",
+      "status": "completed",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
+          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+        },
+        "type": "Patient"
+      },
+      "supportingInformation": [],
+      "whenHandedOver": "2026-04-06T00:00:00.000Z"
+    },
+    {
+      "authorizingPrescription": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/prescription-number",
+            "value": "7012229"
+          },
+          "reference": "MedicationRequest/wf-9db909202d9ad31df6d3bc77de9b8f9c"
+        }
+      ],
+      "contained": [],
+      "detectedIssue": [],
+      "dosageInstruction": [],
+      "eventHistory": [],
+      "extension": [],
+      "id": "wf-2fbb6ea87456558a9618bceca44f0e45",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/shoppers-drugmart",
+          "value": "32ac11ab-b0f5-4ae8-b6aa-38e9b4313dd6"
+        },
+        {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/dispense-id",
+          "value": "32ac11ab-b0f5-4ae8-b6aa-38e9b4313dd6"
+        }
+      ],
+      "location": {
+        "display": "Shoppers Drug Mart #1234",
+        "extension": [],
+        "reference": "https://www.shoppersdrugmart.ca/store-locator/store/1234"
+      },
+      "medicationCodeableConcept": {
+        "coding": [
+          {
+            "code": "02345678",
+            "display": "Alvastatin 20mg",
+            "extension": [],
+            "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+          }
+        ],
+        "extension": [],
+        "text": "Apo-Alvastatin"
+      },
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-0e1e698b827b1113735d4b7a0d260788",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "quantity": {
+        "extension": [],
+        "value": 90
+      },
+      "receiver": [],
+      "resourceType": "MedicationDispense",
+      "status": "completed",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
+          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+        },
+        "type": "Patient"
+      },
+      "supportingInformation": [],
+      "whenHandedOver": "2026-07-06T00:00:00.000Z"
+    },
+    {
+      "authorizingPrescription": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/prescription-number",
+            "value": "5964322"
+          },
+          "reference": "MedicationRequest/wf-ba9068d7efb6816e1e7b23d6c4022493"
+        }
+      ],
+      "contained": [],
+      "detectedIssue": [],
+      "dosageInstruction": [],
+      "eventHistory": [],
+      "extension": [],
+      "id": "wf-73b240a8818e959185bb799716b219e2",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/shoppers-drugmart",
+          "value": "db0dc3fd-54e8-4bbf-a558-d82ee7c63d95"
+        },
+        {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/dispense-id",
+          "value": "db0dc3fd-54e8-4bbf-a558-d82ee7c63d95"
+        }
+      ],
+      "location": {
+        "display": "Shoppers Drug Mart #1234",
+        "extension": [],
+        "reference": "https://www.shoppersdrugmart.ca/store-locator/store/1234"
+      },
+      "medicationCodeableConcept": {
+        "coding": [
+          {
+            "code": "00456790",
+            "display": "Lumipril 10mg",
+            "extension": [],
+            "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+          }
+        ],
+        "extension": [],
+        "text": "Teva-Lumipril"
+      },
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-0e1e698b827b1113735d4b7a0d260788",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "quantity": {
+        "extension": [],
+        "value": 30
+      },
+      "receiver": [],
+      "resourceType": "MedicationDispense",
+      "status": "completed",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
+          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+        },
+        "type": "Patient"
+      },
+      "supportingInformation": [],
+      "whenHandedOver": "2026-07-15T00:00:00.000Z"
+    },
+    {
+      "authorizingPrescription": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/prescription-number",
+            "value": "5964322"
+          },
+          "reference": "MedicationRequest/wf-ba9068d7efb6816e1e7b23d6c4022493"
+        }
+      ],
+      "contained": [],
+      "detectedIssue": [],
+      "dosageInstruction": [],
+      "eventHistory": [],
+      "extension": [],
+      "id": "wf-77b24c4fe54e033407a9965f6cc5728f",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/shoppers-drugmart",
+          "value": "f31a334b-c6b7-4d51-9668-f5c3140682d7"
+        },
+        {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/dispense-id",
+          "value": "f31a334b-c6b7-4d51-9668-f5c3140682d7"
+        }
+      ],
+      "location": {
+        "display": "Shoppers Drug Mart #1234",
+        "extension": [],
+        "reference": "https://www.shoppersdrugmart.ca/store-locator/store/1234"
+      },
+      "medicationCodeableConcept": {
+        "coding": [
+          {
+            "code": "00456790",
+            "display": "Lumipril 10mg",
+            "extension": [],
+            "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+          }
+        ],
+        "extension": [],
+        "text": "Teva-Lumipril"
+      },
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-0e1e698b827b1113735d4b7a0d260788",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "quantity": {
+        "extension": [],
+        "value": 30
+      },
+      "receiver": [],
+      "resourceType": "MedicationDispense",
+      "status": "completed",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
+          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+        },
+        "type": "Patient"
+      },
+      "supportingInformation": [],
+      "whenHandedOver": "2026-06-14T00:00:00.000Z"
+    },
+    {
+      "authorizingPrescription": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/prescription-number",
+            "value": "2556884"
+          },
+          "reference": "MedicationRequest/wf-83a21a92a3e30f136394e6cc5afa20c2"
+        }
+      ],
+      "contained": [],
+      "detectedIssue": [],
+      "dosageInstruction": [],
+      "eventHistory": [],
+      "extension": [],
+      "id": "wf-79873df8001b97535ebc5051bffbe76c",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/shoppers-drugmart",
+          "value": "eed6f5ed-7100-4bf0-aeb3-5d8844f388d1"
+        },
+        {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/dispense-id",
+          "value": "eed6f5ed-7100-4bf0-aeb3-5d8844f388d1"
+        }
+      ],
+      "location": {
+        "display": "Shoppers Drug Mart #1234",
+        "extension": [],
+        "reference": "https://www.shoppersdrugmart.ca/store-locator/store/1234"
+      },
+      "medicationCodeableConcept": {
+        "coding": [
+          {
+            "code": "00456789",
+            "display": "Lumipril 5mg",
+            "extension": [],
+            "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+          }
+        ],
+        "extension": [],
+        "text": "Teva-Lumipril"
+      },
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-0e1e698b827b1113735d4b7a0d260788",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "quantity": {
+        "extension": [],
+        "value": 30
+      },
+      "receiver": [],
+      "resourceType": "MedicationDispense",
+      "status": "completed",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
+          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+        },
+        "type": "Patient"
+      },
+      "supportingInformation": [],
+      "whenHandedOver": "2026-04-15T00:00:00.000Z"
+    },
+    {
+      "authorizingPrescription": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/prescription-number",
+            "value": "7012229"
+          },
+          "reference": "MedicationRequest/wf-9db909202d9ad31df6d3bc77de9b8f9c"
+        }
+      ],
+      "contained": [],
+      "detectedIssue": [],
+      "dosageInstruction": [],
+      "eventHistory": [],
+      "extension": [],
+      "id": "wf-97704b47146a8ec4097e33f4d96ed9ab",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/shoppers-drugmart",
+          "value": "7f27bc83-1a23-4121-9ab5-de573d0424cd"
+        },
+        {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/dispense-id",
+          "value": "7f27bc83-1a23-4121-9ab5-de573d0424cd"
+        }
+      ],
+      "location": {
+        "display": "Shoppers Drug Mart #1234",
+        "extension": [],
+        "reference": "https://www.shoppersdrugmart.ca/store-locator/store/1234"
+      },
+      "medicationCodeableConcept": {
+        "coding": [
+          {
+            "code": "02345678",
+            "display": "Alvastatin 20mg",
+            "extension": [],
+            "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+          }
+        ],
+        "extension": [],
+        "text": "Apo-Alvastatin"
+      },
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-0e1e698b827b1113735d4b7a0d260788",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "quantity": {
+        "extension": [],
+        "value": 90
+      },
+      "receiver": [],
+      "resourceType": "MedicationDispense",
+      "status": "completed",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
+          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+        },
+        "type": "Patient"
+      },
+      "supportingInformation": [],
+      "whenHandedOver": "2026-01-05T00:00:00.000Z"
+    },
+    {
+      "authorizingPrescription": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/prescription-number",
+            "value": "5964322"
+          },
+          "reference": "MedicationRequest/wf-ba9068d7efb6816e1e7b23d6c4022493"
+        }
+      ],
+      "contained": [],
+      "detectedIssue": [],
+      "dosageInstruction": [],
+      "eventHistory": [],
+      "extension": [],
+      "id": "wf-c1c5268d2523c4f0a785c88a52da95a3",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/shoppers-drugmart",
+          "value": "d6572ca4-5360-4a18-8e67-2cd2fde9e10b"
+        },
+        {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/dispense-id",
+          "value": "d6572ca4-5360-4a18-8e67-2cd2fde9e10b"
+        }
+      ],
+      "location": {
+        "display": "Shoppers Drug Mart #1234",
+        "extension": [],
+        "reference": "https://www.shoppersdrugmart.ca/store-locator/store/1234"
+      },
+      "medicationCodeableConcept": {
+        "coding": [
+          {
+            "code": "00456790",
+            "display": "Lumipril 10mg",
+            "extension": [],
+            "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+          }
+        ],
+        "extension": [],
+        "text": "Teva-Lumipril"
+      },
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-0e1e698b827b1113735d4b7a0d260788",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "quantity": {
+        "extension": [],
+        "value": 30
+      },
+      "receiver": [],
+      "resourceType": "MedicationDispense",
+      "status": "completed",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
+          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+        },
+        "type": "Patient"
+      },
+      "supportingInformation": [],
+      "whenHandedOver": "2026-08-15T00:00:00.000Z"
+    }
+  ],
   "notes": {
     "har": [
       "Matched no importer: https://mypharmacy.shoppersdrugmart.ca/en/login",
