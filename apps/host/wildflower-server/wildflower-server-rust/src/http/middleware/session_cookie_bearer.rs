@@ -781,6 +781,7 @@ mod tests {
             .revocation_store
             .revoke_jti(
                 &jti_of(&revoked_by_jti),
+                Utc::now(),
                 Utc::now() + Duration::hours(8),
                 "test",
             )

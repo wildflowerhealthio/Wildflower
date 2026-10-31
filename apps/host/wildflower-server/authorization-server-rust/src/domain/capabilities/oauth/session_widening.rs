@@ -350,7 +350,7 @@ impl<S: GrantStore> SessionWidening<S> {
         ) else {
             return;
         };
-        if let Err(error) = self.revocation.revoke_jti_from(
+        if let Err(error) = self.revocation.revoke_jti(
             jti,
             now + REPLACED_SESSION_TOKEN_GRACE,
             expires_at,
@@ -383,10 +383,10 @@ mod tests {
     /// The server's origin: the session token's `iss` and `aud`.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
-    /// A revocation port recording each `jti` it revokes, and from when.
+    /// A revocation port recording each `jti` it revokes, and as of when.
     #[derive(Default)]
     struct RecordingRevocation {
-        /// Each revoked `jti` and the instant it is revoked from, in call
+        /// Each revoked `jti` and the instant it is revoked as of, in call
         /// order.
         revoked_jtis: Mutex<Vec<(String, DateTime<Utc>)>>,
     }
@@ -394,24 +394,15 @@ mod tests {
     impl Revocation for RecordingRevocation {
         fn revoke_jti(
             &self,
-            _jti: &str,
-            _expires_at: DateTime<Utc>,
-            _reason: &str,
-        ) -> Result<(), String> {
-            unreachable!("a widening revokes the replaced token after a grace")
-        }
-
-        fn revoke_jti_from(
-            &self,
             jti: &str,
-            revoked_from: DateTime<Utc>,
-            _expires_at: DateTime<Utc>,
+            revoked_as_of: DateTime<Utc>,
+            _token_expires_at: DateTime<Utc>,
             _reason: &str,
         ) -> Result<(), String> {
             self.revoked_jtis
                 .lock()
                 .unwrap()
-                .push((jti.to_owned(), revoked_from));
+                .push((jti.to_owned(), revoked_as_of));
             Ok(())
         }
 

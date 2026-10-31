@@ -149,15 +149,11 @@ mod tests {
     struct SubjectsRevoked(std::sync::Mutex<Vec<String>>);
 
     impl Revocation for SubjectsRevoked {
-        fn revoke_jti(&self, _: &str, _: DateTime<Utc>, _: &str) -> Result<(), String> {
-            Ok(())
-        }
-
-        fn revoke_jti_from(
+        fn revoke_jti(
             &self,
             _jti: &str,
-            _revoked_from: DateTime<Utc>,
-            _expires_at: DateTime<Utc>,
+            _revoked_as_of: DateTime<Utc>,
+            _token_expires_at: DateTime<Utc>,
             _reason: &str,
         ) -> Result<(), String> {
             unreachable!("a grant revoke revokes a subject")

@@ -17,6 +17,7 @@ use std::sync::Arc;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::post;
 use axum::Router;
+use chrono::Utc;
 use wildflowerhealthio_scope_capabilities::Authenticated;
 
 use crate::http::extractors::LauncherPages;
@@ -34,7 +35,7 @@ pub fn router() -> Router<Arc<AuthorizationServerState>> {
 async fn handle_logout(session: Authenticated<LiveSessionEnder>, pages: LauncherPages) -> Response {
     // Revoke the presented session token so a leaked copy can't outlive the
     // logout. Best-effort by design: a store hiccup must never fail the logout.
-    session.end();
+    session.end(Utc::now());
     // `303 See Other` → the hosted launcher's root (this server serves no UI of
     // its own); `303` downgrades a `POST` logout to a `GET`.
     Redirect::to(pages.root_url()).into_response()

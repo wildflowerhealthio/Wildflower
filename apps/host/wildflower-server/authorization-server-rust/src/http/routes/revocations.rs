@@ -169,13 +169,14 @@ async fn handle_create_revocation(
             // than silently no-op'ing. (A too-early-but-future `expiresAt` can't
             // prematurely un-revoke a live token — the store's `purge_expired`
             // retention floor guards that.)
-            if expires_at <= Utc::now() {
+            let now = Utc::now();
+            if expires_at <= now {
                 return Err(RevocationError::bad_request(
                     "ExpiresAtInPast",
                     "`expiresAt` is in the past; the token has already expired",
                 ));
             }
-            tokens.revoke_jti(&jti, expires_at)?;
+            tokens.revoke_jti(&jti, now, expires_at)?;
         }
         Revocation::Subject { subject } => tokens.revoke_subject(&subject)?,
     }

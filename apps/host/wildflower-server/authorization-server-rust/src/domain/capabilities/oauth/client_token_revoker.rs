@@ -86,13 +86,16 @@ impl<S: GrantStore> ClientTokenRevoker<S> {
             })?;
         match presented {
             PresentedToken::RefreshToken => Ok(()),
-            PresentedToken::NoRefreshToken { signing_keys } => {
-                self.denylist_access_token(authenticated_client, presented_token, &signing_keys)
-            }
+            PresentedToken::NoRefreshToken { signing_keys } => self.denylist_access_token(
+                authenticated_client,
+                presented_token,
+                &signing_keys,
+                now,
+            ),
         }
     }
 
-    /// Denylist a presented access token until its own expiry when this server
+    /// Denylist a presented access token as of `now` until its own expiry when this server
     /// minted it for the client, verified against `signing_keys`. A token that
     /// fails verification (forged, expired, another server's) can't be used
     /// anyway, so there is nothing to revoke.
@@ -101,6 +104,7 @@ impl<S: GrantStore> ClientTokenRevoker<S> {
         authenticated_client: &AuthenticatedClient,
         presented_token: &str,
         signing_keys: &[SigningKey],
+        now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
         let claims = match verify_access_token(
             presented_token,
@@ -133,7 +137,7 @@ impl<S: GrantStore> ClientTokenRevoker<S> {
             return Ok(());
         };
         self.revocation
-            .revoke_jti(jti, expires_at, CLIENT_REVOCATION_REASON)
+            .revoke_jti(jti, now, expires_at, CLIENT_REVOCATION_REASON)
             .map_err(|error| AuthorizationServerError::infrastructure("revoke_jti failed", error))
     }
 }

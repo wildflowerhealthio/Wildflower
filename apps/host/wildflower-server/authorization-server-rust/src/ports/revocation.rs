@@ -12,26 +12,20 @@ use chrono::{DateTime, Utc};
 /// error). Errors are stringified so the port stays free of the store's concrete
 /// error type.
 pub(crate) trait Revocation: Send + Sync + 'static {
-    /// Denylist a single token by its `jti` until `expires_at` (after which
-    /// expiry validation rejects it regardless), tagging the row with `reason`.
+    /// Denylist a single token by its `jti` as of `revoked_as_of`, until
+    /// `token_expires_at` (the token's own `exp`, after which expiry validation
+    /// rejects it regardless), tagging the row with `reason`. A later
+    /// `revoked_as_of` leaves the token working until then; a revocation taking
+    /// effect sooner overrides it.
     ///
     /// # Errors
     ///
     /// Returns the store failure (stringified) when the write fails.
-    fn revoke_jti(&self, jti: &str, expires_at: DateTime<Utc>, reason: &str) -> Result<(), String>;
-
-    /// Denylist a single token by its `jti` from `revoked_from` on, until
-    /// `expires_at`, tagging the row with `reason`: the token keeps working
-    /// until `revoked_from`. A revocation taking effect sooner overrides it.
-    ///
-    /// # Errors
-    ///
-    /// Returns the store failure (stringified) when the write fails.
-    fn revoke_jti_from(
+    fn revoke_jti(
         &self,
         jti: &str,
-        revoked_from: DateTime<Utc>,
-        expires_at: DateTime<Utc>,
+        revoked_as_of: DateTime<Utc>,
+        token_expires_at: DateTime<Utc>,
         reason: &str,
     ) -> Result<(), String>;
 

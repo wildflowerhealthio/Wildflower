@@ -4,6 +4,8 @@
 
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
+
 use crate::domain::access_token::VerifiedClaims;
 use crate::domain::session::revoke_session_token;
 use crate::ports::Revocation;
@@ -23,27 +25,25 @@ impl SessionEnder {
         SessionEnder { revocation, claims }
     }
 
-    /// Denylist the presented token's `jti` until its `exp`, so a leaked copy
+    /// Denylist the presented token's `jti` as of `now` until its `exp`, so a leaked copy
     /// can't outlive the logout. Best-effort by design (see
     /// [`revoke_session_token`]): a token with no `jti` or `exp` has nothing
     /// to denylist, and a store hiccup is logged, never surfaced — the
     /// logout's redirect must not be blocked. It does not revoke the browser
     /// session the token may name; that is
     /// [`BrowserSessionEnder`](super::BrowserSessionEnder)'s sign-out.
-    pub(crate) fn end(&self) {
+    pub(crate) fn end(&self, now: DateTime<Utc>) {
         let (Some(jti), Some(expires_at)) = (self.claims.jti.as_deref(), self.claims.expires_at)
         else {
             return;
         };
-        revoke_session_token(self.revocation.as_ref(), jti, expires_at);
+        revoke_session_token(self.revocation.as_ref(), jti, now, expires_at);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
-
-    use chrono::{DateTime, Utc};
 
     use super::*;
 
@@ -59,21 +59,12 @@ mod tests {
         fn revoke_jti(
             &self,
             jti: &str,
-            _expires_at: DateTime<Utc>,
+            _revoked_as_of: DateTime<Utc>,
+            _token_expires_at: DateTime<Utc>,
             _reason: &str,
         ) -> Result<(), String> {
             self.calls.lock().unwrap().push(jti.to_owned());
             Ok(())
-        }
-
-        fn revoke_jti_from(
-            &self,
-            _jti: &str,
-            _revoked_from: DateTime<Utc>,
-            _expires_at: DateTime<Utc>,
-            _reason: &str,
-        ) -> Result<(), String> {
-            unreachable!("logout revokes a jti at once")
         }
 
         fn revoke_subject_as_of_now(&self, _subject: &str) -> Result<(), String> {
@@ -101,9 +92,9 @@ mod tests {
     #[test]
     fn end_revokes_only_the_presented_jti() {
         let revoker = Arc::new(RecordingRevoker::default());
-        SessionEnder::new(revoker.clone(), claims(Some("jti-1"), Some(Utc::now()))).end();
-        SessionEnder::new(revoker.clone(), claims(None, Some(Utc::now()))).end();
-        SessionEnder::new(revoker.clone(), claims(Some("jti-2"), None)).end();
+        SessionEnder::new(revoker.clone(), claims(Some("jti-1"), Some(Utc::now()))).end(Utc::now());
+        SessionEnder::new(revoker.clone(), claims(None, Some(Utc::now()))).end(Utc::now());
+        SessionEnder::new(revoker.clone(), claims(Some("jti-2"), None)).end(Utc::now());
         assert_eq!(*revoker.calls.lock().unwrap(), vec!["jti-1".to_owned()]);
     }
 }

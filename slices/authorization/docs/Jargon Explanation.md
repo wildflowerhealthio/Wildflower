@@ -1274,8 +1274,9 @@ levers:
   `jti`, logout of the presented token, and a client revoking its own access
   token at `POST /oauth/revoke` (RFC 7009) add rows here, each refused from
   then on. A [session widening](#session-widening)'s poll adds the token it
-  replaces from thirty seconds on (the row's `revoked_at`); a revocation
-  taking effect sooner overrides that.
+  replaces as of thirty seconds on (the row's `revoked_as_of`); a revocation
+  taking effect sooner overrides that. Each row also keeps the token's own
+  `exp` as `token_expires_at`, the sweep hint.
 - **`revocation_epochs`** — a per-subject `not_before`. Bumping it (via
   `POST /authorization/revocations` with a `subject`, or a grant revoke) invalidates
   every token that subject holds whose `iat` predates the bump, and every
