@@ -28,8 +28,8 @@ import { textPick } from './fixture-picks.ts'
 /**
  * The import golden pin's generated picks: one hand-written person — two
  * prescriptions, a dose change, three lab draws — run through each
- * generator at a fixed as-of. Nothing is drawn, so a change to an arbitrary
- * elsewhere never moves a golden.
+ * generator at a fixed as-of. Nothing is drawn from a fast-check arbitrary,
+ * so a change to one never moves a golden.
  *
  * A picked LifeLabs "PDF" is {@link PDF_HEADER} and then the positioned text
  * it prints, as JSON, which {@link printedDocumentOf} reads back: the test
