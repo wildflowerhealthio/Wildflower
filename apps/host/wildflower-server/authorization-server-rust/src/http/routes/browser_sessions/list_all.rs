@@ -1,39 +1,41 @@
 //! `GET /authorization/browser-sessions`: the browsers signed in right now, as
 //! the Owner's Browsers list shows them.
 
-use std::sync::Arc;
-
-use axum::routing::{get, MethodRouter};
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use utoipa::ToSchema;
 use wildflowerhealthio_scope_capabilities::Authenticated;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSessionKind;
 use crate::domain::capabilities::{BrowserSessionView, Scoped};
-use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::{LiveBrowserSessionsReader, LiveSessionReader};
 
 /// A live browser session as the Owner's "Browsers" list reads it. Every
 /// column of the `browser_sessions` row but its `scopes` and `revoked_at`
 /// (always `null` on a live one), plus `heldByCaller`: whether the caller's
 /// own token was minted under it.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct BrowserSessionBody {
+pub(super) struct BrowserSessionBody {
     /// The session's id, which a revoke names.
     sid: String,
     /// How the browser got its session: `same_device` or `paired`.
+    #[schema(value_type = String)]
     kind: BrowserSessionKind,
     /// The name the browser was given; `null` for a same-device session.
+    #[schema(required = true)]
     name: Option<String>,
     /// When the browser signed in or was paired.
+    #[schema(value_type = String, format = DateTime)]
     created_at: DateTime<Utc>,
     /// When the session stops letting the browser start things.
+    #[schema(value_type = String, format = DateTime)]
     expires_at: DateTime<Utc>,
     /// When the session was last in use, to the nearest
     /// `LAST_SEEN_RESOLUTION`.
+    #[schema(value_type = String, format = DateTime)]
     last_seen_at: DateTime<Utc>,
     /// Whether the caller's own token was minted under this session: revoking
     /// it signs the caller's browser out.
@@ -59,17 +61,21 @@ impl From<BrowserSessionView> for BrowserSessionBody {
     }
 }
 
-/// The `GET` method on `/browser-sessions`.
-pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
-    get(handle_list_browser_sessions)
-}
-
 /// `GET /authorization/browser-sessions` — every live browser session (neither revoked nor
 /// expired), newest first, with the caller's own marked by the `sid` its token
 /// carries. Acquired through [`LiveBrowserSessionsReader`] (scope
 /// `wildflower/BrowserSession.r`); the caller's `sid` comes from its own
 /// session through [`LiveSessionReader`].
-async fn handle_list_browser_sessions(
+#[utoipa::path(
+    get,
+    tag = "Access management",
+    path = "/browser-sessions",
+    responses(
+        (status = 200, description = "Every live browser session, newest first", body = [BrowserSessionBody]),
+        (status = 500, description = "A store failed; logged, with no body"),
+    ),
+)]
+pub(super) async fn handle_list_browser_sessions(
     browser_sessions: Scoped<LiveBrowserSessionsReader>,
     caller: Authenticated<LiveSessionReader>,
 ) -> Result<Json<Vec<BrowserSessionBody>>, AuthorizationServerError> {

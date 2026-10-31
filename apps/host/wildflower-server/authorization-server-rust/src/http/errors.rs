@@ -111,7 +111,7 @@ pub(crate) struct GrantNotFoundBody {
 
 /// Wire shape for `BrowserSessionNotFound` (404) — no standing browser
 /// session has this `sid`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct BrowserSessionNotFoundBody {
     /// Always `"BrowserSessionNotFound"`.
     pub(crate) error: &'static str,
