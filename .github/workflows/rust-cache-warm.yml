@@ -7,7 +7,8 @@ name: Rust Cache Warm
 # `workspace-linux-dev` key and reproduces its build environment exactly. It is
 # not a gate: no fmt, clippy or tests, only the compile whose artifacts
 # ci-rust.yml reuses. Why that reproduction has to be exact, and why the release
-# builds are not warmed: docs/Rust/CI Build Cache Explanation.md.
+# builds are not warmed here (ci-android.yml warms Android's on main itself):
+# docs/Rust/CI Build Cache Explanation.md.
 
 on:
   push:

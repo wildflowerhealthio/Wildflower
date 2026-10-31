@@ -1,22 +1,63 @@
 name: Android
 
 on:
-  # Called by ci.yml, which runs this only on pull requests that touch the
-  # host app's Android build; the paths are its `changes` filter.
+  # Called by ci.yml on pull requests that touch the host app's Android build;
+  # the paths are its `android` and `android-bundle` filters. `check` always
+  # runs; `bundle` only when `android-bundle` matched, since the packaging
+  # it alone exercises (Gradle's bundle tasks, R8, the native symbol table)
+  # changes only with the files that filter lists.
   workflow_call:
+    inputs:
+      bundle:
+        description: Whether to build the App Bundle as well as running the check.
+        type: boolean
+        default: false
+  # Warms both jobs' Rust caches in main's scope, the only scope a pull
+  # request can restore from, and builds the bundle after every merge that
+  # moves the dependency graph or the Android build files, so a packaging
+  # break there surfaces before the next release does.
+  # Paths: the files rust-cache folds into its lock hash (root `Cargo.toml`
+  # bare as well, since `**/` is not guaranteed to match a root-level file),
+  # then the Android build inputs ci.yml's `android-bundle` filter lists. Why:
+  # docs/Rust/CI Build Cache Explanation.md.
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - '**/Cargo.toml'
+      - 'rust-toolchain.toml'
+      - 'apps/host/**/android/**/*.gradle'
+      - 'apps/host/**/android/**/*.gradle.kts'
+      - 'apps/host/**/android/**/gradle.properties'
+      - 'apps/host/**/android/**/*.pro'
+      - 'apps/host/host-app/src-tauri/gen/android/buildSrc/**'
+      - 'apps/host/host-app/src-tauri/gen/android/gradle/**'
+      - 'apps/host/host-app/src-tauri/tauri*.conf.json'
+      - 'apps/host/host-app/package.json'
+      - '.github/workflows/ci-android.yml'
+      - '.github/actions/build-android-bundle/**'
+      - '.github/actions/setup-android-ndk/**'
   # Builds any branch's bundle on demand, as the release would but unsigned,
-  # without spending a version on it.
+  # without spending a version on it. A dispatch on main also re-warms the
+  # caches, e.g. after the 7-day idle eviction drops them.
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Only the newest main commit's build is worth finishing; supersede in-flight
+# runs rather than queueing them.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # The release's own build, through the same action, minus the signing:
-  # with no keystore.properties Gradle builds the bundle unsigned, so this
-  # job needs none of the `android-play` environment's secrets.
-  bundle:
-    name: Build App Bundle
+  # Compiles what Android adds to the host app without building the app: the
+  # Rust crates' `cfg(target_os = "android")` code, and the Kotlin of the app
+  # and of every Tauri plugin it includes. One ABI; the bundle builds both.
+  check:
+    name: Check Rust and Kotlin
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -28,7 +69,112 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # Restores the release's `release-android` cache and never saves it, so
-      # a pull request's build leaves the release's entry as the release left it.
+      - name: Install Android NDK
+        id: ndk
+        uses: ./.github/actions/setup-android-ndk
+
+      # `cargo check` still compiles the C the crates vendor (OpenSSL,
+      # SQLite, ring) for the target, so it needs the NDK's compiler and
+      # archiver, which the Tauri CLI would otherwise name. 24 is the app's
+      # minSdk (gen/android/app/build.gradle.kts). Written before the
+      # toolchain step so they are part of the cache key: a new NDK pin
+      # starts a new entry.
+      - name: Point cargo at the NDK
+        env:
+          LLVM_BIN: ${{ steps.ndk.outputs.llvm-bin }}
+        run: |
+          set -euo pipefail
+          {
+            echo "CC_aarch64_linux_android=$LLVM_BIN/aarch64-linux-android24-clang"
+            echo "CXX_aarch64_linux_android=$LLVM_BIN/aarch64-linux-android24-clang++"
+            echo "AR_aarch64_linux_android=$LLVM_BIN/llvm-ar"
+          } >> "$GITHUB_ENV"
+
+      # The same placeholders ci-rust.yml compiles the host crate against;
+      # a check only type-checks, so their contents never matter.
+      - name: Stub the embedded web bundles
+        run: |
+          set -euo pipefail
+          ./scripts/ci/stub-embedded-bundles.sh sniffer
+          ./scripts/ci/stub-embedded-bundles.sh authorization-server-web
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: aarch64-linux-android
+          rustflags: '-D warnings'
+          # Its own key: dev profile and an Android target, disjoint from
+          # `release-android` and from ci-rust.yml's Linux entry. Saved only
+          # on main — see docs/Rust/CI Build Cache Explanation.md.
+          cache-shared-key: check-android
+          cache-on-failure: true
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # What the Tauri CLI exports before it runs cargo for Android
+      # (tauri-cli's mobile/android/mod.rs), so the build scripts write the
+      # files Gradle reads: tauri-build writes tauri.settings.gradle and
+      # app/tauri.build.gradle.kts, which include each plugin's Android
+      # project, and tauri's and wry's write the Kotlin classes MainActivity
+      # extends into `generated`, a folder they expect to exist. The CLI
+      # backticks any identifier segment that is a Kotlin keyword for
+      # WRY_ANDROID_PACKAGE; ours has none.
+      - name: Export the Tauri CLI's Android build environment
+        run: |
+          set -euo pipefail
+          src_tauri="$GITHUB_WORKSPACE/apps/host/host-app/src-tauri"
+          identifier="$(jq -r .identifier "$src_tauri/tauri.conf.json")"
+          library="$(cargo metadata --format-version 1 --no-deps \
+            | jq -r '.packages[] | select(.name == "host-app") | .targets[] | select(.kind | index("cdylib")) | .name')"
+          kotlin_out="$src_tauri/gen/android/app/src/main/java/${identifier//.//}/generated"
+          mkdir -p "$kotlin_out"
+          {
+            echo "TAURI_ANDROID_PROJECT_PATH=$src_tauri/gen/android"
+            echo "TAURI_ANDROID_PACKAGE_UNESCAPED=$identifier"
+            echo "WRY_ANDROID_PACKAGE=$identifier"
+            echo "WRY_ANDROID_LIBRARY=$library"
+            echo "WRY_ANDROID_KOTLIN_FILES_OUT_DIR=$kotlin_out"
+          } >> "$GITHUB_ENV"
+
+      # The library the Tauri CLI builds for the app, in the dev profile, so
+      # `generate_context!` serves the dev URL and needs no frontend build.
+      - name: cargo check (aarch64-linux-android)
+        run: cargo check -p host-app --lib --target aarch64-linux-android
+
+      # The release variant's Kotlin and Java compile, after the manifest
+      # merge and resources they depend on. The app's compile classpath is
+      # every included plugin project's classes, so each plugin's Kotlin
+      # compiles first. buildSrc's RustPlugin hangs the `rustBuild*` tasks off
+      # `merge*JniLibFolders` only, a packaging task these never reach; `-x`
+      # keeps the Rust build out should that change.
+      - name: Compile Kotlin (universalRelease)
+        working-directory: apps/host/host-app/src-tauri/gen/android
+        run: >-
+          ./gradlew --no-daemon
+          :app:compileUniversalReleaseKotlin
+          :app:compileUniversalReleaseJavaWithJavac
+          -x rustBuildUniversalRelease
+
+  # The release's own build, through the same action, minus the signing:
+  # with no keystore.properties Gradle builds the bundle unsigned, so this
+  # job needs none of the `android-play` environment's secrets.
+  bundle:
+    name: Build App Bundle
+    if: inputs.bundle || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Android Gradle Plugin 8 needs JDK 17.
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Saves the `release-android` cache only on main, into the scope the
+      # release and pull requests restore from; a pull request's build
+      # leaves the entry as main left it.
       - name: Build Android App Bundle
         uses: ./.github/actions/build-android-bundle
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}

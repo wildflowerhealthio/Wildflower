@@ -118,15 +118,23 @@ the same release tag. To build it again for an existing tag, dispatch Tauri
 Release — Publish with that `tag` and `platforms` set to `android`.
 
 The build itself is the `.github/actions/build-android-bundle` action, which
-`.github/workflows/ci-android.yml` runs too: on every pull request that touches
-the host app's Tauri crate, its Gradle project, `rust-toolchain.toml` or the
-action, and on demand for any branch. Without the `android-play` environment
-there is no `keystore.properties`, so that build is unsigned, but it is
-otherwise the release's, symbol table check included. A change to those paths
-that breaks the Android build shows up on its pull request rather than in the
-next release. A dependency bump in `Cargo.lock` doesn't run it, because the
-build holds a runner for over half an hour; dispatch it on that branch when a
-bump touches what the host app compiles for Android.
+`.github/workflows/ci-android.yml`'s `bundle` job runs too: on pull requests
+that change how the bundle is packaged (the Gradle projects' build files and R8
+rules, the Tauri config, the Tauri CLI's version, the toolchain, or the
+actions), on pushes to `main` that change those or the dependency graph, and on
+demand for any branch. Without the `android-play` environment there is no
+`keystore.properties`, so that build is unsigned, but it is otherwise the
+release's, symbol table check included.
+
+Every other pull request that can change what compiles for Android runs the
+same workflow's `check` job instead, in minutes rather than the bundle's forty:
+any crate the host app depends on, `Cargo.lock`, or the root `Cargo.toml`. It
+runs `cargo check` of the host crate for `aarch64-linux-android` alone, then
+compiles the release variant's Kotlin, the app's and each Tauri plugin's,
+through Gradle without building the Rust library. Packaging, linking and R8 are
+the bundle's alone, so a break there from a pull request that leaves the
+bundle's inputs alone shows up in the next bundle built on `main`, or in the
+release.
 
 **Which version Play sees.** `tauri android build` writes
 `gen/android/app/tauri.properties`, which `build.gradle.kts` reads, from the

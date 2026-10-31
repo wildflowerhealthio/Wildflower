@@ -3,7 +3,8 @@ description: >-
   Builds the host app's release .aab for aarch64 and armv7 and fails unless it
   carries the native symbol table Play symbolicates crashes with. Shared by the
   release, which signs and ships the bundle, and ci-android.yml, which builds it
-  unsigned on pull requests that touch Android. Expects a checkout and JDK 17;
+  unsigned on main and on pull requests that change how the bundle is
+  packaged. Expects a checkout and JDK 17;
   the bundle is signed when the caller has written
   src-tauri/gen/android/keystore.properties first. Linux runners only.
 
@@ -25,46 +26,10 @@ outputs:
 runs:
   using: composite
   steps:
+    # The pinned NDK, NDK_HOME and the per-target llvm-ranlib; why each:
+    # the action's own comments.
     - name: Install Android NDK
-      # The runner image carries the Android SDK, but which NDKs it has
-      # moves with the image. The Tauri CLI builds with NDK_HOME when it is
-      # set and otherwise with the newest NDK under the SDK, so pin the one
-      # the CLI installs itself when it finds none (`NDK_VERSION` in
-      # tauri-cli's mobile/android/mod.rs).
-      #
-      # sdkmanager can exit 0 having installed nothing — a licence prompt
-      # left unanswered on stdin, for one — so it is fed `yes` and the
-      # NDK's source.properties (which the Tauri CLI reads for its version)
-      # is checked afterwards, with sdkmanager's output shown if missing.
-      #
-      # The vendored OpenSSL build is pointed at the NDK's llvm-ranlib, per
-      # Android target. The Tauri CLI points cargo at the NDK's clang and
-      # llvm-ar but not at a ranlib, and the `cc` crate then looks for
-      # `llvm-ranlib` on PATH and falls back to
-      # `aarch64-linux-android-ranlib`, which NDKs since r23 no longer ship.
-      # `RANLIB_<target>` is read before that search, and leaves the rest of
-      # the NDK's tools off PATH, where they would shadow the host's.
-      shell: bash
-      env:
-        NDK_VERSION: 29.0.13846066
-      run: |
-        set -euo pipefail
-        ndk_home="$ANDROID_HOME/ndk/$NDK_VERSION"
-        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" \
-          < <(yes) > "$RUNNER_TEMP/sdkmanager.log" 2>&1 || true
-        if [[ ! -f "$ndk_home/source.properties" ]]; then
-          cat "$RUNNER_TEMP/sdkmanager.log"
-          echo "::error::sdkmanager did not install NDK $NDK_VERSION at $ndk_home (its output is above)."
-          exit 1
-        fi
-        llvm_bin="$ndk_home/toolchains/llvm/prebuilt/linux-x86_64/bin"
-        if [[ ! -x "$llvm_bin/llvm-ranlib" ]]; then
-          echo "::error::NDK $NDK_VERSION has no llvm-ranlib at $llvm_bin."
-          exit 1
-        fi
-        echo "NDK_HOME=$ndk_home" >> "$GITHUB_ENV"
-        echo "RANLIB_aarch64_linux_android=$llvm_bin/llvm-ranlib" >> "$GITHUB_ENV"
-        echo "RANLIB_armv7_linux_androideabi=$llvm_bin/llvm-ranlib" >> "$GITHUB_ENV"
+      uses: ./.github/actions/setup-android-ndk
 
     - name: Set up Rust toolchain
       uses: actions-rust-lang/setup-rust-toolchain@v2
