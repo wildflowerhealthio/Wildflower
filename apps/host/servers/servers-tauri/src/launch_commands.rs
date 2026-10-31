@@ -1991,6 +1991,20 @@ mod tests {
         .unwrap_or_else(|_| panic!("showing {:?}, not {views:?}", browser.showing()));
     }
 
+    /// Wait, up to five seconds, for `presence` to hold `views` open: a
+    /// [`PhoneBrowser`] stops showing the views it closes before it reports
+    /// them closed, so [`until_showing`] can return before `presence` hears.
+    async fn until_open(presence: &OpenLaunchViews, views: &[String]) {
+        let views: BTreeSet<String> = views.iter().cloned().collect();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while presence.views() != views {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("open {:?}, not {views:?}", presence.views()));
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn an_app_s_waiting_consent_opens_at_its_card_through_the_sign_in() {
         let authorization_server = test_authorization_server();
@@ -2122,7 +2136,7 @@ mod tests {
 
         until_showing(&browser, &launch_view).await;
         assert_eq!(browser.opened().len(), 2, "the consent opened first");
-        assert_eq!(presence.views().len(), 1);
+        until_open(&presence, &launch_view).await;
     }
 
     /// A consent's view opened over a launch's in `browser`, an iOS one, with
