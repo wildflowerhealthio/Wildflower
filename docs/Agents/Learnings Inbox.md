@@ -250,16 +250,6 @@ doc that otherwise uses `_word_` flags every _later_ underscore, hundreds of
 lines below the edit — the reported lines are not where the problem is. Match
 the file's existing marker (the authorization slice docs use underscores).
 
-## The authorization server OpenAPI snapshot covers `/oauth/*` only, not `/authorization/*`
-
-`documented_router()` in `authorization-server-rust` deliberately leaves the Owner-facing
-`/authorization` surface out of the committed `openapi/authorization-server-oauth.openapi.json`,
-so a change to a consent body (e.g. the `registration` verdict, the approve
-body's `acknowledgedRegistration`) never shows up in the snapshot and
-`UPDATE_OPENAPI=1` regenerates only the `/oauth` prose. The TS mirror in
-`authorization-core/src/http-api-definition/*.ts` plus a wire round-trip test is
-the only drift guard for those shapes today.
-
 ## `upsert_client` cannot disable a client
 
 `db/clients.rs::upsert_client`'s `ON CONFLICT DO UPDATE` omits `disabled_at`

@@ -27,6 +27,91 @@
         }
       }
     },
+    "/authorization/browser-sessions": {
+      "get": {
+        "tags": [
+          "Access management"
+        ],
+        "summary": "`GET /authorization/browser-sessions` — every live browser session (neither revoked nor\nexpired), newest first, with the caller's own marked by the `sid` its token\ncarries. Acquired through [`LiveBrowserSessionsReader`] (scope\n`wildflower/BrowserSession.r`); the caller's `sid` comes from its own\nsession through [`LiveSessionReader`].",
+        "operationId": "handle_list_browser_sessions",
+        "responses": {
+          "200": {
+            "description": "Every live browser session, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BrowserSessionBody"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/browser-sessions/{sid}": {
+      "delete": {
+        "tags": [
+          "Access management"
+        ],
+        "summary": "`DELETE /authorization/browser-sessions/{sid}` — revoke a browser session, which ends\neverything minted under it: the browser's own token, and every access\ntoken and refresh family an app it signed in to holds. The caller's own\nsession may be revoked, which signs that browser out. Acquired through\n[`LiveBrowserSessionsRevoker`] (scope `wildflower/BrowserSession.d`).",
+        "operationId": "handle_revoke_browser_session",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "description": "The browser session's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The session is revoked, with everything minted under it"
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No unrevoked browser session has that `sid`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserSessionNotFoundBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
     "/authorization/clients": {
       "get": {
         "tags": [
@@ -57,6 +142,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
           }
         }
       }
@@ -129,6 +217,827 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/devices/{userCode}": {
+      "get": {
+        "tags": [
+          "Owner consent"
+        ],
+        "summary": "`GET /authorization/devices/{userCode}` — load a pending device-code consent prompt for\nthe launcher to render (scope `wildflower/AuthorizationRequest.r`).",
+        "operationId": "handle_get_device_consent",
+        "parameters": [
+          {
+            "name": "userCode",
+            "in": "path",
+            "description": "The code the device page shows",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The pending device or pairing request, for the device page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceConsent"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No pending device or pairing request has that user code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceConsentNotFoundBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/devices/{userCode}/approve": {
+      "post": {
+        "tags": [
+          "Owner consent"
+        ],
+        "summary": "`POST /authorization/devices/{userCode}/approve` — the Owner approves a device-code\nconsent prompt, granting the (expanded) scope set and leaving a standing\ndevice grant. Gated by [`LiveConsentDecider`] (scope\n`wildflower/AuthorizationRequest.u`), which also carries the approver's own\nscopes: an approval delegating a resource scope beyond them is rejected with\na `403`. The write scope lives in the consent capability's `approve_device_consent`.",
+        "operationId": "handle_approve_device_consent",
+        "parameters": [
+          {
+            "name": "userCode",
+            "in": "path",
+            "description": "The code the device page shows",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The request is decided: `approved`, or `denied` when nothing was left to grant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolledConsentResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token lacks an approval scope, or a ticked resource scope is beyond the approver's own grant; nothing is written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No pending device or pairing request has that user code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceConsentNotFoundBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/devices/{userCode}/deny": {
+      "post": {
+        "tags": [
+          "Owner consent"
+        ],
+        "summary": "`POST /authorization/devices/{userCode}/deny` — the Owner declines a device-code consent\nprompt (scope `wildflower/AuthorizationRequest.u`).",
+        "operationId": "handle_deny_device_consent",
+        "parameters": [
+          {
+            "name": "userCode",
+            "in": "path",
+            "description": "The code the device page shows",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request is declined: always `denied`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolledConsentResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No pending device or pairing request has that user code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceConsentNotFoundBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/grants": {
+      "get": {
+        "tags": [
+          "Access management"
+        ],
+        "summary": "`GET /authorization/grants` — every standing grant, of both kinds, in the\norder they were granted: what each app or device has been allowed and\nkeeps. Acquired through [`LiveGrantsReader`] (scope `wildflower/Grant.r`):\nthe read capability *is* the extractor, so the scope check can't be\nskipped.",
+        "operationId": "handle_list_grants",
+        "responses": {
+          "200": {
+            "description": "Every standing grant, in the order granted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Grant"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/grants/{id}": {
+      "get": {
+        "tags": [
+          "Access management"
+        ],
+        "summary": "`GET /authorization/grants/{id}` — one standing grant, or `404` when no\ngrant has the id. Through `Scoped<LiveGrantsReader>`\n(`wildflower/Grant.r`).",
+        "operationId": "handle_get_grant",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The grant's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The grant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Grant"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No grant has that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantNotFoundBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Access management"
+        ],
+        "summary": "`DELETE /authorization/grants/{id}` — revoke a grant, expire the\nrefresh-token families minted under its client, and bump the client's\nrevocation epoch so any still-live *access* tokens die too — no\n`offline_access` client (or a leaked live bearer) outlives the revocation.\nAcquired through [`LiveGrantsRevoker`] (scope `wildflower/Grant.d`), which\nowns the whole cascade, so it doesn't also take `wildflower/Token.d`.\n`204 No Content`, or `404` when no grant has the id.",
+        "operationId": "handle_revoke_grant",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The grant's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The grant is revoked, with every token its client holds"
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No grant has that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantNotFoundBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/logout": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "`POST /authorization/logout`: denylist the presented token's `jti`\nthrough `Authenticated<LiveSessionEnder>`, then answer `303 See Other` to\nthe hosted launcher's root. No scope gates it.",
+        "operationId": "handle_logout",
+        "responses": {
+          "303": {
+            "description": "The token is revoked, best-effort: a store failure is logged and the logout goes ahead",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The hosted launcher's root"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/authorization/oauth-consents/{id}": {
+      "get": {
+        "tags": [
+          "Owner consent"
+        ],
+        "summary": "`GET /authorization/oauth-consents/{id}` — load a pending authorization-code consent\nprompt for the launcher to render (scope `wildflower/AuthorizationRequest.r`).",
+        "operationId": "handle_get_oauth_consent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The authorization request's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The pending request, for its consent card",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthConsent"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No pending code-flow request the card may load has that id: unknown, decided, expired, still waiting on its browser's limited page, or for a client disabled since",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthConsentNotFoundBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/oauth-consents/{id}/approve": {
+      "post": {
+        "tags": [
+          "Owner consent"
+        ],
+        "summary": "`POST /authorization/oauth-consents/{id}/approve` — the Owner approves a\nconsent prompt, granting a (narrowed) scope set and minting the authorization code the\npolling endpoint hands back to the client. Gated by [`LiveConsentDecider`]\n(scope `wildflower/AuthorizationRequest.u`), which also carries the approver's\nown scopes: an approval delegating a resource scope beyond them is rejected\nwith a `403`. Approving a prompt whose client, redirect, or scopes are\noutside the current registration without\n[`acknowledged_registration_change`](ApproveOAuthConsentBody::acknowledged_registration_change)\nis rejected with a `409` and writes nothing, as is an approval naming a\npatient other than the one the request's SMART launch binds. The write\nscope lives in the consent capability's `approve_oauth_consent`.",
+        "description": "The answers:\n\n- `200`, `\"status\":\"approved\"`: the code is issued; `redirect` is the\n  app's callback carrying it and the app's `state`, for the card to leave\n  for.\n- `200`, `\"status\":\"denied\"`: nothing was granted, the requesting\n  browser's session has ended, or the app was disabled since; the request\n  is denied and `redirect` carries `access_denied`.\n- `403`: the approver lacks an approval scope, or a ticked resource scope\n  is beyond their own grant. Nothing is written.\n- `409`: the registration change wasn't acknowledged, or the body names a\n  patient other than the one the launch bound. Nothing is written.\n- `404`: no live code-flow prompt has this id.",
+        "operationId": "handle_approve_oauth_consent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The authorization request's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveOAuthConsentBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The request is decided: `approved` with the app's callback carrying the code, or `denied` with the callback carrying `access_denied` when nothing was granted, the requesting browser's session has ended or the app was disabled since",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token lacks an approval scope, or a ticked resource scope is beyond the approver's own grant; nothing is written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No pending code-flow request has that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthConsentNotFoundBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The registration change wasn't acknowledged, or the body names a patient other than the one the launch bound; nothing is written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthConsentApprovalConflictBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/oauth-consents/{id}/ask-owner": {
+      "post": {
+        "tags": [
+          "Owner consent"
+        ],
+        "summary": "`POST /authorization/oauth-consents/{id}/ask-owner` — a browser that can read a consent\nprompt but not approve it hands it to the server's Owner (scope\n`wildflower/AuthorizationRequest.r`, as reading it takes): the request no\nlonger counts as decidable in the browser that made it, so the host\nnotifies the Owner. Decides nothing. Raising a request spends from the\nauthorization start limit, as starting one the Owner is asked about does:\n`429 Too Many Requests` when refused, the request left as it was. Raising\none already raised spends nothing. `204 No Content`, or `404` once the\nrequest is no longer pending.",
+        "operationId": "handle_ask_owner",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The authorization request's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The request is raised for the Owner, by this call or an earlier one"
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No pending code-flow request has that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthConsentNotFoundBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authorization start limit refused raising the request; it is left as it was"
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/oauth-consents/{id}/deny": {
+      "post": {
+        "tags": [
+          "Owner consent"
+        ],
+        "summary": "`POST /authorization/oauth-consents/{id}/deny` — the Owner declines a consent prompt (scope\n`wildflower/AuthorizationRequest.u`). The answer carries the client callback\nwith `error=access_denied`, for the consent card to leave for.",
+        "operationId": "handle_deny_oauth_consent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The authorization request's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request is declined: `denied`, with the app's callback carrying `access_denied`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No pending code-flow request has that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthConsentNotFoundBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/revocations": {
+      "post": {
+        "tags": [
+          "Access management"
+        ],
+        "summary": "`POST /authorization/revocations`, through `Scoped<LiveTokenRevoker>`\n(`wildflower/Token.d`): denylist one token or bump a subject's epoch.\n`204 No Content` on success; `400` with `error` and `detail` for a body that\nnames neither mode, both, a `jti` without `expiresAt`, or an `expiresAt`\nalready past.",
+        "operationId": "handle_create_revocation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevocationRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The token is denylisted, or the subject's tokens are revoked"
+          },
+          "400": {
+            "description": "The body names neither mode, both, a `jti` without `expiresAt`, or an `expiresAt` already past",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevocationRefusedBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The revocation store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/session": {
+      "get": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "`GET /authorization/session`: the caller's own scopes and its browser\nsession's expiry, read from its claims through\n`Authenticated<LiveSessionReader>`, which no scope gates.",
+        "operationId": "handle_get_session",
+        "responses": {
+          "200": {
+            "description": "The caller's own scopes and its browser session's expiry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The browser session store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/session-widenings/{id}": {
+      "get": {
+        "tags": [
+          "Owner consent"
+        ],
+        "summary": "`GET /authorization/session-widenings/{id}` — load a pending session\nwidening for its card (scope `wildflower/AuthorizationRequest.r`).",
+        "operationId": "handle_get_session_widening_consent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The session widening's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The pending widening, for its card",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionWideningConsent"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No pending widening has that id: unknown, decided or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionWideningNotFoundBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/session-widenings/{id}/approve": {
+      "post": {
+        "tags": [
+          "Owner consent"
+        ],
+        "summary": "`POST /authorization/session-widenings/{id}/approve` — the Owner approves\na session widening, and the browser's session grows by what was granted.\nGated by [`LiveConsentDecider`] (scope\n`wildflower/AuthorizationRequest.u`), which also carries the approver's\nown scopes: granting a scope beyond them is a `403`.",
+        "operationId": "handle_approve_session_widening",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The session widening's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveSessionWideningBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The widening is decided: `approved` when the session grew, `denied` when nothing was left to grant or the browser's session has ended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolledConsentResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token lacks `wildflower/AuthorizationRequest.u`, or a ticked scope is beyond the approver's own grant; nothing is written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No pending widening has that id: unknown, decided or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionWideningNotFoundBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
+          }
+        }
+      }
+    },
+    "/authorization/session-widenings/{id}/deny": {
+      "post": {
+        "tags": [
+          "Owner consent"
+        ],
+        "summary": "`POST /authorization/session-widenings/{id}/deny` — the Owner declines a\nsession widening, leaving the browser's session as it was (scope\n`wildflower/AuthorizationRequest.u`).",
+        "operationId": "handle_deny_session_widening",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The session widening's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The widening is declined: always `denied`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolledConsentResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No pending widening has that id: unknown, decided or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionWideningNotFoundBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A store failed; logged, with no body"
           }
         }
       }
@@ -343,6 +1252,9 @@
           },
           "429": {
             "description": "The authorization start limit refused a new widening"
+          },
+          "500": {
+            "description": "A store failed, or the browser's session couldn't be verified; logged, with no body"
           }
         }
       }
@@ -548,6 +1460,14 @@
         "responses": {
           "200": {
             "description": "Where the pairing stands",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The browser's paired session token as its `__Host-browser_session` cookie, set only when the status is `approved`"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -565,6 +1485,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "A store failed, the paired session couldn't be stored, or its token couldn't be minted; logged, with no body"
           }
         }
       }
@@ -617,6 +1540,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "No unused user code could be generated, or a store failed; logged, with no body"
           }
         }
       }
@@ -696,6 +1622,14 @@
         "responses": {
           "200": {
             "description": "Where the widening stands",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The browser's wider session token as its `__Host-browser_session` cookie, set only when the status is `widened`"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -713,6 +1647,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "A store failed, the browser's session couldn't be verified, or the wider session's token couldn't be minted; logged, with no body"
           }
         }
       }
@@ -782,6 +1719,80 @@
   },
   "components": {
     "schemas": {
+      "ApproveBody": {
+        "type": "object",
+        "description": "Body the device page's consent card posts to\n`POST /authorization/devices/{userCode}/approve` to approve a device-code\nprompt or a browser pairing: the scopes the Owner ticked, plus an optional\npatient context to bind to the grant, and an optional new name for the\ndevice. The card pins a device grant to all patients, so it sends no\n`patient` and the field deserializes to `None`.\n\nThe code flow posts its own\n`ApproveOAuthConsentBody` instead — only that surface can show a\nregistration warning, and only its body carries the acknowledgement.",
+        "required": [
+          "approvedScopes"
+        ],
+        "properties": {
+          "approvedScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The scopes the approver ticked. They are clamped to what the prompt\nmay grant and to the approver's own grant; a resource scope beyond the\napprover's grant is a `403`, and nothing left to grant is a deny."
+          },
+          "patient": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The FHIR `Patient` id to bind a device's grant to; `None` leaves it\nunbound. A pairing ignores it: a browser session binds no patient."
+          },
+          "deviceName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The approver's name for the device or browser, when they changed it\nbefore approving. A device's grant is named after it, else the\ndevice's own name; a pairing names the browser with it. `None` keeps\nthe name the request carries rather than erasing it."
+          }
+        }
+      },
+      "ApproveOAuthConsentBody": {
+        "type": "object",
+        "description": "Body posted by the launcher to approve an authorization-code consent prompt.\n\nIts own shape rather than the device flow's\n[`ApproveBody`](crate::http::wire_representations::ApproveBody): only this\nsurface carries a registration warning, so only this body demands the\nacknowledgement, and the device flow keeps no field it would always have to\nsend.",
+        "required": [
+          "approvedScopes",
+          "acknowledgedRegistrationChange"
+        ],
+        "properties": {
+          "approvedScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The scopes the Owner ticked."
+          },
+          "patient": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional SMART-on-FHIR patient context to bind to the grant. When the\nrequest's SMART launch bound a patient, it must be that patient."
+          },
+          "acknowledgedRegistrationChange": {
+            "type": "boolean",
+            "description": "The Owner's acknowledgement that they recognise this app and its\nredirect address. Required (not defaulted) so a client that has not been\nupdated to show the warning cannot approve a `new` or `changed` prompt by\nomission; it is ignored when the prompt carries no warning."
+          }
+        }
+      },
+      "ApproveSessionWideningBody": {
+        "type": "object",
+        "description": "`POST /authorization/session-widenings/{id}/approve` body.",
+        "required": [
+          "approvedScopes"
+        ],
+        "properties": {
+          "approvedScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The scopes the Owner left ticked. They are clamped to what the browser\nasked for and to the approver's own grant; a scope beyond the\napprover's grant is a `403`, and nothing left to grant is a deny."
+          }
+        }
+      },
       "AskedSessionWideningBody": {
         "type": "object",
         "description": "The widening an ask filed, which the page polls.",
@@ -792,6 +1803,60 @@
           "wideningId": {
             "type": "string",
             "description": "The widening's id."
+          }
+        }
+      },
+      "AuthorizationCodeGrant": {
+        "type": "object",
+        "description": "A standing authorization-code consent: client X may have scopes Y at\nredirect URI Z. A later request from the client at that redirect gets its\ncode without asking the Owner only when it changes nothing in the\nclient's registration, this grant covers every requested scope, its\nbrowser session is live and holds what it asks for (or its browser has\ngone on past the limited page for this client), and a launch's patient,\nif any, is this grant's. A grant covering only some scopes pre-ticks them\non the consent card.\n\nOne grant per `(client_id, redirect_uri)`. Diesel-mapped 1:1 to the\n`authorization_code_grants` table; on the wire it rides inside\n[`Grant::AuthorizationCode`].",
+        "required": [
+          "id",
+          "clientId",
+          "scopes",
+          "grantedAt",
+          "lastUsedAt",
+          "patient",
+          "redirectUri"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Primary key — a UUID minted at first upsert, unique across BOTH grant\ntables (so a bare grant id read through the `grants` view is\nunambiguous)."
+          },
+          "clientId": {
+            "type": "string",
+            "description": "`client_id` the Owner approved this grant for."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Everything the Owner has approved for this client at this redirect,\nacross every approval; consent is cumulative (see\n[`CumulativeConsent`])."
+          },
+          "grantedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the Owner gave (or last re-confirmed) consent: the latest\napproval."
+          },
+          "lastUsedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When this grant last let a code be issued without asking the Owner,\nat `/oauth/authorize` or at the limited page's Continue; `None` until\nit first does. A re-approval keeps it."
+          },
+          "patient": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The SMART patient the latest approval named, carried forward to the\ncodes this grant lets be issued without asking the Owner."
+          },
+          "redirectUri": {
+            "type": "string",
+            "description": "The exact redirect URI this grant covers — `/authorize` keys the\nconsent-skip fast path on `(client_id, redirect_uri)`."
           }
         }
       },
@@ -1027,6 +2092,73 @@
         ],
         "description": "Where a pairing stands. `approved` carries the browser's session as its\n`Set-Cookie`; the page then goes on to its `next`. `slow_down` means the\npage polled sooner than its interval."
       },
+      "BrowserSessionBody": {
+        "type": "object",
+        "description": "A live browser session as the Owner's \"Browsers\" list reads it. Every\ncolumn of the `browser_sessions` row but its `scopes` and `revoked_at`\n(always `null` on a live one), plus `heldByCaller`: whether the caller's\nown token was minted under it.",
+        "required": [
+          "sid",
+          "kind",
+          "name",
+          "createdAt",
+          "expiresAt",
+          "lastSeenAt",
+          "heldByCaller"
+        ],
+        "properties": {
+          "sid": {
+            "type": "string",
+            "description": "The session's id, which a revoke names."
+          },
+          "kind": {
+            "type": "string",
+            "description": "How the browser got its session: `same_device` or `paired`."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name the browser was given; `null` for a same-device session."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the browser signed in or was paired."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the session stops letting the browser start things."
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the session was last in use, to the nearest\n`LAST_SEEN_RESOLUTION`."
+          },
+          "heldByCaller": {
+            "type": "boolean",
+            "description": "Whether the caller's own token was minted under this session: revoking\nit signs the caller's browser out."
+          }
+        }
+      },
+      "BrowserSessionNotFoundBody": {
+        "type": "object",
+        "description": "Wire shape for `BrowserSessionNotFound` (404) — no standing browser\nsession has this `sid`.",
+        "required": [
+          "error",
+          "sid"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"BrowserSessionNotFound\"`."
+          },
+          "sid": {
+            "type": "string",
+            "description": "The session id the caller asked for: unknown, or already revoked."
+          }
+        }
+      },
       "ClientBody": {
         "type": "object",
         "description": "A registered OAuth client as the Owner's \"Trusted apps\" list reads it. Every\ncolumn of the `clients` row **except `secret_hash`**, which never leaves the\nserver, and `registration_source`, plus `essential` — whether this is the\nhost app's client or the browser-session client, which can't be disabled,\nso the list offers no switch for them.",
@@ -1112,6 +2244,112 @@
           }
         }
       },
+      "ClientRegistrationBody": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "The redirect is registered and every scope is covered: nothing new\nfor the Owner to acknowledge.",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "registered"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The Owner has never approved this app; nothing about it is stored\nuntil they do.",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "new"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The app is known, but the request steps outside its registration: a\nnew redirect, new scopes, or both.",
+            "required": [
+              "redirectUriIsNew",
+              "newScopes",
+              "status"
+            ],
+            "properties": {
+              "redirectUriIsNew": {
+                "type": "boolean",
+                "description": "The presented `redirect_uri` is on no allowlist entry."
+              },
+              "newScopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The requested scopes the registration does not cover, in request\norder."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "changed"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Wire shape of [`OAuthConsent::registration`] — the\n[`PresentedClientChange`], `status`-tagged.\n\n`{\"status\":\"registered\"}` for a request that matches the registration,\n`{\"status\":\"new\"}` for a client this authorization server has never seen, and\n`{\"status\":\"changed\",\"redirectUriIsNew\":…,\"newScopes\":[…]}` when a known\nclient steps outside its registration."
+      },
+      "ConsentResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "The request was approved: a code-flow request's code is issued, a\ndevice's grant stands, a pairing's browser may now sign in.",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "redirect": {
+                "type": "string",
+                "description": "The app's callback carrying the code and the app's `state`, for\nthe consent card to leave for; absent for a device-page decision,\nwhose device or browser polls for its result."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "approved"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The request was denied: declined, or an approval that granted\nnothing. A code-flow approval is a deny too when the requesting\nbrowser's session has ended or the app was disabled since.",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "redirect": {
+                "type": "string",
+                "description": "The app's callback carrying `error=access_denied` and the app's\n`state`; absent for a device-page decision."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "denied"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Result the approving surface sees after approving or denying a consent\nprompt: `{\"status\":\"approved\"}` or `{\"status\":\"denied\"}`, with a\n`redirect` for a code-flow decision.\n\nA code-flow decision carries the client callback URL (`code` + `state`, or\n`error=access_denied` + `state`, appended to the client's `redirect_uri`) so\nthe approving surface can complete the flow directly when it is the\nrequesting browser (the consent card) — no separate poll of\n`/oauth/authorize/{id}` needed. Device-flow decisions have no client\n`redirect_uri`, so `redirect` is `None` and (thanks to\n`skip_serializing_if`) omitted from the wire entirely."
+      },
       "DeviceAuthorizationRequest": {
         "type": "object",
         "description": "`POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the\noptional `scope` plus the body credentials, and the non-standard\n`device_name` extension. Form-urlencoded.",
@@ -1186,6 +2424,145 @@
           }
         }
       },
+      "DeviceConsent": {
+        "type": "object",
+        "description": "Body returned to the launcher when it loads a pending device-page consent\nprompt — what asks, the requesting client, the device's or browser's\nname, the scopes the approver's ticks start from, and the *expansion\nenvelope* the approver may grant up to (device consent is expandable): a\ndevice client's full allowed-scope set, a browser's the Owner's scopes.\nLocal to this one route (its only reader).",
+        "required": [
+          "kind",
+          "userCode",
+          "clientId",
+          "clientName",
+          "startingScopes",
+          "allowedScopes",
+          "missingApprovalScopes"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DeviceConsentKind",
+            "description": "What asks: `device` for a device's request, `browser` for a pairing."
+          },
+          "userCode": {
+            "type": "string",
+            "description": "The code the Owner entered or confirmed, which approve and deny name."
+          },
+          "clientId": {
+            "type": "string",
+            "description": "The requesting client: the device's app, or the browser-session client\nfor a pairing."
+          },
+          "clientName": {
+            "type": "string",
+            "description": "The client's registered name, or its `client_id` when it has no row."
+          },
+          "deviceName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The browser's name for a pairing; for a device, the name it gave or\nwas inferred from its `User-Agent`, if any."
+          },
+          "startingScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The scopes the approver's ticks start from: a device's requested\nscopes, or for a browser everything the caller may delegate."
+          },
+          "allowedScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "How far the approver may expand: the app's whole registered scope\nlist for a device, the Owner's scopes for a pairing. Device consent is\nexpandable."
+          },
+          "missingApprovalScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The approval scopes the caller's own token lacks to approve this\nrequest (`wildflower/AuthorizationRequest.u`, and `wildflower/Grant.c`\nfor a device's standing grant). Empty when it may approve; otherwise\nthe device page sends the Owner to the device running the server."
+          }
+        }
+      },
+      "DeviceConsentKind": {
+        "type": "string",
+        "description": "What asks at the device page: a device, through the RFC 8628 device-code\nflow, or a browser pairing for a browser session. On the wire, `\"device\"`\nor `\"browser\"`.",
+        "enum": [
+          "device",
+          "browser"
+        ]
+      },
+      "DeviceConsentNotFoundBody": {
+        "type": "object",
+        "description": "Wire shape for `DeviceConsentNotFound` (404) — no pending device-code consent\nhas this user code. Keyed by `userCode`, unlike the id-keyed siblings.",
+        "required": [
+          "error",
+          "userCode"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"DeviceConsentNotFound\"`."
+          },
+          "userCode": {
+            "type": "string",
+            "description": "The user code the caller asked for: unknown, decided or expired, or a\ncode-flow request's, which the device page never shows."
+          }
+        }
+      },
+      "DeviceGrant": {
+        "type": "object",
+        "description": "A standing device pairing: the durable record of an approved device-code\nflow, keyed on the client and the human-facing device name. It is the\nOwner's record of which devices they have paired; it never skips a prompt.\nA refresh family begun by the device's poll records the grant's `id`.\nDiesel-mapped 1:1 to the\n`device_grants` table; on the wire it rides inside [`Grant::DeviceCode`].",
+        "required": [
+          "id",
+          "clientId",
+          "scopes",
+          "grantedAt",
+          "lastUsedAt",
+          "patient",
+          "deviceName"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Primary key — a UUID minted at first upsert, unique across BOTH grant\ntables."
+          },
+          "clientId": {
+            "type": "string",
+            "description": "`client_id` the Owner approved this pairing for."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scopes the Owner approved; consent is cumulative (see\n[`CumulativeConsent`])."
+          },
+          "grantedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the Owner gave (or last re-confirmed) consent: the latest\napproval."
+          },
+          "lastUsedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a refresh-token family this pairing earned last rotated; `None`\nuntil one first does. A re-pairing keeps it."
+          },
+          "patient": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The SMART patient the latest approval named, if any."
+          },
+          "deviceName": {
+            "type": "string",
+            "description": "The human-facing device name this pairing is keyed on. Defaults to\nthe client's name when the device didn't name itself."
+          }
+        }
+      },
       "EssentialClientBody": {
         "type": "object",
         "description": "Wire shape for `EssentialClient` (409) — the named client is essential:\ndisabling it would leave the Owner no way in.",
@@ -1201,6 +2578,75 @@
           "clientId": {
             "type": "string",
             "description": "The essential client the caller tried to disable: the host app's or\nthe browser-session client."
+          }
+        }
+      },
+      "Grant": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AuthorizationCodeGrant",
+                "description": "A standing consent for a client at one redirect, tagged\n`authorization_code`."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "grantType"
+                ],
+                "properties": {
+                  "grantType": {
+                    "type": "string",
+                    "enum": [
+                      "authorization_code"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "A standing consent for a client at one redirect, tagged\n`authorization_code`."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceGrant",
+                "description": "A standing device pairing, tagged `device_code`."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "grantType"
+                ],
+                "properties": {
+                  "grantType": {
+                    "type": "string",
+                    "enum": [
+                      "device_code"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "A standing device pairing, tagged `device_code`."
+          }
+        ],
+        "description": "The wire/list seam over the two concrete grant kinds — what cross-kind\nreads (`all_grants`, `grant_by_id`) return and what the `/authorization/grants`\nendpoints serialize. Internally-tagged on `grantType` with the snake_case\nkind names, so each variant serializes as its struct's camelCase fields\nwith the tag alongside — the exact `grantType`-tagged union the TS\n`access-management` `GrantSchema` decodes (pinned by the tests below)."
+      },
+      "GrantNotFoundBody": {
+        "type": "object",
+        "description": "Wire shape for `GrantNotFound` (404) — no standing grant has this id.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"GrantNotFound\"`."
+          },
+          "id": {
+            "type": "string",
+            "description": "The grant id the caller asked for."
           }
         }
       },
@@ -1241,6 +2687,119 @@
           }
         }
       },
+      "LaunchPatientMismatchBody": {
+        "type": "object",
+        "description": "Wire shape for `LaunchPatientMismatch` (409) — the approval named a patient\nother than the one the request's SMART launch binds.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"LaunchPatientMismatch\"`."
+          },
+          "id": {
+            "type": "string",
+            "description": "The id of the request whose approval was refused; nothing was written."
+          }
+        }
+      },
+      "OAuthConsent": {
+        "type": "object",
+        "description": "Body returned to the launcher when it loads an authorization-code consent\nprompt — describes the client, scopes, and any pre-approved subset. Local to\nthis one route (its only reader); the shapes two consent surfaces share live\nin [`crate::http::wire_representations`].",
+        "required": [
+          "id",
+          "clientId",
+          "clientName",
+          "scopes",
+          "redirectUri",
+          "preApprovedScopes",
+          "registration",
+          "missingApprovalScopes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The request's id, which the card approves or denies by."
+          },
+          "clientId": {
+            "type": "string",
+            "description": "The app's public `client_id`."
+          },
+          "clientName": {
+            "type": "string",
+            "description": "The client's registered display name, so the consent UI can name the\napp instead of showing a raw `client_id`. Falls back to the\n`client_id` when the registration lookup misses."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Everything the app asked for, in request order."
+          },
+          "redirectUri": {
+            "type": "string",
+            "description": "Where the app will be sent back to with the code."
+          },
+          "preApprovedScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The requested scopes a standing grant already covers, ticked to start\nwith."
+          },
+          "patient": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The patient on the request's approval. A request the card can load is\npending, so it carries no approval and this is `null`; the patient a\nSMART launch bound is not sent. The field stays on the wire so the card\ncan be told of a patient a request asks for, once a launch can."
+          },
+          "registration": {
+            "$ref": "#/components/schemas/ClientRegistrationBody",
+            "description": "How this request compares against the client's registration **right\nnow** — the warning the consent UI leads with, and the flag that makes\nits acknowledgement checkbox mandatory."
+          },
+          "missingApprovalScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The approval scopes the caller's own token lacks to approve this\nrequest (`wildflower/Grant.c`, and `wildflower/Client.c` or\n`wildflower/Client.u` when approving would register or widen the\nclient). Empty when it may approve; otherwise the consent UI asks the\nserver's Owner in place of Allow."
+          }
+        }
+      },
+      "OAuthConsentApprovalConflictBody": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/RegistrationNotAcknowledgedBody",
+            "description": "The approval steps outside the app's registration without the\nOwner's acknowledgement."
+          },
+          {
+            "$ref": "#/components/schemas/LaunchPatientMismatchBody",
+            "description": "The approval names a patient other than the one the request's SMART\nlaunch binds."
+          }
+        ],
+        "description": "The `409` an approval is refused with, writing nothing: either body, told\napart by its `error`. Only the spec reads it; each is rendered from its\nown [`AuthorizationServerError`] variant."
+      },
+      "OAuthConsentNotFoundBody": {
+        "type": "object",
+        "description": "Wire shape for `OAuthConsentNotFound` (404) — no pending authorization-code\nconsent has this id.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"OAuthConsentNotFound\"`."
+          },
+          "id": {
+            "type": "string",
+            "description": "The request id the caller asked for: unknown, decided, expired, still\nwaiting on its browser's limited page, or for a client disabled since."
+          }
+        }
+      },
       "OAuthError": {
         "type": "object",
         "description": "RFC 6749 §5.2 error body: the token, revocation and device-authorization\nendpoints, the wait page's status poll, and client authentication all\nanswer with it.",
@@ -1260,6 +2819,39 @@
             "description": "A sentence for the app's developer saying what was wrong; omitted when\nthe code says enough."
           }
         }
+      },
+      "PolledConsentResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "approved"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "denied"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "[`ConsentResult`] as a polled flow's decision answers it, for the spec: a\ndevice's, a browser pairing's or a session widening's requester polls for\nits result, so the decision carries no `redirect`. Only the spec reads it;\nthe routes render a [`ConsentResult`] with none."
       },
       "PublicJwk": {
         "type": "object",
@@ -1302,6 +2894,104 @@
           }
         }
       },
+      "RegistrationNotAcknowledgedBody": {
+        "type": "object",
+        "description": "Wire shape for `RegistrationNotAcknowledged` (409) — the approval named a\nclient, redirect, or scope outside the current registration and did not carry\nthe Owner's acknowledgement.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"RegistrationNotAcknowledged\"`."
+          },
+          "id": {
+            "type": "string",
+            "description": "The id of the request whose approval was refused; nothing was written."
+          }
+        }
+      },
+      "RevocationRefusedBody": {
+        "type": "object",
+        "description": "The `400` a malformed revocation body gets.",
+        "required": [
+          "error",
+          "detail"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "The refusal's name: `MissingExpiresAt`, `AmbiguousRevocation`,\n`EmptyRevocation` or `ExpiresAtInPast`."
+          },
+          "detail": {
+            "type": "string",
+            "description": "A sentence saying what the body should have been."
+          }
+        }
+      },
+      "RevocationRequestBody": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Bulk-revoke every token the subject holds that was issued up to now.",
+            "required": [
+              "subject"
+            ],
+            "properties": {
+              "subject": {
+                "type": "string",
+                "description": "The `sub` claim (the `client_id`) whose tokens die."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Denylist one token until its own expiry.",
+            "required": [
+              "jti",
+              "expiresAt"
+            ],
+            "properties": {
+              "jti": {
+                "type": "string",
+                "description": "The token's `jti` claim."
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "The token's own expiry (RFC 3339), in the future."
+              }
+            }
+          }
+        ],
+        "description": "`POST /authorization/revocations` body as the spec describes it: exactly\none of the two modes. Only the spec reads it; the route reads the looser\n[`RevocationRequest`] so it can answer each malformed body with its own\n`400`."
+      },
+      "SessionResponse": {
+        "type": "object",
+        "description": "What the caller's current access token carries: its scopes, and when the\nbrowser session it was minted under expires. The rest of the claim set\n(`jti`/`iss`/`aud`/`patient`) is session plumbing no caller has asked for,\nand leaving it off keeps this from drifting into a general introspection\nendpoint. Widen it when something actually needs a field.",
+        "required": [
+          "scopes",
+          "browserSessionExpiresAt"
+        ],
+        "properties": {
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The `scope` claim split on whitespace — the scopes this session actually\nholds. Empty when the token carries no `scope` claim at all."
+          },
+          "browserSessionExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the browser session the token was minted under (its `sid`)\nexpires; `null` for a token under no browser session."
+          }
+        }
+      },
       "SessionShortfallBody": {
         "type": "object",
         "description": "What the limited page says: the app, and the scopes this browser's session\nlacks of what the app asked for.",
@@ -1336,6 +3026,58 @@
           }
         }
       },
+      "SessionWideningConsent": {
+        "type": "object",
+        "description": "Body returned when the card loads a pending session widening: the browser\nthat asks, the app it asks for, and the scopes the Owner may grant, which\nthe Owner may only untick.",
+        "required": [
+          "id",
+          "browserName",
+          "clientId",
+          "clientName",
+          "requestedScopes",
+          "startingScopes",
+          "missingApprovalScopes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The widening's id, which approve and deny name."
+          },
+          "browserName": {
+            "type": "string",
+            "description": "The name of the browser that asks: its session's."
+          },
+          "clientId": {
+            "type": "string",
+            "description": "The app whose request the browser's session fell short of."
+          },
+          "clientName": {
+            "type": "string",
+            "description": "The app's registered name, or its `client_id` when it has no row."
+          },
+          "requestedScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What the browser's session lacked of the app's request: the most the\nOwner may grant."
+          },
+          "startingScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The scopes the card's ticks start from: those of the requested ones\nthe caller may pass on."
+          },
+          "missingApprovalScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The approval scopes the caller's own token lacks to approve the\nwidening (`wildflower/AuthorizationRequest.u`). Empty when it may\napprove."
+          }
+        }
+      },
       "SessionWideningNotFound": {
         "type": "object",
         "description": "The JSON 404 body a session widening the caller may not see gets: from the\nlimited page's poll, one asked in another browser session, or none.",
@@ -1351,6 +3093,24 @@
           "id": {
             "type": "string",
             "description": "The widening id the caller asked about."
+          }
+        }
+      },
+      "SessionWideningNotFoundBody": {
+        "type": "object",
+        "description": "Wire shape for `SessionWideningNotFound` (404) — no session widening the\ncaller may see has this id.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"SessionWideningNotFound\"`."
+          },
+          "id": {
+            "type": "string",
+            "description": "The widening id the caller asked for: unknown, decided or expired for\nthe Owner's card; another session's for the limited page's poll."
           }
         }
       },

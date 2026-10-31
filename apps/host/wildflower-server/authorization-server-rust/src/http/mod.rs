@@ -59,9 +59,8 @@ fn documented_public_router(
         )
 }
 
-/// The documented slice of `/authorization`, as an `OpenApiRouter` merged
-/// from each documented resource's router (the rest of the admin surface is
-/// not documented yet). [`router`] mounts its axum half behind the session
+/// The `/authorization` surface, as an `OpenApiRouter` merged from each
+/// resource's router. [`router`] mounts its axum half behind the session
 /// gate; [`documented_router`] nests its spec half. `defer_start_limit`
 /// wraps the ask-owner route (see [`routes::oauth_consents::openapi_router`]).
 fn documented_authorization_router(
@@ -82,8 +81,8 @@ fn documented_authorization_router(
 }
 
 /// The spec-only view of the whole documented surface: the pre-auth routes
-/// plus the documented slice of `/authorization`. Never served as-is —
-/// [`router`] mounts the `/authorization` half behind the session gate.
+/// plus `/authorization`. Never served as-is — [`router`] mounts the
+/// `/authorization` half behind the session gate.
 #[cfg(test)]
 fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
     documented_public_router(|routes, _start_route| routes).nest(
@@ -123,8 +122,7 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
         ))
     })
     .split_for_parts();
-    let access = Router::new()
-        .merge(documented_authorization)
+    let access = documented_authorization
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_valid_session,
@@ -142,8 +140,9 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
         .with_state(state)
 }
 
-/// The authorization server OAuth + discovery + client-management `OpenAPI` document, collected from the very
-/// routes that serve traffic. `info` is set explicitly so the committed snapshot
+/// The authorization server's `OpenAPI` document — discovery, the OAuth API
+/// and the `/authorization` admin surface — collected from the very routes
+/// that serve traffic. `info` is set explicitly so the committed snapshot
 /// doesn't churn with the crate version. It generates the committed snapshot the
 /// TS spec-drift test guards and the published server-docs console renders.
 #[cfg(test)]
