@@ -8,7 +8,6 @@ import {
   type DecodedBatch,
   defaultFormatSettings,
   type Disposition,
-  discoverReferents,
   type FormatKind,
   type FormatSettings,
   formatKinds,
@@ -23,19 +22,17 @@ import {
 } from '@wildflowerhealthio/importer-core'
 import {
   DecodedFile,
-  MentionLinkChoiceSet,
+  LinkChoiceSet,
   PickedFile,
-  Referent,
-  ReferentLinkChoiceSet,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, HashMap, Order, Schema } from 'effect'
+import { Effect, Order, Schema } from 'effect'
 
 /**
  * A picked batch imported headless through `importer-core` with every
  * default accepted, onto a device that holds nothing: read (`readBatch`),
- * each referent's default link choice, resolve (`resolveMentions`), and the
- * write plan (`planWrite`) with no reviewer change. What comes back is what
+ * resolve (`resolveMentions`) with every referent on its default link
+ * choice, and the write plan (`planWrite`) with no reviewer change. What comes back is what
  * the confirm would write, and the review it would be written from, as the
  * golden JSON the import golden pin compares.
  *
@@ -77,18 +74,6 @@ const SETTINGS: FormatSettings = {
   ...defaultFormatSettings,
   dicom: { timeZone: 'America/Toronto' },
 }
-
-/**
- * Each referent's link choice on a device that holds nothing: what
- * `ReferentSearch.defaultChoice` answers when no search finds a record.
- */
-const defaultLinkChoicesOf = (referents: readonly Referent.Type[]): ReferentLinkChoiceSet.Type =>
-  HashMap.fromIterable(
-    referents.map((referent) => [
-      Referent.key(referent),
-      ReferentLinkChoiceSet.defaultFor(referent),
-    ])
-  )
 
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
 
@@ -142,11 +127,9 @@ const importWithDefaults = (
     ]
     if (unread.length > 0) return yield* Effect.fail(`Not read: ${unread.join(', ')}`)
 
-    const referents = yield* discoverReferents(decodedBatch)
-    const batch = yield* resolveMentions(decodedBatch, {
-      byReferent: defaultLinkChoicesOf(referents),
-      byMention: MentionLinkChoiceSet.empty,
-    })
+    // On a device that holds nothing, `ReferentSearch.defaultChoices` finds
+    // no record, so every referent takes its kind's default: no choice made.
+    const batch = yield* resolveMentions(decodedBatch, LinkChoiceSet.empty)
     // The screen's default with no row on the server: every row left
     // without a patient is out.
     const plan = planWrite(
