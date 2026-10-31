@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 use crate::domain::access_token::{
     verify_access_token, AccessTokenVerifyError, AccessTokenVerifyOptions, VerifiedClaims,
 };
-use crate::domain::browser_session::RunStart;
+use crate::domain::browser_session::StaleSessionCutoff;
 use crate::domain::grant_store::{BrowserSessionsTx, SigningKeysTx};
 use crate::domain::GrantStore;
 use crate::ports::RevocationCheck;
@@ -30,25 +30,26 @@ pub(crate) struct TokenVerifier<S: GrantStore> {
     /// The server's bare origin: the one `iss` and the one `aud` accepted, so
     /// a token another server minted is refused by these alone.
     server_origin: Arc<str>,
-    /// What the run took over when it started, which a browser session's own
-    /// token needs its session live under.
-    run_start: Arc<RunStart>,
+    /// The cutoff before which a same-device session is stale: a browser
+    /// session's own token needs its session live under it.
+    stale_session_cutoff: Arc<StaleSessionCutoff>,
 }
 
 impl<S: GrantStore> TokenVerifier<S> {
     /// Build the verifier over the store, the revocation-check port, the
-    /// server's origin, and the run's start, all lifted from the state.
+    /// server's origin, and the stale-session cutoff, all lifted from the
+    /// state.
     pub(crate) fn new(
         store: S,
         revocation: Arc<dyn RevocationCheck>,
         server_origin: Arc<str>,
-        run_start: Arc<RunStart>,
+        stale_session_cutoff: Arc<StaleSessionCutoff>,
     ) -> Self {
         TokenVerifier {
             store,
             revocation,
             server_origin,
-            run_start,
+            stale_session_cutoff,
         }
     }
 
@@ -116,7 +117,7 @@ impl<S: GrantStore> TokenVerifier<S> {
         )?;
         if let Some(sid) = claims.sid.as_deref() {
             if claims.subject == BROWSER_SESSION_CLIENT_ID {
-                ensure_own_session_live(tx, sid, &self.run_start, Utc::now())?;
+                ensure_own_session_live(tx, sid, &self.stale_session_cutoff, Utc::now())?;
             } else if tx
                 .is_browser_session_revoked(sid)
                 .map_err(AccessTokenVerifyError::BrowserSessionStoreUnavailable)?
@@ -129,16 +130,16 @@ impl<S: GrantStore> TokenVerifier<S> {
 }
 
 /// Refuse a browser session's own token, the one its cookie holds, once the
-/// session `sid` is no longer live at `now` under `run_start`: `Revoked` when
-/// the session is revoked or has no row, `TokenRejected` when it is otherwise
-/// not live. A session can end before its token does: the host ends a
-/// same-device session by expiring it, and a run doesn't take over an earlier
-/// run's it didn't carry over. The tokens apps were issued under the session
-/// outlive its ending, and only its revocation ends them.
+/// session `sid` is no longer live at `now` under `stale_session_cutoff`:
+/// `Revoked` when the session is revoked or has no row, `TokenRejected` when
+/// it is otherwise not live. A session can end before its token does: the host
+/// ends a same-device session by expiring it, and the cutoff makes one stale.
+/// The tokens apps were issued under the session outlive its ending, and only
+/// its revocation ends them.
 fn ensure_own_session_live(
     tx: &mut impl BrowserSessionsTx,
     sid: &str,
-    run_start: &RunStart,
+    stale_session_cutoff: &StaleSessionCutoff,
     now: DateTime<Utc>,
 ) -> Result<(), AccessTokenVerifyError> {
     let session = tx
@@ -147,7 +148,7 @@ fn ensure_own_session_live(
     match session {
         None => Err(AccessTokenVerifyError::Revoked),
         Some(session) if session.revoked_at.is_some() => Err(AccessTokenVerifyError::Revoked),
-        Some(session) if !session.is_live_at(now, run_start) => {
+        Some(session) if !session.is_live_at(now, stale_session_cutoff) => {
             Err(AccessTokenVerifyError::TokenRejected)
         }
         Some(_) => Ok(()),
@@ -157,6 +158,7 @@ fn ensure_own_session_live(
 #[cfg(test)]
 mod tests {
     use crate::domain::grant_store::*;
+    use std::collections::HashSet;
     use std::sync::Mutex;
 
     use chrono::{DateTime, Duration, Utc};
@@ -212,7 +214,7 @@ mod tests {
             store,
             Arc::new(FakeRevocation::default()),
             ORIGIN.into(),
-            Arc::new(RunStart::before_any_session()),
+            Arc::new(StaleSessionCutoff::none()),
         )
     }
 
@@ -255,7 +257,7 @@ mod tests {
             store,
             revocation.clone(),
             ORIGIN.into(),
-            Arc::new(RunStart::before_any_session()),
+            Arc::new(StaleSessionCutoff::none()),
         );
         let claims = verifier
             .verify(&mint(&key, ORIGIN, ORIGIN))
@@ -323,7 +325,7 @@ mod tests {
                 ..FakeRevocation::default()
             }),
             ORIGIN.into(),
-            Arc::new(RunStart::before_any_session()),
+            Arc::new(StaleSessionCutoff::none()),
         );
         // Re-seed the key so the revoked verifier can check the signature.
         revoked.store.tx().insert_signing_key(&key).unwrap();
@@ -339,7 +341,7 @@ mod tests {
                 ..FakeRevocation::default()
             }),
             ORIGIN.into(),
-            Arc::new(RunStart::before_any_session()),
+            Arc::new(StaleSessionCutoff::none()),
         );
         assert!(matches!(
             failing.verify(&token),
@@ -432,12 +434,11 @@ mod tests {
         ));
     }
 
-    /// A same-device session's own token is refused by a run that started
-    /// after the session did without carrying it over, though its row stands;
-    /// an app's token minted under it outlives that, as it does the session's
-    /// expiry.
+    /// A same-device session's own token is refused once a cutoff after the
+    /// session's start makes it stale, though its row stands; an app's token
+    /// minted under it outlives that, as it does the session's expiry.
     #[test]
-    fn a_session_s_own_token_ends_with_a_run_start() {
+    fn a_session_s_own_token_ends_when_the_session_is_stale() {
         let (store, key) = store_with_key();
         let session =
             BrowserSession::new_same_device_session(vec![], Duration::hours(8), Utc::now());
@@ -456,17 +457,20 @@ mod tests {
         )
         .expect("mint");
         let app_s = mint_under_session(&key, ORIGIN, ORIGIN, Some(&session.sid));
-        let restarted = TokenVerifier::new(
+        let cut_off = TokenVerifier::new(
             store,
             Arc::new(FakeRevocation::default()),
             ORIGIN.into(),
-            Arc::new(RunStart::new(&[], Utc::now() + Duration::seconds(1))),
+            Arc::new(StaleSessionCutoff::new(
+                Utc::now() + Duration::seconds(1),
+                HashSet::new(),
+            )),
         );
 
         assert!(matches!(
-            restarted.verify(&session_s_own),
+            cut_off.verify(&session_s_own),
             Err(AccessTokenVerifyError::TokenRejected)
         ));
-        assert!(restarted.verify(&app_s).is_ok());
+        assert!(cut_off.verify(&app_s).is_ok());
     }
 }

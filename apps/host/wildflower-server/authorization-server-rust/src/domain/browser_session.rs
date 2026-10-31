@@ -2,9 +2,8 @@
 //! every token, authorization code and refresh-token family minted under it
 //! records. Revoking a session ends everything it minted: the token verifier
 //! refuses a token whose `sid` names a revoked session, and refresh redemption
-//! refuses a family whose `sid` does. [`RunStart`] — what the server's run
-//! took over when it started, which decides whether an earlier run's
-//! same-device session is still live.
+//! refuses a family whose `sid` does. [`StaleSessionCutoff`] — the cutoff
+//! before which a same-device session is stale, unless it is exempt.
 
 use std::collections::HashSet;
 
@@ -16,7 +15,6 @@ use strum::{AsRefStr, Display, EnumString};
 
 use crate::db::browser_sessions::browser_sessions;
 use crate::db::shared::JsonStrings;
-use crate::domain::same_device_sign_in_codes::SameDeviceSignInCode;
 
 /// The longest a browser session may last: a day. No token the server mints
 /// lives longer than a session may, so this is also the floor below which a
@@ -134,78 +132,74 @@ impl BrowserSession {
         }
     }
 
-    /// Whether the session is live at `now`, in the run that `run_start`
-    /// started: not revoked, `expires_at` after `now`, and, for a same-device
-    /// session, one the run started or carried over. Every check of a
-    /// session's liveness goes through here, so none skips the run's start.
+    /// Whether the session is live at `now` under `stale_session_cutoff`:
+    /// not revoked, `expires_at` after `now`, and not a same-device session
+    /// the cutoff makes stale. Every check of a session's liveness goes
+    /// through here, so none skips the cutoff.
     ///
     /// An app's request is approved into a code only while the session it
     /// was made in is live. Otherwise it is denied, so the app hears
     /// `access_denied` rather than earning a code no live session bounds.
     #[must_use]
-    pub(crate) fn is_live_at(&self, now: DateTime<Utc>, run_start: &RunStart) -> bool {
-        let belongs_to_the_run = self.kind != BrowserSessionKind::SameDevice
-            || self.created_at >= run_start.started_at
-            || run_start.carried_over_sids.contains(&self.sid);
-        self.revoked_at.is_none() && self.expires_at > now && belongs_to_the_run
+    pub(crate) fn is_live_at(
+        &self,
+        now: DateTime<Utc>,
+        stale_session_cutoff: &StaleSessionCutoff,
+    ) -> bool {
+        self.revoked_at.is_none()
+            && self.expires_at > now
+            && !stale_session_cutoff.makes_stale(self)
     }
 }
 
-/// What the server's run took over when it started: when that was, and the
-/// same-device sessions it carried over from earlier runs, those the sign-in
-/// codes of the host's launch views still open signed in. The host ends a
-/// same-device session once the last of the server's launch views has
-/// closed, so a session no open view holds is one whose ending was missed, as
-/// across the app's exit, or failed. The run takes over no such session: one
-/// an earlier run started and this one didn't carry over isn't live
-/// ([`BrowserSession::is_live_at`]), though its row is left as it was. The
-/// token verifier refuses its cookie, as it does an expired session's, and
-/// the browser is sent through sign-in again, which the host's next launch
-/// does. Paired sessions aren't a launch's, and every run takes them over.
+/// The cutoff before which a same-device session is stale: one created before
+/// `invalidate_sessions_before` whose `sid` isn't among `exempt_sids`. A stale
+/// session isn't live ([`BrowserSession::is_live_at`]): the token verifier
+/// refuses its cookie, as it does an expired session's, the Browsers list
+/// leaves it out, and the request approver denies a request made in it. Its
+/// row is left as it was, so making a session stale writes nothing. Paired
+/// sessions are never stale.
 #[derive(Debug)]
-pub(crate) struct RunStart {
-    /// When the run started: a session started since is the run's own.
-    started_at: DateTime<Utc>,
-    /// The `sid`s of the earlier runs' same-device sessions the run carried
-    /// over: those the launch views still open hold.
-    carried_over_sids: HashSet<String>,
+pub(crate) struct StaleSessionCutoff {
+    /// A same-device session created before this is stale, unless exempt.
+    invalidate_sessions_before: DateTime<Utc>,
+    /// The `sid`s of the same-device sessions created before
+    /// `invalidate_sessions_before` that aren't stale.
+    exempt_sids: HashSet<String>,
 }
 
-impl RunStart {
-    /// A run that started at `started_at`, carrying over the sessions
-    /// `open_views_sign_in_codes`, the codes of the host's launch views still
-    /// open, whichever run minted them, signed browsers in with.
+impl StaleSessionCutoff {
+    /// A cutoff making stale the same-device sessions created before
+    /// `invalidate_sessions_before`, except those `exempt_sids` names.
     pub(crate) fn new(
-        open_views_sign_in_codes: &[SameDeviceSignInCode],
-        started_at: DateTime<Utc>,
+        invalidate_sessions_before: DateTime<Utc>,
+        exempt_sids: HashSet<String>,
     ) -> Self {
-        RunStart {
-            started_at,
-            carried_over_sids: open_views_sign_in_codes
-                .iter()
-                .filter_map(SameDeviceSignInCode::signed_in_sid)
-                .collect(),
+        StaleSessionCutoff {
+            invalidate_sessions_before,
+            exempt_sids,
         }
     }
 
-    /// A run that started before any session did, so every session is its
-    /// own.
+    /// A cutoff before any session, so no session is stale.
     #[cfg(test)]
-    pub(crate) fn before_any_session() -> Self {
-        RunStart {
-            started_at: DateTime::<Utc>::MIN_UTC,
-            carried_over_sids: HashSet::new(),
-        }
+    pub(crate) fn none() -> Self {
+        StaleSessionCutoff::new(DateTime::<Utc>::MIN_UTC, HashSet::new())
+    }
+
+    /// Whether `session` is stale: same-device, created before
+    /// `invalidate_sessions_before`, and not exempt.
+    fn makes_stale(&self, session: &BrowserSession) -> bool {
+        session.kind == BrowserSessionKind::SameDevice
+            && session.created_at < self.invalidate_sessions_before
+            && !self.exempt_sids.contains(&session.sid)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
     use crate::domain::capabilities::oauth::{PAIRED_SESSION_TTL, SAME_DEVICE_SESSION_TTL};
-    use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 
     /// A same-device session is unnamed, lasts exactly its lifetime, starts
     /// unrevoked and seen at sign-in, and never shares a `sid` with another.
@@ -267,48 +261,47 @@ mod tests {
     #[test]
     fn a_session_is_live_until_it_expires_or_is_revoked() {
         let now = Utc::now();
-        let run_start = RunStart::before_any_session();
+        let cutoff = StaleSessionCutoff::none();
         let session = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
-        assert!(session.is_live_at(now, &run_start));
-        assert!(!session.is_live_at(session.expires_at, &run_start));
+        assert!(session.is_live_at(now, &cutoff));
+        assert!(!session.is_live_at(session.expires_at, &cutoff));
         let revoked = BrowserSession {
             revoked_at: Some(now),
             ..session
         };
-        assert!(!revoked.is_live_at(now, &run_start));
+        assert!(!revoked.is_live_at(now, &cutoff));
     }
 
-    /// A same-device session an earlier run started is live only when the
-    /// run carried it over; one started since, and a paired one, are live
-    /// whatever the run carried over.
+    /// A same-device session created before `invalidate_sessions_before` is
+    /// live only when exempt; one created since, and a paired one, are live
+    /// whatever the exemptions.
     #[test]
-    fn a_run_carries_over_only_the_open_views_same_device_sessions() {
-        let codes = Arc::new(SameDeviceSignInCodes::new());
-        let started_at = Utc::now();
-        let earlier = started_at - Duration::hours(1);
-        let not_carried_over =
-            BrowserSession::new_same_device_session(vec![], Duration::hours(8), earlier);
-        let carried_over =
-            BrowserSession::new_same_device_session(vec![], Duration::hours(8), earlier);
+    fn a_cutoff_makes_stale_only_unexempt_same_device_sessions_before_it() {
+        let invalidate_sessions_before = Utc::now();
+        let earlier = invalidate_sessions_before - Duration::hours(1);
+        let stale = BrowserSession::new_same_device_session(vec![], Duration::hours(8), earlier);
+        let exempt = BrowserSession::new_same_device_session(vec![], Duration::hours(8), earlier);
         let paired = BrowserSession::new_paired_session(
             "Firefox on Linux".to_owned(),
             vec![],
             Duration::hours(24),
             earlier,
         );
-        let since = BrowserSession::new_same_device_session(vec![], Duration::hours(8), started_at);
-        codes.insert("open-view-code", earlier);
-        assert!(codes.take("open-view-code", earlier));
-        assert!(codes.session_stored("open-view-code", &carried_over));
-        let open_view_code =
-            SameDeviceSignInCode::new("open-view-code".to_owned(), Arc::clone(&codes));
+        let since = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            invalidate_sessions_before,
+        );
 
-        let run_start = RunStart::new(&[open_view_code], started_at);
+        let cutoff = StaleSessionCutoff::new(
+            invalidate_sessions_before,
+            HashSet::from([exempt.sid.clone()]),
+        );
 
-        assert!(!not_carried_over.is_live_at(started_at, &run_start));
-        assert!(carried_over.is_live_at(started_at, &run_start));
-        assert!(paired.is_live_at(started_at, &run_start));
-        assert!(since.is_live_at(started_at, &run_start));
+        assert!(!stale.is_live_at(invalidate_sessions_before, &cutoff));
+        assert!(exempt.is_live_at(invalidate_sessions_before, &cutoff));
+        assert!(paired.is_live_at(invalidate_sessions_before, &cutoff));
+        assert!(since.is_live_at(invalidate_sessions_before, &cutoff));
     }
 
     /// Each session is no longer than the longest session, which the

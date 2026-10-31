@@ -1,8 +1,9 @@
 //! Ending same-device sessions: the base ends a launch's Owner session by
 //! the sign-in code it opened the launch with, through the server's current
-//! run, once the server's launch views have closed, and a server start
-//! carries over no same-device session but those of the launch views still
-//! open, so the others no longer work, though their rows stand. An ended
+//! run, once the server's launch views have closed, and a server start cuts
+//! off the same-device sessions earlier runs signed in, except those the
+//! launch views still open hold, so the others no longer work, though their
+//! rows stand. An ended
 //! session is not revoked: its cookie stops
 //! working at once, the browser is sent to pairing, and the next launch's
 //! code signs it in again. Paired sessions survive a start.
@@ -150,10 +151,10 @@ async fn a_second_launch_reaches_consent() {
     ));
 }
 
-/// A server start carries over, of the same-device sessions an earlier run
-/// signed in, only the session of a launch view still open, so another's
-/// cookie no longer reaches the consent card, while a paired session stands.
-/// The start writes nothing: the other session's row is left as it was. That view's
+/// A server start cuts off the same-device sessions an earlier run signed in,
+/// except the session of a launch view still open, so another's cookie no
+/// longer reaches the consent card, while a paired session stands. The start
+/// writes nothing: the other session's row is left as it was. That view's
 /// session is ended later through the new run, by the code the earlier run
 /// minted. A launch on the new run signs the browser in again.
 #[tokio::test]

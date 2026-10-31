@@ -30,7 +30,7 @@ use crate::domain::authorization_request::code::resolved::ResolvedCodeRequest;
 use crate::domain::authorization_request::code::{CodeRequest, NewCodeRequestArgs};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::authorize_refusal::AuthorizeRefusal;
-use crate::domain::browser_session::RunStart;
+use crate::domain::browser_session::StaleSessionCutoff;
 use crate::domain::capabilities::writers::{CodeApproval, CodeAuthority, RequestApprover};
 use crate::domain::client_redirect::{
     BROWSER_SIGNED_OUT_DESCRIPTION, SCOPES_NOT_REGISTERED_DESCRIPTION,
@@ -208,25 +208,27 @@ pub(crate) struct CodeAuthorizationStarter<S: GrantStore> {
     /// The server's bare origin, `https://<domain>`, also its FHIR base: an
     /// `aud` must name it.
     server_origin: Arc<str>,
-    /// What the run took over when it started, which a request's browser
-    /// session needs to be live under for the fast path to issue it a code.
-    run_start: Arc<RunStart>,
+    /// The cutoff before which a same-device session is stale: a request's
+    /// browser session needs to be live under it for the fast path to issue
+    /// it a code.
+    stale_session_cutoff: Arc<StaleSessionCutoff>,
 }
 
 impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// Build the starter over the store, the popup republish port, the
-    /// server's origin and the run's start — all lifted from the state.
+    /// server's origin and the stale-session cutoff — all lifted from the
+    /// state.
     pub(crate) fn new(
         store: S,
         owner_approval: Arc<dyn OwnerApproval>,
         server_origin: Arc<str>,
-        run_start: Arc<RunStart>,
+        stale_session_cutoff: Arc<StaleSessionCutoff>,
     ) -> Self {
         CodeAuthorizationStarter {
             store,
             owner_approval,
             server_origin,
-            run_start,
+            stale_session_cutoff,
         }
     }
 
@@ -477,7 +479,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             &parked_request,
             fast_path_coverage,
             ids.code,
-            &self.run_start,
+            &self.stale_session_cutoff,
             now,
             // Park the request — every path from here on references it by id.
             |tx| {
@@ -532,7 +534,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             &parked_request,
             fast_path_coverage(&parked_request, coverage),
             code,
-            &self.run_start,
+            &self.stale_session_cutoff,
             now,
             |tx| {
                 let not_found = || {
@@ -622,14 +624,14 @@ fn fast_path_coverage(
 /// browser has said to go on, and which the start limit has admitted: `park`
 /// it (insert it, or go on past its limited page), which answers with the
 /// request as parked, then issue `code` under the standing grant when
-/// `fast_path_coverage` holds it, in the run `run_start` started, or else
-/// raise it for the Owner.
+/// `fast_path_coverage` holds it, under `stale_session_cutoff`, or else raise
+/// it for the Owner.
 fn decide<T: GrantTx>(
     tx: &mut T,
     request: &CodeRequest,
     fast_path_coverage: Option<StandingGrantCoverage>,
     code: String,
-    run_start: &RunStart,
+    stale_session_cutoff: &StaleSessionCutoff,
     now: DateTime<Utc>,
     park: impl FnOnce(&mut T) -> Result<CodeRequest, AuthorizationStartError>,
 ) -> Result<Decided, AuthorizationStartError> {
@@ -642,7 +644,7 @@ fn decide<T: GrantTx>(
             &standing_grant_coverage,
             &parked_request,
             code,
-            run_start,
+            stale_session_cutoff,
             now,
         )?,
         None => Ok(AuthorizeNextStep::AwaitOwner {
@@ -669,10 +671,10 @@ fn decide<T: GrantTx>(
 ///  - issued: [`AuthorizeNextStep::RedirectToClient`] with the code; the
 ///    scope commits the approved request, its code, and the standing grant's
 ///    `last_used_at` stamped with `now`;
-///  - the request's browser session is no longer live under `run_start`:
-///    `access_denied` to the client, saying the browser signed out; the scope
-///    commits the request denied, since there is nothing to bound the code by
-///    and nothing to revoke later;
+///  - the request's browser session is no longer live under
+///    `stale_session_cutoff`: `access_denied` to the client, saying the
+///    browser signed out; the scope commits the request denied, since there
+///    is nothing to bound the code by and nothing to revoke later;
 ///  - the request was no longer pending:
 ///    [`AuthorizationStartError::RequestNotPending`], which rolls the scope
 ///    back.
@@ -681,7 +683,7 @@ fn issue_under_standing_grant(
     standing_grant_coverage: &StandingGrantCoverage,
     parked_request: &CodeRequest,
     code: String,
-    run_start: &RunStart,
+    stale_session_cutoff: &StaleSessionCutoff,
     now: DateTime<Utc>,
 ) -> Result<Result<AuthorizeNextStep, AuthorizationStartError>, AuthorizationStartError> {
     let requested_redirect_uri = parked_request.redirect_uri.clone();
@@ -691,7 +693,7 @@ fn issue_under_standing_grant(
         parked_request,
         standing_grant_coverage.patient(),
         code,
-        run_start,
+        stale_session_cutoff,
         now,
     )? {
         CodeApproval::Issued(issued_code) => Ok(Ok(AuthorizeNextStep::RedirectToClient {
@@ -898,7 +900,7 @@ mod tests {
             store,
             owner_approval.clone(),
             SERVER_ORIGIN.into(),
-            Arc::new(RunStart::before_any_session()),
+            Arc::new(StaleSessionCutoff::none()),
         );
         (code_authorization_starter, owner_approval)
     }
@@ -1146,7 +1148,7 @@ mod tests {
             store,
             Arc::new(RecordingOwnerApproval::default()),
             SERVER_ORIGIN.into(),
-            Arc::new(RunStart::before_any_session()),
+            Arc::new(StaleSessionCutoff::none()),
         );
         assert!(matches!(
             code_authorization_starter.start(&request("app", "openid"), ids(), Utc::now()),
@@ -2093,7 +2095,7 @@ mod tests {
             store,
             Arc::new(RecordingOwnerApproval::default()),
             SERVER_ORIGIN.into(),
-            Arc::new(RunStart::before_any_session()),
+            Arc::new(StaleSessionCutoff::none()),
         );
         assert!(matches!(
             code_authorization_starter.continue_past_session_shortfall(

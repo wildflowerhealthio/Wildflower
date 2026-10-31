@@ -156,7 +156,7 @@ impl Capability for LiveConsentDecider {
             state.store.clone(),
             owner_approval,
             granted,
-            state.run_start.clone(),
+            state.stale_session_cutoff.clone(),
         )
     }
 }
@@ -191,7 +191,7 @@ impl FixedScopeCapability for LiveBrowserSessionsReader {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        BrowserSessionsReader::new(state.store.clone(), state.run_start.clone())
+        BrowserSessionsReader::new(state.store.clone(), state.stale_session_cutoff.clone())
     }
 }
 

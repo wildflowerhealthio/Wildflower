@@ -13,7 +13,7 @@ use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::{BrowserSession, RunStart};
+use crate::domain::browser_session::{BrowserSession, StaleSessionCutoff};
 use crate::domain::grant_store::BrowserSessionsTx as _;
 use crate::domain::GrantStore;
 
@@ -47,16 +47,19 @@ pub(crate) struct BrowserSessionView {
 pub(crate) struct BrowserSessionsReader<S: GrantStore> {
     /// The store the sessions are read from.
     store: S,
-    /// What the run took over when it started, which a session needs to be
-    /// live under.
-    run_start: Arc<RunStart>,
+    /// The cutoff before which a same-device session is stale, which the
+    /// list leaves out.
+    stale_session_cutoff: Arc<StaleSessionCutoff>,
 }
 
 impl<S: GrantStore> BrowserSessionsReader<S> {
-    /// Build the reader over a store handle and the run's start, lifted from
-    /// the state.
-    pub(crate) fn new(store: S, run_start: Arc<RunStart>) -> Self {
-        BrowserSessionsReader { store, run_start }
+    /// Build the reader over a store handle and the stale-session cutoff,
+    /// lifted from the state.
+    pub(crate) fn new(store: S, stale_session_cutoff: Arc<StaleSessionCutoff>) -> Self {
+        BrowserSessionsReader {
+            store,
+            stale_session_cutoff,
+        }
     }
 
     /// Every browser session
@@ -73,7 +76,7 @@ impl<S: GrantStore> BrowserSessionsReader<S> {
             .store
             .read(|tx| tx.live_browser_sessions(now))?
             .into_iter()
-            .filter(|session| session.is_live_at(now, &self.run_start))
+            .filter(|session| session.is_live_at(now, &self.stale_session_cutoff))
             .map(|session| BrowserSessionView {
                 held_by_caller: caller_sid == Some(session.sid.as_str()),
                 session,
@@ -124,13 +127,13 @@ impl<S: GrantStore> BrowserSessionsRevoker<S> {
 mod tests {
     use crate::domain::grant_store::*;
     use chrono::Duration;
+    use std::collections::HashSet;
 
     use super::*;
     use crate::domain::test_fake::FakeGrantStore;
 
-    /// The list holds only the live sessions, not an earlier run's
-    /// same-device session the run didn't carry over, and marks the
-    /// caller's.
+    /// The list holds only the live sessions, not a stale same-device
+    /// session, and marks the caller's.
     #[test]
     fn the_list_holds_the_live_sessions_and_marks_the_caller_s() {
         let store = FakeGrantStore::default();
@@ -141,7 +144,7 @@ mod tests {
             Duration::hours(8),
             now - Duration::minutes(10),
         );
-        let not_carried_over = BrowserSession::new_same_device_session(
+        let stale = BrowserSession::new_same_device_session(
             vec![],
             Duration::hours(8),
             now - Duration::hours(1),
@@ -152,7 +155,7 @@ mod tests {
             now - Duration::hours(9),
         );
         let revoked = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
-        for session in [&caller_s, &other, &not_carried_over, &expired, &revoked] {
+        for session in [&caller_s, &other, &stale, &expired, &revoked] {
             store.tx().insert_browser_session(session).unwrap();
         }
         store
@@ -161,7 +164,10 @@ mod tests {
             .unwrap();
         let reader = BrowserSessionsReader::new(
             store,
-            Arc::new(RunStart::new(&[], now - Duration::minutes(30))),
+            Arc::new(StaleSessionCutoff::new(
+                now - Duration::minutes(30),
+                HashSet::new(),
+            )),
         );
 
         let listed: Vec<(String, bool)> = reader

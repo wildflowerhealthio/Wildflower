@@ -17,9 +17,9 @@
 //! then, until that session expires, which session it started. The base holds
 //! each code it minted as a [`SameDeviceSignInCode`], through which it
 //! withdraws the code once the view it opened the code in closes, and through
-//! which the session ender finds the session to end, or the next run's start
-//! the session to carry over. A code withdrawn while its session is being stored
-//! signs nobody in: the session never lands.
+//! which the session ender finds the session to end, or setup the session to
+//! exempt from the next run's stale-session cutoff. A code withdrawn while its
+//! session is being stored signs nobody in: the session never lands.
 
 use std::collections::HashMap;
 use std::sync::Arc;

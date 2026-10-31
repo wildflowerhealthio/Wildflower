@@ -2,7 +2,7 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/tests/integration/same_device_session_ending.rs}}
 
-An Owner session a launch's sign-in started lasts only as long as the server's launch views stay open. The base ends it by the [sign-in code](<../Domain/Same Device Sign In Codes Explanation.md>) it opened the view with, through the server's current run, once the server's last launch view closes ([`SameDeviceSignInCodeMinter::end_signed_in_sessions`](<../Assembly/OAuth Bindings Explanation.md#item-SameDeviceSignInCodeMinter--end_signed_in_sessions>)), and a server start carries over no same-device session but those of the launch views still open. **Ending a session expires it**, and a session the start didn't carry over isn't live, so the token verifier refuses it as an expired one: the browser's cookie no longer counts, so `/oauth/authorize` sends the browser to pairing, and the next launch's code signs it in again. A paired browser's session survives a start. The flow is the [same-device session ender](<../Capabilities/OAuth/Same Device Session Ender Explanation.md>).
+An Owner session a launch's sign-in started lasts only as long as the server's launch views stay open. The base ends it by the [sign-in code](<../Domain/Same Device Sign In Codes Explanation.md>) it opened the view with, through the server's current run, once the server's last launch view closes ([`SameDeviceSignInCodeMinter::end_signed_in_sessions`](<../Assembly/OAuth Bindings Explanation.md#item-SameDeviceSignInCodeMinter--end_signed_in_sessions>)), and a server start cuts off every same-device session but those of the launch views still open. **Ending a session expires it**, and a session the start cut off is stale, so the token verifier refuses it as an expired one: the browser's cookie no longer counts, so `/oauth/authorize` sends the browser to pairing, and the next launch's code signs it in again. A paired browser's session survives a start. The flow is the [same-device session ender](<../Capabilities/OAuth/Same Device Session Ender Explanation.md>).
 
 This file's own helpers are on the [Test Fixtures](<Test Fixtures Explanation.md#integrationsame_device_session_ending>) page, with the shared ones.
 
@@ -26,4 +26,4 @@ Relies on [`SameDeviceSessionEnder::end_sessions_signed_in_with`](<../Capabiliti
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/same_device_session_ending.rs a_restart_ends_same_device_sessions_but_open_views_and_paired_ones}}
 
-Relies on [`RunStart`](<../Domain/Browser Session Explanation.md#item-RunStart>). Fixtures first used here: [`restart`](<Test Fixtures Explanation.md#item-restart>).
+Relies on [`StaleSessionCutoff`](<../Domain/Browser Session Explanation.md#item-StaleSessionCutoff>). Fixtures first used here: [`restart`](<Test Fixtures Explanation.md#item-restart>).

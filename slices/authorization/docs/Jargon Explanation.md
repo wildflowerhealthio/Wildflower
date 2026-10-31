@@ -792,8 +792,9 @@ their codes signed in (`SameDeviceSignInCodeMinter::end_signed_in_sessions`,
 through the run up then). The server remembers, in memory, which session each
 code started, and the host holds the codes, across the server's runs. Leaving
 the app with a view open and coming back isn't a close, and keeps it. When the
-server starts, its run carries over no same-device session but those of the
-launch views still open (`RunStart`), and the others aren't live under it, so
+server starts, the run's start cuts off every same-device session but those
+of the launch views still open (`StaleSessionCutoff`), and the others are
+stale, so
 the restart iOS brings on a return from a suspend keeps the open views'; a desktop hears no close, so its views count until
 the app exits, and the first start after the app's next start ends its
 sessions.

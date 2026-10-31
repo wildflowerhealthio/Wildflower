@@ -28,7 +28,7 @@ impl FromState for LiveTokenVerifier {
             state.store.clone(),
             state.revocation_check(),
             state.server_origin.clone(),
-            state.run_start.clone(),
+            state.stale_session_cutoff.clone(),
         )
     }
 }

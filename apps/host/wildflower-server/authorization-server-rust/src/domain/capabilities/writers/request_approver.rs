@@ -21,7 +21,7 @@ use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_request::device::DeviceRequest;
 use crate::domain::authorization_request::pairing::{PairingApproval, PairingRequest};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::RunStart;
+use crate::domain::browser_session::StaleSessionCutoff;
 use crate::domain::GrantTx;
 
 /// On whose authority a code-flow request is approved — the two proofs that
@@ -60,9 +60,8 @@ pub(crate) enum CodeApproval {
     /// won); nothing changed.
     RequestNotPending,
     /// The browser session the request was made in has ended — revoked,
-    /// expired, not carried over by the run's start, or no longer stored —
-    /// so it bounds no code: the request was
-    /// denied instead, and no code issued.
+    /// expired, stale, or no longer stored — so it bounds no code: the
+    /// request was denied instead, and no code issued.
     BrowserSessionEnded,
 }
 
@@ -102,11 +101,11 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
     ///
     /// The approval and the code land in the caller's transaction, which
     /// first loads the request's browser session. A request whose session is
-    /// no longer live at `now` under `run_start` (revoked, expired, not
-    /// carried over by the run's start, or no longer stored) is denied rather
-    /// than approved ([`CodeApproval::BrowserSessionEnded`]), so the client
-    /// hears `access_denied` rather than earning a code no live session
-    /// bounds. A request no longer pending issues nothing
+    /// no longer live at `now` under `stale_session_cutoff` (revoked, expired,
+    /// stale, or no longer stored) is denied rather than approved
+    /// ([`CodeApproval::BrowserSessionEnded`]), so the client hears
+    /// `access_denied` rather than earning a code no live session bounds. A
+    /// request no longer pending issues nothing
     /// ([`CodeApproval::RequestNotPending`]); the flow maps that to its own
     /// not-found outcome.
     ///
@@ -119,14 +118,14 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         request: &CodeRequest,
         patient: Option<&str>,
         code: String,
-        run_start: &RunStart,
+        stale_session_cutoff: &StaleSessionCutoff,
         now: DateTime<Utc>,
     ) -> Result<CodeApproval, AuthorizationServerError> {
         let authorized_scopes = authority.authorized_scopes();
         let Some(browser_session) = self
             .tx
             .browser_session_by_sid(&request.sid)?
-            .filter(|browser_session| browser_session.is_live_at(now, run_start))
+            .filter(|browser_session| browser_session.is_live_at(now, stale_session_cutoff))
         else {
             let Ok(denied) = request.deny(now) else {
                 return Ok(CodeApproval::RequestNotPending);
@@ -227,6 +226,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
 #[cfg(test)]
 mod tests {
     use chrono::Duration;
+    use std::collections::HashSet;
 
     use super::*;
     use crate::domain::authority::GrantCoverage;
@@ -276,17 +276,17 @@ mod tests {
     }
 
     /// Approve `pending_request` on the Owner's authority, issuing `the-code`,
-    /// in a run that started before any session.
+    /// under a cutoff before any session.
     fn approve(store: &FakeGrantStore, pending_request: &CodeRequest) -> CodeApproval {
-        approve_under(store, pending_request, &RunStart::before_any_session())
+        approve_under(store, pending_request, &StaleSessionCutoff::none())
     }
 
     /// Approve `pending_request` on the Owner's authority, issuing `the-code`,
-    /// in the run `run_start` started.
+    /// under `stale_session_cutoff`.
     fn approve_under(
         store: &FakeGrantStore,
         pending_request: &CodeRequest,
-        run_start: &RunStart,
+        stale_session_cutoff: &StaleSessionCutoff,
     ) -> CodeApproval {
         RequestApprover::within(&mut store.tx())
             .approve_for_code(
@@ -294,7 +294,7 @@ mod tests {
                 pending_request,
                 None,
                 "the-code".to_owned(),
-                run_start,
+                stale_session_cutoff,
                 Utc::now(),
             )
             .unwrap()
@@ -314,7 +314,7 @@ mod tests {
                 &pending_request,
                 Some("pat-1"),
                 "the-code".to_owned(),
-                &RunStart::before_any_session(),
+                &StaleSessionCutoff::none(),
                 now,
             )
             .unwrap()
@@ -412,7 +412,7 @@ mod tests {
                     &signed_out,
                     None,
                     "no-code".to_owned(),
-                    &RunStart::before_any_session(),
+                    &StaleSessionCutoff::none(),
                     Utc::now(),
                 )
                 .unwrap(),
@@ -428,7 +428,7 @@ mod tests {
                     &pending_request,
                     None,
                     "the-code".to_owned(),
-                    &RunStart::before_any_session(),
+                    &StaleSessionCutoff::none(),
                     now,
                 )
                 .unwrap(),
@@ -462,14 +462,15 @@ mod tests {
     }
 
     /// A request made in a browser session that has since been revoked, that
-    /// has expired without being revoked, that an earlier run started and the
-    /// run's start didn't carry over, or that names no session, is denied and
-    /// earns no code; one whose session stands is approved.
+    /// has expired without being revoked, that the cutoff makes stale, or
+    /// that names no session, is denied and earns no code; one whose session
+    /// stands is approved.
     #[test]
     fn approve_for_code_denies_a_request_whose_browser_session_has_ended() {
         let store = FakeGrantStore::default();
         let now = Utc::now();
-        let run_start = RunStart::new(&[], now - Duration::minutes(30));
+        let stale_session_cutoff =
+            StaleSessionCutoff::new(now - Duration::minutes(30), HashSet::new());
         let standing = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         let revoked = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         let expired = BrowserSession::new_same_device_session(
@@ -477,12 +478,12 @@ mod tests {
             Duration::hours(8),
             now - Duration::hours(9),
         );
-        let earlier_run_s = BrowserSession::new_same_device_session(
+        let stale = BrowserSession::new_same_device_session(
             vec![],
             Duration::hours(8),
             now - Duration::hours(1),
         );
-        for session in [&standing, &revoked, &expired, &earlier_run_s] {
+        for session in [&standing, &revoked, &expired, &stale] {
             store.tx().insert_browser_session(session).unwrap();
         }
         assert!(store
@@ -493,12 +494,12 @@ mod tests {
         for (id, sid) in [
             ("req-revoked", revoked.sid.as_str()),
             ("req-expired", expired.sid.as_str()),
-            ("req-not-carried-over", earlier_run_s.sid.as_str()),
+            ("req-stale", stale.sid.as_str()),
             ("req-missing", "no-such-sid"),
         ] {
             let pending_request = pending_code_request_in_session(&store, id, sid);
             assert_eq!(
-                approve_under(&store, &pending_request, &run_start),
+                approve_under(&store, &pending_request, &stale_session_cutoff),
                 CodeApproval::BrowserSessionEnded,
                 "{id}"
             );
@@ -513,7 +514,7 @@ mod tests {
         let pending_request =
             pending_code_request_in_session(&store, "req-standing", &standing.sid);
         assert!(matches!(
-            approve_under(&store, &pending_request, &run_start),
+            approve_under(&store, &pending_request, &stale_session_cutoff),
             CodeApproval::Issued(issued_code) if issued_code.sid == standing.sid
         ));
     }
@@ -541,7 +542,7 @@ mod tests {
                 &pending_request,
                 None,
                 "the-code".to_owned(),
-                &RunStart::before_any_session(),
+                &StaleSessionCutoff::none(),
                 Utc::now(),
             )
             .unwrap()

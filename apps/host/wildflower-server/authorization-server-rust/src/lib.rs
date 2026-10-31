@@ -47,7 +47,7 @@ use wildflowerhealthio_scopes::{
 };
 use wildflowerhealthio_token_revocation::RevocationStore;
 
-use crate::domain::browser_session::{RunStart, LONGEST_BROWSER_SESSION_TTL};
+use crate::domain::browser_session::{StaleSessionCutoff, LONGEST_BROWSER_SESSION_TTL};
 use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
@@ -228,11 +228,17 @@ pub struct AuthorizationServer {
 ///    Seeding at boot means a request that was pending
 ///    across an app restart is still reported (the row survived in SQLite, the
 ///    in-memory `watch` value didn't);
-///  - starts the run carrying over, of the same-device sessions earlier runs
-///    signed in, only those `open_views_sign_in_codes` signed in: the codes
-///    of the host's launch views still open, whichever run minted them. No
-///    other such session is live under the run, so the start writes nothing
-///    for them. Paired sessions stand;
+///  - cuts off, at the run's start, the same-device sessions earlier runs
+///    signed in, except those `open_views_sign_in_codes` signed in: the codes
+///    of the host's launch views still open, whichever run minted them. The
+///    host ends a same-device session once the last of the server's launch
+///    views has closed, so a session no open view holds is one whose ending
+///    was missed, as across the app's exit, or failed. So the
+///    `StaleSessionCutoff` invalidates sessions before the run's start,
+///    with the open views' sessions exempt: it makes the others stale,
+///    writing nothing, so a store that can't be written doesn't keep the
+///    server from starting, and the browser is sent through sign-in again,
+///    which the host's next launch does. Paired sessions stand;
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/authorization/*` (authenticated bearer JWT + per-resource
 ///    scope gates via the `Scoped<…>` extractors) — the
@@ -285,7 +291,13 @@ pub fn setup_authorization_server(
     let server_origin: Arc<str> =
         wildflowerhealthio_shared_structures::origin_string(&config.server_origin).into();
     let same_device_sign_in_codes = Arc::new(SameDeviceSignInCodes::new());
-    let run_start = Arc::new(RunStart::new(open_views_sign_in_codes, Utc::now()));
+    let stale_session_cutoff = Arc::new(StaleSessionCutoff::new(
+        Utc::now(),
+        open_views_sign_in_codes
+            .iter()
+            .filter_map(SameDeviceSignInCode::signed_in_sid)
+            .collect(),
+    ));
     let (pending_consents_recomputed_tx, pending_consents_recomputed_rx) = watch::channel(());
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
@@ -306,7 +318,7 @@ pub fn setup_authorization_server(
         )),
         authorization_start_gate,
         last_seen_throttle: Arc::new(LastSeenThrottle::new()),
-        run_start,
+        stale_session_cutoff,
     });
     // Publish the Owner prompt from SQLite so a request that was
     // pending across an app restart is reported in the run's first detail —

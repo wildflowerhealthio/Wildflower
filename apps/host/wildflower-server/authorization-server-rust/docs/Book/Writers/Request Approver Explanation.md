@@ -36,7 +36,7 @@ The tests park requests and approve them with the [request-approver fixtures](<T
 
 #### `approve_for_code`
 
-The session is checked with [`is_live_at`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live_at>), under the run's start, and the code lives for [`AUTHORIZATION_CODE_TTL`](<../Domain/Authorization Code Explanation.md#item-AUTHORIZATION_CODE_TTL>).
+The session is checked with [`is_live_at`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live_at>), under the stale-session cutoff, and the code lives for [`AUTHORIZATION_CODE_TTL`](<../Domain/Authorization Code Explanation.md#item-AUTHORIZATION_CODE_TTL>).
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_for_code tests="tests::approve_for_code_records_the_proofs_scopes_on_request_and_code tests::approve_for_code_stamps_only_the_standing_grant_it_issues_under tests::approve_for_code_issues_nothing_when_the_request_is_no_longer_pending tests::approve_for_code_denies_a_request_whose_browser_session_has_ended tests::approve_for_code_bounds_the_code_by_the_request_s_browser_session"}}
 

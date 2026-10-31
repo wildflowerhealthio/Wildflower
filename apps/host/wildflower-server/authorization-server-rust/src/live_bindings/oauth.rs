@@ -28,7 +28,7 @@ use crate::ports::OwnerApproval;
 /// Start an authorization-code flow — built by the `/oauth/authorize` handler
 /// and by the limited page's `/oauth/authorize/{id}/continue`. Takes the
 /// [`OwnerApproval`] port, since a request it parks is one the Owner must hear
-/// about, the server's origin and the run's start.
+/// about, the server's origin and the stale-session cutoff.
 pub(crate) type LiveCodeAuthorizationStarter = CodeAuthorizationStarter<SqliteGrantStore>;
 
 impl FromState for LiveCodeAuthorizationStarter {
@@ -38,7 +38,7 @@ impl FromState for LiveCodeAuthorizationStarter {
             state.store.clone(),
             owner_approval,
             state.server_origin.clone(),
-            state.run_start.clone(),
+            state.stale_session_cutoff.clone(),
         )
     }
 }
