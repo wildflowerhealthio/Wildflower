@@ -73,4 +73,21 @@ describe('Checkbox', () => {
     // Assert
     expect([partly, getCheckbox('All fields').indeterminate]).toEqual([true, false])
   })
+
+  it('stays partly checked after a click the parent does not act on', async () => {
+    // Arrange
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(<Checkbox checked={false} indeterminate={true} onChange={onChange} label="All fields" />)
+
+    // Act
+    await user.click(getCheckbox('All fields'))
+
+    // Assert
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(true)
+    expect({
+      checked: getCheckbox('All fields').checked,
+      indeterminate: getCheckbox('All fields').indeterminate,
+    }).toEqual({ checked: false, indeterminate: true })
+  })
 })
