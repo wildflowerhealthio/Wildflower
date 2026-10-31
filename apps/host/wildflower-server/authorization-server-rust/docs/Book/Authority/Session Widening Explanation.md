@@ -16,7 +16,7 @@ A **claimed session widening** is the authority that token is minted under. Only
 
 #### `claim`
 
-The one constructor. The claim is the widening's own [`claim`](<../Domain/Authorization Request/Session Widening Explanation.md#item-SessionWideningRequest--claim>) transition, written with the [guarded replace](<../Domain/Authorization Request Explanation.md#transitions-and-the-guarded-replace>), so **an approved widening mints one token at most**. A widening whose session has ended is not claimed: there is nothing to mint for.
+The one constructor. The claim is the widening's own [`to_claimed`](<../Domain/Authorization Request/Session Widening Explanation.md#item-SessionWideningRequest--to_claimed>) transition, written with the [guarded replace](<../Domain/Authorization Request Explanation.md#transitions-and-the-guarded-replace>), so **an approved widening mints one token at most**. A widening whose session has ended is not claimed: there is nothing to mint for.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/session_widening.rs ClaimedSessionWidening::claim tests="tests::an_approved_widening_is_claimed_once_for_the_session_as_it_stands tests::a_widening_of_an_ended_session_is_not_claimed"}}
 

@@ -20,7 +20,7 @@ Relies on [`device_page_url_with_code`](<../HTTP/Routes/Authorization Pages Expl
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs a_browser_session_approves_the_code_and_the_device_poll_succeeds}}
 
-Relies on [`DeviceRequest::approve`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--approve>) and [`DeviceRequest::claim`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--claim>). Fixtures first used here: [`signed_in_same_device_session_token`](<Test Fixtures Explanation.md#item-signed_in_same_device_session_token>), [`device_consent_request`](<Test Fixtures Explanation.md#item-device_consent_request>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>), [`poll`](<Test Fixtures Explanation.md#item-device_page--poll>) and [`TEST_CLIENT_SCOPE`](<Test Fixtures Explanation.md#item-TEST_CLIENT_SCOPE>).
+Relies on [`DeviceRequest::to_approved`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--to_approved>) and [`DeviceRequest::to_claimed`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--to_claimed>). Fixtures first used here: [`signed_in_same_device_session_token`](<Test Fixtures Explanation.md#item-signed_in_same_device_session_token>), [`device_consent_request`](<Test Fixtures Explanation.md#item-device_consent_request>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>), [`poll`](<Test Fixtures Explanation.md#item-device_page--poll>) and [`TEST_CLIENT_SCOPE`](<Test Fixtures Explanation.md#item-TEST_CLIENT_SCOPE>).
 
 ### `without_a_session_the_request_is_left_pending`
 

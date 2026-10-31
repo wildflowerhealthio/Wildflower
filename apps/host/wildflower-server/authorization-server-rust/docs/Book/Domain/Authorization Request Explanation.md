@@ -41,7 +41,7 @@ A request is started by its flow's `new` and changed only by its flow's transiti
 - **Continue racing Cancel** on the limited page. Both read it awaiting the page; whichever lands moves the status, to pending or to denied, and the other no longer matches.
 - **A poll stamp racing an approval.** A stamp leaves the status pending, so an approval read before the stamp still lands. A stamp read before the approval no longer matches, so it can't write the request back to pending.
 
-The port declares one guarded replace per flow, {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/grant_store/authorization_requests.rs AuthorizationRequestsTx::replace_code_request}} and its two siblings. Approving is the one transition that grants anything, so a source guard holds every `approve` and `claim` call to the writers and the proofs that may make them ({{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/mod.rs tests::APPROVAL_CONSTRUCTIONS}}).
+The port declares one guarded replace per flow, {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/grant_store/authorization_requests.rs AuthorizationRequestsTx::replace_code_request}} and its two siblings. Approving is the one transition that grants anything, so a source guard holds every `to_approved` and `to_claimed` call to the writers and the proofs that may make them ({{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/mod.rs tests::APPROVAL_CONSTRUCTIONS}}).
 
 ## `domain::authorization_request`
 

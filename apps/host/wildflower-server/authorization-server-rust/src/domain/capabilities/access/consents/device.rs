@@ -231,7 +231,7 @@ fn deny_device_request(
     now: DateTime<Utc>,
 ) -> Result<(), AuthorizationServerError> {
     let denied = request
-        .deny(now)
+        .to_denied(now)
         .map_err(|_| consent_not_found(user_code))?;
     if tx.replace_device_request(request, &denied)? {
         Ok(())
@@ -248,7 +248,7 @@ fn deny_pairing_request(
     now: DateTime<Utc>,
 ) -> Result<(), AuthorizationServerError> {
     let denied = request
-        .deny(now)
+        .to_denied(now)
         .map_err(|_| consent_not_found(user_code))?;
     if tx.replace_pairing_request(request, &denied)? {
         Ok(())

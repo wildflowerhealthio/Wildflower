@@ -486,7 +486,7 @@ pub fn plant_authorization_code(
         },
         requested_at,
     )
-    .approve(
+    .to_approved(
         Approval {
             granted_scopes: scope_vec.clone(),
             patient: None,
@@ -543,7 +543,7 @@ pub fn plant_device_request(
     );
     let approve = |request: &DeviceRequest| {
         request
-            .approve(
+            .to_approved(
                 Approval {
                     granted_scopes: scope_vec.clone(),
                     patient: None,
@@ -557,10 +557,10 @@ pub fn plant_device_request(
         RequestStatus::Pending => pending,
         RequestStatus::Approved => approve(&pending),
         RequestStatus::Denied => pending
-            .deny(requested_at)
+            .to_denied(requested_at)
             .expect("a pending request denies"),
         RequestStatus::Claimed => approve(&pending)
-            .claim(requested_at)
+            .to_claimed(requested_at)
             .expect("an approved request is claimed"),
         RequestStatus::AwaitingLimitedPage => panic!("a device request has no limited page"),
     };

@@ -137,7 +137,7 @@ fn deny_session_widening(
     now: DateTime<Utc>,
 ) -> Result<(), AuthorizationServerError> {
     let denied = request
-        .deny(now)
+        .to_denied(now)
         .map_err(|_| widening_not_found(&request.id))?;
     if tx.replace_session_widening_request(request, &denied)? {
         Ok(())

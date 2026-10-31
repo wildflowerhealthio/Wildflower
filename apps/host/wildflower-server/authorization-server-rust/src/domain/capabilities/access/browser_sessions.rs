@@ -111,7 +111,7 @@ pub(crate) fn revoke_browser_session(
     let revoked = tx.revoke_browser_session(sid, now)?;
     let mut widenings_denied = false;
     for widening_request in tx.pending_session_widening_requests_for_session(sid, now)? {
-        if let Ok(denied) = widening_request.deny(now) {
+        if let Ok(denied) = widening_request.to_denied(now) {
             widenings_denied |= tx.replace_session_widening_request(&widening_request, &denied)?;
         }
     }

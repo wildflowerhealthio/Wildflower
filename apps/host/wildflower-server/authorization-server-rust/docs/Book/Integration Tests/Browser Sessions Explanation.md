@@ -30,7 +30,7 @@ Relies on [`RefreshTokenFamily`](<../Domain/Refresh Token Explanation.md#item-Re
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs approving_a_request_whose_session_was_revoked_denies_it}}
 
-Relies on [`BrowserSession::is_live_at`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live_at>) and [`CodeRequest::deny`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny>), through [`RequestApprover::approve_for_code`](<../Writers/Request Approver Explanation.md#item-RequestApprover--approve_for_code>).
+Relies on [`BrowserSession::is_live_at`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live_at>) and [`CodeRequest::to_denied`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_denied>), through [`RequestApprover::approve_for_code`](<../Writers/Request Approver Explanation.md#item-RequestApprover--approve_for_code>).
 
 ### `the_browsers_list_shows_live_sessions_and_revokes_one`
 

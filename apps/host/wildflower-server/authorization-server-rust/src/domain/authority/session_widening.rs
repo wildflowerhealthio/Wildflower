@@ -40,7 +40,7 @@ impl ClaimedSessionWidening {
         stale_session_cutoff: &StaleSessionCutoff,
         now: DateTime<Utc>,
     ) -> Result<Option<Self>, AuthorizationServerError> {
-        let Ok(claimed) = widening_request.claim(now) else {
+        let Ok(claimed_request) = widening_request.to_claimed(now) else {
             return Ok(None);
         };
         let Some(session) = tx
@@ -49,7 +49,7 @@ impl ClaimedSessionWidening {
         else {
             return Ok(None);
         };
-        if !tx.replace_session_widening_request(widening_request, &claimed)? {
+        if !tx.replace_session_widening_request(widening_request, &claimed_request)? {
             return Ok(None);
         }
         Ok(Some(ClaimedSessionWidening { session }))

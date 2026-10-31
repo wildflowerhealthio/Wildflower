@@ -28,7 +28,7 @@ The tests run on a fixed clock, with the [polled-request fixtures](<../Test Fixt
 
 ### `Polled`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/polled.rs Polled tests="tests::a_poll_within_the_interval_of_the_last_one_is_too_soon tests::claim_redeems_an_approved_request_once"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/polled.rs Polled tests="tests::a_poll_within_the_interval_of_the_last_one_is_too_soon tests::to_claimed_redeems_an_approved_request_once"}}
 
 ### `PolledState`
 
@@ -80,15 +80,15 @@ For the reads that cross flows.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs DeviceRequest::new tests="tests::a_new_request_is_pending_until_it_expires"}}
 
-#### `approve`
+#### `to_approved`
 
 The Owner may settle the name the device goes by, which keys its [device grant](<../Grant Explanation.md#item-DeviceGrant>).
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs DeviceRequest::approve tests="tests::approve_records_the_approval_and_the_device_s_name"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs DeviceRequest::to_approved tests="tests::to_approved_records_the_approval_and_the_device_s_name"}}
 
-#### `deny`
+#### `to_denied`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs DeviceRequest::deny tests="tests::deny_decides_a_pending_request"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs DeviceRequest::to_denied tests="tests::to_denied_decides_a_pending_request"}}
 
 #### `stamp_poll`
 
@@ -98,11 +98,11 @@ The Owner may settle the name the device goes by, which keys its [device grant](
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs DeviceRequest::require_pending}}
 
-#### `claim`
+#### `to_claimed`
 
 The device's token poll claims the approved request through the [redemption proof](<../../Authority/Redemption Explanation.md>), and the pairing page's poll through the [browser pairing proof](<../../Authority/Browser Pairing Explanation.md>).
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs DeviceRequest::claim}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs DeviceRequest::to_claimed}}
 
 ### `NewDeviceRequestArgs`
 
@@ -122,15 +122,15 @@ The device's token poll claims the approved request through the [redemption proo
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs PairingRequest::new}}
 
-#### `approve`
+#### `to_approved`
 
 The Owner may settle the name the browser goes by on the Owner's list of browsers. The session itself starts later, when the pairing page's poll claims the request.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs PairingRequest::approve tests="tests::approve_records_the_approval_and_the_browser_s_name"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs PairingRequest::to_approved tests="tests::to_approved_records_the_approval_and_the_browser_s_name"}}
 
-#### `deny`
+#### `to_denied`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs PairingRequest::deny tests="tests::deny_decides_a_pending_pairing"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs PairingRequest::to_denied tests="tests::to_denied_decides_a_pending_pairing"}}
 
 #### `stamp_poll`
 
@@ -140,9 +140,9 @@ The Owner may settle the name the browser goes by on the Owner's list of browser
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs PairingRequest::require_pending}}
 
-#### `claim`
+#### `to_claimed`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs PairingRequest::claim tests="tests::claim_redeems_an_approved_pairing_once"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs PairingRequest::to_claimed tests="tests::to_claimed_redeems_an_approved_pairing_once"}}
 
 ### `PairingApproval`
 

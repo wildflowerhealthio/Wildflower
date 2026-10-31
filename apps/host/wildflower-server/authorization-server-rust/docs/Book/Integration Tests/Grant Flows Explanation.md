@@ -64,7 +64,7 @@ Both paths to a code go through one writer method, [`RequestApprover::approve_fo
 Three rules, in the order they run:
 
 1. **The requesting browser must still be live.** If the laptop was signed out while the Owner decided, the approval becomes a denial and Strength hears `access_denied`. There's no session left to issue under.
-2. **The request records what the authority allowed** (the [approval](<../Domain/Authorization Request Explanation.md#item-Approval>)'s granted scopes): the Owner's delegated scopes, or the requested scopes the standing grant covered ([`CodeRequest::approve`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--approve>)).
+2. **The request records what the authority allowed** (the [approval](<../Domain/Authorization Request Explanation.md#item-Approval>)'s granted scopes): the Owner's delegated scopes, or the requested scopes the standing grant covered ([`CodeRequest::to_approved`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_approved>)).
 3. **The code carries that, intersected with the browser's session** ([`session_bounded_scopes`](<../Authority/Delegated Scopes Explanation.md#item-session_bounded_scopes>)). A browser paired read-only earns its apps read-only access, whoever approved. The code also carries the `sid`, so revoking the laptop later ends everything Strength earned there.
 
 On the Owner's path, the same write scope then records the **grant** for (Strength, its redirect), unioned into any grant already there, and for a client trusted on first use creates or widens its registration ([`GrantRecorder::record_code_grant`](<../Writers/Grant Recorder Explanation.md#item-GrantRecorder--record_code_grant>)). The code, the grant and the registration land together or not at all. The grant is what lets the next request's second question answer yes. On the fast path, the same scope stamps the standing grant's `last_used_at` instead.
@@ -107,7 +107,7 @@ On the fast path the standing grant's coverage stands in for `DelegatedScopes`. 
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/grant_flows.rs auth_code_grant_happy_path_end_to_end}}
 
-Relies on [`CodeRequest::approve`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--approve>), [`AuthorizationCode`](<../Domain/Authorization Code Explanation.md#item-AuthorizationCode>) and [`mint_access_token`](<../Domain/Access Token Explanation.md#item-mint_access_token>). Fixtures first used here: [`spin_up`](<Test Fixtures Explanation.md#item-spin_up>), [`seed_client_with_redirect`](<Test Fixtures Explanation.md#item-seed_client_with_redirect>), [`CODE_VERIFIER`](<Test Fixtures Explanation.md#item-CODE_VERIFIER>), [`build_request`](<Test Fixtures Explanation.md#item-build_request>), [`browser_session_cookie`](<Test Fixtures Explanation.md#item-common--browser_session_cookie>), [`polling_request_id`](<Test Fixtures Explanation.md#item-polling_request_id>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>), [`get_authorization_status`](<Test Fixtures Explanation.md#item-get_authorization_status>) and [`assert_cache_suppressed`](<Test Fixtures Explanation.md#item-assert_cache_suppressed>).
+Relies on [`CodeRequest::to_approved`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_approved>), [`AuthorizationCode`](<../Domain/Authorization Code Explanation.md#item-AuthorizationCode>) and [`mint_access_token`](<../Domain/Access Token Explanation.md#item-mint_access_token>). Fixtures first used here: [`spin_up`](<Test Fixtures Explanation.md#item-spin_up>), [`seed_client_with_redirect`](<Test Fixtures Explanation.md#item-seed_client_with_redirect>), [`CODE_VERIFIER`](<Test Fixtures Explanation.md#item-CODE_VERIFIER>), [`build_request`](<Test Fixtures Explanation.md#item-build_request>), [`browser_session_cookie`](<Test Fixtures Explanation.md#item-common--browser_session_cookie>), [`polling_request_id`](<Test Fixtures Explanation.md#item-polling_request_id>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>), [`get_authorization_status`](<Test Fixtures Explanation.md#item-get_authorization_status>) and [`assert_cache_suppressed`](<Test Fixtures Explanation.md#item-assert_cache_suppressed>).
 
 ### `oauth_consent_prompt_carries_client_display_name`
 
@@ -215,7 +215,7 @@ Relies on [`PresentedClientChange`](<../Domain/Client Explanation.md#item-Presen
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/grant_flows.rs denying_a_new_app_registers_nothing}}
 
-Relies on [`CodeRequest::deny`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny>).
+Relies on [`CodeRequest::to_denied`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_denied>).
 
 ### `a_changed_request_never_takes_the_fast_path`
 

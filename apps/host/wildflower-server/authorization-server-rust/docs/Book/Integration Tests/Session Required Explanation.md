@@ -26,7 +26,7 @@ Relies on [`BrowserSession::is_live_at`](<../Domain/Browser Session Explanation.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs the_code_names_the_requesting_browser_s_session_not_the_approver_s}}
 
-Relies on the [`CodeRequest`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest>)'s `sid` and [`CodeRequest::approve`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--approve>), through [`RequestApprover::approve_for_code`](<../Writers/Request Approver Explanation.md#item-RequestApprover--approve_for_code>). Fixtures first used here: [`signed_in_same_device_session_token`](<Test Fixtures Explanation.md#item-signed_in_same_device_session_token>) and [`get_authorization_status`](<Test Fixtures Explanation.md#item-get_authorization_status>).
+Relies on the [`CodeRequest`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest>)'s `sid` and [`CodeRequest::to_approved`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_approved>), through [`RequestApprover::approve_for_code`](<../Writers/Request Approver Explanation.md#item-RequestApprover--approve_for_code>). Fixtures first used here: [`signed_in_same_device_session_token`](<Test Fixtures Explanation.md#item-signed_in_same_device_session_token>) and [`get_authorization_status`](<Test Fixtures Explanation.md#item-get_authorization_status>).
 
 ### `an_owner_approval_from_another_browser_is_bounded_by_the_requesting_session`
 

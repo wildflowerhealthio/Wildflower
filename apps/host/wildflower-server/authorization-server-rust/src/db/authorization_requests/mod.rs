@@ -1033,7 +1033,7 @@ mod tests {
             patient: Some("Patient/1".to_owned()),
         };
         let approved = read
-            .approve(approval, Some("Kitchen iPad".to_owned()), now)
+            .to_approved(approval, Some("Kitchen iPad".to_owned()), now)
             .expect("approves");
         assert!(store
             .write(|tx| tx.replace_device_request(&read, &approved))
@@ -1043,7 +1043,7 @@ mod tests {
             Some(AuthorizationRequest::Device(approved.clone()))
         );
 
-        let denied = read.deny(now).expect("the stale read still denies");
+        let denied = read.to_denied(now).expect("the stale read still denies");
         assert!(
             !store
                 .write(|tx| tx.replace_device_request(&read, &denied))
@@ -1101,7 +1101,7 @@ mod tests {
         };
         assert!(replace(&read.stamp_poll(now).expect("stamps")));
         assert!(replace(
-            &read.approve(approval, None, now).expect("approves")
+            &read.to_approved(approval, None, now).expect("approves")
         ));
         assert!(!replace(&read.stamp_poll(now).expect("stamps")));
         let Some(AuthorizationRequest::Device(device)) = stored(&store, "dev-1") else {
@@ -1117,7 +1117,7 @@ mod tests {
     fn a_replace_on_a_missing_or_another_row_does_not_land() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let ghost = device_request("ghost");
-        let denied = ghost.deny(Utc::now()).expect("denies");
+        let denied = ghost.to_denied(Utc::now()).expect("denies");
         assert!(!store
             .write(|tx| tx.replace_device_request(&ghost, &denied))
             .expect("replace"));
@@ -1318,7 +1318,7 @@ mod tests {
                 Utc::now()
             ))
             .expect("query"));
-        let denied = widening.deny(Utc::now()).expect("denies");
+        let denied = widening.to_denied(Utc::now()).expect("denies");
         assert!(store
             .write(|tx| tx.replace_session_widening_request(&widening, &denied))
             .expect("replace"));
@@ -1364,7 +1364,7 @@ mod tests {
                 .write(|tx| tx.insert_session_widening_request(request))
                 .expect("insert");
         }
-        let denial = denied.deny(now).expect("denies");
+        let denial = denied.to_denied(now).expect("denies");
         assert!(store
             .write(|tx| tx.replace_session_widening_request(&denied, &denial))
             .expect("replace"));

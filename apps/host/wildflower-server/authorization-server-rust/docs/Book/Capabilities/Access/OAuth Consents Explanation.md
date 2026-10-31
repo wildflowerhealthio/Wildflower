@@ -102,7 +102,7 @@ The launch's patient, and a prompt that isn't there:
 
 ### `deny_pending_request`
 
-The deny is the request's own [`deny`](<../../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny>) transition, written through the [guarded replace](<../../Domain/Authorization Request Explanation.md#transitions-and-the-guarded-replace>).
+The deny is the request's own [`to_denied`](<../../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_denied>) transition, written through the [guarded replace](<../../Domain/Authorization Request Explanation.md#transitions-and-the-guarded-replace>).
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/consents/oauth.rs deny_pending_request}}
 

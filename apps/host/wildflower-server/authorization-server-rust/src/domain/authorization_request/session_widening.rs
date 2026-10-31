@@ -124,12 +124,13 @@ impl SessionWideningRequest {
         self.claimable_until() + APPROVAL_CLAIM_GRACE
     }
 
-    /// Approve the widening at `now` with `approval`.
+    /// The widening as it would be once approved at `now` with `approval`.
+    /// Stores nothing.
     ///
     /// # Errors
     ///
     /// [`NotPending`] for a widening no longer pending at `now`.
-    pub fn approve(
+    pub fn to_approved(
         &self,
         approval: SessionWideningApproval,
         now: DateTime<Utc>,
@@ -141,12 +142,12 @@ impl SessionWideningRequest {
         })
     }
 
-    /// Deny the widening at `now`.
+    /// The widening as it would be once denied at `now`. Stores nothing.
     ///
     /// # Errors
     ///
     /// [`NotPending`] for a widening no longer pending at `now`.
-    pub fn deny(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
+    pub fn to_denied(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
         self.require_pending(now)?;
         Ok(SessionWideningRequest {
             state: PolledState::Denied,
@@ -154,14 +155,15 @@ impl SessionWideningRequest {
         })
     }
 
-    /// Claim the approved widening at `now`, once: the limited page's poll
-    /// taking the wider session token.
+    /// The approved widening as it would be once claimed at `now`: the
+    /// limited page's poll taking the wider session token, which may happen
+    /// once. Stores nothing.
     ///
     /// # Errors
     ///
     /// [`NotClaimable`] for a widening not approved, or past
     /// [`claimable_until`](Self::claimable_until).
-    pub fn claim(&self, now: DateTime<Utc>) -> Result<Self, NotClaimable> {
+    pub fn to_claimed(&self, now: DateTime<Utc>) -> Result<Self, NotClaimable> {
         match &self.state {
             PolledState::Approved(approval) if now < self.claimable_until() => {
                 Ok(SessionWideningRequest {
@@ -218,31 +220,34 @@ mod tests {
     /// expires.
     #[test]
     fn a_pending_widening_is_decided_once_until_it_expires() {
-        let approved = started().approve(approval(), at(1)).expect("approves");
+        let approved = started().to_approved(approval(), at(1)).expect("approves");
         assert_eq!(approved.state, PolledState::Approved(approval()));
-        assert_eq!(approved.deny(at(1)), Err(NotPending));
-        let denied = started().deny(at(1)).expect("denies");
+        assert_eq!(approved.to_denied(at(1)), Err(NotPending));
+        let denied = started().to_denied(at(1)).expect("denies");
         assert_eq!(denied.state, PolledState::Denied);
-        assert_eq!(denied.approve(approval(), at(1)), Err(NotPending));
-        assert_eq!(started().approve(approval(), at(5)), Err(NotPending));
+        assert_eq!(denied.to_approved(approval(), at(1)), Err(NotPending));
+        assert_eq!(started().to_approved(approval(), at(5)), Err(NotPending));
     }
 
     /// An approved widening is claimed once, keeping its approval, until
     /// [`APPROVAL_CLAIM_GRACE`] past its decision deadline; a pending or
     /// denied one is not claimable.
     #[test]
-    fn claim_redeems_an_approved_widening_once() {
-        let approved = started().approve(approval(), at(1)).expect("approves");
-        let claimed = approved.claim(at(2)).expect("claims");
+    fn to_claimed_redeems_an_approved_widening_once() {
+        let approved = started().to_approved(approval(), at(1)).expect("approves");
+        let claimed = approved.to_claimed(at(2)).expect("claims");
         assert_eq!(claimed.state, PolledState::Claimed(approval()));
-        assert_eq!(claimed.claim(at(2)), Err(NotClaimable));
-        assert_eq!(started().claim(at(2)), Err(NotClaimable));
+        assert_eq!(claimed.to_claimed(at(2)), Err(NotClaimable));
+        assert_eq!(started().to_claimed(at(2)), Err(NotClaimable));
         assert_eq!(
-            started().deny(at(1)).expect("denies").claim(at(2)),
+            started()
+                .to_denied(at(1))
+                .expect("denies")
+                .to_claimed(at(2)),
             Err(NotClaimable)
         );
         assert_eq!(
-            approved.claim(at(5) + APPROVAL_CLAIM_GRACE),
+            approved.to_claimed(at(5) + APPROVAL_CLAIM_GRACE),
             Err(NotClaimable)
         );
     }
@@ -252,10 +257,10 @@ mod tests {
     #[test]
     fn an_approval_at_the_deadline_is_claimed_after_it() {
         let approved = started()
-            .approve(approval(), at(5) - Duration::seconds(1))
+            .to_approved(approval(), at(5) - Duration::seconds(1))
             .expect("approves before the deadline");
         let claimed = approved
-            .claim(at(5) + Duration::seconds(3))
+            .to_claimed(at(5) + Duration::seconds(3))
             .expect("claims within the grace");
         assert_eq!(claimed.state, PolledState::Claimed(approval()));
         assert_eq!(started().claimable_until(), at(5) + APPROVAL_CLAIM_GRACE);

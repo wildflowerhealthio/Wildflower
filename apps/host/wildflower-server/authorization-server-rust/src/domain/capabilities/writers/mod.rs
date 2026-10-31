@@ -6,7 +6,7 @@
 //! store calls:
 //!
 //!  - [`RequestApprover`] — approve a pending request (the flow's own
-//!    `approve` transition) and, for the code flow, issue its authorization
+//!    `to_approved` transition) and, for the code flow, issue its authorization
 //!    code (under a [`CodeAuthority`]: the Owner's `DelegatedScopes` or a
 //!    `StandingGrantCoverage`), or for a session widening, widen its browser
 //!    session (under `DelegatedScopes`).
@@ -113,9 +113,9 @@ mod tests {
     /// each may appear. An approved request is what a code, a device grant or
     /// a paired session is issued against, so only these may build one:
     ///
-    /// - each flow's `approve` transition, called only by the writers, under
+    /// - each flow's `to_approved` transition, called only by the writers, under
     ///   the proof they demand;
-    /// - each polled flow's `claim` transition, called only by the writers and
+    /// - each polled flow's `to_claimed` transition, called only by the writers and
     ///   by the three authority proofs whose single-use redemption it is
     ///   (`ConsumedDeviceRequest`, `ClaimedBrowserPairing` and
     ///   `ClaimedSessionWidening`);
@@ -126,12 +126,12 @@ mod tests {
     ///   another request's state over, built only there too.
     const APPROVAL_CONSTRUCTIONS: &[ApprovalConstruction] = &[
         ApprovalConstruction {
-            needle: ".approve(",
+            needle: ".to_approved(",
             allowed: &[WRITERS, TEST_FAKE],
             read_in_match_arms: false,
         },
         ApprovalConstruction {
-            needle: ".claim(",
+            needle: ".to_claimed(",
             allowed: &[
                 WRITERS,
                 TEST_FAKE,

@@ -54,17 +54,17 @@ The tests start a request at minute 0 that lives until minute 5, from the [code 
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::admits_patient tests="tests::admits_patient_holds_an_approval_to_the_launch_s_patient"}}
 
-#### `approve`
+#### `to_approved`
 
 The request records what was approved. The code issued for it carries less, only what the requesting browser's session also covers: that bound lives in the writer, {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_for_code}}, not on this entity.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::approve tests="tests::approve_records_the_approval_only_while_pending"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::to_approved tests="tests::to_approved_records_the_approval_only_while_pending"}}
 
-#### `deny`
+#### `to_denied`
 
 The same transition denies a request whose browser session ended before the approval could land, so the app hears `access_denied` instead of earning a code no live session bounds.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::deny tests="tests::deny_decides_a_pending_request"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::to_denied tests="tests::to_denied_decides_a_pending_request"}}
 
 #### `raise_for_owner`
 

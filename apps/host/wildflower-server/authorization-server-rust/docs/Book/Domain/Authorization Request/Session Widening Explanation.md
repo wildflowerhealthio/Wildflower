@@ -54,19 +54,19 @@ A widening shares the [polled requests'](<Polled Requests Explanation.md>) lifec
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::asking_code_request_expires_at}}
 
-#### `approve` and `deny`
+#### `to_approved` and `to_denied`
 
 Only the [request approver](<../../Writers/Request Approver Explanation.md>) approves a widening, under the Owner's [delegated scopes](<../../Authority/Delegated Scopes Explanation.md>).
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::approve}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::to_approved}}
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::deny tests="tests::a_pending_widening_is_decided_once_until_it_expires"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::to_denied tests="tests::a_pending_widening_is_decided_once_until_it_expires"}}
 
-#### `claim`
+#### `to_claimed`
 
 The claim is the [claimed session widening](<../../Authority/Session Widening Explanation.md>)'s single use.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::claim tests="tests::claim_redeems_an_approved_widening_once tests::an_approval_at_the_deadline_is_claimed_after_it"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::to_claimed tests="tests::to_claimed_redeems_an_approved_widening_once tests::an_approval_at_the_deadline_is_claimed_after_it"}}
 
 #### `require_pending`
 

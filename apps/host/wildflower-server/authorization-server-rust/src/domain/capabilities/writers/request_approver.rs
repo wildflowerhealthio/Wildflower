@@ -1,7 +1,7 @@
 //! [`RequestApprover`] — the writer that moves a pending authorization request
-//! to approved (the flow's own `approve` transition —
-//! [`CodeRequest::approve`], [`DeviceRequest::approve`],
-//! [`PairingRequest::approve`] or [`SessionWideningRequest::approve`] —
+//! to approved (the flow's own `to_approved` transition —
+//! [`CodeRequest::to_approved`], [`DeviceRequest::to_approved`],
+//! [`PairingRequest::to_approved`] or [`SessionWideningRequest::to_approved`] —
 //! written with the flow's guarded replace) and, for the code flow, issues
 //! the authorization code the client redeems at `/oauth/token`, and for a
 //! session widening, widens the browser session. Every write demands a proof
@@ -155,7 +155,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         let authorized_scopes = authority.authorized_scopes();
         let browser_session =
             match self.live_session_or_deny(&request.sid, stale_session_cutoff, now, |tx| {
-                match request.deny(now) {
+                match request.to_denied(now) {
                     Ok(denied) => tx.replace_code_request(request, &denied),
                     Err(_) => Ok(false),
                 }
@@ -168,7 +168,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
             granted_scopes: authorized_scopes.to_vec(),
             patient: patient.map(str::to_owned),
         };
-        let Ok(approved) = request.approve(approval, now) else {
+        let Ok(approved) = request.to_approved(approval, now) else {
             return Ok(CodeApproval::RequestNotPending);
         };
         if !self.tx.replace_code_request(request, &approved)? {
@@ -218,7 +218,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
             granted_scopes: delegated_scopes.scopes().to_vec(),
             patient: patient.map(str::to_owned),
         };
-        match request.approve(approval, device_name.map(str::to_owned), now) {
+        match request.to_approved(approval, device_name.map(str::to_owned), now) {
             Ok(approved) => self.tx.replace_device_request(request, &approved),
             Err(_) => Ok(false),
         }
@@ -244,7 +244,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         let approval = PairingApproval {
             granted_scopes: delegated_scopes.scopes().to_vec(),
         };
-        match request.approve(approval, browser_name.map(str::to_owned), now) {
+        match request.to_approved(approval, browser_name.map(str::to_owned), now) {
             Ok(approved) => self.tx.replace_pairing_request(request, &approved),
             Err(_) => Ok(false),
         }
@@ -275,7 +275,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
     ) -> Result<SessionWideningOutcome, AuthorizationServerError> {
         let browser_session =
             match self.live_session_or_deny(&request.sid, stale_session_cutoff, now, |tx| {
-                match request.deny(now) {
+                match request.to_denied(now) {
                     Ok(denied) => tx.replace_session_widening_request(request, &denied),
                     Err(_) => Ok(false),
                 }
@@ -291,7 +291,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         let approval = SessionWideningApproval {
             granted_scopes: delegated_scopes.scopes().to_vec(),
         };
-        let Ok(approved) = request.approve(approval, now) else {
+        let Ok(approved) = request.to_approved(approval, now) else {
             return Ok(SessionWideningOutcome::RequestNotPending);
         };
         if !self
@@ -567,7 +567,7 @@ mod tests {
     fn approve_for_code_issues_nothing_when_the_request_is_no_longer_pending() {
         let store = FakeGrantStore::default();
         let pending_request = pending_code_request(&store, "req-1");
-        let denied = pending_request.deny(Utc::now()).unwrap();
+        let denied = pending_request.to_denied(Utc::now()).unwrap();
         assert!(store
             .tx()
             .replace_code_request(&pending_request, &denied)

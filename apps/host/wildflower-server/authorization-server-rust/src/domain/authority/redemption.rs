@@ -345,7 +345,7 @@ impl ConsumedDeviceRequest {
             PolledState::Claimed(_) => return Ok(Err(TokenExchangeError::ExpiredToken)),
             PolledState::Approved(approval) => approval.clone(),
         };
-        let claimed = request.claim(now).map_err(|_| {
+        let claimed = request.to_claimed(now).map_err(|_| {
             AuthorizationServerError::infrastructure(
                 "claiming a device request",
                 "an approved, unexpired request is not claimable",
