@@ -78,7 +78,8 @@ pub(super) enum SessionWideningStatusBody {
     responses(
         (status = 200, description = "The widening waiting for the Owner: filed by this ask, or by an earlier one for the same request", body = AskedSessionWideningBody),
         (status = 429, description = "The authorization start limit refused a new widening"),
-        (status = 404, description = "No request with that id waits on this browser's limited page, or this browser's session lacks nothing it could be widened by", body = AuthorizationRequestNotFound)
+        (status = 404, description = "No request with that id waits on this browser's limited page, or this browser's session lacks nothing it could be widened by", body = AuthorizationRequestNotFound),
+        (status = 500, description = "A store failed, or the browser's session couldn't be verified; logged, with no body")
     )
 )]
 pub(super) async fn handle_session_widening_ask(
@@ -110,8 +111,11 @@ pub(super) async fn handle_session_widening_ask(
     path = "/session-widenings/{id}/poll",
     params(("id" = String, Path, description = "Session widening id")),
     responses(
-        (status = 200, description = "Where the widening stands", body = SessionWideningStatusBody),
-        (status = 404, description = "No widening asked in this browser's session has that id", body = SessionWideningNotFound)
+        (status = 200, description = "Where the widening stands", body = SessionWideningStatusBody, headers(
+            ("Set-Cookie" = String, description = "The browser's wider session token as its `__Host-browser_session` cookie, set only when the status is `widened`")
+        )),
+        (status = 404, description = "No widening asked in this browser's session has that id", body = SessionWideningNotFound),
+        (status = 500, description = "A store failed, the browser's session couldn't be verified, or the wider session's token couldn't be minted; logged, with no body")
     )
 )]
 pub(super) async fn handle_session_widening_poll(
