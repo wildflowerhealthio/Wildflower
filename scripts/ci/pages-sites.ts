@@ -223,7 +223,7 @@ const PAGES_SITES: readonly PagesSite[] = [...APP_PAGES_SITES, MARKETING_PAGES_S
 
 /**
  * The sites a branch's changes can affect: every site when `selectionFor`
- * (the TypeScript test shards' rule) would run every area — a root config or
+ * (the TypeScript test plan's rule) would run every project — a root config or
  * lockfile change, or a change outside every package, such as this script,
  * the deploy workflows, or a book chapter and the Rust it excerpts — and
  * otherwise the sites whose package, or whose book, the changes reach through
@@ -233,7 +233,7 @@ const affectedSites = (
   affected: AffectedPackages,
   packages: readonly Pkg[]
 ): readonly PagesSite[] =>
-  selectionFor(affected, packages)._tag === 'AllAreas'
+  selectionFor(affected, packages)._tag === 'AllProjects'
     ? PAGES_SITES
     : PAGES_SITES.filter(
         (site) =>

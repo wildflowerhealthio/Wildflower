@@ -141,7 +141,7 @@ describe('computeAge', () => {
 })
 ```
 
-Why `numRunsFor`? It lets `vp run test:changed` scale the run count down for packages unchanged vs `origin/main`. Hardcoding `numRuns` defeats that — always route the count through `numRunsFor({ base: N })`.
+Why `numRunsFor`? It lets the test plan scale the run count down (FC_RUN_SCALE) for a branch whose changes reach no package. Hardcoding `numRuns` defeats that — always route the count through `numRunsFor({ base: N })`.
 
 **👎 Avoid** writing tests depending on unstable values  
 Eg.: in the example above `computeAge` depends on the current date  
@@ -428,7 +428,7 @@ import { describe, expect, it } from 'vite-plus/test'
 - Synchronous: `fc.assert(fc.property(...arbs, (...values) => { ... }), { numRuns: numRunsFor({ base: 100 }) })`
 - Asynchronous: `await fc.assert(fc.asyncProperty(...arbs, async (...values) => { ... }), { numRuns: numRunsFor({ base: 100 }) })`
 
-Always route the run count through `numRunsFor({ base: N })` (from `kitchen-sink/test`) rather than a hardcoded `numRuns`, so `vp run test:changed` can scale it down for packages unchanged vs `origin/main`. `base` is the full run count used when the package *has* changed. This is the convention used by ~91 test files. Canonical example to mirror: `slices/browser-sniffer/browser-sniffer-core/src/bridge.test.ts`.
+Always route the run count through `numRunsFor({ base: N })` (from `kitchen-sink/test`) rather than a hardcoded `numRuns`, so the test plan can scale it down (FC_RUN_SCALE) for a branch whose changes reach no package. `base` is the full run count, what every other run uses. This is the convention used by ~91 test files. Canonical example to mirror: `slices/browser-sniffer/browser-sniffer-core/src/bridge.test.ts`.
 
 ### Do NOT use `@effect/vitest` or `@fast-check/vitest`
 

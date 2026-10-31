@@ -6,11 +6,11 @@ import { basename, dirname, join, matchesGlob, normalize } from 'node:path'
 // a changed file, plus every package that depends on one of them, directly or
 // through others (the reverse workspace dependency graph). A package depends
 // on another when its manifest names it, or when its source imports a file
-// out of the other's folder by relative path. Shared by
-// `risk-map.ts` (full property-test runs for affected packages) and
-// `ci/test-shards.ts` (CI test shards only for affected areas), and its
-// workspace reader by `package-graph.ts`, so the three never disagree about
-// which packages exist or what a change reaches.
+// out of the other's folder by relative path. Shared by `ci/test-shards.ts`
+// (CI's test plan, and through `test-changed.ts` the local one, running only
+// affected packages' projects), and its workspace reader by
+// `package-graph.ts`, so they never disagree about which packages exist or
+// what a change reaches.
 import { Effect, Either, Option, pipe, Schema } from 'effect'
 import { parse as parseYaml } from 'yaml'
 

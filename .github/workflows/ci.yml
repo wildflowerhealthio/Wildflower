@@ -44,7 +44,7 @@ jobs:
       typescript: ${{ steps.filter.outputs.typescript }}
       typescript-matrix: ${{ steps.typescript-plan.outputs.matrix || '{"include":[]}' }}
       typescript-shard-count: ${{ steps.typescript-plan.outputs.shard-count || '0' }}
-      typescript-risk-map: ${{ steps.typescript-risk-map.outputs.risk-map || '{}' }}
+      typescript-run-scale: ${{ steps.typescript-plan.outputs.run-scale || '1' }}
       rust: ${{ steps.filter.outputs.rust }}
       rust-matrix: ${{ steps.rust-plan.outputs.matrix || '{"include":[]}' }}
       rust-shard-count: ${{ steps.rust-plan.outputs.shard-count || '0' }}
@@ -242,14 +242,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The top-level areas (`global`, `scripts`, `slices`, each
-      # `apps/<folder>`), derived from the Vitest projects the root
-      # vite.config.ts defines, so a new `apps/<folder>` is covered with no
-      # edit here. Only areas holding a package the PR changes or reaches
-      # through the workspace dependency graph run; a root config or lockfile
-      # change, or any change outside every package (CI plumbing, the shard
-      # script, docs, Rust) runs them all. The selected areas are packed by
-      # rough test time onto at most a few shards, one runner each. Rules:
+      # The Vitest projects the root vite.config.ts defines, so a new package
+      # is covered with no edit here. Only the projects of packages the PR
+      # changes or reaches through the workspace dependency graph run, plus
+      # `scripts`; a root config or lockfile change, or any change outside
+      # every package (CI plumbing, the shard script, docs, Rust) runs them
+      # all, at a fifth of the fast-check runs when no package changed. The
+      # selected projects are grouped by top-level area and packed by rough
+      # test time onto at most a few shards, one runner each. Rules:
       # scripts/ci/test-shards.ts. The planner loads the Vitest configs, so
       # it needs `vp install` but no `vp run pack`.
       #
@@ -272,22 +272,15 @@ jobs:
         id: typescript-plan
         if: steps.filter.outputs.typescript == 'true'
         run: |
-          matrix=$(node scripts/ci/test-shards.ts)
-          shard_count=$(jq '.include | length' <<< "$matrix")
+          plan=$(node scripts/ci/test-shards.ts)
+          matrix=$(jq -c '.matrix' <<< "$plan")
+          shard_count=$(jq '.matrix.include | length' <<< "$plan")
+          run_scale=$(jq '.runScale' <<< "$plan")
           {
             echo "matrix=$matrix"
             echo "shard-count=$shard_count"
+            echo "run-scale=$run_scale"
           } >> "$GITHUB_OUTPUT"
-
-      # `{ <package>: <multiplier> }`: full fast-check runs for packages the PR
-      # can affect, a fifth for the rest, computed once for every shard. See
-      # docs/Testing/Property Testing Reference.md.
-      - name: Compute property-test risk map
-        id: typescript-risk-map
-        if: steps.filter.outputs.typescript == 'true'
-        run: |
-          risk_map=$(node scripts/risk-map.ts)
-          echo "risk-map=$risk_map" >> "$GITHUB_OUTPUT"
 
       # A fixed set of crate groups, and only those holding a crate the PR
       # changes or reaches through the workspace path deps. A change to the
@@ -330,7 +323,7 @@ jobs:
     with:
       matrix: ${{ needs.changes.outputs.typescript-matrix }}
       shard-count: ${{ needs.changes.outputs.typescript-shard-count }}
-      risk-map: ${{ needs.changes.outputs.typescript-risk-map }}
+      run-scale: ${{ needs.changes.outputs.typescript-run-scale }}
 
   rust:
     name: Rust

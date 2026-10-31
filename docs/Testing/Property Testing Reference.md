@@ -116,7 +116,7 @@ When applicable, test for mathematical truths:
 
 `@fast-check/vitest`'s `it.prop(...)` is broken under Vite+ — it registers tests against the `vitest` package's runner instance, a different module instance than `vite-plus/test`'s, so collection dies with `Error: Vitest failed to find the current suite. This is a bug in Vitest.` (it isn't; it's the same dual-runner mismatch that breaks `@effect/vitest`). The `/javascript-testing-expert` skill's appendix recommends `@fast-check/vitest` — do not follow it on this repo.
 
-The convention that works: import raw `fast-check`, write properties inside a normal `test(...)`/`it(...)`, and pass `numRuns` from `numRunsFor`. This is also what lets `test:changed` scale runs down.
+The convention that works: import raw `fast-check`, write properties inside a normal `test(...)`/`it(...)`, and pass `numRuns` from `numRunsFor`. This is also what lets the test plan scale runs down.
 
 ```typescript
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -137,12 +137,12 @@ Use `fc.asyncProperty` + `await fc.assert(...)` for effectful bodies. Canonical 
 
 ## Never hardcode `numRuns` — always `numRunsFor({ base })`
 
-Pass every property's iteration count through `numRunsFor` from `kitchen-sink/test`, never a bare `{ numRuns: 100 }`. `numRunsFor({ base, minimum? })` resolves a per-package multiplier at call time so `vp run test:changed` can scale unchanged packages down without editing test source.
+Pass every property's iteration count through `numRunsFor` from `kitchen-sink/test`, never a bare `{ numRuns: 100 }`. `numRunsFor({ base, minimum? })` multiplies `base` by the `FC_RUN_SCALE` environment variable at call time, so a run can be scaled down without editing test source.
 
 How the scaling resolves:
 
-- `test:changed` sets `FC_RISK_MAP` from `scripts/risk-map.ts` — a `{ <pkgName>: <multiplier> }` map. Packages reachable from a change get ×1.0; everything else gets ×0.2 (floored at 10). Plain `vp test` leaves `FC_RISK_MAP` unset, so `base` is used as-is. CI computes the map once, in `ci.yml`'s `Detect changes` job, and hands it to every test shard.
-- `numRunsFor` identifies the calling package from the **test file's own path** (via Vitest's `expect.getState().testPath`, with a call-stack fallback), resolved per call. It does **not** use `process.cwd()`: under Vitest projects mode every worker's `cwd` is the monorepo root, so a `cwd`-based lookup silently never matched the risk map and the scaling was a no-op. Don't reintroduce a `cwd`-based package resolution.
+- The test plan ([`scripts/ci/test-shards.ts`](../../scripts/ci/test-shards.ts)) runs only the projects a branch's changes can affect, at full scale (`FC_RUN_SCALE=1`). When the changes reach no package — CI plumbing, docs, the repo scripts — it runs every project at `FC_RUN_SCALE=0.2`: a fifth of `base`, floored at `min(minimum, base)` with `minimum` defaulting to 10. CI computes the scale once, in `ci.yml`'s `Detect changes` job, and hands it to every test shard; `vp run test:changed` sets it the same way. See [Testing Reference](./Testing%20Reference.md#test-shards-in-ci).
+- Plain `vp test` leaves `FC_RUN_SCALE` unset, so `base` is used as-is; so does a value that isn't a finite, non-negative number.
 
 Opting out of the rule is invisible — nothing fails, the suite is just un-scalable — so a repo-tooling test enforces it: [`scripts/property-test-num-runs.test.ts`](../../scripts/property-test-num-runs.test.ts) sweeps every `*.test.{ts,tsx,mts,cts}` in the working tree and fails, listing the offending paths, when a file calls `fc.assert(` without mentioning `numRunsFor`. It derives the list from the tree — a new property test is covered the moment it lands — skipping dependency and build directories (`node_modules`, `dist*`, `coverage`, `target`, `vendor`) and the parallel worktree checkouts under `.worktrees/` and `.claude/worktrees/`, whose contents belong to another branch. The check is file-scoped, so a `const RUNS = numRunsFor({ base: 25 })` hoisted above several asserts satisfies it. A package whose test imports `numRunsFor` for the first time needs the `kitchen-sink` workspace dev-dependency and a `vp install`.
 
