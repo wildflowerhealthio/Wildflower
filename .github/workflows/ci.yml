@@ -32,8 +32,7 @@ jobs:
   # Also plans the TypeScript and Rust test matrices, which the called
   # workflows take as inputs, so their test runners start straight after this
   # job instead of waiting on a planning job of their own. A plan runs only
-  # when its area changed and the PR is not a draft; an area left unplanned
-  # reports no shards.
+  # when its area changed; an area left unplanned reports no shards.
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
@@ -195,9 +194,7 @@ jobs:
       # The planners diff against their merge-base with origin/main, so they
       # need the full history.
       - name: Checkout code
-        if: >-
-          github.event.pull_request.draft != true &&
-          (steps.filter.outputs.typescript == 'true' || steps.filter.outputs.rust == 'true')
+        if: steps.filter.outputs.typescript == 'true' || steps.filter.outputs.rust == 'true'
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -214,21 +211,21 @@ jobs:
       # Restores the pnpm store without saving it: ci-typescript.yml's
       # `check` saves this run's.
       - name: Setup Vite+
-        if: github.event.pull_request.draft != true && steps.filter.outputs.typescript == 'true'
+        if: steps.filter.outputs.typescript == 'true'
         uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
           cache-save: false
 
       - name: Install dependencies
-        if: github.event.pull_request.draft != true && steps.filter.outputs.typescript == 'true'
+        if: steps.filter.outputs.typescript == 'true'
         run: vp install
 
       # Assigned first, then written: a failure inside `echo "...$(...)"` would
       # not fail the step.
       - name: Plan TypeScript test shards
         id: typescript-plan
-        if: github.event.pull_request.draft != true && steps.filter.outputs.typescript == 'true'
+        if: steps.filter.outputs.typescript == 'true'
         run: |
           matrix=$(node scripts/ci/test-shards.ts)
           shard_count=$(jq '.include | length' <<< "$matrix")
@@ -242,7 +239,7 @@ jobs:
       # docs/Testing/Property Testing Reference.md.
       - name: Compute property-test risk map
         id: typescript-risk-map
-        if: github.event.pull_request.draft != true && steps.filter.outputs.typescript == 'true'
+        if: steps.filter.outputs.typescript == 'true'
         run: |
           risk_map=$(node scripts/risk-map.ts)
           echo "risk-map=$risk_map" >> "$GITHUB_OUTPUT"
@@ -253,7 +250,7 @@ jobs:
       # them all. Rules: scripts/ci/rust-shards.ts. The planner imports only
       # Node builtins, so it needs no `vp install`.
       - name: Setup Node
-        if: github.event.pull_request.draft != true && steps.filter.outputs.rust == 'true'
+        if: steps.filter.outputs.rust == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: '26'
@@ -263,7 +260,7 @@ jobs:
       # from first installing the version rust-toolchain.toml pins.
       - name: Plan Rust test shards
         id: rust-plan
-        if: github.event.pull_request.draft != true && steps.filter.outputs.rust == 'true'
+        if: steps.filter.outputs.rust == 'true'
         env:
           RUSTUP_TOOLCHAIN: stable
         run: |
