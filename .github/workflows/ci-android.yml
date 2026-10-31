@@ -173,13 +173,19 @@ jobs:
       # Android Gradle Plugin 8 needs JDK 17. `cache: gradle` keeps Gradle's
       # downloads (the wrapper's distribution, plugins and dependencies),
       # keyed on the Gradle files' hash — see docs/Rust/CI Build Cache
-      # Explanation.md.
+      # Explanation.md. The bundle action's file joins the hash so this job's
+      # key differs from `check`'s: the bundle downloads more (lintVital,
+      # bundletool), and one shared key would keep only `check`'s entry.
       - name: Set up JDK
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
+          cache-dependency-path: |
+            **/*.gradle*
+            **/gradle-wrapper.properties
+            .github/actions/build-android-bundle/action.yml
 
       # Saves the `release-android` cache only on main, into the scope the
       # release and pull requests restore from; a pull request's build
