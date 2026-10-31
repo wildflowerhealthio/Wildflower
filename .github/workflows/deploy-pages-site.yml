@@ -60,6 +60,14 @@ jobs:
           cache: true
           cache-save: false
 
+      # Restore only: the packages the sites build are mostly unchanged since
+      # main's last pack, which ts-cache-warm.yml saves. See
+      # docs/TypeScript/CI Build Cache Explanation.md.
+      - name: Cache vp pack outputs
+        uses: ./.github/actions/vp-pack-cache
+        with:
+          save: 'false'
+
       - name: Install dependencies
         run: vp install
 

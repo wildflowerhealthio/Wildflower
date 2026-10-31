@@ -48,6 +48,14 @@ A shard starts alongside `check`, not after it, so it never restores `check`'s
 entry from the same run. It restores main's (or the pull request's previous
 push's) and packs only what this push changed.
 
+The Pages deploys restore the same entry without saving it: each job of
+`pr-preview.yml`'s `deploy` and of `deploy-pages-site.yml`. Their site builds
+(`scripts/ci/deploy-pages-sites.sh`) run `vp run --cache`, so a workspace
+package the entry already holds, or an earlier site in the job built, is
+replayed rather than rebuilt. An app's own `vp build` reports the environment
+it reads to the task cache, and each build carries its commit as its Sentry
+release, so app builds themselves miss.
+
 ## Why the default branch has to warm the cache
 
 GitHub scopes Actions caches per ref. A run on a pull request can **restore** a

@@ -90,7 +90,11 @@ build_site() {
 
   # `<package>...` builds the package and every workspace package it depends
   # on, in dependency order, as `vp run pack` would for the whole workspace.
-  vp run --filter "$package..." build
+  # `--cache` replays a package already built, by an earlier site in this job
+  # or in the restored pack cache, instead of building it again. The app's
+  # own `vp build` reports the environment it reads, so a different DSN,
+  # environment or release is a cache miss.
+  vp run --cache --filter "$package..." build
   node scripts/ci/pages-sites.ts check "$name"
   # The book's `{{#code}}` directives name source by file and symbol, so a
   # PR whose chapters or excerpted code no longer match fails here. Its links
