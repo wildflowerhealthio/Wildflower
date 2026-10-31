@@ -86,6 +86,7 @@ impl<S: GrantStore> ConsentDecider<S> {
             match RequestApprover::within(tx).approve_session_widening(
                 &delegated_scopes,
                 &request,
+                &self.stale_session_cutoff,
                 now,
             )? {
                 SessionWideningOutcome::Widened => Ok(ConsentOutcome::Approved { redirect: None }),
@@ -152,6 +153,7 @@ fn widening_not_found(id: &str) -> AuthorizationServerError {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::browser_session::StaleSessionCutoff;
     use std::sync::Arc;
 
     use chrono::Duration;
@@ -217,6 +219,7 @@ mod tests {
             store.clone(),
             Arc::new(RecordingOwnerApproval::default()),
             Grant::parse(approver_scopes.iter().copied()),
+            Arc::new(StaleSessionCutoff::none()),
         )
     }
 
@@ -226,6 +229,7 @@ mod tests {
             store.clone(),
             Arc::new(RecordingOwnerApproval::default()),
             Grant::parse(crate::owner_scopes()),
+            Arc::new(StaleSessionCutoff::none()),
         )
     }
 

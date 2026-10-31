@@ -27,7 +27,7 @@ use crate::domain::authorization_request::session_widening::{
     NewSessionWideningRequestArgs, SessionWideningRequest,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::BrowserSessionKind;
+use crate::domain::browser_session::{BrowserSessionKind, StaleSessionCutoff};
 use crate::domain::capabilities::writers::AccessTokenMinter;
 use crate::domain::grant_store::{AuthorizationRequestsTx as _, BrowserSessionsTx as _};
 use crate::domain::{GrantStore, GrantTx};
@@ -100,6 +100,9 @@ pub(crate) struct SessionWidening<S: GrantStore> {
     revocation: Arc<dyn Revocation>,
     /// The server's bare origin, the session token's `iss` and `aud`.
     server_origin: Arc<str>,
+    /// The cutoff before which a same-device session is stale: a widening
+    /// is asked and claimed only for a session live under it.
+    stale_session_cutoff: Arc<StaleSessionCutoff>,
 }
 
 impl<S: GrantStore> SessionWidening<S> {
@@ -109,12 +112,14 @@ impl<S: GrantStore> SessionWidening<S> {
         owner_approval: Arc<dyn OwnerApproval>,
         revocation: Arc<dyn Revocation>,
         server_origin: Arc<str>,
+        stale_session_cutoff: Arc<StaleSessionCutoff>,
     ) -> Self {
         SessionWidening {
             store,
             owner_approval,
             revocation,
             server_origin,
+            stale_session_cutoff,
         }
     }
 
@@ -149,7 +154,9 @@ impl<S: GrantStore> SessionWidening<S> {
                 load_code_request_awaiting_limited_page(tx, code_request_id, sid, now)?;
             let browser_session = tx
                 .browser_session_by_sid(sid)?
-                .filter(|browser_session| browser_session.is_live(now))
+                .filter(|browser_session| {
+                    browser_session.is_live_at(now, &self.stale_session_cutoff)
+                })
                 .filter(|browser_session| browser_session.kind == BrowserSessionKind::Paired)
                 .ok_or_else(not_found)?;
             let Some(browser_name) = browser_session.name else {
@@ -259,7 +266,8 @@ impl<S: GrantStore> SessionWidening<S> {
         widening_request: &SessionWideningRequest,
         now: DateTime<Utc>,
     ) -> Result<PolledWidening, SessionWideningPollError> {
-        let Some(claimed_widening) = ClaimedSessionWidening::claim(tx, widening_request, now)?
+        let Some(claimed_widening) =
+            ClaimedSessionWidening::claim(tx, widening_request, &self.stale_session_cutoff, now)?
         else {
             return Ok(PolledWidening::Answered(SessionWideningStatus::Expired));
         };
@@ -398,6 +406,7 @@ mod tests {
                 owner_approval.clone(),
                 revocation.clone(),
                 SERVER_ORIGIN.into(),
+                Arc::new(StaleSessionCutoff::none()),
             ),
             owner_approval,
             revocation,
@@ -427,6 +436,7 @@ mod tests {
             fixture.session_widening.store.clone(),
             fixture.owner_approval.clone(),
             Grant::parse(crate::owner_scopes()),
+            Arc::new(StaleSessionCutoff::none()),
         )
     }
 

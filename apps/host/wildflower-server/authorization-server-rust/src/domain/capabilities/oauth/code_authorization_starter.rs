@@ -407,9 +407,10 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         // the limited page: the request goes on, and is denied once a code
         // would be issued under the session.
         let session_falls_short =
-            browser_session_grant(tx, authorize_query.sid, now)?.is_some_and(|session_grant| {
-                !session_shortfall(&requested_scopes, &session_grant).is_empty()
-            });
+            browser_session_grant(tx, authorize_query.sid, &self.stale_session_cutoff, now)?
+                .is_some_and(|session_grant| {
+                    !session_shortfall(&requested_scopes, &session_grant).is_empty()
+                });
         let waits_on_limited_page = session_falls_short
             && (authorize_query.reviews_session_shortfall
                 || !tx.is_session_shortfall_acknowledged_for_client(

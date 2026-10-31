@@ -251,8 +251,9 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
     /// page for is forgotten, so its next sign-in carries the wider session,
     /// or stops at the page again for what it still lacks.
     ///
-    /// A widening whose session is no longer live at `now` is denied rather
-    /// than approved ([`SessionWideningOutcome::BrowserSessionEnded`]).
+    /// A widening whose session is no longer live at `now` under
+    /// `stale_session_cutoff` is denied rather than approved
+    /// ([`SessionWideningOutcome::BrowserSessionEnded`]).
     ///
     /// # Errors
     ///
@@ -261,12 +262,13 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         &mut self,
         delegated_scopes: &DelegatedScopes,
         request: &SessionWideningRequest,
+        stale_session_cutoff: &StaleSessionCutoff,
         now: DateTime<Utc>,
     ) -> Result<SessionWideningOutcome, AuthorizationServerError> {
         let Some(browser_session) = self
             .tx
             .browser_session_by_sid(&request.sid)?
-            .filter(|browser_session| browser_session.is_live(now))
+            .filter(|browser_session| browser_session.is_live_at(now, stale_session_cutoff))
         else {
             let Ok(denied) = request.deny(now) else {
                 return Ok(SessionWideningOutcome::RequestNotPending);

@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 
 use crate::domain::authorization_request::session_widening::SessionWideningRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::BrowserSession;
+use crate::domain::browser_session::{BrowserSession, StaleSessionCutoff};
 use crate::domain::grant_store::{AuthorizationRequestsTx, BrowserSessionsTx};
 use crate::BROWSER_SESSION_CLIENT_ID;
 
@@ -28,8 +28,8 @@ impl ClaimedSessionWidening {
     /// Claim `widening_request`, as read, in the caller's write scope `tx`.
     /// When this call wins the claim, the proof holds the session the
     /// widening widened, as its row stands at `now`. `None` when the widening
-    /// isn't approved and unexpired, its session has ended, or a concurrent
-    /// poll claimed it first.
+    /// isn't approved and unexpired, its session has ended (or is stale under
+    /// `stale_session_cutoff`), or a concurrent poll claimed it first.
     ///
     /// # Errors
     ///
@@ -37,6 +37,7 @@ impl ClaimedSessionWidening {
     pub(crate) fn claim(
         tx: &mut (impl AuthorizationRequestsTx + BrowserSessionsTx),
         widening_request: &SessionWideningRequest,
+        stale_session_cutoff: &StaleSessionCutoff,
         now: DateTime<Utc>,
     ) -> Result<Option<Self>, AuthorizationServerError> {
         let Ok(claimed) = widening_request.claim(now) else {
@@ -44,7 +45,7 @@ impl ClaimedSessionWidening {
         };
         let Some(session) = tx
             .browser_session_by_sid(&widening_request.sid)?
-            .filter(|session| session.is_live(now))
+            .filter(|session| session.is_live_at(now, stale_session_cutoff))
         else {
             return Ok(None);
         };
@@ -132,16 +133,24 @@ mod tests {
     fn an_approved_widening_is_claimed_once_for_the_session_as_it_stands() {
         let store = FakeGrantStore::default();
         let pending = widened_session_and_widening(&store);
-        assert!(
-            ClaimedSessionWidening::claim(&mut store.tx(), &pending, Utc::now())
-                .unwrap()
-                .is_none()
-        );
+        assert!(ClaimedSessionWidening::claim(
+            &mut store.tx(),
+            &pending,
+            &StaleSessionCutoff::none(),
+            Utc::now(),
+        )
+        .unwrap()
+        .is_none());
         approve_stored(&store, "widen-1", &["wildflower/Apps.r"], None);
         let approved = stored(&store);
-        let claimed = ClaimedSessionWidening::claim(&mut store.tx(), &approved, Utc::now())
-            .unwrap()
-            .expect("claims");
+        let claimed = ClaimedSessionWidening::claim(
+            &mut store.tx(),
+            &approved,
+            &StaleSessionCutoff::none(),
+            Utc::now(),
+        )
+        .unwrap()
+        .expect("claims");
         assert_eq!(claimed.session().sid, "sid-1");
         assert_eq!(
             claimed.token_scopes(),
@@ -149,11 +158,14 @@ mod tests {
         );
         assert_eq!(claimed.client_id(), BROWSER_SESSION_CLIENT_ID);
         assert_eq!(stored(&store).state.status(), RequestStatus::Claimed);
-        assert!(
-            ClaimedSessionWidening::claim(&mut store.tx(), &approved, Utc::now())
-                .unwrap()
-                .is_none()
-        );
+        assert!(ClaimedSessionWidening::claim(
+            &mut store.tx(),
+            &approved,
+            &StaleSessionCutoff::none(),
+            Utc::now(),
+        )
+        .unwrap()
+        .is_none());
     }
 
     /// A widening whose session has ended since is not claimed, and stays
@@ -168,11 +180,14 @@ mod tests {
             .revoke_browser_session("sid-1", Utc::now())
             .unwrap();
         let approved = stored(&store);
-        assert!(
-            ClaimedSessionWidening::claim(&mut store.tx(), &approved, Utc::now())
-                .unwrap()
-                .is_none()
-        );
+        assert!(ClaimedSessionWidening::claim(
+            &mut store.tx(),
+            &approved,
+            &StaleSessionCutoff::none(),
+            Utc::now(),
+        )
+        .unwrap()
+        .is_none());
         assert_eq!(stored(&store).state.status(), RequestStatus::Approved);
     }
 }

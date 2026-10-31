@@ -62,12 +62,12 @@ impl FromState for LiveSameDeviceSignIn {
 
 /// Read and cancel a request waiting on its browser's limited page — built by
 /// the `/oauth/authorize/{id}/session-shortfall` and `/cancel` handlers. Takes
-/// nothing beside the store.
+/// the stale-session cutoff beside the store.
 pub(crate) type LiveSessionShortfall = SessionShortfall<SqliteGrantStore>;
 
 impl FromState for LiveSessionShortfall {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        SessionShortfall::new(state.store.clone())
+        SessionShortfall::new(state.store.clone(), state.stale_session_cutoff.clone())
     }
 }
 
@@ -75,8 +75,8 @@ impl FromState for LiveSessionShortfall {
 /// `/oauth/authorize/{id}/ask-to-widen` and
 /// `/oauth/session-widenings/{id}/poll` handlers. Takes the [`OwnerApproval`]
 /// port, since a widening is a request the Owner must hear about, the
-/// revocation store a claim revokes the replaced token in, and the server's
-/// origin.
+/// revocation store a claim revokes the replaced token in, the server's
+/// origin and the stale-session cutoff.
 pub(crate) type LiveSessionWidening = SessionWidening<SqliteGrantStore>;
 
 impl FromState for LiveSessionWidening {
@@ -87,6 +87,7 @@ impl FromState for LiveSessionWidening {
             owner_approval,
             state.revocation(),
             state.server_origin.clone(),
+            state.stale_session_cutoff.clone(),
         )
     }
 }

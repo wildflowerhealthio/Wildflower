@@ -12,12 +12,15 @@
 //! [`CodeAuthorizationStarter::continue_past_session_shortfall`]:
 //! super::CodeAuthorizationStarter::continue_past_session_shortfall
 
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::Grant;
 
 use crate::domain::authority::session_shortfall;
 use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::browser_session::StaleSessionCutoff;
 use crate::domain::client_redirect::{
     build_client_error_redirect_url, REQUEST_DECLINED_DESCRIPTION,
 };
@@ -41,8 +44,8 @@ pub(crate) struct SessionShortfallView {
 
 /// The grant the browser session `sid` holds at `now`, as its row records it:
 /// what a code issued under it may carry at most. `None` once the session has
-/// ended (revoked, expired, or pruned since), when no code is issued under it
-/// at all.
+/// ended (revoked, expired, stale under `stale_session_cutoff`, or pruned
+/// since), when no code is issued under it at all.
 ///
 /// # Errors
 ///
@@ -50,11 +53,12 @@ pub(crate) struct SessionShortfallView {
 pub(crate) fn browser_session_grant(
     tx: &mut impl BrowserSessionsTx,
     sid: &str,
+    stale_session_cutoff: &StaleSessionCutoff,
     now: DateTime<Utc>,
 ) -> Result<Option<Grant>, AuthorizationServerError> {
     Ok(tx
         .browser_session_by_sid(sid)?
-        .filter(|browser_session| browser_session.is_live(now))
+        .filter(|browser_session| browser_session.is_live_at(now, stale_session_cutoff))
         .map(|browser_session| Grant::parse(browser_session.scopes)))
 }
 
@@ -82,12 +86,19 @@ pub(crate) fn load_code_request_awaiting_limited_page(
 pub(crate) struct SessionShortfall<S: GrantStore> {
     /// The store the waiting request is read from and denied in.
     store: S,
+    /// The cutoff before which a same-device session is stale: a stale
+    /// session holds nothing.
+    stale_session_cutoff: Arc<StaleSessionCutoff>,
 }
 
 impl<S: GrantStore> SessionShortfall<S> {
-    /// Build it over a store handle lifted from the state.
-    pub(crate) fn new(store: S) -> Self {
-        SessionShortfall { store }
+    /// Build it over a store handle and the stale-session cutoff, lifted from
+    /// the state.
+    pub(crate) fn new(store: S, stale_session_cutoff: Arc<StaleSessionCutoff>) -> Self {
+        SessionShortfall {
+            store,
+            stale_session_cutoff,
+        }
     }
 
     /// What request `id` asks for that the browser session `sid` doesn't
@@ -109,7 +120,8 @@ impl<S: GrantStore> SessionShortfall<S> {
         self.store.read(|tx| {
             let request = load_code_request_awaiting_limited_page(tx, id, sid, now)?;
             // An ended session holds nothing, so it lacks all the request asks.
-            let session_grant = browser_session_grant(tx, sid, now)?.unwrap_or_default();
+            let session_grant = browser_session_grant(tx, sid, &self.stale_session_cutoff, now)?
+                .unwrap_or_default();
             let client_name = tx
                 .client_by_id(&request.client_id)?
                 .map_or_else(|| request.client_id.clone(), |client| client.name);
@@ -238,7 +250,7 @@ mod tests {
             .insert_code_request(&awaiting_limited_page("req-1"))
             .unwrap();
         seed_session(&store, FIXTURE_SID, &["patient/Patient.rs"]);
-        let session_shortfall = SessionShortfall::new(store);
+        let session_shortfall = SessionShortfall::new(store, Arc::new(StaleSessionCutoff::none()));
         let view = session_shortfall
             .read("req-1", FIXTURE_SID, Utc::now())
             .expect("the requesting session reads it");
@@ -269,7 +281,7 @@ mod tests {
                 &owned_scopes(&["patient/Patient.rs", "patient/Observation.rs"]),
             )
             .unwrap();
-        let session_shortfall = SessionShortfall::new(store);
+        let session_shortfall = SessionShortfall::new(store, Arc::new(StaleSessionCutoff::none()));
         let now = Utc::now();
         assert_eq!(
             session_shortfall
@@ -317,7 +329,7 @@ mod tests {
                 RequestStatus::Denied,
             ))
             .unwrap();
-        let session_shortfall = SessionShortfall::new(store);
+        let session_shortfall = SessionShortfall::new(store, Arc::new(StaleSessionCutoff::none()));
         for (id, sid) in [
             ("waiting", "another-sid"),
             ("gone-on", FIXTURE_SID),
@@ -348,7 +360,7 @@ mod tests {
             .tx()
             .insert_code_request(&awaiting_limited_page("req-1"))
             .unwrap();
-        let session_shortfall = SessionShortfall::new(store);
+        let session_shortfall = SessionShortfall::new(store, Arc::new(StaleSessionCutoff::none()));
         let callback = session_shortfall
             .cancel("req-1", FIXTURE_SID, Utc::now())
             .expect("cancels");
@@ -380,7 +392,7 @@ mod tests {
             .tx()
             .insert_code_request(&awaiting_limited_page("req-1"))
             .unwrap();
-        let session_shortfall = SessionShortfall::new(store);
+        let session_shortfall = SessionShortfall::new(store, Arc::new(StaleSessionCutoff::none()));
         let now = Utc::now();
         let read_by_cancel = load_code_request_awaiting_limited_page(
             &mut session_shortfall.store.tx(),
