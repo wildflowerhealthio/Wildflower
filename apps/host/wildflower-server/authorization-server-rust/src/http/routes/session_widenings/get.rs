@@ -1,23 +1,21 @@
 //! `GET /authorization/session-widenings/{id}`: a session widening's consent
 //! prompt, for its card.
 
-use std::sync::Arc;
-
 use axum::extract::Path;
-use axum::routing::{get, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{Scoped, SessionWideningConsentView};
-use crate::http::state::AuthorizationServerState;
+use crate::http::errors::SessionWideningNotFoundBody;
 use crate::live_bindings::LiveConsentReader;
 
 /// Body returned when the card loads a pending session widening: the browser
 /// that asks, the app it asks for, and the scopes the Owner may grant, which
 /// the Owner may only untick.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SessionWideningConsent {
     /// The widening's id, which approve and deny name.
@@ -40,14 +38,20 @@ pub(crate) struct SessionWideningConsent {
     pub(crate) missing_approval_scopes: Vec<String>,
 }
 
-/// The `GET` method on `/session-widenings/{id}`.
-pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
-    get(handle_get_session_widening_consent)
-}
-
 /// `GET /authorization/session-widenings/{id}` — load a pending session
 /// widening for its card (scope `wildflower/AuthorizationRequest.r`).
-async fn handle_get_session_widening_consent(
+#[utoipa::path(
+    get,
+    tag = "Owner consent",
+    path = "/session-widenings/{id}",
+    params(("id" = String, Path, description = "The session widening's id")),
+    responses(
+        (status = 200, description = "The pending widening, for its card", body = SessionWideningConsent),
+        (status = 404, description = "No pending widening has that id: unknown, decided or expired", body = SessionWideningNotFoundBody),
+        (status = 500, description = "A store failed; logged, with no body"),
+    ),
+)]
+pub(super) async fn handle_get_session_widening_consent(
     consents: Scoped<LiveConsentReader>,
     Path(id): Path<String>,
 ) -> Result<Json<SessionWideningConsent>, AuthorizationServerError> {

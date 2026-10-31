@@ -59,14 +59,23 @@ fn documented_public_router(
         )
 }
 
+/// The documented slice of `/authorization`, as an `OpenApiRouter` merged
+/// from each documented resource's router (the rest of the admin surface is
+/// not documented yet). [`router`] mounts its axum half behind the session
+/// gate; [`documented_router`] nests its spec half.
+fn documented_authorization_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
+    OpenApiRouter::new()
+        .merge(routes::clients::openapi_router())
+        .merge(routes::session_widenings::openapi_router())
+}
+
 /// The spec-only view of the whole documented surface: the pre-auth routes
-/// plus the documented slice of `/authorization` (the `/clients` routes; the rest of
-/// the admin surface is not documented yet). Never served as-is — [`router`]
-/// mounts the `/authorization` half behind the session gate.
+/// plus the documented slice of `/authorization`. Never served as-is —
+/// [`router`] mounts the `/authorization` half behind the session gate.
 #[cfg(test)]
 fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
     documented_public_router(|routes, _start_route| routes)
-        .nest("/authorization", routes::clients::openapi_router())
+        .nest("/authorization", documented_authorization_router())
 }
 
 /// Build the authorization server's public HTTP surface. Routes live at
@@ -93,9 +102,9 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
         ))
     })
     .split_for_parts();
-    let (clients, _spec) = routes::clients::openapi_router().split_for_parts();
+    let (documented_authorization, _spec) = documented_authorization_router().split_for_parts();
     let access = Router::new()
-        .merge(clients)
+        .merge(documented_authorization)
         .merge(routes::grants::router())
         .merge(routes::browser_sessions::router())
         .merge(routes::oauth_consents::router(|route| {
@@ -105,7 +114,6 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
             ))
         }))
         .merge(routes::devices::router())
-        .merge(routes::session_widenings::router())
         .merge(routes::logout::router())
         .merge(routes::revocations::router())
         .merge(routes::session::router())

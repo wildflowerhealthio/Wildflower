@@ -137,7 +137,7 @@ pub(crate) struct ApproveBody {
 /// `/oauth/authorize/{id}` needed. Device-flow decisions have no client
 /// `redirect_uri`, so `redirect` is `None` and (thanks to
 /// `skip_serializing_if`) omitted from the wire entirely.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub(crate) enum ConsentResult {
     /// The request was approved: a code-flow request's code is issued, a
@@ -147,6 +147,7 @@ pub(crate) enum ConsentResult {
         /// the consent card to leave for; absent for a device-page decision,
         /// whose device or browser polls for its result.
         #[serde(skip_serializing_if = "Option::is_none")]
+        #[schema(nullable = false)]
         redirect: Option<String>,
     },
     /// The request was denied: declined, or an approval that granted
@@ -156,8 +157,25 @@ pub(crate) enum ConsentResult {
         /// The app's callback carrying `error=access_denied` and the app's
         /// `state`; absent for a device-page decision.
         #[serde(skip_serializing_if = "Option::is_none")]
+        #[schema(nullable = false)]
         redirect: Option<String>,
     },
+}
+
+/// [`ConsentResult`] as a polled flow's decision answers it, for the spec: a
+/// device's, a browser pairing's or a session widening's requester polls for
+/// its result, so the decision carries no `redirect`. Only the spec reads it;
+/// the routes render a [`ConsentResult`] with none.
+#[derive(ToSchema)]
+#[serde(tag = "status", rename_all = "lowercase")]
+#[allow(dead_code)]
+pub(crate) enum PolledConsentResult {
+    /// The request was approved: a device's grant stands, a pairing's
+    /// browser may now sign in, a widened session holds more.
+    Approved,
+    /// The request was denied: declined, or an approval that granted
+    /// nothing.
+    Denied,
 }
 
 /// A consent outcome on the launcher wire.
