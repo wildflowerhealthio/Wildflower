@@ -17,6 +17,7 @@ import { type JSX, useEffect } from 'react'
 
 import type { RouterContext } from '../router-context.ts'
 import {
+  promptOnPage,
   returnToOnPage,
   signInEnvironment,
   startSignIn,
@@ -91,7 +92,8 @@ interface LandingSignIn {
  * sits at the app root, so the page's own directory is the served base — the
  * same value `main-web` hands the router and the callback re-derives (see
  * `sign-in.ts`). The gate's `?returnTo=` rides the pending record, because the
- * registered redirect URI drops it.
+ * registered redirect URI drops it. Request access's `?prompt=consent` rides
+ * the authorization request, to show the server's limited page again.
  */
 const browserSignIn: LandingSignIn = {
   start: (target, launch) =>
@@ -99,7 +101,7 @@ const browserSignIn: LandingSignIn = {
       target,
       returnToOnPage(window.location.href),
       signInEnvironment(window, basenameOf(window.location.pathname)),
-      { launch }
+      { launch, prompt: promptOnPage(window.location.href) }
     ),
   leave: (authorizationUrl) => {
     window.location.assign(authorizationUrl)
