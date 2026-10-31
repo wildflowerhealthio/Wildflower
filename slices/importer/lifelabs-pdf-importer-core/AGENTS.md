@@ -5,10 +5,9 @@ importer opens a picked LifeLabs "Reports" PDF's raw bytes end-to-end. Its
 decode asks `positioned-text`'s `PositionedTextExtractor` service for the
 PDF's text, runs the positioned-text dialect over the extracted
 `wildflower-positioned-text` document to typed `LifeLabsReport` records, and
-synthesizes Patient,
-Practitioner, DiagnosticReport, and Observation FHIR resources — the
-importer's opt-in write happens through the shell's shared `persistBatchBundle`
-afterwards.
+synthesizes Patient, Practitioner, DiagnosticReport, and Observation FHIR
+resources — the importer's opt-in write happens through the shell's shared
+`persistBatchBundle` afterwards.
 The picker's user hands in the PDF itself, not the anonymizer's JSON output:
 this binding does its own extraction.
 
@@ -83,8 +82,8 @@ that hands back a hand-written positioned-text document.
   `adoptedResourcesOf`), yielding a `DecodedFile`: one
   section per report, titled by **`reportSectionTitle`** (the report's `Lab No`
   and date of service, `'LifeLabs report'` when both are masked), and no notes.
-  Both extraction failure (`UnreadablePdf`) and an unrecognized LifeLabs document surface as
-  `ParseError` — the one error channel the batch decode folds into that file's
+  Both extraction failure (`UnreadablePdf`) and an unrecognized LifeLabs
+  document surface as `ParseError` — the one error channel the batch decode folds into that file's
   `unreadableFiles` entry. It reads only the picked file's name and bytes: this
   format derives no id from its source file, and the batch decode does the
   `meta.source` stamping.
