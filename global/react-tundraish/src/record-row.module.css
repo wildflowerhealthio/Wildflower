@@ -1,0 +1,151 @@
+/*
+ * A record row: three lines of text, then the choice. Narrow (the default),
+ * the choice wraps under the text at full width, indented to the text and
+ * tall enough to tap; from 768px it sits at the row's end.
+ */
+
+.record-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-5);
+  padding-inline-end: var(--space-6);
+  padding-bottom: var(--space-5);
+}
+
+.record-row__text {
+  display: flex;
+  flex: 1 1 220px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-5) 0 var(--space-5) var(--space-6);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+button.record-row__text {
+  cursor: pointer;
+}
+
+button.record-row__text:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: -2px;
+  border-radius: var(--radius-2);
+}
+
+.record-row__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-2);
+  line-height: var(--line-height-3);
+}
+
+.record-row__detail {
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-4);
+  color: var(--color-neutral-3);
+  overflow-wrap: anywhere;
+}
+
+.record-row__reason {
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+  color: var(--color-neutral-5);
+}
+
+/* Centred on the row, over LinkButton's own top alignment. */
+.record-row > .record-row__reset {
+  align-self: center;
+}
+
+/* The tone sets `color`; the select and its chevron both read it. */
+.record-row__choice {
+  position: relative;
+  display: flex;
+  flex: 1 1 100%;
+  min-width: 0;
+  margin-inline-start: var(--space-6);
+  --record-row-choice-background: var(--color-raised);
+  --record-row-choice-border: var(--element-color-border);
+}
+
+.record-row__choice--accent {
+  color: var(--app-accent-text);
+}
+
+.record-row__choice--success {
+  color: var(--color-success-foreground);
+}
+
+.record-row__choice--neutral {
+  color: var(--color-neutral-2);
+}
+
+.record-row__choice--muted {
+  color: var(--color-neutral-4);
+}
+
+.record-row__choice--warning {
+  color: var(--color-warning-foreground);
+  --record-row-choice-background: var(--color-warning-background);
+  --record-row-choice-border: var(--color-warning-border);
+}
+
+.record-row__select {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-3) var(--space-11) var(--space-3) var(--space-5);
+  overflow: hidden;
+  border: 1.5px solid var(--record-row-choice-border);
+  border-radius: var(--input-border-radius);
+  background: var(--record-row-choice-background);
+  color: inherit;
+  font: inherit;
+  /* 16px keeps iOS from zooming in when the select takes focus. */
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-2);
+  line-height: var(--line-height-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  appearance: none;
+  cursor: pointer;
+}
+
+.record-row__select:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 1px;
+}
+
+.record-row__chevron {
+  position: absolute;
+  top: 50%;
+  right: var(--space-4);
+  transform: translateY(-50%);
+  fill: currentColor;
+  pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .record-row {
+    padding-bottom: 0;
+  }
+
+  .record-row__choice {
+    flex: 0 1 auto;
+    max-width: 260px;
+    margin-inline-start: 0;
+  }
+
+  .record-row__select {
+    min-height: 36px;
+  }
+}

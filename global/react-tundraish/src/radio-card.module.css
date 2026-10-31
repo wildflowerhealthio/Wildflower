@@ -1,0 +1,96 @@
+/*
+ * An option card: a radio whose label is the action, the evidence below it,
+ * and an optional tray docked to the foot. The body grows, so the outcome
+ * line and the tray sit at the bottom and line up across a row of cards.
+ */
+
+.radio-card__group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  align-items: stretch;
+  gap: var(--space-4);
+}
+
+/* A plain radio row in the same group ("neither") takes the full width. */
+.radio-card__group > :not(.radio-card) {
+  grid-column: 1 / -1;
+}
+
+.radio-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-6);
+  border: 1.5px solid var(--element-color-border);
+  border-radius: var(--radius-3);
+  background: var(--color-raised);
+  cursor: pointer;
+}
+
+.radio-card--dashed {
+  border-style: dashed;
+  background: transparent;
+}
+
+.radio-card--checked {
+  border-color: var(--color-accent);
+  background: var(--color-accent-9);
+  cursor: default;
+}
+
+.radio-card:has(input[type='radio']:focus-visible) {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 2px;
+}
+
+.radio-card__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-3);
+  line-height: var(--line-height-3);
+  cursor: pointer;
+}
+
+.radio-card__label > input {
+  flex: none;
+  margin: 0;
+}
+
+.radio-card__body {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+.radio-card__outcome {
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+  color: var(--color-neutral-3);
+}
+
+/* The negative margins run the tray to the card's edges; its corners follow
+ * the card's inner radius. */
+.radio-card__tray {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-2) calc(-1 * var(--space-6)) calc(-1 * var(--space-6));
+  padding: var(--space-5) var(--space-6);
+  border-top: 1px dashed var(--element-color-border);
+  border-radius: 0 0 calc(var(--radius-3) - 1.5px) calc(var(--radius-3) - 1.5px);
+  overflow-wrap: anywhere;
+}
+
+.radio-card--checked .radio-card__tray {
+  border-top: 1.5px solid var(--color-accent);
+  background: var(--color-background);
+}
+
+.radio-card--checked .radio-card__tray--success {
+  background: var(--color-success-tint);
+}

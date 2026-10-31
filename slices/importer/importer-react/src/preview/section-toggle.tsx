@@ -1,4 +1,5 @@
-import { type JSX, useEffect, useRef } from 'react'
+import { Checkbox } from '@wildflowerhealthio/react-tundraish'
+import type { JSX } from 'react'
 
 import styles from './section-toggle.module.css'
 
@@ -28,10 +29,6 @@ interface SectionToggleProps {
  *
  * @param props - See {@link SectionToggleProps}
  * @returns The section's heading and its toggle
- *
- * @remarks
- * `indeterminate` is not a React-settable attribute, so it is written onto the
- * input element through a ref after render whenever the mixed state changes.
  */
 const SectionToggle = ({
   title,
@@ -41,24 +38,16 @@ const SectionToggle = ({
 }: SectionToggleProps): JSX.Element => {
   const includedCount = keys.filter((key) => isIncluded(key)).length
   const allIncluded = keys.length > 0 && includedCount === keys.length
-  const noneIncluded = includedCount === 0
-  const checkbox = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (checkbox.current !== null) checkbox.current.indeterminate = !allIncluded && !noneIncluded
-  }, [allIncluded, noneIncluded])
   return (
-    <label className={styles['section-label']}>
-      <input
-        ref={checkbox}
-        type="checkbox"
-        checked={allIncluded}
-        aria-label={`Include all in ${title}`}
-        onChange={() => {
-          onSetIncluded(keys, !allIncluded)
-        }}
-      />
-      <h4 className={styles['section-heading']}>{title}</h4>
-    </label>
+    <Checkbox
+      checked={allIncluded}
+      indeterminate={includedCount > 0 && !allIncluded}
+      aria-label={`Include all in ${title}`}
+      onChange={() => {
+        onSetIncluded(keys, !allIncluded)
+      }}
+      label={<h4 className={styles['section-heading']}>{title}</h4>}
+    />
   )
 }
 

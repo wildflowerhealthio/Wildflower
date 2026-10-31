@@ -43,6 +43,12 @@
   cursor: pointer;
 }
 
+/* The box keeps its size when a long label squeezes a narrow row. */
+.checkbox-row > input,
+.radio-row > input {
+  flex: none;
+}
+
 .radio-group {
   display: flex;
   flex-direction: column;
