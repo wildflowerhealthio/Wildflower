@@ -36,7 +36,7 @@ workflow's checks.
 The ruleset names only `Required`, so adding, renaming or splitting jobs inside
 an area never touches the ruleset. The per-job checks still show in the pull
 request, prefixed with the area, such as `CI / Rust / Lint` or
-`CI / TypeScript / Test (apps/strength)`. An area's job in `ci.yml` takes the
+`CI / TypeScript / Test (3/4: apps/strength, apps/synthetic-data, …)`. An area's job in `ci.yml` takes the
 result of its whole workflow: one failed job inside it, including one leg of a
 matrix such as the TypeScript test shards, fails the area and so `Required`.
 

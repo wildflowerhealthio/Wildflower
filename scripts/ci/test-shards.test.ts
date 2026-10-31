@@ -8,8 +8,16 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { findAffectedPackages } from '../affected-packages.ts'
 import type { Pkg } from '../affected-packages.ts'
-import { allAreas, areaOf, loadVitestProjects, planShards, selectionFor } from './test-shards.ts'
-import type { VitestProject } from './test-shards.ts'
+import {
+  allAreas,
+  areaOf,
+  loadVitestProjects,
+  packUnits,
+  planShards,
+  selectionFor,
+  TEST_SHARD_COUNT,
+} from './test-shards.ts'
+import type { TestUnit, VitestProject } from './test-shards.ts'
 
 // scripts/ci/ sits two levels under the repo root.
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -29,14 +37,30 @@ const everyArea = allAreas('every area, under test')
 
 const claimedTop = fc.constantFrom('apps', 'global', 'scripts', 'slices')
 
-/** The project names in `shards`, one entry per area (split parts counted once). */
-const projectsPerArea = (
-  shards: readonly { readonly name: string; readonly projects: readonly string[] }[]
-): readonly string[] => {
-  const byArea = new Map<string, readonly string[]>()
-  for (const shard of shards) byArea.set(shard.name.split(' ')[0] ?? shard.name, shard.projects)
-  return [...byArea.values()].flat()
+interface PlannedShard {
+  readonly name: string
+  readonly runs: readonly {
+    readonly projects: readonly string[]
+    readonly vitestShard?: string | undefined
+  }[]
 }
+
+/**
+ * The project names `shards` cover, once each: whole-area runs list theirs
+ * directly, and a split area's parts all list the same projects, counted once.
+ */
+const projectsCovered = (shards: readonly PlannedShard[]): readonly string[] => {
+  const runs = shards.flatMap((shard) => shard.runs)
+  const whole = runs.filter((run) => run.vitestShard === undefined).flatMap((run) => run.projects)
+  const split = new Set(
+    runs.filter((run) => run.vitestShard !== undefined).flatMap((run) => run.projects)
+  )
+  return [...whole, ...split]
+}
+
+/** Every `--shard` part the plan runs, across all shards. */
+const vitestShardsRun = (shards: readonly PlannedShard[]): readonly string[] =>
+  shards.flatMap((shard) => shard.runs.flatMap((run) => run.vitestShard ?? []))
 
 describe('test-shards / areaOf', () => {
   it('gives every apps/<folder> descendant that folder as its area', () => {
@@ -76,13 +100,15 @@ describe('test-shards / areaOf', () => {
 })
 
 describe('test-shards / planShards', () => {
-  it('runs every claimed project in exactly one area', () => {
+  it('runs every claimed project exactly once, on at most TEST_SHARD_COUNT shards', () => {
     fc.assert(
       fc.property(
         fc.uniqueArray(projectUnder(claimedTop), { selector: (p) => p.name, maxLength: 30 }),
         (projects) => {
           const shards = Either.getOrThrow(planShards(projects, everyArea))
-          expect(projectsPerArea(shards).toSorted()).toEqual(projects.map((p) => p.name).toSorted())
+          expect(projectsCovered(shards).toSorted()).toEqual(projects.map((p) => p.name).toSorted())
+          expect(shards.length).toBeLessThanOrEqual(TEST_SHARD_COUNT)
+          for (const shard of shards) expect(shard.runs.length).toBeGreaterThan(0)
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -102,15 +128,96 @@ describe('test-shards / planShards', () => {
     if (Either.isLeft(result)) expect(result.left.roots).toEqual(['tools/stray'])
   })
 
-  it('splits slices into two --shard parts over the same projects', () => {
+  it('runs each slices part on its own shard, in a run of its own', () => {
     const projects = [
       { name: 'b', root: 'slices/fhir/fhir-r4' },
       { name: 'a', root: 'slices/dicom/dicom' },
+      { name: 'scripts', root: 'scripts' },
+      { name: 'relay', root: 'apps/relay/relay-react' },
     ]
-    expect(Either.getOrThrow(planShards(projects, everyArea))).toEqual([
-      { name: 'slices 1/2', projects: ['a', 'b'], vitestShard: '1/2' },
-      { name: 'slices 2/2', projects: ['a', 'b'], vitestShard: '2/2' },
+    expect(Either.getOrThrow(planShards(projects, everyArea, 3))).toEqual([
+      { name: '1/3: slices 1/2', runs: [{ projects: ['a', 'b'], vitestShard: '1/2' }] },
+      { name: '2/3: slices 2/2', runs: [{ projects: ['a', 'b'], vitestShard: '2/2' }] },
+      { name: '3/3: scripts, apps/relay', runs: [{ projects: ['relay', 'scripts'] }] },
     ])
+  })
+
+  it('runs a part beside whole areas as a separate run', () => {
+    const projects = [
+      { name: 'fhir', root: 'slices/fhir/fhir-r4' },
+      { name: 'scripts', root: 'scripts' },
+      { name: 'kitchen-sink', root: 'global/kitchen-sink' },
+    ]
+    expect(Either.getOrThrow(planShards(projects, everyArea, 2))).toEqual([
+      {
+        name: '1/2: slices 1/2, scripts',
+        runs: [{ projects: ['scripts'] }, { projects: ['fhir'], vitestShard: '1/2' }],
+      },
+      {
+        name: '2/2: slices 2/2, global',
+        runs: [{ projects: ['kitchen-sink'] }, { projects: ['fhir'], vitestShard: '2/2' }],
+      },
+    ])
+  })
+
+  it('lists three areas in a shard name and counts the rest', () => {
+    const projects = ['a', 'b', 'c', 'd', 'e'].map((folder) => ({
+      name: folder,
+      root: `apps/${folder}/${folder}-web`,
+    }))
+    const [shard] = Either.getOrThrow(planShards(projects, everyArea, 1))
+    expect(shard?.name).toBe('1/1: apps/a, apps/b, apps/c +2 more')
+  })
+})
+
+describe('test-shards / packUnits', () => {
+  const unit = (label: string, seconds: number): TestUnit => ({ label, projects: [label], seconds })
+  const labelsOf = (bins: readonly (readonly TestUnit[])[]): readonly (readonly string[])[] =>
+    bins.map((bin) => bin.map((u) => u.label))
+
+  it('places longest first onto the lightest shard', () => {
+    const units = [unit('a', 10), unit('b', 50), unit('c', 30), unit('d', 25), unit('e', 20)]
+    // b, c and d open the three shards; e joins d (25), the lightest, then a
+    // joins c (30).
+    expect(labelsOf(packUnits(units, 3))).toEqual([['b'], ['c', 'a'], ['d', 'e']])
+  })
+
+  it('makes one shard per unit when there are fewer units than shards', () => {
+    expect(labelsOf(packUnits([unit('a', 1), unit('b', 2)], 4))).toEqual([['b'], ['a']])
+    expect(packUnits([], 4)).toEqual([])
+  })
+
+  it('places every unit once, on at most the shard count, none empty', () => {
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(fc.tuple(segment, fc.integer({ min: 1, max: 200 })), {
+          selector: ([label]) => label,
+          maxLength: 30,
+        }),
+        fc.integer({ min: 1, max: 8 }),
+        (entries, shardCount) => {
+          const units = entries.map(([label, seconds]) => unit(label, seconds))
+          const bins = packUnits(units, shardCount)
+          expect(bins.length).toBe(Math.min(shardCount, units.length))
+          for (const bin of bins) expect(bin.length).toBeGreaterThan(0)
+          expect(
+            bins
+              .flat()
+              .map((u) => u.label)
+              .toSorted()
+          ).toEqual(units.map((u) => u.label).toSorted())
+          // Longest-first greedy: no shard exceeds the lightest by more than
+          // its own smallest unit, or it would have gone elsewhere.
+          const loads = bins.map((bin) => bin.reduce((sum, u) => sum + u.seconds, 0))
+          const lightest = Math.min(...loads)
+          bins.forEach((bin, i) => {
+            const smallest = Math.min(...bin.map((u) => u.seconds))
+            expect((loads[i] ?? 0) - smallest).toBeLessThanOrEqual(lightest)
+          })
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })
 
@@ -119,12 +226,10 @@ describe('test-shards / the workspace', () => {
     const projects = await Effect.runPromise(loadVitestProjects(repoRoot))
     const shards = Either.getOrThrow(planShards(projects, everyArea))
     const names = projects.map((p) => p.name)
-    // Every project in exactly one area, none dropped, none invented.
-    expect(projectsPerArea(shards).toSorted()).toEqual(names.toSorted())
-    // A new apps/<folder> gets its own shard with no edit to the script.
-    expect(shards.map((s) => s.name)).toEqual(
-      expect.arrayContaining(['global', 'scripts', 'slices 1/2', 'slices 2/2', 'apps/relay'])
-    )
+    // Every project run once, none dropped, none invented.
+    expect(projectsCovered(shards).toSorted()).toEqual(names.toSorted())
+    expect(shards).toHaveLength(TEST_SHARD_COUNT)
+    expect(vitestShardsRun(shards).toSorted()).toEqual(['1/2', '2/2'])
   }, 60_000)
 
   it('puts every test file in the repo under some Vitest project', async () => {
@@ -162,47 +267,53 @@ describe('test-shards / selectionFor', () => {
     { name: 'scripts', root: 'scripts' },
   ]
 
-  const shardsFor = (changedFiles: readonly string[]): readonly string[] =>
-    Either.getOrThrow(
-      planShards(projects, selectionFor(findAffectedPackages(changedFiles, packages), packages))
-    ).map((shard) => shard.name)
+  const areaByProject = new Map(
+    projects.map((p) => [p.name, Either.getOrThrow(areaOf(p.root))] as const)
+  )
 
-  const everyShard = [
+  /** The areas the plan runs for `changedFiles`, sorted. */
+  const areasFor = (changedFiles: readonly string[]): readonly string[] => {
+    const shards = Either.getOrThrow(
+      planShards(projects, selectionFor(findAffectedPackages(changedFiles, packages), packages))
+    )
+    const areas = projectsCovered(shards).map((name) => areaByProject.get(name) ?? name)
+    return [...new Set(areas)].toSorted()
+  }
+
+  const allAreaNames = [
     'apps/launcher',
     'apps/relay',
     'apps/strength',
     'global',
     'scripts',
-    'slices 1/2',
-    'slices 2/2',
+    'slices',
   ]
 
   it("runs a changed package's area, its dependers' areas, and scripts", () => {
-    expect(shardsFor(['slices/fhir/fhir-r4/src/index.ts'])).toEqual([
+    expect(areasFor(['slices/fhir/fhir-r4/src/index.ts'])).toEqual([
       'apps/launcher',
       'apps/strength',
       'scripts',
-      'slices 1/2',
-      'slices 2/2',
+      'slices',
     ])
   })
 
   it('runs only the changed app and scripts when nothing depends on it', () => {
-    expect(shardsFor(['apps/relay/relay-react/src/screen.tsx'])).toEqual(['apps/relay', 'scripts'])
+    expect(areasFor(['apps/relay/relay-react/src/screen.tsx'])).toEqual(['apps/relay', 'scripts'])
   })
 
-  it('runs every shard for a root config or lockfile change', () => {
+  it('runs every area for a root config or lockfile change', () => {
     for (const file of [
       'pnpm-lock.yaml',
       'pnpm-workspace.yaml',
       'vite.config.base.ts',
       'package.json',
     ]) {
-      expect(shardsFor([file, 'apps/relay/relay-react/src/screen.tsx'])).toEqual(everyShard)
+      expect(areasFor([file, 'apps/relay/relay-react/src/screen.tsx'])).toEqual(allAreaNames)
     }
   })
 
-  it('runs every shard for a change outside every package', () => {
+  it('runs every area for a change outside every package', () => {
     for (const file of [
       '.github/workflows/ci-typescript.yml',
       '.github/actions/vp-pack-cache/action.yml',
@@ -211,11 +322,11 @@ describe('test-shards / selectionFor', () => {
       'docs/Testing/Testing Reference.md',
       'slices/fhir/fhir-rust/src/lib.rs',
     ]) {
-      expect(shardsFor([file, 'apps/relay/relay-react/src/screen.tsx'])).toEqual(everyShard)
+      expect(areasFor([file, 'apps/relay/relay-react/src/screen.tsx'])).toEqual(allAreaNames)
     }
   })
 
   it('runs only the always-run areas when the changes reach no package with tests', () => {
-    expect(shardsFor([])).toEqual(['scripts'])
+    expect(areasFor([])).toEqual(['scripts'])
   })
 })

@@ -64,14 +64,15 @@ jobs:
         run: vp run lint:comments
         continue-on-error: true
 
-  # Plans the test matrix: one shard per top-level area, derived from the
-  # Vitest projects the root vite.config.ts defines, so a new `apps/<folder>`
-  # gets its own runner with no edit here. Only areas holding a package the PR
-  # changes or reaches through the workspace dependency graph get a shard; a
-  # root config or lockfile change, or any change outside every package (this
-  # workflow, the shard script, docs, Rust) runs them all. Also computes the
-  # property-test risk map once for every shard. Rules:
-  # scripts/ci/test-shards.ts.
+  # Plans the test matrix from the top-level areas (`global`, `scripts`,
+  # `slices`, each `apps/<folder>`), derived from the Vitest projects the root
+  # vite.config.ts defines, so a new `apps/<folder>` is covered with no edit
+  # here. Only areas holding a package the PR changes or reaches through the
+  # workspace dependency graph run; a root config or lockfile change, or any
+  # change outside every package (this workflow, the shard script, docs,
+  # Rust) runs them all. The selected areas are packed by rough test time onto
+  # at most a few shards, one runner each. Also computes the property-test
+  # risk map once for every shard. Rules: scripts/ci/test-shards.ts.
   shards:
     name: Plan test shards
     if: github.event.pull_request.draft != true
@@ -157,20 +158,28 @@ jobs:
       - name: Build internal projects
         run: vp run pack
 
-      # `--project` matches a Vitest project's name exactly, unlike a path
-      # filter, which is a substring match on file paths. A split area adds
-      # `--shard`, which divides the selected projects' test files.
+      # Each run is one `vp test run`. `--project` matches a Vitest project's
+      # name exactly, unlike a path filter, which is a substring match on file
+      # paths. A split area's part adds `--shard`, which divides the selected
+      # projects' test files, so it never shares a run with another area.
+      # Every run goes ahead after a failure, so one area's failure doesn't
+      # hide another's.
       - name: Run tests
         env:
           FC_RISK_MAP: ${{ needs.shards.outputs.risk-map }}
-          PROJECTS: ${{ toJSON(matrix.projects) }}
-          VITEST_SHARD: ${{ matrix.vitestShard }}
+          RUNS: ${{ toJSON(matrix.runs) }}
         run: |
-          args=()
-          while IFS= read -r project; do
-            args+=(--project "$project")
-          done < <(jq -r '.[]' <<< "$PROJECTS")
-          if [[ -n $VITEST_SHARD ]]; then
-            args+=(--shard "$VITEST_SHARD")
-          fi
-          vp test run "${args[@]}"
+          mapfile -t test_runs < <(jq -c '.[]' <<< "$RUNS")
+          status=0
+          for run in "${test_runs[@]}"; do
+            args=()
+            while IFS= read -r project; do
+              args+=(--project "$project")
+            done < <(jq -r '.projects[]' <<< "$run")
+            vitest_shard=$(jq -r '.vitestShard // empty' <<< "$run")
+            if [[ -n $vitest_shard ]]; then
+              args+=(--shard "$vitest_shard")
+            fi
+            vp test run "${args[@]}" || status=1
+          done
+          exit "$status"
