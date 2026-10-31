@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
-import { OAuth } from '@wildflowerhealthio/authorization-core/http-api-definition'
+import { OAuth, SessionWidenings } from '@wildflowerhealthio/authorization-core/http-api-definition'
 import type { AuthorizationRouterContext } from '@wildflowerhealthio/authorization-react'
 import { PageHeader, PageLoading } from '@wildflowerhealthio/react-tundraish'
 import { Scope } from '@wildflowerhealthio/scopes-core'
@@ -113,7 +113,7 @@ const pollWidening = (
     client.oauth.SessionWideningPoll({ path: { id: wideningId } })
   ).pipe(
     Effect.map(({ status }) => status),
-    Effect.catchIf(Schema.is(OAuth.SessionWideningNotFoundSchema), () =>
+    Effect.catchIf(Schema.is(SessionWidenings.SessionWideningNotFoundSchema), () =>
       Effect.succeed<WideningStatus>('expired')
     )
   )

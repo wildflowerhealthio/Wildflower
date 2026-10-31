@@ -1,5 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from '@effect/platform'
 import { Schema } from 'effect'
+import { SessionWideningNotFoundSchema } from './session-widenings.ts'
 
 const AuthorizationStatusSchema = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),
@@ -257,11 +258,6 @@ const SessionWideningStatusSchema = Schema.Union(
   Schema.Struct({ status: Schema.Literal('expired') })
 )
 
-const SessionWideningNotFoundSchema = Schema.Struct({
-  error: Schema.Literal('SessionWideningNotFound'),
-  id: Schema.String,
-})
-
 const httpApiGroup = HttpApiGroup.make('oauth', { topLevel: false })
   .add(
     HttpApiEndpoint.get('Authorize', '/authorize')
@@ -359,5 +355,4 @@ export {
   SessionShortfallNextSchema,
   AskedSessionWideningSchema,
   SessionWideningStatusSchema,
-  SessionWideningNotFoundSchema,
 }
