@@ -43,9 +43,8 @@ impl ClaimedSessionWidening {
         let Ok(claimed_request) = widening_request.to_claimed(now) else {
             return Ok(None);
         };
-        let Some(session) = tx
-            .browser_session_by_sid(&widening_request.sid)?
-            .filter(|session| session.is_live_at(now, stale_session_cutoff))
+        let Some(session) =
+            tx.live_browser_session(&widening_request.sid, stale_session_cutoff, now)?
         else {
             return Ok(None);
         };

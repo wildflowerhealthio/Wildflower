@@ -184,10 +184,7 @@ impl<S: GrantStore> SessionWidening<S> {
             let code_request =
                 load_code_request_awaiting_limited_page(tx, code_request_id, sid, now)?;
             let browser_session = tx
-                .browser_session_by_sid(sid)?
-                .filter(|browser_session| {
-                    browser_session.is_live_at(now, &self.stale_session_cutoff)
-                })
+                .live_browser_session(sid, &self.stale_session_cutoff, now)?
                 .filter(|browser_session| browser_session.kind == BrowserSessionKind::Paired)
                 .ok_or_else(not_found)?;
             let Some(browser_name) = browser_session.name else {

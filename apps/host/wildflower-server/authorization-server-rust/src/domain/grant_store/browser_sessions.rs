@@ -4,7 +4,7 @@
 use chrono::{DateTime, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::BrowserSession;
+use crate::domain::browser_session::{BrowserSession, StaleSessionCutoff};
 
 /// The browser sessions the server has signed in. Every method is one primitive on the caller's
 /// [`GrantStore`](super::GrantStore) scope: a single statement, or a few
@@ -31,6 +31,26 @@ pub trait BrowserSessionsTx {
         &mut self,
         sid: &str,
     ) -> Result<Option<BrowserSession>, AuthorizationServerError>;
+
+    /// Load the browser session `sid` when it is
+    /// [live](BrowserSession::is_live_at) at `now` under
+    /// `stale_session_cutoff`: `None` when no session has it, or the one that
+    /// does is revoked, expired or stale.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the read fails or the returned row
+    /// cannot be mapped to a [`BrowserSession`].
+    fn live_browser_session(
+        &mut self,
+        sid: &str,
+        stale_session_cutoff: &StaleSessionCutoff,
+        now: DateTime<Utc>,
+    ) -> Result<Option<BrowserSession>, AuthorizationServerError> {
+        Ok(self
+            .browser_session_by_sid(sid)?
+            .filter(|browser_session| browser_session.is_live_at(now, stale_session_cutoff)))
+    }
 
     /// Every browser session live at `now`: not revoked, and expiring after
     /// `now`. Newest first.

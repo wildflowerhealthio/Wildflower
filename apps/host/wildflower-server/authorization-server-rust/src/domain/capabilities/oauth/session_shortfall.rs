@@ -57,8 +57,7 @@ pub(crate) fn browser_session_grant(
     now: DateTime<Utc>,
 ) -> Result<Option<Grant>, AuthorizationServerError> {
     Ok(tx
-        .browser_session_by_sid(sid)?
-        .filter(|browser_session| browser_session.is_live_at(now, stale_session_cutoff))
+        .live_browser_session(sid, stale_session_cutoff, now)?
         .map(|browser_session| Grant::parse(browser_session.scopes)))
 }
 

@@ -62,10 +62,4 @@ End to end, the [Device Code](<../Integration Tests/Device Code Explanation.md>)
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_session_widening}}
 
-#### `live_session_or_deny`
-
-Both approvals that run under a browser session, a code's and a widening's, load it here first: a request whose session has ended is denied, never approved.
-
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestSession}}
-
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::live_session_or_deny}}
+Both approvals that run under a browser session, a code's and a widening's, first load it live through the port's [`live_browser_session`](<../Grant Store/Browser Sessions Explanation.md#item-BrowserSessionsTx>): a request whose session has ended is denied, never approved, each writing its own deny.

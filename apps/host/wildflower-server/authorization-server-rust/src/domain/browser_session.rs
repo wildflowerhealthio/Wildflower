@@ -160,7 +160,7 @@ impl BrowserSession {
 /// row is left as it was, so making a session stale writes nothing. Paired
 /// sessions are never stale.
 #[derive(Debug)]
-pub(crate) struct StaleSessionCutoff {
+pub struct StaleSessionCutoff {
     /// A same-device session created before this is stale, unless exempt.
     invalidate_sessions_before: DateTime<Utc>,
     /// The `sid`s of the same-device sessions created before
