@@ -99,7 +99,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   does is the default, derived afresh from the batch, its verdicts and the
   edits on every change (`formatExcludedByDefault`): every `unchanged`
   resource and every one left without a patient as it will be written (its
-  edit, else its resolved resource) is out, so an untouched format imports
+  edit, else its resolved resource; `importer-core`'s
+  `keysWithoutPatientOf`) is out, so an untouched format imports
   what its decode yielded that is new and has a patient, and a link that
   gives a row its patient takes it back in. The panel and the confirm read
   the same `excludedByDefaultFor`. A referent's link change reverts the edit

@@ -3,8 +3,9 @@
  * registered {@link FileImporter}, typed per format — and the batch
  * machinery a shell drives: group a pick by format, read it into a
  * {@link DecodedBatch}, re-decode one format under new settings, find
- * the batch's referents and resolve its mentions, and plan the batch's
- * write from its reviewed selections.
+ * the batch's referents and resolve its mentions, say which rows the
+ * referent links leave without a patient, and plan the batch's write from
+ * its reviewed selections.
  *
  * @remarks
  * Sits between the format bindings (`har-importer-core`,
@@ -46,3 +47,9 @@ export {
   resolveMentionsWithFallback,
   type ResolvedBatch,
 } from './resolve-mentions.ts'
+export {
+  isOfPatient,
+  keysWithoutPatientOf,
+  type LeftUnlinked,
+  leftUnlinkedIn,
+} from './unlinked-mentions.ts'

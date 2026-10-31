@@ -128,6 +128,17 @@ package alone and a layer that provides those.
   (`ReferentLinkChoiceSet.remove`); a failure
   naming a referent with no choice dies. Its one failure is
   `Referent.DuplicateReferent`.
+- `src/unlinked-mentions.ts` — what the referent links leave unlinked in a
+  format's rows. **`leftUnlinkedIn(plan, kind)`** is a **`LeftUnlinked`**:
+  `UnlinkedMention.leftByReferentLinks` on the plan, nothing for the format's
+  own source file. **`isOfPatient`** says whether an unlinked mention is of
+  the resource's patient (outside every compartment, or a dangling
+  `subject`). **`keysWithoutPatientOf(batch, kind, selection)`** names the
+  rows left without a patient as they will be written (each row's edit,
+  else its resolved resource): the half of the review's default exclusion
+  that is not the server diff. `importer-react`'s screen and the import
+  golden pin in `synthetic-data-core-js` both read it, so a headless import
+  with every default accepted excludes what the screen does.
 - `src/review-group.ts` — **`ReviewGroup`**, the group a reviewed resource
   falls in: a `FormatKind`, or **`LINKED_GROUP`** for the batch's linked
   records, which no format holds. A resource key is unique within a group,
