@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publishes one site to a GitHub Pages branch, or removes a PR preview from it,
-# for deploy-pages-site.yml and pr-preview.yml:
+# for deploy-pages-sites.sh:
 #
 #   publish-pages-branch.sh production <build-dir> <custom-domain> <404-page>
 #   publish-pages-branch.sh preview <pr-number> <build-dir> <404-page>

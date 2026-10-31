@@ -2,7 +2,7 @@
 paths:
   # actionlint's bundled metadata for actions/create-github-app-token@v3
   # predates its `client-id` input, which replaces the deprecated `app-id`.
-  .github/workflows/{deploy-pages-site,pr-preview}.yml:
+  .github/workflows/pr-preview.yml:
     ignore:
       - 'missing input "app-id" which is required by action "actions/create-github-app-token@v3"'
       - 'input "client-id" is not defined in action "actions/create-github-app-token@v3"'

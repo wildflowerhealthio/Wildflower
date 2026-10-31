@@ -80,6 +80,11 @@ catalog:
   # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-web).
   '@sentry/opentelemetry': 10.76.2
   '@sentry/react': 10.76.2
+  # sentry-cli, for the Pages deploys' source-map uploads
+  # (scripts/ci/upload-sentry-sourcemaps.sh): a command-line tool with no
+  # `@sentry/core`, so outside the alignment above. 2.58.6 is the version
+  # getsentry/action-release 3.7.2 ran.
+  '@sentry/cli': 2.58.6
   # The Scalar API reference, vendored through npm (never the CDN script) so the
   # static server-docs console at /server-docs ships self-contained.
   '@scalar/api-reference': ^1.76.0

@@ -1,0 +1,106 @@
+name: Deploy Pages sites
+description: >-
+  Builds a list of Pages sites and publishes each to its GitHub Pages branch:
+  production at the branch root, or a PR preview in its `pr-<n>/` directory.
+  Runs after checkout (with `persist-credentials: false`), Setup Vite+ and
+  `vp install`. deploy-pages-site.yml runs it for one site per job, the
+  production apps; pr-preview.yml for every site a PR affects in one job.
+  Every site has its turn, one after another, so one site's failure never
+  holds back the rest; the action fails at the end, naming the sites that
+  failed.
+
+inputs:
+  sites:
+    description: The sites, as a JSON array of `scripts/ci/pages-sites.ts plan …` sites.
+    required: true
+  target:
+    description: '`production`, or the PR number whose preview this is.'
+    required: true
+  variables:
+    description: >-
+      The repository variables, `toJSON(vars)`: each site's build reads its
+      `sentryDsnVariable` from them, and `SENTRY_ORG` names the Sentry
+      organization.
+    required: true
+  app-id:
+    description: The `STAGING_APP_ID` secret, the client ID of the App installed on every Pages repository.
+    required: true
+  app-private-key:
+    description: The `STAGING_APP_PRIVATE_KEY` secret.
+    required: true
+  sentry-auth-token:
+    description: >-
+      The `SENTRY_AUTH_TOKEN` secret, for each app's upload of its source maps
+      to its own Sentry project (scripts/ci/upload-sentry-sourcemaps.sh);
+      empty skips the uploads.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Check whether a site carries the book
+      id: book
+      shell: bash
+      env:
+        SITES: ${{ inputs.sites }}
+      run: echo "needed=$(jq 'any(.[]; .includesBook)' <<< "$SITES")" >> "$GITHUB_OUTPUT"
+
+    - name: Install mdbook
+      if: steps.book.outputs.needed == 'true'
+      uses: taiki-e/install-action@v2.87.32
+      with:
+        tool: mdbook@0.5.4
+
+    - name: Build the sites
+      id: build
+      shell: bash
+      env:
+        SITES: ${{ inputs.sites }}
+        TARGET: ${{ inputs.target }}
+        RELEASE: ${{ github.event.pull_request.head.sha || github.sha }}
+        VARIABLES: ${{ inputs.variables }}
+        SENTRY_AUTH_TOKEN: ${{ inputs.sentry-auth-token }}
+        SENTRY_ORG: ${{ fromJSON(inputs.variables).SENTRY_ORG }}
+      run: scripts/ci/deploy-pages-sites.sh build
+
+    # Minted after the builds rather than at the start of the job: the token
+    # lives for one hour. Scoped to the built sites' repositories and to
+    # contents, all the pushes need; the App is installed on every Pages
+    # repository with `Contents: Read and write`, so one token covers them
+    # all (and a repository it is missing from fails the mint for every
+    # site). An App token rather than a PAT because a push as
+    # `x-access-token` accepts only an installation token.
+    - name: Mint the Pages repository App token
+      id: pages-token
+      if: steps.build.outputs.built != '[]'
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.app-private-key }}
+        owner: wildflowerhealthio
+        repositories: ${{ steps.build.outputs.repositories }}
+        permission-contents: write
+
+    - name: Publish the sites
+      id: publish
+      if: steps.build.outputs.built != '[]'
+      shell: bash
+      env:
+        SITES: ${{ steps.build.outputs.built }}
+        TARGET: ${{ inputs.target }}
+        RELEASE: ${{ github.event.pull_request.head.sha || github.sha }}
+        PAGES_TOKEN: ${{ steps.pages-token.outputs.token }}
+      run: scripts/ci/deploy-pages-sites.sh publish
+
+    - name: Fail for the sites that failed
+      shell: bash
+      env:
+        BUILD_FAILED: ${{ steps.build.outputs.failed }}
+        PUBLISH_FAILED: ${{ steps.publish.outputs.failed }}
+      run: |
+        failed="$BUILD_FAILED${BUILD_FAILED:+${PUBLISH_FAILED:+ }}$PUBLISH_FAILED"
+        if [[ -n $failed ]]; then
+          echo "::error::Could not deploy: $failed"
+          exit 1
+        fi

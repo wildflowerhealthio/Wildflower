@@ -13,7 +13,7 @@ export default defineConfig({
     outDir: 'dist-web',
     // Published beside the bundle and referenced from it, so devtools show the
     // original source in production; the deploy also uploads them to Sentry
-    // (.github/actions/sentry-sourcemaps).
+    // (scripts/ci/upload-sentry-sourcemaps.sh).
     sourcemap: true,
     rolldownOptions: { input: 'index.html' },
   },
