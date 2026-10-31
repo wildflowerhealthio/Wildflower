@@ -246,8 +246,8 @@ jobs:
       # is covered with no edit here. Only the projects of packages the PR
       # changes or reaches through the workspace dependency graph run, plus
       # `scripts`; a root config or lockfile change, or any change outside
-      # every package (CI plumbing, the shard script, docs, Rust) runs them
-      # all, at a fifth of the fast-check runs when no package changed. The
+      # every package but Markdown (CI plumbing, the shard script, Rust) runs
+      # them all, at a fifth of the fast-check runs when no package changed. The
       # selected projects are grouped by top-level area and packed by rough
       # test time onto at most a few shards, one runner each. Rules:
       # scripts/ci/test-shards.ts. The planner loads the Vitest configs, so

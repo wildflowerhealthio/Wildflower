@@ -32,9 +32,9 @@ import {
   type HostedAppId,
   type SectionId,
 } from '../../slices/branding/branding-core/src/site.ts'
-import { loadAffectedPackages, type AffectedPackages, type Pkg } from '../affected-packages.ts'
+import { loadAffectedPackages, type AffectedPackages } from '../affected-packages.ts'
 import { isEntrypoint } from '../entrypoint.ts'
-import { packUnits, selectionFor } from './test-shards.ts'
+import { packUnits } from './test-shards.ts'
 
 /** scripts/ci/ sits two levels under the repo root. */
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -222,18 +222,16 @@ const MARKETING_PAGES_SITE: PagesSite = {
 const PAGES_SITES: readonly PagesSite[] = [...APP_PAGES_SITES, MARKETING_PAGES_SITE]
 
 /**
- * The sites a branch's changes can affect: every site when `selectionFor`
- * (the TypeScript test plan's rule) would run every project — a root config or
- * lockfile change, or a change outside every package, such as this script,
- * the deploy workflows, or a book chapter and the Rust it excerpts — and
- * otherwise the sites whose package, or whose book, the changes reach through
- * the workspace dependency graph. Pure — exported for unit testing.
+ * The sites a branch's changes can affect: every site for a root config or
+ * lockfile change, or any change outside every package, such as this script,
+ * the deploy workflows, or a book chapter and the Rust it excerpts — Markdown
+ * included, unlike the test plan's rule, since the marketing site carries the
+ * book — and otherwise the sites whose package, or whose book, the changes
+ * reach through the workspace dependency graph. Pure — exported for unit
+ * testing.
  */
-const affectedSites = (
-  affected: AffectedPackages,
-  packages: readonly Pkg[]
-): readonly PagesSite[] =>
-  selectionFor(affected, packages)._tag === 'AllProjects'
+const affectedSites = (affected: AffectedPackages): readonly PagesSite[] =>
+  affected.rootConfigChanges.length > 0 || affected.unownedChanges.length > 0
     ? PAGES_SITES
     : PAGES_SITES.filter(
         (site) =>
@@ -339,8 +337,8 @@ const plan = (which: string): Effect.Effect<readonly PagesSite[], Error> => {
     case 'teardown':
       return Effect.succeed(PAGES_SITES)
     case 'preview':
-      return Effect.map(loadAffectedPackages(REPO_ROOT), ({ packages, affectedPackages }) =>
-        affectedSites(affectedPackages, packages)
+      return Effect.map(loadAffectedPackages(REPO_ROOT), ({ affectedPackages }) =>
+        affectedSites(affectedPackages)
       )
     default:
       return Effect.fail(new Error(`Unknown plan "${which}": production, preview or teardown`))

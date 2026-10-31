@@ -390,8 +390,14 @@ describe('test-shards / selectionFor', () => {
     '.github/actions/vp-pack-cache/action.yml',
     'scripts/ci/test-shards.ts',
     'scripts/affected-packages.ts',
-    'docs/Testing/Testing Reference.md',
     'slices/fhir/fhir-rust/src/lib.rs',
+    'Cargo.toml',
+  ]
+
+  const markdownOutsideEveryPackage = [
+    'docs/Testing/Testing Reference.md',
+    'AGENTS.md',
+    'slices/fhir/fhir-rust/README.md',
   ]
 
   it('runs every project at the reduced scale for changes that reach no package', () => {
@@ -411,6 +417,22 @@ describe('test-shards / selectionFor', () => {
 
   it('runs only the projects outside every package when the changes reach none', () => {
     expect(projectsFor([])).toEqual(['scripts'])
+  })
+
+  it('selects nothing for Markdown outside every package', () => {
+    for (const file of markdownOutsideEveryPackage) {
+      expect(projectsFor([file])).toEqual(['scripts'])
+      expect(runScaleFor(selectionAfter([file]))).toBe(1)
+      const withApp = [file, 'apps/relay/relay-react/src/screen.tsx']
+      expect(projectsFor(withApp)).toEqual(['relay-react', 'scripts'])
+      expect(runScaleFor(selectionAfter(withApp))).toBe(1)
+    }
+  })
+
+  it('still runs every project for Markdown beside another change outside every package', () => {
+    const changes = ['docs/CI/Required Check Explanation.md', '.github/workflows/ci.yml']
+    expect(projectsFor(changes)).toEqual(allProjectNames)
+    expect(runScaleFor(selectionAfter(changes))).toBe(REDUCED_RUN_SCALE)
   })
 })
 
@@ -491,8 +513,27 @@ describe('test-shards / example plans', () => {
     })
   })
 
-  it('a docs-only change runs everything at the reduced scale', () => {
-    const { shards, runScale } = planFor(['docs/Testing/Testing Reference.md'])
+  it('a docs-only change runs only scripts', () => {
+    expect(planFor(['docs/Testing/Testing Reference.md'])).toEqual({
+      shards: [{ name: '1/1: scripts', runs: [{ projects: ['scripts'] }] }],
+      runScale: 1,
+    })
+  })
+
+  it('a docs and app change runs that app and scripts', () => {
+    expect(
+      planFor(['docs/Testing/Testing Reference.md', 'apps/strength/strength-core-js/src/plan.ts'])
+    ).toEqual({
+      shards: [
+        { name: '1/2: scripts', runs: [{ projects: ['scripts'] }] },
+        { name: '2/2: apps/strength (1 project)', runs: [{ projects: ['strength-core-js'] }] },
+      ],
+      runScale: 1,
+    })
+  })
+
+  it('a CI-only change runs everything at the reduced scale', () => {
+    const { shards, runScale } = planFor(['.github/workflows/ci-typescript.yml'])
     expect(projectsCovered(shards).toSorted()).toEqual(projects.map((p) => p.name).toSorted())
     expect(shards.map((shard) => shard.name)).toEqual([
       '1/4: slices 1/2',

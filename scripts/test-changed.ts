@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url'
 // local `vp test run` at the plan's fast-check run scale. The selection is
 // `scripts/ci/test-shards.ts`'s — the projects of the packages the branch's
 // changes reach plus `scripts`, or every project when a root config file or a
-// file outside every package changed — over the commits since `origin/main`
-// and any uncommitted or untracked work.
+// file outside every package other than Markdown changed — over the commits
+// since `origin/main` and any uncommitted or untracked work.
 import { Console, Effect } from 'effect'
 
 import { loadAffectedPackages } from './affected-packages.ts'

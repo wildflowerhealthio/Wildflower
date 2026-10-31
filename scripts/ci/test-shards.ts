@@ -87,7 +87,7 @@ const FULL_RUN_SCALE = 1
 
 /**
  * The run scale for a branch whose changes reach no package: CI plumbing,
- * docs, these scripts. Every project runs, since what those files reach isn't
+ * these scripts, Rust. Every project runs, since what those files reach isn't
  * in the package graph, but no package's code changed, so each property runs
  * a fifth of its base count (`numRunsFor` floors it at 10).
  */
@@ -200,23 +200,33 @@ const allProjects = (reason: string, runScale: number = FULL_RUN_SCALE): TestSel
 })
 
 /**
+ * Whether a file is Markdown (`*.md`; the repo has no `.mdx`). Outside every
+ * package that's docs, agent instructions and book chapters, which no test
+ * reads: the book's directive tests read fixtures, and the built book is
+ * checked by its preview deploy instead.
+ */
+const isMarkdown = (file: string): boolean => file.endsWith('.md')
+
+/**
  * The projects a branch's changes select. Every project runs when a root
- * config file or lockfile changed, or when any changed file sits outside every
- * package: CI workflows and actions, these scripts and the graph code they
- * read, docs, Rust crates — their reach isn't in the package graph, so the
- * plan errs toward running everything. When those changes reach no package,
- * everything runs at {@link REDUCED_RUN_SCALE}; when a package changed too, at
- * full scale, so a changed package's properties never run reduced. Otherwise
- * only the projects of packages the changes reach (the changed packages and
- * everything depending on them) run, plus those outside every package. Pure —
+ * config file or lockfile changed, or when a changed file other than Markdown
+ * sits outside every package: CI workflows and actions, these scripts and the
+ * graph code they read, Rust crates — their reach isn't in the package graph,
+ * so the plan errs toward running everything. When those changes reach no
+ * package, everything runs at {@link REDUCED_RUN_SCALE}; when a package
+ * changed too, at full scale, so a changed package's properties never run
+ * reduced. Otherwise only the projects of packages the changes reach (the
+ * changed packages and everything depending on them) run, plus those outside
+ * every package; Markdown outside every package selects nothing. Pure —
  * exported for unit testing.
  */
 const selectionFor = (affected: AffectedPackages, packages: readonly Pkg[]): TestSelection => {
   const [rootConfigChange] = affected.rootConfigChanges
   if (rootConfigChange !== undefined) return allProjects(`root config changed: ${rootConfigChange}`)
-  const [unownedChange] = affected.unownedChanges
+  const unownedChangesBesidesMarkdown = affected.unownedChanges.filter((file) => !isMarkdown(file))
+  const [unownedChange] = unownedChangesBesidesMarkdown
   if (unownedChange !== undefined) {
-    const more = affected.unownedChanges.length - 1
+    const more = unownedChangesBesidesMarkdown.length - 1
     return allProjects(
       `changed outside every package: ${unownedChange}${more > 0 ? ` and ${more} more` : ''}`,
       affected.affected.size === 0 ? REDUCED_RUN_SCALE : FULL_RUN_SCALE
