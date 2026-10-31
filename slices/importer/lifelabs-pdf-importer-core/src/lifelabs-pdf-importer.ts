@@ -1,4 +1,5 @@
 import { DecodeFunction, type FileImporter } from '@wildflowerhealthio/importer-fundamentals'
+import type { PositionedTextExtractor } from '@wildflowerhealthio/positioned-text'
 
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
@@ -22,9 +23,14 @@ const sourceFileFormat = {
  *
  * @remarks
  * No `groupBy` — a report stands alone — and no `source file`: the stored PDF is
- * the format's own artifact, kept out of `Patient/$everything`.
+ * the format's own artifact, kept out of `Patient/$everything`. Its decode
+ * requires a {@link PositionedTextExtractor} to read the PDF's text.
  */
-const lifeLabsPdfImporter: FileImporter.Type<LifeLabsPdfSettings, typeof format> = {
+const lifeLabsPdfImporter: FileImporter.Type<
+  LifeLabsPdfSettings,
+  typeof format,
+  PositionedTextExtractor
+> = {
   format,
   display,
   detect: detectLifeLabsPdf,

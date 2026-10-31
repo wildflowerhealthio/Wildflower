@@ -13,7 +13,7 @@ import {
 import {
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_SYSTEM,
-} from '@wildflowerhealthio/lifelabs-pdf-importer/source-file'
+} from '@wildflowerhealthio/lifelabs-pdf-importer-core/source-file'
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 

@@ -59,7 +59,7 @@ importer output, and the browser layer that loads a published snapshot.
 
 - **`synthetic-data-lifelabs`** (pure) — `LifeLabs.render`: a `Story`'s lab
   draws, printed by a `Laboratory`, as the FHIR resources the LifeLabs PDF
-  import makes of the reports (`lifelabs-pdf-importer/synthesis`), filed
+  import makes of the reports (`lifelabs-pdf-importer-core/synthesis`), filed
   on the Patient the person's pharmacy import made. Its `./story` subpath
   holds the `Laboratory`, `PrintedRange` and `LabRequisition` a data set
   writes beside the story; its `./test-helpers` subpath holds

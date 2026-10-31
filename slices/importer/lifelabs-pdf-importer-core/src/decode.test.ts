@@ -1,23 +1,23 @@
 import { DecodedFile, Referent } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Either, ParseResult } from 'effect'
+import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
+import { Effect, Either, Layer, ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { decodeLifeLabsPdfDocument, reportSectionTitle } from './decode.ts'
+import { decodeLifeLabsPdf, decodeLifeLabsPdfDocument, reportSectionTitle } from './decode.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
 import { patientOriginalId, practitionerOriginalId } from './fhir/to-fhir.ts'
 import { LIFELABS_SYSTEM } from './source-system.ts'
 import { layoutDocument } from './test-helpers.ts'
 
 /**
- * `decodeLifeLabsPdfDocument` is the pure "positioned-text document ↦
- * per-report sections of labeled FHIR resources" leg of the LifeLabs
- * importer's `decode`. The outer `decodeLifeLabsPdf(file, ...)` wraps
- * this with pdfjs extraction; that seam is untested-by-design (see the
- * anonymizer's PDF descriptor), so the property tests here drive
+ * `decodeLifeLabsPdfDocument` is the "positioned-text document ↦ per-report
+ * sections of labeled FHIR resources" leg of the LifeLabs importer's
+ * `decode`. The outer `decodeLifeLabsPdf(file, ...)` runs it on what the
+ * `PositionedTextExtractor` read off the bytes; the property tests here drive
  * `decodeLifeLabsPdfDocument` directly against `layoutDocument`'s printed
- * inverse.
+ * inverse, and `decodeLifeLabsPdf` under a fake extractor.
  */
 
 const SETTINGS = { timeZone: 'America/Vancouver' }
@@ -177,5 +177,46 @@ describe('reportSectionTitle', () => {
       }),
       { numRuns: numRunsFor({ base: 20 }) }
     )
+  })
+})
+
+describe('decodeLifeLabsPdf', () => {
+  const file = { fileName: 'Reports.pdf', bytes: new TextEncoder().encode('%PDF-1.7 stand-in') }
+
+  it('property: decodes the document the extractor reads off the bytes', () => {
+    fc.assert(
+      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+        const document = layoutDocument(reports)
+        const extractor = Layer.succeed(PositionedTextExtractor, {
+          extract: (bytes) =>
+            bytes === file.bytes
+              ? Effect.succeed(document)
+              : Effect.fail(new UnreadablePdf({ cause: 'other bytes' })),
+        })
+
+        const decoded = Effect.runSync(
+          decodeLifeLabsPdf(file, SETTINGS).pipe(Effect.provide(extractor))
+        )
+
+        expect(decoded).toEqual(Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS)))
+      }),
+      { numRuns: numRunsFor({ base: 10 }) }
+    )
+  })
+
+  it('fails with a ParseError carrying the message of a PDF the extractor cannot open', () => {
+    const extractor = Layer.succeed(PositionedTextExtractor, {
+      extract: () => Effect.fail(new UnreadablePdf({ cause: new Error('Invalid PDF structure.') })),
+    })
+
+    const result = Effect.runSync(
+      Effect.either(decodeLifeLabsPdf(file, SETTINGS).pipe(Effect.provide(extractor)))
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) {
+      expect(ParseResult.isParseError(result.left)).toBe(true)
+      expect(result.left.message).toContain('Invalid PDF structure.')
+    }
   })
 })

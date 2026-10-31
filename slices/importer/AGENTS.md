@@ -60,12 +60,13 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `HarSettingsPicker`, the whole-import kind toggles grouped by source. The
   format has no review UI of its own; the shell's generalized sectioned
   review covers it.
-- **[`lifelabs-pdf-importer`](./lifelabs-pdf-importer/AGENTS.md)** (the
+- **[`lifelabs-pdf-importer-core`](./lifelabs-pdf-importer-core/AGENTS.md)** (the
   LifeLabs PDF binding) — `lifeLabsPdfImporter` for format
   `'lifelabs-pdf'`: takes a picked LifeLabs report PDF's raw bytes end-to-end,
-  running `positioned-text-web`'s extraction seam (the same one the PDF
-  anonymizer uses) before the positioned-text dialect and the FHIR R4
-  synthesis, under its own PDF source-file coding. Its decode yields one section
+  reading their text through `positioned-text`'s `PositionedTextExtractor`
+  service (which `importer-react` provides with `positioned-text-web`'s pdfjs
+  layer, the extraction the PDF anonymizer uses) before the positioned-text
+  dialect and the FHIR R4 synthesis, under its own PDF source-file coding. Its decode yields one section
   per report the PDF carries; this format makes no HTTP routing decisions (no
   response-kind recognition; this format is documents, not archived HTTP
   traffic).

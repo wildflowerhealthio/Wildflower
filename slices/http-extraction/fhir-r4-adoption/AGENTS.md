@@ -36,7 +36,7 @@ FHIR-free.
 Pure: no DOM, no `fs`, no React. Depends on `fhir-r4`,
 `http-extraction-fundamentals`, `kitchen-sink` and `effect`. The per-source
 packages in this slice, the file importers (`dicom-importer-core`,
-`lifelabs-pdf-importer`) and the synthetic-data generators build on it. It must
+`lifelabs-pdf-importer-core`) and the synthetic-data generators build on it. It must
 never import from `slices/importer`, and `http-extraction-fundamentals` must
 never import it: `RecognizedUrlData.source` is `SourceIdentity`'s shape,
 spelled structurally there.

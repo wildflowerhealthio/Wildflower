@@ -25,7 +25,7 @@ import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
  * Ids are deterministic — the same tags produce the same ids — so re-importing
  * the same study overwrites rather than duplicates, and the order the files
  * were picked in changes nothing (see {@link compareInstances}). The
- * derivation mirrors `lifelabs-pdf-importer`'s wire-builder pattern: a
+ * derivation mirrors `lifelabs-pdf-importer-core`'s wire-builder pattern: a
  * `sourceId` from `joinIdComponents` through `fnv1a64`, validated through the
  * `fhir-r4` schemas' `Schema.decodeUnknown`.
  *
