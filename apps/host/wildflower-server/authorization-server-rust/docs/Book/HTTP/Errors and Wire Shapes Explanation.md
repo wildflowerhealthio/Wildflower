@@ -122,3 +122,7 @@ The consent card is the requesting browser itself, so it follows the redirect di
 The consent capability's [`ConsentOutcome`](<../Capabilities/Access/Consents Explanation.md>), variant for variant.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/wire_representations.rs ConsentResult::from}}
+
+### `PolledConsentResult`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/wire_representations.rs PolledConsentResult}}

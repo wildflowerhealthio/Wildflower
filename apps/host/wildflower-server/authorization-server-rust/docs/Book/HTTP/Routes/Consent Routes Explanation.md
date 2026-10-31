@@ -22,7 +22,7 @@ The rules of a decision (what an approval may grant, the acknowledgement, the pa
 
 Asking the Owner raises a request for the Owner's attention, so that route alone is wrapped in the [deferred start limit](<../Middleware Explanation.md#item-defer_authorization_start_limit>) the caller passes in.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth_consents/mod.rs router}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth_consents/mod.rs openapi_router}}
 
 ## `http::routes::oauth_consents::get`
 
@@ -54,6 +54,10 @@ It has its own shape rather than the device page's [`ApproveBody`](<../Errors an
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth_consents/approve.rs ApproveOAuthConsentBody}}
 
+### `OAuthConsentApprovalConflictBody`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth_consents/approve.rs OAuthConsentApprovalConflictBody}}
+
 ### `handle_approve_oauth_consent`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth_consents/approve.rs handle_approve_oauth_consent}}
@@ -74,9 +78,9 @@ It has its own shape rather than the device page's [`ApproveBody`](<../Errors an
 
 ## `http::routes::devices`
 
-### `router`
+### `openapi_router`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/devices/mod.rs router}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/devices/mod.rs openapi_router}}
 
 ## `http::routes::devices::get`
 

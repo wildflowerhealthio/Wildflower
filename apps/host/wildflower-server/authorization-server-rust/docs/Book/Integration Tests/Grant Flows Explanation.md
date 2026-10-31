@@ -59,7 +59,7 @@ Both paths to a code go through one writer method, [`RequestApprover::approve_fo
 
 {{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs CodeAuthority}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_for_code from="let browser_session =" through="self.tx.issue_authorization_code"}}
+{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_for_code from="let Some(browser_session) =" through="self.tx.issue_authorization_code"}}
 
 Three rules, in the order they run:
 

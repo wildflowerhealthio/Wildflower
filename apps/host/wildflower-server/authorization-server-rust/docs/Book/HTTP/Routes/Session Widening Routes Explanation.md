@@ -34,7 +34,7 @@ The [start limit](<../Middleware Explanation.md>) layer wraps it as {{#code-link
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session_widenings/mod.rs self}}
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session_widenings/mod.rs router}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session_widenings/mod.rs openapi_router}}
 
 ### `SessionWideningConsent`
 
@@ -49,9 +49,3 @@ The [start limit](<../Middleware Explanation.md>) layer wraps it as {{#code-link
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session_widenings/approve.rs handle_approve_session_widening}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session_widenings/deny.rs handle_deny_session_widening}}
-
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session_widenings/get.rs route}}
-
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session_widenings/approve.rs route}}
-
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session_widenings/deny.rs route}}
