@@ -4,13 +4,13 @@
 
 Anyone who knows the server's domain can start an authorization request, and every request raised for the Owner pops up on the Owner's device. So the host keeps a limit, its [`AuthorizationStartGate`](<../Assembly/Ports and Adapters Explanation.md#item-AuthorizationStartGate>). **Every start that may bother the Owner spends from the limit once; a start the limit refuses is `429`, uncached, and parks nothing.**
 
-The layer [`limit_authorization_starts`](<../HTTP/Middleware Explanation.md#item-limit_authorization_starts>) sits on `/oauth/authorize` and `/oauth/device_authorization` only. When a start asks depends on what it carries:
+The layer [`limit_authorization_starts`](<../HTTP/Middleware Explanation.md#item-limit_authorization_starts>) sits on `/oauth/authorize`, `/oauth/device_authorization` and the limited page's `…/ask-to-widen` only. When a start asks depends on what it carries:
 
 - A live browser session that can decide consents, at `/oauth/authorize`, asks only when its request is to be raised for the Owner ([`CodeRequest::raise_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>)) or parked for the limited page. One it decides on its own [Consent Card](<Consent Card Explanation.md>) spends nothing, and going on past the limited page ([`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--acknowledge_session_shortfall>)) asks nothing more.
 - No live browser session, at `/oauth/authorize`, never asks: the browser is only sent to pairing.
 - Anything else, and every device-authorization start, asks at once, before the request is parsed.
 
-Asking the Owner about a request already parked (`…/ask-owner`) spends from the same limit, when it raises the request.
+Asking the Owner about a request already parked (`…/ask-owner`) spends from the same limit, when it raises the request. Asking to widen a session from the limited page (`…/ask-to-widen`) always defers, and spends only when it files a new [session widening](<../Domain/Authorization Request/Session Widening Explanation.md>): asking again while one waits for the Owner spends nothing.
 
 This file's own helpers are on the [Test Fixtures](<Test Fixtures Explanation.md#integrationauthorization_start_limit>) page, with the shared ones.
 
@@ -73,6 +73,14 @@ Relies on [`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorizatio
 ### `a_continue_whose_start_was_counted_does_not_ask_the_gate_again`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_continue_whose_start_was_counted_does_not_ask_the_gate_again}}
+
+### `an_ask_to_widen_asks_the_gate_only_when_it_files_a_widening`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs an_ask_to_widen_asks_the_gate_only_when_it_files_a_widening}}
+
+### `a_refused_ask_to_widen_is_429`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_refused_ask_to_widen_is_429}}
 
 Relies on [`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--acknowledge_session_shortfall>). Fixtures first used here: [`paired_browser_session_holding`](<Test Fixtures Explanation.md#item-paired_browser_session_holding>).
 

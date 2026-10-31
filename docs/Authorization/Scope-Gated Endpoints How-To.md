@@ -227,12 +227,18 @@ user-facing surface — but it helps to know what the contract buys:
   `scopes-react`'s `AuthorizationFailure`, which names each missing scope in plain
   language (`wildflower/Grant.d` → "delete Grants").
 - **Step-up:** when the 403 named scopes, the surface offers "Request access",
-  which signs the launcher in again (`session/sign-in-again.ts`): the session
-  goes `Unauthed`, the landing runs the SMART sign-in to the same server, and
-  `returnTo` brings the user back to the denied page, where the loader re-runs
-  the action against the new grant. The session's grant does not cover the
-  missing scopes, so the new authorization request goes to the Owner's consent
-  rather than through on the old grant.
+  which signs the launcher in again with `prompt=consent`
+  (`session/sign-in-again.ts`): the session goes `Unauthed`, the landing runs
+  the SMART sign-in to the same server, and `returnTo` brings the user back to
+  the denied page, where the loader re-runs the action against the new grant.
+  The server tells the two cases apart. When the launcher's grant lacks the
+  missing scopes but this browser's session holds them, the new authorization
+  request goes to the Owner's consent rather than through on the old grant.
+  When the browser's session itself lacks them, `prompt=consent` stops the
+  sign-in at the limited page, even after a Continue there before, and the
+  browser can ask the Owner to widen its session (a session widening, in the
+  authorization slice's
+  [Jargon Explanation](../../slices/authorization/docs/Jargon%20Explanation.md#session-widening)).
 
 The one thing a slice controls here is whether the missing scopes can be named at
 all: declare the 403 (above) and the surface reads them out of the body; skip it
