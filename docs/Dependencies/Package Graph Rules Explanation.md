@@ -14,9 +14,11 @@ app's `<product>-core-js`, is the pure layer (see
 named for a platform (`-react`, `-tauri`, `-tauri-js`, `-node` or `-web`) or
 on a Rust crate. Crates are named `wildflowerhealthio-<folder>`, without the
 folder's `-rust` suffix, so the check tells them by their ecosystem: every
-crate is a slice's native half, an adapter. A package that needs one, as
-`lifelabs-pdf-importer` needs `positioned-text-web`'s pdfjs extraction, is not
-a core and doesn't take the suffix.
+crate is a slice's native half, an adapter. A core that needs what an adapter
+does asks for it as an Effect service and leaves the adapter to the host:
+`lifelabs-pdf-importer-core`'s decode requires `positioned-text`'s
+`PositionedTextExtractor`, and `importer-react` provides
+`positioned-text-web`'s pdfjs layer.
 
 A core's own code is held pure the same way, below the package level. Each
 core's tsconfig has `lib: ["es2024"]` with no `"dom"`, so a `document` or
@@ -77,8 +79,9 @@ are exempt only from the app-privacy rule, and only between apps.
 Each failure names the rule and both packages. The fix is to move code, not
 to add an exception:
 
-- A core that needs an adapter either takes the capability as a parameter, or
-  isn't a core and drops the suffix.
+- A core that needs an adapter either requires the capability as an Effect
+  service (or takes it as a parameter) and lets the host provide it, or isn't
+  a core and drops the suffix.
 - A package outside an app that needs something inside it means that
   something is shared: move it to `slices/` (or `global/`), as
   `fhir-sync-pebble-core` moved so the Synthetic Data Loader's generator could

@@ -34,7 +34,7 @@
     "@types/react-dom": "catalog:",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
-    "@wildflowerhealthio/lifelabs-pdf-importer": "workspace:*",
+    "@wildflowerhealthio/lifelabs-pdf-importer-core": "workspace:*",
     "effect": "catalog:",
     "jsdom": "catalog:",
     "react": "catalog:",
@@ -45,7 +45,7 @@
   },
   "peerDependencies": {
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
-    "@wildflowerhealthio/lifelabs-pdf-importer": "workspace:*",
+    "@wildflowerhealthio/lifelabs-pdf-importer-core": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:"
   }

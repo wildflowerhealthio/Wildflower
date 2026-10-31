@@ -6,7 +6,7 @@ import {
   type ReportPatient,
   type ReportRow,
   type ReportSection,
-} from '@wildflowerhealthio/lifelabs-pdf-importer/synthesis'
+} from '@wildflowerhealthio/lifelabs-pdf-importer-core/synthesis'
 import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'
 import {
   type LabDraw,
@@ -24,7 +24,7 @@ import { type LabRequisition, Laboratory, PrintedRange } from './story/index.ts'
  *
  * @remarks
  * Each day's draws are one report ({@link reportsOf}) — a `Report` as
- * `lifelabs-pdf-importer` reads one off a printed PDF: a `Lab No`, the
+ * `lifelabs-pdf-importer-core` reads one off a printed PDF: a `Lab No`, the
  * date of service and report, the patient block, the requisition's clinicians,
  * the laboratory's block, and the results grid with each test's printed name,
  * result, `HI`/`LO` flag, reference range, unit, lab licence and comments, as

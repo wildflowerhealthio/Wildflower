@@ -1,25 +1,27 @@
 import {
+  type FileImporter,
   FormatDecode,
   FormatDetector,
   type PickedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Option, pipe } from 'effect'
 
-import { type BoundFormat, type FormatKind, formatKinds, type FormatSettings } from './registry.ts'
+import { type FormatKind, formatKinds, type FormatSettings } from './registry.ts'
 
 /**
  * The read half of an import as pure functions over the registry: group a
  * picked batch by the format that claims each file, run every format's
  * batch `decode` under its current settings, and re-decode one format when
- * its settings change. No services, no writes — the shell runs these and
- * holds the result.
+ * its settings change. No writes, and no services but what the registry's
+ * decodes require — `DecodeRequirements` for the real registry — which the
+ * shell provides when it runs these and holds the result.
  *
  * @remarks
  * The registry is a record keyed by {@link FormatKind}, so a caller holding a
  * `kind: FormatKind` cannot index `registry[kind].decode(files, settings[kind])`
  * directly — TypeScript does not correlate the two union-indexed accesses.
  * {@link decodeFormat} closes that gap with a generic `K`: inside it `kind` is
- * one specific `K`, so `registry[kind]` is a `BoundFormat<K>` and
+ * one specific `K`, so `registry[kind]` is that format's importer and
  * `settings[kind]` its `FormatSettings[K]`, with no per-format branch to keep
  * in step with the registry.
  *
@@ -37,11 +39,18 @@ import { type BoundFormat, type FormatKind, formatKinds, type FormatSettings } f
 /**
  * The registry surface the read half needs: each format's `format` and
  * `detect` (to identify a pick) and `decode` (to read it). Not the whole
- * {@link BoundFormat}, so a test can stand up a fake registry with just
- * these fields.
+ * `BoundFormat`, so a test can stand up a fake registry with just these
+ * fields.
+ *
+ * @typeParam R - What the registry's decodes require, together: the real
+ *   registry's is `DecodeRequirements`, a fake's that reads its bytes itself
+ *   `never`. Left out, any registry fits, for the steps that only `detect`.
  */
-type ReadRegistry = {
-  readonly [K in FormatKind]: Pick<BoundFormat<K>, 'format' | 'detect' | 'decode'>
+type ReadRegistry<R = unknown> = {
+  readonly [K in FormatKind]: Pick<
+    FileImporter.Type<FormatSettings[K], K, R>,
+    'format' | 'detect' | 'decode'
+  >
 }
 
 /** A picked batch split by the format that claimed each file. */
@@ -147,14 +156,15 @@ const groupByFormat = (
  * @param settings - Every format's current settings
  * @param kind - The format to decode with
  * @param files - The files that format claimed
- * @returns The format's decode result
+ * @returns The format's decode result, requiring what the registry's decodes
+ *   require
  */
-const decodeFormat = <K extends FormatKind>(
-  registry: ReadRegistry,
+const decodeFormat = <K extends FormatKind, R>(
+  registry: ReadRegistry<R>,
   settings: FormatSettings,
   kind: K,
   files: readonly PickedFile.Type[]
-): Effect.Effect<FormatDecode.Result<K>> => registry[kind].decode(files, settings[kind])
+): Effect.Effect<FormatDecode.Result<K>, never, R> => registry[kind].decode(files, settings[kind])
 
 /**
  * Build every format's slot of a batch by running one effect per registered
@@ -171,11 +181,11 @@ const decodeFormat = <K extends FormatKind>(
  *
  * @param slot - The effect for one format, generic in `K` so each slot stays
  *   correlated with its own format
- * @returns The assembled format slots
+ * @returns The assembled format slots, requiring what the slots require
  */
-const collectFormats = (
-  slot: <K extends FormatKind>(kind: K) => Effect.Effect<FormatDecode.Result<K>>
-): Effect.Effect<FormatResults> =>
+const collectFormats = <R>(
+  slot: <K extends FormatKind>(kind: K) => Effect.Effect<FormatDecode.Result<K>, never, R>
+): Effect.Effect<FormatResults, never, R> =>
   Effect.all(
     {
       har: slot('har'),
@@ -194,18 +204,19 @@ const collectFormats = (
  * @param registry - The registered formats' `detect`s and `decode`s
  * @param settings - Every format's current settings
  * @param picks - The batch, in pick order
- * @returns The batch's format slots and its unrecognized files
+ * @returns The batch's format slots and its unrecognized files, requiring
+ *   what the registry's decodes require
  *
  * @remarks
  * Formats decode concurrently. Each format's id is deterministic via
  * `FormatDecode.makeId`, so a settings re-decode produces the same ids
  * by construction.
  */
-const readBatch = (
-  registry: ReadRegistry,
+const readBatch = <R>(
+  registry: ReadRegistry<R>,
   settings: FormatSettings,
   picks: readonly PickedFile.NamedBytes[]
-): Effect.Effect<DecodedBatch> => {
+): Effect.Effect<DecodedBatch, never, R> => {
   const { groups, unrecognized } = groupByFormat(registry, picks)
   return Effect.map(
     collectFormats((kind) =>
@@ -235,7 +246,8 @@ const readBatch = (
  * @param settings - Every format's settings, the changed one included
  * @param kind - The format whose settings changed
  * @param batch - The batch's current result
- * @returns The batch with that format's result replaced
+ * @returns The batch with that format's result replaced, requiring what the
+ *   registry's decodes require
  *
  * @remarks
  * Rebuilds the format slots through {@link collectFormats} rather than replacing one
@@ -244,12 +256,12 @@ const readBatch = (
  * `FormatDecode.makeId`, so the same files produce the same ids under any
  * settings — the reviewer's selection survives by construction.
  */
-const redecodeFormat = (
-  registry: ReadRegistry,
+const redecodeFormat = <R>(
+  registry: ReadRegistry<R>,
   settings: FormatSettings,
   kind: FormatKind,
   batch: DecodedBatch
-): Effect.Effect<DecodedBatch> =>
+): Effect.Effect<DecodedBatch, never, R> =>
   Effect.map(
     collectFormats((slotKind) =>
       slotKind === kind

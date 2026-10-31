@@ -10,6 +10,8 @@ import {
   redecodeFormat,
 } from '@wildflowerhealthio/importer-core'
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { positionedTextExtractorPdfjs } from '@wildflowerhealthio/positioned-text-web'
+import { Effect } from 'effect'
 
 import { formatRegistry } from '../registry.ts'
 
@@ -27,7 +29,9 @@ import { formatRegistry } from '../registry.ts'
  * under new settings all live in `importer-core`, which knows nothing of
  * React. Run through `useRunAuthed` (the slice's one runner) even though a
  * decode needs no auth; the write client stays unreachable by `decode`'s own
- * construction, not by anything this hook does.
+ * construction, not by anything this hook does. What the decodes do need —
+ * the LifeLabs decode's PDF text extraction — is provided here, by
+ * `positioned-text-web`'s pdfjs layer.
  *
  * The registry is the shell's own `formatRegistry`, imported rather than
  * taken as a parameter: there is one, the hook is mounted once, and a
@@ -122,7 +126,11 @@ const useImportRun = (): ImportRun => {
       const ticket = latest.current
       const batchId = batchCounter.current
       commitRun({ _tag: 'reading' })
-      void runAuthed(readBatch(formatRegistry, current.current.settings, picks)).then((batch) => {
+      void runAuthed(
+        readBatch(formatRegistry, current.current.settings, picks).pipe(
+          Effect.provide(positionedTextExtractorPdfjs)
+        )
+      ).then((batch) => {
         if (latest.current !== ticket) return
         commitRun({ _tag: 'ready', batchId, batch })
       })
@@ -141,13 +149,15 @@ const useImportRun = (): ImportRun => {
       const ticket = latest.current
       const { batchId } = pending
       setRedecoding(true)
-      void runAuthed(redecodeFormat(formatRegistry, merged, format, pending.batch)).then(
-        (batch) => {
-          if (latest.current !== ticket) return
-          setRedecoding(false)
-          commitRun({ _tag: 'ready', batchId, batch })
-        }
-      )
+      void runAuthed(
+        redecodeFormat(formatRegistry, merged, format, pending.batch).pipe(
+          Effect.provide(positionedTextExtractorPdfjs)
+        )
+      ).then((batch) => {
+        if (latest.current !== ticket) return
+        setRedecoding(false)
+        commitRun({ _tag: 'ready', batchId, batch })
+      })
     },
     [commitRun, runAuthed]
   )

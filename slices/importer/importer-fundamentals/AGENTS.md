@@ -5,7 +5,7 @@ contract every file-format binding implements, the pure per-resource
 staged-import model (what a decoded-but-unwritten import consists of), the
 identity map that links a decode's patients and providers to the device's, and
 the structural failure record the sinks report against. It is the
-layer a concrete binding (`har-importer-core`, `lifelabs-pdf-importer`)
+layer a concrete binding (`har-importer-core`, `lifelabs-pdf-importer-core`)
 sits on top of.
 
 No DOM, no `fs`, no React: pure data and transitions the shell drives.
@@ -61,7 +61,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 - `src/decode-function.ts` — the **`DecodeFunction`** namespace: the batch
   decode's signature **and the one constructor that builds it**. **`Type`** is
   the signature a `FileImporter` exposes (files and settings in, one
-  `FormatDecode.Result` out, never failing, requiring nothing).
+  `FormatDecode.Result` out, never failing, requiring `R`: `never` for a
+  format that reads its bytes itself, a platform service such as
+  `positioned-text`'s `PositionedTextExtractor` for one that cannot).
+  `FileImporter.Type` carries the same `R`, and `make` takes it from the
+  `Config`'s `decodeFileSet`.
   **`make(config)`** takes one **`Config`**: the `format`, the
   `sourceFileFormat`, a `decodeFileSet`, and — optionally — a `groupBy` and an
   `linkSourceFile`. **`WithSourceFile`** is what a `decodeFileSet` reads: a

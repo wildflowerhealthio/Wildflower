@@ -21,15 +21,20 @@ import type * as PickedFile from './picked-file.ts'
  * There is no constructor: every field is either a constant the binding states
  * or a function it already has. `decode` comes from `DecodeFunction.make`,
  * which is where the source-file constants below are put to work.
+ *
+ * `R` is what `decode` requires of whoever runs it: `never` for a format that
+ * reads its bytes itself, a platform service (LifeLabs' PDF extraction) for
+ * one that cannot. The registry's union of them is what `importer-core`'s
+ * `readBatch` requires, and the host provides it.
  */
-interface Type<TSettings, TFormat extends string> {
+interface Type<TSettings, TFormat extends string, R = never> {
   readonly format: TFormat
   readonly display: { readonly title: string; readonly description: string }
   /** Claims a picked file — `format` and this together satisfy `FormatDetector.Type`. */
   readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
   readonly defaultSettings: TSettings
-  /** The batch decode the shell runs: never failing, requiring nothing. */
-  readonly decode: DecodeFunction.Type<TSettings, TFormat>
+  /** The batch decode the shell runs: never failing, requiring `R` of its caller. */
+  readonly decode: DecodeFunction.Type<TSettings, TFormat, R>
   /**
    * The format's source file constants — what its source files are written under,
    * and what a reader of the server's list searches, recognizes and decodes

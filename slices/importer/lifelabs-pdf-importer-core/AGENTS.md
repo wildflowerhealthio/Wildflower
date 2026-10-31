@@ -1,23 +1,23 @@
-# AGENTS.md — slices/importer/lifelabs-pdf-importer
+# AGENTS.md — slices/importer/lifelabs-pdf-importer-core
 
-The **LifeLabs PDF binding** of the importer slice. It carries no layer
-suffix because it is not a pure `-core`: its decode runs `positioned-text-web`'s
-pdfjs extraction, an adapter, which a `-core` may not depend on. The importer
-opens a picked LifeLabs "Reports" PDF's raw bytes end-to-end. It threads the
-same `positioned-text-web` extraction seam the PDF anonymizer uses, runs the
-positioned-text dialect over the extracted `wildflower-positioned-text`
-document to typed `LifeLabsReport` records, and synthesizes Patient,
+The **LifeLabs PDF binding** of the importer slice, and its pure layer. The
+importer opens a picked LifeLabs "Reports" PDF's raw bytes end-to-end. Its
+decode asks `positioned-text`'s `PositionedTextExtractor` service for the
+PDF's text, runs the positioned-text dialect over the extracted
+`wildflower-positioned-text` document to typed `LifeLabsReport` records, and
+synthesizes Patient,
 Practitioner, DiagnosticReport, and Observation FHIR resources — the
 importer's opt-in write happens through the shell's shared `persistBatchBundle`
 afterwards.
 The picker's user hands in the PDF itself, not the anonymizer's JSON output:
 this binding does its own extraction.
 
-It holds no DOM code, no `fs` and no React, but it depends on
-`positioned-text-web`, whose `extractPositionedText` reaches `pdfjs-dist`
-behind a dynamic import. That is the one shared PDF extraction
-seam in the repo; the anonymizer's PDF format descriptor calls the same
-function.
+It holds no DOM code, no `fs`, no React and no extraction library. The
+extractor is a requirement of the decode's `Effect`, so it reaches the caller
+through `FileImporter.Type`'s `R` and `importer-core`'s `readBatch`. The host
+provides `positioned-text-web`'s `positionedTextExtractorPdfjs`, the same pdfjs
+extraction the anonymizer's PDF format descriptor calls; tests provide a fake
+that hands back a hand-written positioned-text document.
 
 ## Shape
 
@@ -75,15 +75,15 @@ function.
 - `src/decode.ts` — **`decodeLifeLabsPdf`** (the `decodeFileSet` the format's
   importer lifts into its batch `decode`) and **`decodeLifeLabsPdfDocument`** (the pure
   "document ↦ sections" leg tests drive directly).
-  `decodeLifeLabsPdf(file, settings, source)` calls
-  `positioned-text-web`'s `extractPositionedText` on the picked file's bytes
+  `decodeLifeLabsPdf(file, settings)` requires a `PositionedTextExtractor`,
+  runs its `extract` on the picked file's bytes
   and hands the extracted `Document.Type` to `decodeLifeLabsPdfDocument`,
   which runs the
   dialect, then the FHIR synthesis and adoption (`synthesis.ts`'s
   `adoptedResourcesOf`), yielding a `DecodedFile`: one
   section per report, titled by **`reportSectionTitle`** (the report's `Lab No`
   and date of service, `'LifeLabs report'` when both are masked), and no notes.
-  Both extraction failure and an unrecognized LifeLabs document surface as
+  Both extraction failure (`UnreadablePdf`) and an unrecognized LifeLabs document surface as
   `ParseError` — the one error channel the batch decode folds into that file's
   `unreadableFiles` entry. It reads only the picked file's name and bytes: this
   format derives no id from its source file, and the batch decode does the
@@ -92,8 +92,8 @@ function.
   exported as the `/synthesis` subpath: the `Report` model's types,
   `toFhirResources`, **`adoptedResourcesOf`** (synthesis then adoption under
   `LIFELABS_SYSTEM`, the resources a decode yields) and the
-  `ReportResources` / `SynthesisOptions` types, none of which reaches
-  `positioned-text-web` (pdfjs). For callers that build reports themselves
+  `ReportResources` / `SynthesisOptions` types, none of which requires an
+  extractor. For callers that build reports themselves
   (`synthetic-data-lifelabs`). The main entry does not re-export it: it
   carries the importer's own surface (decode, detect, the importer, `Report`,
   the settings and the source-system constants).
@@ -119,7 +119,8 @@ function.
 - `src/lifelabs-pdf-importer.ts` — **`lifeLabsPdfImporter`**, the
   `FileImporter.Type` literal for format `'lifelabs-pdf'`, its `decode` a
   `DecodeFunction.make` with `decodeLifeLabsPdf` as its `decodeFileSet` — no
-  `groupBy` (a report stands alone) and no `linkSourceFile`. The
+  `groupBy` (a report stands alone) and no `linkSourceFile`. Its `R` is
+  `PositionedTextExtractor`. The
   batch decode it returns mints every pick's source file
   `DocumentReference` and reviews it as its own "Source file" section, stamps
   every synthesized resource's `meta.source` with it, and folds a file whose
@@ -139,10 +140,11 @@ function.
 
 ## Layering
 
-Depends on `positioned-text` (the positioned-text schema — the neutral seam
-between extraction and the dialect), `positioned-text-web`
-(`extractPositionedText`, the shared pdfjs seam the anonymizer also drives),
-`fhir-r4` (resource schemas, `joinIdComponents`), `fhir-r4-adoption`
+A `-core`: pure, `lib: ["es2024"]` with no DOM, and no adapter among its
+dependencies, directly or through other packages. Depends on
+`positioned-text` (the positioned-text schema, the neutral seam between
+extraction and the dialect, and the `PositionedTextExtractor` service the
+decode requires), `fhir-r4` (resource schemas, `joinIdComponents`), `fhir-r4-adoption`
 (`adoptResource`),
 `importer-fundamentals` (`DecodeFunction.make`, `DecodedFile`, `PickedFile`),
 `kitchen-sink`
@@ -150,8 +152,8 @@ between extraction and the dialect), `positioned-text-web`
 (peer; `Report.tryFromDocument` returns an `Effect`). `fast-check` is a
 test-only `devDependency`, reached only from the `*-arbitrary.ts` modules,
 and must stay out of the production bundle. Never imports `har-importer-core`,
-`pdf-anonymizer-core`, `http-extraction-fundamentals`, or a
-`*-importer-react`.
+`pdf-anonymizer-core`, `http-extraction-fundamentals`, `positioned-text-web`,
+`pdfjs-dist`, or a `*-importer-react`.
 
 ## Guardrails
 

@@ -1,5 +1,5 @@
 import type { SettingsPickerProps } from '@wildflowerhealthio/importer-fundamentals'
-import type { LifeLabsPdfSettings } from '@wildflowerhealthio/lifelabs-pdf-importer'
+import type { LifeLabsPdfSettings } from '@wildflowerhealthio/lifelabs-pdf-importer-core'
 import { DateTime, Option } from 'effect'
 import { type JSX, useId } from 'react'
 

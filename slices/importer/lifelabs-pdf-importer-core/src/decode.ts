@@ -1,8 +1,11 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { DecodedFile, PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
-import type { Document } from '@wildflowerhealthio/positioned-text'
-import { extractPositionedText } from '@wildflowerhealthio/positioned-text-web'
+import {
+  type Document,
+  PositionedTextExtractor,
+  type UnreadablePdf,
+} from '@wildflowerhealthio/positioned-text'
 import { Effect, ParseResult, Schema } from 'effect'
 
 import * as Report from './entities/report.ts'
@@ -10,29 +13,18 @@ import type { LifeLabsPdfSettings } from './settings.ts'
 import { adoptedResourcesOf } from './synthesis.ts'
 
 /**
- * Wrap the report-parse's `UnrecognizedLifeLabsDocument` as a `ParseError` so
- * `decodeLifeLabsPdf` keeps a single, format-shaped error channel — the
- * importer contract's `ParseError`. `Forbidden` is the right issue kind: the
- * PDF's text extracted successfully, but the transform to a LifeLabs report
- * refused it.
+ * Wrap a refusal as a `ParseError` so `decodeLifeLabsPdf` keeps a single,
+ * format-shaped error channel — the importer contract's `ParseError`. The
+ * refusal is the extractor's `UnreadablePdf` (the bytes were not a PDF it could
+ * open) or the report-parse's `UnrecognizedLifeLabsDocument` (the text
+ * extracted, but the transform to a LifeLabs report refused it). `Forbidden`
+ * is the issue kind for both: the decode refused its input.
  */
-const unrecognizedAsParseError = (e: Report.UnrecognizedLifeLabsDocument): ParseResult.ParseError =>
+const asParseError = (
+  e: UnreadablePdf | Report.UnrecognizedLifeLabsDocument
+): ParseResult.ParseError =>
   new ParseResult.ParseError({
     issue: new ParseResult.Forbidden(Schema.Unknown.ast, undefined, e.message),
-  })
-
-/**
- * A pdfjs extraction failure — the bytes were not a PDF the extractor could
- * open — surfaces as a `ParseError` too, so the importer's decode has one
- * failure channel.
- */
-const extractionAsParseError = (cause: unknown): ParseResult.ParseError =>
-  new ParseResult.ParseError({
-    issue: new ParseResult.Forbidden(
-      Schema.Unknown.ast,
-      undefined,
-      cause instanceof Error ? cause.message : 'PDF extraction failed'
-    ),
   })
 
 /** An adopted resource as its review row, keyed and titled by its `Type/id`. */
@@ -58,8 +50,8 @@ const reportSectionTitle = (report: Report.Type): string => {
  * labeled FHIR resources — the pure "document → sections" leg the outer
  * decode wraps.
  *
- * @param document - The positioned-text document {@link extractPositionedText}
- *   produced from the PDF's bytes
+ * @param document - The positioned-text document the
+ *   {@link PositionedTextExtractor} produced from the PDF's bytes
  * @param settings - The import's settings (time zone for date interpretation)
  * @returns One section per report the document carries (titled by the
  *   report's `Lab No` and date of service), no notes; fails only with a
@@ -68,8 +60,8 @@ const reportSectionTitle = (report: Report.Type): string => {
  *
  * @remarks
  * Exported so property tests can drive it directly, feeding `layoutDocument`'s
- * printed inverse instead of round-tripping through the pdfjs extraction seam.
- * `decodeLifeLabsPdf` is `decodeLifeLabsPdfDocument ∘ extractPositionedText`.
+ * printed inverse instead of going through an extractor.
+ * `decodeLifeLabsPdf` is `decodeLifeLabsPdfDocument ∘ PositionedTextExtractor`.
  * A `Patient` or `Practitioner` shared across reports appears in the section
  * of the first report naming it — the synthesis deduplicates by id.
  */
@@ -79,9 +71,7 @@ const decodeLifeLabsPdfDocument = (
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.gen(function* () {
     const timeZone = yield* checkTimeZone(settings.timeZone)
-    const reports = yield* Report.tryFromDocument(document).pipe(
-      Effect.mapError(unrecognizedAsParseError)
-    )
+    const reports = yield* Report.tryFromDocument(document).pipe(Effect.mapError(asParseError))
     const groups = yield* adoptedResourcesOf(reports, { timeZone })
     const sections = groups.map((group): DecodedFile.Section => ({
       title: reportSectionTitle(group.report),
@@ -99,13 +89,14 @@ const decodeLifeLabsPdfDocument = (
  * @param settings - The import's settings (time zone for date interpretation)
  * @returns One section of `LabeledResource`s per report, no notes; fails only
  *   with a `ParseError` when the bytes are not a PDF the extractor can open or
- *   the extracted text is not a recognized LifeLabs report; requires nothing
+ *   the extracted text is not a recognized LifeLabs report; requires the
+ *   {@link PositionedTextExtractor}
  *
  * @remarks
- * The extraction seam is `positioned-text-web`'s `extractPositionedText`, the
- * same one the PDF anonymizer uses to turn a PDF into a positioned-text
- * document — so the importer and the anonymizer read the identical byte
- * layout, and any dialect-level improvement here is picked up by the
+ * The extractor is the caller's to provide. A host provides
+ * `positioned-text-web`'s pdfjs layer, the same pdfjs extraction the PDF
+ * anonymizer runs, so the importer and the anonymizer read the identical byte
+ * layout and any dialect-level improvement here is picked up by the
  * anonymizer's preview too. Nothing here reads text off disk: the LifeLabs
  * report PDF the user picks is the format's own input, not the anonymizer's
  * JSON download.
@@ -113,10 +104,11 @@ const decodeLifeLabsPdfDocument = (
 const decodeLifeLabsPdf = (
   file: PickedFile.NamedBytes,
   settings: LifeLabsPdfSettings
-): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
-  Effect.tryPromise({
-    try: () => extractPositionedText(file.bytes),
-    catch: extractionAsParseError,
-  }).pipe(Effect.flatMap((document) => decodeLifeLabsPdfDocument(document, settings)))
+): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, PositionedTextExtractor> =>
+  Effect.gen(function* () {
+    const extractor = yield* PositionedTextExtractor
+    const document = yield* extractor.extract(file.bytes).pipe(Effect.mapError(asParseError))
+    return yield* decodeLifeLabsPdfDocument(document, settings)
+  })
 
 export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument, reportSectionTitle }

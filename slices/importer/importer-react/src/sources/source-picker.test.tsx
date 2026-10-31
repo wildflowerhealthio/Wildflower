@@ -17,7 +17,7 @@ import type { FormatDetector } from '@wildflowerhealthio/importer-fundamentals'
 import {
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_SYSTEM,
-} from '@wildflowerhealthio/lifelabs-pdf-importer/source-file'
+} from '@wildflowerhealthio/lifelabs-pdf-importer-core/source-file'
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'

@@ -1,17 +1,10 @@
-import {
-  DecodeFunction,
-  type FileImporter,
-  PickedFile,
-  DecodedFile,
-  FormatDecode,
-} from '@wildflowerhealthio/importer-fundamentals'
+import { PickedFile, DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, ParseResult, Schema } from 'effect'
+import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
+import { Effect, Layer, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { decodeLifeLabsPdfDocument } from './decode.ts'
-import { detectLifeLabsPdf } from './detect.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
 import type * as Report from './entities/report.ts'
 import { lifeLabsPdfImporter } from './lifelabs-pdf-importer.ts'
@@ -49,32 +42,17 @@ describe('lifeLabsPdfImporter', () => {
 
 const SETTINGS = { timeZone: 'America/Vancouver' }
 
-const sourceFileFormat = {
-  coding: { system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE },
-  contentType: 'application/pdf',
-  descriptionPrefix: 'LifeLabs report: ',
-}
+/** An extractor that reads any PDF as `reports` printed. */
+const extractorPrinting = (reports: readonly Report.Type[]): Layer.Layer<PositionedTextExtractor> =>
+  Layer.succeed(PositionedTextExtractor, {
+    extract: () => Effect.succeed(layoutDocument(reports)),
+  })
 
-const importerForReports = (
-  reports: readonly Report.Type[]
-): FileImporter.Type<typeof SETTINGS, 'lifelabs-pdf'> => {
-  const format = 'lifelabs-pdf'
-  return {
-    format,
-    sourceFileFormat,
-    // The decode closes over `reports`, so the importer is built per call
-    // rather than at module scope.
-    decode: DecodeFunction.make({
-      format,
-      sourceFileFormat,
-      decodeFileSet: (_members, settings: typeof SETTINGS) =>
-        decodeLifeLabsPdfDocument(layoutDocument(reports), settings),
-    }),
-    display: { title: 'LifeLabs report', description: 'Test' },
-    detect: detectLifeLabsPdf,
-    defaultSettings: SETTINGS,
-  }
-}
+/** An extractor that cannot open any PDF. */
+const extractorRefusing: Layer.Layer<PositionedTextExtractor> = Layer.succeed(
+  PositionedTextExtractor,
+  { extract: () => Effect.fail(new UnreadablePdf({ cause: new Error('Invalid PDF structure.') })) }
+)
 
 const readDecoded = (
   result: FormatDecode.Result<string>
@@ -100,7 +78,11 @@ describe('lifeLabsPdfImporter decode', () => {
           }
 
           const decoded = readDecoded(
-            await Effect.runPromise(importerForReports(reports).decode([file], SETTINGS))
+            await Effect.runPromise(
+              lifeLabsPdfImporter
+                .decode([file], SETTINGS)
+                .pipe(Effect.provide(extractorPrinting(reports)))
+            )
           )
 
           const [sourceSection] = decoded.sections
@@ -120,7 +102,7 @@ describe('lifeLabsPdfImporter decode', () => {
     )
   })
 
-  it('collects an unreadable file for bytes that are not a PDF', async () => {
+  it('collects an unreadable file for bytes the extractor cannot open', async () => {
     const file: PickedFile.Type = {
       id: '0:not-a-report.pdf',
       fileName: 'not-a-report.pdf',
@@ -128,7 +110,9 @@ describe('lifeLabsPdfImporter decode', () => {
     }
 
     const result = await Effect.runPromise(
-      lifeLabsPdfImporter.decode([file], defaultLifeLabsPdfSettings)
+      lifeLabsPdfImporter
+        .decode([file], defaultLifeLabsPdfSettings)
+        .pipe(Effect.provide(extractorRefusing))
     )
 
     expect(result.decoded.sections).toHaveLength(0)
