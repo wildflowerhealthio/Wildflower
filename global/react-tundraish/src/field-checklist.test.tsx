@@ -25,7 +25,7 @@ const fieldsTicked = (
   {
     id: 'birthDate',
     name: 'birthDate',
-    from: null,
+    from: undefined,
     to: '1961-04-02',
     fillsGap: true,
     checked: birthDate,
@@ -94,6 +94,44 @@ describe('FieldChecklist', () => {
 
     // Assert
     expect(parentState()).toEqual({ checked: false, indeterminate: false })
+  })
+
+  it('checks and disables the parent when every field is always taken', () => {
+    // Act
+    render(
+      <FieldChecklist
+        label="Update with import details"
+        fields={fieldsTicked(false, false).filter((field) => field.id === 'identifier')}
+        onToggle={vi.fn()}
+        onToggleAll={vi.fn()}
+      />
+    )
+
+    // Assert
+    const parent = getCheckbox(/^Update with import details/)
+    expect({ checked: parent.checked, disabled: parent.disabled }).toEqual({
+      checked: true,
+      disabled: true,
+    })
+  })
+
+  it('leaves the parent empty and disabled when there are no fields', () => {
+    // Act
+    render(
+      <FieldChecklist
+        label="Update with import details"
+        fields={[]}
+        onToggle={vi.fn()}
+        onToggleAll={vi.fn()}
+      />
+    )
+
+    // Assert
+    const parent = getCheckbox(/^Update with import details/)
+    expect({ checked: parent.checked, disabled: parent.disabled }).toEqual({
+      checked: false,
+      disabled: true,
+    })
   })
 
   it('ticks every field from a partly checked parent, and clears them from a checked one', async () => {

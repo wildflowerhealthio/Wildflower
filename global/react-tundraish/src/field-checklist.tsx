@@ -9,8 +9,11 @@ type FieldChecklistFieldBase<TId extends string> = {
   readonly id: TId
   /** The field's name, set in mono (`birthDate`). */
   readonly name: string
-  /** The value the field holds now; `null` when it is empty. */
-  readonly from: ReactNode | null
+  /**
+   * The value the field holds now. Any empty node (`null`, `undefined`, a
+   * boolean or `''`) reads as an empty field.
+   */
+  readonly from: ReactNode
   /** The value taking the field sets. */
   readonly to: ReactNode
   /**
@@ -19,6 +22,10 @@ type FieldChecklistFieldBase<TId extends string> = {
    */
   readonly fillsGap: boolean
 }
+
+/** Whether a node renders nothing, as `from` does for an empty field. */
+const isEmptyNode = (node: ReactNode): boolean =>
+  node === null || node === undefined || typeof node === 'boolean' || node === ''
 
 /**
  * One field in a {@link FieldChecklist}: either the reader's to tick, or always
@@ -53,7 +60,8 @@ interface FieldChecklistProps<TId extends string> extends Omit<
  * A parent checkbox over one checkbox per field, each showing the change as
  * `name from → to` (`name gains to` when the field is empty). The parent is
  * checked, partly checked or empty by the fields under it, and ticks or
- * clears them all.
+ * clears them all. With no field to tick it is disabled: checked when every
+ * field is always taken, empty when there are no fields.
  */
 const FieldChecklist = <TId extends string>({
   label,
@@ -79,7 +87,7 @@ const FieldChecklist = <TId extends string>({
           label={parentLabel}
         />
       ) : (
-        <Checkbox checked={true} disabled={true} label={parentLabel} />
+        <Checkbox checked={fields.length > 0} disabled={true} label={parentLabel} />
       )}
       {fields.map((field) => {
         const taken = field.alwaysTakenReason !== undefined || field.checked
@@ -91,7 +99,7 @@ const FieldChecklist = <TId extends string>({
             )}
           >
             <span className={styles['field-checklist__name']}>{field.name}</span>{' '}
-            {field.from === null ? 'gains' : <>{field.from} →</>}{' '}
+            {isEmptyNode(field.from) ? 'gains' : <>{field.from} →</>}{' '}
             <span
               className={cn(
                 styles['field-checklist__to'],
