@@ -50,11 +50,14 @@ push's) and packs only what this push changed.
 
 The Pages deploys restore the same entry without saving it: each job of
 `pr-preview.yml`'s `deploy` and of `deploy-pages-site.yml`. Their site builds
-(`scripts/ci/deploy-pages-sites.sh`) run `vp run --cache`, so a workspace
-package the entry already holds, or an earlier site in the job built, is
-replayed rather than rebuilt. An app's own `vp build` reports the environment
-it reads to the task cache, and each build carries its commit as its Sentry
-release, so app builds themselves miss.
+(`scripts/ci/deploy-pages-sites.sh`) run `vp run --cache` in two steps. The
+first builds the site's workspace dependencies (`--filter "<package>^..."`)
+with no `VITE_SENTRY_*` variables set, so their fingerprints match main's
+`vp run pack` and each package the entry already holds, or an earlier site in
+the job built, is replayed rather than rebuilt. vp counts every `VITE_*`
+variable in a task's fingerprint, so the site's Sentry DSN, environment and
+release are set only for the second step, the site's own build. That build
+carries its commit as its Sentry release, so it always misses.
 
 ## Why the default branch has to warm the cache
 

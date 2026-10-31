@@ -75,6 +75,14 @@ build_site() {
   package=$(field packageName)
   build_dir=$(field buildDir)
   dsn_variable=$(field sentryDsnVariable)
+  # `<package>^...` builds every workspace package the site depends on, in
+  # dependency order, but not the site itself. `--cache` replays a package
+  # already built, by an earlier site in this job or in the pack cache
+  # restored from main, instead of building it again. vp counts every
+  # `VITE_*` variable set in a task's fingerprint, so these builds run
+  # before the site's Sentry variables are set, as main's `vp run pack` does.
+  vp run --cache --filter "$package^..." build
+
   # The app reads only its own `VITE_SENTRY_DSN_<APP>` (a public identifier,
   # so a repository variable rather than a secret) and reports nothing
   # without one; the shared `VITE_SENTRY_DSN` is left unset, as it is what
@@ -88,13 +96,9 @@ build_site() {
   export VITE_SENTRY_ENVIRONMENT=$environment
   export VITE_SENTRY_RELEASE=${RELEASE:?RELEASE must name the commit built}
 
-  # `<package>...` builds the package and every workspace package it depends
-  # on, in dependency order, as `vp run pack` would for the whole workspace.
-  # `--cache` replays a package already built, by an earlier site in this job
-  # or in the restored pack cache, instead of building it again. The app's
-  # own `vp build` reports the environment it reads, so a different DSN,
-  # environment or release is a cache miss.
-  vp run --cache --filter "$package..." build
+  # The site itself, with its Sentry variables. Each build carries its commit
+  # as its Sentry release, so the site's own build always misses the cache.
+  vp run --cache --filter "$package" build
   node scripts/ci/pages-sites.ts check "$name"
   # The book's `{{#code}}` directives name source by file and symbol, so a
   # PR whose chapters or excerpted code no longer match fails here. Its links

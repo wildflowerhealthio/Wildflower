@@ -60,8 +60,9 @@ jobs:
           cache: true
           cache-save: false
 
-      # Restore only: the packages the sites build are mostly unchanged since
-      # main's last pack, which ts-cache-warm.yml saves. See
+      # Restore only: the shared packages the sites build replay main's
+      # last pack, which ts-cache-warm.yml saves, because each site's Sentry
+      # variables are set only for the site's own build. See
       # docs/TypeScript/CI Build Cache Explanation.md.
       - name: Cache vp pack outputs
         uses: ./.github/actions/vp-pack-cache
