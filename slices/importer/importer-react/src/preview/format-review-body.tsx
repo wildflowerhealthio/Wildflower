@@ -1,6 +1,10 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import type { FormatKind } from '@wildflowerhealthio/importer-core'
+import {
+  type FormatKind,
+  type LeftUnlinked,
+  leftUnlinkedIn,
+} from '@wildflowerhealthio/importer-core'
 import {
   type FormatDecode,
   DecodedFile,
@@ -28,14 +32,7 @@ import {
   UNREADABLE_FILE_MESSAGE,
 } from './preview-text.ts'
 import { SectionToggle } from './section-toggle.tsx'
-import {
-  groupsOf,
-  isAt,
-  type LeftUnlinked,
-  leftUnlinkedIn,
-  reasonsLine,
-  unlinkedInRows,
-} from './unlinked-mentions.ts'
+import { groupsOf, isAt, reasonsLine, unlinkedInRows } from './unlinked-mentions.ts'
 import styles from './format-review-body.module.css'
 
 /**

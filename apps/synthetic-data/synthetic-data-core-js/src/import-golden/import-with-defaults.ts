@@ -14,22 +14,20 @@ import {
   formatKinds,
   formatRegistry,
   isSourceFileOf,
+  keysWithoutPatientOf,
   LINKED_GROUP,
   planWrite,
   readBatch,
-  type ResolvedBatch,
   resolveMentions,
   type ReviewGroup,
 } from '@wildflowerhealthio/importer-core'
 import {
   DecodedFile,
-  Mention,
   MentionLinkChoiceSet,
   PickedFile,
   Referent,
   ReferentLinkChoiceSet,
   StagedImport,
-  UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap, Order, Schema } from 'effect'
 
@@ -92,37 +90,6 @@ const defaultLinkChoicesOf = (referents: readonly Referent.Type[]): ReferentLink
     ])
   )
 
-/** Whether `unlinked` leaves the patient of its resource unlinked. */
-const isOfPatient = (unlinked: UnlinkedMention.Type): boolean =>
-  UnlinkedMention.match(unlinked, {
-    OutsidePatientCompartment: () => true,
-    Dangling: ({ mentionPath }) => mentionPath === Mention.SUBJECT_PATH,
-  })
-
-/**
- * The keys of `kind`'s rows the review leaves out until the reviewer ticks
- * them, when no row is on the server: those left without a patient, its
- * source files aside.
- *
- * @remarks
- * `importer-react`'s `formatExcludedByDefault` with no server comparison:
- * the screen keeps that rule, so it is restated here.
- */
-const excludedByDefaultOf = (batch: ResolvedBatch, kind: FormatKind): ReadonlySet<string> =>
-  new Set(
-    DecodedFile.resources(batch.formats[kind].decoded)
-      .filter(
-        (entry) =>
-          !isSourceFileOf(kind, entry.resource) &&
-          UnlinkedMention.leftByReferentLinks(
-            batch.plan,
-            entry.key,
-            StagedImport.resolvedResourceOf(batch.plan, StagedImport.initial(), entry)
-          ).some(isOfPatient)
-      )
-      .map(({ key }) => key)
-  )
-
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
 
 /** Every source file of `kind` in `batch`'s decode. */
@@ -180,10 +147,12 @@ const importWithDefaults = (
       byReferent: defaultLinkChoicesOf(referents),
       byMention: MentionLinkChoiceSet.empty,
     })
+    // The screen's default with no row on the server: every row left
+    // without a patient is out.
     const plan = planWrite(
       batch,
       () => StagedImport.initial(),
-      (kind) => excludedByDefaultOf(batch, kind),
+      (kind) => keysWithoutPatientOf(batch, kind, StagedImport.initial()),
       new Set()
     )
     const included = plan.filter(({ disposition }) => disposition === 'Included')
