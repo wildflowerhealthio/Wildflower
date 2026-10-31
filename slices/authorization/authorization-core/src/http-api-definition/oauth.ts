@@ -1,5 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from '@effect/platform'
 import { Schema } from 'effect'
+import { SessionWideningNotFoundSchema } from './session-widenings.ts'
 
 const AuthorizationStatusSchema = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),
@@ -58,6 +59,9 @@ const AuthorizeUrlParamsSchema = Schema.Struct({
   state: Schema.String,
   launch: Schema.optional(Schema.String),
   aud: Schema.optional(Schema.String),
+  // OpenID Connect `prompt`. Only `consent` means anything: a request whose browser session
+  // holds less than it asks for stops at the limited page even after a remembered Continue.
+  prompt: Schema.optional(Schema.String),
 })
 
 // Error response shapes per OAuth 2.0 §5.2 / RFC 8628 §3.5. One schema
@@ -237,6 +241,23 @@ const SessionShortfallNextSchema = Schema.Struct({
   location: Schema.String,
 })
 
+/** `POST /oauth/authorize/:id/ask-to-widen`: the session widening filed for the Owner. */
+const AskedSessionWideningSchema = Schema.Struct({
+  wideningId: Schema.String,
+})
+
+/**
+ * Where a session widening stands, as the limited page's poll finds it. `widened` comes with the
+ * browser's wider session, for the same session, as its `__Host-browser_session` cookie;
+ * `declined` leaves the session as it was; `expired` means there is nothing more to collect.
+ */
+const SessionWideningStatusSchema = Schema.Union(
+  Schema.Struct({ status: Schema.Literal('pending') }),
+  Schema.Struct({ status: Schema.Literal('declined') }),
+  Schema.Struct({ status: Schema.Literal('widened') }),
+  Schema.Struct({ status: Schema.Literal('expired') })
+)
+
 const httpApiGroup = HttpApiGroup.make('oauth', { topLevel: false })
   .add(
     HttpApiEndpoint.get('Authorize', '/authorize')
@@ -267,6 +288,18 @@ const httpApiGroup = HttpApiGroup.make('oauth', { topLevel: false })
       .setPath(Schema.Struct({ id: Schema.String }))
       .addSuccess(SessionShortfallNextSchema)
       .addError(AuthorizationStatusNotFoundSchema, { status: 404 })
+  )
+  .add(
+    HttpApiEndpoint.post('AskToWidenSession', '/authorize/:id/ask-to-widen')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(AskedSessionWideningSchema)
+      .addError(AuthorizationStatusNotFoundSchema, { status: 404 })
+  )
+  .add(
+    HttpApiEndpoint.post('SessionWideningPoll', '/session-widenings/:id/poll')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(SessionWideningStatusSchema)
+      .addError(SessionWideningNotFoundSchema, { status: 404 })
   )
   .add(
     HttpApiEndpoint.post('TokenExchange', '/token')
@@ -320,4 +353,6 @@ export {
   BrowserPairingNotFoundSchema,
   SessionShortfallSchema,
   SessionShortfallNextSchema,
+  AskedSessionWideningSchema,
+  SessionWideningStatusSchema,
 }
