@@ -20,6 +20,10 @@ import {
   missingRequiredFiles,
   PAGES_SITES,
   type PagesSite,
+  PREVIEW_GROUP_COUNT,
+  PREVIEW_SITE_SECONDS,
+  previewGroups,
+  previewSiteSeconds,
 } from './pages-sites.ts'
 
 // scripts/ci/ sits two levels under the repo root.
@@ -218,6 +222,64 @@ describe('pages-sites / affectedSites', () => {
             affected.affected.has(site.packageName) ||
               (site.includesBook && affected.affected.has(BOOK_PACKAGE))
           )
+        }
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+})
+
+describe('pages-sites / previewGroups', () => {
+  const groupSeconds = (sites: readonly PagesSite[]): number =>
+    sites.reduce((sum, site) => sum + previewSiteSeconds(site), 0)
+
+  it('should weigh only sites that exist', () => {
+    const names = new Set(PAGES_SITES.map(({ name }) => name))
+    for (const name of PREVIEW_SITE_SECONDS.keys()) expect(names).toContain(name)
+  })
+
+  it('should split every site into the groups, numbered from 1', () => {
+    const groups = previewGroups(PAGES_SITES)
+
+    expect(groups.map(({ group, name }) => [group, name])).toEqual(
+      Array.from({ length: PREVIEW_GROUP_COUNT }, (_, index) => [
+        index + 1,
+        `${index + 1}/${PREVIEW_GROUP_COUNT}`,
+      ])
+    )
+    expect(groups.flatMap(({ sites }) => sites.map(({ name }) => name)).toSorted()).toEqual(
+      PAGES_SITES.map(({ name }) => name).toSorted()
+    )
+  })
+
+  it("should balance every site's groups within the heaviest site", () => {
+    const seconds = previewGroups(PAGES_SITES).map(({ sites }) => groupSeconds(sites))
+    const heaviestSite = Math.max(...PAGES_SITES.map(previewSiteSeconds))
+
+    expect(Math.max(...seconds) - Math.min(...seconds)).toBeLessThanOrEqual(heaviestSite)
+  })
+
+  it('should have no group for no sites, and one for one site', () => {
+    const [site] = PAGES_SITES
+    if (site === undefined) throw new Error('No sites')
+
+    expect(previewGroups([])).toEqual([])
+    expect(previewGroups([site]).map(({ sites }) => sites)).toEqual([[site]])
+  })
+
+  it('should keep each site in the group it has among every site, so a deploy and the teardown share its lock', () => {
+    const groupOf = (groups: ReturnType<typeof previewGroups>): ReadonlyMap<string, number> =>
+      new Map(groups.flatMap(({ group, sites }) => sites.map(({ name }) => [name, group] as const)))
+    const everySite = groupOf(previewGroups(PAGES_SITES))
+
+    fc.assert(
+      fc.property(fc.subarray([...PAGES_SITES]), (sites) => {
+        const groups = previewGroups(sites)
+        expect(groups.flatMap((group) => group.sites)).toHaveLength(sites.length)
+        for (const [name, group] of groupOf(groups)) expect(group).toBe(everySite.get(name))
+        for (const { sites: groupSites } of groups) {
+          expect(groupSites).not.toHaveLength(0)
+          expect(groupSites).toEqual(sites.filter((site) => groupSites.includes(site)))
         }
       }),
       { numRuns: numRunsFor({ base: 30 }) }

@@ -15,10 +15,15 @@ import { fileURLToPath } from 'node:url'
 //   node scripts/ci/pages-sites.ts plan production   # every app (the apex deploys on its own)
 //   node scripts/ci/pages-sites.ts plan preview      # the sites a branch's changes can affect
 //   node scripts/ci/pages-sites.ts plan teardown     # every site with previews
+//   node scripts/ci/pages-sites.ts groups preview    # the preview plan, split for its jobs
+//   node scripts/ci/pages-sites.ts groups teardown   # the teardown plan, split for its jobs
 //   node scripts/ci/pages-sites.ts check <name>      # fail unless its build holds its required files
 //
 // A plan is a JSON array of sites, written to stdout; a summary goes to
-// stderr.
+// stderr. `groups` writes the GitHub Actions matrix pr-preview.yml's deploy
+// and teardown jobs fan out over, `{ include: [{ group, name, sites }, ...] }`:
+// the plan's sites in at most `PREVIEW_GROUP_COUNT` groups, each a job of its
+// own (see `previewGroups`).
 import { Console, Effect } from 'effect'
 
 import {
@@ -29,7 +34,7 @@ import {
 } from '../../slices/branding/branding-core/src/site.ts'
 import { loadAffectedPackages, type AffectedPackages, type Pkg } from '../affected-packages.ts'
 import { isEntrypoint } from '../entrypoint.ts'
-import { selectionFor } from './test-shards.ts'
+import { packUnits, selectionFor } from './test-shards.ts'
 
 /** scripts/ci/ sits two levels under the repo root. */
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -236,6 +241,85 @@ const affectedSites = (
           (site.includesBook && affected.affected.has(BOOK_PACKAGE))
       )
 
+/**
+ * The most jobs pr-preview.yml's deploy, and its teardown, split the sites
+ * among. Every job pays about 50 seconds of setup (checkout, Vite+, install)
+ * and the account shares 20 concurrent runners across every workflow, so the
+ * sites share two jobs rather than taking one each.
+ */
+const PREVIEW_GROUP_COUNT = 2
+
+/**
+ * Rough seconds each site's preview takes to build and publish on a CI
+ * runner, by site name: the weights the groups balance. Read off the
+ * per-site job history in October 2026, less each job's setup, and rounded;
+ * they only need to rank the sites, so re-measure when the groups drift well
+ * out of balance rather than on every change. The marketing site's includes
+ * the book and installing mdbook.
+ */
+const PREVIEW_SITE_SECONDS: ReadonlyMap<string, number> = new Map([
+  ['app-catalog', 10],
+  ['authorization', 70],
+  ['fhir-sync-pebble', 50],
+  ['importer', 80],
+  ['launcher', 80],
+  ['marketing', 55],
+  ['medications', 75],
+  ['ohif-viewer', 20],
+  ['plots', 75],
+  ['server-docs', 20],
+  ['strength', 55],
+  ['synthetic-data', 85],
+  ['watch-lifts', 10],
+])
+
+/** The weight of a site missing from {@link PREVIEW_SITE_SECONDS}: about the median site's. */
+const DEFAULT_PREVIEW_SITE_SECONDS = 55
+
+/** Rough seconds a site's preview takes: {@link PREVIEW_SITE_SECONDS}, else the default. */
+const previewSiteSeconds = (site: PagesSite): number =>
+  PREVIEW_SITE_SECONDS.get(site.name) ?? DEFAULT_PREVIEW_SITE_SECONDS
+
+/** One of pr-preview.yml's deploy or teardown jobs: a matrix entry. */
+interface PreviewGroup {
+  /** The group's number, from 1: fixed per site, it names the job's concurrency group. */
+  readonly group: number
+  /** `<group>/<count>`, shown in the job name. */
+  readonly name: string
+  readonly sites: readonly PagesSite[]
+}
+
+/**
+ * Every site's group: {@link PAGES_SITES} packed by
+ * {@link PREVIEW_SITE_SECONDS} onto {@link PREVIEW_GROUP_COUNT} groups,
+ * heaviest first onto the lightest (the TypeScript test shards' packing).
+ * Packed over every site, not over a plan's, so a site is in the same group
+ * whatever else a branch changes: a preview's deploy and the PR's teardown
+ * then hold the same per-group concurrency lock for each site, and never
+ * touch a site's `pr-<n>/` at once.
+ */
+const SITE_GROUPS: ReadonlyMap<string, number> = new Map(
+  packUnits(
+    PAGES_SITES.map((site) => ({ label: site.name, seconds: previewSiteSeconds(site) })),
+    PREVIEW_GROUP_COUNT
+  ).flatMap((units, index) => units.map(({ label }) => [label, index + 1] as const))
+)
+
+/**
+ * A plan's sites in their groups ({@link SITE_GROUPS}), leaving out a group
+ * none of them is in: none for no sites, one when they all fall in one group.
+ * Each group lists its sites in {@link PAGES_SITES} order. Balanced for every
+ * site, so a plan of some sites can fall unevenly, never slower than one job
+ * for them all. Pure — exported for unit testing.
+ */
+const previewGroups = (sites: readonly PagesSite[]): readonly PreviewGroup[] =>
+  Array.from({ length: PREVIEW_GROUP_COUNT }, (_, index) => index + 1).flatMap((group) => {
+    const groupSites = sites.filter((site) => SITE_GROUPS.get(site.name) === group)
+    return groupSites.length === 0
+      ? []
+      : [{ group, name: `${group}/${PREVIEW_GROUP_COUNT}`, sites: groupSites }]
+  })
+
 /** The required files of `site` missing from its build, as repo-root-relative paths. */
 const missingRequiredFiles = (
   site: PagesSite,
@@ -286,15 +370,31 @@ const main = (args: readonly string[]): Effect.Effect<void, Error> => {
       yield* Console.log(JSON.stringify(sites))
     })
   }
+  if (command === 'groups') {
+    // Production runs a job per app (deploy-github-pages.yml), not groups.
+    if (argument === 'production') {
+      return Effect.fail(new Error('Only the preview and teardown plans have groups'))
+    }
+    return Effect.gen(function* () {
+      const groups = previewGroups(yield* plan(argument))
+      if (groups.length === 0) yield* Console.error(formatPlan(argument, []))
+      for (const { name, sites } of groups) {
+        yield* Console.error(formatPlan(`${argument} ${name}`, sites))
+      }
+      yield* Console.log(JSON.stringify({ include: groups }))
+    })
+  }
   return Effect.fail(
-    new Error('Usage: pages-sites.ts plan <production|preview|teardown> | check <name>')
+    new Error(
+      'Usage: pages-sites.ts plan <production|preview|teardown> | groups <preview|teardown> | check <name>'
+    )
   )
 }
 
 if (isEntrypoint(import.meta.url))
   await Effect.runPromise(Effect.orDie(main(process.argv.slice(2))))
 
-export type { PagesSite }
+export type { PagesSite, PreviewGroup }
 export {
   affectedSites,
   APP_PAGES_SITES,
@@ -303,4 +403,8 @@ export {
   missingRequiredFiles,
   PAGES_OWNER,
   PAGES_SITES,
+  PREVIEW_GROUP_COUNT,
+  PREVIEW_SITE_SECONDS,
+  previewGroups,
+  previewSiteSeconds,
 }

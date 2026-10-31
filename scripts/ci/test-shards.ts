@@ -207,15 +207,17 @@ const areaSeconds = (area: string): number =>
  * seconds: longest first, each onto the shard with the least so far (the
  * lowest-numbered on a tie). Fewer units than shards leaves one unit per
  * shard, never an empty shard. Each shard lists its units in the order they
- * were placed, heaviest first. Pure — exported for unit testing.
+ * were placed, heaviest first. Generic over anything with a label and
+ * seconds, so pages-sites.ts packs its preview groups with it too. Pure —
+ * exported for unit testing.
  */
-const packUnits = (
-  units: readonly TestUnit[],
+const packUnits = <Unit extends Pick<TestUnit, 'label' | 'seconds'>>(
+  units: readonly Unit[],
   shardCount: number
-): readonly (readonly TestUnit[])[] => {
+): readonly (readonly Unit[])[] => {
   const bins = Array.from({ length: Math.min(shardCount, units.length) }, () => ({
     seconds: 0,
-    units: [] as TestUnit[],
+    units: [] as Unit[],
   }))
   const longestFirst = units.toSorted(
     (a, b) => b.seconds - a.seconds || a.label.localeCompare(b.label)
