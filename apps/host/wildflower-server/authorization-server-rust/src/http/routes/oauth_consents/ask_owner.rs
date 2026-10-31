@@ -2,24 +2,17 @@
 //! decide its own request hands it to the Owner.
 
 use chrono::Utc;
-use std::sync::Arc;
 
 use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{post, MethodRouter};
 use axum::Extension;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{OwnerRaising, Scoped};
+use crate::http::errors::OAuthConsentNotFoundBody;
 use crate::http::middleware::{start_limited_response, DeferredStartLimit};
-use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveConsentRaiser;
-
-/// The `POST` method on `/oauth-consents/{id}/ask-owner`.
-pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
-    post(handle_ask_owner)
-}
 
 /// `POST /authorization/oauth-consents/{id}/ask-owner` — a browser that can read a consent
 /// prompt but not approve it hands it to the server's Owner (scope
@@ -30,7 +23,19 @@ pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
 /// `429 Too Many Requests` when refused, the request left as it was. Raising
 /// one already raised spends nothing. `204 No Content`, or `404` once the
 /// request is no longer pending.
-async fn handle_ask_owner(
+#[utoipa::path(
+    post,
+    tag = "Owner consent",
+    path = "/oauth-consents/{id}/ask-owner",
+    params(("id" = String, Path, description = "The authorization request's id")),
+    responses(
+        (status = 204, description = "The request is raised for the Owner, by this call or an earlier one"),
+        (status = 404, description = "No pending code-flow request has that id", body = OAuthConsentNotFoundBody),
+        (status = 429, description = "The authorization start limit refused raising the request; it is left as it was"),
+        (status = 500, description = "A store failed; logged, with no body"),
+    ),
+)]
+pub(super) async fn handle_ask_owner(
     consents: Scoped<LiveConsentRaiser>,
     Extension(deferred_start_limit): Extension<DeferredStartLimit>,
     Path(id): Path<String>,

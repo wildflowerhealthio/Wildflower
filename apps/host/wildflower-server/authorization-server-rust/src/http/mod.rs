@@ -62,10 +62,16 @@ fn documented_public_router(
 /// The documented slice of `/authorization`, as an `OpenApiRouter` merged
 /// from each documented resource's router (the rest of the admin surface is
 /// not documented yet). [`router`] mounts its axum half behind the session
-/// gate; [`documented_router`] nests its spec half.
-fn documented_authorization_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
+/// gate; [`documented_router`] nests its spec half. `defer_start_limit`
+/// wraps the ask-owner route (see [`routes::oauth_consents::openapi_router`]).
+fn documented_authorization_router(
+    defer_start_limit: impl Fn(
+        UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+    ) -> UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+) -> OpenApiRouter<Arc<AuthorizationServerState>> {
     OpenApiRouter::new()
         .merge(routes::clients::openapi_router())
+        .merge(routes::oauth_consents::openapi_router(defer_start_limit))
         .merge(routes::session_widenings::openapi_router())
 }
 
@@ -74,8 +80,10 @@ fn documented_authorization_router() -> OpenApiRouter<Arc<AuthorizationServerSta
 /// [`router`] mounts the `/authorization` half behind the session gate.
 #[cfg(test)]
 fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
-    documented_public_router(|routes, _start_route| routes)
-        .nest("/authorization", documented_authorization_router())
+    documented_public_router(|routes, _start_route| routes).nest(
+        "/authorization",
+        documented_authorization_router(|routes| routes),
+    )
 }
 
 /// Build the authorization server's public HTTP surface. Routes live at
@@ -102,17 +110,17 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
         ))
     })
     .split_for_parts();
-    let (documented_authorization, _spec) = documented_authorization_router().split_for_parts();
+    let (documented_authorization, _spec) = documented_authorization_router(|routes| {
+        routes.layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::defer_authorization_start_limit,
+        ))
+    })
+    .split_for_parts();
     let access = Router::new()
         .merge(documented_authorization)
         .merge(routes::grants::router())
         .merge(routes::browser_sessions::router())
-        .merge(routes::oauth_consents::router(|route| {
-            route.layer(axum_middleware::from_fn_with_state(
-                state.clone(),
-                middleware::defer_authorization_start_limit,
-            ))
-        }))
         .merge(routes::devices::router())
         .merge(routes::logout::router())
         .merge(routes::revocations::router())

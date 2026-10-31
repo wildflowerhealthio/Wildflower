@@ -2,10 +2,8 @@
 //! is decided on, and the body it is drawn from.
 
 use chrono::Utc;
-use std::sync::Arc;
 
 use axum::extract::Path;
-use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -13,14 +11,14 @@ use utoipa::ToSchema;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{OAuthConsentView, Scoped};
 use crate::domain::client::presented_change::PresentedClientChange;
-use crate::http::state::AuthorizationServerState;
+use crate::http::errors::OAuthConsentNotFoundBody;
 use crate::live_bindings::LiveConsentReader;
 
 /// Body returned to the launcher when it loads an authorization-code consent
 /// prompt — describes the client, scopes, and any pre-approved subset. Local to
 /// this one route (its only reader); the shapes two consent surfaces share live
 /// in [`crate::http::wire_representations`].
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct OAuthConsent {
     /// The request's id, which the card approves or denies by.
@@ -34,6 +32,7 @@ pub(crate) struct OAuthConsent {
     /// Everything the app asked for, in request order.
     pub(crate) scopes: Vec<String>,
     /// Where the app will be sent back to with the code.
+    #[schema(value_type = String)]
     pub(crate) redirect_uri: url::Url,
     /// The requested scopes a standing grant already covers, ticked to start
     /// with.
@@ -102,14 +101,20 @@ impl From<PresentedClientChange> for ClientRegistrationBody {
     }
 }
 
-/// The `GET` method on `/oauth-consents/{id}`.
-pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
-    get(handle_get_oauth_consent)
-}
-
 /// `GET /authorization/oauth-consents/{id}` — load a pending authorization-code consent
 /// prompt for the launcher to render (scope `wildflower/AuthorizationRequest.r`).
-async fn handle_get_oauth_consent(
+#[utoipa::path(
+    get,
+    tag = "Owner consent",
+    path = "/oauth-consents/{id}",
+    params(("id" = String, Path, description = "The authorization request's id")),
+    responses(
+        (status = 200, description = "The pending request, for its consent card", body = OAuthConsent),
+        (status = 404, description = "No pending code-flow request the card may load has that id: unknown, decided, expired, still waiting on its browser's limited page, or for a client disabled since", body = OAuthConsentNotFoundBody),
+        (status = 500, description = "A store failed; logged, with no body"),
+    ),
+)]
+pub(super) async fn handle_get_oauth_consent(
     consents: Scoped<LiveConsentReader>,
     Path(id): Path<String>,
 ) -> Result<Json<OAuthConsent>, AuthorizationServerError> {

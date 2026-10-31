@@ -1,11 +1,11 @@
 //! `/oauth-consents/{id}` routes — the Owner-facing consent prompt for the
 //! authorization-code flow. One module per route (`get`, `approve`, `deny`,
 //! `ask_owner`),
-//! each exposing a `MethodRouter`; the DTO shared with the device flow
+//! each a documented handler; the DTO shared with the device flow
 //! (`ConsentResult`) lives in [`crate::http::wire_representations`], the `get`
 //! response shape and the approve body beside their routes (both carry the
 //! presented client change this flow alone has), and the consent logic in
-//! `domain::capabilities`. `router()` is the only path table.
+//! `domain::capabilities`. `openapi_router()` is the only path table.
 
 /// `POST /oauth-consents/{id}/approve`, and the approve body it reads.
 mod approve;
@@ -18,26 +18,25 @@ mod get;
 
 use std::sync::Arc;
 
-use axum::routing::MethodRouter;
-use axum::Router;
+use utoipa_axum::router::{OpenApiRouter, UtoipaMethodRouter};
+use utoipa_axum::routes;
 
 use crate::http::state::AuthorizationServerState;
 
-/// The `/oauth-consents` route table. `defer_start_limit` wraps the `ask-owner`
-/// route, which raises a request for the Owner and so spends from the
-/// authorization start limit (see
-/// [`defer_authorization_start_limit`](crate::http::middleware::defer_authorization_start_limit)).
-pub fn router(
+/// The `/oauth-consents` route table, as an `OpenApiRouter` so the spec is
+/// collected from the routes that serve traffic. `defer_start_limit` wraps the
+/// `ask-owner` route, which raises a request for the Owner and so spends from
+/// the authorization start limit (see
+/// [`defer_authorization_start_limit`](crate::http::middleware::defer_authorization_start_limit));
+/// the spec, which serves nothing, leaves it as it is.
+pub(crate) fn openapi_router(
     defer_start_limit: impl Fn(
-        MethodRouter<Arc<AuthorizationServerState>>,
-    ) -> MethodRouter<Arc<AuthorizationServerState>>,
-) -> Router<Arc<AuthorizationServerState>> {
-    Router::new()
-        .route("/oauth-consents/{id}", get::route())
-        .route("/oauth-consents/{id}/approve", approve::route())
-        .route("/oauth-consents/{id}/deny", deny::route())
-        .route(
-            "/oauth-consents/{id}/ask-owner",
-            defer_start_limit(ask_owner::route()),
-        )
+        UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+    ) -> UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+) -> OpenApiRouter<Arc<AuthorizationServerState>> {
+    OpenApiRouter::new()
+        .routes(routes!(get::handle_get_oauth_consent))
+        .routes(routes!(approve::handle_approve_oauth_consent))
+        .routes(routes!(deny::handle_deny_oauth_consent))
+        .routes(defer_start_limit(routes!(ask_owner::handle_ask_owner)))
 }

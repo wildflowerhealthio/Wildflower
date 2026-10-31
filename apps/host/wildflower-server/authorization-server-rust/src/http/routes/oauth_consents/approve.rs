@@ -1,19 +1,19 @@
 //! `POST /authorization/oauth-consents/{id}/approve`: the Owner approves an app's
 //! request from its consent card.
 
-use std::sync::Arc;
-
 use axum::extract::Path;
-use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 use serde::Deserialize;
 use utoipa::ToSchema;
+use wildflowerhealthio_scope_capabilities::InsufficientScopeBody;
 
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{ApproveOAuthConsentInput, Scoped};
-use crate::http::state::AuthorizationServerState;
+use crate::http::errors::{
+    LaunchPatientMismatchBody, OAuthConsentNotFoundBody, RegistrationNotAcknowledgedBody,
+};
 use crate::http::wire_representations::ConsentResult;
 use crate::live_bindings::LiveConsentDecider;
 
@@ -39,9 +39,19 @@ pub(crate) struct ApproveOAuthConsentBody {
     pub(crate) acknowledged_registration_change: bool,
 }
 
-/// The `POST` method on `/oauth-consents/{id}/approve`.
-pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
-    post(handle_approve_oauth_consent)
+/// The `409` an approval is refused with, writing nothing: either body, told
+/// apart by its `error`. Only the spec reads it; each is rendered from its
+/// own [`AuthorizationServerError`] variant.
+#[derive(ToSchema)]
+#[serde(untagged)]
+#[allow(dead_code)]
+pub(crate) enum OAuthConsentApprovalConflictBody {
+    /// The approval steps outside the app's registration without the
+    /// Owner's acknowledgement.
+    RegistrationNotAcknowledged(RegistrationNotAcknowledgedBody),
+    /// The approval names a patient other than the one the request's SMART
+    /// launch binds.
+    LaunchPatientMismatch(LaunchPatientMismatchBody),
 }
 
 /// `POST /authorization/oauth-consents/{id}/approve` — the Owner approves a
@@ -69,7 +79,21 @@ pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
 /// - `409`: the registration change wasn't acknowledged, or the body names a
 ///   patient other than the one the launch bound. Nothing is written.
 /// - `404`: no live code-flow prompt has this id.
-async fn handle_approve_oauth_consent(
+#[utoipa::path(
+    post,
+    tag = "Owner consent",
+    path = "/oauth-consents/{id}/approve",
+    params(("id" = String, Path, description = "The authorization request's id")),
+    request_body = ApproveOAuthConsentBody,
+    responses(
+        (status = 200, description = "The request is decided: `approved` with the app's callback carrying the code, or `denied` with the callback carrying `access_denied` when nothing was granted, the requesting browser's session has ended or the app was disabled since", body = ConsentResult),
+        (status = 403, description = "The caller's token lacks an approval scope, or a ticked resource scope is beyond the approver's own grant; nothing is written", body = InsufficientScopeBody),
+        (status = 404, description = "No pending code-flow request has that id", body = OAuthConsentNotFoundBody),
+        (status = 409, description = "The registration change wasn't acknowledged, or the body names a patient other than the one the launch bound; nothing is written", body = OAuthConsentApprovalConflictBody),
+        (status = 500, description = "A store failed; logged, with no body"),
+    ),
+)]
+pub(super) async fn handle_approve_oauth_consent(
     consents: Scoped<LiveConsentDecider>,
     Path(id): Path<String>,
     Json(body): Json<ApproveOAuthConsentBody>,
