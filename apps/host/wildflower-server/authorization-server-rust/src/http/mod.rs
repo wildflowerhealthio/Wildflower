@@ -74,7 +74,10 @@ fn documented_authorization_router(
         .merge(routes::clients::openapi_router())
         .merge(routes::devices::openapi_router())
         .merge(routes::grants::openapi_router())
+        .merge(routes::logout::openapi_router())
         .merge(routes::oauth_consents::openapi_router(defer_start_limit))
+        .merge(routes::revocations::openapi_router())
+        .merge(routes::session::openapi_router())
         .merge(routes::session_widenings::openapi_router())
 }
 
@@ -122,9 +125,6 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
     .split_for_parts();
     let access = Router::new()
         .merge(documented_authorization)
-        .merge(routes::logout::router())
-        .merge(routes::revocations::router())
-        .merge(routes::session::router())
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_valid_session,
@@ -152,14 +152,16 @@ fn openapi_spec() -> utoipa::openapi::OpenApi {
 
     let (_router, mut spec) = documented_router().split_for_parts();
     spec.info = utoipa::openapi::Info::new("Wildflower Authorization OAuth API", "0.0.0");
-    // Every documented `/authorization` operation is scope-gated (the ungated
-    // `/authorization/session` isn't documented), so the gated paths are read off the
+    // Every documented `/authorization` operation is scope-gated but the
+    // caller's own logout and session read, so the gated paths are read off the
     // spec rather than listed by hand.
+    let ungated_paths = ["/authorization/logout", "/authorization/session"];
     let gated_paths: Vec<String> = spec
         .paths
         .paths
         .keys()
         .filter(|path| path.starts_with("/authorization/"))
+        .filter(|path| !ungated_paths.contains(&path.as_str()))
         .cloned()
         .collect();
     wildflowerhealthio_scope_capabilities::InsufficientScopeResponses::for_paths(gated_paths)

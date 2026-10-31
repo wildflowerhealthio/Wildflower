@@ -15,23 +15,34 @@
 use std::sync::Arc;
 
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::post;
-use axum::Router;
 use chrono::Utc;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 use wildflowerhealthio_scope_capabilities::Authenticated;
 
 use crate::http::extractors::LauncherPages;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveSessionEnder;
 
-/// The `/logout` route table.
-pub fn router() -> Router<Arc<AuthorizationServerState>> {
-    Router::new().route("/logout", post(handle_logout))
+/// The `/logout` route table, as an `OpenApiRouter` so the spec is collected
+/// from the route that serves traffic.
+pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
+    OpenApiRouter::new().routes(routes!(handle_logout))
 }
 
 /// `POST /authorization/logout`: denylist the presented token's `jti`
 /// through `Authenticated<LiveSessionEnder>`, then answer `303 See Other` to
-/// the hosted launcher's root.
+/// the hosted launcher's root. No scope gates it.
+#[utoipa::path(
+    post,
+    tag = "Session",
+    path = "/logout",
+    responses(
+        (status = 303, description = "The token is revoked, best-effort: a store failure is logged and the logout goes ahead", headers(
+            ("Location" = String, description = "The hosted launcher's root")
+        )),
+    ),
+)]
 async fn handle_logout(session: Authenticated<LiveSessionEnder>, pages: LauncherPages) -> Response {
     // Revoke the presented session token so a leaked copy can't outlive the
     // logout. Best-effort by design: a store hiccup must never fail the logout.
