@@ -18,12 +18,14 @@ const WORKSPACE_FILE = 'pnpm-workspace.yaml'
 
 /**
  * Repo-root files every package's build or tests read, so a change to one
- * affects every package: the shared Vite configs, the workspace definition and
- * catalog, the root manifest and the lockfile.
+ * affects every package: the shared Vite configs and the dev app ports
+ * `vite.config.base.ts` reads, the workspace definition and catalog, the root
+ * manifest and the lockfile.
  */
 const ROOT_CONFIG_FILES: ReadonlySet<string> = new Set([
   'vite.config.base.ts',
   'vite.config.ts',
+  'dev-app-ports.json',
   WORKSPACE_FILE,
   'package.json',
   'pnpm-lock.yaml',
