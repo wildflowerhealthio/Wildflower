@@ -1,5 +1,4 @@
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
-import type { extractPositionedText } from '@wildflowerhealthio/positioned-text-web'
 import { Effect, TestClock, TestContext } from 'effect'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
@@ -22,13 +21,10 @@ import { goldenTextOf, importWithDefaults } from './import-with-defaults.ts'
  */
 
 // pdfjs is the one step not run: a picked "PDF" carries the text it prints.
-vi.mock(
-  '@wildflowerhealthio/positioned-text-web',
-  async (): Promise<{ readonly extractPositionedText: typeof extractPositionedText }> => {
-    const { printedDocumentOf: printed } = await import('./generated-picks.ts')
-    return { extractPositionedText: (bytes) => Promise.resolve(printed(bytes)) }
-  }
-)
+vi.mock(import('@wildflowerhealthio/positioned-text-web'), async () => {
+  const { printedDocumentOf } = await import('./generated-picks.ts')
+  return { extractPositionedText: (bytes) => Promise.resolve(printedDocumentOf(bytes)) }
+})
 
 /** One golden: its file's name, and the batch it picks. */
 interface GoldenCase {
