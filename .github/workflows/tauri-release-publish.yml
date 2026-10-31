@@ -781,8 +781,8 @@ jobs:
         uses: ./.github/actions/build-android-bundle
         with:
           # A run for a merged release PR saves into that PR's merge-ref
-          # scope, which no later run can read; only a dispatch from main
-          # saves where the next release looks.
+          # scope, which no later run can read; a dispatch from main saves
+          # where the next release looks, as ci-android.yml's runs on main do.
           cache-save-if: ${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Name the release asset

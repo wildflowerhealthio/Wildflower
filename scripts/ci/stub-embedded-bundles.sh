@@ -5,11 +5,11 @@
 # build outputs, absent in a fresh checkout, and the crates that embed them
 # don't compile without them.
 #
-#   sniffer  browser-sniffer-tauri embeds the bootstrap IIFE generated
-#            from browser-sniffer-tauri-js. Padded to clear its
-#            `bootstrap_is_non_empty` test. Only the desktop bundle needs a
-#            stand-in: `native-bootstrap.js` is behind a `cfg(ios|android)`
-#            gate, compiled out on desktop targets.
+#   sniffer  browser-sniffer-tauri embeds the bootstrap IIFEs generated
+#            from browser-sniffer-tauri-js: `tauri-bootstrap.js` on desktop
+#            targets, padded to clear its `bootstrap_is_non_empty` test, and
+#            `native-bootstrap.js` on iOS and Android, which ci-android.yml's
+#            `check` job compiles for.
 #   relay-admin-web
 #            wildflowerhealthio-relay-server embeds the admin UI's build
 #            (apps/relay/relay-admin-web, `vp build`) with `include_dir!`. A bare
@@ -34,17 +34,21 @@ set -euo pipefail
 target="${1:?usage: stub-embedded-bundles.sh <sniffer|relay-admin-web|authorization-server-web|all>}"
 
 stub_sniffer() {
-  local out=slices/browser-sniffer/browser-sniffer-tauri-js/dist/tauri-bootstrap.js
-  mkdir -p "$(dirname "$out")"
-  {
-    echo '// CI stub: the real IIFE is generated from browser-sniffer-tauri-js by'
-    echo '// its `generate-tauri-bootstrap` script. Padded to stay long enough'
-    echo '// to satisfy bootstrap_is_non_empty.'
-    for _ in $(seq 1 40); do
-      echo '// xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-    done
-  } > "$out"
-  echo "stub-embedded-bundles: wrote $out"
+  local dist=slices/browser-sniffer/browser-sniffer-tauri-js/dist
+  local bootstrap out
+  mkdir -p "$dist"
+  for bootstrap in tauri native; do
+    out="$dist/$bootstrap-bootstrap.js"
+    {
+      echo '// CI stub: the real IIFE is generated from browser-sniffer-tauri-js by'
+      echo "// its \`generate-$bootstrap-bootstrap\` script. Padded to stay long enough"
+      echo '// to satisfy bootstrap_is_non_empty.'
+      for _ in $(seq 1 40); do
+        echo '// xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+      done
+    } > "$out"
+    echo "stub-embedded-bundles: wrote $out"
+  done
 }
 
 stub_relay_admin_web() {

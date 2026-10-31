@@ -159,10 +159,11 @@ On a fresh container the full test pass needs a build first: a workspace-wide `v
 - **cargo-deny** (licenses/advisories, `deny.toml`) gates new Rust deps.
 - **Rust build cache** — each cargo job names its build environment with a
   `cache-shared-key`, and `rust-cache-warm.yml` warms the shared entry on `main`
-  (a PR run can only restore its base branch's cache). Keys and constraints:
+  (a PR run can only restore its base branch's cache); `ci-android.yml` warms
+  its own two on `main` the same way. Keys and constraints:
   [CI Build Cache Explanation](./docs/Rust/CI%20Build%20Cache%20Explanation.md).
 - **Pebble apps** (`ci-pebble.yml`) — for `apps/watch-lifts/watch-lifts-watchapp` and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp`, two parallel jobs: **Lint + Test** runs `fmt:c:check` with a pinned clang-format and the host-side C tests; **Build** runs `pebble build` for both apps, uploading each `.pbw` as an artifact. The SDK install is cached: [Pebble CI Build Cache Explanation](./docs/Pebble/CI%20Build%20Cache%20Explanation.md).
-- **Android** (`ci-android.yml`) — builds the host app's release `.aab`, unsigned, through the same `.github/actions/build-android-bundle` action the release uses, and fails if it carries no native symbol table. Runs when a PR touches `apps/host/host-app/src-tauri/`, `Cargo.lock`, `rust-toolchain.toml` or the action, and can be dispatched on any branch: [Android Release Signing Explanation](./docs/Rust/Android%20Release%20Signing%20Explanation.md#how-a-release-reaches-google-play).
+- **Android** (`ci-android.yml`) — `check`: `cargo check` of the host app for `aarch64-linux-android` and a Gradle compile of the app's and plugins' Kotlin, on PRs that touch any crate the host app depends on, `Cargo.lock` or the root `Cargo.toml`. `bundle`: the host app's release `.aab`, unsigned, through the same `.github/actions/build-android-bundle` action the release uses, failing if it carries no native symbol table; on PRs that change the Gradle build files, R8 rules, Tauri config, toolchain or the build's actions, on pushes to `main` that change those or the dependency graph, and on dispatch for any branch: [Android Release Signing Explanation](./docs/Rust/Android%20Release%20Signing%20Explanation.md#how-a-release-reaches-google-play).
 - **markdownlint-cli2** on all `.md` — run locally via `vp run lint:docs`.
 - **actionlint** (`lint-actions.yml`) on `.github/` — workflow and action wiring, plus shellcheck (warnings and up) over `run:` scripts; settings in `.github/actionlint.yaml`.
 - **shellcheck** (`lint-shell.yml`, warnings and up) on every tracked `*.sh` and `.vite-hooks/`, pinned via `shellcheck-py` — run locally with `shellcheck --severity=warning -x <file>`.

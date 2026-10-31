@@ -54,6 +54,7 @@ jobs:
       actions: ${{ steps.filter.outputs.actions }}
       shell: ${{ steps.filter.outputs.shell }}
       android: ${{ steps.filter.outputs.android }}
+      android-bundle: ${{ steps.filter.outputs.android-bundle }}
     steps:
       - uses: dorny/paths-filter@v4
         id: filter
@@ -175,21 +176,63 @@ jobs:
               - '.vite-hooks/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/lint-shell.yml'
-            # The host app's Android build: its Tauri crate and Gradle
-            # project, the toolchain that compiles for the Android targets,
-            # and the action the release builds with too. The build takes
-            # over half an hour, so a change elsewhere in the Rust workspace,
-            # `Cargo.lock` included, runs only the Rust checks, though it can
-            # break this build too; ci-android.yml's workflow_dispatch builds
-            # such a branch on demand.
+            # ci-android.yml's `check`: the host crate's Android `cargo check`
+            # and the Gradle Kotlin compile. Its paths are the host crate's
+            # workspace path dependencies, transitively (`cargo metadata
+            # --no-deps`), which also hold every plugin's Kotlin; the files
+            # those crates read from outside their folders at compile time;
+            # the root manifest and lockfile (a dependency bump runs this,
+            # not the bundle); and the CI that runs it. Only the root
+            # `Cargo.toml` is listed, bare: the closure's own manifests sit
+            # in the folders above, and no other crate's reaches the host's
+            # build.
             android:
               - 'apps/host/host-app/src-tauri/**'
+              - 'apps/host/host-app/tauri-shared-config.json'
+              - 'apps/host/browser-sniffer-tauri/**'
+              - 'apps/host/recorder/recorder-rust/**'
+              - 'apps/host/recorder/recorder-tauri/**'
+              - 'apps/host/servers/servers-rust/**'
+              - 'apps/host/servers/servers-tauri/**'
+              - 'apps/host/tauri-plugin-native-page-browser/**'
+              - 'apps/host/tauri-plugin-native-webview/**'
+              - 'apps/host/unit-runner/**'
+              - 'apps/host/wildflower-server/*-rust/**'
+              - 'global/kitchen-sink-rust/**'
+              - 'slices/ohif-server-rust/**'
+              - 'slices/persistence-rust/**'
+              - 'slices/rathole-settings-rust/**'
+              - 'slices/scopes/scope-capabilities-rust/**'
+              - 'slices/scopes/scopes-rust/**'
+              - 'slices/shared-structures/shared-structures-rust/**'
+              - 'dev-app-ports.json'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'scripts/ci/stub-embedded-bundles.sh'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-android.yml'
+              - '.github/actions/setup-android-ndk/**'
+            # ci-android.yml's `bundle`, the release's own build: what shapes
+            # how the bundle is packaged rather than what compiles. The
+            # Gradle projects' build files and R8 rules, the Tauri config the
+            # CLI builds from, the CLI's version, the toolchain, and the
+            # actions and workflows that run the build.
+            android-bundle:
+              - 'apps/host/**/android/**/*.gradle'
+              - 'apps/host/**/android/**/*.gradle.kts'
+              - 'apps/host/**/android/**/gradle.properties'
+              - 'apps/host/**/android/**/*.pro'
+              - 'apps/host/host-app/src-tauri/gen/android/buildSrc/**'
+              - 'apps/host/host-app/src-tauri/gen/android/gradle/**'
+              - 'apps/host/host-app/src-tauri/tauri*.conf.json'
+              - 'apps/host/host-app/src-tauri/Cargo.toml'
               - 'apps/host/host-app/package.json'
               - 'rust-toolchain.toml'
-              - '.github/workflows/ci.yml'
               - '.github/workflows/ci-android.yml'
               - '.github/workflows/tauri-release-publish.yml'
               - '.github/actions/build-android-bundle/**'
+              - '.github/actions/setup-android-ndk/**'
 
       # The planners diff against their merge-base with origin/main, so they
       # need the full history.
@@ -369,10 +412,12 @@ jobs:
   android:
     name: Android
     needs: changes
-    if: needs.changes.outputs.android == 'true'
+    if: needs.changes.outputs.android == 'true' || needs.changes.outputs.android-bundle == 'true'
     permissions:
       contents: read
     uses: ./.github/workflows/ci-android.yml
+    with:
+      bundle: ${{ needs.changes.outputs.android-bundle == 'true' }}
 
   # The status check the `main` ruleset requires. A skipped area (the PR doesn't
   # touch it) counts as passing; a failed or cancelled job anywhere fails it.

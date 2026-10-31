@@ -33,6 +33,9 @@ workflow's checks.
 2. **One job per area** calls that area's workflow (`ci-typescript.yml`,
    `ci-rust.yml`, `ci-pebble.yml`, `lint-markdown.yml`, `api-sync.yml`, `lint-actions.yml`, `lint-shell.yml`, `ci-android.yml`) through
    `workflow_call`, gated on its filter. An untouched area's job is skipped.
+   Android has two filters, one for its quick check and one for the full App
+   Bundle build; either starts the workflow, and the bundle's is passed in as
+   an input that gates that job.
 3. **`Required`** needs all of them and runs with `if: always()`. It fails when
    any job failed or was cancelled and passes otherwise, so a skipped area counts
    as passing.

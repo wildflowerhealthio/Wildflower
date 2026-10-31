@@ -33,16 +33,17 @@ by hand:
 
 ## The shared keys
 
-| Key                   | Jobs                                                                                      | Environment                                                             |
-| --------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `workspace-linux-dev` | `ci-rust.yml` → `lint`, `test`; `rust-cache-warm.yml` → `warm`                            | Full workspace, `ubuntu-latest`, dev profile, default rustflags         |
-| `release-macos`       | `tauri-release-publish.yml` → `build` (macOS)                                             | Release profile, `x86_64`/`aarch64-apple-darwin` for the universal app  |
-| `release-windows`     | `tauri-release-publish.yml` → `build` (Windows)                                           | Release profile, `windows-latest`                                       |
-| `release-linux`       | `tauri-release-publish.yml` → `build` (Linux)                                             | Release profile, `ubuntu-22.04` — a different image from CI's           |
-| `release-ios`         | `tauri-release-publish.yml` → `build-ios`                                                 | Release profile, `aarch64-apple-ios`                                    |
-| `release-android`     | `tauri-release-publish.yml` → `build-android`; `ci-android.yml` → `bundle` (restore only) | Release profile, `aarch64-linux-android`/`armv7-linux-androideabi`      |
-| `release-relay`       | `deploy-relay.yml` → `build`                                                              | Release profile, `wildflowerhealthio-relay-server` only, `ubuntu-24.04` |
-| `registry-linux`      | `tauri-release-prepare.yml` → `prepare`                                                   | No compile at all; `cache-targets: false`, registry and git only        |
+| Key                   | Jobs                                                                                              | Environment                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `workspace-linux-dev` | `ci-rust.yml` → `lint`, `test`; `rust-cache-warm.yml` → `warm`                                    | Full workspace, `ubuntu-latest`, dev profile, default rustflags                                                              |
+| `release-macos`       | `tauri-release-publish.yml` → `build` (macOS)                                                     | Release profile, `x86_64`/`aarch64-apple-darwin` for the universal app                                                       |
+| `release-windows`     | `tauri-release-publish.yml` → `build` (Windows)                                                   | Release profile, `windows-latest`                                                                                            |
+| `release-linux`       | `tauri-release-publish.yml` → `build` (Linux)                                                     | Release profile, `ubuntu-22.04` — a different image from CI's                                                                |
+| `release-ios`         | `tauri-release-publish.yml` → `build-ios`                                                         | Release profile, `aarch64-apple-ios`                                                                                         |
+| `release-android`     | `tauri-release-publish.yml` → `build-android`; `ci-android.yml` → `bundle` (saves on `main` only) | Release profile, `aarch64-linux-android`/`armv7-linux-androideabi`                                                           |
+| `check-android`       | `ci-android.yml` → `check` (saves on `main` only)                                                 | `cargo check` of `host-app`, dev profile, `aarch64-linux-android`, the NDK's clang, clang++ and `llvm-ar` as `CC`/`CXX`/`AR` |
+| `release-relay`       | `deploy-relay.yml` → `build`                                                                      | Release profile, `wildflowerhealthio-relay-server` only, `ubuntu-24.04`                                                      |
+| `registry-linux`      | `tauri-release-prepare.yml` → `prepare`                                                           | No compile at all; `cache-targets: false`, registry and git only                                                             |
 
 Every one of them pins `cache-on-failure: true` — also the action's own default,
 stated outright because the scheme depends on it: a red run still saves the
@@ -51,7 +52,11 @@ same failure.
 
 The release keys stay separate because their artifacts genuinely aren't
 interchangeable — release profile rather than dev, per-platform rustflags, extra
-target triples, and for Linux a different runner image. iOS keeps its own key
+target triples, and for Linux a different runner image. `check-android` is
+separate from both `release-android` and `workspace-linux-dev`: dev profile
+like the latter, but an Android target, and check-only metadata rather than
+built libraries. Its `CC_aarch64_linux_android` names the NDK by its pinned
+version, so a new NDK pin starts a new entry. iOS keeps its own key
 even though it shares `macos-latest` with the desktop macOS build: its
 `aarch64-apple-ios` artifacts are disjoint from that job's `*-apple-darwin`
 ones, and the two jobs run concurrently, so one key would make them race to save
@@ -117,14 +122,25 @@ the key records only as `Linux`. If restored dependency artifacts ever fail to
 link after such a bump, change the `cache-shared-key` value itself (a new key
 means a new entry).
 
-The release builds are deliberately not warmed. Three release-profile Tauri
-builds per lockfile bump would cost far more than the handful of cold release
-builds it would save. A `workflow_dispatch` publish run from `main` does save
-into main's scope, so back-to-back dispatched rebuilds hit; a run triggered by
-the merged release PR saves into that PR's merge-ref scope, which no later run
-can read. The Android job, whose cache is the largest, saves only from a
-dispatch. `ci-android.yml` restores the same entry, from `main`'s scope, and
-never saves one.
+The desktop and iOS release builds are deliberately not warmed. Three
+release-profile Tauri builds per lockfile bump would cost far more than the
+handful of cold release builds it would save. A `workflow_dispatch` publish run
+from `main` does save into main's scope, so back-to-back dispatched rebuilds
+hit; a run triggered by the merged release PR saves into that PR's merge-ref
+scope, which no later run can read.
+
+Android's release build is the one that is warmed: its cold build is the
+slowest in CI, pull requests that change how the bundle is packaged build it,
+and the release restores the same entry. `ci-android.yml` warms it itself
+rather than through a separate warm-up: it also runs on pushes to `main` that
+move the lock hash's inputs or the Android build's (the Gradle files, the Tauri
+config, the NDK and bundle actions), and on a dispatch from `main`. Both its
+jobs save there and only there (`cache-save-if: github.ref ==
+'refs/heads/main'`), so pull requests restore without saving. Running the same
+jobs rather than a copy keeps the environment, and so the key, identical by
+construction, and the bundle built on `main` catches a merge to those inputs
+that breaks packaging, linking or R8 before the next release does. The publish
+run keeps its own dispatch-only save.
 
 ## The Tauri system packages
 
