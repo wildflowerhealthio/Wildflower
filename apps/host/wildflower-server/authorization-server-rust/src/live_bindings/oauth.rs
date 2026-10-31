@@ -23,20 +23,19 @@ use crate::domain::consent_key::ConsentKey;
 use crate::domain::grant_store::AuthorizationRequestsTx as _;
 use crate::domain::same_device_sign_in_codes::{SameDeviceSignInCode, SameDeviceSignInCodes};
 use crate::domain::GrantStore as _;
-use crate::ports::OwnerApproval;
 
 /// Start an authorization-code flow — built by the `/oauth/authorize` handler
 /// and by the limited page's `/oauth/authorize/{id}/continue`. Takes the
-/// [`OwnerApproval`] port, since a request it parks is one the Owner must hear
-/// about, the server's origin and the stale-session cutoff.
+/// [`OwnerApproval`](crate::ports::OwnerApproval) port, since a request it
+/// parks is one the Owner must hear about, the server's origin and the
+/// stale-session cutoff.
 pub(crate) type LiveCodeAuthorizationStarter = CodeAuthorizationStarter<SqliteGrantStore>;
 
 impl FromState for LiveCodeAuthorizationStarter {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
         CodeAuthorizationStarter::new(
             state.store.clone(),
-            owner_approval,
+            state.owner_approval(),
             state.server_origin.clone(),
             state.stale_session_cutoff.clone(),
         )
@@ -73,18 +72,17 @@ impl FromState for LiveSessionShortfall {
 
 /// Ask for and poll session widenings — built by the limited page's
 /// `/oauth/authorize/{id}/ask-to-widen` and
-/// `/oauth/session-widenings/{id}/poll` handlers. Takes the [`OwnerApproval`]
-/// port, since a widening is a request the Owner must hear about, the
-/// revocation store a claim revokes the replaced token in, the server's
-/// origin and the stale-session cutoff.
+/// `/oauth/session-widenings/{id}/poll` handlers. Takes the
+/// [`OwnerApproval`](crate::ports::OwnerApproval) port, since a widening is a
+/// request the Owner must hear about, the revocation store a claim revokes the
+/// replaced token in, the server's origin and the stale-session cutoff.
 pub(crate) type LiveSessionWidening = SessionWidening<SqliteGrantStore>;
 
 impl FromState for LiveSessionWidening {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
         SessionWidening::new(
             state.store.clone(),
-            owner_approval,
+            state.owner_approval(),
             state.revocation(),
             state.server_origin.clone(),
             state.stale_session_cutoff.clone(),
@@ -93,17 +91,16 @@ impl FromState for LiveSessionWidening {
 }
 
 /// Start and poll browser pairings — built by the `/oauth/pair/*` handlers.
-/// Takes the [`OwnerApproval`] port, since a pairing is a request the Owner
-/// must hear about, where a paired browser may be sent next, and the server's
-/// origin.
+/// Takes the [`OwnerApproval`](crate::ports::OwnerApproval) port, since a
+/// pairing is a request the Owner must hear about, where a paired browser may
+/// be sent next, and the server's origin.
 pub(crate) type LiveBrowserPairing = BrowserPairing<SqliteGrantStore>;
 
 impl FromState for LiveBrowserPairing {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
         BrowserPairing::new(
             state.store.clone(),
-            owner_approval,
+            state.owner_approval(),
             state.sign_in_destinations.clone(),
             state.server_origin.clone(),
         )
@@ -111,16 +108,16 @@ impl FromState for LiveBrowserPairing {
 }
 
 /// Start a device authorization — built by the `/oauth/device_authorization`
-/// handler. Takes the [`OwnerApproval`] port, since a device request is one the
-/// Owner must hear about, and the device page's URL it hands out.
+/// handler. Takes the [`OwnerApproval`](crate::ports::OwnerApproval) port,
+/// since a device request is one the Owner must hear about, and the device
+/// page's URL it hands out.
 pub(crate) type LiveDeviceAuthorizer = DeviceAuthorizer<SqliteGrantStore>;
 
 impl FromState for LiveDeviceAuthorizer {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
         DeviceAuthorizer::new(
             state.store.clone(),
-            owner_approval,
+            state.owner_approval(),
             state.device_page.clone(),
         )
     }

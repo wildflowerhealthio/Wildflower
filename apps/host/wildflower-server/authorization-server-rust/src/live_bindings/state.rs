@@ -26,7 +26,7 @@ use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::owner_prompt::OwnerPrompt;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
-use crate::ports::{AuthorizationStartGate, Revocation, RevocationCheck};
+use crate::ports::{AuthorizationStartGate, OwnerApproval, Revocation, RevocationCheck};
 
 /// Shared state threaded through every authorization server handler and lifted into the
 /// scope-gated capabilities. Opaque to callers outside the crate — the host
@@ -114,6 +114,12 @@ impl AuthorizationServerState {
     /// [`revocation_store`](Self::revocation_store).
     pub(crate) fn revocation(&self) -> Arc<dyn Revocation> {
         Arc::new(self.revocation_store.clone())
+    }
+
+    /// The [`OwnerApproval`] port the capabilities republish the Owner prompt
+    /// through: the state is its own Owner-approval adapter.
+    pub(crate) fn owner_approval(self: &Arc<Self>) -> Arc<dyn OwnerApproval> {
+        self.clone()
     }
 
     /// The [`RevocationCheck`] port the token verifier and refresh redemption

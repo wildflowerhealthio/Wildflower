@@ -18,7 +18,6 @@ use crate::domain::access_token::{AccessTokenVerifyError, VerifiedClaims};
 use crate::domain::capabilities::session::{
     BrowserSessionEnder, BrowserSessionUseRecorder, SessionEnder, SessionReader, TokenVerifier,
 };
-use crate::ports::OwnerApproval;
 
 /// Verify presented access tokens — built by the two authN gates.
 pub(crate) type LiveTokenVerifier = TokenVerifier<SqliteGrantStore>;
@@ -51,8 +50,7 @@ pub(crate) type LiveBrowserSessionEnder = BrowserSessionEnder<SqliteGrantStore>;
 
 impl FromState for LiveBrowserSessionEnder {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
-        BrowserSessionEnder::new(state.store.clone(), owner_approval)
+        BrowserSessionEnder::new(state.store.clone(), state.owner_approval())
     }
 }
 

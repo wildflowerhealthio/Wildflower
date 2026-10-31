@@ -29,7 +29,6 @@ use crate::domain::capabilities::{
     ConsentDecider, ConsentRaiser, ConsentReader, FixedScopeCapability, GrantsReader,
     GrantsRevoker, TokenRevoker,
 };
-use crate::ports::OwnerApproval;
 
 /// Read standing grants — `Scoped<LiveGrantsReader>` in the handler.
 pub(crate) type LiveGrantsReader = GrantsReader<SqliteGrantStore>;
@@ -129,10 +128,7 @@ impl FixedScopeCapability for LiveConsentRaiser {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        // `Arc<AuthorizationServerState>` implements `OwnerApproval` (via the bare
-        // state's impl), so it coerces to the port handle the capability holds.
-        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
-        ConsentRaiser::new(state.store.clone(), owner_approval)
+        ConsentRaiser::new(state.store.clone(), state.owner_approval())
     }
 }
 
@@ -149,12 +145,9 @@ impl Capability for LiveConsentDecider {
     }
 
     fn build(state: Arc<AuthorizationServerState>, granted: Grant) -> Self {
-        // `Arc<AuthorizationServerState>` implements `OwnerApproval` (via the bare
-        // state's impl), so it coerces to the port handle the capability holds.
-        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
         ConsentDecider::new(
             state.store.clone(),
-            owner_approval,
+            state.owner_approval(),
             granted,
             state.stale_session_cutoff.clone(),
         )
@@ -208,7 +201,6 @@ impl FixedScopeCapability for LiveBrowserSessionsRevoker {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
-        BrowserSessionsRevoker::new(state.store.clone(), owner_approval)
+        BrowserSessionsRevoker::new(state.store.clone(), state.owner_approval())
     }
 }
