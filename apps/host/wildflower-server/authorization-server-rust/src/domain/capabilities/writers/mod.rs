@@ -8,7 +8,8 @@
 //!  - [`RequestApprover`] — approve a pending request (the flow's own
 //!    `approve` transition) and, for the code flow, issue its authorization
 //!    code (under a [`CodeAuthority`]: the Owner's `DelegatedScopes` or a
-//!    `StandingGrantCoverage`).
+//!    `StandingGrantCoverage`), or for a session widening, widen its browser
+//!    session (under `DelegatedScopes`).
 //!  - [`GrantRecorder`] — insert or widen the standing grant and, for a client
 //!    trusted on first use, its registration (under `DelegatedScopes`).
 //!  - [`AccessTokenMinter`] — read the active signing key, then sign a JWT
@@ -36,7 +37,9 @@ pub(crate) use access_token_minter::AccessTokenMinter;
 pub(crate) use browser_session_writer::BrowserSessionWriter;
 pub(crate) use grant_recorder::GrantRecorder;
 pub(crate) use refresh_family_writer::RefreshFamilyWriter;
-pub(crate) use request_approver::{CodeApproval, CodeAuthority, RequestApprover};
+pub(crate) use request_approver::{
+    CodeApproval, CodeAuthority, RequestApprover, SessionWideningOutcome,
+};
 
 #[cfg(test)]
 mod tests {
