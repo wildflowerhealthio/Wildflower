@@ -139,7 +139,7 @@ fn server_in_a_folder_on_a_runner(server_dir: tempfile::TempDir) -> ServerOnARun
         BackgroundSessionLength::AsLongAsNeeded,
     );
     unit_runner.set_unit(UnitId::from(DOMAIN), RunPolicy::Always, move || {
-        Ok(ServerUnit::new(config.clone()))
+        Ok(ServerUnit::new(config.clone(), Vec::new()))
     });
     ServerOnARunner {
         unit_runner,
@@ -198,7 +198,7 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         .as_ref()
         .and_then(|detail| detail.sign_in_code_minter.clone())
         .expect("the run's detail holds its sign-in code minter");
-    assert!(!sign_in_code_minter.mint().is_empty());
+    assert!(!sign_in_code_minter.mint().as_str().is_empty());
     let unit_status = unit_runner.statuses()[&UnitId::from(DOMAIN)].clone();
     // Unknown health is refused before the certificate is looked at, so a
     // run that hasn't reported one yet is given any.

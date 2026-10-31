@@ -48,7 +48,7 @@ The route turns each into a location ({{#code-link apps/host/wildflower-server/a
 
 #### `start`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs CodeAuthorizationStarter::start tests="tests::no_signing_key_refuses_before_parking tests::a_request_outside_the_registration_waits_for_the_owner tests::the_requesting_browser_decides_only_a_request_it_can_approve_as_asked tests::a_launch_is_consumed_onto_the_parked_request_once tests::a_refused_request_leaves_its_launch_unspent tests::a_request_its_session_falls_short_of_waits_on_the_limited_page tests::parking_for_the_limited_page_asks_the_start_limit"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs CodeAuthorizationStarter::start tests="tests::no_signing_key_refuses_before_parking tests::a_request_outside_the_registration_waits_for_the_owner tests::the_requesting_browser_decides_only_a_request_it_can_approve_as_asked tests::a_launch_is_consumed_onto_the_parked_request_once tests::a_refused_request_leaves_its_launch_unspent tests::a_request_its_session_falls_short_of_waits_on_the_limited_page tests::parking_for_the_limited_page_asks_the_start_limit tests::only_a_request_raised_for_the_owner_asks_the_start_limit"}}
 
 #### `start_in`
 
@@ -80,9 +80,13 @@ The denial is the request's own [`deny_on_limited_page`](<../../Domain/Authoriza
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs refuse_waiting_request tests="tests::continuing_for_a_client_disabled_since_denies_the_request"}}
 
+### `fast_path_coverage`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs fast_path_coverage tests="tests::a_launch_bound_patient_the_grant_does_not_name_waits_for_the_owner"}}
+
 ### `decide`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs decide tests="tests::a_launch_bound_patient_the_grant_does_not_name_waits_for_the_owner tests::only_a_request_raised_for_the_owner_asks_the_start_limit"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs decide}}
 
 ### `issue_under_standing_grant`
 

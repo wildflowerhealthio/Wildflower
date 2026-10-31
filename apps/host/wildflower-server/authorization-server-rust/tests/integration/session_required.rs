@@ -415,7 +415,7 @@ async fn the_wait_page_reads_the_status_after_the_owner_signs_in_in_the_same_bro
     let sign_in_uri = format!(
         "/oauth/sign-in?{}",
         url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("code", &code)
+            .append_pair("code", code.as_str())
             .append_pair("next", &next)
             .finish()
     );

@@ -562,6 +562,22 @@ impl BrowserSessionsTx for FakeGrantTx<'_> {
         )
     }
 
+    fn expire_browser_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        Ok(
+            match self.store.browser_sessions.borrow_mut().get_mut(sid) {
+                Some(session) if session.expires_at > now => {
+                    session.expires_at = now;
+                    true
+                }
+                _ => false,
+            },
+        )
+    }
+
     fn touch_browser_session_last_seen(
         &mut self,
         sid: &str,

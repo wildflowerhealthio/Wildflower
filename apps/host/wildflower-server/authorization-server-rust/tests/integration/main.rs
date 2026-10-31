@@ -18,6 +18,7 @@ mod grant_flows;
 mod oauth_endpoints;
 mod request_caller;
 mod revocation;
+mod same_device_session_ending;
 mod same_device_sign_in;
 mod scope_gating;
 mod session_required;

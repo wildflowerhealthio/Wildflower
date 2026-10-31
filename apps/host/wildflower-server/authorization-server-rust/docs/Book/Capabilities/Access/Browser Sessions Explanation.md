@@ -28,7 +28,7 @@ Every browser the server has signed in holds a [browser session](<../../Domain/B
 
 #### `list_live`
 
-The session is [live](<../../Domain/Browser Session Explanation.md#item-BrowserSession--is_live>) as the browser session itself decides.
+The session is [live](<../../Domain/Browser Session Explanation.md#item-BrowserSession--is_live_at>) under the [stale-session cutoff](<../../Domain/Browser Session Explanation.md#item-StaleSessionCutoff>).
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/browser_sessions.rs BrowserSessionsReader::list_live tests="tests::the_list_holds_the_live_sessions_and_marks_the_caller_s"}}
 

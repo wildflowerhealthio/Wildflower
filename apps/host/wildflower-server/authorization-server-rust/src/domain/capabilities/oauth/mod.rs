@@ -24,7 +24,8 @@
 //!  - in-process minted: [`SameDeviceSignIn`] redeems a one-time same-device
 //!    sign-in code the base minted, signing the Owner's browser in on the
 //!    server's own device with a same-device session's token, on its way to an
-//!    allowed `next`;
+//!    allowed `next`, and [`SameDeviceSessionEnder`] ends such sessions for
+//!    the host by the codes that started them;
 //!  - bound to a browser session: [`SessionShortfall`] reads and cancels a
 //!    request waiting on the limited page of the browser that made it, and
 //!    [`CodeAuthorizationStarter`] goes on with one;
@@ -41,6 +42,7 @@ mod code_authorization_starter;
 mod device_authorizer;
 mod launch_contexts;
 mod public_keys_reader;
+mod same_device_session_ender;
 mod same_device_sign_in;
 mod session_shortfall;
 mod token_exchanger;
@@ -62,6 +64,7 @@ pub(crate) use code_authorization_starter::{
 pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
 pub(crate) use launch_contexts::{consume_launch, LaunchContexts};
 pub(crate) use public_keys_reader::PublicKeysReader;
+pub(crate) use same_device_session_ender::SameDeviceSessionEnder;
 pub(crate) use same_device_sign_in::{
     SameDeviceSignIn, SameDeviceSignInError, SignInRefusal, SignedIn, SAME_DEVICE_SESSION_TTL,
 };

@@ -34,6 +34,7 @@ use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_request::polled::PolledRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::browser_session::StaleSessionCutoff;
 use crate::domain::client::presented_change::PresentedClientChange;
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
@@ -284,20 +285,27 @@ pub(crate) struct ConsentDecider<S: GrantStore> {
     /// approval scopes in it, and the Owner's ticks are clamped to it, so an
     /// approval is never recorded wider than its approver's authority.
     approver_grant: Grant,
+    /// The cutoff before which a same-device session is stale: the browser
+    /// session a code-flow request was made in needs to be live under it for
+    /// its approval to issue a code.
+    stale_session_cutoff: Arc<StaleSessionCutoff>,
 }
 
 impl<S: GrantStore> ConsentDecider<S> {
-    /// Build the decider over a store handle, the republish port, and the
-    /// approver's own granted scopes — all lifted from the state and claims.
+    /// Build the decider over a store handle, the republish port, the
+    /// approver's own granted scopes and the stale-session cutoff — all
+    /// lifted from the state and claims.
     pub(crate) fn new(
         store: S,
         owner_approval: Arc<dyn OwnerApproval>,
         approver_grant: Grant,
+        stale_session_cutoff: Arc<StaleSessionCutoff>,
     ) -> Self {
         ConsentDecider {
             store,
             owner_approval,
             approver_grant,
+            stale_session_cutoff,
         }
     }
 
@@ -343,6 +351,7 @@ mod tests {
             store.clone(),
             owner_approval.clone(),
             approver_grant.clone(),
+            Arc::new(StaleSessionCutoff::none()),
         )
     }
 

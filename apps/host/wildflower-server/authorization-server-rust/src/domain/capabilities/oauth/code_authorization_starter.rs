@@ -30,6 +30,7 @@ use crate::domain::authorization_request::code::resolved::ResolvedCodeRequest;
 use crate::domain::authorization_request::code::{CodeRequest, NewCodeRequestArgs};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::authorize_refusal::AuthorizeRefusal;
+use crate::domain::browser_session::StaleSessionCutoff;
 use crate::domain::capabilities::writers::{CodeApproval, CodeAuthority, RequestApprover};
 use crate::domain::client_redirect::{
     BROWSER_SIGNED_OUT_DESCRIPTION, SCOPES_NOT_REGISTERED_DESCRIPTION,
@@ -207,20 +208,27 @@ pub(crate) struct CodeAuthorizationStarter<S: GrantStore> {
     /// The server's bare origin, `https://<domain>`, also its FHIR base: an
     /// `aud` must name it.
     server_origin: Arc<str>,
+    /// The cutoff before which a same-device session is stale: a request's
+    /// browser session needs to be live under it for the fast path to issue
+    /// it a code.
+    stale_session_cutoff: Arc<StaleSessionCutoff>,
 }
 
 impl<S: GrantStore> CodeAuthorizationStarter<S> {
-    /// Build the starter over the store, the popup republish port, and the
-    /// server's origin — all lifted from the state.
+    /// Build the starter over the store, the popup republish port, the
+    /// server's origin and the stale-session cutoff — all lifted from the
+    /// state.
     pub(crate) fn new(
         store: S,
         owner_approval: Arc<dyn OwnerApproval>,
         server_origin: Arc<str>,
+        stale_session_cutoff: Arc<StaleSessionCutoff>,
     ) -> Self {
         CodeAuthorizationStarter {
             store,
             owner_approval,
             server_origin,
+            stale_session_cutoff,
         }
     }
 
@@ -457,12 +465,21 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                 pending_consents_changed: false,
             });
         }
+        let fast_path_coverage = fast_path_coverage(&parked_request, coverage);
+        // A request about to be raised for the Owner asks the start limit
+        // first.
+        if fast_path_coverage.is_none()
+            && !decidable_in_requesting_browser
+            && !(authorize_query.may_raise_for_owner)()
+        {
+            return Err(AuthorizationStartError::StartLimited);
+        }
         decide(
             tx,
             &parked_request,
-            coverage,
-            authorize_query.may_raise_for_owner,
+            fast_path_coverage,
             ids.code,
+            &self.stale_session_cutoff,
             now,
             // Park the request — every path from here on references it by id.
             |tx| {
@@ -510,13 +527,14 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             &parked_request.redirect_uri,
             &parked_request.requested_scopes,
         )?;
+        // The start limit isn't asked: the request spent from it when it
+        // parked.
         decide(
             tx,
             &parked_request,
-            coverage,
-            // The request spent from the start limit when it parked.
-            &|| true,
+            fast_path_coverage(&parked_request, coverage),
             code,
+            &self.stale_session_cutoff,
             now,
             |tx| {
                 let not_found = || {
@@ -583,45 +601,52 @@ fn refuse_waiting_request(
     })
 }
 
-/// The shared tail of [`CodeAuthorizationStarter::start`] and
-/// [`CodeAuthorizationStarter::continue_past_session_shortfall`], in their
-/// scope `tx`, for `parked_request`, whose session holds all it asks for or
-/// whose browser has said to go on: ask the start limit when the request is
-/// about to be raised for the Owner, then `park` it (insert it, or go on
-/// past its limited page), which answers with the request as parked, then
-/// issue `code` under the standing grant when `coverage` is full and admits
-/// the launch's patient, or else raise it for the Owner.
-fn decide<T: GrantTx>(
-    tx: &mut T,
+/// The standing grant's coverage of `request` when it can take the fast
+/// path: `coverage` is full, and the standing grant's patient is one the
+/// launch admits.
+fn fast_path_coverage(
     request: &CodeRequest,
     coverage: GrantCoverage,
-    may_raise_for_owner: &dyn Fn() -> bool,
-    code: String,
-    now: DateTime<Utc>,
-    park: impl FnOnce(&mut T) -> Result<CodeRequest, AuthorizationStartError>,
-) -> Result<Decided, AuthorizationStartError> {
-    let decidable_in_requesting_browser = request.decidable_in_requesting_browser;
-    // The fast path: the standing grant is the authority, as long as its
-    // patient is one the launch admits.
-    let fast_path_coverage = match coverage {
+) -> Option<StandingGrantCoverage> {
+    match coverage {
         GrantCoverage::Full(standing_grant_coverage)
             if request.admits_patient(standing_grant_coverage.patient()) =>
         {
             Some(standing_grant_coverage)
         }
         _ => None,
-    };
-    // A request about to be raised for the Owner asks the start limit first.
-    if fast_path_coverage.is_none() && !decidable_in_requesting_browser && !may_raise_for_owner() {
-        return Err(AuthorizationStartError::StartLimited);
     }
+}
 
+/// The shared tail of [`CodeAuthorizationStarter::start`] and
+/// [`CodeAuthorizationStarter::continue_past_session_shortfall`], in their
+/// scope `tx`, for `request`, whose session holds all it asks for or whose
+/// browser has said to go on, and which the start limit has admitted: `park`
+/// it (insert it, or go on past its limited page), which answers with the
+/// request as parked, then issue `code` under the standing grant when
+/// `fast_path_coverage` holds it, under `stale_session_cutoff`, or else raise
+/// it for the Owner.
+fn decide<T: GrantTx>(
+    tx: &mut T,
+    request: &CodeRequest,
+    fast_path_coverage: Option<StandingGrantCoverage>,
+    code: String,
+    stale_session_cutoff: &StaleSessionCutoff,
+    now: DateTime<Utc>,
+    park: impl FnOnce(&mut T) -> Result<CodeRequest, AuthorizationStartError>,
+) -> Result<Decided, AuthorizationStartError> {
+    let decidable_in_requesting_browser = request.decidable_in_requesting_browser;
     let parked_request = park(tx)?;
 
     let next_step = match fast_path_coverage {
-        Some(standing_grant_coverage) => {
-            issue_under_standing_grant(tx, &standing_grant_coverage, &parked_request, code, now)?
-        }
+        Some(standing_grant_coverage) => issue_under_standing_grant(
+            tx,
+            &standing_grant_coverage,
+            &parked_request,
+            code,
+            stale_session_cutoff,
+            now,
+        )?,
         None => Ok(AuthorizeNextStep::AwaitOwner {
             request_id: parked_request.id.clone(),
             decidable_in_requesting_browser,
@@ -646,9 +671,10 @@ fn decide<T: GrantTx>(
 ///  - issued: [`AuthorizeNextStep::RedirectToClient`] with the code; the
 ///    scope commits the approved request, its code, and the standing grant's
 ///    `last_used_at` stamped with `now`;
-///  - the request's browser session has ended: `access_denied` to the client,
-///    saying the browser signed out; the scope commits the request denied,
-///    since there is nothing to bound the code by and nothing to revoke later;
+///  - the request's browser session is no longer live under
+///    `stale_session_cutoff`: `access_denied` to the client, saying the
+///    browser signed out; the scope commits the request denied, since there
+///    is nothing to bound the code by and nothing to revoke later;
 ///  - the request was no longer pending:
 ///    [`AuthorizationStartError::RequestNotPending`], which rolls the scope
 ///    back.
@@ -657,6 +683,7 @@ fn issue_under_standing_grant(
     standing_grant_coverage: &StandingGrantCoverage,
     parked_request: &CodeRequest,
     code: String,
+    stale_session_cutoff: &StaleSessionCutoff,
     now: DateTime<Utc>,
 ) -> Result<Result<AuthorizeNextStep, AuthorizationStartError>, AuthorizationStartError> {
     let requested_redirect_uri = parked_request.redirect_uri.clone();
@@ -666,6 +693,7 @@ fn issue_under_standing_grant(
         parked_request,
         standing_grant_coverage.patient(),
         code,
+        stale_session_cutoff,
         now,
     )? {
         CodeApproval::Issued(issued_code) => Ok(Ok(AuthorizeNextStep::RedirectToClient {
@@ -868,8 +896,12 @@ mod tests {
             })
             .unwrap();
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
-        let code_authorization_starter =
-            CodeAuthorizationStarter::new(store, owner_approval.clone(), SERVER_ORIGIN.into());
+        let code_authorization_starter = CodeAuthorizationStarter::new(
+            store,
+            owner_approval.clone(),
+            SERVER_ORIGIN.into(),
+            Arc::new(StaleSessionCutoff::none()),
+        );
         (code_authorization_starter, owner_approval)
     }
 
@@ -1116,6 +1148,7 @@ mod tests {
             store,
             Arc::new(RecordingOwnerApproval::default()),
             SERVER_ORIGIN.into(),
+            Arc::new(StaleSessionCutoff::none()),
         );
         assert!(matches!(
             code_authorization_starter.start(&request("app", "openid"), ids(), Utc::now()),
@@ -2062,6 +2095,7 @@ mod tests {
             store,
             Arc::new(RecordingOwnerApproval::default()),
             SERVER_ORIGIN.into(),
+            Arc::new(StaleSessionCutoff::none()),
         );
         assert!(matches!(
             code_authorization_starter.continue_past_session_shortfall(

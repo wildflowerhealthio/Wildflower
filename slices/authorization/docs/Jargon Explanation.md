@@ -694,7 +694,10 @@ running the server, and the host app runs on that device.
 1. The host app mints a same-device sign-in code in-process, through the
    `SameDeviceSignInCodeMinter` its `WildflowerServer` hands out (no HTTP
    call). A code is 256 random bits, single use, and valid for 60 seconds. The
-   server keeps only its hash, in memory, so a restart drops it.
+   server keeps only its hash, in memory, so a restart drops it. The host
+   keeps the code, a `SameDeviceSignInCode`, to withdraw it when the view it
+   opens closes, and to end the session it signs in once the server's last
+   launch view closes.
 2. The host app opens `https://<domain>/oauth/sign-in?code=…&next=…` in a
    browser: for each launch, `next` is the launch URL; for the server
    card's Authorization, the server's Authorization app with `iss`; and for
@@ -780,15 +783,34 @@ browser signed in as the Owner with a
 [same-device sign-in](#same-device-sign-in), `paired` for any other browser,
 signed in by a [browser pairing](#browser-pairing). A same-device session has no
 `name`, holds `OWNER_SCOPES`, and expires 8 hours (`SAME_DEVICE_SESSION_TTL`) after
-the sign-in. A paired session has the name the browser was approved under,
-holds the scopes the Owner granted, and expires 24 hours
-(`PAIRED_SESSION_TTL`) after the pairing.
+the sign-in, or sooner: it lasts only as long as the server's launch views
+stay open. A server's views share one cookie jar on iOS and Android, so a
+stacked consent view's sign-in replaces the cookie of the launch view under
+it; the host therefore ends no session at a view's close, but withdraws its
+code, and once the server's last launch view closes it ends the sessions all
+their codes signed in (`SameDeviceSignInCodeMinter::end_signed_in_sessions`,
+through the run up then). The server remembers, in memory, which session each
+code started, and the host holds the codes, across the server's runs. Leaving
+the app with a view open and coming back isn't a close, and keeps it. When the
+server starts, the run's start cuts off every same-device session but those
+of the launch views still open (`StaleSessionCutoff`), and the others are
+stale, so
+the restart iOS brings on a return from a suspend keeps the open views'; a desktop hears no close, so its views count until
+the app exits, and the first start after the app's next start ends its
+sessions.
+Ending a session expires it (`expires_at` moves to now); it isn't revoked. Its
+cookie stops working at once, and a refresh-token family minted under it lives
+on as its client's refresh policy says. The host's next launch signs the
+browser in again. A paired session has the name the browser was approved
+under, holds the scopes the Owner granted, and expires 24 hours
+(`PAIRED_SESSION_TTL`) after the pairing; a restart leaves it standing.
 
 The browser holds its session in the `__Host-browser_session` cookie, whose
 value is the session's token, issued to the browser-session client (its
-`sub`), so a restart doesn't sign the browser out. One browser is signed out
-by revoking its browser session or its token's `jti`; every browser is signed
-out by revoking the browser-session client's subject. A request whose cookie
+`sub`), and the token is accepted only while its session is live. One browser
+is signed out by revoking its browser session or its token's `jti`, or by its
+session expiring; every browser is signed out by revoking the
+browser-session client's subject. A request whose cookie
 holds an expired or revoked token is served as if the cookie weren't sent, and
 the response clears it. The cookie needs `https`, as the server's origin,
 `https://<domain>`, is. A session belongs to the cookie store it was set in:

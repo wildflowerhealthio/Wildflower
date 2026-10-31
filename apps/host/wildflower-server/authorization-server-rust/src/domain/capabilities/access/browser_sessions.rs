@@ -6,12 +6,14 @@
 //! `sid` does. Generic over the store port, so each is unit-testable against
 //! the in-memory fake.
 
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 
 use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::BrowserSession;
+use crate::domain::browser_session::{BrowserSession, StaleSessionCutoff};
 use crate::domain::grant_store::BrowserSessionsTx as _;
 use crate::domain::GrantStore;
 
@@ -45,18 +47,26 @@ pub(crate) struct BrowserSessionView {
 pub(crate) struct BrowserSessionsReader<S: GrantStore> {
     /// The store the sessions are read from.
     store: S,
+    /// The cutoff before which a same-device session is stale, which the
+    /// list leaves out.
+    stale_session_cutoff: Arc<StaleSessionCutoff>,
 }
 
 impl<S: GrantStore> BrowserSessionsReader<S> {
-    /// Build the reader over a store handle lifted from the state.
-    pub(crate) fn new(store: S) -> Self {
-        BrowserSessionsReader { store }
+    /// Build the reader over a store handle and the stale-session cutoff,
+    /// lifted from the state.
+    pub(crate) fn new(store: S, stale_session_cutoff: Arc<StaleSessionCutoff>) -> Self {
+        BrowserSessionsReader {
+            store,
+            stale_session_cutoff,
+        }
     }
 
-    /// Every browser session live at `now` (neither revoked nor expired),
-    /// newest first, each marked by whether it is `caller_sid`'s, the session
-    /// the caller's token was minted under. A caller under no session holds
-    /// none of them.
+    /// Every browser session
+    /// [live](crate::domain::browser_session::BrowserSession::is_live_at) at
+    /// `now`, newest first, each marked by whether it is
+    /// `caller_sid`'s, the session the caller's token was minted under. A
+    /// caller under no session holds none of them.
     pub(crate) fn list_live(
         &self,
         caller_sid: Option<&str>,
@@ -66,6 +76,7 @@ impl<S: GrantStore> BrowserSessionsReader<S> {
             .store
             .read(|tx| tx.live_browser_sessions(now))?
             .into_iter()
+            .filter(|session| session.is_live_at(now, &self.stale_session_cutoff))
             .map(|session| BrowserSessionView {
                 held_by_caller: caller_sid == Some(session.sid.as_str()),
                 session,
@@ -116,17 +127,24 @@ impl<S: GrantStore> BrowserSessionsRevoker<S> {
 mod tests {
     use crate::domain::grant_store::*;
     use chrono::Duration;
+    use std::collections::HashSet;
 
     use super::*;
     use crate::domain::test_fake::FakeGrantStore;
 
-    /// The list holds only the live sessions, and marks the caller's.
+    /// The list holds only the live sessions, not a stale same-device
+    /// session, and marks the caller's.
     #[test]
     fn the_list_holds_the_live_sessions_and_marks_the_caller_s() {
         let store = FakeGrantStore::default();
         let now = Utc::now();
         let caller_s = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         let other = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::minutes(10),
+        );
+        let stale = BrowserSession::new_same_device_session(
             vec![],
             Duration::hours(8),
             now - Duration::hours(1),
@@ -137,14 +155,20 @@ mod tests {
             now - Duration::hours(9),
         );
         let revoked = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
-        for session in [&caller_s, &other, &expired, &revoked] {
+        for session in [&caller_s, &other, &stale, &expired, &revoked] {
             store.tx().insert_browser_session(session).unwrap();
         }
         store
             .tx()
             .revoke_browser_session(&revoked.sid, now)
             .unwrap();
-        let reader = BrowserSessionsReader::new(store);
+        let reader = BrowserSessionsReader::new(
+            store,
+            Arc::new(StaleSessionCutoff::new(
+                now - Duration::minutes(30),
+                HashSet::new(),
+            )),
+        );
 
         let listed: Vec<(String, bool)> = reader
             .list_live(Some(&caller_s.sid), now)

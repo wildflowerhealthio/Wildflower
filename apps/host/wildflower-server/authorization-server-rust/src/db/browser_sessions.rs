@@ -129,6 +129,28 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
         Ok(affected == 1)
     }
 
+    /// Move the browser session `sid`'s `expires_at` back to `now`, returning
+    /// `true` iff it moved. The `expires_at > now` guard never moves an ended
+    /// session's expiry later.
+    fn expire_browser_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let affected = diesel::update(
+            browser_sessions::table
+                .find(sid)
+                .filter(browser_sessions::expires_at.gt(now)),
+        )
+        .set(browser_sessions::expires_at.eq(now))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("expire_browser_session failed", e)
+        })?;
+        Ok(affected == 1)
+    }
+
     /// Move the browser session `sid`'s `last_seen_at` to `seen_at`, unless it was
     /// last seen after `seen_before`, returning `true` iff it moved. The
     /// guard keeps the column from moving backwards, and from moving more than
@@ -370,6 +392,49 @@ mod tests {
             .map(|session| session.sid)
             .collect();
         assert_eq!(live, vec![newer.sid, older.sid]);
+    }
+
+    /// Expiring a session moves its `expires_at` back to now and leaves it
+    /// unrevoked; one already expired keeps its expiry, and a `sid` with no
+    /// row moves nothing.
+    #[test]
+    fn expiring_a_session_moves_its_expiry_back_to_now() {
+        let store = store();
+        let now = chrono::Utc::now();
+        let live = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
+        let expired = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::hours(9),
+        );
+        for session in [&live, &expired] {
+            store
+                .write(|tx| tx.insert_browser_session(session))
+                .expect("insert");
+        }
+        let expired_at = now + Duration::minutes(1);
+
+        assert!(store
+            .write(|tx| tx.expire_browser_session(&live.sid, expired_at))
+            .expect("expire"));
+        assert!(!store
+            .write(|tx| tx.expire_browser_session(&expired.sid, expired_at))
+            .expect("expire an expired one"));
+        assert!(!store
+            .write(|tx| tx.expire_browser_session("no-such-sid", expired_at))
+            .expect("expire a missing one"));
+
+        for (session, expires_at) in [(&live, expired_at), (&expired, expired.expires_at)] {
+            assert_eq!(
+                store
+                    .read(|tx| tx.browser_session_by_sid(&session.sid))
+                    .expect("read"),
+                Some(BrowserSession {
+                    expires_at,
+                    ..session.clone()
+                })
+            );
+        }
     }
 
     /// A touch moves `last_seen_at` only when it was last seen before the

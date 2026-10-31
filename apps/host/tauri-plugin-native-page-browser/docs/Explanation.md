@@ -37,6 +37,8 @@ A server's authorization server issues nothing to a browser without a browser se
 - **Android:** a Custom Tab shares its browser's cookies, so a session the browser holds rides the tab, and one the tab gets stays in the browser.
 - **Desktop:** the default browser's own tab, with that browser's cookies.
 
+On Android and a desktop, then, the Owner session a launch's sign-in hands the view lands in the user's own browser, where any tab on `https://<domain>` holds it. So the Owner session lasts only as long as the server's launch views stay open: once the plugin reports the last of them closed, the host ends the sessions their sign-in codes started, and when the server starts, it ends every Owner session but those of the views still open. The host waits for the last close because a server's views share one cookie jar: a stacked view's sign-in replaces the cookie of the view under it. A desktop hears no close, so a server restart is what ends its sessions there. Leaving the app with a view open and coming back isn't a close, so the session stays, and so does the restart iOS brings when the app returns from a suspend. Ending a session expires it, so the cookie stops working, while each app's own storage and refresh token stay in the browser. The next launch signs the browser in again.
+
 ## One view, or a stack
 
 What an `open` does while a view is showing is its mode's, and differs by platform. `replace` keeps one view at a time, as a launch wants; `stack` keeps the views showing under the new one, so a page opened over an app's page (a consent, while the app waits for it) can go away and leave the app's page where it was.

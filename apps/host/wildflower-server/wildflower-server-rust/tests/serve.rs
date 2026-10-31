@@ -210,7 +210,7 @@ async fn start_serving(
     let certificate = cache_self_signed_certificate(&certificate_dir(server_dir)).await;
     let server = tokio::time::timeout(
         LIFECYCLE_TIMEOUT,
-        set_up(server_config(server_dir.to_owned()), observers),
+        set_up(server_config(server_dir.to_owned()), observers, &[]),
     )
     .await
     .expect("the server sets up in time")
@@ -1190,7 +1190,10 @@ impl UiServer {
             .expect("sign-in URL");
         sign_in_url
             .query_pairs_mut()
-            .append_pair("code", &self.handles.same_device_sign_in_code_minter.mint())
+            .append_pair(
+                "code",
+                self.handles.same_device_sign_in_code_minter.mint().as_str(),
+            )
             .append_pair("next", "/ui");
         let signed_in = self.tunnel.send(get(&path_of(sign_in_url.as_str()))).await;
         assert_eq!(signed_in.status, StatusCode::SEE_OTHER);

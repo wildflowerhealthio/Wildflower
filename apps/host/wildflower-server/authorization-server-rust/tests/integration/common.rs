@@ -66,7 +66,7 @@ pub use wildflowerhealthio_authorization_server::domain::refresh_token::{
     RefreshToken, RefreshTokenFamily,
 };
 pub use wildflowerhealthio_authorization_server::{
-    ConsentKey, GrantStore, OwnerPrompt, SqliteGrantStore,
+    ConsentKey, GrantStore, OwnerPrompt, SameDeviceSignInCode, SqliteGrantStore,
 };
 pub use wildflowerhealthio_persistence::{Connection, DieselPool};
 pub use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -115,6 +115,60 @@ pub fn spin_up_with_authorization_start_gate(
     // pool into each diesel-backed slice. `db.pool` is that shared handle;
     // `store_handle` clones it to reach the same database.
     let pool = wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
+    let (pending_consent_tx, pending_consent_rx) = watch::channel::<Option<OwnerPrompt>>(None);
+    // The shared revocation store lives on the rusqlite connection the host
+    // wires into both the authorization server and the FHIR server (#269). A second handle on
+    // the same connection (see `revocation_store_handle`) lets tests
+    // plant/observe rows.
+    let revocation_conn = Connection::open_in_memory().expect("open revocation db");
+    let g = set_up_over(
+        pool.clone(),
+        revocation_conn.clone(),
+        pending_consent_tx,
+        authorization_start_gate,
+        &[],
+    );
+    let mut db = TestDb {
+        pool,
+        revocation_conn,
+        pending_consent_rx,
+        paired_browser_token: String::new(),
+        paired_browser_sid: String::new(),
+    };
+    (db.paired_browser_sid, db.paired_browser_token) = paired_browser_session(&db);
+    let owner_token = mint_owner_token(&db);
+    (g, owner_token, db)
+}
+
+/// Set up the authorization server again over `db`'s databases, as a
+/// restart of the server does, with the host's launch views opened with
+/// `open_views_sign_in_codes` still open: what a run keeps only in memory is
+/// gone.
+pub fn restart(
+    db: &TestDb,
+    open_views_sign_in_codes: &[SameDeviceSignInCode],
+) -> AuthorizationServer {
+    set_up_over(
+        db.pool.clone(),
+        db.revocation_conn.clone(),
+        watch::channel::<Option<OwnerPrompt>>(None).0,
+        Arc::new(AdmitEveryAuthorizationStart),
+        open_views_sign_in_codes,
+    )
+}
+
+/// Set up the authorization server over `pool` and the revocation database
+/// `revocation_conn`, publishing its Owner prompt on `pending_consent_tx`,
+/// asking `authorization_start_gate` whether a request may start an
+/// authorization request, and keeping the sessions
+/// `open_views_sign_in_codes` signed in.
+fn set_up_over(
+    pool: DieselPool,
+    revocation_conn: Connection,
+    pending_consent_tx: watch::Sender<Option<OwnerPrompt>>,
+    authorization_start_gate: Arc<dyn AuthorizationStartGate>,
+    open_views_sign_in_codes: &[SameDeviceSignInCode],
+) -> AuthorizationServer {
     let config = AuthorizationServerConfig {
         server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
         host_app_client_scopes:
@@ -126,33 +180,18 @@ pub fn spin_up_with_authorization_start_gate(
         launcher_url: Url::parse(LAUNCHER_URL).expect("LAUNCHER_URL is a valid URL"),
         authorization_url: Url::parse(AUTHORIZATION_URL).expect("AUTHORIZATION_URL is a valid URL"),
     };
-    let (pending_consent_tx, pending_consent_rx) = watch::channel::<Option<OwnerPrompt>>(None);
-    // The shared revocation store lives on the rusqlite connection the host
-    // wires into both the authorization server and the FHIR server (#269). A second handle on
-    // the same connection (see `revocation_store_handle`) lets tests
-    // plant/observe rows.
-    let revocation_conn = Connection::open_in_memory().expect("open revocation db");
     let revocation_store =
-        wildflowerhealthio_token_revocation::RevocationStore::new(revocation_conn.clone())
+        wildflowerhealthio_token_revocation::RevocationStore::new(revocation_conn)
             .expect("revocation store");
-    let g = setup_authorization_server(
-        pool.clone(),
+    setup_authorization_server(
+        pool,
         revocation_store,
         &config,
         pending_consent_tx,
         authorization_start_gate,
+        open_views_sign_in_codes,
     )
-    .expect("setup");
-    let mut db = TestDb {
-        pool,
-        revocation_conn,
-        pending_consent_rx,
-        paired_browser_token: String::new(),
-        paired_browser_sid: String::new(),
-    };
-    (db.paired_browser_sid, db.paired_browser_token) = paired_browser_session(&db);
-    let owner_token = mint_owner_token(&db);
-    (g, owner_token, db)
+    .expect("setup")
 }
 
 /// The `client_id` [`mint_owner_token`]'s tokens are issued to: a client the
@@ -1087,7 +1126,7 @@ pub fn browser_session_token(res: &axum::response::Response) -> String {
 /// `__Host-browser_session` cookie holds.
 pub async fn signed_in_same_device_session_token(g: &AuthorizationServer) -> String {
     let code = g.same_device_sign_in_code_minter.mint();
-    browser_session_token(&sign_in(g, &code, "/").await)
+    browser_session_token(&sign_in(g, code.as_str(), "/").await)
 }
 
 /// The token of a signed-in browser whose session can't decide consents: it

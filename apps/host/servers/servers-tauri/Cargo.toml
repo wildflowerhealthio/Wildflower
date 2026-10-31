@@ -49,6 +49,10 @@ workspace = true
 
 [dev-dependencies]
 async-trait = "0.1"
+# The tests' authorization server's router, which signs a launch's browser in
+# at `/oauth/sign-in`.
+axum.workspace = true
+tower = { workspace = true, features = ["util"] }
 # An authorization server over a temporary database, which the launch
 # commands' tests mint through.
 wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }

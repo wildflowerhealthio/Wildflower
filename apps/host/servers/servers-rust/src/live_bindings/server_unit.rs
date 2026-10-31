@@ -1,7 +1,7 @@
 //! [`ServerUnit`]: one server, as a unit `UnitRunner` runs.
 
 use tokio::sync::watch;
-use wildflowerhealthio_authorization_server::OwnerPrompt;
+use wildflowerhealthio_authorization_server::{OwnerPrompt, SameDeviceSignInCode};
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::{RunContext, Unit};
 use wildflowerhealthio_wildflower_server::{
@@ -25,13 +25,24 @@ use crate::live_bindings::server_sign_in_code_minter::ServerSignInCodeMinter;
 /// The unit knows nothing of Tauri: the host hands it everything it reads.
 pub struct ServerUnit {
     config: WildflowerServerConfig,
+    /// The sign-in codes of the host's launch views still open on the
+    /// server, whose Owner sessions the run's start keeps.
+    open_views_sign_in_codes: Vec<SameDeviceSignInCode>,
 }
 
 impl ServerUnit {
-    /// A run of the server `config` describes.
+    /// A run of the server `config` describes, which keeps the Owner sessions
+    /// `open_views_sign_in_codes` signed in as it starts, and ends every other
+    /// same-device session.
     #[must_use]
-    pub fn new(config: WildflowerServerConfig) -> Self {
-        Self { config }
+    pub fn new(
+        config: WildflowerServerConfig,
+        open_views_sign_in_codes: Vec<SameDeviceSignInCode>,
+    ) -> Self {
+        Self {
+            config,
+            open_views_sign_in_codes,
+        }
     }
 }
 
@@ -60,6 +71,7 @@ impl Unit for ServerUnit {
                 certificate_tx,
                 pending_consent_tx,
             },
+            &self.open_views_sign_in_codes,
         )
         .await?;
         tokio::spawn(report_detail(

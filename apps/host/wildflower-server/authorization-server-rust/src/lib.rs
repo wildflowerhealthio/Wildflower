@@ -47,7 +47,7 @@ use wildflowerhealthio_scopes::{
 };
 use wildflowerhealthio_token_revocation::RevocationStore;
 
-use crate::domain::browser_session::LONGEST_BROWSER_SESSION_TTL;
+use crate::domain::browser_session::{StaleSessionCutoff, LONGEST_BROWSER_SESSION_TTL};
 use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
@@ -74,6 +74,7 @@ pub use domain::{GrantStore, GrantTx};
 /// nothing outside this crate consumes it, and its tests pin the set. See
 /// `domain::capabilities`.
 pub use domain::capabilities::grantable_admin_scopes;
+pub use domain::same_device_sign_in_codes::SameDeviceSignInCode;
 pub use http::{
     authorization_server_auth_middleware, browser_session_clearing_set_cookie,
     ensure_bearer_header, record_browser_session_cookie_use, standing_browser_session,
@@ -201,7 +202,8 @@ pub struct AuthorizationServer {
     /// app's launch URL.
     pub launch_context_minter: LaunchContextMinter,
     /// Mints the one-time codes `/oauth/sign-in` signs the Owner's own browser
-    /// in with: for the host, in-process.
+    /// in with: for the host, in-process. It also ends the sessions codes
+    /// signed in, for the host to call once their views have closed.
     pub same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
     /// Waits for a pending consent to be decided or expire: for the host,
     /// in-process, which closes the page it opened the request at.
@@ -226,6 +228,17 @@ pub struct AuthorizationServer {
 ///    Seeding at boot means a request that was pending
 ///    across an app restart is still reported (the row survived in SQLite, the
 ///    in-memory `watch` value didn't);
+///  - cuts off, at the run's start, the same-device sessions earlier runs
+///    signed in, except those `open_views_sign_in_codes` signed in: the codes
+///    of the host's launch views still open, whichever run minted them. The
+///    host ends a same-device session once the last of the server's launch
+///    views has closed, so a session no open view holds is one whose ending
+///    was missed, as across the app's exit, or failed. So the
+///    `StaleSessionCutoff` invalidates sessions before the run's start,
+///    with the open views' sessions exempt: it makes the others stale,
+///    writing nothing, so a store that can't be written doesn't keep the
+///    server from starting, and the browser is sent through sign-in again,
+///    which the host's next launch does. Paired sessions stand;
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/authorization/*` (authenticated bearer JWT + per-resource
 ///    scope gates via the `Scoped<…>` extractors) — the
@@ -236,7 +249,8 @@ pub struct AuthorizationServer {
 ///    SMART App Launch `launch` value through, which `/oauth/authorize` then
 ///    consumes;
 ///  - returns the [`SameDeviceSignInCodeMinter`] the host mints each
-///    same-device sign-in code through, which `/oauth/sign-in` then redeems;
+///    same-device sign-in code through, which `/oauth/sign-in` then redeems,
+///    and which ends the sessions codes signed in when the host asks;
 ///  - returns the [`PendingConsentWatcher`] the host waits on for a pending
 ///    consent it opened to be decided or expire;
 ///  - returns the [`InProcessTokenVerifier`] the host's FHIR server verifies
@@ -266,6 +280,7 @@ pub fn setup_authorization_server(
     config: &AuthorizationServerConfig,
     owner_approval_tx: watch::Sender<Option<OwnerPrompt>>,
     authorization_start_gate: Arc<dyn AuthorizationStartGate>,
+    open_views_sign_in_codes: &[SameDeviceSignInCode],
 ) -> anyhow::Result<AuthorizationServer> {
     let store = seeding::open_and_seed_store(
         pool,
@@ -276,6 +291,13 @@ pub fn setup_authorization_server(
     let server_origin: Arc<str> =
         wildflowerhealthio_shared_structures::origin_string(&config.server_origin).into();
     let same_device_sign_in_codes = Arc::new(SameDeviceSignInCodes::new());
+    let stale_session_cutoff = Arc::new(StaleSessionCutoff::new(
+        Utc::now(),
+        open_views_sign_in_codes
+            .iter()
+            .filter_map(SameDeviceSignInCode::signed_in_sid)
+            .collect(),
+    ));
     let (pending_consents_recomputed_tx, pending_consents_recomputed_rx) = watch::channel(());
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
@@ -296,6 +318,7 @@ pub fn setup_authorization_server(
         )),
         authorization_start_gate,
         last_seen_throttle: Arc::new(LastSeenThrottle::new()),
+        stale_session_cutoff,
     });
     // Publish the Owner prompt from SQLite so a request that was
     // pending across an app restart is reported in the run's first detail —
@@ -312,7 +335,7 @@ pub fn setup_authorization_server(
     let launch_context_minter = LaunchContextMinter::new(state.store.clone());
     let in_process_token_verifier = InProcessTokenVerifier::new(&state);
     let same_device_sign_in_code_minter =
-        SameDeviceSignInCodeMinter::new(same_device_sign_in_codes);
+        SameDeviceSignInCodeMinter::new(same_device_sign_in_codes, state.store.clone());
     let pending_consent_watcher =
         PendingConsentWatcher::new(state.store.clone(), pending_consents_recomputed_rx);
     Ok(AuthorizationServer {

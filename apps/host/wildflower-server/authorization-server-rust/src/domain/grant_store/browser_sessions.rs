@@ -66,6 +66,19 @@ pub trait BrowserSessionsTx {
         now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError>;
 
+    /// Expire the browser session `sid` at `now`: its `expires_at` moves to
+    /// `now`, unless it is already at or before `now`, returning `true` iff it
+    /// moved. The row is kept, and isn't revoked.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn expire_browser_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError>;
+
     /// Move the browser session `sid`'s `last_seen_at` to `seen_at`, unless
     /// it was last seen after `seen_before`, returning `true` iff it
     /// moved. A `sid` with no row moves nothing. Moved when the session's
