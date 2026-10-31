@@ -1,10 +1,13 @@
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
-import type { ComponentProps, JSX, MouseEvent, ReactNode } from 'react'
+import type { ChangeEvent, ComponentProps, JSX, MouseEvent, ReactNode } from 'react'
 
 import styles from './radio-card.module.css'
 
-/** Controls inside a card that answer a click themselves. */
-const OWN_CLICK_TARGETS = 'a, button, input, label, select, summary, textarea'
+/**
+ * Elements inside a card that answer a click themselves. A `<dialog>` opened
+ * from the card, its backdrop included, is the dialog's, not the card's.
+ */
+const OWN_CLICK_TARGETS = 'a, button, dialog, input, label, select, summary, textarea'
 
 /**
  * Props for {@link RadioCard}: its radio, the evidence it shows, and any other
@@ -29,7 +32,9 @@ interface RadioCardProps extends Omit<ComponentProps<'div'>, 'children' | 'onCli
   readonly outcome?: ReactNode
   /**
    * Content docked to the card's foot, edge to edge: dashed above while the
-   * card is not picked, a solid accent rule once it is.
+   * card is not picked, a solid accent rule once it is. Changing a control in
+   * it (ticking a field) picks the card too, so the tray never holds choices
+   * for an option that is not picked.
    */
   readonly tray?: ReactNode
   /** `success` tints the picked card's tray, while picking it adds something. */
@@ -46,8 +51,8 @@ interface RadioCardProps extends Omit<ComponentProps<'div'>, 'children' | 'onCli
  * One option in a {@link RadioCardGroup}: a native radio whose label is the
  * action, over the evidence for it, with an optional tray docked at the foot.
  * The picked card wears the accent edge and fill. A click anywhere on the card
- * that no control inside answers picks it, and the radio keeps the native
- * group's arrow keys.
+ * that no control inside answers picks it, as does a change in its tray, and
+ * the radio keeps the native group's arrow keys.
  */
 const RadioCard = ({
   name,
@@ -65,8 +70,14 @@ const RadioCard = ({
 }: RadioCardProps): JSX.Element => {
   const handleCardClick = (event: MouseEvent<HTMLDivElement>): void => {
     if (checked || !(event.target instanceof Element)) return
+    // A click from a portal bubbles through React but lands outside the card.
+    if (!event.currentTarget.contains(event.target)) return
     const control = event.target.closest(OWN_CLICK_TARGETS)
     if (control !== null && event.currentTarget.contains(control)) return
+    onSelect()
+  }
+  const handleTrayChange = (event: ChangeEvent): void => {
+    if (checked || !event.currentTarget.contains(event.target)) return
     onSelect()
   }
   return (
@@ -101,6 +112,7 @@ const RadioCard = ({
             styles['radio-card__tray'],
             trayTone === 'success' ? styles['radio-card__tray--success'] : null
           )}
+          onChange={handleTrayChange}
         >
           {tray}
         </div>
