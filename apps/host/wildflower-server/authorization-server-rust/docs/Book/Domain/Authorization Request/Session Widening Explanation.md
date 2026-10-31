@@ -16,9 +16,15 @@ stateDiagram-v2
     Approved --> Claimed: claim, by the limited page's poll
 ```
 
+An approval stays claimable a short grace past the widening's decision deadline, so an Owner who approves in its last seconds still reaches the page, whose next poll may land just after it. The code request the widening was asked for waits on its limited page one grace longer again, so the page can still go on with it after a last-moment claim.
+
 A widening shares the [polled requests'](<Polled Requests Explanation.md>) lifecycle, {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/polled.rs PolledState}}, but no `user_code`: the browser asks on the server's own origin, with its session cookie, so the widening is keyed by its id, as a [code request](<Code Request Explanation.md>) is.
 
 ## `domain::authorization_request::session_widening`
+
+### `APPROVAL_CLAIM_GRACE`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs APPROVAL_CLAIM_GRACE}}
 
 ### `SessionWideningApproval`
 
@@ -42,6 +48,12 @@ A widening shares the [polled requests'](<Polled Requests Explanation.md>) lifec
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::is_pending_at}}
 
+#### `claimable_until` and `asking_code_request_expires_at`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::claimable_until}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::asking_code_request_expires_at}}
+
 #### `approve` and `deny`
 
 Only the [request approver](<../../Writers/Request Approver Explanation.md>) approves a widening, under the Owner's [delegated scopes](<../../Authority/Delegated Scopes Explanation.md>).
@@ -54,7 +66,7 @@ Only the [request approver](<../../Writers/Request Approver Explanation.md>) app
 
 The claim is the [claimed session widening](<../../Authority/Session Widening Explanation.md>)'s single use.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::claim tests="tests::claim_redeems_an_approved_widening_once"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/session_widening.rs SessionWideningRequest::claim tests="tests::claim_redeems_an_approved_widening_once tests::an_approval_at_the_deadline_is_claimed_after_it"}}
 
 #### `require_pending`
 

@@ -52,7 +52,8 @@ which this doc assumes rather than repeats.
   the request; the Owner may only untick, can grant no more than they hold,
   and the session keeps its `sid` and expiry. Only that session can poll for
   the answer, and its wider token replaces the narrower one, which is
-  revoked. Asking spends from the authorization start limit.
+  revoked thirty seconds later. Filing a widening spends from the
+  authorization start limit; asking again while one waits files nothing.
 - **Codes and refresh tokens resist theft.** PKCE S256 only, constant-time
   compares, codes bound to client and redirect; refresh families rotate and a
   replay revokes the family; only hashes are stored.

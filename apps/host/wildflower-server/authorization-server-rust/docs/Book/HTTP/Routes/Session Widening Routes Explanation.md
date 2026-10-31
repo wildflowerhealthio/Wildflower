@@ -22,7 +22,7 @@ A [session widening](<../../Domain/Authorization Request/Session Widening Explan
 
 ### `handle_session_widening_ask`
 
-The [start limit](<../Middleware Explanation.md>) layer wraps it as {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/middleware/authorization_start_limit.rs AuthorizationStartRoute}}'s `AskToWidenSession`.
+The [start limit](<../Middleware Explanation.md>) layer wraps it as {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/middleware/authorization_start_limit.rs AuthorizationStartRoute}}'s `AskToWidenSession`, which always defers the limit to the route: the ask spends from it only when it files a new widening.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/session_widening.rs handle_session_widening_ask}}
 

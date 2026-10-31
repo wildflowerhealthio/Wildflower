@@ -73,6 +73,10 @@ The port is [`AuthorizationRequestsTx`](<../Grant Store/Authorization Requests E
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::session_widening_request_by_id}}
 
+A session's widenings still waiting for the Owner are what a repeated ask answers with, and what revoking the session denies.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::pending_session_widening_requests_for_session tests="tests::pending_session_widenings_are_the_session_s_undecided_unexpired_ones"}}
+
 #### Inserting a request
 
 Bulk reclamation of expired rows is the retention sweep's, so an insert leaves an unrelated expired row alone. The one row it clears is an expired pending one holding the new request's `user_code`, which would otherwise hold the slot in the partial unique index.

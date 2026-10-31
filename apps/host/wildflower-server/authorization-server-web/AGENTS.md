@@ -85,12 +85,16 @@ Security Policy (below).
   it is waiting, that the Owner declined, that the Owner didn't answer in time,
   or that asking failed; it can be pressed again once the Owner has answered.
   `widened` (whose answer set the wider session's cookie) reads the shortfall
-  again, which goes on at once when nothing is missing.
+  again, which goes on at once when nothing is missing. A `404` on the ask
+  (the request is gone, or the session lacks nothing it could be widened by
+  any more) reads the shortfall again too: it goes on when nothing is
+  missing, goes to the wait page when the request is gone, and otherwise says
+  asking failed.
   The buttons post `…/cancel` and `…/continue` and leave for the `location`
   the answer carries, a path on this origin or the client callback, only an
-  http(s) one. A `404` on any of the three (the request is no longer waiting
-  here, or isn't this browser's) goes to the wait page; any other failure
-  says so in plain words.
+  http(s) one. A `404` on the read, Cancel or Continue (the request is no
+  longer waiting here, or isn't this browser's) goes to the wait page; any
+  other failure says so in plain words.
 - `device.html` + `src/device/main.tsx` — the device page's entry: reads the
   `user_code` (`user-code-query.ts`) and `then` (`src/then-query.ts`) from its
   query and mounts `DevicePage`, with `SessionFooter` under it, over the same

@@ -446,7 +446,8 @@ whichever browser made it, so going on from there asks nothing. Nor is a
 browser without a session at
 `/oauth/authorize`, which is only sent to [pairing](#browser-pairing) and
 parks nothing. Asking to widen a session from the limited page spends from
-it too, as a request raised for the Owner does.
+it too, as a request raised for the Owner does, but only when it files a new
+widening: asking again while one waits spends nothing.
 
 The newest is an `OwnerPrompt`, discriminated because the flows have
 no shared lookup key, with the name of what asks: the client's (its registered
@@ -588,11 +589,14 @@ uses (`scopes-react`'s `fluentScope`), and the message sits above three buttons:
   and the browser goes back to the app with `access_denied`.
 - **Ask the server's owner** posts `/oauth/authorize/{id}/ask-to-widen`, which
   files a [session widening](#session-widening) for exactly what the session
-  lacks of the request and keeps the request waiting here as long as the
-  widening waits for the Owner. The page polls the widening and says above the
-  buttons that it is waiting, that the Owner declined, or that the Owner
-  didn't answer in time. Once the Owner widens the session, the page reads
-  what the session still lacks, and goes on at once when that's nothing.
+  lacks of the request and keeps the request waiting here until the widening's
+  approval can no longer be collected. The page polls the widening and says
+  above the buttons that it is waiting, that the Owner declined, or that the
+  Owner didn't answer in time. Once the Owner widens the session, the page
+  reads what the session still lacks, and goes on at once when that's nothing.
+  An ask the server finds nothing to ask for (`404`: the request is gone, or
+  the session lacks nothing any more) reads the request again the same way,
+  and goes on, leaves for the wait page, or says it couldn't ask.
 
 Continue also remembers the (browser session, app) pair, one row in
 `session_shortfall_acknowledgements` keyed by `sid` and `client_id`. A later
@@ -624,8 +628,11 @@ its own [browser session](#browser-session) to hold more, rather than pairing
 again, which would end the session and everything minted under it. One row in
 `session_widening_requests`, keyed by id, naming the session (`sid`), the app
 whose request the session fell short of, the session's name, and the scopes it
-lacked of that request: the most the Owner may grant. It waits five minutes,
-as the request on the page does.
+lacked of that request: the most the Owner may grant. It waits five minutes
+for the Owner; an approval stays collectable thirty seconds past that, and the
+request on the page waits thirty seconds longer again. Asking again while a
+widening of the same session, app and scopes waits answers that widening, so
+the Owner is told once.
 
 The Owner decides it on its own card, `/oauth/session-widenings/{id}/consent`,
 an authorization page reading `GET /authorization/session-widenings/{id}` and
@@ -637,12 +644,15 @@ approver's own grant, and records no grant. Approving grows the session's
 `scopes` by what was granted, never shrinking them, with the same `sid` and
 expiry, and forgets every client the session went on past the limited page
 for. A decline leaves the session as it was. A widening whose session has
-ended since is denied.
+ended since is denied, and revoking a session, by the Owner or by the
+browser's own sign-out, denies its widenings still waiting.
 
 The limited page's poll, `POST /oauth/session-widenings/{id}/poll`, answers
 only the session the widening is for. The first poll after an approval claims
 it, once: it sets the session's new token, for the same session and with what
-it holds now, as the browser's cookie, and revokes the token it replaces.
+it holds now, as the browser's cookie, and revokes the token it replaces from
+thirty seconds on, so the browser's requests already in flight with the old
+cookie still land rather than having the host clear the cookie.
 
 ### Consent card
 
@@ -1257,7 +1267,10 @@ levers:
 
 - **`revoked_jtis`** — a per-token denylist. `POST /authorization/revocations` with a
   `jti`, logout of the presented token, and a client revoking its own access
-  token at `POST /oauth/revoke` (RFC 7009) add rows here.
+  token at `POST /oauth/revoke` (RFC 7009) add rows here, each refused from
+  then on. A [session widening](#session-widening)'s poll adds the token it
+  replaces from thirty seconds on (the row's `revoked_at`); a revocation
+  taking effect sooner overrides that.
 - **`revocation_epochs`** — a per-subject `not_before`. Bumping it (via
   `POST /authorization/revocations` with a `subject`, or a grant revoke) invalidates
   every token that subject holds whose `iat` predates the bump, and every
