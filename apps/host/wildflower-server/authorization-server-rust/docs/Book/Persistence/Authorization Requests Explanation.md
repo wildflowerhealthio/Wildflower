@@ -103,7 +103,7 @@ The one request the host notifies about and opens: the [Owner prompt](<../Domain
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::newest_pending_session_widening_request}}
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs later_of}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs PromptCandidate}}
 
 #### `is_awaiting_owner`
 

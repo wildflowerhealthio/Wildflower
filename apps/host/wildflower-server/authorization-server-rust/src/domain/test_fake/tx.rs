@@ -274,8 +274,9 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
 
     /// Mirrors the adapter's three reads: the newest candidate from each map
     /// (of two started at once, the greater id), keeping the latest by
-    /// `requested_at`, and on a tie the code request, then the user-code
-    /// request.
+    /// `requested_at`. On a tie between maps the last of code, user-code and
+    /// session widening wins, as in the adapter: any rule would do, so long as
+    /// it gives one answer.
     fn owner_prompt(
         &mut self,
         now: DateTime<Utc>,
@@ -322,18 +323,11 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
                 .map(AuthorizationRequest::SessionWidening)
                 .collect(),
         );
-        let later_of = |first: Option<AuthorizationRequest>,
-                        second: Option<AuthorizationRequest>| match (
-            first, second,
-        ) {
-            (Some(first), Some(second)) if second.requested_at() > first.requested_at() => {
-                Some(second)
-            }
-            (Some(first), _) => Some(first),
-            (None, second) => second,
-        };
-        let later = later_of(later_of(code, polled), widening);
-        Ok(later.map(|request| {
+        let newest_of_all = [code, polled, widening]
+            .into_iter()
+            .flatten()
+            .max_by_key(AuthorizationRequest::requested_at);
+        Ok(newest_of_all.map(|request| {
             // Mirrors the SQL left join: a client with no registration has no
             // registered name.
             let registered_client_name = clients

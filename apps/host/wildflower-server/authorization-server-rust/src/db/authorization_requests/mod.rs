@@ -88,20 +88,6 @@ fn replaced_by_another(read_id: &str, changed_id: &str) -> AuthorizationServerEr
 /// name.
 type PromptCandidate = (AuthorizationRequest, Option<String>);
 
-/// Of two prompt candidates, the later by `requested_at`; on a tie, `first`.
-fn later_of(
-    first: Option<PromptCandidate>,
-    second: Option<PromptCandidate>,
-) -> Option<PromptCandidate> {
-    match (first, second) {
-        (Some(first), Some(second)) if second.0.requested_at() > first.0.requested_at() => {
-            Some(second)
-        }
-        (Some(first), _) => Some(first),
-        (None, second) => second,
-    }
-}
-
 impl SqliteGrantTx<'_> {
     /// The user-code request keyed `id` of `flow`, read into the flow's
     /// struct `R`.
@@ -392,8 +378,10 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
     }
 
     /// Three reads, the newest candidate from each table, keeping the latest
-    /// by `requested_at` (on a tie, the code request, then the user-code
-    /// request; within a table, the greater id). The client's name comes from its registration through a
+    /// by `requested_at` (within a table, the greater id). On a tie between
+    /// tables the last of code, user-code and session widening wins
+    /// (`max_by_key` keeps the last maximum): a session widening, then a
+    /// user-code request. Any rule would do; the point is one answer. The client's name comes from its registration through a
     /// left join: a client trusted on first use has none until the Owner
     /// approves it. A disabled client's request is skipped, a client with no
     /// row's kept (the rule on [`OwnerPrompt`]). Only `pending` rows are
@@ -406,11 +394,13 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
         let code = self.newest_pending_code_request(now)?;
         let polled = self.newest_pending_user_code_request(now)?;
         let widening = self.newest_pending_session_widening_request(now)?;
-        Ok(
-            later_of(later_of(code, polled), widening).map(|(request, registered_client_name)| {
+        Ok([code, polled, widening]
+            .into_iter()
+            .flatten()
+            .max_by_key(|(request, _)| request.requested_at())
+            .map(|(request, registered_client_name)| {
                 OwnerPrompt::for_request(&request, registered_client_name)
-            }),
-        )
+            }))
     }
 
     /// The request by the key `consent_key` carries, then its client's
@@ -1432,9 +1422,9 @@ mod tests {
         );
     }
 
-    /// Of a code request and a device request started at the same instant, the
-    /// prompt keeps the code request; of two started at once in one table, the
-    /// greater id.
+    /// Of two requests started at once in one table, the prompt keeps the
+    /// greater id; of a code request and a device request started at the same
+    /// instant, the device request.
     #[test]
     fn owner_prompt_breaks_a_tie_deterministically() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
@@ -1448,6 +1438,16 @@ mod tests {
                 now,
             )
         };
+        insert_code(&store, &code_at("req-1"));
+        insert_code(&store, &code_at("req-2"));
+        assert_eq!(
+            newest(&store),
+            Some(OwnerPrompt::AuthorizationCode {
+                id: "req-2".to_owned(),
+                client_name: "app".to_owned(),
+                decidable_in_requesting_browser: false,
+            })
+        );
         insert_device(
             &store,
             &device_request_at("dev-1", "UC-1", now, Duration::minutes(5)),
@@ -1461,16 +1461,6 @@ mod tests {
             Some(OwnerPrompt::DeviceCode {
                 user_code: "UC-2".to_owned(),
                 client_name: "device-client".to_owned(),
-            })
-        );
-        insert_code(&store, &code_at("req-1"));
-        insert_code(&store, &code_at("req-2"));
-        assert_eq!(
-            newest(&store),
-            Some(OwnerPrompt::AuthorizationCode {
-                id: "req-2".to_owned(),
-                client_name: "app".to_owned(),
-                decidable_in_requesting_browser: false,
             })
         );
     }
