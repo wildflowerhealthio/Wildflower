@@ -58,7 +58,13 @@ export {
 } from './standalone-launch-scopes.ts'
 
 export { beginSignIn, completeSignIn, PendingRequestUnusable } from './sign-in.ts'
-export type { PendingStore, Session, SignInEnvironment, SignInError } from './sign-in.ts'
+export type {
+  AuthorizationRequestExtras,
+  PendingStore,
+  Session,
+  SignInEnvironment,
+  SignInError,
+} from './sign-in.ts'
 
 export {
   discoverSmartEndpoints,

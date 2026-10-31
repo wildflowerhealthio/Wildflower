@@ -308,7 +308,7 @@ const startSigningIn = (serverUrl: string, launch?: string): void => {
   showStatus(`Asking ${serverUrl} how to sign in…`)
   // The console is one page, so there is nowhere in particular to return to.
   runSignInEffect(
-    beginSignIn(serverUrl, undefined, signInEnvironment, launch),
+    beginSignIn(serverUrl, undefined, signInEnvironment, { launch }),
     (authorizationUrl) => {
       window.location.assign(authorizationUrl)
     }

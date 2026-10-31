@@ -118,7 +118,9 @@ describe('a 401', () => {
     await waitFor(() => {
       expect(startSignIn).toHaveBeenCalledOnce()
     })
-    expect(startSignIn).toHaveBeenCalledWith(SERVER_URL, DENIED_PATH, expect.anything(), undefined)
+    expect(startSignIn).toHaveBeenCalledWith(SERVER_URL, DENIED_PATH, expect.anything(), {
+      launch: undefined,
+    })
     expect(tokenStore.bearer()).toBeUndefined()
   })
 

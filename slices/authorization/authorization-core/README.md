@@ -151,10 +151,11 @@ query string. The fhirclient-based SMART apps read it through
 root, so its `iss` is its address.
 
 A sign-in is a SMART standalone launch unless the app hands `beginSignIn` a
-non-empty `launch`: the EHR launch value it was opened with (the launching system's
-`?launch=`). That value goes into the authorization request as `launch`, beside
-the discovered `aud`, and nowhere else — the return leg does not need it, so the
-pending record does not carry it.
+non-empty `launch` in its request options (`{ launch }`): the EHR launch value
+it was opened with (the launching system's `?launch=`). That value goes into the
+authorization request as `launch`, beside the discovered `aud`, and nowhere
+else — the return leg does not need it, so the pending record does not carry
+it.
 
 It stays inside the `-core` layering rule by taking every impure edge — `fetch`,
 Web Crypto, `sessionStorage` — as an injected `SignInEnvironment`. That
