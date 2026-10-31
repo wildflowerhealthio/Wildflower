@@ -72,6 +72,7 @@ impl From<ClientView> for ClientBody {
     path = "/clients",
     responses(
         (status = 200, description = "Every registered client", body = [ClientBody]),
+        (status = 500, description = "A store failed; logged, with no body"),
     ),
 )]
 pub(super) async fn handle_list_clients(
