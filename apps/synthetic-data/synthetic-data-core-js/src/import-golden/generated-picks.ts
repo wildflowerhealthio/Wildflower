@@ -4,7 +4,7 @@ import {
   writeDicom,
 } from '@wildflowerhealthio/dicom/test-helpers'
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
-import { layoutDocument } from '@wildflowerhealthio/lifelabs-pdf-importer/test-helpers'
+import { layoutDocument } from '@wildflowerhealthio/lifelabs-pdf-importer-core/test-helpers'
 import { Document } from '@wildflowerhealthio/positioned-text'
 import { DateTime, Effect, Schema } from 'effect'
 
@@ -32,9 +32,9 @@ import { textPick } from './fixture-picks.ts'
  * so a change to one never moves a golden.
  *
  * A picked LifeLabs "PDF" is {@link PDF_HEADER} and then the positioned text
- * it prints, as JSON, which {@link printedDocumentOf} reads back: the test
- * stands it in for `positioned-text-web`'s pdfjs extraction, so the LifeLabs
- * import runs as registered from the extracted text on.
+ * it prints, as JSON, which {@link printedDocumentOf} reads back: the test's
+ * fake `PositionedTextExtractor` returns it in place of pdfjs extraction, so
+ * the LifeLabs import runs as registered from the extracted text on.
  *
  * @packageDocumentation
  */

@@ -114,8 +114,8 @@ through each generator at a fixed as-of), imported headless through
 `importer-core` with every default accepted, and compared byte for byte with
 the goldens in `__golden__/` (sorted keys, two-space indent, a trailing
 newline; `vp fmt` leaves them alone). A LifeLabs pick is `%PDF-` and the
-positioned text it prints, as JSON, which the test's stand-in for
-`positioned-text-web`'s extraction reads back. A golden diff is a change to
+positioned text it prints, as JSON, which the test's fake
+`PositionedTextExtractor` reads back. A golden diff is a change to
 what an import writes; `vp test -u` regenerates them. See the importer's
 [Adding a File-Format Importer How-To](../../../slices/importer/docs/Adding%20a%20File-Format%20Importer%20How-To.md#7-tests-per-layer).
 
@@ -128,7 +128,7 @@ Depends on `fhir-r4` (`FhirResourceSchema`, the resource types),
 `sourceFileFormat`). The tests also
 use the Rexall, Shoppers, LifeLabs and DICOM generators,
 `synthetic-data-fundamentals`, and, for the import golden pin, `importer-core`,
-`lifelabs-pdf-importer` and the file formats and sources its picks are built
+`lifelabs-pdf-importer-core` and the file formats and sources its picks are built
 from, as dev dependencies only. Never imports a `-react`, `-node` or `-tauri`
 package.
 

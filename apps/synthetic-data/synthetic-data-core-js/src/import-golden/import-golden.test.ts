@@ -1,6 +1,7 @@
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, TestClock, TestContext } from 'effect'
-import { describe, expect, it, vi } from 'vite-plus/test'
+import { PositionedTextExtractor } from '@wildflowerhealthio/positioned-text'
+import { Effect, Layer, TestClock, TestContext } from 'effect'
+import { describe, expect, it } from 'vite-plus/test'
 
 import { chromeFhirCapturePick, rexallFixturePick } from './fixture-picks.ts'
 import {
@@ -8,6 +9,7 @@ import {
   dicomPick,
   LATER_AS_OF,
   lifeLabsPick,
+  printedDocumentOf,
   rexallPick,
   shoppersPick,
 } from './generated-picks.ts'
@@ -20,10 +22,12 @@ import { goldenTextOf, importWithDefaults } from './import-with-defaults.ts'
  * change to what an import writes. `vp test -u` rewrites them.
  */
 
-// pdfjs is the one step not run: a picked "PDF" carries the text it prints.
-vi.mock(import('@wildflowerhealthio/positioned-text-web'), async () => {
-  const { printedDocumentOf } = await import('./generated-picks.ts')
-  return { extractPositionedText: (bytes) => Promise.resolve(printedDocumentOf(bytes)) }
+/**
+ * An extractor that reads a picked "PDF" as the positioned text it carries:
+ * pdfjs is the one step not run.
+ */
+const extractorReadingPrintedText = Layer.succeed(PositionedTextExtractor, {
+  extract: (bytes) => Effect.sync(() => printedDocumentOf(bytes)),
 })
 
 /** One golden: its file's name, and the batch it picks. */
@@ -53,7 +57,10 @@ const CASES: readonly GoldenCase[] = [
   },
 ]
 
-/** `picks` imported with every default accepted, the clock at the as-of. */
+/**
+ * `picks` imported with every default accepted, the clock at the as-of and
+ * the extractor reading the printed text.
+ */
 const goldenTextFor = (
   picks: Effect.Effect<readonly PickedFile.NamedBytes[], unknown>
 ): Promise<string> =>
@@ -61,7 +68,7 @@ const goldenTextFor = (
     Effect.gen(function* () {
       yield* TestClock.setTime(AS_OF.epochMillis)
       return goldenTextOf(yield* importWithDefaults(yield* picks))
-    }).pipe(Effect.provide(TestContext.TestContext))
+    }).pipe(Effect.provide(extractorReadingPrintedText), Effect.provide(TestContext.TestContext))
   )
 
 describe('an import with every default accepted', () => {

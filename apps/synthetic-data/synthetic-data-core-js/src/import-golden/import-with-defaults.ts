@@ -6,6 +6,7 @@ import {
 import {
   claimedFormats,
   type DecodedBatch,
+  type DecodeRequirements,
   defaultFormatSettings,
   type Disposition,
   type FormatKind,
@@ -110,7 +111,7 @@ const sourceFilesOf = (batch: DecodedBatch, kind: FormatKind): readonly FhirReso
 const rePickedIdsOf = (
   kind: FormatKind,
   sourceFile: FhirResourceWithId
-): Effect.Effect<readonly string[], unknown> =>
+): Effect.Effect<readonly string[], unknown, DecodeRequirements> =>
   Schema.decodeUnknown(PickedFile.FromDocumentReference)(sourceFile).pipe(
     Effect.provideService(PickedFile.Format, formatRegistry[kind].sourceFileFormat),
     Effect.flatMap(({ fileName, bytes }) =>
@@ -124,7 +125,9 @@ const rePickedIdsOf = (
   )
 
 /**
- * `picks` imported with every default accepted, onto an empty device.
+ * `picks` imported with every default accepted, onto an empty device. The
+ * read requires the registry's `DecodeRequirements`, which the caller
+ * provides.
  *
  * @param picks - The batch, in pick order
  * @returns What the confirm writes and the review it writes it from; fails
@@ -133,7 +136,7 @@ const rePickedIdsOf = (
  */
 const importWithDefaults = (
   picks: readonly PickedFile.NamedBytes[]
-): Effect.Effect<DefaultImport, unknown> =>
+): Effect.Effect<DefaultImport, unknown, DecodeRequirements> =>
   Effect.gen(function* () {
     const decodedBatch = yield* readBatch(formatRegistry, SETTINGS, picks)
     const kinds = claimedFormats(decodedBatch.formats)
