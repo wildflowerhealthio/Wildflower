@@ -4,7 +4,8 @@ import type { FileImporter } from '@wildflowerhealthio/importer-fundamentals'
 import {
   type LifeLabsPdfSettings,
   lifeLabsPdfImporter,
-} from '@wildflowerhealthio/lifelabs-pdf-importer'
+} from '@wildflowerhealthio/lifelabs-pdf-importer-core'
+import type { Effect } from 'effect'
 
 /**
  * The closed, compile-time format registry: every registered
@@ -41,17 +42,47 @@ type FormatSettings = {
 }
 
 /**
- * One registered format's importer, parameterised on its {@link FormatKind}
- * key so every field carries the format's concrete types.
+ * The closed registry; its keys are the {@link FormatKind} union.
+ *
+ * @remarks
+ * Checked with `satisfies` rather than annotated, so each entry keeps what its
+ * own decode requires and {@link FormatRequirements} can read it back off the
+ * entry. The check still holds every entry to its own settings and tag, and a
+ * format missing from it, or one too many, fails to compile.
  */
-type BoundFormat<K extends FormatKind> = FileImporter.Type<FormatSettings[K], K>
-
-/** The closed registry; its keys are the {@link FormatKind} union. */
-const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
+const formatRegistry = {
   har: harImporter,
   'lifelabs-pdf': lifeLabsPdfImporter,
   dicom: dicomImporter,
+} satisfies { readonly [K in FormatKind]: FileImporter.Type<FormatSettings[K], K, unknown> }
+
+/**
+ * What each registered format's decode requires of the host running it, by
+ * tag: `never` for a format that reads its bytes itself.
+ */
+type FormatRequirements = {
+  readonly [K in FormatKind]: Effect.Effect.Context<
+    ReturnType<(typeof formatRegistry)[K]['decode']>
+  >
 }
+
+/**
+ * What reading a batch requires of the host: the union of every registered
+ * format's {@link FormatRequirements}. `readBatch` and `redecodeFormat` require
+ * it; the host provides it where it runs them.
+ */
+type DecodeRequirements = FormatRequirements[FormatKind]
+
+/**
+ * One registered format's importer, parameterised on its {@link FormatKind}
+ * key so every field carries the format's concrete types, its decode's
+ * requirement included.
+ */
+type BoundFormat<K extends FormatKind> = FileImporter.Type<
+  FormatSettings[K],
+  K,
+  FormatRequirements[K]
+>
 
 /**
  * The default settings of every registered format — the state a fresh import
@@ -88,4 +119,4 @@ const isFormatKind = (key: string): key is FormatKind => Object.hasOwn(formatReg
 const formatKinds: readonly FormatKind[] = Object.keys(formatRegistry).filter(isFormatKind)
 
 export { defaultFormatSettings, formatKinds, formatRegistry }
-export type { BoundFormat, FormatKind, FormatSettings }
+export type { BoundFormat, DecodeRequirements, FormatKind, FormatSettings }

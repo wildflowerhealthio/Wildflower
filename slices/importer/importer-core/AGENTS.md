@@ -2,20 +2,26 @@
 
 The **pure core** of the importer slice: the closed format registry and the
 batch machinery a shell drives. It sits between the format bindings
-(`har-importer-core`, `lifelabs-pdf-importer`, `dicom-importer-core`) and
+(`har-importer-core`, `lifelabs-pdf-importer-core`, `dicom-importer-core`) and
 the React shell (`importer-react`), which adds each format's `SettingsPicker`
 to the registry here and runs these functions from its hooks.
 
-No DOM, no `fs`, no React, no client: every export is a value or a
-service-free Effect. A headless host could run an import to the point of a
-write plan with this package alone.
+No DOM, no `fs`, no React, no client: every export is a value or an Effect
+whose only requirement is **`DecodeRequirements`**, what the registered
+formats' decodes need to read their bytes (LifeLabs' `PositionedTextExtractor`).
+A headless host could run an import to the point of a write plan with this
+package alone and a layer that provides those.
 
 ## Shape
 
 - `src/registry.ts` — the closed, compile-time **`formatRegistry`**:
-  `{ har, 'lifelabs-pdf', dicom }`, each entry the format's `FileImporter`
-  typed as a **`BoundFormat<K>`**, so per-format concrete types survive
-  without casts and a format missing a field fails to compile here.
+  `{ har, 'lifelabs-pdf', dicom }`, each entry the format's `FileImporter`,
+  checked with `satisfies` so per-format concrete types survive without casts
+  and a format missing a field fails to compile here. **`FormatRequirements`**
+  (internal) reads what each entry's decode requires back off it (`never` for HAR and
+  DICOM, `PositionedTextExtractor` for LifeLabs), **`DecodeRequirements`** is
+  their union, and **`BoundFormat<K>`** is one format's importer with its own
+  settings, tag and requirement.
   **`FormatSettings`** is the per-format settings record and the source of
   truth — **`FormatKind`** is its key union, **`defaultFormatSettings`** the
   seed a fresh import starts from, and **`formatKinds`** the typed
@@ -31,9 +37,12 @@ write plan with this package alone.
   mapped or exhaustive types over `FormatKind`, so missing any of them is a
   compile error.
 - `src/read-batch.ts` — the read half as pure functions over a
-  **`ReadRegistry`** (`Pick<BoundFormat<K>, 'format' | 'detect' | 'decode'>` per
-  format — deliberately not the whole `BoundFormat`, so a test can stand up a
-  fake registry with just those fields). **`readBatch`** takes the picker's
+  **`ReadRegistry<R>`** (`format`, `detect` and `decode` of each format's
+  `FileImporter`, its decodes requiring `R` — deliberately not the whole
+  `BoundFormat`, so a test can stand up a fake registry with just those
+  fields). `readBatch` and `redecodeFormat` require the `R` of the registry
+  they are handed: `DecodeRequirements` for `formatRegistry`, `never` for a
+  fake whose decodes read their bytes themselves. **`readBatch`** takes the picker's
   `PickedFile.NamedBytes`, groups them by format
   and decodes every group concurrently into a **`DecodedBatch`**: its
   `formats`, a **`FormatResults`** record of one `FormatDecode.Result<K>` per

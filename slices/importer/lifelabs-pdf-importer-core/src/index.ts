@@ -4,8 +4,9 @@
  * FHIR R4 synthesis, and the format's importer.
  *
  * @remarks
- * Not a `-core`: decoding a picked PDF runs `positioned-text-web`'s pdfjs
- * extraction. No DOM code, no `fs`, no React: a `wildflower-positioned-text` document in,
+ * Decoding a picked PDF requires `positioned-text`'s `PositionedTextExtractor`,
+ * which the host provides (`positioned-text-web`'s pdfjs layer). No DOM code,
+ * no `fs`, no React, no extraction library: a `wildflower-positioned-text` document in,
  * typed `LifeLabsReport` records out, and FHIR resources synthesized for the
  * shell's review — the opt-in write is the shell's own `persistBatchBundle`,
  * not a field on this format's importer.

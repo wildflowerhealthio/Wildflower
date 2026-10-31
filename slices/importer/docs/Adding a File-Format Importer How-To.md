@@ -87,10 +87,21 @@ shell runs across every file the format claimed. That lifted decode is what:
 - folds a `ParseError` into one `unreadableFiles` row per pick of the failing
   set.
 
-The resulting `decode` **never fails**, requires **no services**, and writes
-nothing — so a preview can never reach the write client by construction, and one
-bad file in a batch of five leaves the other four reviewable. The whole opt-in
-seam rests on this.
+The resulting `decode` **never fails**, requires **nothing but what your
+`decodeFileSet` requires**, and writes nothing — so a preview can never reach the
+write client by construction, and one bad file in a batch of five leaves the
+other four reviewable. The whole opt-in seam rests on this.
+
+A format that needs a platform library to read its bytes keeps its binding
+pure by requiring that library as an Effect service rather than importing it.
+LifeLabs' `decodeFileSet` requires `positioned-text`'s
+`PositionedTextExtractor`, so its importer is a
+`FileImporter.Type<LifeLabsPdfSettings, 'lifelabs-pdf', PositionedTextExtractor>`.
+The requirement surfaces at `importer-core`'s `readBatch` as part of
+`DecodeRequirements`, and `importer-react` provides the adapter's layer
+(`positioned-text-web`'s `positionedTextExtractorPdfjs`) where it runs the read.
+A new service of this kind is one more `Effect.provide` there. Tests provide a
+fake layer built from hand-written fixtures.
 
 A member's `sourceFile.id` is where a format whose synthesized resources name the
 stored file (DICOM's `ImagingStudy` `gridfsFileId` extension) reads it, rather
@@ -379,7 +390,7 @@ is a no-op here.
   the batch machinery the two registry edits feed.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the worked HAR
   binding this recipe generalizes.
-- [lifelabs-pdf-importer AGENTS.md](../lifelabs-pdf-importer/AGENTS.md)
+- [lifelabs-pdf-importer-core AGENTS.md](../lifelabs-pdf-importer-core/AGENTS.md)
   — the worked document-format binding.
 - [dicom-importer-core AGENTS.md](../dicom-importer-core/AGENTS.md) — the worked
   binding that states a `groupBy`, links its source files, and reads each source file's

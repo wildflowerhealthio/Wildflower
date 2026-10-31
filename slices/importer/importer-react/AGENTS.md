@@ -40,7 +40,9 @@ vocabulary, the `FormatDecode.Result` and `DecodedFile` shapes, and the pure
 React package for its settings picker only (`har-importer-react`,
 `lifelabs-pdf-importer-react`, `dicom-importer-react`), `fhir-r4` (the typed
 client, `persistTransactionBundle`, and the server-diff classifier), `fhir-r4-react`
-(the authed runner and the slice runtime layer), and `react-tundraish`. It
+(the authed runner and the slice runtime layer), `positioned-text-web` (the
+pdfjs `PositionedTextExtractor` layer the read runs under), and
+`react-tundraish`. It
 names no format's core package and no `web-trace-core` at runtime — HAR
 fixtures in `importer-screen.test.tsx` are the only place `http-archive` and
 `web-trace-core` appear at all.
@@ -216,8 +218,10 @@ The importer has no HTTP wire union to derive, so there is no separate
   applying — and it owns the `FormatSettings` record, the `batchId` that tells
   a fresh pick from a re-decode, and the in-flight ticket that drops a stale
   result. It imports the registry rather than taking it as a parameter, so its
-  dependency arrays say what they mean. Grouping, decoding, and folding
-  outcomes all happen in the core.
+  dependency arrays say what they mean. It provides the read's
+  `DecodeRequirements` there, `positioned-text-web`'s
+  `positionedTextExtractorPdfjs` for the LifeLabs decode. Grouping, decoding,
+  and folding outcomes all happen in the core.
 - **`src/preview/`** — the review view and the state it needs.
   `use-server-diff.ts` pre-classifies every previewed resource against the
   server (`new` / `unchanged` / `changed`) for the row badges and the "already
@@ -386,8 +390,8 @@ The importer has no HTTP wire union to derive, so there is no separate
 ## Traps
 
 - **The read half writes nothing, and the split is the whole product.** Reaching
-  a review issues no writes — `decode` requires no services and is run for its
-  data only, and the confirm writes exactly the reviewed objects
+  a review issues no writes — `decode` requires no client, only the PDF
+  extractor, and is run for its data only, and the confirm writes exactly the reviewed objects
   (`planWrite`'s `Included` decisions over the formats' decoded sections)
   with no re-parse. A test pins this on the wire (zero writes to reach a review, and
   the reads are the source list, one identifier search per referent, the diff

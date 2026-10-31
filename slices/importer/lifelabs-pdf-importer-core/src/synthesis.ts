@@ -3,7 +3,7 @@ import { adoptResource } from '@wildflowerhealthio/fhir-r4-adoption'
  * The FHIR synthesis on its own: the parsed `Report` model's types,
  * `toFhirResources`, and {@link adoptedResourcesOf} — synthesis then adoption
  * under `LIFELABS_SYSTEM`, the resources a decode yields — without the PDF
- * extraction (`positioned-text-web`, pdfjs) the main entry's decode carries.
+ * extraction the main entry's decode requires.
  *
  * @remarks
  * For callers that build `Report` values themselves rather than reading them

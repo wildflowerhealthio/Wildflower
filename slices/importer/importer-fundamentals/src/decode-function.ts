@@ -8,7 +8,9 @@
  * `DocumentReference` for every picked file, lists the source files among the
  * reviewed sections, stamps `meta.source` on everything the decode produced,
  * and provides the format's `PickedFile.Format` internally, so what a binding
- * writes is a literal and what a consumer holds requires nothing.
+ * writes is a literal and what a consumer holds requires only what the
+ * format's own `decodeFileSet` does — nothing, for a format that reads its
+ * bytes itself.
  *
  * What differs between formats is {@link Config.groupBy} — which files are
  * decoded together. Left out, every file is its own set; a format whose files
@@ -32,12 +34,17 @@ import * as PickedFile from './picked-file.ts'
 
 /**
  * The batch decode the shell runs: every file of one format, under that
- * format's settings, never failing and requiring nothing.
+ * format's settings, never failing.
+ *
+ * @typeParam R - What the format's decode requires of its caller — `never`
+ *   for a format that reads its bytes itself, a service such as
+ *   `positioned-text`'s `PositionedTextExtractor` for one that needs a
+ *   platform library to read them
  */
-type Type<in TSettings, TFormat extends string> = (
+type Type<in TSettings, TFormat extends string, out R = never> = (
   files: readonly PickedFile.Type[],
   settings: TSettings
-) => Effect.Effect<FormatDecode.Result<TFormat>, never>
+) => Effect.Effect<FormatDecode.Result<TFormat>, never, R>
 
 /**
  * One file of a set as {@link Config.decodeFileSet} reads it: the pick, plus
@@ -45,8 +52,8 @@ type Type<in TSettings, TFormat extends string> = (
  */
 type WithSourceFile = PickedFile.Type & { readonly sourceFile: PickedFile.SourceFile }
 
-/** What {@link make} needs of a format. */
-interface Config<TFormat extends string, TSettings> {
+/** What {@link make} needs of a format, `R` being what its `decodeFileSet` requires. */
+interface Config<TFormat extends string, TSettings, R = never> {
   readonly format: TFormat
   /** The format's source file constants — {@link make} provides them internally. */
   readonly sourceFileFormat: PickedFile.FormatValue
@@ -65,7 +72,7 @@ interface Config<TFormat extends string, TSettings> {
   readonly decodeFileSet: (
     members: Arr.NonEmptyReadonlyArray<WithSourceFile>,
     settings: TSettings
-  ) => Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError>
+  ) => Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, R>
   /**
    * What this set's source files are listed and stamped as, read off its decode.
    *
@@ -125,11 +132,11 @@ const sourceFileId = (one: WithSourceFile): string => one.sourceFile.id
  * format finish each source file off the decode, and lead with the source files it is
  * about to store.
  */
-const decodeSet = <TSettings>(
+const decodeSet = <TSettings, R>(
   members: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: TSettings,
-  config: Config<string, TSettings>
-): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, PickedFile.Format> =>
+  config: Config<string, TSettings, R>
+): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, PickedFile.Format | R> =>
   Effect.gen(function* () {
     const withSourceFiles = yield* Effect.forEach(
       members,
@@ -220,7 +227,8 @@ const groupFiles = (
  * @param config - The format's tag, its source file constants, its
  *   `decodeFileSet`, and optionally its `groupBy` — for a format whose files
  *   are read together — and its `linkSourceFile`
- * @returns The format's batch decode: never failing, requiring nothing
+ * @returns The format's batch decode: never failing, requiring what
+ *   `decodeFileSet` requires
  *
  * @remarks
  * Sets are decoded concurrently and each is independent: one that rejects
@@ -228,11 +236,11 @@ const groupFiles = (
  * reviewable. Within a set the source files are minted concurrently too, but they
  * are finished after the decode, because {@link Config.linkSourceFile} reads it.
  */
-const make = <TFormat extends string, TSettings>(
-  config: Config<TFormat, TSettings>
-): Type<TSettings, TFormat> => {
+const make = <TFormat extends string, TSettings, R = never>(
+  config: Config<TFormat, TSettings, R>
+): Type<TSettings, TFormat, R> => {
   const groupBy = config.groupBy ?? ((file: PickedFile.Type) => Either.right(file.id))
-  return (files, settings): Effect.Effect<FormatDecode.Result<TFormat>, never> => {
+  return (files, settings): Effect.Effect<FormatDecode.Result<TFormat>, never, R> => {
     const grouped = groupFiles(files, groupBy)
     const decoded = Effect.forEach(
       grouped.fileSets,
@@ -241,7 +249,7 @@ const make = <TFormat extends string, TSettings>(
       ): Effect.Effect<
         Either.Either<DecodedFile.DecodedFile, readonly FormatDecode.UnreadableFile[]>,
         never,
-        PickedFile.Format
+        PickedFile.Format | R
       > =>
         decodeSet(members, settings, config).pipe(
           Effect.map(Either.right),

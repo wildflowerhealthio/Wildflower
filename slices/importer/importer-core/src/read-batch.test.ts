@@ -4,7 +4,8 @@ import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/re
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, ParseResult, Schema } from 'effect'
+import { PositionedTextExtractor } from '@wildflowerhealthio/positioned-text'
+import { Effect, Layer, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -22,7 +23,7 @@ import { defaultFormatSettings, type FormatKind, formatKinds, formatRegistry } f
  * prefix and decode by a settings-driven rule — enough to pin the grouping,
  * the deterministic ids, and the settings re-decode without any real
  * format — plus one pass over the real registry to show the grouping holds
- * with a genuine DICOM file beside an unrecognized one.
+ * with a genuine DICOM file and a PDF beside an unrecognized one.
  */
 
 /** A pick claimed by the fake format named in its file name (`har-…`, `pdf-…`, `dcm-…`), or by none. */
@@ -92,7 +93,7 @@ const fakeDecode =
         })),
     })
 
-const fakeRegistry: ReadRegistry = {
+const fakeRegistry: ReadRegistry<never> = {
   har: {
     format: 'har',
     detect: (_b: Uint8Array, name: string) => kindOf(name) === 'har',
@@ -216,8 +217,18 @@ describe('redecodeFormat', () => {
   })
 })
 
+/** An extractor that reads every PDF as one blank Letter page — a PDF that is no LifeLabs report. */
+const extractorReadingBlankPage = Layer.succeed(PositionedTextExtractor, {
+  extract: () =>
+    Effect.succeed({
+      format: 'wildflower-positioned-text',
+      version: 1,
+      pages: [{ pageNumber: 1, width: 612, height: 792, runs: [] }],
+    }),
+})
+
 describe('readBatch over the real registry', () => {
-  it('should read a DICOM file into a decoded result with its Source file section, and leave a text file unrecognized', async () => {
+  it('should read a DICOM file into a decoded result with its Source file section, run a PDF through the extractor, and leave a text file unrecognized', async () => {
     const dicomBytes = writeDicom({
       StudyInstanceUID: '1.2.3.4.5',
       SeriesInstanceUID: '1.2.3.4.5.1',
@@ -230,8 +241,17 @@ describe('readBatch over the real registry', () => {
     const picks: readonly PickedFile.NamedBytes[] = [
       { fileName: 'notes.txt', bytes: new TextEncoder().encode('hello') },
       { fileName: 'scan.dcm', bytes: dicomBytes },
+      { fileName: 'blank.pdf', bytes: new TextEncoder().encode('%PDF-1.7 stand-in') },
     ]
-    const batch = await Effect.runPromise(readBatch(formatRegistry, defaultFormatSettings, picks))
+    const batch = await Effect.runPromise(
+      readBatch(formatRegistry, defaultFormatSettings, picks).pipe(
+        Effect.provide(extractorReadingBlankPage)
+      )
+    )
+    expect(batch.formats['lifelabs-pdf'].files.map((file) => file.fileName)).toEqual(['blank.pdf'])
+    expect(batch.formats['lifelabs-pdf'].unreadableFiles.map((file) => file.title)).toEqual([
+      'blank.pdf',
+    ])
     expect(batch.formats.dicom.files.length).toBe(1)
     expect(batch.formats.dicom.decoded.sections[0]?.title).toBe('Source file')
     expect(batch.formats.dicom.decoded.sections.length).toBeGreaterThan(1)

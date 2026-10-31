@@ -8,8 +8,8 @@ import {
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { decodeLifeLabsPdfDocument, Report } from '@wildflowerhealthio/lifelabs-pdf-importer'
-import { layoutDocument } from '@wildflowerhealthio/lifelabs-pdf-importer/test-helpers'
+import { decodeLifeLabsPdfDocument, Report } from '@wildflowerhealthio/lifelabs-pdf-importer-core'
+import { layoutDocument } from '@wildflowerhealthio/lifelabs-pdf-importer-core/test-helpers'
 import { type Story, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import { asOfArbitrary } from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
 import { DateTime, Effect, Option, Schema } from 'effect'

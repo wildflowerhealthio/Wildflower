@@ -138,7 +138,7 @@ carrying the one `ImagingStudy` its files make up.
 - **Depended on by**: `dicom-importer-react` (settings picker),
   `importer-react` (registry entry).
 - **Does not depend on**: any DOM, `fs`, or React package. Does not depend on
-  `har-importer-core`, `lifelabs-pdf-importer`, or
+  `har-importer-core`, `lifelabs-pdf-importer-core`, or
   `http-extraction-fundamentals`.
 
 ## References
