@@ -4,7 +4,7 @@
 //! the views of one server share a cookie jar: a later view's sign-in
 //! replaces the cookie an earlier view holds, so ending a closed view's
 //! session at its close could leave a view still open holding a dead cookie.
-//! The host keeps it across the server's runs, so a run's start keeps the
+//! The host keeps it across the server's runs, so a run's start carries over the
 //! sessions of the views still open.
 
 use std::collections::{BTreeSet, HashMap};
@@ -85,14 +85,14 @@ impl<C: Clone> LaunchViewSignIns<C> {
             .unwrap_or_default()
     }
 
-    /// The codes whose sessions a run of the server `domain` keeps as it
+    /// The codes whose sessions a run of the server `domain` carries over as
     /// starts, while it ends every other same-device session: while one of
     /// its launch views is open, every code its views were opened with since
     /// they last all closed, the closed views' included, since any of their
     /// sessions may be the cookie an open view holds. With none open,
     /// nothing: the server's last close forgot its codes.
     #[must_use]
-    pub fn kept_at_run_start(&self, domain: &str) -> Vec<C> {
+    pub fn carried_over_at_run_start(&self, domain: &str) -> Vec<C> {
         self.by_server
             .lock()
             .get(domain)
@@ -133,30 +133,36 @@ mod tests {
         sign_ins.view_opened(DOMAIN, "launch-1", "code-1");
         sign_ins.view_opened(OTHER_DOMAIN, "launch-2", "code-2");
         assert_eq!(sign_ins.view_closed(DOMAIN, "launch-1"), ["code-1"]);
-        assert_eq!(sign_ins.kept_at_run_start(OTHER_DOMAIN), ["code-2"]);
+        assert_eq!(sign_ins.carried_over_at_run_start(OTHER_DOMAIN), ["code-2"]);
     }
 
-    /// A run's start keeps every code since while a view is open, the
+    /// A run's start carries over every code since while a view is open, the
     /// closed views' included, and nothing once none is, forgetting them.
     #[test]
-    fn a_run_start_keeps_the_codes_while_a_view_is_open() {
+    fn a_run_start_carries_over_the_codes_while_a_view_is_open() {
         let sign_ins = LaunchViewSignIns::default();
         sign_ins.view_opened(DOMAIN, "launch-1", "code-1");
         sign_ins.view_opened(DOMAIN, "launch-2", "code-2");
         assert_eq!(sign_ins.view_closed(DOMAIN, "launch-1"), Vec::<&str>::new());
-        assert_eq!(sign_ins.kept_at_run_start(DOMAIN), ["code-1", "code-2"]);
+        assert_eq!(
+            sign_ins.carried_over_at_run_start(DOMAIN),
+            ["code-1", "code-2"]
+        );
 
         assert_eq!(
             sign_ins.view_closed(DOMAIN, "launch-2"),
             ["code-1", "code-2"]
         );
-        assert_eq!(sign_ins.kept_at_run_start(DOMAIN), Vec::<&str>::new());
+        assert_eq!(
+            sign_ins.carried_over_at_run_start(DOMAIN),
+            Vec::<&str>::new()
+        );
     }
 
     proptest! {
         /// However views open and close, each code is returned by exactly
         /// one close, the one that leaves its server with no view open, and
-        /// a run's start keeps codes only while a view is open.
+        /// a run's start carries over codes only while a view is open.
         #[test]
         fn each_code_ends_once_with_its_server_s_last_close(
             events in prop::collection::vec((any::<bool>(), 0..4_usize, 0..2_usize), 0..40),
@@ -180,13 +186,13 @@ mod tests {
                 }
                 for (server, domain) in domains.into_iter().enumerate() {
                     if open[server].is_empty() {
-                        prop_assert!(sign_ins.kept_at_run_start(domain).is_empty());
+                        prop_assert!(sign_ins.carried_over_at_run_start(domain).is_empty());
                     }
                 }
             }
             let mut still_held: Vec<usize> = domains
                 .into_iter()
-                .flat_map(|domain| sign_ins.kept_at_run_start(domain))
+                .flat_map(|domain| sign_ins.carried_over_at_run_start(domain))
                 .collect();
             still_held.extend(ended);
             still_held.sort_unstable();

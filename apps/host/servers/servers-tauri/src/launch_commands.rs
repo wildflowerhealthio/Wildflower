@@ -1554,7 +1554,7 @@ mod tests {
     fn kept_sign_ins(presence: &OpenLaunchViews) -> usize {
         presence
             .launch_view_sign_ins()
-            .kept_at_run_start(DOMAIN)
+            .carried_over_at_run_start(DOMAIN)
             .len()
     }
 
@@ -1630,7 +1630,7 @@ mod tests {
         let second = authorization_server.sign_in(&browser.opened()[1]).await;
         let carried_over: Vec<String> = presence
             .launch_view_sign_ins()
-            .kept_at_run_start(DOMAIN)
+            .carried_over_at_run_start(DOMAIN)
             .iter()
             .map(|sign_in_code| sign_in_code.as_str().to_owned())
             .collect();

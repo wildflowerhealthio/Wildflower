@@ -567,7 +567,7 @@ changing how servers run or what the host notifies about them.
   ends their sessions. Moving to the background and back doesn't end a
   session, nor does a run's restart (as iOS's return from a suspend brings):
   `ServerUnits::push` hands each run the codes of the views still open
-  (`LaunchViewSignIns::kept_at_run_start`), whose sessions its start carries
+  (`LaunchViewSignIns::carried_over_at_run_start`), whose sessions its start carries
   over while it ends every other Owner session. A
   desktop hears no close, so its views' codes count until the app exits: a
   restart for a rename, a run-policy change or a certificate renewal keeps the

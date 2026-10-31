@@ -72,7 +72,7 @@ impl ServerUnits {
         self.runner.set_unit(unit_id, run_policy, move || {
             Ok(ServerUnit::new(
                 server_config(&record)?,
-                launch_view_sign_ins.kept_at_run_start(&record.domain()),
+                launch_view_sign_ins.carried_over_at_run_start(&record.domain()),
             ))
         });
     }
