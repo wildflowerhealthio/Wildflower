@@ -20,6 +20,21 @@ pub(crate) trait Revocation: Send + Sync + 'static {
     /// Returns the store failure (stringified) when the write fails.
     fn revoke_jti(&self, jti: &str, expires_at: DateTime<Utc>, reason: &str) -> Result<(), String>;
 
+    /// Denylist a single token by its `jti` from `revoked_from` on, until
+    /// `expires_at`, tagging the row with `reason`: the token keeps working
+    /// until `revoked_from`. A revocation taking effect sooner overrides it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store failure (stringified) when the write fails.
+    fn revoke_jti_from(
+        &self,
+        jti: &str,
+        revoked_from: DateTime<Utc>,
+        expires_at: DateTime<Utc>,
+        reason: &str,
+    ) -> Result<(), String>;
+
     /// Bump a subject's revocation epoch to now, killing every access **and**
     /// refresh token issued to it before this instant — the bulk revoke behind a
     /// grant revoke and `/authorization/revocations` subject revoke.

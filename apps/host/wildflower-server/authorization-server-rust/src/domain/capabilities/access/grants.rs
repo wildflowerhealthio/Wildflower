@@ -153,6 +153,16 @@ mod tests {
             Ok(())
         }
 
+        fn revoke_jti_from(
+            &self,
+            _jti: &str,
+            _revoked_from: DateTime<Utc>,
+            _expires_at: DateTime<Utc>,
+            _reason: &str,
+        ) -> Result<(), String> {
+            unreachable!("a grant revoke revokes a subject")
+        }
+
         fn revoke_subject_as_of_now(&self, subject: &str) -> Result<(), String> {
             self.0.lock().expect("lock").push(subject.to_owned());
             Ok(())

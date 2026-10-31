@@ -21,6 +21,7 @@ mod internal;
 mod openapi;
 mod pages;
 mod session_shortfall;
+mod session_widening;
 mod sign_in;
 mod sign_out;
 mod token_exchange;
@@ -45,8 +46,8 @@ pub(crate) use authorization_pages::device_page_url;
 pub(crate) const OAUTH_MOUNT: &str = "/oauth";
 
 /// The `/oauth/*` pages — the [`wait_page`] and its assets, the
-/// [`authorization_pages`] (the consent card, the limited page, the device
-/// page, the pairing page) and theirs, the Owner's [`sign_in`], and a browser's [`sign_out`] —
+/// [`authorization_pages`] (the consent card, the limited page, a session
+/// widening's card, the device page, the pairing page) and theirs, the Owner's [`sign_in`], and a browser's [`sign_out`] —
 /// mounted under `/oauth` beside [`openapi_router`]. Kept out of the `OpenAPI`
 /// spec: they are a browser's pages, not API surface. `launcher_base` is where
 /// a sign-out sends the browser, which the authorization pages' policy lets
@@ -57,8 +58,9 @@ pub(crate) const OAUTH_MOUNT: &str = "/oauth";
 /// - `/oauth/authorize/{id}/wait`, `/oauth/authorize/wait.js` and
 ///   `/oauth/authorize/wait.css`: the wait page and its two files;
 /// - `/oauth/authorize/{id}/consent`, `/oauth/authorize/{id}/limited`,
-///   `/oauth/device`, `/oauth/pair` and `/oauth/assets/{*file}`: the React
-///   authorization pages and their assets;
+///   `/oauth/session-widenings/{id}/consent`, `/oauth/device`, `/oauth/pair`
+///   and `/oauth/assets/{*file}`: the React authorization pages and their
+///   assets;
 /// - `/oauth/sign-in`: the Owner's same-device sign-in;
 /// - `POST /oauth/sign-out`: a browser ending its own session.
 pub(crate) fn page_router(launcher_base: &LauncherBase) -> Router<Arc<AuthorizationServerState>> {
@@ -76,22 +78,24 @@ pub(crate) fn page_router(launcher_base: &LauncherBase) -> Router<Arc<Authorizat
 /// - `GET /oauth/authorize`: the front door of the authorization-code flow;
 /// - `GET /oauth/authorize/{id}`: the wait page's status poll;
 /// - `GET /oauth/authorize/{id}/session-shortfall`,
-///   `POST /oauth/authorize/{id}/continue` and
-///   `POST /oauth/authorize/{id}/cancel`: the limited page's calls;
+///   `POST /oauth/authorize/{id}/continue`,
+///   `POST /oauth/authorize/{id}/cancel`,
+///   `POST /oauth/authorize/{id}/ask-to-widen` and
+///   `POST /oauth/session-widenings/{id}/poll`: the limited page's calls;
 /// - `POST /oauth/token` and `POST /oauth/revoke`: the token endpoint and
 ///   revocation;
 /// - `POST /oauth/device_authorization`: a device asking for its codes;
 /// - `POST /oauth/pair/start` and `POST /oauth/pair/poll`: the pairing page's
 ///   calls.
 ///
-/// `limit_authorization_starts` wraps the two routes that start an
-/// authorization request, `/authorize` and `/device_authorization`, each
-/// named by its [`AuthorizationStartRoute`], in the limit on how fast they
-/// are started (see
+/// `limit_authorization_starts` wraps the three routes that start a request
+/// for the Owner, `/authorize`, `/device_authorization` and
+/// `/authorize/{id}/ask-to-widen`, each named by its
+/// [`AuthorizationStartRoute`], in the limit on how fast they are started (see
 /// [`limit_authorization_starts`](crate::http::middleware::limit_authorization_starts)),
 /// so it covers every method axum serves them on, `HEAD /oauth/authorize`
 /// included; the spec, which serves nothing, leaves them as they are. Only
-/// those two are limited: anyone who knows the server's domain can start a
+/// those three are limited: anyone who knows the server's domain can start a
 /// request, and one raised for the Owner pops up on the Owner's device.
 pub(crate) fn openapi_router(
     limit_authorization_starts: impl Fn(
@@ -112,6 +116,11 @@ pub(crate) fn openapi_router(
             session_shortfall::handle_session_shortfall_continue
         ))
         .routes(routes!(session_shortfall::handle_session_shortfall_cancel))
+        .routes(limit_authorization_starts(
+            routes!(session_widening::handle_session_widening_ask),
+            AuthorizationStartRoute::AskToWidenSession,
+        ))
+        .routes(routes!(session_widening::handle_session_widening_poll))
         .routes(routes!(token_exchange::handle_token_request))
         .routes(routes!(token_revocation::handle_token_revocation_request))
         .routes(limit_authorization_starts(

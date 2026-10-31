@@ -41,6 +41,8 @@ The `/oauth` surfaces' error enums hold the shared `InternalError` instead, whic
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/errors.rs AuthorizationRequestNotFoundBody}}
 
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/errors.rs SessionWideningNotFoundBody}}
+
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/errors.rs GrantNotFoundBody}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/errors.rs BrowserSessionNotFoundBody}}

@@ -17,12 +17,12 @@ pub(crate) mod grants;
 pub(crate) mod tokens;
 
 pub(crate) use browser_sessions::{
-    BrowserSessionView, BrowserSessionsReader, BrowserSessionsRevoker,
+    revoke_browser_session, BrowserSessionView, BrowserSessionsReader, BrowserSessionsRevoker,
 };
 pub(crate) use clients::{ClientView, ClientsDisabler, ClientsReader};
 pub use consents::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
-    OAuthConsentView,
+    OAuthConsentView, SessionWideningConsentView,
 };
 pub(crate) use consents::{ConsentDecider, ConsentRaiser, ConsentReader, OwnerRaising};
 pub(crate) use grants::{GrantsReader, GrantsRevoker};

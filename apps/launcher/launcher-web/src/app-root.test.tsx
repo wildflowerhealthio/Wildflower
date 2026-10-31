@@ -114,11 +114,14 @@ describe('a 401', () => {
     const tokenStore = await renderDeniedPage()
 
     // Assert — one sign-in, to the session's server, carrying the denied page
-    // as `returnTo`, with no EHR launch.
+    // as `returnTo`, with no EHR launch and no `prompt`.
     await waitFor(() => {
       expect(startSignIn).toHaveBeenCalledOnce()
     })
-    expect(startSignIn).toHaveBeenCalledWith(SERVER_URL, DENIED_PATH, expect.anything(), undefined)
+    expect(startSignIn).toHaveBeenCalledWith(SERVER_URL, DENIED_PATH, expect.anything(), {
+      launch: undefined,
+      prompt: undefined,
+    })
     expect(tokenStore.bearer()).toBeUndefined()
   })
 

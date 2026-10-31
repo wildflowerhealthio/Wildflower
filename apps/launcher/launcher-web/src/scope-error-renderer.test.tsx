@@ -24,14 +24,15 @@ import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { renderScopeError } from './scope-error-renderer.tsx'
-import { RETURN_TO_PARAM } from './sign-in.ts'
+import { PROMPT_PARAM, RETURN_TO_PARAM } from './sign-in.ts'
 
 /**
  * Pins the app's `403 InsufficientScope` wiring end-to-end: which errors get the
  * bespoke surface at all, and — the step-up leg (resource-authorization epic
  * child ⑤) — that "Request access" signs in again: the session drops, and the
  * reader lands on the landing carrying where the denial happened, so the new
- * sign-in's return trip re-runs the denied action.
+ * sign-in's return trip re-runs the denied action, and `prompt=consent`, so the
+ * server's limited page shows again.
  *
  * Driven through a real router rather than a mocked `useNavigate`: the assertion
  * is about the resulting location (path + both search params), which a stubbed
@@ -133,7 +134,7 @@ describe('renderScopeError', () => {
 })
 
 describe('step-up action', () => {
-  test('signs in again, returning to where the denial happened', async () => {
+  test('signs in again with prompt=consent, returning to where the denial happened', async () => {
     const store = signedInStore()
     const router = renderErrorAt(
       insufficientScopeBody(['wildflower/Grant.d', 'wildflower/Grant.r']),
@@ -150,6 +151,9 @@ describe('step-up action', () => {
     })
     const search = new URLSearchParams(router.state.location.href.split('?')[1] ?? '')
     expect(search.get(RETURN_TO_PARAM)).toBe(DENIED_PATH)
+    // The server shows its limited page again when this browser's session
+    // lacks the scopes, so the browser can ask the Owner to widen it.
+    expect(search.get(PROMPT_PARAM)).toBe('consent')
     // The narrow session goes, or the landing would send the reader straight
     // on to `/home`; its server stays, for the landing to sign back in to.
     expect(isAuthed(Effect.runSync(store.subscribable.get))).toBe(false)

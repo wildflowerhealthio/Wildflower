@@ -29,9 +29,11 @@ pub struct ConsentRequest {
 
 impl ConsentRequest {
     /// The notification for this request, under the server's own id
-    /// (`consent-request:<domain>`): "‹client› wants access to ‹domain›", or
+    /// (`consent-request:<domain>`): "‹client› wants access to ‹domain›";
     /// for a browser pairing "‹browser›, a remote browser, wants to sign in
-    /// to ‹domain›". A tap opens the consent waiting on the server.
+    /// to ‹domain›"; for a session widening "‹browser›, a remote browser,
+    /// wants more access to ‹domain›". A tap opens the consent waiting on the
+    /// server.
     #[must_use]
     pub fn notification(&self) -> LocalNotification {
         let domain = &self.domain;
@@ -44,6 +46,10 @@ impl ConsentRequest {
             ConsentKey::BrowserPairing { .. } => (
                 "Sign-in request",
                 format!("{requester_name}, a remote browser, wants to sign in to {domain}"),
+            ),
+            ConsentKey::SessionWidening { .. } => (
+                "Access request",
+                format!("{requester_name}, a remote browser, wants more access to {domain}"),
             ),
         };
         LocalNotification {
@@ -1275,6 +1281,28 @@ mod tests {
                 id: format!("consent-request:{RUTH}"),
                 title: "Sign-in request".to_owned(),
                 body: format!("Firefox on Linux, a remote browser, wants to sign in to {RUTH}"),
+            }
+        );
+    }
+
+    /// A session widening's notification says a remote browser wants more
+    /// access, by its name, under the same per-server id.
+    #[test]
+    fn a_session_widening_s_notification_names_the_remote_browser() {
+        let request = ConsentRequest {
+            domain: RUTH.to_owned(),
+            pending_consent: OwnerPrompt::SessionWidening {
+                id: "widen-1".to_owned(),
+                browser_name: "Firefox on Linux".to_owned(),
+            }
+            .into(),
+        };
+        assert_eq!(
+            request.notification(),
+            LocalNotification {
+                id: format!("consent-request:{RUTH}"),
+                title: "Access request".to_owned(),
+                body: format!("Firefox on Linux, a remote browser, wants more access to {RUTH}"),
             }
         );
     }

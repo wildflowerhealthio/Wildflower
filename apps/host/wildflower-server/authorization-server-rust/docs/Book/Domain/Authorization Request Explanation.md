@@ -5,15 +5,16 @@
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/mod.rs}}
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/approval.rs}}
 
-Every request for access is parked as an **authorization request** until someone decides it: an app at `/oauth/authorize` asking for a code, a device asking for a token, a browser asking the Owner for a browser session. The Owner (or, for an app's request, a browser allowed to decide for them) answers it once. Each flow is its own type, with its own fields, states and transitions:
+Every request for access is parked as an **authorization request** until someone decides it: an app at `/oauth/authorize` asking for a code, a device asking for a token, a browser asking the Owner for a browser session, or for its session to hold more. The Owner (or, for an app's request, a browser allowed to decide for them) answers it once. Each flow is its own type, with its own fields, states and transitions:
 
-| Flow               | Type                                                                                           | Keyed by                   | Stored in                     | Ends                                             |
-| ------------------ | ---------------------------------------------------------------------------------------------- | -------------------------- | ----------------------------- | ------------------------------------------------ |
-| Authorization code | [`CodeRequest`](<Authorization Request/Code Request Explanation.md#item-CodeRequest>)          | an internal UUID           | `code_authorization_requests` | approved or denied; its code is what is redeemed |
-| Device code        | [`DeviceRequest`](<Authorization Request/Polled Requests Explanation.md#item-DeviceRequest>)   | the device's `device_code` | `user_code_requests`          | claimed once by the device's poll                |
-| Browser pairing    | [`PairingRequest`](<Authorization Request/Polled Requests Explanation.md#item-PairingRequest>) | the page's pairing code    | `user_code_requests`          | claimed once by the pairing page's poll          |
+| Flow               | Type                                                                                                            | Keyed by                   | Stored in                     | Ends                                             |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- | -------------------------- | ----------------------------- | ------------------------------------------------ |
+| Authorization code | [`CodeRequest`](<Authorization Request/Code Request Explanation.md#item-CodeRequest>)                           | an internal UUID           | `code_authorization_requests` | approved or denied; its code is what is redeemed |
+| Device code        | [`DeviceRequest`](<Authorization Request/Polled Requests Explanation.md#item-DeviceRequest>)                    | the device's `device_code` | `user_code_requests`          | claimed once by the device's poll                |
+| Browser pairing    | [`PairingRequest`](<Authorization Request/Polled Requests Explanation.md#item-PairingRequest>)                  | the page's pairing code    | `user_code_requests`          | claimed once by the pairing page's poll          |
+| Session widening   | [`SessionWideningRequest`](<Authorization Request/Session Widening Explanation.md#item-SessionWideningRequest>) | an internal UUID           | `session_widening_requests`   | claimed once by the limited page's poll          |
 
-A code request has one state the others don't: when its browser session holds less than it asks for, it first waits on that browser's **limited page**, which asks the person at the browser whether to go on, and the Owner isn't asked about it until they do. The device and pairing flows share their shape instead: a `user_code` the Owner enters at the device page, and a poll that waits for the decision and then claims it. Their pages are [Code Request](<Authorization Request/Code Request Explanation.md>) and [Polled Requests](<Authorization Request/Polled Requests Explanation.md>).
+A code request has one state the others don't: when its browser session holds less than it asks for, it first waits on that browser's **limited page**, which asks the person at the browser whether to go on, and the Owner isn't asked about it until they do. The device and pairing flows share their shape instead: a `user_code` the Owner enters at the device page, and a poll that waits for the decision and then claims it. A session widening, asked from the limited page, is polled and claimed too, but keyed by its id. Their pages are [Code Request](<Authorization Request/Code Request Explanation.md>), [Polled Requests](<Authorization Request/Polled Requests Explanation.md>) and [Session Widening](<Authorization Request/Session Widening Explanation.md>).
 
 ```mermaid
 stateDiagram-v2
@@ -23,7 +24,7 @@ stateDiagram-v2
     AwaitingLimitedPage --> Denied: Cancel
     Pending --> Approved: approve
     Pending --> Denied: deny
-    Approved --> Claimed: a device's or pairing's poll
+    Approved --> Claimed: a device's, pairing's or widening's poll
 ```
 
 **There's no expired state.** Expiry is a fact about time, so it is worked out from `expires_at` whenever someone asks, and never written. A code request stays approved for good: its single use is the [code](<Authorization Code Explanation.md>) it earned, not the request.

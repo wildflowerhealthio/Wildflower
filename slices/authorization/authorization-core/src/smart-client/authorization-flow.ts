@@ -139,6 +139,14 @@ interface AuthorizationRequestParameters {
    * an empty one counts as absent, as `arrivingSmartLaunchFrom` reads it.
    */
   readonly launch?: string
+  /**
+   * OpenID Connect's `prompt`, sent as `consent` only. A Wildflower server
+   * reads it as "show the limited page again": a browser whose session holds
+   * less than the app asks for stops there even after it went on past it for
+   * this app before, so it can ask the Owner to widen its session. Absent for
+   * an ordinary sign-in.
+   */
+  readonly prompt?: 'consent'
 }
 
 /**
@@ -146,7 +154,8 @@ interface AuthorizationRequestParameters {
  *
  * Parameters are appended to whatever the discovery document advertised, so an
  * `authorization_endpoint` that already carries a query keeps it. `launch` is
- * sent only when the request carries a non-empty one.
+ * sent only when the request carries a non-empty one, and `prompt` only when
+ * it carries one.
  */
 const authorizationRequestUrl = (
   authorizationEndpoint: string,
@@ -163,6 +172,9 @@ const authorizationRequestUrl = (
   url.searchParams.set('aud', parameters.audience)
   if (parameters.launch !== undefined && parameters.launch !== '') {
     url.searchParams.set('launch', parameters.launch)
+  }
+  if (parameters.prompt !== undefined) {
+    url.searchParams.set('prompt', parameters.prompt)
   }
   return url.toString()
 }
