@@ -25,7 +25,7 @@ use crate::domain::authorization_request::session_widening::{
     SessionWideningApproval, SessionWideningRequest,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::StaleSessionCutoff;
+use crate::domain::browser_session::{BrowserSession, StaleSessionCutoff};
 use crate::domain::GrantTx;
 
 /// On whose authority a code-flow request is approved — the two proofs that
@@ -82,6 +82,17 @@ pub(crate) enum SessionWideningOutcome {
     /// expired, or no longer stored — so there is nothing to widen: the
     /// widening was denied instead.
     BrowserSessionEnded,
+}
+
+/// What [`RequestApprover::live_session_or_deny`] found of a request's
+/// browser session.
+enum RequestSession {
+    /// The session is live: the request may be approved under it.
+    Live(BrowserSession),
+    /// The session has ended, and the request was denied.
+    EndedAndDenied,
+    /// The session has ended, and the request was no longer pending to deny.
+    RequestNotPending,
 }
 
 /// Approve pending requests of every flow and, for the code flow, issue the
@@ -142,20 +153,17 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         now: DateTime<Utc>,
     ) -> Result<CodeApproval, AuthorizationServerError> {
         let authorized_scopes = authority.authorized_scopes();
-        let Some(browser_session) = self
-            .tx
-            .browser_session_by_sid(&request.sid)?
-            .filter(|browser_session| browser_session.is_live_at(now, stale_session_cutoff))
-        else {
-            let Ok(denied) = request.deny(now) else {
-                return Ok(CodeApproval::RequestNotPending);
+        let browser_session =
+            match self.live_session_or_deny(&request.sid, stale_session_cutoff, now, |tx| {
+                match request.deny(now) {
+                    Ok(denied) => tx.replace_code_request(request, &denied),
+                    Err(_) => Ok(false),
+                }
+            })? {
+                RequestSession::Live(browser_session) => browser_session,
+                RequestSession::EndedAndDenied => return Ok(CodeApproval::BrowserSessionEnded),
+                RequestSession::RequestNotPending => return Ok(CodeApproval::RequestNotPending),
             };
-            return Ok(if self.tx.replace_code_request(request, &denied)? {
-                CodeApproval::BrowserSessionEnded
-            } else {
-                CodeApproval::RequestNotPending
-            });
-        };
         let approval = Approval {
             granted_scopes: authorized_scopes.to_vec(),
             patient: patient.map(str::to_owned),
@@ -265,22 +273,21 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         stale_session_cutoff: &StaleSessionCutoff,
         now: DateTime<Utc>,
     ) -> Result<SessionWideningOutcome, AuthorizationServerError> {
-        let Some(browser_session) = self
-            .tx
-            .browser_session_by_sid(&request.sid)?
-            .filter(|browser_session| browser_session.is_live_at(now, stale_session_cutoff))
-        else {
-            let Ok(denied) = request.deny(now) else {
-                return Ok(SessionWideningOutcome::RequestNotPending);
+        let browser_session =
+            match self.live_session_or_deny(&request.sid, stale_session_cutoff, now, |tx| {
+                match request.deny(now) {
+                    Ok(denied) => tx.replace_session_widening_request(request, &denied),
+                    Err(_) => Ok(false),
+                }
+            })? {
+                RequestSession::Live(browser_session) => browser_session,
+                RequestSession::EndedAndDenied => {
+                    return Ok(SessionWideningOutcome::BrowserSessionEnded)
+                }
+                RequestSession::RequestNotPending => {
+                    return Ok(SessionWideningOutcome::RequestNotPending)
+                }
             };
-            return Ok(
-                if self.tx.replace_session_widening_request(request, &denied)? {
-                    SessionWideningOutcome::BrowserSessionEnded
-                } else {
-                    SessionWideningOutcome::RequestNotPending
-                },
-            );
-        };
         let approval = SessionWideningApproval {
             granted_scopes: delegated_scopes.scopes().to_vec(),
         };
@@ -297,11 +304,46 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
             &browser_session.scopes,
             delegated_scopes.scopes(),
         );
-        self.tx
-            .update_browser_session_scopes(&browser_session.sid, &widened_session_scopes)?;
+        if !self
+            .tx
+            .update_browser_session_scopes(&browser_session.sid, &widened_session_scopes)?
+        {
+            // The row was read live in this same scope, so a miss is the
+            // store breaking its word: fail, rolling the approval back.
+            return Err(AuthorizationServerError::Infrastructure {
+                context: "approve_session_widening: the live session's row wasn't updated",
+                source: format!("no browser session {}", browser_session.sid),
+            });
+        }
         self.tx
             .forget_session_shortfall_acknowledgements(&browser_session.sid)?;
         Ok(SessionWideningOutcome::Widened)
+    }
+
+    /// The browser session `sid` a pending request was made in, when it is
+    /// live at `now` under `stale_session_cutoff`. Otherwise the request is
+    /// denied with `deny_request` — the flow's deny transition and guarded
+    /// replace, `true` when the denial landed — so no approval outlives the
+    /// session it was for.
+    fn live_session_or_deny(
+        &mut self,
+        sid: &str,
+        stale_session_cutoff: &StaleSessionCutoff,
+        now: DateTime<Utc>,
+        deny_request: impl FnOnce(&mut T) -> Result<bool, AuthorizationServerError>,
+    ) -> Result<RequestSession, AuthorizationServerError> {
+        if let Some(browser_session) = self
+            .tx
+            .browser_session_by_sid(sid)?
+            .filter(|browser_session| browser_session.is_live_at(now, stale_session_cutoff))
+        {
+            return Ok(RequestSession::Live(browser_session));
+        }
+        Ok(if deny_request(self.tx)? {
+            RequestSession::EndedAndDenied
+        } else {
+            RequestSession::RequestNotPending
+        })
     }
 }
 
