@@ -343,7 +343,61 @@ describe('LimitedPage — asking the server’s owner', () => {
     ).toBeDefined()
   })
 
-  test('an ask for a request no longer waiting here leaves for the wait page', async () => {
+  test('an ask for a request no longer waiting here reads it again, and leaves for the wait page', async () => {
+    let asked = false
+    answer = (request) => {
+      if (request.path === '/oauth/authorize/req-1/ask-to-widen') asked = true
+      return request.path === '/oauth/authorize/req-1/session-shortfall' && !asked
+        ? {
+            status: 200,
+            body: { clientName: 'Strength', missingScopes: ['patient/Observation.rs'] },
+          }
+        : NOT_FOUND
+    }
+    const { user } = renderPage()
+
+    await user.click(await screen.findByRole('button', { name: "Ask the server's owner" }))
+
+    await waitFor(() => {
+      expect(leaveFor).toHaveBeenCalledWith(WAIT_PAGE)
+    })
+  })
+
+  test('an ask with nothing left to ask for reads the request again and goes on', async () => {
+    let asked = false
+    answer = (request) => {
+      if (request.path === '/oauth/authorize/req-1/session-shortfall') {
+        return {
+          status: 200,
+          body: {
+            clientName: 'Strength',
+            missingScopes: asked ? [] : ['patient/Observation.rs'],
+          },
+        }
+      }
+      if (request.path === '/oauth/authorize/req-1/ask-to-widen') {
+        asked = true
+        return NOT_FOUND
+      }
+      if (request.path === '/oauth/authorize/req-1/continue') {
+        return { status: 200, body: { location: 'https://app.example/cb?code=c&state=s' } }
+      }
+      return { status: 404, body: {} }
+    }
+    const { user } = renderPage()
+
+    await user.click(await screen.findByRole('button', { name: "Ask the server's owner" }))
+
+    await waitFor(() => {
+      expect(leaveFor).toHaveBeenCalledWith(new URL('https://app.example/cb?code=c&state=s'))
+    })
+    expect(posted()).toEqual([
+      '/oauth/authorize/req-1/ask-to-widen',
+      '/oauth/authorize/req-1/continue',
+    ])
+  })
+
+  test('an ask with nothing to ask for, for a request still falling short, says it couldn’t ask', async () => {
     answer = (request) =>
       request.path === '/oauth/authorize/req-1/session-shortfall'
         ? {
@@ -355,9 +409,12 @@ describe('LimitedPage — asking the server’s owner', () => {
 
     await user.click(await screen.findByRole('button', { name: "Ask the server's owner" }))
 
-    await waitFor(() => {
-      expect(leaveFor).toHaveBeenCalledWith(WAIT_PAGE)
-    })
+    expect(
+      await screen.findByText(
+        "Couldn't ask the server's owner. Try again, or go on without asking."
+      )
+    ).toBeDefined()
+    expect(leaveFor).not.toHaveBeenCalled()
   })
 
   test('an ask the server refuses some other way says so in plain words', async () => {

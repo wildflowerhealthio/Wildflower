@@ -82,8 +82,11 @@ const answerShortfall = (
 type WideningAsk =
   /** The widening the server filed, which the page polls. */
   | { readonly kind: 'asked'; readonly wideningId: string }
-  /** The request no longer waits on this page. */
-  | { readonly kind: 'gone' }
+  /**
+   * Nothing to ask: the request no longer waits on this page, or this browser's session lacks
+   * nothing it could be widened by any more (another page's widening was collected meanwhile).
+   */
+  | { readonly kind: 'nothing-to-ask' }
 
 /** Where a widening stands, as the page's poll found it. */
 type WideningStatus = (typeof OAuth.SessionWideningStatusSchema.Type)['status']
@@ -97,7 +100,7 @@ const askToWiden = (
   ).pipe(
     Effect.map(({ wideningId }): WideningAsk => ({ kind: 'asked', wideningId })),
     Effect.catchIf(Schema.is(OAuth.AuthorizationStatusNotFoundSchema), () =>
-      Effect.succeed<WideningAsk>({ kind: 'gone' })
+      Effect.succeed<WideningAsk>({ kind: 'nothing-to-ask' })
     )
   )
 
@@ -190,6 +193,9 @@ const wideningNoteOf = (asking: {
  * session by what it lacks, then polls until they decide: once they widen it,
  * the page reads what the session still lacks, and goes on at once when
  * that's nothing; a decline, or no answer in time, is said above the buttons.
+ * An ask the server finds nothing to ask for re-reads the request the same way:
+ * it goes on when the session lacks nothing any more, and leaves for the wait
+ * page when the request is gone.
  * A request no longer waiting here (decided, expired, or not this browser's)
  * goes to the wait page, which says how it ended. A request this browser's
  * session no longer falls short of (its grant was widened since) goes on at
@@ -226,10 +232,13 @@ const LimitedPage = ({
     },
   })
 
+  const { refetch: readShortfallAgain } = shortfallQuery
   const askMutation = useMutation({
     mutationFn: () => runAuthed(askToWiden(requestId)),
     onSuccess: (asked) => {
-      if (asked.kind === 'gone') leaveFor(waitPage)
+      // What the session lacks, or whether the request still waits here, has
+      // changed since the page read it: read it again, which goes on or leaves.
+      if (asked.kind === 'nothing-to-ask') void readShortfallAgain()
     },
   })
   const wideningId = askMutation.data?.kind === 'asked' ? askMutation.data.wideningId : null
@@ -245,7 +254,6 @@ const LimitedPage = ({
   // The Owner widened this browser's session, and the poll collected it: read
   // what the session still lacks, which goes on at once when that's nothing.
   const widened = wideningQuery.data === 'widened'
-  const { refetch: readShortfallAgain } = shortfallQuery
   const { reset: forgetAsking } = askMutation
   useEffect(() => {
     if (!widened) return
@@ -295,8 +303,12 @@ const LimitedPage = ({
     const waitingForOwner =
       askMutation.isPending ||
       (wideningId !== null && (wideningQuery.isPending || wideningQuery.data === 'pending'))
+    // The server found nothing to ask, and the request, read again, still
+    // falls short: this browser can't ask for it.
+    const askedForNothing =
+      askMutation.data?.kind === 'nothing-to-ask' && !shortfallQuery.isFetching
     const wideningNote = wideningNoteOf({
-      failed: askMutation.isError || wideningQuery.isError,
+      failed: askMutation.isError || wideningQuery.isError || askedForNothing,
       waiting: waitingForOwner,
       status: Option.fromNullable(wideningQuery.data),
     })
