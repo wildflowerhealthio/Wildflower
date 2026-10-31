@@ -28,6 +28,11 @@ jobs:
   # Which areas this PR touches. Each filter is the list of paths that area's
   # checks depend on; a new check area adds a filter here, a job below, and an
   # entry in `Required`'s `needs` (unless, like `rust-deny`, it only reports).
+  #
+  # Also plans the TypeScript and Rust test matrices, which the called
+  # workflows take as inputs, so their test runners start straight after this
+  # job instead of waiting on a planning job of their own. A plan runs only
+  # when its area changed; an area left unplanned reports no shards.
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
@@ -37,7 +42,12 @@ jobs:
       pull-requests: read
     outputs:
       typescript: ${{ steps.filter.outputs.typescript }}
+      typescript-matrix: ${{ steps.typescript-plan.outputs.matrix || '{"include":[]}' }}
+      typescript-shard-count: ${{ steps.typescript-plan.outputs.shard-count || '0' }}
+      typescript-risk-map: ${{ steps.typescript-risk-map.outputs.risk-map || '{}' }}
       rust: ${{ steps.filter.outputs.rust }}
+      rust-matrix: ${{ steps.rust-plan.outputs.matrix || '{"include":[]}' }}
+      rust-shard-count: ${{ steps.rust-plan.outputs.shard-count || '0' }}
       pebble: ${{ steps.filter.outputs.pebble }}
       markdown: ${{ steps.filter.outputs.markdown }}
       api-sync: ${{ steps.filter.outputs.api-sync }}
@@ -181,6 +191,88 @@ jobs:
               - '.github/workflows/tauri-release-publish.yml'
               - '.github/actions/build-android-bundle/**'
 
+      # The planners diff against their merge-base with origin/main, so they
+      # need the full history.
+      - name: Checkout code
+        if: steps.filter.outputs.typescript == 'true' || steps.filter.outputs.rust == 'true'
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The top-level areas (`global`, `scripts`, `slices`, each
+      # `apps/<folder>`), derived from the Vitest projects the root
+      # vite.config.ts defines, so a new `apps/<folder>` is covered with no
+      # edit here. Only areas holding a package the PR changes or reaches
+      # through the workspace dependency graph run; a root config or lockfile
+      # change, or any change outside every package (CI plumbing, the shard
+      # script, docs, Rust) runs them all. The selected areas are packed by
+      # rough test time onto at most a few shards, one runner each. Rules:
+      # scripts/ci/test-shards.ts. The planner loads the Vitest configs, so
+      # it needs `vp install` but no `vp run pack`.
+      #
+      # Restores the pnpm store without saving it: ci-typescript.yml's
+      # `check` saves this run's.
+      - name: Setup Vite+
+        if: steps.filter.outputs.typescript == 'true'
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          cache: true
+          cache-save: false
+
+      - name: Install dependencies
+        if: steps.filter.outputs.typescript == 'true'
+        run: vp install
+
+      # Assigned first, then written: a failure inside `echo "...$(...)"` would
+      # not fail the step.
+      - name: Plan TypeScript test shards
+        id: typescript-plan
+        if: steps.filter.outputs.typescript == 'true'
+        run: |
+          matrix=$(node scripts/ci/test-shards.ts)
+          shard_count=$(jq '.include | length' <<< "$matrix")
+          {
+            echo "matrix=$matrix"
+            echo "shard-count=$shard_count"
+          } >> "$GITHUB_OUTPUT"
+
+      # `{ <package>: <multiplier> }`: full fast-check runs for packages the PR
+      # can affect, a fifth for the rest, computed once for every shard. See
+      # docs/Testing/Property Testing Reference.md.
+      - name: Compute property-test risk map
+        id: typescript-risk-map
+        if: steps.filter.outputs.typescript == 'true'
+        run: |
+          risk_map=$(node scripts/risk-map.ts)
+          echo "risk-map=$risk_map" >> "$GITHUB_OUTPUT"
+
+      # A fixed set of crate groups, and only those holding a crate the PR
+      # changes or reaches through the workspace path deps. A change to the
+      # toolchain, the lockfile, the root manifest or the CI plumbing runs
+      # them all. Rules: scripts/ci/rust-shards.ts. The planner imports only
+      # Node builtins, so it needs no `vp install`.
+      - name: Setup Node
+        if: steps.filter.outputs.rust == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+
+      # `cargo metadata --no-deps` only reads the manifests, so the runner
+      # image's own stable toolchain serves; RUSTUP_TOOLCHAIN stops rustup
+      # from first installing the version rust-toolchain.toml pins.
+      - name: Plan Rust test shards
+        id: rust-plan
+        if: steps.filter.outputs.rust == 'true'
+        env:
+          RUSTUP_TOOLCHAIN: stable
+        run: |
+          matrix=$(node scripts/ci/rust-shards.ts)
+          shard_count=$(jq '.include | length' <<< "$matrix")
+          {
+            echo "matrix=$matrix"
+            echo "shard-count=$shard_count"
+          } >> "$GITHUB_OUTPUT"
+
   # A called workflow gets at most the permissions its calling job grants, so
   # each job below grants what its workflow's own `permissions` block asks for.
   typescript:
@@ -192,6 +284,10 @@ jobs:
       checks: write
       pull-requests: write
     uses: ./.github/workflows/ci-typescript.yml
+    with:
+      matrix: ${{ needs.changes.outputs.typescript-matrix }}
+      shard-count: ${{ needs.changes.outputs.typescript-shard-count }}
+      risk-map: ${{ needs.changes.outputs.typescript-risk-map }}
 
   rust:
     name: Rust
@@ -201,6 +297,9 @@ jobs:
       contents: read
       pull-requests: read
     uses: ./.github/workflows/ci-rust.yml
+    with:
+      matrix: ${{ needs.changes.outputs.rust-matrix }}
+      shard-count: ${{ needs.changes.outputs.rust-shard-count }}
 
   # Supply-chain report for Rust PRs. Deliberately left out of `Required`'s
   # `needs`: an advisory or yanked release filed against an unchanged

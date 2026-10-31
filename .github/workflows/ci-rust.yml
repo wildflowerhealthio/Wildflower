@@ -19,7 +19,19 @@ on:
   # drift gate. So a snapshot-only regen with no *.rs change is matched via
   # the committed JSON path in ci.yml's `rust` filter; api-sync.yml keeps only
   # the TS drift half.
+  #
+  # ci.yml's `changes` job plans the test shards (rules:
+  # scripts/ci/rust-shards.ts) and passes them in.
   workflow_call:
+    inputs:
+      matrix:
+        description: 'The test matrix, `{"include":[...]}` in JSON, one entry per shard.'
+        type: string
+        required: true
+      shard-count:
+        description: 'How many shards `matrix` holds; `0` skips the test job.'
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -28,10 +40,9 @@ permissions:
   pull-requests: read
 
 jobs:
-  # Three jobs start together, except `test`, which waits only on the small
-  # `shards` plan: `lint` (fmt + clippy over the whole workspace), `shards`
-  # (which crates' tests each runner gets, for only the crates the PR can
-  # affect), and `test`, one runner per shard. Every compiling job pays its own
+  # Two jobs start together: `lint` (fmt + clippy over the whole workspace)
+  # and `test`, one runner per shard of the plan ci.yml passes in, each
+  # holding only crates the PR can affect. Every compiling job pays its own
   # GTK/webkit install, toolchain setup and cache restore; in exchange, the
   # lint and the tests no longer queue behind each other, and the tests split
   # over several runners.
@@ -71,56 +82,16 @@ jobs:
       - name: clippy (deny warnings)
         run: ./scripts/checks/rust.sh clippy-all
 
-  # Plans the test matrix: a fixed set of crate groups, and only those holding
-  # a crate the PR changes or reaches through the workspace path deps. A change
-  # to the toolchain, the lockfile, the root manifest or this CI plumbing runs
-  # them all. Rules: scripts/ci/rust-shards.ts.
-  shards:
-    name: Plan test shards
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.plan.outputs.matrix }}
-      shard-count: ${{ steps.plan.outputs.shard-count }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          # Need history + origin/main for the plan to compute the merge-base.
-          fetch-depth: 0
-
-      # The planner imports only Node builtins, so this job skips `vp install`.
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: '26'
-
-      # `cargo metadata --no-deps` only reads the manifests, so the runner
-      # image's own stable toolchain serves; RUSTUP_TOOLCHAIN stops rustup
-      # from first installing the version rust-toolchain.toml pins. Assigned
-      # first, then written: a failure inside `echo "...$(...)"` would not
-      # fail the step.
-      - name: Plan test shards
-        id: plan
-        env:
-          RUSTUP_TOOLCHAIN: stable
-        run: |
-          matrix=$(node scripts/ci/rust-shards.ts)
-          shard_count=$(jq '.include | length' <<< "$matrix")
-          {
-            echo "matrix=$matrix"
-            echo "shard-count=$shard_count"
-          } >> "$GITHUB_OUTPUT"
-
   test:
     name: Test (${{ matrix.name }})
-    needs: shards
     # GitHub fails a job whose matrix is empty, so a plan with no shards skips
     # the job instead; a skipped job counts as passing for `Required`.
-    if: needs.shards.outputs.shard-count != '0'
+    if: inputs.shard-count != '0'
     runs-on: ubuntu-latest
     strategy:
       # Every shard reports, so one failing group doesn't hide another's.
       fail-fast: false
-      matrix: ${{ fromJSON(needs.shards.outputs.matrix) }}
+      matrix: ${{ fromJSON(inputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
 

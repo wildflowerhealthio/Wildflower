@@ -2,8 +2,23 @@ name: TypeScript
 
 on:
   # Called by ci.yml, which runs this only on pull requests that touch
-  # TS/JS; the paths are its `changes` filter.
+  # TS/JS; the paths are its `changes` filter. That job also plans the test
+  # shards and the property-test risk map (rules: scripts/ci/test-shards.ts),
+  # and passes them in.
   workflow_call:
+    inputs:
+      matrix:
+        description: 'The test matrix, `{"include":[...]}` in JSON, one entry per shard.'
+        type: string
+        required: true
+      shard-count:
+        description: 'How many shards `matrix` holds; `0` skips the test job.'
+        type: string
+        required: true
+      risk-map:
+        description: 'The property-test risk map, `{ <package>: <multiplier> }` in JSON.'
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -11,12 +26,10 @@ permissions:
   checks: write
   pull-requests: write
 
-# Three jobs, all starting together except `test`, which waits only on the
-# small `shards` plan: `check` (format, lint, typecheck, knip, TSDoc), `shards`
-# (which Vitest projects each test runner gets, for only the areas the PR can
-# affect), and `test`, one runner per shard. The test pass is CPU-bound, so
-# spreading it over many runners is what shortens the run; each pays its own
-# install + `vp run pack` for that.
+# Two jobs, starting together: `check` (format, lint, typecheck, knip, TSDoc)
+# and `test`, one runner per shard of the plan ci.yml passes in. The test pass
+# is CPU-bound, so spreading it over many runners is what shortens the run;
+# each pays its own install + `vp run pack` for that.
 jobs:
   check:
     name: Lint + Typecheck
@@ -25,7 +38,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      # The one job that saves the pnpm store; `shards` and `test` restore only.
+      # The one job that saves the pnpm store; `test` restores only.
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1.22.0
         with:
@@ -63,74 +76,16 @@ jobs:
         run: vp run lint:comments
         continue-on-error: true
 
-  # Plans the test matrix from the top-level areas (`global`, `scripts`,
-  # `slices`, each `apps/<folder>`), derived from the Vitest projects the root
-  # vite.config.ts defines, so a new `apps/<folder>` is covered with no edit
-  # here. Only areas holding a package the PR changes or reaches through the
-  # workspace dependency graph run; a root config or lockfile change, or any
-  # change outside every package (this workflow, the shard script, docs,
-  # Rust) runs them all. The selected areas are packed by rough test time onto
-  # at most a few shards, one runner each. Also computes the property-test
-  # risk map once for every shard. Rules: scripts/ci/test-shards.ts.
-  shards:
-    name: Plan test shards
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.plan.outputs.matrix }}
-      shard-count: ${{ steps.plan.outputs.shard-count }}
-      risk-map: ${{ steps.risk-map.outputs.risk-map }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-        with:
-          # Need history + origin/main for the plan and the risk map to compute
-          # the merge-base.
-          fetch-depth: 0
-
-      # Restores the pnpm store without saving it: `check` saves this run's,
-      # so the parallel jobs don't race for the same key.
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.22.0
-        with:
-          cache: true
-          cache-save: false
-
-      # The plan only loads the Vitest configs, so it needs no `vp run pack`.
-      - name: Install dependencies
-        run: vp install
-
-      # Assigned first, then written: a failure inside `echo "...$(...)"` would
-      # not fail the step.
-      - name: Plan test shards
-        id: plan
-        run: |
-          matrix=$(node scripts/ci/test-shards.ts)
-          shard_count=$(jq '.include | length' <<< "$matrix")
-          {
-            echo "matrix=$matrix"
-            echo "shard-count=$shard_count"
-          } >> "$GITHUB_OUTPUT"
-
-      # `{ <package>: <multiplier> }`: full fast-check runs for packages the PR
-      # can affect, a fifth for the rest. See docs/Testing/Property Testing
-      # Reference.md.
-      - name: Compute property-test risk map
-        id: risk-map
-        run: |
-          risk_map=$(node scripts/risk-map.ts)
-          echo "risk-map=$risk_map" >> "$GITHUB_OUTPUT"
-
   test:
     name: Test (${{ matrix.name }})
-    needs: shards
     # GitHub fails a job whose matrix is empty, so a plan with no shards skips
     # the job instead; a skipped job counts as passing for `Required`.
-    if: needs.shards.outputs.shard-count != '0'
+    if: inputs.shard-count != '0'
     runs-on: ubuntu-latest
     strategy:
       # Every shard reports, so one failing area doesn't hide another's.
       fail-fast: false
-      matrix: ${{ fromJSON(needs.shards.outputs.matrix) }}
+      matrix: ${{ fromJSON(inputs.matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -164,7 +119,7 @@ jobs:
       # hide another's.
       - name: Run tests
         env:
-          FC_RISK_MAP: ${{ needs.shards.outputs.risk-map }}
+          FC_RISK_MAP: ${{ inputs.risk-map }}
           RUNS: ${{ toJSON(matrix.runs) }}
         run: |
           mapfile -t test_runs < <(jq -c '.[]' <<< "$RUNS")
