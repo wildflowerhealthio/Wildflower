@@ -71,6 +71,7 @@ fn documented_authorization_router(
 ) -> OpenApiRouter<Arc<AuthorizationServerState>> {
     OpenApiRouter::new()
         .merge(routes::clients::openapi_router())
+        .merge(routes::grants::openapi_router())
         .merge(routes::oauth_consents::openapi_router(defer_start_limit))
         .merge(routes::session_widenings::openapi_router())
 }
@@ -119,7 +120,6 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
     .split_for_parts();
     let access = Router::new()
         .merge(documented_authorization)
-        .merge(routes::grants::router())
         .merge(routes::browser_sessions::router())
         .merge(routes::devices::router())
         .merge(routes::logout::router())
