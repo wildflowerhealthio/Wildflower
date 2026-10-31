@@ -170,6 +170,12 @@ interface Dependency {
 /** A rule a {@link Dependency} or the graph as a whole breaks. */
 type Violation =
   | { readonly _tag: 'CoreDependsOnAdapter'; readonly dependency: Dependency }
+  | {
+      readonly _tag: 'CoreReachesAdapter'
+      readonly core: WorkspacePackage
+      /** The runtime dependencies from the core to the adapter, the adapter last. */
+      readonly path: readonly WorkspacePackage[]
+    }
   | { readonly _tag: 'ReachesIntoApp'; readonly dependency: Dependency; readonly app: string }
   | { readonly _tag: 'Cycle'; readonly ecosystem: Ecosystem; readonly names: readonly string[] }
 
@@ -220,6 +226,52 @@ const dependencyViolations = (dependency: Dependency): readonly Violation[] => {
     !mayReachIntoApp(dependency)
   ) {
     violations.push({ _tag: 'ReachesIntoApp', dependency, app: dependencyApp })
+  }
+  return violations
+}
+
+/**
+ * The adapters a core reaches through packages that are neither, by runtime
+ * dependencies only: one violation per adapter, along the shortest path.
+ *
+ * @param core - The core package to start from
+ * @param packageByName - The core's ecosystem's packages, by name
+ * @returns A `CoreReachesAdapter` per adapter reached in two or more steps
+ *
+ * @remarks
+ * A direct dependency on an adapter is `CoreDependsOnAdapter`'s, and the walk
+ * stops at another core, which answers for its own dependencies. Dev
+ * dependencies are not followed: a test may run a dependency's adapter-backed
+ * code without the core shipping it.
+ */
+const adaptersReachedBy = (
+  core: WorkspacePackage,
+  packageByName: ReadonlyMap<string, WorkspacePackage>
+): readonly Violation[] => {
+  const runtimeDependenciesOf = (dependent: WorkspacePackage): readonly WorkspacePackage[] =>
+    [...dependent.runtimeDependencyNames].flatMap((name) => {
+      const dependency = packageByName.get(name)
+      return dependency === undefined || dependency === dependent ? [] : [dependency]
+    })
+  const isPassThrough = (p: WorkspacePackage): boolean => !isCore(p) && !isAdapter(p)
+  const seen = new Set<string>([core.name])
+  const queue: (readonly WorkspacePackage[])[] = []
+  for (const dependency of runtimeDependenciesOf(core)) {
+    seen.add(dependency.name)
+    if (isPassThrough(dependency)) queue.push([dependency])
+  }
+  const violations: Violation[] = []
+  for (let head = 0; head < queue.length; head += 1) {
+    const path = queue[head]
+    for (const dependency of runtimeDependenciesOf(path[path.length - 1])) {
+      if (seen.has(dependency.name)) continue
+      seen.add(dependency.name)
+      if (isAdapter(dependency)) {
+        violations.push({ _tag: 'CoreReachesAdapter', core, path: [...path, dependency] })
+      } else if (!isCore(dependency)) {
+        queue.push([...path, dependency])
+      }
+    }
   }
   return violations
 }
@@ -293,8 +345,9 @@ const findCycles = (
 
 /**
  * Every rule the workspace's package graph breaks: a core package depending
- * on an adapter, a package outside `apps/<name>/` depending on one inside it,
- * and a dependency cycle in either ecosystem.
+ * on an adapter, directly or at runtime through packages that are neither, a
+ * package outside `apps/<name>/` depending on one inside it, and a dependency
+ * cycle in either ecosystem.
  */
 const packageGraphViolations = (packages: readonly WorkspacePackage[]): readonly Violation[] => {
   const ecosystems: readonly Ecosystem[] = ['npm', 'cargo']
@@ -316,6 +369,9 @@ const packageGraphViolations = (packages: readonly WorkspacePackage[]): readonly
     const dependencyViolationsFound = ecosystemPackages
       .flatMap(dependenciesOf)
       .flatMap(dependencyViolations)
+    const reachedAdapters = ecosystemPackages
+      .filter(isCore)
+      .flatMap((core) => adaptersReachedBy(core, packageByName))
     const cycles = findCycles(
       new Map(
         ecosystemPackages.map((p) => [
@@ -324,7 +380,7 @@ const packageGraphViolations = (packages: readonly WorkspacePackage[]): readonly
         ])
       )
     ).map((names): Violation => ({ _tag: 'Cycle', ecosystem, names }))
-    return [...dependencyViolationsFound, ...cycles]
+    return [...dependencyViolationsFound, ...reachedAdapters, ...cycles]
   })
 }
 
@@ -334,6 +390,11 @@ const formatViolation = (violation: Violation): string =>
     Match.tagsExhaustive({
       CoreDependsOnAdapter: ({ dependency: { dependent, dependency } }) =>
         `${dependent.name} (${dependent.relDir}) is a core package but depends on the adapter ${dependency.name}`,
+      CoreReachesAdapter: ({ core, path }) =>
+        `${core.name} (${core.relDir}) is a core package but reaches the adapter ${path[path.length - 1].name} at runtime through ${path
+          .slice(0, -1)
+          .map((p) => p.name)
+          .join(' → ')}`,
       ReachesIntoApp: ({ dependency: { dependent, dependency }, app }) =>
         `${dependent.name} (${dependent.relDir}) depends on ${dependency.name}, which is private to apps/${app}/`,
       Cycle: ({ ecosystem, names }) => `${ecosystem} dependency cycle: ${names.join(' ↔ ')}`,

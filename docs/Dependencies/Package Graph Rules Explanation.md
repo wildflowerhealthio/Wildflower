@@ -20,6 +20,13 @@ does asks for it as an Effect service and leaves the adapter to the host:
 `PositionedTextExtractor`, and `importer-react` provides
 `positioned-text-web`'s pdfjs layer.
 
+Nor does a core reach an adapter through other packages. The check follows a
+core's runtime dependencies (`dependencies` and `peerDependencies`) through
+packages that are neither core nor adapter, and fails on any adapter it
+reaches, naming the path. It stops at another core, which answers for its own
+dependencies, and doesn't follow dev-dependencies, which a core's tests may
+use without the core shipping them.
+
 A core's own code is held pure the same way, below the package level. Each
 core's tsconfig has `lib: ["es2024"]` with no `"dom"`, so a `document` or
 `window` reference fails to compile. Its `types` keep `node`, because Node's
@@ -71,8 +78,10 @@ workspace package (a `workspace:` spec, or a Cargo path dependency).
   (`wildflowerhealthio-wildflower-server`'s `test-support`), and a TS package
   may do the same to import itself by name in tests.
 
-Every dependency kind counts toward cycles and the core rule; dev-dependencies
-are exempt only from the app-privacy rule, and only between apps.
+Every dependency kind counts toward cycles and a core's direct dependencies;
+only runtime dependencies count toward what a core reaches through other
+packages. Dev-dependencies are otherwise exempt only from the app-privacy rule,
+and only between apps.
 
 ## When the check fails
 

@@ -195,6 +195,102 @@ describe('packageGraphViolations', () => {
     })
   })
 
+  describe('a core and what its dependencies depend on', () => {
+    /** `core` depending at runtime on `chain[0]`, each link on the next, the last on `adapter`. */
+    const chainFrom = (
+      core: WorkspacePackage,
+      chain: readonly WorkspacePackage[],
+      adapter: WorkspacePackage,
+      kindAt: (index: number) => DependencyKind = () => 'runtime'
+    ): readonly WorkspacePackage[] => {
+      const links = [core, ...chain, adapter]
+      return links.map((link, index) => {
+        const next = links[index + 1]
+        return next === undefined ? link : dependingOn(link, next, kindAt(index))
+      })
+    }
+
+    const chainArbitrary = fc.integer({ min: 1, max: 3 })
+
+    it('flags a core reaching an adapter at runtime through packages that are neither', () => {
+      fc.assert(
+        fc.property(
+          stemArbitrary,
+          adapterSuffixArbitrary,
+          chainArbitrary,
+          (stem, adapterSuffix, length) => {
+            const core = packageAt(`${stem}-core`, `slices/${stem}/a`)
+            const chain = Array.from({ length }, (_, i) =>
+              packageAt(`${stem}-binding-${i}`, `slices/${stem}/b${i}`)
+            )
+            const adapter = packageAt(`${stem}-x${adapterSuffix}`, `slices/${stem}/c`)
+            const violations = packageGraphViolations(chainFrom(core, chain, adapter))
+            expect(tagsOf(violations)).toEqual(['CoreReachesAdapter'])
+            expect(violations.map(formatViolation)).toEqual([
+              `${core.name} (${core.relDir}) is a core package but reaches the adapter ${adapter.name} at runtime through ${chain.map((p) => p.name).join(' → ')}`,
+            ])
+          }
+        ),
+        { numRuns: numRunsFor({ base: 50 }) }
+      )
+    })
+
+    it('does not follow a dev dependency anywhere along the way', () => {
+      fc.assert(
+        fc.property(
+          stemArbitrary,
+          adapterSuffixArbitrary,
+          chainArbitrary.chain((length) => fc.tuple(fc.constant(length), fc.nat(length))),
+          (stem, adapterSuffix, [length, devAt]) => {
+            const core = packageAt(`${stem}-core`, `slices/${stem}/a`)
+            const chain = Array.from({ length }, (_, i) =>
+              packageAt(`${stem}-binding-${i}`, `slices/${stem}/b${i}`)
+            )
+            const adapter = packageAt(`${stem}-x${adapterSuffix}`, `slices/${stem}/c`)
+            expect(
+              packageGraphViolations(
+                chainFrom(core, chain, adapter, (index) => (index === devAt ? 'dev' : 'runtime'))
+              )
+            ).toEqual([])
+          }
+        ),
+        { numRuns: numRunsFor({ base: 50 }) }
+      )
+    })
+
+    it('stops at another core, which answers for its own dependencies', () => {
+      const core = packageAt('outer-core', 'slices/outer/a')
+      const binding = packageAt('outer-binding', 'slices/outer/b')
+      const innerCore = packageAt('inner-core', 'slices/inner/a')
+      const innerBinding = packageAt('inner-binding', 'slices/inner/b')
+      const adapter = packageAt('inner-web', 'slices/inner/c')
+      const violations = packageGraphViolations([
+        dependingOn(core, binding, 'runtime'),
+        dependingOn(binding, innerCore, 'runtime'),
+        ...chainFrom(innerCore, [innerBinding], adapter).slice(0),
+      ])
+      expect(violations.map(formatViolation)).toEqual([
+        'inner-core (slices/inner/a) is a core package but reaches the adapter inner-web at runtime through inner-binding',
+      ])
+    })
+
+    it('names each adapter once, along the shortest path', () => {
+      const core = packageAt('a-core', 'slices/a/a')
+      const near = packageAt('a-near', 'slices/a/b')
+      const far = packageAt('a-far', 'slices/a/c')
+      const adapter = packageAt('a-web', 'slices/a/d')
+      const violations = packageGraphViolations([
+        dependingOn(dependingOn(core, far, 'runtime'), near, 'runtime'),
+        dependingOn(near, adapter, 'runtime'),
+        dependingOn(far, near, 'runtime'),
+        adapter,
+      ])
+      expect(violations.map(formatViolation)).toEqual([
+        'a-core (slices/a/a) is a core package but reaches the adapter a-web at runtime through a-near',
+      ])
+    })
+  })
+
   describe("an app's folder", () => {
     it('is open to the packages inside it', () => {
       fc.assert(
