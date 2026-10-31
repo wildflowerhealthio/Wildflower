@@ -11,8 +11,9 @@ import base, { devAppServer } from '../../vite.config.base.ts'
  * Everything is bundled — the Scalar reference comes from its npm package and
  * the specs are imported from `slices/**`, so the published page loads no CDN
  * script and no remote document. A relative `base` so the assets resolve from
- * whatever path `.github/workflows/deploy-pages-site.yml` publishes `dist/` at: its origin's root, or a PR
- * preview's `/pr-<n>/`.
+ * whatever path `dist/` is published at: its origin's root
+ * (`.github/workflows/deploy-pages-site.yml`), or a PR preview's `/pr-<n>/`
+ * (`.github/workflows/pr-preview.yml`).
  *
  * Tests here are pure unit tests over the `?server=` parsing and the spec
  * transforms, so the default node environment is enough.

@@ -261,6 +261,6 @@ vp test                                  # unit tests for the parsing/transforms
 ```
 
 `.github/workflows/deploy-pages-site.yml` publishes `dist/` at
-<https://server-docs.wildflowerhealth.io/>, and a PR preview's under
-`https://server-docs.wildflowerhealth.io/pr-<n>/`; the build uses a relative
-`base` so the assets resolve from either.
+<https://server-docs.wildflowerhealth.io/>, and `.github/workflows/pr-preview.yml`
+publishes a PR's preview under `https://server-docs.wildflowerhealth.io/pr-<n>/`;
+the build uses a relative `base` so the assets resolve from either.

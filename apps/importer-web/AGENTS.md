@@ -244,9 +244,9 @@ the port.
 ## Published on GitHub Pages
 
 `.github/workflows/deploy-pages-site.yml` publishes this app's `dist/` at
-<https://importer.wildflowerhealth.io/>, and a PR preview's under
-`https://importer.wildflowerhealth.io/pr-<n>/`. The relative `base: './'` in
-`vite.config.ts` and the router's basepath (the served directory, which
+<https://importer.wildflowerhealth.io/>, and `.github/workflows/pr-preview.yml`
+publishes a PR's preview under `https://importer.wildflowerhealth.io/pr-<n>/`.
+The relative `base: './'` in `vite.config.ts` and the router's basepath (the served directory, which
 `smart-app-react`'s `openSmartAppPage` reads off the entry module's URL) are
 the whole subpath mechanism. A deep link such as
 `/anonymize` reaches the app through the site's 404 page, whose redirect

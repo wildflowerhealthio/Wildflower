@@ -22,13 +22,13 @@ name: PR Preview
 # fails at the end, naming its failures. The teardown is split the same way.
 #
 # Which sites a PR affects (scripts/ci/pages-sites.ts, `affectedSites`): every
-# site for a root config or
-# lockfile change, or any change outside every package; otherwise the sites
-# whose package the changes reach through the workspace dependency graph, so a
-# change to a shared slice previews every app built on it. The marketing
-# site's preview carries the book (apps/wildflower-site/book-web) at `book/`,
-# so a change reaching the book previews it too; a chapter, beside the code it
-# explains outside every package, previews every site.
+# site for a root config or lockfile change, or any change outside every
+# package; otherwise the sites whose package the changes reach through the
+# workspace dependency graph, so a change to a shared slice previews every app
+# built on it. The marketing site's preview carries the book
+# (apps/wildflower-site/book-web) at `book/`, so a change reaching the book
+# previews it too; a chapter, beside the code it explains outside every
+# package, previews every site.
 #
 # Prerequisites (one-time): the Pages repositories deploy-github-pages.yml
 # lists, plus `wildflowerhealthio/staging`, which serves Pages from `main` at

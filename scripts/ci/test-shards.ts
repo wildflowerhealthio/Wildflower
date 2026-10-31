@@ -241,7 +241,7 @@ const selectionFor = (affected: AffectedPackages, packages: readonly Pkg[]): Tes
   }
 }
 
-/** Whether `selection` covers `project`. Pure — exported for unit testing. */
+/** Whether `selection` covers `project`. Pure — exported for test-changed.ts. */
 const selectsProject = (selection: TestSelection, project: VitestProject): boolean =>
   selection._tag === 'AllProjects' || !selection.unaffectedPackageDirs.includes(project.root)
 
@@ -474,5 +474,4 @@ export {
   selectionFor,
   selectsProject,
   TEST_SHARD_COUNT,
-  UnassignedProjectsError,
 }
