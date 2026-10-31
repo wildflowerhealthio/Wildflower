@@ -22,14 +22,22 @@ read `Document.Schema` / `Document.Type`, `Page.Schema`, `Run.Schema`:
   **`Page.mapText`**.
 - `src/run.ts` — **`Run.Schema`**, one positioned span of text, and
   **`Run.mapText`**.
+- `src/positioned-text-extractor.ts` — **`PositionedTextExtractor`**, the
+  Effect service (`Context.Tag`) whose `extract` turns a PDF's bytes into a
+  `Document.Type`, failing with **`UnreadablePdf`** when the bytes are not a
+  PDF it can open. A PDF dialect's decode requires it, so the dialect names no
+  extraction library; `positioned-text-web` provides it with pdfjs, and tests
+  provide a fake (`Layer.succeed`) that returns a hand-written document.
+  Exported flat, not as a namespace.
 - `src/index.ts` — the package barrel.
 
 ## Layering
 
 Pure and neutral (`platform: 'neutral'`). Depends only on `effect`. Names no UI
-framework and no extraction library — the pdfjs seam that fills this schema
-lives in `positioned-text-web`. Never imports `pdf-anonymizer-*`,
-`lifelabs-pdf-importer`, or a DOM type.
+framework and no extraction library — the pdfjs seam that fills this schema,
+and the layer that provides `PositionedTextExtractor` with it, live in
+`positioned-text-web`. Never imports `pdf-anonymizer-*`,
+`lifelabs-pdf-importer-core`, or a DOM type.
 
 ## Testing
 
@@ -45,7 +53,7 @@ lives in `positioned-text-web`. Never imports `pdf-anonymizer-*`,
   extraction seam that produces this schema.
 - [pdf-anonymizer-core AGENTS.md](../../../slices/anonymizer/pdf-anonymizer-core/AGENTS.md)
   — the masking engine that consumes it.
-- [lifelabs-pdf-importer AGENTS.md](../../importer/lifelabs-pdf-importer/AGENTS.md)
+- [lifelabs-pdf-importer-core AGENTS.md](../../importer/lifelabs-pdf-importer-core/AGENTS.md)
   — the dialect that parses it.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.

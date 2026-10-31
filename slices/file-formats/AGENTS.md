@@ -21,12 +21,15 @@ consumer slices.
   old `har-importer-core/har` subpath.
 - **[`positioned-text`](./positioned-text/AGENTS.md)** — a PDF's text content
   as absolutely positioned runs: the `Document.Schema` schema
-  (`wildflower-positioned-text` v1) and `Document.FromJson`. Moved out of
-  `pdf-anonymizer-core`. `effect` only.
+  (`wildflower-positioned-text` v1) and `Document.FromJson`, and the
+  `PositionedTextExtractor` service a PDF dialect requires to read a PDF's
+  bytes. Moved out of `pdf-anonymizer-core`. `effect` only.
 - **[`positioned-text-web`](./positioned-text-web/AGENTS.md)** — the browser
   (non-React) `extractPositionedText` seam that fills the schema from PDF bytes
-  via `pdfjs-dist`. Moved out of `pdf-anonymizer-react`. The one place PDF
-  extraction is integrated, shared by the anonymizer and a future PDF importer.
+  via `pdfjs-dist`, and `positionedTextExtractorPdfjs`, the layer that provides
+  `PositionedTextExtractor` with it. Moved out of `pdf-anonymizer-react`. The
+  one place PDF extraction is integrated: the anonymizer calls the function,
+  and the importer's host provides the layer.
 - **`dicom`** — pure DICOM Part 10 tag reader and element-stream writer: `DicomHeader.tryFromDicomFile`
   wraps `dicom-parser` into a typed `DicomHeader.Type` of the tags the importer
   cares about (patient, study, series, instance, equipment modules) plus the
