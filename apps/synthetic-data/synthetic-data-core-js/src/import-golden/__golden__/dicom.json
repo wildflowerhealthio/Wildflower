@@ -1,0 +1,322 @@
+{
+  "excluded": [],
+  "notes": {
+    "dicom": []
+  },
+  "review": [
+    {
+      "disposition": "Included",
+      "group": "dicom",
+      "key": "0:chest-x-ray.dcm/source-file/chest-x-ray.dcm",
+      "resource": "DocumentReference/wf-11213b67ef664dc2deed2557c3585185",
+      "title": "chest-x-ray.dcm"
+    },
+    {
+      "disposition": "Included",
+      "group": "dicom",
+      "key": "0:chest-x-ray.dcm/patient",
+      "resource": "Patient/wf-ad7916b90543748aa8d3c17085d90b81",
+      "title": "Patient/ed3fb2303ba15aa9"
+    },
+    {
+      "disposition": "Included",
+      "group": "dicom",
+      "key": "0:chest-x-ray.dcm/service-request",
+      "resource": "ServiceRequest/wf-2747b2b5cec8bc60e3f9cd572ad7fce3",
+      "title": "ServiceRequest/d4beb9c067c2b2db"
+    },
+    {
+      "disposition": "Included",
+      "group": "dicom",
+      "key": "0:chest-x-ray.dcm/imaging-study",
+      "resource": "ImagingStudy/wf-d45a66f6a11d5ff365d0e5a4199e5438",
+      "title": "ImagingStudy/5571855be678fefb"
+    }
+  ],
+  "sourceFileRePicks": [
+    {
+      "rePicked": [
+        "DocumentReference/wf-11213b67ef664dc2deed2557c3585185"
+      ],
+      "written": "DocumentReference/wf-11213b67ef664dc2deed2557c3585185"
+    }
+  ],
+  "written": [
+    {
+      "author": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "dicom-source-file",
+              "extension": [],
+              "system": "https://wildflowerhealth.io/fhir/sid/dicom"
+            }
+          ],
+          "extension": []
+        }
+      ],
+      "contained": [],
+      "content": [
+        {
+          "attachment": {
+            "contentType": "application/dicom",
+            "data": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABESUNNAgAAAFVMBACCAAAAAgACAFVJGgAxLjIuODQwLjEwMDA4LjUuMS40LjEuMS4xAAIAAwBVSTwAMi4yNS4xMzYyNTczMjE1MzM1MjI4ODcyODM0ODIxMTE3NTIzNzk5NzgwNTkuMzA2OTY4NjM1NTAyNjg5AgAQAFVJFAAxLjIuODQwLjEwMDA4LjEuMi4xAAgACABDUxYAREVSSVZFRFxQUklNQVJZXEFYSUFMIAgAFgBVSRoAMS4yLjg0MC4xMDAwOC41LjEuNC4xLjEuMQAIABgAVUk8ADIuMjUuMTM2MjU3MzIxNTMzNTIyODg3MjgzNDgyMTExNzUyMzc5OTc4MDU5LjMwNjk2ODYzNTUwMjY4OQgAIABEQQgAMjAyNTEwMzEIACEAREEIADIwMjUxMDMxCAAiAERBCAAyMDI1MTAzMQgAIwBEQQgAMjAyNTEwMzEIACoARFQOADIwMjUxMDMxMTc1MDU0CAAwAFRNBgAxNzUwNTQIADEAVE0GADE3NTA1NAgAMgBUTQYAMTc1MDU0CAAzAFRNBgAxNzUwNTQIAFAAU0gEAEFDQzEIAGAAQ1MCAENSCAAwEExPCABDSEVTVCBQQRAAEABQTgwAT2thZm9yXkF2ZXJ5EAAgAExPBABNUk4xEAAwAERBCAAxOTc0MDkyMRAAQABDUwIARiASAGIAQ1MEAFlFUyASAGMATE9QAERDTToxMTMxMDAvMTEzMTA1XFN5bnRoZXRpYyByZS1pZGVudGlmaWNhdGlvbjogcGF0aWVudCwgZGF0ZXMgYW5kIFVJRHMgcmVwbGFjZWQgGAAVAENTBgBDSEVTVCAgAA0AVUk8ADIuMjUuMTM2MjU3MzIxNTMzNTIyODg3MjgzNDgyMTExNzUyMzc5OTc4MDU5LjIzNjExMDc5MjEwNTkwMiAADgBVSTwAMi4yNS4xMzYyNTczMjE1MzM1MjI4ODcyODM0ODIxMTE3NTIzNzk5NzgwNTkuODAxMjc2NDk5MTc3MDQzIAARAElTAgAxICAAEwBJUwIAMSAgAFIAVUk8ADIuMjUuMTM2MjU3MzIxNTMzNTIyODg3MjgzNDgyMTExNzUyMzc5OTc4MDU5LjMzMTY2OTMzODU2Nzg5NCgAAgBVUwIAAQAoAAQAQ1MMAE1PTk9DSFJPTUUyICgAEABVUwIAAgAoABEAVVMCAAIAKAAAAVVTAgAIACgAAQFVUwIACAAoAAIBVVMCAAcAKAADAVVTAgAAACgAAwNDUwgATU9ESUZJRUTgfxAAT0IAAAQAAAB/f39/",
+            "extension": [],
+            "hash": "L5CHbGGmw4RXOourY6NUlzAm6uz0GWIVVomcqut2/rE=",
+            "size": 1104,
+            "title": "chest-x-ray.dcm"
+          },
+          "extension": [],
+          "modifierExtension": []
+        }
+      ],
+      "context": {
+        "encounter": [],
+        "event": [],
+        "extension": [],
+        "modifierExtension": [],
+        "related": [
+          {
+            "extension": [],
+            "reference": "ImagingStudy/wf-d45a66f6a11d5ff365d0e5a4199e5438"
+          }
+        ]
+      },
+      "description": "DICOM image: chest-x-ray.dcm",
+      "extension": [],
+      "id": "wf-11213b67ef664dc2deed2557c3585185",
+      "identifier": [],
+      "modifierExtension": [],
+      "relatesTo": [],
+      "resourceType": "DocumentReference",
+      "securityLabel": [],
+      "status": "current",
+      "subject": {
+        "extension": [],
+        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81"
+      },
+      "type": {
+        "coding": [
+          {
+            "code": "dicom-source-file",
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/dicom"
+          }
+        ],
+        "extension": []
+      }
+    },
+    {
+      "basedOn": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/dicom",
+            "value": "d4beb9c067c2b2db"
+          },
+          "reference": "ServiceRequest/wf-2747b2b5cec8bc60e3f9cd572ad7fce3"
+        }
+      ],
+      "contained": [],
+      "description": "CHEST PA",
+      "endpoint": [],
+      "extension": [],
+      "id": "wf-d45a66f6a11d5ff365d0e5a4199e5438",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
+          "value": "5571855be678fefb"
+        },
+        {
+          "extension": [],
+          "system": "urn:dicom:uid",
+          "value": "urn:oid:2.25.136257321533522887283482111752379978059.236110792105902"
+        }
+      ],
+      "interpreter": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-11213b67ef664dc2deed2557c3585185",
+        "tag": []
+      },
+      "modality": [
+        {
+          "code": "CR",
+          "extension": [],
+          "system": "http://dicom.nema.org/resources/ontology/DCM"
+        }
+      ],
+      "modifierExtension": [],
+      "note": [],
+      "numberOfInstances": 1,
+      "numberOfSeries": 1,
+      "procedureCode": [],
+      "reasonCode": [],
+      "reasonReference": [],
+      "resourceType": "ImagingStudy",
+      "series": [
+        {
+          "bodySite": {
+            "display": "CHEST",
+            "extension": []
+          },
+          "endpoint": [],
+          "extension": [],
+          "instance": [
+            {
+              "extension": [
+                {
+                  "extension": [],
+                  "url": "gridfsFileId",
+                  "valueString": "wf-11213b67ef664dc2deed2557c3585185"
+                }
+              ],
+              "modifierExtension": [],
+              "number": 1,
+              "sopClass": {
+                "code": "1.2.840.10008.5.1.4.1.1.1",
+                "extension": [],
+                "system": "urn:dicom:uid"
+              },
+              "uid": "2.25.136257321533522887283482111752379978059.306968635502689"
+            }
+          ],
+          "modality": {
+            "code": "CR",
+            "extension": [],
+            "system": "http://dicom.nema.org/resources/ontology/DCM"
+          },
+          "modifierExtension": [],
+          "number": 1,
+          "numberOfInstances": 1,
+          "performer": [],
+          "specimen": [],
+          "uid": "2.25.136257321533522887283482111752379978059.801276499177043"
+        }
+      ],
+      "started": "2025-10-31T21:50:54.000Z",
+      "status": "available",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
+          "value": "ed3fb2303ba15aa9"
+        },
+        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81"
+      }
+    },
+    {
+      "address": [],
+      "birthDate": "1974-09-21",
+      "communication": [],
+      "contact": [],
+      "contained": [],
+      "extension": [],
+      "gender": "female",
+      "generalPractitioner": [],
+      "id": "wf-ad7916b90543748aa8d3c17085d90b81",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
+          "value": "ed3fb2303ba15aa9"
+        },
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
+          "value": "MRN1"
+        },
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date",
+          "value": "okafor;avery;1974-09-21"
+        }
+      ],
+      "link": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-11213b67ef664dc2deed2557c3585185",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "name": [
+        {
+          "extension": [],
+          "family": "Okafor",
+          "given": [
+            "Avery"
+          ],
+          "prefix": [],
+          "suffix": [],
+          "text": "Okafor Avery"
+        }
+      ],
+      "photo": [],
+      "resourceType": "Patient",
+      "telecom": []
+    },
+    {
+      "basedOn": [],
+      "bodySite": [],
+      "category": [],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "CHEST PA"
+      },
+      "contained": [],
+      "extension": [],
+      "id": "wf-2747b2b5cec8bc60e3f9cd572ad7fce3",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
+          "value": "d4beb9c067c2b2db"
+        },
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
+          "value": "ACC1"
+        }
+      ],
+      "instantiatesCanonical": [],
+      "instantiatesUri": [],
+      "insurance": [],
+      "intent": "order",
+      "locationCode": [],
+      "locationReference": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-11213b67ef664dc2deed2557c3585185",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "orderDetail": [],
+      "performer": [],
+      "reasonCode": [],
+      "reasonReference": [],
+      "relevantHistory": [],
+      "replaces": [],
+      "resourceType": "ServiceRequest",
+      "status": "completed",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
+          "value": "ed3fb2303ba15aa9"
+        },
+        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81"
+      },
+      "supportingInfo": []
+    }
+  ]
+}

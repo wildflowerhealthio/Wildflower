@@ -4,12 +4,12 @@ import { useMemo, useState } from 'react'
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import { DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import type { StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 
 import type { FormatKind, ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
-import { formatKinds, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
+import { formatKinds, keysWithoutPatientOf, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
-import { isOfPatient, leftUnlinkedIn } from './unlinked-mentions.ts'
 
 /**
  * Pre-fetch the server's copy for every previewed resource in a batch and
@@ -260,9 +260,9 @@ const unchangedKeysOf = (
  * The keys of `kind`'s rows of `batch` the review leaves out unless the
  * reviewer ticks them, derived from the batch as it is now: every row the
  * server holds `unchanged` ({@link unchangedKeysOf}), and every row left
- * without a patient as it will be written (its edit under `selection` or
- * else its resolved resource, `StagedImport.resolvedResourceOf`), so a link
- * or a pick that gives it one takes it back in.
+ * without a patient as it will be written (`importer-core`'s
+ * `keysWithoutPatientOf`), so a link or a pick that gives it one takes it
+ * back in.
  *
  * @param batch - The resolved batch
  * @param kind - A format the batch claimed
@@ -274,18 +274,11 @@ const formatExcludedByDefault = (
   kind: FormatKind,
   comparisons: ReadonlyMap<string, ServerComparison> | undefined,
   selection: StagedImport.Selection
-): ReadonlySet<string> => {
-  const resolvedRows = DecodedFile.resources(batch.formats[kind].decoded)
-  const leftUnlinked = leftUnlinkedIn(batch.plan, kind)
-  const withoutPatient = resolvedRows
-    .filter((entry) =>
-      leftUnlinked(entry.key, StagedImport.resolvedResourceOf(batch.plan, selection, entry)).some(
-        isOfPatient
-      )
-    )
-    .map(({ key }) => key)
-  return new Set([...unchangedKeysOf(resolvedRows, comparisons), ...withoutPatient])
-}
+): ReadonlySet<string> =>
+  new Set([
+    ...unchangedKeysOf(DecodedFile.resources(batch.formats[kind].decoded), comparisons),
+    ...keysWithoutPatientOf(batch, kind, selection),
+  ])
 
 export {
   byGroupAndKey,

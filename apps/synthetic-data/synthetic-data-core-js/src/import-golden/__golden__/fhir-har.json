@@ -1,0 +1,224 @@
+{
+  "excluded": [
+    {
+      "basedOn": [],
+      "category": [],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "Body Weight"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-191149d8007f132c09c8b4279388f177",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4",
+          "value": "obs-a"
+        }
+      ],
+      "interpretation": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "referenceRange": [],
+      "resourceType": "Observation",
+      "status": "final"
+    },
+    {
+      "basedOn": [],
+      "category": [],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "Heart rate"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-19114cd8007f184509c8b5279388f32a",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4",
+          "value": "obs-b"
+        }
+      ],
+      "interpretation": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "referenceRange": [],
+      "resourceType": "Observation",
+      "status": "final"
+    }
+  ],
+  "notes": {
+    "har": [
+      "Matched no importer: https://fonts.googleapis.com/css2?family=Inter",
+      "Matched no importer: https://www.google-analytics.com/g/collect?v=2&tid=G-XYZ",
+      "Matched no importer: https://ehr.example.com/assets/app.7f3c.js"
+    ]
+  },
+  "review": [
+    {
+      "disposition": "Included",
+      "group": "har",
+      "key": "0:chrome-fhir-capture.har/source-file/chrome-fhir-capture.har",
+      "resource": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
+      "title": "chrome-fhir-capture.har"
+    },
+    {
+      "disposition": "Included",
+      "group": "har",
+      "key": "0:chrome-fhir-capture.har/har-entry-2:0",
+      "resource": "Patient/wf-a4cea3adef75d5a6ea0fa8481fe40afb",
+      "title": "Patient/wf-a4cea3adef75d5a6ea0fa8481fe40afb"
+    },
+    {
+      "disposition": "Excluded",
+      "group": "har",
+      "key": "0:chrome-fhir-capture.har/har-entry-3:0",
+      "resource": "Observation/wf-191149d8007f132c09c8b4279388f177",
+      "title": "Observation/wf-191149d8007f132c09c8b4279388f177"
+    },
+    {
+      "disposition": "Excluded",
+      "group": "har",
+      "key": "0:chrome-fhir-capture.har/har-entry-3:1",
+      "resource": "Observation/wf-19114cd8007f184509c8b5279388f32a",
+      "title": "Observation/wf-19114cd8007f184509c8b5279388f32a"
+    }
+  ],
+  "sourceFileRePicks": [
+    {
+      "rePicked": [
+        "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff"
+      ],
+      "written": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff"
+    }
+  ],
+  "written": [
+    {
+      "author": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "har-archive",
+              "extension": [],
+              "system": "https://wildflowerhealth.io/fhir/CodeSystem/web-trace"
+            }
+          ],
+          "extension": []
+        }
+      ],
+      "contained": [],
+      "content": [
+        {
+          "attachment": {
+            "contentType": "application/json",
+            "data": "ewogICJsb2ciOiB7CiAgICAidmVyc2lvbiI6ICIxLjIiLAogICAgImNyZWF0b3IiOiB7CiAgICAgICJuYW1lIjogIldlYkluc3BlY3RvciIsCiAgICAgICJ2ZXJzaW9uIjogIjUzNy4zNiIKICAgIH0sCiAgICAicGFnZXMiOiBbCiAgICAgIHsKICAgICAgICAic3RhcnRlZERhdGVUaW1lIjogIjIwMjYtMDItMDJUMTA6MDA6MDAuMDAwWiIsCiAgICAgICAgImlkIjogInBhZ2VfMSIsCiAgICAgICAgInRpdGxlIjogImh0dHBzOi8vZWhyLmV4YW1wbGUuY29tL3BvcnRhbCIsCiAgICAgICAgInBhZ2VUaW1pbmdzIjogewogICAgICAgICAgIm9uQ29udGVudExvYWQiOiA4MTIuNCwKICAgICAgICAgICJvbkxvYWQiOiAxNTAzLjcKICAgICAgICB9CiAgICAgIH0KICAgIF0sCiAgICAiZW50cmllcyI6IFsKICAgICAgewogICAgICAgICJfaW5pdGlhdG9yIjogewogICAgICAgICAgInR5cGUiOiAicGFyc2VyIgogICAgICAgIH0sCiAgICAgICAgIl9wcmlvcml0eSI6ICJWZXJ5SGlnaCIsCiAgICAgICAgIl9yZXNvdXJjZVR5cGUiOiAiZm9udCIsCiAgICAgICAgInN0YXJ0ZWREYXRlVGltZSI6ICIyMDI2LTAyLTAyVDEwOjAwOjAwLjEwMFoiLAogICAgICAgICJ0aW1lIjogNDIuMSwKICAgICAgICAicmVxdWVzdCI6IHsKICAgICAgICAgICJtZXRob2QiOiAiR0VUIiwKICAgICAgICAgICJ1cmwiOiAiaHR0cHM6Ly9mb250cy5nb29nbGVhcGlzLmNvbS9jc3MyP2ZhbWlseT1JbnRlciIsCiAgICAgICAgICAiaHR0cFZlcnNpb24iOiAiaHR0cC8yLjAiLAogICAgICAgICAgImhlYWRlcnMiOiBbCiAgICAgICAgICAgIHsKICAgICAgICAgICAgICAibmFtZSI6ICI6bWV0aG9kIiwKICAgICAgICAgICAgICAidmFsdWUiOiAiR0VUIgogICAgICAgICAgICB9CiAgICAgICAgICBdLAogICAgICAgICAgInF1ZXJ5U3RyaW5nIjogWwogICAgICAgICAgICB7CiAgICAgICAgICAgICAgIm5hbWUiOiAiZmFtaWx5IiwKICAgICAgICAgICAgICAidmFsdWUiOiAiSW50ZXIiCiAgICAgICAgICAgIH0KICAgICAgICAgIF0sCiAgICAgICAgICAiY29va2llcyI6IFtdLAogICAgICAgICAgImhlYWRlcnNTaXplIjogLTEsCiAgICAgICAgICAiYm9keVNpemUiOiAwCiAgICAgICAgfSwKICAgICAgICAicmVzcG9uc2UiOiB7CiAgICAgICAgICAic3RhdHVzIjogMjAwLAogICAgICAgICAgInN0YXR1c1RleHQiOiAiIiwKICAgICAgICAgICJodHRwVmVyc2lvbiI6ICJodHRwLzIuMCIsCiAgICAgICAgICAiaGVhZGVycyI6IFsKICAgICAgICAgICAgewogICAgICAgICAgICAgICJuYW1lIjogImNvbnRlbnQtdHlwZSIsCiAgICAgICAgICAgICAgInZhbHVlIjogInRleHQvY3NzIgogICAgICAgICAgICB9CiAgICAgICAgICBdLAogICAgICAgICAgImNvb2tpZXMiOiBbXSwKICAgICAgICAgICJjb250ZW50IjogewogICAgICAgICAgICAic2l6ZSI6IDI0LAogICAgICAgICAgICAibWltZVR5cGUiOiAidGV4dC9jc3MiLAogICAgICAgICAgICAidGV4dCI6ICJAZm9udC1mYWNle2ZvbnQ6SW50ZXI7fSIKICAgICAgICAgIH0sCiAgICAgICAgICAicmVkaXJlY3RVUkwiOiAiIiwKICAgICAgICAgICJoZWFkZXJzU2l6ZSI6IC0xLAogICAgICAgICAgImJvZHlTaXplIjogMjQKICAgICAgICB9LAogICAgICAgICJjYWNoZSI6IHt9LAogICAgICAgICJ0aW1pbmdzIjogewogICAgICAgICAgInNlbmQiOiAwLjEsCiAgICAgICAgICAid2FpdCI6IDQwLAogICAgICAgICAgInJlY2VpdmUiOiAyCiAgICAgICAgfSwKICAgICAgICAic2VydmVySVBBZGRyZXNzIjogIjE0Mi4yNTAuNzIuMTAiLAogICAgICAgICJjb25uZWN0aW9uIjogIjEwMDEiCiAgICAgIH0sCiAgICAgIHsKICAgICAgICAiX2luaXRpYXRvciI6IHsKICAgICAgICAgICJ0eXBlIjogInNjcmlwdCIKICAgICAgICB9LAogICAgICAgICJfcmVzb3VyY2VUeXBlIjogInhociIsCiAgICAgICAgInN0YXJ0ZWREYXRlVGltZSI6ICIyMDI2LTAyLTAyVDEwOjAwOjAwLjIwMFoiLAogICAgICAgICJ0aW1lIjogMTUuMywKICAgICAgICAicmVxdWVzdCI6IHsKICAgICAgICAgICJtZXRob2QiOiAiUE9TVCIsCiAgICAgICAgICAidXJsIjogImh0dHBzOi8vd3d3Lmdvb2dsZS1hbmFseXRpY3MuY29tL2cvY29sbGVjdD92PTImdGlkPUctWFlaIiwKICAgICAgICAgICJodHRwVmVyc2lvbiI6ICJodHRwLzIuMCIsCiAgICAgICAgICAiaGVhZGVycyI6IFtdLAogICAgICAgICAgImNvb2tpZXMiOiBbXSwKICAgICAgICAgICJoZWFkZXJzU2l6ZSI6IC0xLAogICAgICAgICAgImJvZHlTaXplIjogMAogICAgICAgIH0sCiAgICAgICAgInJlc3BvbnNlIjogewogICAgICAgICAgInN0YXR1cyI6IDIwNCwKICAgICAgICAgICJzdGF0dXNUZXh0IjogIk5vIENvbnRlbnQiLAogICAgICAgICAgImh0dHBWZXJzaW9uIjogImh0dHAvMi4wIiwKICAgICAgICAgICJoZWFkZXJzIjogW10sCiAgICAgICAgICAiY29va2llcyI6IFtdLAogICAgICAgICAgImNvbnRlbnQiOiB7CiAgICAgICAgICAgICJzaXplIjogMCwKICAgICAgICAgICAgIm1pbWVUeXBlIjogIiIKICAgICAgICAgIH0sCiAgICAgICAgICAicmVkaXJlY3RVUkwiOiAiIiwKICAgICAgICAgICJoZWFkZXJzU2l6ZSI6IC0xLAogICAgICAgICAgImJvZHlTaXplIjogMAogICAgICAgIH0sCiAgICAgICAgImNhY2hlIjoge30sCiAgICAgICAgInRpbWluZ3MiOiB7CiAgICAgICAgICAic2VuZCI6IDAuMiwKICAgICAgICAgICJ3YWl0IjogMTQsCiAgICAgICAgICAicmVjZWl2ZSI6IDEuMQogICAgICAgIH0KICAgICAgfSwKICAgICAgewogICAgICAgICJfaW5pdGlhdG9yIjogewogICAgICAgICAgInR5cGUiOiAic2NyaXB0IgogICAgICAgIH0sCiAgICAgICAgIl9yZXNvdXJjZVR5cGUiOiAieGhyIiwKICAgICAgICAic3RhcnRlZERhdGVUaW1lIjogIjIwMjYtMDItMDJUMTA6MDA6MDEuMDAwWiIsCiAgICAgICAgInRpbWUiOiAxMzMuOCwKICAgICAgICAicmVxdWVzdCI6IHsKICAgICAgICAgICJtZXRob2QiOiAiR0VUIiwKICAgICAgICAgICJ1cmwiOiAiaHR0cHM6Ly9laHIuZXhhbXBsZS5jb20vaW50ZXJjb25uZWN0LWZoaXItb2F1dGgvYXBpL0ZISVIvUjQvUGF0aWVudC9lWFlaMTIzP19mb3JtYXQ9anNvbiIsCiAgICAgICAgICAiaHR0cFZlcnNpb24iOiAiaHR0cC8yLjAiLAogICAgICAgICAgImhlYWRlcnMiOiBbCiAgICAgICAgICAgIHsKICAgICAgICAgICAgICAibmFtZSI6ICJhY2NlcHQiLAogICAgICAgICAgICAgICJ2YWx1ZSI6ICJhcHBsaWNhdGlvbi9maGlyK2pzb24iCiAgICAgICAgICAgIH0KICAgICAgICAgIF0sCiAgICAgICAgICAiY29va2llcyI6IFtdLAogICAgICAgICAgImhlYWRlcnNTaXplIjogLTEsCiAgICAgICAgICAiYm9keVNpemUiOiAwCiAgICAgICAgfSwKICAgICAgICAicmVzcG9uc2UiOiB7CiAgICAgICAgICAic3RhdHVzIjogMjAwLAogICAgICAgICAgInN0YXR1c1RleHQiOiAiT0siLAogICAgICAgICAgImh0dHBWZXJzaW9uIjogImh0dHAvMi4wIiwKICAgICAgICAgICJoZWFkZXJzIjogWwogICAgICAgICAgICB7CiAgICAgICAgICAgICAgIm5hbWUiOiAiY29udGVudC10eXBlIiwKICAgICAgICAgICAgICAidmFsdWUiOiAiYXBwbGljYXRpb24vZmhpcitqc29uIgogICAgICAgICAgICB9CiAgICAgICAgICBdLAogICAgICAgICAgImNvb2tpZXMiOiBbXSwKICAgICAgICAgICJjb250ZW50IjogewogICAgICAgICAgICAic2l6ZSI6IDExOCwKICAgICAgICAgICAgIm1pbWVUeXBlIjogImFwcGxpY2F0aW9uL2ZoaXIranNvbiIsCiAgICAgICAgICAgICJ0ZXh0IjogIntcInJlc291cmNlVHlwZVwiOlwiUGF0aWVudFwiLFwiaWRcIjpcImVYWVoxMjNcIixcIm5hbWVcIjpbe1wiZmFtaWx5XCI6XCJTbWl0aFwiLFwiZ2l2ZW5cIjpbXCJKYW5lXCJdfV0sXCJnZW5kZXJcIjpcImZlbWFsZVwifSIKICAgICAgICAgIH0sCiAgICAgICAgICAicmVkaXJlY3RVUkwiOiAiIiwKICAgICAgICAgICJoZWFkZXJzU2l6ZSI6IC0xLAogICAgICAgICAgImJvZHlTaXplIjogMTE4CiAgICAgICAgfSwKICAgICAgICAiY2FjaGUiOiB7fSwKICAgICAgICAidGltaW5ncyI6IHsKICAgICAgICAgICJzZW5kIjogMC4zLAogICAgICAgICAgIndhaXQiOiAxMjAsCiAgICAgICAgICAicmVjZWl2ZSI6IDEzLjUKICAgICAgICB9CiAgICAgIH0sCiAgICAgIHsKICAgICAgICAiX2luaXRpYXRvciI6IHsKICAgICAgICAgICJ0eXBlIjogInNjcmlwdCIKICAgICAgICB9LAogICAgICAgICJfcmVzb3VyY2VUeXBlIjogInhociIsCiAgICAgICAgInN0YXJ0ZWREYXRlVGltZSI6ICIyMDI2LTAyLTAyVDEwOjAwOjAxLjQwMFoiLAogICAgICAgICJ0aW1lIjogMjAxLjIsCiAgICAgICAgInJlcXVlc3QiOiB7CiAgICAgICAgICAibWV0aG9kIjogIkdFVCIsCiAgICAgICAgICAidXJsIjogImh0dHBzOi8vZWhyLmV4YW1wbGUuY29tL2ludGVyY29ubmVjdC1maGlyLW9hdXRoL2FwaS9GSElSL1I0L09ic2VydmF0aW9uP3N1YmplY3QlM0FQYXRpZW50PWVYWVoxMjMmX2NvdW50PTI1MCZfZm9ybWF0PWpzb24iLAogICAgICAgICAgImh0dHBWZXJzaW9uIjogImh0dHAvMi4wIiwKICAgICAgICAgICJoZWFkZXJzIjogWwogICAgICAgICAgICB7CiAgICAgICAgICAgICAgIm5hbWUiOiAiYWNjZXB0IiwKICAgICAgICAgICAgICAidmFsdWUiOiAiYXBwbGljYXRpb24vZmhpcitqc29uIgogICAgICAgICAgICB9CiAgICAgICAgICBdLAogICAgICAgICAgImNvb2tpZXMiOiBbXSwKICAgICAgICAgICJoZWFkZXJzU2l6ZSI6IC0xLAogICAgICAgICAgImJvZHlTaXplIjogMAogICAgICAgIH0sCiAgICAgICAgInJlc3BvbnNlIjogewogICAgICAgICAgInN0YXR1cyI6IDIwMCwKICAgICAgICAgICJzdGF0dXNUZXh0IjogIk9LIiwKICAgICAgICAgICJodHRwVmVyc2lvbiI6ICJodHRwLzIuMCIsCiAgICAgICAgICAiaGVhZGVycyI6IFsKICAgICAgICAgICAgewogICAgICAgICAgICAgICJuYW1lIjogImNvbnRlbnQtdHlwZSIsCiAgICAgICAgICAgICAgInZhbHVlIjogImFwcGxpY2F0aW9uL2ZoaXIranNvbiIKICAgICAgICAgICAgfQogICAgICAgICAgXSwKICAgICAgICAgICJjb29raWVzIjogW10sCiAgICAgICAgICAiY29udGVudCI6IHsKICAgICAgICAgICAgInNpemUiOiAzNzIsCiAgICAgICAgICAgICJtaW1lVHlwZSI6ICJhcHBsaWNhdGlvbi9maGlyK2pzb24iLAogICAgICAgICAgICAidGV4dCI6ICJ7XCJyZXNvdXJjZVR5cGVcIjpcIkJ1bmRsZVwiLFwidHlwZVwiOlwic2VhcmNoc2V0XCIsXCJ0b3RhbFwiOjIsXCJlbnRyeVwiOlt7XCJyZXNvdXJjZVwiOntcInJlc291cmNlVHlwZVwiOlwiT2JzZXJ2YXRpb25cIixcImlkXCI6XCJvYnMtYVwiLFwic3RhdHVzXCI6XCJmaW5hbFwiLFwiY29kZVwiOntcInRleHRcIjpcIkJvZHkgV2VpZ2h0XCJ9fX0se1wicmVzb3VyY2VcIjp7XCJyZXNvdXJjZVR5cGVcIjpcIk9ic2VydmF0aW9uXCIsXCJpZFwiOlwib2JzLWJcIixcInN0YXR1c1wiOlwiZmluYWxcIixcImNvZGVcIjp7XCJ0ZXh0XCI6XCJIZWFydCByYXRlXCJ9fX1dfSIKICAgICAgICAgIH0sCiAgICAgICAgICAicmVkaXJlY3RVUkwiOiAiIiwKICAgICAgICAgICJoZWFkZXJzU2l6ZSI6IC0xLAogICAgICAgICAgImJvZHlTaXplIjogMzcyCiAgICAgICAgfSwKICAgICAgICAiY2FjaGUiOiB7fSwKICAgICAgICAidGltaW5ncyI6IHsKICAgICAgICAgICJzZW5kIjogMC40LAogICAgICAgICAgIndhaXQiOiAxODAsCiAgICAgICAgICAicmVjZWl2ZSI6IDIwLjgKICAgICAgICB9CiAgICAgIH0sCiAgICAgIHsKICAgICAgICAiX2luaXRpYXRvciI6IHsKICAgICAgICAgICJ0eXBlIjogInBhcnNlciIKICAgICAgICB9LAogICAgICAgICJfcmVzb3VyY2VUeXBlIjogInNjcmlwdCIsCiAgICAgICAgInN0YXJ0ZWREYXRlVGltZSI6ICIyMDI2LTAyLTAyVDEwOjAwOjAxLjkwMFoiLAogICAgICAgICJ0aW1lIjogOS42LAogICAgICAgICJyZXF1ZXN0IjogewogICAgICAgICAgIm1ldGhvZCI6ICJHRVQiLAogICAgICAgICAgInVybCI6ICJodHRwczovL2Voci5leGFtcGxlLmNvbS9hc3NldHMvYXBwLjdmM2MuanMiLAogICAgICAgICAgImh0dHBWZXJzaW9uIjogImh0dHAvMi4wIiwKICAgICAgICAgICJoZWFkZXJzIjogW10sCiAgICAgICAgICAiY29va2llcyI6IFtdLAogICAgICAgICAgImhlYWRlcnNTaXplIjogLTEsCiAgICAgICAgICAiYm9keVNpemUiOiAwCiAgICAgICAgfSwKICAgICAgICAicmVzcG9uc2UiOiB7CiAgICAgICAgICAic3RhdHVzIjogMjAwLAogICAgICAgICAgInN0YXR1c1RleHQiOiAiT0siLAogICAgICAgICAgImh0dHBWZXJzaW9uIjogImh0dHAvMi4wIiwKICAgICAgICAgICJoZWFkZXJzIjogWwogICAgICAgICAgICB7CiAgICAgICAgICAgICAgIm5hbWUiOiAiY29udGVudC10eXBlIiwKICAgICAgICAgICAgICAidmFsdWUiOiAiYXBwbGljYXRpb24vamF2YXNjcmlwdCIKICAgICAgICAgICAgfQogICAgICAgICAgXSwKICAgICAgICAgICJjb29raWVzIjogW10sCiAgICAgICAgICAiY29udGVudCI6IHsKICAgICAgICAgICAgInNpemUiOiAyMCwKICAgICAgICAgICAgIm1pbWVUeXBlIjogImFwcGxpY2F0aW9uL2phdmFzY3JpcHQiLAogICAgICAgICAgICAidGV4dCI6ICJjb25zb2xlLmxvZygnYXBwJyk7IgogICAgICAgICAgfSwKICAgICAgICAgICJyZWRpcmVjdFVSTCI6ICIiLAogICAgICAgICAgImhlYWRlcnNTaXplIjogLTEsCiAgICAgICAgICAiYm9keVNpemUiOiAyMAogICAgICAgIH0sCiAgICAgICAgImNhY2hlIjoge30sCiAgICAgICAgInRpbWluZ3MiOiB7CiAgICAgICAgICAic2VuZCI6IDAuMSwKICAgICAgICAgICJ3YWl0IjogOCwKICAgICAgICAgICJyZWNlaXZlIjogMS41CiAgICAgICAgfQogICAgICB9CiAgICBdCiAgfQp9",
+            "extension": [],
+            "hash": "vAwtEbie2ItSGTN2iqWiiH326wgXn99iQ9zUY4tgJ4w=",
+            "size": 6867,
+            "title": "chrome-fhir-capture.har"
+          },
+          "extension": [],
+          "modifierExtension": []
+        }
+      ],
+      "description": "HAR archive: chrome-fhir-capture.har",
+      "extension": [],
+      "id": "wf-31d311a979ecdac25e81908e76f46aff",
+      "identifier": [],
+      "modifierExtension": [],
+      "relatesTo": [],
+      "resourceType": "DocumentReference",
+      "securityLabel": [
+        {
+          "coding": [
+            {
+              "code": "raw",
+              "extension": [],
+              "system": "https://wildflowerhealth.io/fhir/CodeSystem/web-trace-redaction"
+            }
+          ],
+          "extension": []
+        }
+      ],
+      "status": "current",
+      "type": {
+        "coding": [
+          {
+            "code": "har-archive",
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/CodeSystem/web-trace"
+          }
+        ],
+        "extension": []
+      }
+    },
+    {
+      "address": [],
+      "communication": [],
+      "contact": [],
+      "contained": [],
+      "extension": [],
+      "gender": "female",
+      "generalPractitioner": [],
+      "id": "wf-a4cea3adef75d5a6ea0fa8481fe40afb",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4",
+          "value": "eXYZ123"
+        }
+      ],
+      "link": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "name": [
+        {
+          "extension": [],
+          "family": "Smith",
+          "given": [
+            "Jane"
+          ],
+          "prefix": [],
+          "suffix": []
+        }
+      ],
+      "photo": [],
+      "resourceType": "Patient",
+      "telecom": []
+    }
+  ]
+}

@@ -8,10 +8,9 @@
  */
 
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { type FormatKind, isSourceFileOf } from '@wildflowerhealthio/importer-core'
+import { isOfPatient, type LeftUnlinked } from '@wildflowerhealthio/importer-core'
 import {
   DecodedFile,
-  type LinkPlan,
   Mention,
   StagedImport,
   UnlinkedMention,
@@ -24,28 +23,6 @@ import {
   NAMES_UNLINKED_PROVIDER,
   POINTS_OUTSIDE_IMPORT,
 } from './preview-text.ts'
-
-/** What the referent links leave unlinked in one resource of a format, reviewed under a key. */
-type LeftUnlinked = (
-  reviewKey: string,
-  resource: FhirResourceWithId
-) => readonly UnlinkedMention.Type[]
-
-/**
- * What the referent links of `plan` leave unlinked in a resource of `kind`
- * (`UnlinkedMention.leftByReferentLinks`): nothing for the format's own
- * source file (`isSourceFileOf`), which the review never asks a patient for.
- */
-const leftUnlinkedIn =
-  (plan: LinkPlan.Type, kind: FormatKind): LeftUnlinked =>
-  (reviewKey, resource) =>
-    pipe(
-      Option.liftPredicate(resource, (reviewed) => !isSourceFileOf(kind, reviewed)),
-      Option.match({
-        onNone: () => [],
-        onSome: (reviewed) => UnlinkedMention.leftByReferentLinks(plan, reviewKey, reviewed),
-      })
-    )
 
 /** The resource reviewed under `key`: its edit override in `selection`, else `asDecoded`. */
 const reviewedResource = (
@@ -68,13 +45,6 @@ const unlinkedInRows = (
   DecodedFile.resources(decodedFile).flatMap(({ key, resource }) =>
     leftUnlinked(key, reviewedResource(selection, key, resource))
   )
-
-/** Whether `unlinked` is of the resource's patient: outside every compartment, or a dangling `subject`. */
-const isOfPatient = (unlinked: UnlinkedMention.Type): boolean =>
-  UnlinkedMention.match(unlinked, {
-    OutsidePatientCompartment: () => true,
-    Dangling: ({ mentionPath }) => mentionPath === Mention.SUBJECT_PATH,
-  })
 
 /** Whether `unlinked` is the mention at `mentionPath` of the resource reviewed under `reviewKey`. */
 const isAt = (unlinked: UnlinkedMention.Type, reviewKey: string, mentionPath: string): boolean =>
@@ -129,14 +99,5 @@ const reasonOf = (unlinked: UnlinkedMention.Type): string =>
 const reasonsLine = (unlinkedInResource: readonly UnlinkedMention.Type[]): string =>
   pipe(unlinkedInResource, Array.map(reasonOf), Array.dedupe).join(' · ')
 
-export {
-  groupsOf,
-  isAt,
-  isOfPatient,
-  keysNeedingPatient,
-  leftUnlinkedIn,
-  reasonsLine,
-  reviewedResource,
-  unlinkedInRows,
-}
-export type { Groups, LeftUnlinked }
+export { groupsOf, isAt, keysNeedingPatient, reasonsLine, reviewedResource, unlinkedInRows }
+export type { Groups }
