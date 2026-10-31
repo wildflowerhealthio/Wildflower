@@ -5,8 +5,8 @@ name: Deploy Pages site
 # app, as a matrix over `scripts/ci/pages-sites.ts plan production`, to
 # publish each at the root of `gh-pages` of `wildflowerhealthio/<slug>-web`;
 # each app's deploy is a job of its own, so the apps build side by side.
-# pr-preview.yml runs the same action for every site a PR affects in a single
-# job instead.
+# pr-preview.yml runs the same action for the sites a PR affects in two jobs
+# instead, each a group of them.
 #
 # The branch carries production and every open PR's preview side by side, so
 # scripts/ci/publish-pages-branch.sh rewrites only its own part of it: a

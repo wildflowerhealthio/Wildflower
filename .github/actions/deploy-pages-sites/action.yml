@@ -4,10 +4,10 @@ description: >-
   production at the branch root, or a PR preview in its `pr-<n>/` directory.
   Runs after checkout (with `persist-credentials: false`), Setup Vite+ and
   `vp install`. deploy-pages-site.yml runs it for one site per job, the
-  production apps; pr-preview.yml for every site a PR affects in one job.
-  Every site has its turn, one after another, so one site's failure never
-  holds back the rest; the action fails at the end, naming the sites that
-  failed.
+  production apps; pr-preview.yml for the sites a PR affects, a group of
+  them per job in at most two jobs. Every site has its turn, one after
+  another, so one site's failure never holds back the rest; the action fails
+  at the end, naming the sites that failed.
 
 inputs:
   sites:

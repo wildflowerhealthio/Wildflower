@@ -10,12 +10,16 @@ name: PR Preview
 # always go to production, so a preview's links into another app open that
 # app's production build.
 #
-# One job builds and publishes every affected site, one after another,
-# through the deploy-pages-sites action, which deploy-github-pages.yml runs
-# for each production app in a job of its own: one runner per push, with one
-# checkout and one install, rather than a job per site. A site whose build or
-# publish fails is reported and the rest still publish; the job fails at the
-# end, naming the failures. The teardown is one job too.
+# Two jobs build and publish the affected sites, each its group of them one
+# after another, through the deploy-pages-sites action, which
+# deploy-github-pages.yml runs for each production app in a job of its own:
+# two runners per push, each with one checkout and one install, rather than a
+# job per site. The groups come from the plan (scripts/ci/pages-sites.ts,
+# `previewGroups`): every site has a fixed group, balanced by its rough build
+# time, so a push affecting every site takes about half as long as one job
+# would; a push whose sites all fall in one group takes one job. A site whose
+# build or publish fails is reported and the rest still publish; each job
+# fails at the end, naming its failures. The teardown is split the same way.
 #
 # Which sites a PR affects follows the TypeScript test shards' rule
 # (scripts/ci/pages-sites.ts, `affectedSites`): every site for a root config or
@@ -38,8 +42,10 @@ on:
 # a reopen never cancels a teardown partway through. Cancelling an in-progress
 # preview is safe (unlike the production deploy): the preview is disposable,
 # and the newest push is what counts. A teardown and a deploy of the same PR
-# still never interleave: their jobs share the `pages-preview-<pr>` group, so
-# a teardown waits for a deploy already publishing, and the other way round.
+# still never touch a site at once: each deploy and teardown job holds its
+# group's `pages-preview-<pr>-<group>` lock, and a site is in the same group
+# in both, so a teardown waits for a deploy of its sites already publishing,
+# and the other way round, while the two groups run side by side.
 concurrency:
   group: pr-preview-${{ github.event.number }}-${{ github.event.action == 'closed' && 'teardown' || 'deploy' }}
   cancel-in-progress: true
@@ -62,6 +68,7 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     outputs:
       sites: ${{ steps.plan.outputs.sites }}
+      groups: ${{ steps.plan.outputs.groups }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -80,8 +87,9 @@ jobs:
         run: vp install
 
       # A closed PR tears down every site's preview, whichever it deployed.
-      # Assigned first, then written: a failure inside `echo "...$(...)"`
-      # would not fail the step.
+      # `sites` lists them for the comment; `groups` splits them into the
+      # deploy's or the teardown's jobs. Assigned first, then written: a
+      # failure inside `echo "...$(...)"` would not fail the step.
       - name: Plan the sites
         id: plan
         env:
@@ -89,16 +97,23 @@ jobs:
         run: |
           sites=$(node scripts/ci/pages-sites.ts plan "$PLAN")
           echo "sites=$sites" >> "$GITHUB_OUTPUT"
+          groups=$(node scripts/ci/pages-sites.ts groups "$PLAN")
+          echo "groups=$groups" >> "$GITHUB_OUTPUT"
 
   deploy:
-    name: Push preview pages
+    name: Push preview pages (${{ matrix.name }})
     needs: plan
-    # A plan with no sites has nothing to deploy.
+    # A plan with no sites has nothing to deploy (and an empty matrix).
     if: github.event.action != 'closed' && needs.plan.outputs.sites != '[]'
     runs-on: ubuntu-latest
-    # Shared with the teardown (see the workflow's concurrency above).
+    strategy:
+      # One group's failure never cancels the other's publish.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.groups) }}
+    # Per group, shared with the teardown (see the workflow's concurrency
+    # above).
     concurrency:
-      group: pages-preview-${{ github.event.number }}
+      group: pages-preview-${{ github.event.number }}-${{ matrix.group }}
       cancel-in-progress: false
     steps:
       # persist-credentials:false, as in deploy-pages-site.yml: the persisted
@@ -120,7 +135,7 @@ jobs:
       - name: Deploy the previews
         uses: ./.github/actions/deploy-pages-sites
         with:
-          sites: ${{ needs.plan.outputs.sites }}
+          sites: ${{ toJSON(matrix.sites) }}
           target: ${{ github.event.number }}
           variables: ${{ toJSON(vars) }}
           app-id: ${{ secrets.STAGING_APP_ID }}
@@ -131,7 +146,8 @@ jobs:
     name: Comment the preview links
     needs: [plan, deploy]
     # After the previews whatever their result, so the comment says which
-    # failed; a PR whose plan has no sites only updates an earlier comment.
+    # failed (the deploy's result is failure when either group's job
+    # failed); a PR whose plan has no sites only updates an earlier comment.
     if: >-
       !cancelled() && github.event.action != 'closed' && needs.plan.result == 'success'
     runs-on: ubuntu-latest
@@ -169,13 +185,17 @@ jobs:
           scripts/ci/upsert-preview-comment.sh "$body"
 
   teardown:
-    name: Remove the previews
+    name: Remove the previews (${{ matrix.name }})
     needs: plan
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
-    # Shared with the deploy (see the workflow's concurrency above).
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.groups) }}
+    # Per group, shared with the deploy (see the workflow's concurrency
+    # above).
     concurrency:
-      group: pages-preview-${{ github.event.number }}
+      group: pages-preview-${{ github.event.number }}-${{ matrix.group }}
       cancel-in-progress: false
     steps:
       # persist-credentials:false, as in deploy-pages-site.yml: the persisted
@@ -188,13 +208,13 @@ jobs:
       - name: Name the Pages repositories
         id: repositories
         env:
-          SITES: ${{ needs.plan.outputs.sites }}
+          SITES: ${{ toJSON(matrix.sites) }}
         run: |
           repositories=$(jq -r '[.[].pagesRepository] | unique | join(",")' <<< "$SITES")
           echo "repositories=$repositories" >> "$GITHUB_OUTPUT"
 
-      # One token for every site's repository, as in the deploy-pages-sites
-      # action.
+      # One token for every repository of the group's sites, as in the
+      # deploy-pages-sites action.
       - name: Mint the Pages repository App token
         id: pages-token
         uses: actions/create-github-app-token@v3
@@ -209,7 +229,7 @@ jobs:
       # previews it could not remove.
       - name: Remove pr-${{ github.event.number }}/
         env:
-          SITES: ${{ needs.plan.outputs.sites }}
+          SITES: ${{ toJSON(matrix.sites) }}
           TARGET: ${{ github.event.number }}
           PAGES_TOKEN: ${{ steps.pages-token.outputs.token }}
         run: scripts/ci/deploy-pages-sites.sh teardown
