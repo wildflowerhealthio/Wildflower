@@ -1,38 +1,7 @@
-import { existsSync } from 'node:fs'
-import { dirname, parse as parsePath, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { Option } from 'effect'
 import * as fc from 'fast-check'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import { multiplierFromMap, numRunsFor, scaleNumRuns } from './num-runs-for.ts'
-
-// This test file lives in the `kitchen-sink` package, so `numRunsFor` resolves
-// its calling package to `kitchen-sink` (via Vitest's `__vitest_worker__.filepath`,
-// with a call-stack fallback). Keying the risk map under that name exercises the
-// real end-to-end path that `test:changed` relies on, proving the multiplier
-// actually reaches `numRunsFor` at runtime.
-const THIS_PACKAGE = '@wildflowerhealthio/kitchen-sink'
-
-// The monorepo root's own package name. The old cwd-based implementation
-// resolved to this when run from the repo root (Vitest projects mode), so the
-// risk-map multiplier never matched a real package and scaling silently no-oped.
-const MONOREPO_PACKAGE = 'wildflower-monorepo'
-
-// Absolute path to the monorepo root, found by walking up from this file to the
-// `pnpm-workspace.yaml` marker. Used to reproduce the projects-mode worker cwd.
-const repoRoot = ((): string => {
-  let dir = dirname(fileURLToPath(import.meta.url))
-  const fsRoot = parsePath(dir).root
-  for (;;) {
-    if (existsSync(resolve(dir, 'pnpm-workspace.yaml'))) return dir
-    const parent = dirname(dir)
-    if (parent === dir || dir === fsRoot) {
-      throw new Error('could not locate monorepo root (no pnpm-workspace.yaml ancestor)')
-    }
-    dir = parent
-  }
-})()
+import { numRunsFor, scaleNumRuns } from './num-runs-for.ts'
 
 describe('scaleNumRuns', () => {
   it('should return base unchanged when the multiplier is 1', () => {
@@ -136,88 +105,33 @@ describe('scaleNumRuns', () => {
   })
 })
 
-describe('multiplierFromMap', () => {
-  it('should default to 1 when the package is absent and there is no wildcard', () => {
-    // Arrange / Act
-    const result = multiplierFromMap({ 'other-pkg': 0.2 }, Option.some('my-pkg'))
-
-    // Assert
-    expect(result).toBe(1)
-  })
-
-  it('should read the per-package multiplier when present', () => {
-    // Arrange / Act
-    const result = multiplierFromMap({ 'my-pkg': 0.2 }, Option.some('my-pkg'))
-
-    // Assert
-    expect(result).toBe(0.2)
-  })
-
-  it('should let the wildcard apply to every package', () => {
-    // Arrange / Act
-    const result = multiplierFromMap({ '*': 0.3 }, Option.some('any-pkg'))
-
-    // Assert
-    expect(result).toBe(0.3)
-  })
-
-  it('should prefer the wildcard over a per-package entry', () => {
-    // Arrange / Act
-    const result = multiplierFromMap({ '*': 0.3, 'my-pkg': 0.5 }, Option.some('my-pkg'))
-
-    // Assert
-    expect(result).toBe(0.3)
-  })
-
-  it('should default to 1 when the package name cannot be resolved', () => {
-    // Arrange / Act
-    const result = multiplierFromMap({ 'my-pkg': 0.2 }, Option.none())
-
-    // Assert
-    expect(result).toBe(1)
-  })
-})
-
-describe('numRunsFor (end to end via FC_RISK_MAP)', () => {
-  const originalRiskMap = process.env.FC_RISK_MAP
-  const originalCwd = process.cwd()
+describe('numRunsFor (end to end via FC_RUN_SCALE)', () => {
+  const originalRunScale = process.env.FC_RUN_SCALE
 
   afterEach(() => {
-    if (originalRiskMap === undefined) delete process.env.FC_RISK_MAP
-    else process.env.FC_RISK_MAP = originalRiskMap
-    process.chdir(originalCwd)
+    if (originalRunScale === undefined) delete process.env.FC_RUN_SCALE
+    else process.env.FC_RUN_SCALE = originalRunScale
   })
 
-  it('should return base unchanged when FC_RISK_MAP is unset', () => {
+  it('should return base unchanged when FC_RUN_SCALE is unset', () => {
     // Arrange
-    delete process.env.FC_RISK_MAP
+    delete process.env.FC_RUN_SCALE
 
     // Act / Assert
     expect(numRunsFor({ base: 100 })).toBe(100)
   })
 
-  it("should scale down using this package's multiplier even when cwd is the monorepo root", () => {
-    // Arrange — reproduce Vitest projects mode, where the worker cwd is the
-    // monorepo root, not the package dir. Map kitchen-sink and the monorepo
-    // root to DIFFERENT multipliers so the resolved package is observable from
-    // the result alone.
-    process.chdir(repoRoot)
-    process.env.FC_RISK_MAP = JSON.stringify({ [THIS_PACKAGE]: 0.2, [MONOREPO_PACKAGE]: 0.5 })
+  it('should scale down by a reduced FC_RUN_SCALE', () => {
+    // Arrange
+    process.env.FC_RUN_SCALE = '0.2'
 
-    // Act
-    const result = numRunsFor({ base: 100 })
-
-    // Assert — 100 * 0.2 = 20 (kitchen-sink), NOT 100 * 0.5 = 50 (the monorepo
-    // root the old cwd-based impl would have resolved). This pins the bug: a
-    // cwd-based resolver run from the root reads `wildflower-monorepo` and would
-    // return 50 here, so this case fails under the no-op it guards against.
-    expect(result).toBe(20)
-    expect(result).not.toBe(50)
+    // Act / Assert
+    expect(numRunsFor({ base: 100 })).toBe(20)
   })
 
-  it("should not scale when this package's multiplier is high", () => {
+  it('should not scale at a full FC_RUN_SCALE', () => {
     // Arrange
-    process.env.FC_RISK_MAP = JSON.stringify({ [THIS_PACKAGE]: 1.0 })
+    process.env.FC_RUN_SCALE = '1'
 
     // Act / Assert
     expect(numRunsFor({ base: 100 })).toBe(100)
@@ -225,33 +139,19 @@ describe('numRunsFor (end to end via FC_RISK_MAP)', () => {
 
   it('should honor an explicit minimum floor when scaling down', () => {
     // Arrange
-    process.env.FC_RISK_MAP = JSON.stringify({ [THIS_PACKAGE]: 0.2 })
+    process.env.FC_RUN_SCALE = '0.2'
 
     // Act / Assert — 100 * 0.2 = 20, but minimum 25 raises the floor.
     expect(numRunsFor({ base: 100, minimum: 25 })).toBe(25)
   })
 
-  it('should scale down under a wildcard multiplier', () => {
-    // Arrange
-    process.env.FC_RISK_MAP = JSON.stringify({ '*': 0.2 })
+  it('should return base unchanged when FC_RUN_SCALE is not a run scale', () => {
+    for (const value of ['not a number', '', '-0.5', 'Infinity', 'NaN']) {
+      // Arrange
+      process.env.FC_RUN_SCALE = value
 
-    // Act / Assert
-    expect(numRunsFor({ base: 100 })).toBe(20)
-  })
-
-  it('should not scale when this package is absent from the map', () => {
-    // Arrange — only an unrelated package is listed.
-    process.env.FC_RISK_MAP = JSON.stringify({ 'some-other-package': 0.2 })
-
-    // Act / Assert
-    expect(numRunsFor({ base: 100 })).toBe(100)
-  })
-
-  it('should return base unchanged when FC_RISK_MAP is malformed JSON', () => {
-    // Arrange
-    process.env.FC_RISK_MAP = 'not json'
-
-    // Act / Assert
-    expect(numRunsFor({ base: 100 })).toBe(100)
+      // Act / Assert
+      expect(numRunsFor({ base: 100 }), value).toBe(100)
+    }
   })
 })

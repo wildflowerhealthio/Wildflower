@@ -9,8 +9,8 @@ name: API Sync
 #     both the Rust sources and the committed snapshots.
 #   - a TS drift test proves the slice's Effect `HttpApi` matches that same file.
 #     That half is this workflow.
-# The TS half lives here (not just in ci-typescript.yml) because that workflow's
-# `test:changed` is gated to TS/JS paths, so a change to a committed snapshot
+# The TS half lives here (not just in ci-typescript.yml) because that workflow
+# is gated to TS/JS paths, so a change to a committed snapshot
 # alone would never run the drift check there. Running it here whenever either
 # the TS definition or a snapshot changes closes that gap. It is project-agnostic:
 # a new slice is picked up with no edit here — its TS test matches the

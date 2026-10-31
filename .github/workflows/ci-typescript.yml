@@ -3,7 +3,7 @@ name: TypeScript
 on:
   # Called by ci.yml, which runs this only on pull requests that touch
   # TS/JS; the paths are its `changes` filter. That job also plans the test
-  # shards and the property-test risk map (rules: scripts/ci/test-shards.ts),
+  # shards and the fast-check run scale (rules: scripts/ci/test-shards.ts),
   # and passes them in.
   workflow_call:
     inputs:
@@ -15,8 +15,8 @@ on:
         description: 'How many shards `matrix` holds; `0` skips the test job.'
         type: string
         required: true
-      risk-map:
-        description: 'The property-test risk map, `{ <package>: <multiplier> }` in JSON.'
+      run-scale:
+        description: 'The fast-check run scale every shard runs at, FC_RUN_SCALE: `1` for full runs.'
         type: string
         required: true
 
@@ -113,13 +113,13 @@ jobs:
 
       # Each run is one `vp test run`. `--project` matches a Vitest project's
       # name exactly, unlike a path filter, which is a substring match on file
-      # paths. A split area's part adds `--shard`, which divides the selected
+      # paths. A split group's part adds `--shard`, which divides the selected
       # projects' test files, so it never shares a run with another area.
       # Every run goes ahead after a failure, so one area's failure doesn't
-      # hide another's.
+      # hide another's. `numRunsFor` scales every property by FC_RUN_SCALE.
       - name: Run tests
         env:
-          FC_RISK_MAP: ${{ inputs.risk-map }}
+          FC_RUN_SCALE: ${{ inputs.run-scale }}
           RUNS: ${{ toJSON(matrix.runs) }}
         run: |
           mapfile -t test_runs < <(jq -c '.[]' <<< "$RUNS")

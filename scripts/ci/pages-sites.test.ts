@@ -160,7 +160,7 @@ describe('pages-sites / affectedSites', () => {
       workspacePackages
     )
 
-    expect(siteNames(affectedSites(affected, workspacePackages))).toEqual(
+    expect(siteNames(affectedSites(affected))).toEqual(
       siteNames(PAGES_SITES).filter((name) => name !== 'ohif-viewer')
     )
   })
@@ -168,7 +168,7 @@ describe('pages-sites / affectedSites', () => {
   it('should preview only the app a change to its own package reaches', () => {
     const affected = findAffectedPackages(['apps/plots/plots-web/src/main.tsx'], workspacePackages)
 
-    expect(siteNames(affectedSites(affected, workspacePackages))).toEqual(['plots'])
+    expect(siteNames(affectedSites(affected))).toEqual(['plots'])
   })
 
   it('should preview the marketing site, which carries the book, for a change to the book', () => {
@@ -177,13 +177,13 @@ describe('pages-sites / affectedSites', () => {
       workspacePackages
     )
 
-    expect(siteNames(affectedSites(affected, workspacePackages))).toEqual(['marketing'])
+    expect(siteNames(affectedSites(affected))).toEqual(['marketing'])
   })
 
   it('should preview no site for a change no site depends on', () => {
     const affected = findAffectedPackages(['apps/host/host-app/src/main.tsx'], workspacePackages)
 
-    expect(affectedSites(affected, workspacePackages)).toEqual([])
+    expect(affectedSites(affected)).toEqual([])
   })
 
   it('should preview every site for a root config or unowned change', () => {
@@ -198,9 +198,7 @@ describe('pages-sites / affectedSites', () => {
         ),
         (file) => {
           const affected = findAffectedPackages([file], workspacePackages)
-          expect(siteNames(affectedSites(affected, workspacePackages))).toEqual(
-            siteNames(PAGES_SITES)
-          )
+          expect(siteNames(affectedSites(affected))).toEqual(siteNames(PAGES_SITES))
         }
       ),
       { numRuns: numRunsFor({ base: 10 }) }
@@ -214,9 +212,7 @@ describe('pages-sites / affectedSites', () => {
           dirs.map((dir) => `${dir}/src/x.ts`),
           workspacePackages
         )
-        const previewed = new Set(
-          affectedSites(affected, workspacePackages).map(({ name }) => name)
-        )
+        const previewed = new Set(affectedSites(affected).map(({ name }) => name))
         for (const site of PAGES_SITES) {
           expect(previewed.has(site.name)).toBe(
             affected.affected.has(site.packageName) ||

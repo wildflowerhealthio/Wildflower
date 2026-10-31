@@ -29,7 +29,7 @@ workflow's checks.
    and Rust areas it also plans the test shards
    ([`scripts/ci/test-shards.ts`](../../scripts/ci/test-shards.ts),
    [`scripts/ci/rust-shards.ts`](../../scripts/ci/rust-shards.ts)) and passes
-   each matrix to its area's workflow as an input.
+   each plan to its area's workflow as inputs.
 2. **One job per area** calls that area's workflow (`ci-typescript.yml`,
    `ci-rust.yml`, `ci-pebble.yml`, `lint-markdown.yml`, `api-sync.yml`, `lint-actions.yml`, `lint-shell.yml`, `ci-android.yml`) through
    `workflow_call`, gated on its filter. An untouched area's job is skipped.
