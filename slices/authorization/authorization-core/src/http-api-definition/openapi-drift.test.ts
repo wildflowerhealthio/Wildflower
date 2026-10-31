@@ -31,6 +31,8 @@ defineSpecDriftTest({
     ['/oauth/authorize/{id}/session-shortfall', 'get'],
     ['/oauth/authorize/{id}/continue', 'post'],
     ['/oauth/authorize/{id}/cancel', 'post'],
+    ['/oauth/authorize/{id}/ask-to-widen', 'post'],
+    ['/oauth/session-widenings/{id}/poll', 'post'],
     ['/oauth/token', 'post'],
     ['/oauth/device_authorization', 'post'],
     ['/oauth/pair/start', 'post'],

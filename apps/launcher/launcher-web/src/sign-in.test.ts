@@ -30,6 +30,7 @@ import {
   PENDING_AUTHORIZATION_KEY,
   postSignInUrl,
   REGISTERED_REDIRECT_URI,
+  promptOnPage,
   returnToOnPage,
   scheduleExpiry,
   serverKindForSession,
@@ -453,6 +454,15 @@ describe('scheduleExpiry', () => {
 
     vi.advanceTimersByTime(3600 * 1000 + 1)
     expect(isAuthed(readState(store))).toBe(true)
+  })
+})
+
+describe('promptOnPage', () => {
+  it('reads prompt=consent, and nothing else', () => {
+    // Act / Assert
+    expect(promptOnPage('https://launcher.wildflowerhealth.io/?prompt=consent')).toBe('consent')
+    expect(promptOnPage('https://launcher.wildflowerhealth.io/?prompt=login')).toBeUndefined()
+    expect(promptOnPage('https://launcher.wildflowerhealth.io/?server=x')).toBeUndefined()
   })
 })
 
