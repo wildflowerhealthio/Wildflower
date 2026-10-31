@@ -845,8 +845,8 @@ async fn open_launch_view(
 /// `launch_presence`'s [`LaunchViewSignIns`], and, once it was the server's
 /// last, end the Owner sessions of the server's closed views through its run
 /// up now, spawned onto `runtime` ([`end_owner_sessions_of_closed_views`]).
-/// With no run up, the codes are kept, so the server's next last close ends
-/// them, or its next run's start does.
+/// With no run up, the codes are dropped: the server's next start carries
+/// over only the codes of its views open then, so it ends their sessions.
 fn launch_view_sign_in_closed(
     launch_presence: &impl LaunchPresence,
     runtime: &tokio::runtime::Handle,
@@ -864,13 +864,9 @@ fn launch_view_sign_in_closed(
             "[servers] {domain} isn't running, so its next start ends its closed launch views' \
              Owner sessions"
         );
-        launch_presence
-            .launch_view_sign_ins()
-            .not_ended(domain, sign_in_codes);
         return;
     };
     runtime.spawn(end_owner_sessions_of_closed_views(
-        launch_presence.clone(),
         sign_in_code_minter,
         domain.to_owned(),
         sign_in_codes,
@@ -881,34 +877,27 @@ fn launch_view_sign_in_closed(
 /// `sign_in_code_minter`, the server `domain`'s run up now, on a blocking
 /// thread, as the server's last launch view closed: the sessions are
 /// expired, so their cookies stop working, and the next launch signs the
-/// browser in again. When the ending fails, the codes are kept among
-/// `launch_presence`'s [`LaunchViewSignIns`], so the server's next last close
-/// ends them, or its next run's start does; when it panics, the codes are
-/// lost with it, and the next run's start ends their sessions. The outcome is
-/// logged.
+/// browser in again. When the ending fails or panics, the codes are dropped
+/// with it: the server's next start carries over only the codes of its views
+/// open then, so it ends their sessions. The outcome is logged.
 async fn end_owner_sessions_of_closed_views(
-    launch_presence: impl LaunchPresence,
     sign_in_code_minter: ServerSignInCodeMinter,
     domain: String,
     sign_in_codes: Vec<SameDeviceSignInCode>,
 ) {
     let ending = tokio::task::spawn_blocking(move || {
-        let ended = sign_in_code_minter.end_signed_in_sessions(&sign_in_codes);
-        (ended, sign_in_codes)
+        sign_in_code_minter.end_signed_in_sessions(&sign_in_codes)
     })
     .await;
     match ending {
-        Ok((Ok(ended), _)) => {
+        Ok(Ok(ended)) => {
             log::info!("[servers] ended {ended} Owner sessions of {domain}'s closed launch views");
         }
-        Ok((Err(error), sign_in_codes)) => {
+        Ok(Err(error)) => {
             log::warn!(
-                "[servers] ending the Owner sessions of {domain}'s closed launch views failed: \
-                 {error}"
+                "[servers] ending the Owner sessions of {domain}'s closed launch views failed, \
+                 so its next start ends them: {error}"
             );
-            launch_presence
-                .launch_view_sign_ins()
-                .not_ended(&domain, sign_in_codes);
         }
         Err(error) => {
             log::warn!(
@@ -1469,6 +1458,16 @@ mod tests {
         Url::parse(&next_of_sign_in(opened)).unwrap()
     }
 
+    /// The code of `opened`, the server [`DOMAIN`]'s `/oauth/sign-in` with a
+    /// minted code.
+    fn code_of_sign_in(opened: &Url) -> String {
+        opened
+            .query_pairs()
+            .find(|(name, _)| name == "code")
+            .map(|(_, code)| code.into_owned())
+            .expect("a minted code")
+    }
+
     /// The `next` of `opened`, the server [`DOMAIN`]'s `/oauth/sign-in` with
     /// a minted code, as written.
     fn next_of_sign_in(opened: &Url) -> String {
@@ -1608,10 +1607,12 @@ mod tests {
         until_signed_out(&authorization_server, &session_token).await;
     }
 
-    /// A view that closes while the server's run is down keeps its code, so
-    /// the server's next last close ends its Owner session.
+    /// A view that closes while the server's run is down drops its code: a
+    /// run's start carries over only the codes of the views open then, so
+    /// the next start ends its Owner session, and the server's next last
+    /// close, through the same run, leaves it to that start.
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_close_while_the_run_is_down_ends_the_session_with_the_next_close() {
+    async fn a_close_while_the_run_is_down_leaves_the_session_to_the_next_start() {
         let authorization_server = test_authorization_server();
         let browser = PhoneBrowser::new(Phone::Android);
         let presence = OpenLaunchViews::running_over(&authorization_server);
@@ -1626,14 +1627,21 @@ mod tests {
         launch_launchable(&authorization_server, browser.clone(), &presence)
             .await
             .unwrap();
+        let second = authorization_server.sign_in(&browser.opened()[1]).await;
+        let carried_over: Vec<String> = presence
+            .launch_view_sign_ins()
+            .kept_at_run_start(DOMAIN)
+            .iter()
+            .map(|sign_in_code| sign_in_code.as_str().to_owned())
+            .collect();
         assert_eq!(
-            kept_sign_ins(&presence),
-            1,
-            "the first view's code is kept apart, for a run's start to end"
+            carried_over,
+            [code_of_sign_in(&browser.opened()[1])],
+            "only the open view's code"
         );
-        assert!(authorization_server.is_signed_in(&first));
         browser.close_top();
-        until_signed_out(&authorization_server, &first).await;
+        until_signed_out(&authorization_server, &second).await;
+        assert!(authorization_server.is_signed_in(&first));
     }
 
     /// A desktop hears no close, so each of its views' sign-ins counts until
