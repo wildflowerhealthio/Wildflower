@@ -13,10 +13,10 @@
 //! shortfall**: what a code issued in that session would not carry in full)
 //! waits on that browser's limited page first, and goes on from there only
 //! when the browser says to ([`CodeAuthorizationStarter::continue_past_session_shortfall`]).
-//! What the session holds is read from its row, not from the browser's
-//! session token. Once a browser session has gone on for a client, its later
+//! What the session holds is read from its row, which a widening the Owner
+//! approved grows. Once a browser session has gone on for a client, its later
 //! requests for that client skip the page, whatever the session then lacks of
-//! them.
+//! them, unless the app asks to show it again (`prompt=consent`).
 
 use std::sync::Arc;
 
@@ -75,7 +75,8 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// The grant the browser's session token (its cookie) carries: what the
     /// browser can do as a bearer on this server's pages, the consent card
     /// among them. What the session bounds a code to is read from its row
-    /// instead.
+    /// instead, which a widening the browser hasn't taken a token for yet
+    /// may have grown.
     pub(crate) session_token_grant: &'a Grant,
     /// Whether that browser session can decide consents. The request can be
     /// decided in that browser when it can and
@@ -100,6 +101,11 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// the parked request and on the code it earns. A browser without one
     /// never gets this far: `/oauth/authorize` sends it to pairing.
     pub(crate) sid: &'a str,
+    /// Whether the app asked (`prompt=consent`) for a session shortfall to
+    /// be shown on the limited page even when this session has gone on past
+    /// it for the client before. It changes nothing for a request the
+    /// session holds all of.
+    pub(crate) reviews_session_shortfall: bool,
 }
 
 /// The identifiers a start may need, minted by the caller (a random UUID and
@@ -267,7 +273,8 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// the fast path and the Owner wait for
     /// [`continue_past_session_shortfall`](Self::continue_past_session_shortfall).
     /// A session that has gone on past the page for this client before goes
-    /// on as if it had again.
+    /// on as if it had again, unless the request
+    /// [reviews the shortfall](AuthorizeRequest::reviews_session_shortfall).
     ///
     /// # Errors
     ///
@@ -405,10 +412,11 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                     !session_shortfall(&requested_scopes, &session_grant).is_empty()
                 });
         let waits_on_limited_page = session_falls_short
-            && !tx.is_session_shortfall_acknowledged_for_client(
-                authorize_query.sid,
-                authorize_query.client_id,
-            )?;
+            && (authorize_query.reviews_session_shortfall
+                || !tx.is_session_shortfall_acknowledged_for_client(
+                    authorize_query.sid,
+                    authorize_query.client_id,
+                )?);
         // Parking for the limited page writes a request and spends its launch,
         // so it asks the start limit as raising one for the Owner does. Continue
         // then raises it without asking again.
