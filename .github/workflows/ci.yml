@@ -13,7 +13,7 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -210,7 +210,7 @@ jobs:
   rust-deny:
     name: Rust Dependency Check
     needs: changes
-    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

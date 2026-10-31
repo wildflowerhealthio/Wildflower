@@ -16,11 +16,10 @@ permissions:
 # (which Vitest projects each test runner gets, for only the areas the PR can
 # affect), and `test`, one runner per shard. The test pass is CPU-bound, so
 # spreading it over many runners is what shortens the run; each pays its own
-# install + `vp run pack` for that. Draft PRs are skipped.
+# install + `vp run pack` for that.
 jobs:
   check:
     name: Lint + Typecheck
-    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -75,7 +74,6 @@ jobs:
   # risk map once for every shard. Rules: scripts/ci/test-shards.ts.
   shards:
     name: Plan test shards
-    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -127,7 +125,7 @@ jobs:
     needs: shards
     # GitHub fails a job whose matrix is empty, so a plan with no shards skips
     # the job instead; a skipped job counts as passing for `Required`.
-    if: github.event.pull_request.draft != true && needs.shards.outputs.shard-count != '0'
+    if: needs.shards.outputs.shard-count != '0'
     runs-on: ubuntu-latest
     strategy:
       # Every shard reports, so one failing area doesn't hide another's.

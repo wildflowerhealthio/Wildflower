@@ -14,11 +14,9 @@ permissions:
 jobs:
   # The release's own build, through the same action, minus the signing:
   # with no keystore.properties Gradle builds the bundle unsigned, so this
-  # job needs none of the `android-play` environment's secrets. Draft PRs
-  # are skipped.
+  # job needs none of the `android-play` environment's secrets.
   bundle:
     name: Build App Bundle
-    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

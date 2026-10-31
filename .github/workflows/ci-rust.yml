@@ -34,10 +34,9 @@ jobs:
   # affect), and `test`, one runner per shard. Every compiling job pays its own
   # GTK/webkit install, toolchain setup and cache restore; in exchange, the
   # lint and the tests no longer queue behind each other, and the tests split
-  # over several runners. Draft PRs are skipped.
+  # over several runners.
   lint:
     name: Lint
-    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -78,7 +77,6 @@ jobs:
   # them all. Rules: scripts/ci/rust-shards.ts.
   shards:
     name: Plan test shards
-    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -117,7 +115,7 @@ jobs:
     needs: shards
     # GitHub fails a job whose matrix is empty, so a plan with no shards skips
     # the job instead; a skipped job counts as passing for `Required`.
-    if: github.event.pull_request.draft != true && needs.shards.outputs.shard-count != '0'
+    if: needs.shards.outputs.shard-count != '0'
     runs-on: ubuntu-latest
     strategy:
       # Every shard reports, so one failing group doesn't hide another's.

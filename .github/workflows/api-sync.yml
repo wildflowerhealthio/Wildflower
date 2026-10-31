@@ -28,7 +28,6 @@ permissions:
 jobs:
   ts-drift:
     name: TS Drift
-    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

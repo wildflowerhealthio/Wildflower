@@ -58,9 +58,10 @@ commits that are no longer the head, which the ruleset doesn't look at.
 
 ## Draft pull requests
 
-The areas' jobs skip draft pull requests, and a skipped job counts as passing.
-A draft can't be merged or put on auto-merge, and marking it ready for review
-re-runs `ci.yml`, so a draft's green `Required` never lets anything merge.
+Draft pull requests run every check, the same as ready ones: a draft only
+marks what isn't ready to read yet, and its author still wants the results.
+Marking a draft ready for review doesn't re-run `ci.yml`; the checks on its
+head commit already stand.
 
 ## Caches
 
