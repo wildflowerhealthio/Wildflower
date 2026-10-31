@@ -182,3 +182,86 @@ impl SessionWideningRequest {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The instant `minutes` after the tests' fixed start.
+    fn at(minutes: i64) -> DateTime<Utc> {
+        DateTime::from_timestamp(1_800_000_000, 0).expect("in range") + Duration::minutes(minutes)
+    }
+
+    /// A widening started at minute 0, pending until minute 5.
+    fn started() -> SessionWideningRequest {
+        SessionWideningRequest::new(
+            NewSessionWideningRequestArgs {
+                id: "widen-1".to_owned(),
+                sid: "sid-1".to_owned(),
+                client_id: "app".to_owned(),
+                browser_name: "Firefox on Linux".to_owned(),
+                requested_scopes: vec!["wildflower/Apps.r".to_owned()],
+                ttl: Duration::minutes(5),
+            },
+            at(0),
+        )
+    }
+
+    /// An approval of `wildflower/Apps.r`.
+    fn approval() -> SessionWideningApproval {
+        SessionWideningApproval {
+            granted_scopes: vec!["wildflower/Apps.r".to_owned()],
+        }
+    }
+
+    /// A pending widening is approved or denied once, and not after it
+    /// expires.
+    #[test]
+    fn a_pending_widening_is_decided_once_until_it_expires() {
+        let approved = started().approve(approval(), at(1)).expect("approves");
+        assert_eq!(approved.state, PolledState::Approved(approval()));
+        assert_eq!(approved.deny(at(1)), Err(NotPending));
+        let denied = started().deny(at(1)).expect("denies");
+        assert_eq!(denied.state, PolledState::Denied);
+        assert_eq!(denied.approve(approval(), at(1)), Err(NotPending));
+        assert_eq!(started().approve(approval(), at(5)), Err(NotPending));
+    }
+
+    /// An approved widening is claimed once, keeping its approval, until
+    /// [`APPROVAL_CLAIM_GRACE`] past its decision deadline; a pending or
+    /// denied one is not claimable.
+    #[test]
+    fn claim_redeems_an_approved_widening_once() {
+        let approved = started().approve(approval(), at(1)).expect("approves");
+        let claimed = approved.claim(at(2)).expect("claims");
+        assert_eq!(claimed.state, PolledState::Claimed(approval()));
+        assert_eq!(claimed.claim(at(2)), Err(NotClaimable));
+        assert_eq!(started().claim(at(2)), Err(NotClaimable));
+        assert_eq!(
+            started().deny(at(1)).expect("denies").claim(at(2)),
+            Err(NotClaimable)
+        );
+        assert_eq!(
+            approved.claim(at(5) + APPROVAL_CLAIM_GRACE),
+            Err(NotClaimable)
+        );
+    }
+
+    /// An approval a second before the decision deadline is still claimed
+    /// after it, within the grace.
+    #[test]
+    fn an_approval_at_the_deadline_is_claimed_after_it() {
+        let approved = started()
+            .approve(approval(), at(5) - Duration::seconds(1))
+            .expect("approves before the deadline");
+        let claimed = approved
+            .claim(at(5) + Duration::seconds(3))
+            .expect("claims within the grace");
+        assert_eq!(claimed.state, PolledState::Claimed(approval()));
+        assert_eq!(started().claimable_until(), at(5) + APPROVAL_CLAIM_GRACE);
+        assert_eq!(
+            started().asking_code_request_expires_at(),
+            at(5) + APPROVAL_CLAIM_GRACE + APPROVAL_CLAIM_GRACE
+        );
+    }
+}

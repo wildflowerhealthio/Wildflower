@@ -182,7 +182,11 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::domain::test_fake::FakeGrantStore;
+    use crate::domain::authorization_request::session_widening::{
+        NewSessionWideningRequestArgs, SessionWideningRequest,
+    };
+    use crate::domain::authorization_request::RequestStatus;
+    use crate::domain::test_fake::{FakeGrantStore, RecordingOwnerApproval};
 
     /// The list holds only the live sessions, not a stale same-device
     /// session, and marks the caller's.
@@ -251,7 +255,8 @@ mod tests {
         let now = Utc::now();
         let session = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         store.tx().insert_browser_session(&session).unwrap();
-        let revoker = BrowserSessionsRevoker::new(store);
+        let revoker =
+            BrowserSessionsRevoker::new(store, Arc::new(RecordingOwnerApproval::default()));
 
         assert_eq!(revoker.revoke(&session.sid, now), Ok(()));
         assert!(revoker
@@ -268,5 +273,73 @@ mod tests {
                 "{sid}"
             );
         }
+    }
+
+    /// Revoking a paired session denies its widening still waiting for the
+    /// Owner, and republishes the Owner prompt; another session's widening
+    /// waits on.
+    #[test]
+    fn revoke_denies_the_session_s_pending_widenings() {
+        let store = FakeGrantStore::default();
+        let now = Utc::now();
+        let widening_of = |id: &str, sid: &str| {
+            SessionWideningRequest::new(
+                NewSessionWideningRequestArgs {
+                    id: id.to_owned(),
+                    sid: sid.to_owned(),
+                    client_id: "app".to_owned(),
+                    browser_name: "Firefox on Linux".to_owned(),
+                    requested_scopes: vec!["patient/Observation.r".to_owned()],
+                    ttl: Duration::minutes(5),
+                },
+                now,
+            )
+        };
+        let revoked = BrowserSession::new_paired_session(
+            "Firefox on Linux".to_owned(),
+            vec![],
+            Duration::hours(24),
+            now,
+        );
+        store.tx().insert_browser_session(&revoked).unwrap();
+        store
+            .tx()
+            .insert_session_widening_request(&widening_of("widen-revoked", &revoked.sid))
+            .unwrap();
+        store
+            .tx()
+            .insert_session_widening_request(&widening_of("widen-other", "other-sid"))
+            .unwrap();
+        let owner_approval = Arc::new(RecordingOwnerApproval::default());
+        let revoker = BrowserSessionsRevoker::new(store, owner_approval.clone());
+
+        assert_eq!(revoker.revoke(&revoked.sid, now), Ok(()));
+        let status_of = |id: &str| {
+            revoker
+                .store
+                .tx()
+                .session_widening_request_by_id(id)
+                .unwrap()
+                .expect("present")
+                .state
+                .status()
+        };
+        assert_eq!(status_of("widen-revoked"), RequestStatus::Denied);
+        assert_eq!(status_of("widen-other"), RequestStatus::Pending);
+        assert_eq!(owner_approval.count(), 1);
+
+        let fresh = BrowserSession::new_paired_session(
+            "Safari on iOS".to_owned(),
+            vec![],
+            Duration::hours(24),
+            now,
+        );
+        revoker.store.tx().insert_browser_session(&fresh).unwrap();
+        assert_eq!(revoker.revoke(&fresh.sid, now), Ok(()));
+        assert_eq!(
+            owner_approval.count(),
+            1,
+            "nothing denied, nothing republished"
+        );
     }
 }

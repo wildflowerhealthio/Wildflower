@@ -117,8 +117,12 @@ mod tests {
             user_code: "WXYZ-BCDF".to_owned(),
             browser_name: "Firefox on Linux".to_owned(),
         });
+        let widening = PendingConsent::from(OwnerPrompt::SessionWidening {
+            id: "widen-1".to_owned(),
+            browser_name: "Firefox on Linux".to_owned(),
+        });
         assert_eq!(
-            serde_json::to_value([device, oauth, browser]).unwrap(),
+            serde_json::to_value([device, oauth, browser, widening]).unwrap(),
             golden()["pendingConsents"]
         );
     }

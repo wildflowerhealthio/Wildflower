@@ -554,6 +554,34 @@ mod tests {
         }
     }
 
+    /// Forgetting a session's acknowledgements takes all of its clients, and
+    /// no other session's.
+    #[test]
+    fn forgetting_a_session_s_acknowledgements_takes_only_that_session_s() {
+        let store = store();
+        for (sid, client_id) in [("sid-1", "app"), ("sid-1", "other-app"), ("sid-2", "app")] {
+            store
+                .write(|tx| tx.record_session_shortfall_acknowledgement(sid, client_id))
+                .expect("record");
+        }
+        store
+            .write(|tx| tx.forget_session_shortfall_acknowledgements("sid-1"))
+            .expect("forget");
+        for (sid, client_id, acknowledged) in [
+            ("sid-1", "app", false),
+            ("sid-1", "other-app", false),
+            ("sid-2", "app", true),
+        ] {
+            assert_eq!(
+                store
+                    .read(|tx| tx.is_session_shortfall_acknowledged_for_client(sid, client_id))
+                    .expect("read"),
+                acknowledged,
+                "{sid} {client_id}"
+            );
+        }
+    }
+
     /// Updating a session's scopes rewrites them alone, and an unknown `sid`
     /// updates nothing.
     #[test]

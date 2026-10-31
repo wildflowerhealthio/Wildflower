@@ -1285,6 +1285,28 @@ mod tests {
         );
     }
 
+    /// A session widening's notification says a remote browser wants more
+    /// access, by its name, under the same per-server id.
+    #[test]
+    fn a_session_widening_s_notification_names_the_remote_browser() {
+        let request = ConsentRequest {
+            domain: RUTH.to_owned(),
+            pending_consent: OwnerPrompt::SessionWidening {
+                id: "widen-1".to_owned(),
+                browser_name: "Firefox on Linux".to_owned(),
+            }
+            .into(),
+        };
+        assert_eq!(
+            request.notification(),
+            LocalNotification {
+                id: format!("consent-request:{RUTH}"),
+                title: "Access request".to_owned(),
+                body: format!("Firefox on Linux, a remote browser, wants more access to {RUTH}"),
+            }
+        );
+    }
+
     #[test]
     fn a_tapped_consent_notification_names_its_server_and_no_other_does() {
         let posted = ConsentRequest {

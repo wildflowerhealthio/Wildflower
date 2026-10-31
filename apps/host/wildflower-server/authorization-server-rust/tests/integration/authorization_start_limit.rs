@@ -21,6 +21,9 @@
 //!
 //! Asking the Owner about a request already parked (`…/ask-owner`) spends from
 //! the same limit, when it raises the request.
+//!
+//! Asking to widen a session from the limited page (`…/ask-to-widen`) spends
+//! from it only when it files a new session widening.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -393,6 +396,82 @@ async fn a_continue_whose_start_was_counted_does_not_ask_the_gate_again() {
     let location = continue_past_session_shortfall(&g.router, &session_token, &request_id).await;
     assert_eq!(location, format!("/oauth/authorize/{request_id}/wait"));
     assert_eq!(gate.asked(), 1);
+}
+
+/// Asking to widen a session from the limited page asks the gate when it
+/// files a widening; asking again while that widening waits for the Owner
+/// answers it without asking again.
+#[tokio::test]
+async fn an_ask_to_widen_asks_the_gate_only_when_it_files_a_widening() {
+    let gate = Arc::new(CountingGate {
+        admitted: 2,
+        asked: AtomicUsize::new(0),
+    });
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+    let (_, session_token) = paired_browser_session_holding(&db, &["wildflower/launch"]);
+    let cookie = browser_session_cookie(&session_token);
+    let request_id = limited_request_id(
+        &get_authorize(
+            &g.router,
+            &session_token,
+            &authorize_query("test-app", REQUESTED_SCOPES),
+        )
+        .await,
+    );
+    assert_eq!(gate.asked(), 1, "parking for the limited page");
+    let ask_path = format!("/oauth/authorize/{request_id}/ask-to-widen");
+
+    let first = send(&g, Method::POST, &ask_path, Some(&cookie)).await;
+    assert_eq!(first.status(), StatusCode::OK);
+    assert_eq!(gate.asked(), 2);
+    let widening_id = body_json(first.into_body()).await["wideningId"].clone();
+    let again = send(&g, Method::POST, &ask_path, Some(&cookie)).await;
+    assert_eq!(again.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(again.into_body()).await["wideningId"],
+        widening_id
+    );
+    assert_eq!(gate.asked(), 2, "asking again spends nothing");
+}
+
+/// A new widening the gate refuses is `429`, and nothing is filed: asking
+/// again asks the gate again.
+#[tokio::test]
+async fn a_refused_ask_to_widen_is_429() {
+    let gate = Arc::new(CountingGate {
+        admitted: 1,
+        asked: AtomicUsize::new(0),
+    });
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+    let (_, session_token) = paired_browser_session_holding(&db, &["wildflower/launch"]);
+    let cookie = browser_session_cookie(&session_token);
+    let request_id = limited_request_id(
+        &get_authorize(
+            &g.router,
+            &session_token,
+            &authorize_query("test-app", REQUESTED_SCOPES),
+        )
+        .await,
+    );
+    let ask_path = format!("/oauth/authorize/{request_id}/ask-to-widen");
+    for asked in [2, 3] {
+        let res = send(&g, Method::POST, &ask_path, Some(&cookie)).await;
+        assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(gate.asked(), asked);
+    }
+    assert_eq!(owner_prompt(&db), None);
 }
 
 /// Every device request is raised for the Owner, so even a browser signed in

@@ -711,6 +711,28 @@ mod tests {
         );
     }
 
+    /// A widening prompt grants only what the browser asked for, within the
+    /// Owner's scopes: unticking is all its approver can do.
+    #[test]
+    fn a_widening_prompt_grants_only_what_was_asked() {
+        let approvable = ApprovableScopes::for_session_widening(&owned_scopes(&[
+            "wildflower/Apps.r",
+            "system/Patient.rs",
+        ]));
+        assert_eq!(
+            approvable.grantable_subset(owned_scopes(&[
+                "wildflower/Apps.r",
+                "system/Observation.rs",
+                "wildflower/launch",
+            ])),
+            ["wildflower/Apps.r"],
+        );
+        assert_eq!(
+            approvable.missing_approval_scopes(&Grant::parse(Vec::<&str>::new())),
+            ["wildflower/AuthorizationRequest.u"],
+        );
+    }
+
     /// The approval scopes follow the flow: deciding always, creating the
     /// grant for a code or device approval, and both client scopes for a code
     /// approval that writes a registration trusted on first use, however the

@@ -299,6 +299,39 @@ mod tests {
         assert!(store.is_revoked_by_jti("jti-1").expect("query"));
     }
 
+    /// A revocation from a later instant leaves the token working until then;
+    /// one taking effect now overrides it.
+    #[test]
+    fn a_later_revocation_takes_effect_from_its_instant() {
+        let store = store();
+        let exp = Utc::now() + Duration::hours(1);
+        store
+            .revoke_jti_from(
+                "jti-1",
+                Utc::now() + Duration::minutes(1),
+                exp,
+                "superseded",
+            )
+            .expect("revoke later");
+        assert!(!store.is_revoked_by_jti("jti-1").expect("query"));
+        assert!(!store
+            .is_revoked(Some("jti-1"), Some(Utc::now()), "client")
+            .expect("query"));
+        store
+            .revoke_jti_from(
+                "jti-2",
+                Utc::now() - Duration::seconds(1),
+                exp,
+                "superseded",
+            )
+            .expect("revoke past");
+        assert!(store.is_revoked_by_jti("jti-2").expect("query"));
+        store
+            .revoke_jti("jti-1", exp, "logout")
+            .expect("revoke now");
+        assert!(store.is_revoked_by_jti("jti-1").expect("query"));
+    }
+
     #[test]
     fn epoch_revokes_tokens_issued_before_not_before() {
         let store = store();

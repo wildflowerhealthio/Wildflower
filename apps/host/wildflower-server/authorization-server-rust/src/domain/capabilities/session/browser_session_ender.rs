@@ -95,7 +95,10 @@ mod tests {
         let other = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         store.tx().insert_browser_session(&signed_out).unwrap();
         store.tx().insert_browser_session(&other).unwrap();
-        let ender = BrowserSessionEnder::new(store);
+        let ender = BrowserSessionEnder::new(
+            store,
+            Arc::new(crate::domain::test_fake::RecordingOwnerApproval::default()),
+        );
 
         ender.end(&claims(Some(&signed_out.sid)), now).unwrap();
         ender.end(&claims(None), now).unwrap();

@@ -446,6 +446,35 @@ mod tests {
         );
     }
 
+    /// Extending the limited page's wait keeps the request there until the
+    /// later of its expiry and the new one, only while it waits there.
+    #[test]
+    fn extend_limited_page_wait_keeps_the_request_waiting_longer() {
+        let waiting = started(true);
+        let extended = waiting
+            .extend_limited_page_wait_until(at(8), at(3))
+            .expect("extends");
+        assert_eq!(
+            extended,
+            CodeRequest {
+                expires_at: at(8),
+                ..waiting.clone()
+            }
+        );
+        assert_eq!(
+            waiting.extend_limited_page_wait_until(at(4), at(3)),
+            Ok(waiting.clone())
+        );
+        assert_eq!(
+            started(false).extend_limited_page_wait_until(at(6), at(1)),
+            Err(NotAwaitingLimitedPage)
+        );
+        assert_eq!(
+            waiting.extend_limited_page_wait_until(at(10), at(5)),
+            Err(NotAwaitingLimitedPage)
+        );
+    }
+
     /// Denying on the limited page applies only while the request waits
     /// there.
     #[test]

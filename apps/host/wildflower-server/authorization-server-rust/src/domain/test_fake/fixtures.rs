@@ -21,6 +21,7 @@ use crate::domain::authorization_request::pairing::{
     NewPairingRequestArgs, PairingApproval, PairingRequest,
 };
 use crate::domain::authorization_request::polled::Polled as _;
+use crate::domain::authorization_request::session_widening::SessionWideningApproval;
 use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
 use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
@@ -195,6 +196,13 @@ pub(crate) fn approve_stored(
                 .approve(approval, requester_name, now)
                 .expect("pending");
             tx.replace_pairing_request(&read, &approved)
+        }
+        AuthorizationRequest::SessionWidening(read) => {
+            let approval = SessionWideningApproval {
+                granted_scopes: approval.granted_scopes,
+            };
+            let approved = read.approve(approval, now).expect("pending");
+            tx.replace_session_widening_request(&read, &approved)
         }
     };
     assert!(landed.unwrap());

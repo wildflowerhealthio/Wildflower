@@ -71,3 +71,123 @@ impl ClaimedSessionWidening {
         &self.session
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::Duration;
+
+    use super::*;
+    use crate::domain::authorization_request::session_widening::NewSessionWideningRequestArgs;
+    use crate::domain::authorization_request::RequestStatus;
+    use crate::domain::test_fake::{approve_stored, FakeGrantStore};
+
+    /// A paired session `sid-1` holding `wildflower/launch` and
+    /// `wildflower/Apps.r`, as an approved widening leaves it, and a widening
+    /// `widen-1` of it, stored pending.
+    fn widened_session_and_widening(store: &FakeGrantStore) -> SessionWideningRequest {
+        store
+            .tx()
+            .insert_browser_session(&BrowserSession {
+                sid: "sid-1".to_owned(),
+                ..BrowserSession::new_paired_session(
+                    "Firefox on Linux".to_owned(),
+                    vec![
+                        "wildflower/launch".to_owned(),
+                        "wildflower/Apps.r".to_owned(),
+                    ],
+                    Duration::hours(24),
+                    Utc::now(),
+                )
+            })
+            .unwrap();
+        let widening = SessionWideningRequest::new(
+            NewSessionWideningRequestArgs {
+                id: "widen-1".to_owned(),
+                sid: "sid-1".to_owned(),
+                client_id: "app".to_owned(),
+                browser_name: "Firefox on Linux".to_owned(),
+                requested_scopes: vec!["wildflower/Apps.r".to_owned()],
+                ttl: Duration::minutes(5),
+            },
+            Utc::now(),
+        );
+        store
+            .tx()
+            .insert_session_widening_request(&widening)
+            .unwrap();
+        widening
+    }
+
+    /// The widening `widen-1` as the store holds it now.
+    fn stored(store: &FakeGrantStore) -> SessionWideningRequest {
+        store
+            .tx()
+            .session_widening_request_by_id("widen-1")
+            .unwrap()
+            .expect("stored")
+    }
+
+    /// An approved widening is claimed once, and the proof carries the
+    /// session as its row stands; a pending one isn't claimable.
+    #[test]
+    fn an_approved_widening_is_claimed_once_for_the_session_as_it_stands() {
+        let store = FakeGrantStore::default();
+        let pending = widened_session_and_widening(&store);
+        assert!(ClaimedSessionWidening::claim(
+            &mut store.tx(),
+            &pending,
+            &StaleSessionCutoff::none(),
+            Utc::now(),
+        )
+        .unwrap()
+        .is_none());
+        approve_stored(&store, "widen-1", &["wildflower/Apps.r"], None);
+        let approved = stored(&store);
+        let claimed = ClaimedSessionWidening::claim(
+            &mut store.tx(),
+            &approved,
+            &StaleSessionCutoff::none(),
+            Utc::now(),
+        )
+        .unwrap()
+        .expect("claims");
+        assert_eq!(claimed.session().sid, "sid-1");
+        assert_eq!(
+            claimed.token_scopes(),
+            ["wildflower/launch", "wildflower/Apps.r"]
+        );
+        assert_eq!(claimed.client_id(), BROWSER_SESSION_CLIENT_ID);
+        assert_eq!(stored(&store).state.status(), RequestStatus::Claimed);
+        assert!(ClaimedSessionWidening::claim(
+            &mut store.tx(),
+            &approved,
+            &StaleSessionCutoff::none(),
+            Utc::now(),
+        )
+        .unwrap()
+        .is_none());
+    }
+
+    /// A widening whose session has ended since is not claimed, and stays
+    /// approved.
+    #[test]
+    fn a_widening_of_an_ended_session_is_not_claimed() {
+        let store = FakeGrantStore::default();
+        widened_session_and_widening(&store);
+        approve_stored(&store, "widen-1", &["wildflower/Apps.r"], None);
+        store
+            .tx()
+            .revoke_browser_session("sid-1", Utc::now())
+            .unwrap();
+        let approved = stored(&store);
+        assert!(ClaimedSessionWidening::claim(
+            &mut store.tx(),
+            &approved,
+            &StaleSessionCutoff::none(),
+            Utc::now(),
+        )
+        .unwrap()
+        .is_none());
+        assert_eq!(stored(&store).state.status(), RequestStatus::Approved);
+    }
+}

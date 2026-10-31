@@ -589,6 +589,9 @@ mod tests {
     use crate::domain::authorization_request::device::NewDeviceRequestArgs;
     use crate::domain::authorization_request::pairing::{NewPairingRequestArgs, PairingApproval};
     use crate::domain::authorization_request::polled::PolledState;
+    use crate::domain::authorization_request::session_widening::{
+        NewSessionWideningRequestArgs, SessionWideningApproval,
+    };
     use crate::domain::client::Client;
     use crate::domain::grant_store::*;
     use crate::domain::test_fake::{
@@ -722,12 +725,40 @@ mod tests {
         }
     }
 
-    /// A request of any of the three flows.
+    prop_compose! {
+        /// A session widening in any polled state.
+        fn arb_session_widening_request()(
+            id in "[a-zA-Z0-9_-]{1,40}",
+            sid in "[a-z0-9-]{1,16}",
+            client_id in "[a-zA-Z0-9_-]{1,32}",
+            browser_name in "[ -~]{1,40}",
+            requested_scopes in arb_scopes(),
+            requested_at in arb_timestamp(),
+            expires_at in arb_timestamp(),
+            state in arb_polled_state(
+                || arb_scopes().prop_map(|granted_scopes| SessionWideningApproval { granted_scopes })
+            ),
+        ) -> SessionWideningRequest {
+            SessionWideningRequest {
+                id,
+                sid,
+                client_id,
+                browser_name,
+                requested_scopes,
+                requested_at,
+                expires_at,
+                state,
+            }
+        }
+    }
+
+    /// A request of any of the four flows.
     fn arb_authorization_request() -> impl Strategy<Value = AuthorizationRequest> {
         prop_oneof![
             arb_code_request().prop_map(AuthorizationRequest::Code),
             arb_device_request().prop_map(AuthorizationRequest::Device),
             arb_pairing_request().prop_map(AuthorizationRequest::Pairing),
+            arb_session_widening_request().prop_map(AuthorizationRequest::SessionWidening),
         ]
     }
 
@@ -743,6 +774,9 @@ mod tests {
             }
             AuthorizationRequest::Pairing(pairing_request) => {
                 tx.insert_pairing_request(pairing_request)
+            }
+            AuthorizationRequest::SessionWidening(widening_request) => {
+                tx.insert_session_widening_request(widening_request)
             }
         }
     }
@@ -1254,6 +1288,91 @@ mod tests {
                 user_code: "UC-2".to_owned(),
                 browser_name: "Firefox on Linux".to_owned(),
             })
+        );
+        let widening = SessionWideningRequest::new(
+            NewSessionWideningRequestArgs {
+                id: "widen-1".to_owned(),
+                sid: "sid-1".to_owned(),
+                client_id: "app".to_owned(),
+                browser_name: "Safari on iOS".to_owned(),
+                requested_scopes: vec!["wildflower/Apps.r".to_owned()],
+                ttl: Duration::minutes(5),
+            },
+            now + Duration::seconds(2),
+        );
+        store
+            .write(|tx| tx.insert_session_widening_request(&widening))
+            .expect("insert");
+        assert_eq!(
+            newest(&store),
+            Some(OwnerPrompt::SessionWidening {
+                id: "widen-1".to_owned(),
+                browser_name: "Safari on iOS".to_owned(),
+            })
+        );
+        assert!(store
+            .read(|tx| tx.is_awaiting_owner(
+                &ConsentKey::SessionWidening {
+                    id: "widen-1".to_owned()
+                },
+                Utc::now()
+            ))
+            .expect("query"));
+        let denied = widening.deny(Utc::now()).expect("denies");
+        assert!(store
+            .write(|tx| tx.replace_session_widening_request(&widening, &denied))
+            .expect("replace"));
+        assert!(!store
+            .read(|tx| tx.is_awaiting_owner(
+                &ConsentKey::SessionWidening {
+                    id: "widen-1".to_owned()
+                },
+                Utc::now()
+            ))
+            .expect("query"));
+        assert!(!store
+            .write(|tx| tx.replace_session_widening_request(&widening, &denied))
+            .expect("replace"));
+    }
+
+    /// A session's widenings still waiting for the Owner are listed newest
+    /// first; a decided one, an expired one and another session's are not.
+    #[test]
+    fn pending_session_widenings_are_the_session_s_undecided_unexpired_ones() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        let now = Utc::now();
+        let widening = |id: &str, sid: &str, asked_at: DateTime<Utc>| {
+            SessionWideningRequest::new(
+                NewSessionWideningRequestArgs {
+                    id: id.to_owned(),
+                    sid: sid.to_owned(),
+                    client_id: "app".to_owned(),
+                    browser_name: "Firefox on Linux".to_owned(),
+                    requested_scopes: vec!["wildflower/Apps.r".to_owned()],
+                    ttl: Duration::minutes(5),
+                },
+                asked_at,
+            )
+        };
+        let older = widening("older", "sid-1", now - Duration::minutes(2));
+        let newer = widening("newer", "sid-1", now - Duration::minutes(1));
+        let denied = widening("denied", "sid-1", now);
+        let expired = widening("expired", "sid-1", now - Duration::minutes(6));
+        let other = widening("other", "sid-2", now);
+        for request in [&older, &newer, &denied, &expired, &other] {
+            store
+                .write(|tx| tx.insert_session_widening_request(request))
+                .expect("insert");
+        }
+        let denial = denied.deny(now).expect("denies");
+        assert!(store
+            .write(|tx| tx.replace_session_widening_request(&denied, &denial))
+            .expect("replace"));
+        assert_eq!(
+            store
+                .read(|tx| tx.pending_session_widening_requests_for_session("sid-1", now))
+                .expect("query"),
+            [newer, older]
         );
     }
 

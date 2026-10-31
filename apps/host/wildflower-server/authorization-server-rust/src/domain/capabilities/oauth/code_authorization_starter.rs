@@ -878,6 +878,7 @@ mod tests {
             can_decide_consents: false,
             may_raise_for_owner: &|| true,
             sid: REQUESTING_SID,
+            reviews_session_shortfall: false,
         }
     }
 
@@ -2093,6 +2094,48 @@ mod tests {
             matches!(outcome, AuthorizeNextStep::RedirectToClient { .. }),
             "{outcome:?}"
         );
+    }
+
+    /// A request that reviews the shortfall (`prompt=consent`) stops at the
+    /// limited page although the session went on past it for the client
+    /// before; one the session holds all of goes on as usual.
+    #[test]
+    fn reviewing_the_shortfall_shows_the_limited_page_after_a_continue() {
+        let (code_authorization_starter, _) = starter(covered_app_store());
+        park_for_the_limited_page(&code_authorization_starter);
+        code_authorization_starter
+            .continue_past_session_shortfall(
+                "req-1",
+                REQUESTING_SID,
+                "the-code".to_owned(),
+                Utc::now(),
+            )
+            .expect("continues");
+        let start = |request_id: &str, scope: &str| {
+            code_authorization_starter
+                .start(
+                    &AuthorizeRequest {
+                        reviews_session_shortfall: true,
+                        ..request("app", scope)
+                    },
+                    FreshIds {
+                        request_id: request_id.to_owned(),
+                        code: format!("{request_id}-code"),
+                    },
+                    Utc::now(),
+                )
+                .expect("starts")
+        };
+        assert_eq!(
+            start("req-2", COVERED_SCOPES),
+            AuthorizeNextStep::ConfirmSessionShortfall {
+                request_id: "req-2".to_owned()
+            }
+        );
+        assert!(matches!(
+            start("req-3", "patient/Patient.r openid"),
+            AuthorizeNextStep::RedirectToClient { .. }
+        ));
     }
 
     /// A client disabled since the request parked ends it at Continue: the

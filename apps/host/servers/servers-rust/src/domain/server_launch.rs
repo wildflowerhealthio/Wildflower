@@ -398,6 +398,21 @@ mod tests {
         assert_eq!(next_of(&url), "/oauth/device?user_code=WXYZ-BCDF&then=back");
     }
 
+    #[test]
+    fn a_session_widening_s_consent_opens_at_its_card_then_goes_back() {
+        let url = consent_sign_in_url(
+            &ruth_origin(),
+            "code-1",
+            &ConsentKey::SessionWidening {
+                id: "widen/1".to_owned(),
+            },
+        );
+        assert_eq!(
+            next_of(&url),
+            "/oauth/session-widenings/widen%2F1/consent?then=back"
+        );
+    }
+
     /// The status of [`RUTH`] whose `unit_status` is given, with its run's
     /// certificate, or, without one, a cache's valid one.
     fn status_of(unit_status: UnitStatus<ServerDetail>) -> ServerStatus {

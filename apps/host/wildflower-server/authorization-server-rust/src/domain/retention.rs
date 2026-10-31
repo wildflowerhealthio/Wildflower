@@ -116,6 +116,9 @@ mod tests {
     use super::*;
     use crate::domain::authorization_code::AuthorizationCode;
     use crate::domain::authorization_request::device::{DeviceRequest, NewDeviceRequestArgs};
+    use crate::domain::authorization_request::session_widening::{
+        NewSessionWideningRequestArgs, SessionWideningRequest,
+    };
     use crate::domain::authorization_request::RequestStatus;
     use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
     use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
@@ -255,6 +258,28 @@ mod tests {
             .tx()
             .insert_device_request(&request("recent", now() - Duration::days(6)))
             .expect("seed recent request");
+        for (id, expires_at) in [
+            ("old-widening", now() - Duration::days(8)),
+            ("recent-widening", now() - Duration::days(6)),
+        ] {
+            store
+                .tx()
+                .insert_session_widening_request(&SessionWideningRequest {
+                    expires_at,
+                    ..SessionWideningRequest::new(
+                        NewSessionWideningRequestArgs {
+                            id: id.to_owned(),
+                            sid: "old".to_owned(),
+                            client_id: "client-1".to_owned(),
+                            browser_name: "Firefox on Linux".to_owned(),
+                            requested_scopes: vec!["read".to_owned()],
+                            ttl: Duration::minutes(5),
+                        },
+                        expires_at - Duration::minutes(5),
+                    )
+                })
+                .expect("seed session widening");
+        }
         store
             .tx()
             .insert_device_request(&request("live", now() + Duration::minutes(5)))
@@ -304,6 +329,7 @@ mod tests {
                 refresh_token_families: 1,
                 code_authorization_requests: 1,
                 user_code_requests: 1,
+                session_widening_requests: 1,
                 authorization_codes: 1,
                 browser_sessions: 1,
             },

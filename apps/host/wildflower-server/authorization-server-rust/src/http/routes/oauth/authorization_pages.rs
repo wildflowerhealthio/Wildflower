@@ -245,7 +245,7 @@ mod tests {
 
     use super::*;
 
-    /// A build as Vite lays it out: the four pages, and hashed files under
+    /// A build as Vite lays it out: the five pages, and hashed files under
     /// `assets/`, among them a `.woff` and an `.svg` the routes must refuse.
     static PAGES: Dir<'static> = Dir::new(
         "",
@@ -257,6 +257,10 @@ mod tests {
             DirEntry::File(File::new(
                 "limited.html",
                 b"<!doctype html><title>Limited access</title>",
+            )),
+            DirEntry::File(File::new(
+                "widening.html",
+                b"<!doctype html><title>Widen access</title>",
             )),
             DirEntry::File(File::new(
                 "device.html",
@@ -384,6 +388,30 @@ mod tests {
             assert_eq!(
                 body(response).await,
                 b"<!doctype html><title>Limited access</title>",
+                "{uri}"
+            );
+        }
+    }
+
+    /// A session widening's card is the same locked-down, `no-store` page
+    /// whatever the id.
+    #[tokio::test]
+    async fn the_widening_card_is_the_same_uncached_page_for_every_widening() {
+        for uri in [
+            "/session-widenings/widen-1/consent",
+            "/session-widenings/%3Cscript%3E/consent",
+        ] {
+            let response = get(uri).await;
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+            assert_locked_down(&response, uri);
+            assert_eq!(
+                header_of(&response, header::CACHE_CONTROL),
+                "no-store",
+                "{uri}"
+            );
+            assert_eq!(
+                body(response).await,
+                b"<!doctype html><title>Widen access</title>",
                 "{uri}"
             );
         }
@@ -561,6 +589,7 @@ mod tests {
             "/device.html",
             "/pair.html",
             "/limited.html",
+            "/widening.html",
             "/device/WDJB-MJHT",
             "/authorize/req-1/consent.html",
         ] {
@@ -570,11 +599,15 @@ mod tests {
     }
 
     /// Whatever was built (or stubbed) into this binary has a consent page, a
-    /// limited page, a device page and a pairing page to serve.
+    /// limited page, a widening's card, a device page and a pairing page to
+    /// serve.
     #[test]
-    fn the_embedded_build_has_the_consent_limited_device_and_pairing_pages() {
+    fn the_embedded_build_has_every_page() {
         assert!(AUTHORIZATION_PAGES.get_file(CONSENT_PAGE).is_some());
         assert!(AUTHORIZATION_PAGES.get_file(LIMITED_PAGE).is_some());
+        assert!(AUTHORIZATION_PAGES
+            .get_file(SESSION_WIDENING_PAGE)
+            .is_some());
         assert!(AUTHORIZATION_PAGES.get_file(DEVICE_PAGE).is_some());
         assert!(AUTHORIZATION_PAGES.get_file(PAIR_PAGE).is_some());
     }
