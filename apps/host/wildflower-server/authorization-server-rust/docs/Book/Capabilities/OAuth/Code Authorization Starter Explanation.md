@@ -52,7 +52,7 @@ The route turns each into a location ({{#code-link apps/host/wildflower-server/a
 
 #### `start_in`
 
-**The order inside the scope is the point.** Every check that can refuse the request runs first; the launch is consumed after them, so a refused request leaves its launch unspent; the request is parked last. The consume is [`consume_launch`](<Launch Contexts Explanation.md#item-consume_launch>), which [Launch Contexts](<Launch Contexts Explanation.md>) explains with its refusals. The session's shortfall is {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/authority/delegated_scopes.rs session_shortfall}}, and the standing grant's coverage is {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/authority/standing_grant.rs GrantCoverage::resolve}}.
+**The order inside the scope is the point.** Every check that can refuse the request runs first; the launch is consumed after them, so a refused request leaves its launch unspent; the request is parked last. The consume is [`consume_launch`](<Launch Contexts Explanation.md#item-consume_launch>), which [Launch Contexts](<Launch Contexts Explanation.md>) explains with its refusals. The session's shortfall is {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/authority/delegated_scopes.rs session_shortfall}}, against what the session's row holds ([`browser_session_grant`](<Session Shortfall Explanation.md#item-browser_session_grant>)), and the standing grant's coverage is {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/authority/standing_grant.rs GrantCoverage::resolve}}.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs CodeAuthorizationStarter::start_in}}
 
@@ -60,7 +60,7 @@ The route turns each into a location ({{#code-link apps/host/wildflower-server/a
 
 The request is loaded by [`load_code_request_awaiting_limited_page`](<Session Shortfall Explanation.md#item-load_code_request_awaiting_limited_page>), and goes on through its own [`acknowledge_session_shortfall`](<../../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--acknowledge_session_shortfall>) transition, written through the [guarded replace](<../../Domain/Authorization Request Explanation.md#transitions-and-the-guarded-replace>), so a Cancel that landed first wins.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs CodeAuthorizationStarter::continue_past_session_shortfall tests="tests::continuing_past_the_shortfall_takes_the_fast_path tests::continuing_without_a_standing_grant_raises_for_the_owner tests::a_session_gone_on_for_a_client_skips_the_limited_page_for_it tests::only_the_requesting_session_continues_a_request_still_waiting tests::continuing_without_a_signing_key_refuses_before_acknowledging"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs CodeAuthorizationStarter::continue_past_session_shortfall tests="tests::continuing_past_the_shortfall_takes_the_fast_path tests::continuing_without_a_standing_grant_raises_for_the_owner tests::a_session_gone_on_for_a_client_skips_the_limited_page_for_it tests::a_session_s_row_and_not_its_token_decides_the_limited_page tests::only_the_requesting_session_continues_a_request_still_waiting tests::continuing_without_a_signing_key_refuses_before_acknowledging"}}
 
 #### `continue_in`
 

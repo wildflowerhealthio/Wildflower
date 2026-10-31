@@ -170,9 +170,9 @@ The two posts carry no body, so another page could send them as a simple request
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/session_shortfall.rs SessionShortfallNextBody}}
 
-### `requesting_browser_session`
+### `requesting_sid`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/session_shortfall.rs requesting_browser_session}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/session_shortfall.rs requesting_sid}}
 
 ### `next_location`
 

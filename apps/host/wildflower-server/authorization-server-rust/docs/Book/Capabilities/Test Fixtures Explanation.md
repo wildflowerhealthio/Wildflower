@@ -70,9 +70,11 @@ The tests name the two essential apps by the crate's own ids.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs tests::ids}}
 
-`starter` stores the requesting session as a paired session holding only `wildflower/launch`. The request's `browser_session_grant` is what the starter checks for a shortfall; the stored session is what the approval bounds the code by. The two differ on purpose, so a test can see a code narrowed to the stored session.
+`starter` stores the requesting session as a paired session holding all the Owner holds, so it falls short of nothing until a test narrows it with `narrow_requesting_session`. The stored session is what the starter checks for a shortfall and what the approval bounds the code by; the request's `session_token_grant` only decides whether the browser can decide the request on the consent card.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs tests::starter}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs tests::narrow_requesting_session}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs tests::registered_app_starter}}
 
@@ -118,7 +120,7 @@ The requests polled are the fake store's code and device requests.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/session_shortfall.rs tests::status_of}}
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/session_shortfall.rs tests::browser_session}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/session_shortfall.rs tests::seed_session}}
 
 ## Device Authorizer
 

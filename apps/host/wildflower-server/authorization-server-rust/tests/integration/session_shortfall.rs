@@ -382,17 +382,20 @@ async fn without_a_standing_grant_continue_raises_the_request_for_the_owner() {
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();
-    let deciding_without_launch = mint_browser_session_token(
+    let deciding_without_launch_scopes = [
+        "wildflower/AuthorizationRequest.r",
+        "wildflower/AuthorizationRequest.u",
+        "wildflower/Grant.c",
+        "wildflower/Client.c",
+        "wildflower/Client.u",
+        "system/*.cruds",
+    ];
+    let deciding_without_launch =
+        mint_browser_session_token(&db, &owner_sid, &deciding_without_launch_scopes);
+    narrow_browser_session_of(
         &db,
-        &owner_sid,
-        &[
-            "wildflower/AuthorizationRequest.r",
-            "wildflower/AuthorizationRequest.u",
-            "wildflower/Grant.c",
-            "wildflower/Client.c",
-            "wildflower/Client.u",
-            "system/*.cruds",
-        ],
+        &deciding_without_launch,
+        &deciding_without_launch_scopes,
     );
 
     let request_id = limited_request_id(

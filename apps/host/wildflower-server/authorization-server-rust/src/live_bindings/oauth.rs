@@ -62,12 +62,12 @@ impl FromState for LiveSameDeviceSignIn {
 
 /// Read and cancel a request waiting on its browser's limited page — built by
 /// the `/oauth/authorize/{id}/session-shortfall` and `/cancel` handlers. Takes
-/// nothing beside the store.
+/// the stale-session cutoff beside the store.
 pub(crate) type LiveSessionShortfall = SessionShortfall<SqliteGrantStore>;
 
 impl FromState for LiveSessionShortfall {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        SessionShortfall::new(state.store.clone())
+        SessionShortfall::new(state.store.clone(), state.stale_session_cutoff.clone())
     }
 }
 

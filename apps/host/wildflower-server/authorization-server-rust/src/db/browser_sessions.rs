@@ -10,7 +10,7 @@ use diesel::prelude::*;
 
 use crate::db::grant_store::SqliteGrantTx;
 use crate::db::refresh_tokens::refresh_token_families;
-use crate::db::shared::text_enum_column;
+use crate::db::shared::{text_enum_column, JsonStrings};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
 use crate::domain::grant_store::BrowserSessionsTx;
@@ -173,6 +173,23 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
         .map_err(|e| {
             AuthorizationServerError::infrastructure("touch_browser_session_last_seen failed", e)
         })?;
+        Ok(affected == 1)
+    }
+
+    /// Write `scopes` as the browser session `sid`'s grant, returning `true`
+    /// iff a session has that `sid`.
+    fn update_browser_session_scopes(
+        &mut self,
+        sid: &str,
+        scopes: &[String],
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let affected = diesel::update(browser_sessions::table.find(sid))
+            .set(browser_sessions::scopes.eq(JsonStrings(scopes.to_vec())))
+            .execute(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("update_browser_session_scopes failed", e)
+            })?;
         Ok(affected == 1)
     }
 
@@ -514,6 +531,38 @@ mod tests {
                 "{sid} {client_id}"
             );
         }
+    }
+
+    /// Updating a session's scopes rewrites them alone, and an unknown `sid`
+    /// updates nothing.
+    #[test]
+    fn updating_a_session_s_scopes_keeps_the_rest_of_it() {
+        let store = store();
+        let session = BrowserSession::new_paired_session(
+            "Firefox on Linux".to_owned(),
+            vec!["wildflower/launch".to_owned()],
+            Duration::hours(24),
+            chrono::Utc::now(),
+        );
+        store
+            .write(|tx| tx.insert_browser_session(&session))
+            .expect("insert");
+        let narrowed_scopes = vec!["wildflower/Apps.r".to_owned()];
+        assert!(store
+            .write(|tx| tx.update_browser_session_scopes(&session.sid, &narrowed_scopes))
+            .expect("update"));
+        assert_eq!(
+            store
+                .read(|tx| tx.browser_session_by_sid(&session.sid))
+                .expect("read"),
+            Some(BrowserSession {
+                scopes: narrowed_scopes.clone(),
+                ..session
+            })
+        );
+        assert!(!store
+            .write(|tx| tx.update_browser_session_scopes("no-such-sid", &narrowed_scopes))
+            .expect("update"));
     }
 
     /// The prune takes a session that expired or was revoked before the

@@ -21,17 +21,13 @@ use axum::Json;
 use chrono::Utc;
 use serde::Serialize;
 use utoipa::ToSchema;
-use wildflowerhealthio_scope_capabilities::GrantedScopes as _;
 
 use super::authorize::{next_step_location, AuthorizeError};
 use super::openapi::AuthorizationRequestNotFound;
 use super::OAUTH_MOUNT;
 use crate::crypto_util::random_token::generate_authorization_code;
-use crate::domain::access_token::VerifiedClaims;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::capabilities::oauth::{
-    AuthorizationStartError, PollingBrowserSession, SessionShortfallView,
-};
+use crate::domain::capabilities::oauth::{AuthorizationStartError, SessionShortfallView};
 use crate::http::browser_session_cookie::carried_browser_session;
 use crate::http::extractors::Live;
 use crate::http::wire_representations::CacheSuppressed;
@@ -66,14 +62,14 @@ pub(super) struct SessionShortfallNextBody {
     location: String,
 }
 
-/// The browser session `headers` carry, and its `sid`, as the limited page's
+/// The `sid` of the browser session `headers` carry, as the limited page's
 /// calls are answered in it; the `404` an unknown request `id` gets when they
 /// carry none.
-fn requesting_browser_session(
+fn requesting_sid(
     token_verifier: &LiveTokenVerifier,
     headers: &HeaderMap,
     id: &str,
-) -> Result<(VerifiedClaims, String), AuthorizationServerError> {
+) -> Result<String, AuthorizationServerError> {
     let not_found = || AuthorizationServerError::AuthorizationRequestNotFound { id: id.to_owned() };
     let claims = carried_browser_session(token_verifier, headers)
         .map_err(|error| {
@@ -83,8 +79,7 @@ fn requesting_browser_session(
             )
         })?
         .ok_or_else(not_found)?;
-    let sid = claims.sid.clone().ok_or_else(not_found)?;
-    Ok((claims, sid))
+    claims.sid.ok_or_else(not_found)
 }
 
 /// `location`, as the limited page's next stop, uncached.
@@ -109,12 +104,8 @@ pub(super) async fn handle_session_shortfall_read(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, AuthorizationServerError> {
-    let (claims, sid) = requesting_browser_session(&token_verifier, &headers, &id)?;
-    let browser_session = PollingBrowserSession {
-        sid,
-        grant: claims.granted(),
-    };
-    let view = session_shortfall.read(&id, &browser_session, Utc::now())?;
+    let sid = requesting_sid(&token_verifier, &headers, &id)?;
+    let view = session_shortfall.read(&id, &sid, Utc::now())?;
     Ok(CacheSuppressed(Json(SessionShortfallBody::from(view))).into_response())
 }
 
@@ -144,7 +135,7 @@ pub(super) async fn handle_session_shortfall_continue(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, AuthorizationServerError> {
-    let (_, sid) = requesting_browser_session(&token_verifier, &headers, &id)?;
+    let sid = requesting_sid(&token_verifier, &headers, &id)?;
     let next_step = code_authorization_starter.continue_past_session_shortfall(
         &id,
         &sid,
@@ -188,7 +179,7 @@ pub(super) async fn handle_session_shortfall_cancel(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, AuthorizationServerError> {
-    let (_, sid) = requesting_browser_session(&token_verifier, &headers, &id)?;
+    let sid = requesting_sid(&token_verifier, &headers, &id)?;
     let client_callback = session_shortfall.cancel(&id, &sid, Utc::now())?;
     Ok(next_location(client_callback))
 }
