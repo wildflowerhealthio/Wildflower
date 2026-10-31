@@ -1,9 +1,9 @@
 //! `/devices/{userCode}` routes — the Owner-facing consent prompt for the
 //! device-code flow (RFC 8628). One module per route (`get`, `approve`,
-//! `deny`), each exposing a `MethodRouter`; the DTOs shared with the code flow
+//! `deny`), each a documented handler; the DTOs shared with the code flow
 //! (`ApproveBody`, `ConsentResult`) live in [`crate::http::wire_representations`],
 //! the `get` response shape beside its route, and the consent logic in
-//! `domain::capabilities`. `router()` is the only path table.
+//! `domain::capabilities`. `openapi_router()` is the only path table.
 
 /// `POST /devices/{userCode}/approve`.
 mod approve;
@@ -14,14 +14,17 @@ mod get;
 
 use std::sync::Arc;
 
-use axum::Router;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::http::state::AuthorizationServerState;
 
-/// The `/devices` route table: the prompt, and its approve and deny.
-pub fn router() -> Router<Arc<AuthorizationServerState>> {
-    Router::new()
-        .route("/devices/{userCode}", get::route())
-        .route("/devices/{userCode}/approve", approve::route())
-        .route("/devices/{userCode}/deny", deny::route())
+/// The `/devices` route table: the prompt, and its approve and deny, as an
+/// `OpenApiRouter` so the spec is collected from the routes that serve
+/// traffic.
+pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
+    OpenApiRouter::new()
+        .routes(routes!(get::handle_get_device_consent))
+        .routes(routes!(approve::handle_approve_device_consent))
+        .routes(routes!(deny::handle_deny_device_consent))
 }

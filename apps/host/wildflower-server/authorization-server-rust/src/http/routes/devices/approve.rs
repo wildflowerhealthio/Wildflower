@@ -1,23 +1,16 @@
 //! `POST /authorization/devices/{userCode}/approve`: the Owner approves a device
 //! or a browser pairing at the device page.
 
-use std::sync::Arc;
-
 use axum::extract::Path;
-use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Utc;
+use wildflowerhealthio_scope_capabilities::InsufficientScopeBody;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{ApproveDeviceConsentInput, Scoped};
-use crate::http::state::AuthorizationServerState;
-use crate::http::wire_representations::{ApproveBody, ConsentResult};
+use crate::http::errors::DeviceConsentNotFoundBody;
+use crate::http::wire_representations::{ApproveBody, ConsentResult, PolledConsentResult};
 use crate::live_bindings::LiveConsentDecider;
-
-/// The `POST` method on `/devices/{userCode}/approve`.
-pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
-    post(handle_approve_device_consent)
-}
 
 /// `POST /authorization/devices/{userCode}/approve` — the Owner approves a device-code
 /// consent prompt, granting the (expanded) scope set and leaving a standing
@@ -25,7 +18,20 @@ pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
 /// `wildflower/AuthorizationRequest.u`), which also carries the approver's own
 /// scopes: an approval delegating a resource scope beyond them is rejected with
 /// a `403`. The write scope lives in the consent capability's `approve_device_consent`.
-async fn handle_approve_device_consent(
+#[utoipa::path(
+    post,
+    tag = "Owner consent",
+    path = "/devices/{userCode}/approve",
+    params(("userCode" = String, Path, description = "The code the device page shows")),
+    request_body = ApproveBody,
+    responses(
+        (status = 200, description = "The request is decided: `approved`, or `denied` when nothing was left to grant", body = PolledConsentResult),
+        (status = 403, description = "The caller's token lacks an approval scope, or a ticked resource scope is beyond the approver's own grant; nothing is written", body = InsufficientScopeBody),
+        (status = 404, description = "No pending device or pairing request has that user code", body = DeviceConsentNotFoundBody),
+        (status = 500, description = "A store failed; logged, with no body"),
+    ),
+)]
+pub(super) async fn handle_approve_device_consent(
     consents: Scoped<LiveConsentDecider>,
     Path(user_code): Path<String>,
     Json(body): Json<ApproveBody>,

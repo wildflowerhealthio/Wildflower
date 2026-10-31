@@ -108,7 +108,7 @@ impl OAuthError {
 /// The code flow posts its own
 /// `ApproveOAuthConsentBody` instead — only that surface can show a
 /// registration warning, and only its body carries the acknowledgement.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ApproveBody {
     /// The scopes the approver ticked. They are clamped to what the prompt
