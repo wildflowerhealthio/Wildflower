@@ -110,7 +110,8 @@ button.record-row__text:focus-visible {
   background: var(--record-row-choice-background);
   color: inherit;
   font: inherit;
-  font-size: var(--font-size-3);
+  /* 16px keeps iOS from zooming in when the select takes focus. */
+  font-size: var(--font-size-4);
   font-weight: var(--font-weight-2);
   line-height: var(--line-height-3);
   white-space: nowrap;

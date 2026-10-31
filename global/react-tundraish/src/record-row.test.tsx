@@ -24,6 +24,7 @@ const lines = {
   title: 'Dr. Brown',
   detail: 'identifier 1234567',
   reason: 'Identifier match · same as existing',
+  placeholder: 'Select…',
 } as const
 
 describe('RecordRow', () => {
@@ -82,7 +83,6 @@ describe('RecordRow', () => {
         {...lines}
         choices={choices}
         choice={null}
-        placeholder="Select…"
         onChoose={vi.fn()}
         choiceLabel="On import: Dr. Brown"
       />
@@ -95,6 +95,32 @@ describe('RecordRow', () => {
       text: 'Select…',
       disabled: true,
     })
+  })
+
+  it('falls back to the placeholder when the choice is not among the options', async () => {
+    // Arrange
+    const onChoose = vi.fn<(value: Choice) => void>()
+    const user = userEvent.setup()
+    render(
+      <RecordRow
+        {...lines}
+        choices={choices.filter((option) => option.value !== 'use')}
+        choice="use"
+        onChoose={onChoose}
+        choiceLabel="On import: Dr. Brown"
+      />
+    )
+
+    // Act
+    await user.selectOptions(getSelect(), 'create')
+
+    // Assert — the stale choice reads as unpicked, so its first real option can still be picked.
+    expect(Array.from(getSelect().options, (option) => option.text)).toEqual([
+      'Select…',
+      'Save as a new record',
+      "Don't add",
+    ])
+    expect(onChoose).toHaveBeenCalledExactlyOnceWith('create')
   })
 
   it('opens the record from its text and resets it from its Reset link', async () => {

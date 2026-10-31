@@ -19,7 +19,13 @@ interface RecordRowChoice<T extends string> {
   readonly disabled?: boolean
 }
 
-type RecordRowBase<T extends string> = Omit<
+/**
+ * Props for {@link RecordRow}: its three lines, its choice, and any other
+ * `<div>` prop, which go to the row. While `choice` is `null`, or names no
+ * option in `choices`, `placeholder` fills the choice and the row wears the
+ * warning tone.
+ */
+type RecordRowProps<T extends string> = Omit<
   ComponentProps<'div'>,
   'children' | 'title' | 'onChange'
 > & {
@@ -31,6 +37,9 @@ type RecordRowBase<T extends string> = Omit<
   /** Why the row has the choice it has, as a short tag on the last line. */
   readonly reason: ReactNode
   readonly choices: readonly RecordRowChoice<T>[]
+  readonly choice: T | null
+  /** Fills the choice while nothing in `choices` is picked ("Select…"). */
+  readonly placeholder: string
   readonly onChoose: (value: T) => void
   /** Accessible name for the choice (`On import: Tyra Ashford`). */
   readonly choiceLabel: string
@@ -39,17 +48,6 @@ type RecordRowBase<T extends string> = Omit<
   /** Shows a Reset link before the choice, for a row the reader has changed. */
   readonly onReset?: () => void
 }
-
-/**
- * Props for {@link RecordRow}: its three lines, its choice, and any other
- * `<div>` prop, which go to the row. With no choice picked, `placeholder`
- * fills the choice and the row wears the warning tone.
- */
-type RecordRowProps<T extends string> = RecordRowBase<T> &
-  (
-    | { readonly choice: T; readonly placeholder?: never }
-    | { readonly choice: null; readonly placeholder: string }
-  )
 
 /**
  * A row for one record: a title with optional chips, a detail line and a
@@ -110,10 +108,10 @@ const RecordRow = <T extends string>({
         <select
           className={styles['record-row__select']}
           aria-label={choiceLabel}
-          value={choice ?? ''}
+          value={picked?.value ?? ''}
           onChange={handleChoiceChange}
         >
-          {choice === null ? (
+          {picked === undefined ? (
             <option value="" disabled={true}>
               {placeholder}
             </option>
