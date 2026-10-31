@@ -1335,6 +1335,47 @@ mod tests {
             .expect("replace"));
     }
 
+    /// A session's widenings still waiting for the Owner are listed newest
+    /// first; a decided one, an expired one and another session's are not.
+    #[test]
+    fn pending_session_widenings_are_the_session_s_undecided_unexpired_ones() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        let now = Utc::now();
+        let widening = |id: &str, sid: &str, asked_at: DateTime<Utc>| {
+            SessionWideningRequest::new(
+                NewSessionWideningRequestArgs {
+                    id: id.to_owned(),
+                    sid: sid.to_owned(),
+                    client_id: "app".to_owned(),
+                    browser_name: "Firefox on Linux".to_owned(),
+                    requested_scopes: vec!["wildflower/Apps.r".to_owned()],
+                    ttl: Duration::minutes(5),
+                },
+                asked_at,
+            )
+        };
+        let older = widening("older", "sid-1", now - Duration::minutes(2));
+        let newer = widening("newer", "sid-1", now - Duration::minutes(1));
+        let denied = widening("denied", "sid-1", now);
+        let expired = widening("expired", "sid-1", now - Duration::minutes(6));
+        let other = widening("other", "sid-2", now);
+        for request in [&older, &newer, &denied, &expired, &other] {
+            store
+                .write(|tx| tx.insert_session_widening_request(request))
+                .expect("insert");
+        }
+        let denial = denied.deny(now).expect("denies");
+        assert!(store
+            .write(|tx| tx.replace_session_widening_request(&denied, &denial))
+            .expect("replace"));
+        assert_eq!(
+            store
+                .read(|tx| tx.pending_session_widening_requests_for_session("sid-1", now))
+                .expect("query"),
+            [newer, older]
+        );
+    }
+
     /// Expired, decided, and still-on-the-limited-page requests are no
     /// candidates: the Owner isn't asked about a request its own browser
     /// hasn't gone on with.

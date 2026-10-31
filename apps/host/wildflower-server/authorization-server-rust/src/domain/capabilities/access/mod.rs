@@ -17,7 +17,7 @@ pub(crate) mod grants;
 pub(crate) mod tokens;
 
 pub(crate) use browser_sessions::{
-    BrowserSessionView, BrowserSessionsReader, BrowserSessionsRevoker,
+    revoke_browser_session, BrowserSessionView, BrowserSessionsReader, BrowserSessionsRevoker,
 };
 pub(crate) use clients::{ClientView, ClientsDisabler, ClientsReader};
 pub use consents::{
