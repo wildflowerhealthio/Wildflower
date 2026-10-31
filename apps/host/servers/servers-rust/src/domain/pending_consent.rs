@@ -3,8 +3,8 @@
 //! the authorization server's.
 //!
 //! A server's authorization server publishes the newest of the consents
-//! waiting for the Owner, device-code and authorization-code requests and
-//! browser pairings alike, as the run's
+//! waiting for the Owner, device-code and authorization-code requests,
+//! browser pairings and session widenings alike, as the run's
 //! [`ServerDetail::pending_consent`](crate::ServerDetail). On the wire,
 //! camelCase:
 //!
@@ -12,6 +12,7 @@
 //! {"kind": "device", "userCode": "ABCD-EFGH", "requesterName": "Lifting"}
 //! | {"kind": "oauth", "id": "…", "requesterName": "Lifting"}
 //! | {"kind": "browser", "userCode": "ABCD-EFGH", "requesterName": "Firefox on Linux"}
+//! | {"kind": "widening", "id": "…", "requesterName": "Firefox on Linux"}
 //! ```
 
 use serde::Serialize;
@@ -33,13 +34,13 @@ pub struct PendingConsent {
     pub key: ConsentKey,
     /// The name of what asks: for a device or an app, its client's
     /// registered name, or its `client_id` while it has no registration; for
-    /// a browser pairing, the browser's name. Which it is, the key's kind
-    /// says.
+    /// a browser pairing or a session widening, the browser's name. Which it
+    /// is, the key's kind says.
     pub requester_name: String,
     /// Whether the request can be decided in the browser that made it, which
     /// carried a browser session that can decide consents, so it shows the
-    /// request's consent card itself. Always `false` for a device request or
-    /// a browser pairing.
+    /// request's consent card itself. Always `false` for a device request, a
+    /// browser pairing or a session widening.
     /// Not on the wire: the base shows the request either way.
     #[serde(skip)]
     pub decidable_in_requesting_browser: bool,
@@ -84,6 +85,11 @@ impl From<OwnerPrompt> for PendingConsent {
                 browser_name,
             } => Self {
                 key: ConsentKey::BrowserPairing { user_code },
+                requester_name: browser_name,
+                decidable_in_requesting_browser: false,
+            },
+            OwnerPrompt::SessionWidening { id, browser_name } => Self {
+                key: ConsentKey::SessionWidening { id },
                 requester_name: browser_name,
                 decidable_in_requesting_browser: false,
             },

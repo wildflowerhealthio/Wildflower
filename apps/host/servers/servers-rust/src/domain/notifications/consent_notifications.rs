@@ -29,9 +29,11 @@ pub struct ConsentRequest {
 
 impl ConsentRequest {
     /// The notification for this request, under the server's own id
-    /// (`consent-request:<domain>`): "‹client› wants access to ‹domain›", or
+    /// (`consent-request:<domain>`): "‹client› wants access to ‹domain›";
     /// for a browser pairing "‹browser›, a remote browser, wants to sign in
-    /// to ‹domain›". A tap opens the consent waiting on the server.
+    /// to ‹domain›"; for a session widening "‹browser›, a remote browser,
+    /// wants more access to ‹domain›". A tap opens the consent waiting on the
+    /// server.
     #[must_use]
     pub fn notification(&self) -> LocalNotification {
         let domain = &self.domain;
@@ -44,6 +46,10 @@ impl ConsentRequest {
             ConsentKey::BrowserPairing { .. } => (
                 "Sign-in request",
                 format!("{requester_name}, a remote browser, wants to sign in to {domain}"),
+            ),
+            ConsentKey::SessionWidening { .. } => (
+                "Access request",
+                format!("{requester_name}, a remote browser, wants more access to {domain}"),
             ),
         };
         LocalNotification {
