@@ -105,6 +105,7 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
             ))
         }))
         .merge(routes::devices::router())
+        .merge(routes::session_widenings::router())
         .merge(routes::logout::router())
         .merge(routes::revocations::router())
         .merge(routes::session::router())

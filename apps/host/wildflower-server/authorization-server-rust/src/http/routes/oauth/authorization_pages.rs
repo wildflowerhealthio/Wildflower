@@ -13,6 +13,9 @@
 //!   the RFC 8628 `verification_uri`, and with `?user_code=` its
 //!   `verification_uri_complete`. The same bytes whatever the query: the page
 //!   reads the code from its own URL. Uncached.
+//! - `GET /oauth/session-widenings/{id}/consent` serves the session
+//!   widening's card, `widening.html`, where the Owner decides a browser's
+//!   ask to widen its session. The same bytes whatever the id. Uncached.
 //! - `GET /oauth/pair?next=…` serves the pairing page, `pair.html`, where a
 //!   browser that isn't the Owner's starts a browser pairing, shows its code,
 //!   and waits for the Owner's approval. The same bytes whatever the query.
@@ -28,10 +31,11 @@
 //! to the hosted launcher, so their policy lets a form submit to this origin
 //! and follow a redirect to the launcher's. The consent card and the device
 //! page call `/authorization/*` and FHIR `GET /Patient`, on the browser
-//! session's bearer, which the host's cookie→bearer layer presents for them;
+//! session's bearer, which the host's cookie→bearer layer presents for them,
+//! as the widening's card calls `/authorization/session-widenings/*`;
 //! the pairing page calls `/oauth/pair/*`, which needs no session; the
-//! limited page calls `/oauth/authorize/{id}/*`, on the browser session's
-//! cookie.
+//! limited page calls `/oauth/authorize/{id}/*` and
+//! `/oauth/session-widenings/{id}/poll`, on the browser session's cookie.
 
 use std::path::Path as FilePath;
 use std::sync::Arc;
@@ -63,6 +67,9 @@ const LIMITED_PAGE: &str = "limited.html";
 
 /// The limited page's last path segment, after `/oauth/authorize/{id}/`.
 const LIMITED_PAGE_SEGMENT: &str = "limited";
+
+/// The session widening's card in the build.
+const SESSION_WIDENING_PAGE: &str = "widening.html";
 
 /// The device verification page in the build.
 const DEVICE_PAGE: &str = "device.html";
@@ -153,6 +160,7 @@ fn router_for<S: Clone + Send + Sync + 'static>(
     let policy = content_security_policy(form_targets);
     let consent_policy = policy.clone();
     let limited_policy = policy.clone();
+    let widening_policy = policy.clone();
     let device_policy = policy.clone();
     let pair_policy = policy.clone();
     Router::new()
@@ -163,6 +171,10 @@ fn router_for<S: Clone + Send + Sync + 'static>(
         .route(
             "/authorize/{id}/limited",
             get(move || async move { page(pages, LIMITED_PAGE, &limited_policy) }),
+        )
+        .route(
+            "/session-widenings/{id}/consent",
+            get(move || async move { page(pages, SESSION_WIDENING_PAGE, &widening_policy) }),
         )
         .route(
             DEVICE_PAGE_ROUTE,
