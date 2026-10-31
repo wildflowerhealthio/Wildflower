@@ -62,12 +62,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Android Gradle Plugin 8 needs JDK 17.
+      # Android Gradle Plugin 8 needs JDK 17. `cache: gradle` keeps Gradle's
+      # downloads (the wrapper's distribution, plugins and dependencies),
+      # keyed on the Gradle files' hash — see docs/Rust/CI Build Cache
+      # Explanation.md.
       - name: Set up JDK
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Install Android NDK
         id: ndk
@@ -164,12 +168,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Android Gradle Plugin 8 needs JDK 17.
+      # Android Gradle Plugin 8 needs JDK 17. `cache: gradle` keeps Gradle's
+      # downloads (the wrapper's distribution, plugins and dependencies),
+      # keyed on the Gradle files' hash — see docs/Rust/CI Build Cache
+      # Explanation.md.
       - name: Set up JDK
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       # Saves the `release-android` cache only on main, into the scope the
       # release and pull requests restore from; a pull request's build

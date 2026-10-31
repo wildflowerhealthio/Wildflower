@@ -142,6 +142,13 @@ construction, and the bundle built on `main` catches a merge to those inputs
 that breaks packaging, linking or R8 before the next release does. The publish
 run keeps its own dispatch-only save.
 
+Both jobs also cache Gradle's downloads, the wrapper's distribution and the
+plugins and dependencies its build resolves, through `actions/setup-java`'s
+`cache: gradle`. Its key is a hash of every `*.gradle*` and
+`gradle-wrapper.properties` file, nothing Rust. Unlike the Rust cache it saves
+on any branch whose key has no entry yet, but a pull request that leaves the
+Gradle files alone restores `main`'s entry exactly and so saves nothing.
+
 ## The Tauri system packages
 
 The Tauri crates link against GTK and webkit, so every Linux job that compiles
