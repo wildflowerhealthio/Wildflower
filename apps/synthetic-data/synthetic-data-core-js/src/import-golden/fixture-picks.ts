@@ -1,7 +1,7 @@
 import { chromeHarOf, chromeHarToJson, chromePageOf } from '@wildflowerhealthio/http-archive'
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { REXALL_PROFILE_URL } from '@wildflowerhealthio/rexall-be-well-source'
-import { DateTime, Effect, type ParseResult } from 'effect'
+import { type Cause, DateTime, Effect, type ParseResult } from 'effect'
 
 import * as ChromeHar from '@wildflowerhealthio/synthetic-data-fundamentals/chrome-har'
 
@@ -49,9 +49,15 @@ const rexallXhrOf = (url: string, body: unknown, millis: number): ChromeHar.Entr
  * archive: each body at the URL it was captured from (the searchset's own
  * `self` link).
  */
-const rexallFixturePick = (): Effect.Effect<PickedFile.NamedBytes, ParseResult.ParseError> =>
-  Effect.map(
-    chromeHarToJson(
+const rexallFixturePick = (): Effect.Effect<
+  PickedFile.NamedBytes,
+  ParseResult.ParseError | Cause.NoSuchElementException
+> =>
+  Effect.gen(function* () {
+    const searchsetUrl = yield* Effect.fromNullable(
+      rexallPrescriptions.link.find(({ relation }) => relation === 'self')?.url
+    )
+    const text = yield* chromeHarToJson(
       chromeHarOf(
         [
           chromePageOf({
@@ -64,16 +70,12 @@ const rexallFixturePick = (): Effect.Effect<PickedFile.NamedBytes, ParseResult.P
         ],
         [
           rexallXhrOf(REXALL_PROFILE_URL, rexallProfile, 1000),
-          rexallXhrOf(
-            rexallPrescriptions.link.find(({ relation }) => relation === 'self')?.url ?? '',
-            rexallPrescriptions,
-            1200
-          ),
+          rexallXhrOf(searchsetUrl, rexallPrescriptions, 1200),
         ]
       ),
       { pretty: true }
-    ),
-    (text) => textPick('rexall-fixtures.har', text)
-  )
+    )
+    return textPick('rexall-fixtures.har', text)
+  })
 
 export { chromeFhirCapturePick, rexallFixturePick, textPick }
