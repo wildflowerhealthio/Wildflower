@@ -12,10 +12,8 @@ jobs:
   # One job for C formatting + the host-side tests of both watch apps: they
   # share one install and one pinned clang-format, and need no Pebble SDK, so
   # they report without waiting on the SDK install and `pebble build` below.
-  # Draft PRs are skipped.
   pebble:
     name: Lint + Test
-    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -59,10 +57,9 @@ jobs:
   # One job for `pebble build` of both watch apps: the SDK is installed (or
   # restored) ONCE and both .pbw files come from it, each uploaded as an
   # artifact named after its app, ready to sideload. Runs in parallel with Lint
-  # + Test. Draft PRs are skipped.
+  # + Test.
   build:
     name: Build
-    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
