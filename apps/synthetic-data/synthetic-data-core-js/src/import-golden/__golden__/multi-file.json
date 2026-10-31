@@ -1,4 +1,80 @@
 {
+  "excluded": [
+    {
+      "basedOn": [],
+      "category": [],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "Body Weight"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-191149d8007f132c09c8b4279388f177",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4",
+          "value": "obs-a"
+        }
+      ],
+      "interpretation": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "referenceRange": [],
+      "resourceType": "Observation",
+      "status": "final"
+    },
+    {
+      "basedOn": [],
+      "category": [],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "Heart rate"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-19114cd8007f184509c8b5279388f32a",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4",
+          "value": "obs-b"
+        }
+      ],
+      "interpretation": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "referenceRange": [],
+      "resourceType": "Observation",
+      "status": "final"
+    }
+  ],
   "notes": {
     "dicom": [],
     "har": [
