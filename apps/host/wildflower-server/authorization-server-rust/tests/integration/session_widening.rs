@@ -113,8 +113,8 @@ fn session_token_set_by(res: &axum::response::Response) -> String {
 /// The whole round: a session that went on past the limited page for the
 /// app comes back to it with `prompt=consent`, asks the Owner, who unticks
 /// nothing it wasn't asked and approves; the poll collects a wider token for
-/// the same session and the narrow one stops working; going on then earns a
-/// code carrying what the session lacked.
+/// the same session, and the narrow one keeps working only for a grace;
+/// going on then earns a code carrying what the session lacked.
 #[tokio::test]
 async fn an_approved_widening_lets_the_next_code_carry_what_the_session_lacked() {
     let (g, owner_token, db) = spin_up();
@@ -200,9 +200,14 @@ async fn an_approved_widening_lets_the_next_code_carry_what_the_session_lacked()
     let res = post_with_session(&g, &narrow_token, &poll_path).await;
     assert_eq!(
         res.status(),
-        StatusCode::NOT_FOUND,
-        "the narrow token is revoked"
+        StatusCode::OK,
+        "the narrow token keeps working for a grace, so a request already in flight with it lands"
     );
+    assert!(
+        set_cookie_values(&res).is_empty(),
+        "and sets no cookie over the wide one"
+    );
+    assert_eq!(body_json(res.into_body()).await["status"], "expired");
     let res = post_with_session(&g, &wide_token, &poll_path).await;
     assert_eq!(body_json(res.into_body()).await["status"], "expired");
 

@@ -33,6 +33,13 @@ use crate::domain::grant_store::{AuthorizationRequestsTx as _, BrowserSessionsTx
 use crate::domain::{GrantStore, GrantTx};
 use crate::ports::{OwnerApproval, Revocation};
 
+/// How long the session token a widening replaces keeps working after the
+/// poll that collected the wider one. The browser's requests already in
+/// flight with the old cookie (another tab's read, a refetch) still verify,
+/// so the host's cookie layer doesn't answer them by clearing the cookie,
+/// which could wipe the wider one the browser has just been handed.
+pub(crate) const REPLACED_SESSION_TOKEN_GRACE: Duration = Duration::seconds(30);
+
 /// What an [`ask`](SessionWidening::ask) came to.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SessionWideningAsk {
@@ -253,9 +260,10 @@ impl<S: GrantStore> SessionWidening<S> {
     ///  - anything else (expired, claimed already, its session ended):
     ///    [`Expired`](SessionWideningStatus::Expired).
     ///
-    /// Once a claim has committed, the presented token is revoked, so the
-    /// narrower token it replaces stops working; revoking is best-effort,
-    /// and a failure is logged.
+    /// Once a claim has committed, the presented token is revoked from
+    /// [`REPLACED_SESSION_TOKEN_GRACE`] on, so the narrower token it replaces
+    /// stops working once the browser's requests already in flight with it
+    /// have landed; revoking is best-effort, and a failure is logged.
     ///
     /// # Errors
     ///
@@ -295,7 +303,7 @@ impl<S: GrantStore> SessionWidening<S> {
                 session_token,
                 session_ttl,
             } => {
-                self.revoke_replaced_token(presented_session);
+                self.revoke_replaced_token(presented_session, now);
                 Ok(SessionWideningStatus::Widened {
                     session_token,
                     session_ttl,
@@ -333,19 +341,21 @@ impl<S: GrantStore> SessionWidening<S> {
     }
 
     /// Denylist the presented session token, which the widened one replaces,
-    /// until it would have expired. A token with no `jti` or `exp` has
-    /// nothing to denylist.
-    fn revoke_replaced_token(&self, presented_session: &VerifiedClaims) {
+    /// from [`REPLACED_SESSION_TOKEN_GRACE`] after `now` until it would have
+    /// expired. A token with no `jti` or `exp` has nothing to denylist.
+    fn revoke_replaced_token(&self, presented_session: &VerifiedClaims, now: DateTime<Utc>) {
         let (Some(jti), Some(expires_at)) = (
             presented_session.jti.as_deref(),
             presented_session.expires_at,
         ) else {
             return;
         };
-        if let Err(error) = self
-            .revocation
-            .revoke_jti(jti, expires_at, "browser session widened")
-        {
+        if let Err(error) = self.revocation.revoke_jti_from(
+            jti,
+            now + REPLACED_SESSION_TOKEN_GRACE,
+            expires_at,
+            "browser session widened",
+        ) {
             tracing::warn!(%error, "session widening: failed to revoke the replaced session token");
         }
     }
@@ -373,21 +383,35 @@ mod tests {
     /// The server's origin: the session token's `iss` and `aud`.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
-    /// A revocation port recording each `jti` it revokes.
+    /// A revocation port recording each `jti` it revokes, and from when.
     #[derive(Default)]
     struct RecordingRevocation {
-        /// Each revoked `jti`, in call order.
-        revoked_jtis: Mutex<Vec<String>>,
+        /// Each revoked `jti` and the instant it is revoked from, in call
+        /// order.
+        revoked_jtis: Mutex<Vec<(String, DateTime<Utc>)>>,
     }
 
     impl Revocation for RecordingRevocation {
         fn revoke_jti(
             &self,
-            jti: &str,
+            _jti: &str,
             _expires_at: DateTime<Utc>,
             _reason: &str,
         ) -> Result<(), String> {
-            self.revoked_jtis.lock().unwrap().push(jti.to_owned());
+            unreachable!("a widening revokes the replaced token after a grace")
+        }
+
+        fn revoke_jti_from(
+            &self,
+            jti: &str,
+            revoked_from: DateTime<Utc>,
+            _expires_at: DateTime<Utc>,
+            _reason: &str,
+        ) -> Result<(), String> {
+            self.revoked_jtis
+                .lock()
+                .unwrap()
+                .push((jti.to_owned(), revoked_from));
             Ok(())
         }
 
@@ -715,7 +739,8 @@ mod tests {
     /// approves, the session's row holds what was granted, and the first poll
     /// collects it: a token for the same session, carrying what it holds now
     /// and living until the session ends, while the token it replaces is
-    /// revoked. A later poll finds nothing more to collect.
+    /// revoked from [`REPLACED_SESSION_TOKEN_GRACE`] on. A later poll finds
+    /// nothing more to collect.
     #[test]
     fn the_first_poll_after_approval_collects_the_wider_session() {
         let fixture = fixture();
@@ -780,7 +805,8 @@ mod tests {
         );
         assert_eq!(
             *fixture.revocation.revoked_jtis.lock().unwrap(),
-            ["narrow-jti"]
+            [("narrow-jti".to_owned(), now + REPLACED_SESSION_TOKEN_GRACE)],
+            "the narrow token keeps working for the grace"
         );
         assert_eq!(
             fixture
