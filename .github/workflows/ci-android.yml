@@ -46,11 +46,13 @@ on:
 permissions:
   contents: read
 
-# Only the newest main commit's build is worth finishing; supersede in-flight
-# runs rather than queueing them.
+# A newer push to a pull request supersedes its in-flight run. A run on main
+# waits for the one in progress instead: a cancelled main run would still
+# save its half-built Rust cache (rust-cache's `cache-on-failure`), which
+# every later run would restore as an exact match and never replace.
 concurrency:
   group: android-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   # Compiles what Android adds to the host app without building the app: the
