@@ -1,5 +1,12 @@
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
-import type { ChangeEvent, ComponentProps, JSX, MouseEvent, ReactNode } from 'react'
+import {
+  useId,
+  type ChangeEvent,
+  type ComponentProps,
+  type JSX,
+  type MouseEvent,
+  type ReactNode,
+} from 'react'
 
 import styles from './radio-card.module.css'
 
@@ -52,7 +59,8 @@ interface RadioCardProps extends Omit<ComponentProps<'div'>, 'children' | 'onCli
  * action, over the evidence for it, with an optional tray docked at the foot.
  * The picked card wears the accent edge and fill. A click anywhere on the card
  * that no control inside answers picks it, as does a change in its tray, and
- * the radio keeps the native group's arrow keys.
+ * the radio keeps the native group's arrow keys. The radio is described by the
+ * evidence, outcome and tray, so cards with the same label still read apart.
  */
 const RadioCard = ({
   name,
@@ -68,6 +76,17 @@ const RadioCard = ({
   className,
   ...rootProps
 }: RadioCardProps): JSX.Element => {
+  const idPrefix = useId()
+  const bodyId = `${idPrefix}-body`
+  const outcomeId = `${idPrefix}-outcome`
+  const trayId = `${idPrefix}-tray`
+  const describedBy = [
+    bodyId,
+    outcome === undefined ? null : outcomeId,
+    tray === undefined ? null : trayId,
+  ]
+    .filter((id) => id !== null)
+    .join(' ')
   const handleCardClick = (event: MouseEvent<HTMLDivElement>): void => {
     if (checked || !(event.target instanceof Element)) return
     // A click from a portal bubbles through React but lands outside the card.
@@ -99,15 +118,21 @@ const RadioCard = ({
           value={value}
           checked={checked}
           onChange={onSelect}
+          aria-describedby={describedBy}
         />
         <span>{label}</span>
       </label>
-      <div className={styles['radio-card__body']}>{children}</div>
+      <div id={bodyId} className={styles['radio-card__body']}>
+        {children}
+      </div>
       {outcome === undefined ? null : (
-        <div className={styles['radio-card__outcome']}>{outcome}</div>
+        <div id={outcomeId} className={styles['radio-card__outcome']}>
+          {outcome}
+        </div>
       )}
       {tray === undefined ? null : (
         <div
+          id={trayId}
           className={cn(
             styles['radio-card__tray'],
             trayTone === 'success' ? styles['radio-card__tray--success'] : null
@@ -134,7 +159,7 @@ interface RadioCardGroupProps extends Omit<ComponentProps<'div'>, 'role' | 'aria
 
 /**
  * A `radiogroup` laying its {@link RadioCard}s out as equal-height columns,
- * each at least 200px, wrapping as the width runs out. Any child that is not a
+ * each at least 200px (or the whole width, when that is less), wrapping as the width runs out. Any child that is not a
  * card (a plain radio row in the same group) spans the full width below them.
  */
 const RadioCardGroup = ({

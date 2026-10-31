@@ -175,6 +175,25 @@ describe('RadioCard', () => {
     expect(onSelect).toHaveBeenCalledExactlyOnceWith('create')
   })
 
+  it('describes each radio by its evidence, outcome and tray', () => {
+    // Act
+    render(<Harness onSelect={vi.fn()} />)
+
+    // Assert — the second card's evidence also holds its dialog, so only its
+    // outcome and tray are compared.
+    const describedText = (name: string): (string | null | undefined)[] =>
+      (getRadio(name).getAttribute('aria-describedby') ?? '')
+        .split(' ')
+        .map((id) => document.getElementById(id)?.textContent)
+    expect([
+      describedText('Save as a new record'),
+      describedText('Use this existing record').slice(1),
+    ]).toEqual([
+      ['Tyra Ashford'],
+      ['22 records will reference this record instead.', 'Show differencesbirthDate'],
+    ])
+  })
+
   it('moves the pick between cards and the plain line with the arrow keys', async () => {
     // Arrange
     const onSelect = vi.fn<(value: string) => void>()
