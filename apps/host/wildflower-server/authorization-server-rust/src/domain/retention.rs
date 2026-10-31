@@ -53,6 +53,8 @@ pub struct PurgedCounts {
     /// Device requests and browser pairings deleted, from
     /// `user_code_requests`.
     pub user_code_requests: usize,
+    /// Session widenings deleted, from `session_widening_requests`.
+    pub session_widening_requests: usize,
     /// Authorization codes deleted: the abandoned ones, since redemption
     /// deletes a code as it is used.
     pub authorization_codes: usize,
@@ -67,6 +69,7 @@ impl PurgedCounts {
         self.refresh_token_families == 0
             && self.code_authorization_requests == 0
             && self.user_code_requests == 0
+            && self.session_widening_requests == 0
             && self.authorization_codes == 0
             && self.browser_sessions == 0
     }
@@ -99,6 +102,8 @@ pub(crate) fn purge_expired(
             code_authorization_requests: tx
                 .delete_code_requests_expired_before(authorization_cutoff)?,
             user_code_requests: tx.delete_polled_requests_expired_before(authorization_cutoff)?,
+            session_widening_requests: tx
+                .delete_session_widening_requests_expired_before(authorization_cutoff)?,
             authorization_codes: tx
                 .delete_authorization_codes_expired_before(authorization_cutoff)?,
             browser_sessions: tx.delete_browser_sessions_ended_before(browser_session_cutoff)?,
