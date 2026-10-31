@@ -237,6 +237,25 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
             .cloned())
     }
 
+    fn pending_session_widening_requests_for_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<SessionWideningRequest>, AuthorizationServerError> {
+        let mut pending: Vec<SessionWideningRequest> = self
+            .store
+            .session_widening_requests
+            .borrow()
+            .values()
+            .filter(|request| request.sid == sid && request.is_pending_at(now))
+            .cloned()
+            .collect();
+        pending.sort_by(|first, second| {
+            (&second.requested_at, &second.id).cmp(&(&first.requested_at, &first.id))
+        });
+        Ok(pending)
+    }
+
     fn polled_request_by_user_code(
         &mut self,
         user_code: &str,

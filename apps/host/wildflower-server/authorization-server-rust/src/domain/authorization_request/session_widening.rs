@@ -12,6 +12,12 @@ use chrono::{DateTime, Duration, Utc};
 use super::polled::{NotClaimable, PolledState};
 use super::NotPending;
 
+/// How long an approval stays claimable past the widening's decision
+/// deadline: an Owner who approves in the deadline's last seconds still
+/// reaches the limited page, whose next poll may land just after it. Ten
+/// times the page's three-second poll interval.
+pub const APPROVAL_CLAIM_GRACE: Duration = Duration::seconds(30);
+
 /// What the Owner approved for a session widening: the scopes the session
 /// gains.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,8 +47,9 @@ pub struct SessionWideningRequest {
     pub requested_scopes: Vec<String>,
     /// When the browser asked.
     pub requested_at: DateTime<Utc>,
-    /// The instant the request stops waiting for a decision, and its
-    /// approval stops being claimable.
+    /// The instant the request stops waiting for a decision. Its approval
+    /// stays claimable [`APPROVAL_CLAIM_GRACE`] longer
+    /// ([`claimable_until`](Self::claimable_until)).
     pub expires_at: DateTime<Utc>,
     /// Where the request stands.
     pub state: PolledState<SessionWideningApproval>,
@@ -102,6 +109,21 @@ impl SessionWideningRequest {
         self.state == PolledState::Pending && !self.is_expired_at(now)
     }
 
+    /// The instant an approval of the widening stops being claimable:
+    /// [`APPROVAL_CLAIM_GRACE`] past its decision deadline.
+    #[must_use]
+    pub fn claimable_until(&self) -> DateTime<Utc> {
+        self.expires_at + APPROVAL_CLAIM_GRACE
+    }
+
+    /// The instant the code request the widening was asked for stops waiting
+    /// on its limited page: [`APPROVAL_CLAIM_GRACE`] past the last claim, so
+    /// the page can still go on with the request after a last-moment claim.
+    #[must_use]
+    pub fn asking_code_request_expires_at(&self) -> DateTime<Utc> {
+        self.claimable_until() + APPROVAL_CLAIM_GRACE
+    }
+
     /// Approve the widening at `now` with `approval`.
     ///
     /// # Errors
@@ -137,10 +159,11 @@ impl SessionWideningRequest {
     ///
     /// # Errors
     ///
-    /// [`NotClaimable`] for a widening not approved, or past its expiry.
+    /// [`NotClaimable`] for a widening not approved, or past
+    /// [`claimable_until`](Self::claimable_until).
     pub fn claim(&self, now: DateTime<Utc>) -> Result<Self, NotClaimable> {
         match &self.state {
-            PolledState::Approved(approval) if !self.is_expired_at(now) => {
+            PolledState::Approved(approval) if now < self.claimable_until() => {
                 Ok(SessionWideningRequest {
                     state: PolledState::Claimed(approval.clone()),
                     ..self.clone()
@@ -204,8 +227,9 @@ mod tests {
         assert_eq!(started().approve(approval(), at(5)), Err(NotPending));
     }
 
-    /// An approved, unexpired widening is claimed once, keeping its
-    /// approval; a pending, denied or expired one is not claimable.
+    /// An approved widening is claimed once, keeping its approval, until
+    /// [`APPROVAL_CLAIM_GRACE`] past its decision deadline; a pending or
+    /// denied one is not claimable.
     #[test]
     fn claim_redeems_an_approved_widening_once() {
         let approved = started().approve(approval(), at(1)).expect("approves");
@@ -217,6 +241,27 @@ mod tests {
             started().deny(at(1)).expect("denies").claim(at(2)),
             Err(NotClaimable)
         );
-        assert_eq!(approved.claim(at(5)), Err(NotClaimable));
+        assert_eq!(
+            approved.claim(at(5) + APPROVAL_CLAIM_GRACE),
+            Err(NotClaimable)
+        );
+    }
+
+    /// An approval a second before the decision deadline is still claimed
+    /// after it, within the grace.
+    #[test]
+    fn an_approval_at_the_deadline_is_claimed_after_it() {
+        let approved = started()
+            .approve(approval(), at(5) - Duration::seconds(1))
+            .expect("approves before the deadline");
+        let claimed = approved
+            .claim(at(5) + Duration::seconds(3))
+            .expect("claims within the grace");
+        assert_eq!(claimed.state, PolledState::Claimed(approval()));
+        assert_eq!(started().claimable_until(), at(5) + APPROVAL_CLAIM_GRACE);
+        assert_eq!(
+            started().asking_code_request_expires_at(),
+            at(5) + APPROVAL_CLAIM_GRACE + APPROVAL_CLAIM_GRACE
+        );
     }
 }

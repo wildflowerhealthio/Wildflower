@@ -280,22 +280,22 @@ impl CodeRequest {
         })
     }
 
-    /// Keep the request waiting on its browser's limited page, with `ttl`
-    /// more from `now`: the browser asked the Owner to widen its session, and
-    /// the request waits on that decision as long as the widening does.
-    /// Decides nothing.
+    /// Keep the request waiting on its browser's limited page until at least
+    /// `until`: the browser asked the Owner to widen its session, and the
+    /// request waits on that decision, and on the page collecting it. A
+    /// request already waiting longer keeps its expiry. Decides nothing.
     ///
     /// # Errors
     ///
     /// [`NotAwaitingLimitedPage`] for a request not waiting there at `now`.
-    pub fn extend_limited_page_wait(
+    pub fn extend_limited_page_wait_until(
         &self,
-        ttl: Duration,
+        until: DateTime<Utc>,
         now: DateTime<Utc>,
     ) -> Result<Self, NotAwaitingLimitedPage> {
         self.require_awaiting_limited_page(now)?;
         Ok(CodeRequest {
-            expires_at: now + ttl,
+            expires_at: self.expires_at.max(until),
             ..self.clone()
         })
     }
@@ -446,13 +446,13 @@ mod tests {
         );
     }
 
-    /// Extending the limited page's wait keeps the request there with a new
-    /// expiry, only while it waits there.
+    /// Extending the limited page's wait keeps the request there until the
+    /// later of its expiry and the new one, only while it waits there.
     #[test]
     fn extend_limited_page_wait_keeps_the_request_waiting_longer() {
         let waiting = started(true);
         let extended = waiting
-            .extend_limited_page_wait(Duration::minutes(5), at(3))
+            .extend_limited_page_wait_until(at(8), at(3))
             .expect("extends");
         assert_eq!(
             extended,
@@ -462,11 +462,15 @@ mod tests {
             }
         );
         assert_eq!(
-            started(false).extend_limited_page_wait(Duration::minutes(5), at(1)),
+            waiting.extend_limited_page_wait_until(at(4), at(3)),
+            Ok(waiting.clone())
+        );
+        assert_eq!(
+            started(false).extend_limited_page_wait_until(at(6), at(1)),
             Err(NotAwaitingLimitedPage)
         );
         assert_eq!(
-            waiting.extend_limited_page_wait(Duration::minutes(5), at(5)),
+            waiting.extend_limited_page_wait_until(at(10), at(5)),
             Err(NotAwaitingLimitedPage)
         );
     }

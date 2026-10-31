@@ -307,7 +307,7 @@
         "tags": [
           "OAuth 2.0"
         ],
-        "summary": "Ask the Owner to widen this browser's session by what it lacks of request\n`id`, which waits on this browser's limited page, and raise the Owner's\nnotification. The widening asks for exactly what the session lacks of the\nrequest, and the request keeps waiting on the page as long as the widening\nwaits for the Owner. It spends from the authorization start limit, as a\nrequest raised for the Owner does, before anything else is read; a refusal\nis the limit's `429`.",
+        "summary": "Ask the Owner to widen this browser's session by what it lacks of request\n`id`, which waits on this browser's limited page, and raise the Owner's\nnotification. The widening asks for exactly what the session lacks of the\nrequest, and the request keeps waiting on the page until the widening's\napproval can no longer be collected. Asking again while that widening\nstill waits for the Owner answers it, and notifies no one. A new widening\nspends from the authorization start limit, as a request raised for the\nOwner does; a refusal is the limit's `429`, nothing filed.",
         "operationId": "handle_session_widening_ask",
         "parameters": [
           {
@@ -322,7 +322,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The widening filed for the Owner",
+            "description": "The widening waiting for the Owner: filed by this ask, or by an earlier one for the same request",
             "content": {
               "application/json": {
                 "schema": {
@@ -340,6 +340,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "The authorization start limit refused a new widening"
           }
         }
       }

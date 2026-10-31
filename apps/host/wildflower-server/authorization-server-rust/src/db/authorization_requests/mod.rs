@@ -339,6 +339,29 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
             .transpose()
     }
 
+    fn pending_session_widening_requests_for_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<SessionWideningRequest>, AuthorizationServerError> {
+        session_widening_requests::table
+            .filter(session_widening_requests::sid.eq(sid))
+            .filter(session_widening_requests::status.eq(RequestStatus::Pending))
+            .filter(session_widening_requests::expires_at.gt(now))
+            .order((
+                session_widening_requests::requested_at.desc(),
+                session_widening_requests::id.desc(),
+            ))
+            .select(SessionWideningRequestRow::as_select())
+            .load(self.conn)
+            .map_err(failed(
+                "pending_session_widening_requests_for_session failed",
+            ))?
+            .into_iter()
+            .map(SessionWideningRequest::try_from)
+            .collect()
+    }
+
     fn polled_request_by_user_code(
         &mut self,
         user_code: &str,

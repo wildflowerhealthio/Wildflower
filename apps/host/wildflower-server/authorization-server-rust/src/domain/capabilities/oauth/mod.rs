@@ -73,6 +73,6 @@ pub(crate) use same_device_sign_in::{
 };
 pub(crate) use session_shortfall::{SessionShortfall, SessionShortfallView};
 pub(crate) use session_widening::{
-    SessionWidening, SessionWideningPollError, SessionWideningStatus,
+    SessionWidening, SessionWideningAsk, SessionWideningPollError, SessionWideningStatus,
 };
 pub(crate) use token_exchanger::{IssuedTokens, TokenExchanger};

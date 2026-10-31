@@ -16,6 +16,7 @@
 use axum::extract::Path;
 use axum::http::{header, HeaderMap};
 use axum::response::{IntoResponse, Response};
+use axum::Extension;
 use axum::Json;
 use chrono::Utc;
 use serde::Serialize;
@@ -24,12 +25,14 @@ use utoipa::ToSchema;
 use super::openapi::{AuthorizationRequestNotFound, SessionWideningNotFound};
 use super::session_shortfall::requesting_browser_session;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::capabilities::oauth::{SessionWideningPollError, SessionWideningStatus};
+use crate::domain::capabilities::oauth::{
+    SessionWideningAsk, SessionWideningPollError, SessionWideningStatus,
+};
 use crate::http::browser_session_cookie::carried_browser_session;
 use crate::http::browser_session_set_cookie;
 use crate::http::errors::InternalError;
 use crate::http::extractors::Live;
-use crate::http::middleware::StartLimitAskedNow;
+use crate::http::middleware::{start_limited_response, DeferredStartLimit};
 use crate::http::wire_representations::CacheSuppressed;
 use crate::live_bindings::{LiveSessionWidening, LiveTokenVerifier};
 
@@ -62,30 +65,38 @@ pub(super) enum SessionWideningStatusBody {
 /// Ask the Owner to widen this browser's session by what it lacks of request
 /// `id`, which waits on this browser's limited page, and raise the Owner's
 /// notification. The widening asks for exactly what the session lacks of the
-/// request, and the request keeps waiting on the page as long as the widening
-/// waits for the Owner. It spends from the authorization start limit, as a
-/// request raised for the Owner does, before anything else is read; a refusal
-/// is the limit's `429`.
+/// request, and the request keeps waiting on the page until the widening's
+/// approval can no longer be collected. Asking again while that widening
+/// still waits for the Owner answers it, and notifies no one. A new widening
+/// spends from the authorization start limit, as a request raised for the
+/// Owner does; a refusal is the limit's `429`, nothing filed.
 #[utoipa::path(
     post,
     tag = "OAuth 2.0",
     path = "/authorize/{id}/ask-to-widen",
     params(("id" = String, Path, description = "Authorization request id")),
     responses(
-        (status = 200, description = "The widening filed for the Owner", body = AskedSessionWideningBody),
+        (status = 200, description = "The widening waiting for the Owner: filed by this ask, or by an earlier one for the same request", body = AskedSessionWideningBody),
+        (status = 429, description = "The authorization start limit refused a new widening"),
         (status = 404, description = "No request with that id waits on this browser's limited page, or this browser's session lacks nothing it could be widened by", body = AuthorizationRequestNotFound)
     )
 )]
 pub(super) async fn handle_session_widening_ask(
-    _start_limit: StartLimitAskedNow,
+    Extension(deferred_start_limit): Extension<DeferredStartLimit>,
     session_widening: Live<LiveSessionWidening>,
     token_verifier: Live<LiveTokenVerifier>,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, AuthorizationServerError> {
     let (_, sid) = requesting_browser_session(&token_verifier, &headers, &id)?;
-    let widening_id = session_widening.ask(&id, &sid, Utc::now())?;
-    Ok(CacheSuppressed(Json(AskedSessionWideningBody { widening_id })).into_response())
+    Ok(
+        match session_widening.ask(&id, &sid, || deferred_start_limit.admits(), Utc::now())? {
+            SessionWideningAsk::Asked { widening_id } => {
+                CacheSuppressed(Json(AskedSessionWideningBody { widening_id })).into_response()
+            }
+            SessionWideningAsk::StartLimited => start_limited_response(),
+        },
+    )
 }
 
 /// Poll the widening `id`, asked in this browser's session. The poll that

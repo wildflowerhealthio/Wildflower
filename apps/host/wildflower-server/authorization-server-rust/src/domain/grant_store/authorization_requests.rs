@@ -88,6 +88,19 @@ pub trait AuthorizationRequestsTx {
         id: &str,
     ) -> Result<Option<SessionWideningRequest>, AuthorizationServerError>;
 
+    /// The session widenings asked in the browser session `sid` that still
+    /// wait for the Owner at `now` (pending and unexpired), newest first; of
+    /// two asked at once, the greater id first.
+    ///
+    /// # Errors
+    ///
+    /// See the [trait](Self).
+    fn pending_session_widening_requests_for_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<SessionWideningRequest>, AuthorizationServerError>;
+
     /// Load *any* device request or pairing bearing the human-typed
     /// `user_code`, regardless of status, or `None` when absent. Callers that
     /// need a live request must use

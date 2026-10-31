@@ -33,6 +33,20 @@ use crate::domain::grant_store::{AuthorizationRequestsTx as _, BrowserSessionsTx
 use crate::domain::{GrantStore, GrantTx};
 use crate::ports::{OwnerApproval, Revocation};
 
+/// What an [`ask`](SessionWidening::ask) came to.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum SessionWideningAsk {
+    /// A widening waits for the Owner — filed by this ask, or by an earlier
+    /// one for the same session, app and scopes — and the page polls it.
+    Asked {
+        /// The widening's id.
+        widening_id: String,
+    },
+    /// The authorization start limit refused a new widening; nothing was
+    /// filed, and the code request waits as it did.
+    StartLimited,
+}
+
 /// Where a widening stands, as one poll found it.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SessionWideningStatus {
@@ -125,12 +139,21 @@ impl<S: GrantStore> SessionWidening<S> {
 
     /// Ask the Owner to widen the browser session `sid` by what it lacks of
     /// the code request `code_request_id`, which waits on that browser's
-    /// limited page, and return the widening's id. The widening asks for
-    /// exactly the request's [`session_shortfall`] against the session as its
-    /// row stands, never for anything the browser names. It waits for the
-    /// Owner for [`AUTHORIZATION_REQUEST_TTL`], and the code request waits on
-    /// its limited page as long, so the browser can go on with it once the
-    /// Owner has decided. The Owner prompt is republished once it commits.
+    /// limited page. The widening asks for exactly the request's
+    /// [`session_shortfall`] against the session as its row stands, never for
+    /// anything the browser names. It waits for the Owner for
+    /// [`AUTHORIZATION_REQUEST_TTL`], and the code request waits on its
+    /// limited page until the widening's approval can no longer be collected
+    /// and gone on with
+    /// ([`asking_code_request_expires_at`](SessionWideningRequest::asking_code_request_expires_at)).
+    ///
+    /// Asking again while a widening of this session for the same app and
+    /// the same scopes still waits for the Owner answers that widening: the
+    /// Owner isn't told again, the start limit isn't asked, and the code
+    /// request waits no longer than that widening lets it. Only a new
+    /// widening asks `may_ask_owner` — the authorization start limit, which a
+    /// widening spends from as any request raised for the Owner does — and
+    /// republishes the Owner prompt once it commits.
     ///
     /// # Errors
     ///
@@ -144,12 +167,13 @@ impl<S: GrantStore> SessionWidening<S> {
         &self,
         code_request_id: &str,
         sid: &str,
+        may_ask_owner: impl FnOnce() -> bool,
         now: DateTime<Utc>,
-    ) -> Result<String, AuthorizationServerError> {
+    ) -> Result<SessionWideningAsk, AuthorizationServerError> {
         let not_found = || AuthorizationServerError::AuthorizationRequestNotFound {
             id: code_request_id.to_owned(),
         };
-        let widening_id = self.store.write(|tx| {
+        let asked = self.store.write(|tx| {
             let code_request =
                 load_code_request_awaiting_limited_page(tx, code_request_id, sid, now)?;
             let browser_session = tx
@@ -169,28 +193,52 @@ impl<S: GrantStore> SessionWidening<S> {
             if missing_scopes.is_empty() {
                 return Err(not_found());
             }
+            let already_asked = tx
+                .pending_session_widening_requests_for_session(sid, now)?
+                .into_iter()
+                .find(|widening_request| {
+                    widening_request.client_id == code_request.client_id
+                        && widening_request.requested_scopes == missing_scopes
+                });
+            let (widening_request, filed) = match already_asked {
+                Some(widening_request) => (widening_request, false),
+                None if !may_ask_owner() => return Ok(None),
+                None => {
+                    let widening_request = SessionWideningRequest::new(
+                        NewSessionWideningRequestArgs {
+                            id: Uuid::new_v4().to_string(),
+                            sid: sid.to_owned(),
+                            client_id: code_request.client_id.clone(),
+                            browser_name,
+                            requested_scopes: missing_scopes,
+                            ttl: AUTHORIZATION_REQUEST_TTL,
+                        },
+                        now,
+                    );
+                    tx.insert_session_widening_request(&widening_request)?;
+                    (widening_request, true)
+                }
+            };
             let waiting_longer = code_request
-                .extend_limited_page_wait(AUTHORIZATION_REQUEST_TTL, now)
+                .extend_limited_page_wait_until(
+                    widening_request.asking_code_request_expires_at(),
+                    now,
+                )
                 .map_err(|_| not_found())?;
-            if !tx.replace_code_request(&code_request, &waiting_longer)? {
+            if waiting_longer != code_request
+                && !tx.replace_code_request(&code_request, &waiting_longer)?
+            {
                 return Err(not_found());
             }
-            let widening_request = SessionWideningRequest::new(
-                NewSessionWideningRequestArgs {
-                    id: Uuid::new_v4().to_string(),
-                    sid: sid.to_owned(),
-                    client_id: code_request.client_id.clone(),
-                    browser_name,
-                    requested_scopes: missing_scopes,
-                    ttl: AUTHORIZATION_REQUEST_TTL,
-                },
-                now,
-            );
-            tx.insert_session_widening_request(&widening_request)?;
-            Ok(widening_request.id)
+            Ok(Some((widening_request.id, filed)))
         })?;
-        self.owner_approval.republish_active();
-        Ok(widening_id)
+        let Some((widening_id, filed)) = asked else {
+            return Ok(SessionWideningAsk::StartLimited);
+        };
+        if filed {
+            self.owner_approval.republish_active();
+        }
+        Ok(SessionWideningAsk::Asked { widening_id })
     }
 
     /// Poll the widening `widening_id` at `now`, for the browser whose
@@ -430,6 +478,19 @@ mod tests {
         }
     }
 
+    /// Ask, as the page does, for `fixture`'s request `req-1` at `now`, the
+    /// start limit admitting it, and return the widening's id.
+    fn asked_widening_id(fixture: &Fixture, now: DateTime<Utc>) -> String {
+        match fixture
+            .session_widening
+            .ask("req-1", FIXTURE_SID, || true, now)
+            .expect("asks")
+        {
+            SessionWideningAsk::Asked { widening_id } => widening_id,
+            SessionWideningAsk::StartLimited => panic!("the start limit admitted it"),
+        }
+    }
+
     /// A decider acting as the Owner over `fixture`'s store.
     fn owner(fixture: &Fixture) -> ConsentDecider<FakeGrantStore> {
         ConsentDecider::new(
@@ -448,10 +509,7 @@ mod tests {
     fn an_ask_files_a_widening_for_what_the_session_lacks() {
         let fixture = fixture();
         let now = Utc::now() + Duration::minutes(3);
-        let widening_id = fixture
-            .session_widening
-            .ask("req-1", FIXTURE_SID, now)
-            .expect("asks");
+        let widening_id = asked_widening_id(&fixture, now);
         let store = &fixture.session_widening.store;
         let widening_request = store
             .tx()
@@ -477,7 +535,10 @@ mod tests {
             code_request.state.status(),
             RequestStatus::AwaitingLimitedPage
         );
-        assert_eq!(code_request.expires_at, now + AUTHORIZATION_REQUEST_TTL);
+        assert_eq!(
+            code_request.expires_at,
+            widening_request.asking_code_request_expires_at()
+        );
         assert_eq!(fixture.owner_approval.count(), 1);
         assert_eq!(
             store.tx().owner_prompt(now).unwrap(),
@@ -486,6 +547,105 @@ mod tests {
                 browser_name: "Firefox on Linux".to_owned(),
             })
         );
+    }
+
+    /// Asking again while the widening waits for the Owner answers that
+    /// widening: nothing new is filed, the Owner isn't told again, the start
+    /// limit isn't asked, and the request waits no longer. Once the start
+    /// limit refuses a new widening, nothing is filed.
+    #[test]
+    fn asking_again_answers_the_widening_still_waiting() {
+        let fixture = fixture();
+        let now = Utc::now();
+        let widening_id = asked_widening_id(&fixture, now);
+        let store = &fixture.session_widening.store;
+        let waiting_until = store
+            .tx()
+            .code_request_by_id("req-1")
+            .unwrap()
+            .unwrap()
+            .expires_at;
+        assert_eq!(
+            fixture.session_widening.ask(
+                "req-1",
+                FIXTURE_SID,
+                || panic!("the start limit isn't asked"),
+                now + Duration::minutes(1)
+            ),
+            Ok(SessionWideningAsk::Asked {
+                widening_id: widening_id.clone()
+            })
+        );
+        assert_eq!(fixture.owner_approval.count(), 1);
+        assert_eq!(
+            store
+                .tx()
+                .pending_session_widening_requests_for_session(FIXTURE_SID, now)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            store
+                .tx()
+                .code_request_by_id("req-1")
+                .unwrap()
+                .unwrap()
+                .expires_at,
+            waiting_until
+        );
+
+        owner(&fixture)
+            .deny_session_widening(&widening_id, now)
+            .expect("denies");
+        let republished = fixture.owner_approval.count();
+        assert_eq!(
+            fixture
+                .session_widening
+                .ask("req-1", FIXTURE_SID, || false, now),
+            Ok(SessionWideningAsk::StartLimited)
+        );
+        assert_eq!(fixture.owner_approval.count(), republished);
+        assert!(store
+            .tx()
+            .pending_session_widening_requests_for_session(FIXTURE_SID, now)
+            .unwrap()
+            .is_empty());
+    }
+
+    /// An approval in the decision window's last second is still collected
+    /// by a poll just past it, and the request still waits on its limited
+    /// page for the browser to go on with.
+    #[test]
+    fn an_approval_at_the_deadline_is_collected_after_it() {
+        let fixture = fixture();
+        let asked_at = Utc::now();
+        let widening_id = asked_widening_id(&fixture, asked_at);
+        let deadline = asked_at + AUTHORIZATION_REQUEST_TTL;
+        owner(&fixture)
+            .approve_session_widening(
+                &widening_id,
+                owned_scopes(&["patient/Observation.r"]),
+                deadline - Duration::seconds(1),
+            )
+            .expect("approves");
+        let after_deadline = deadline + Duration::seconds(3);
+        assert!(matches!(
+            fixture.session_widening.poll(
+                &widening_id,
+                &presented_session(FIXTURE_SID, "jti-1"),
+                after_deadline
+            ),
+            Ok(SessionWideningStatus::Widened { .. })
+        ));
+        assert!(fixture
+            .session_widening
+            .store
+            .tx()
+            .code_request_by_id("req-1")
+            .unwrap()
+            .unwrap()
+            .is_awaiting_limited_page_at(after_deadline));
     }
 
     /// Nothing is asked for another session's request, a session that lacks
@@ -501,7 +661,7 @@ mod tests {
         assert_eq!(
             fixture
                 .session_widening
-                .ask("req-1", "another-sid", Utc::now()),
+                .ask("req-1", "another-sid", || true, Utc::now()),
             not_found
         );
 
@@ -515,7 +675,7 @@ mod tests {
         assert_eq!(
             fixture
                 .session_widening
-                .ask("req-1", FIXTURE_SID, Utc::now()),
+                .ask("req-1", FIXTURE_SID, || true, Utc::now()),
             not_found
         );
 
@@ -536,7 +696,7 @@ mod tests {
         assert_eq!(
             fixture
                 .session_widening
-                .ask("req-1", FIXTURE_SID, Utc::now()),
+                .ask("req-1", FIXTURE_SID, || true, Utc::now()),
             not_found
         );
         assert_eq!(fixture.owner_approval.count(), 0);
@@ -559,10 +719,7 @@ mod tests {
     #[test]
     fn the_first_poll_after_approval_collects_the_wider_session() {
         let fixture = fixture();
-        let widening_id = fixture
-            .session_widening
-            .ask("req-1", FIXTURE_SID, Utc::now())
-            .expect("asks");
+        let widening_id = asked_widening_id(&fixture, Utc::now());
         let presented = presented_session(FIXTURE_SID, "narrow-jti");
         assert_eq!(
             fixture
@@ -639,10 +796,7 @@ mod tests {
     #[test]
     fn a_declined_widening_leaves_the_session_and_only_its_session_polls_it() {
         let fixture = fixture();
-        let widening_id = fixture
-            .session_widening
-            .ask("req-1", FIXTURE_SID, Utc::now())
-            .expect("asks");
+        let widening_id = asked_widening_id(&fixture, Utc::now());
         owner(&fixture)
             .deny_session_widening(&widening_id, Utc::now())
             .expect("denies");
@@ -686,10 +840,7 @@ mod tests {
     #[test]
     fn an_undecided_or_orphaned_widening_has_expired() {
         let fixture = fixture();
-        let widening_id = fixture
-            .session_widening
-            .ask("req-1", FIXTURE_SID, Utc::now())
-            .expect("asks");
+        let widening_id = asked_widening_id(&fixture, Utc::now());
         let presented = presented_session(FIXTURE_SID, "jti-1");
         assert_eq!(
             fixture
