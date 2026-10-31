@@ -199,12 +199,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      # One shard per top-level area, derived from the Vitest projects the
-      # root vite.config.ts defines, so a new `apps/<folder>` gets its own
-      # runner with no edit here. Only areas holding a package the PR changes
-      # or reaches through the workspace dependency graph get a shard; a root
-      # config or lockfile change, or any change outside every package (CI
-      # plumbing, the shard script, docs, Rust) runs them all. Rules:
+      # The top-level areas (`global`, `scripts`, `slices`, each
+      # `apps/<folder>`), derived from the Vitest projects the root
+      # vite.config.ts defines, so a new `apps/<folder>` is covered with no
+      # edit here. Only areas holding a package the PR changes or reaches
+      # through the workspace dependency graph run; a root config or lockfile
+      # change, or any change outside every package (CI plumbing, the shard
+      # script, docs, Rust) runs them all. The selected areas are packed by
+      # rough test time onto at most a few shards, one runner each. Rules:
       # scripts/ci/test-shards.ts. The planner loads the Vitest configs, so
       # it needs `vp install` but no `vp run pack`.
       #
