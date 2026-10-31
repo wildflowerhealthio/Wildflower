@@ -253,6 +253,20 @@ pub fn paired_browser_session_holding(db: &TestDb, scopes: &[&str]) -> (String, 
     (session.sid, token)
 }
 
+/// Narrow the browser session `session_token` names to hold `scopes`, as its
+/// row records them, so it falls short of what the token minted for it also
+/// lacks: the server reads what a session holds from its row.
+pub fn narrow_browser_session_of(db: &TestDb, session_token: &str, scopes: &[&str]) {
+    let sid = decode_jwt_payload(session_token)["sid"]
+        .as_str()
+        .expect("a browser session's token names its sid")
+        .to_owned();
+    let scopes: Vec<String> = scopes.iter().map(|scope| (*scope).to_owned()).collect();
+    assert!(store_handle(db)
+        .write(|tx| tx.update_browser_session_scopes(&sid, &scopes))
+        .expect("narrow the browser session"));
+}
+
 /// The `Cookie` header a browser holding the browser session token
 /// `session_token` sends.
 pub fn browser_session_cookie(session_token: &str) -> String {

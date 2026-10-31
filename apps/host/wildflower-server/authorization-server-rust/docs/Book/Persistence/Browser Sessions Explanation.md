@@ -64,6 +64,12 @@ Continue records it, in the same write as the request's acknowledgement; Cancel 
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/browser_sessions.rs SqliteGrantTx::record_session_shortfall_acknowledgement tests="tests::a_session_shortfall_acknowledgement_is_per_session_and_client"}}
 
+#### `update_browser_session_scopes`
+
+Rewrites what a session holds and nothing else of it. The tests narrow a session's row with it, so it holds less than the token minted for it.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/browser_sessions.rs SqliteGrantTx::update_browser_session_scopes tests="tests::updating_a_session_s_scopes_keeps_the_rest_of_it"}}
+
 #### `delete_browser_sessions_ended_before`
 
 The prune test keeps sessions alive with refresh families built by [`family`](<Test Fixtures Explanation.md#item-browser_sessions--tests--family>).

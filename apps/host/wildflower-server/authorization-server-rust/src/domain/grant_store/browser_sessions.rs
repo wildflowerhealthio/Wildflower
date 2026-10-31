@@ -94,6 +94,19 @@ pub trait BrowserSessionsTx {
         seen_before: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError>;
 
+    /// Write `scopes` as the browser session `sid`'s grant, returning `true`
+    /// iff a session has that `sid`. Its `sid`, expiry and everything else
+    /// stay as they are.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn update_browser_session_scopes(
+        &mut self,
+        sid: &str,
+        scopes: &[String],
+    ) -> Result<bool, AuthorizationServerError>;
+
     /// Whether the browser session `sid` has gone on past its limited page
     /// for `client_id` before.
     ///

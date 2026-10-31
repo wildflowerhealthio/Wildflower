@@ -595,6 +595,20 @@ impl BrowserSessionsTx for FakeGrantTx<'_> {
         )
     }
 
+    fn update_browser_session_scopes(
+        &mut self,
+        sid: &str,
+        scopes: &[String],
+    ) -> Result<bool, AuthorizationServerError> {
+        Ok(self
+            .store
+            .browser_sessions
+            .borrow_mut()
+            .get_mut(sid)
+            .map(|session| session.scopes = scopes.to_vec())
+            .is_some())
+    }
+
     fn is_session_shortfall_acknowledged_for_client(
         &mut self,
         sid: &str,

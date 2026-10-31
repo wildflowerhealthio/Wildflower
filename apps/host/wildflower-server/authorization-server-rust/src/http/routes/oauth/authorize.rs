@@ -215,7 +215,8 @@ pub struct AuthorizeParams {
 ///    `POST /oauth/authorize/{id}/cancel` answers the client
 ///    `access_denied`. Until then the Owner isn't asked about it. Once a
 ///    browser session has pressed Continue for a client, its later requests
-///    for that client skip the page, whatever the session then lacks.
+///    for that client skip the page, whatever the session then lacks. What
+///    the session holds is read from its `browser_sessions` row.
 /// 3. Unless every requested scope is pre-approved by an existing grant for
 ///    this (client, `redirect_uri`) pair, the request joins the pending-consent
 ///    queue and the browser is 302'd to a page this authorization server
@@ -304,7 +305,7 @@ pub(super) async fn handle_authorize_request(
                 }),
         )));
     };
-    let browser_session_grant = browser_session.granted();
+    let session_token_grant = browser_session.granted();
     let next_step = code_authorization_starter.start(
         &AuthorizeRequest {
             response_type: &params.response_type,
@@ -316,7 +317,7 @@ pub(super) async fn handle_authorize_request(
             client_state: &params.state,
             launch: params.launch.as_deref(),
             aud: params.aud.as_deref(),
-            browser_session_grant: &browser_session_grant,
+            session_token_grant: &session_token_grant,
             can_decide_consents: can_decide_consents(browser_session),
             may_raise_for_owner: &may_raise_for_owner,
             sid: browser_sid,

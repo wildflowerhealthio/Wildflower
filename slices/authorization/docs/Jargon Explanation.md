@@ -555,9 +555,10 @@ each it narrows, the part the session lacks. A session holding
 `/oauth/authorize` works it out once the request is validated and its launch
 consumed, before the [fast path](#grant), the start limit and the Owner.
 When it isn't empty, it parks the request as `awaiting_limited_page` and sends the browser here,
-unless that browser session has pressed Continue for the same app before. A
-same-device session, holding `OWNER_SCOPES`, falls short of nothing and never
-sees the page.
+unless that browser session has pressed Continue for the same app before. What
+the session holds is read from its `browser_sessions` row, not from its token.
+A same-device session, holding `OWNER_SCOPES`, falls short of nothing and
+never sees the page.
 
 The page reads `GET /oauth/authorize/{id}/session-shortfall` (the app's name
 and the scopes the session lacks) and says, for example, "This browser isn't
@@ -596,6 +597,8 @@ from its cookie as the status poll reads it; any other browser, with another
 session or none, gets the `404` an unknown id gets. So does a request no
 longer waiting there (continued, cancelled, decided, or past its five
 minutes), and the page then goes to the wait page, which says how it ended.
+The read answers that `404` too once the session has ended, since no code is
+issued under it.
 
 ### Consent card
 
@@ -807,7 +810,10 @@ under, holds the scopes the Owner granted, and expires 24 hours
 
 The browser holds its session in the `__Host-browser_session` cookie, whose
 value is the session's token, issued to the browser-session client (its
-`sub`), and the token is accepted only while its session is live. One browser
+`sub`), and the token is accepted only while its session is live. The token's
+`scope` is what the browser can do as a bearer on the server's pages, deciding
+consents among them; what the session holds, which bounds every code issued in
+it and decides the [limited page](#limited-page), is read from its row. One browser
 is signed out by revoking its browser session or its token's `jti`, or by its
 session expiring; every browser is signed out by revoking the
 browser-session client's subject. A request whose cookie
