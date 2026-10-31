@@ -2682,6 +2682,9 @@ importers:
       '@types/node':
         specifier: ^26
         version: 26.1.0
+      '@wildflowerhealthio/dicom':
+        specifier: workspace:*
+        version: link:../../../slices/file-formats/dicom
       '@wildflowerhealthio/dicom-importer-core':
         specifier: workspace:*
         version: link:../../../slices/importer/dicom-importer-core
@@ -2691,18 +2694,39 @@ importers:
       '@wildflowerhealthio/har-importer-core':
         specifier: workspace:*
         version: link:../../../slices/importer/har-importer-core
+      '@wildflowerhealthio/http-archive':
+        specifier: workspace:*
+        version: link:../../../slices/file-formats/http-archive
+      '@wildflowerhealthio/importer-core':
+        specifier: workspace:*
+        version: link:../../../slices/importer/importer-core
       '@wildflowerhealthio/importer-fundamentals':
         specifier: workspace:*
         version: link:../../../slices/importer/importer-fundamentals
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      '@wildflowerhealthio/lifelabs-pdf-importer':
+        specifier: workspace:*
+        version: link:../../../slices/importer/lifelabs-pdf-importer
+      '@wildflowerhealthio/positioned-text':
+        specifier: workspace:*
+        version: link:../../../slices/file-formats/positioned-text
+      '@wildflowerhealthio/positioned-text-web':
+        specifier: workspace:*
+        version: link:../../../slices/file-formats/positioned-text-web
+      '@wildflowerhealthio/rexall-be-well-source':
+        specifier: workspace:*
+        version: link:../../../slices/http-extraction/rexall-be-well-source
       '@wildflowerhealthio/synthetic-data-dicom':
         specifier: workspace:*
         version: link:../synthetic-data-dicom
       '@wildflowerhealthio/synthetic-data-fundamentals':
         specifier: workspace:*
         version: link:../synthetic-data-fundamentals
+      '@wildflowerhealthio/synthetic-data-lifelabs':
+        specifier: workspace:*
+        version: link:../synthetic-data-lifelabs
       '@wildflowerhealthio/synthetic-data-rexall-be-well':
         specifier: workspace:*
         version: link:../synthetic-data-rexall-be-well
