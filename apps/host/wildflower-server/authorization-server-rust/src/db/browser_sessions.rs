@@ -237,6 +237,27 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
         Ok(())
     }
 
+    /// Delete every client the browser session `sid` went on past its limited
+    /// page for.
+    fn forget_session_shortfall_acknowledgements(
+        &mut self,
+        sid: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::delete(
+            session_shortfall_acknowledgements::table
+                .filter(session_shortfall_acknowledgements::sid.eq(sid)),
+        )
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure(
+                "forget_session_shortfall_acknowledgements failed",
+                e,
+            )
+        })?;
+        Ok(())
+    }
+
     /// Delete every browser session that expired or was revoked before `cutoff`
     /// and that no refresh-token family alive at `cutoff` names, returning how
     /// many went, and with them every limited-page acknowledgement whose session

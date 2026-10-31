@@ -132,6 +132,18 @@ pub trait BrowserSessionsTx {
         client_id: &str,
     ) -> Result<(), AuthorizationServerError>;
 
+    /// Forget every client the browser session `sid` went on past its
+    /// limited page for, so its next request for any of them stops at the
+    /// page again when the session still falls short of it.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the delete fails.
+    fn forget_session_shortfall_acknowledgements(
+        &mut self,
+        sid: &str,
+    ) -> Result<(), AuthorizationServerError>;
+
     /// Delete every browser session that expired or was revoked before
     /// `cutoff` and that no refresh-token family alive at `cutoff` names,
     /// returning how many went.
