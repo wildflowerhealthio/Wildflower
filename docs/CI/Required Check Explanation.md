@@ -25,7 +25,11 @@ workflow's checks.
 `ci.yml` moves the filtering inside a workflow that always starts:
 
 1. **`Detect changes`** runs `dorny/paths-filter` with one filter per area, the
-   lists that used to be each workflow's trigger `paths`.
+   lists that used to be each workflow's trigger `paths`. For the TypeScript
+   and Rust areas it also plans the test shards
+   ([`scripts/ci/test-shards.ts`](../../scripts/ci/test-shards.ts),
+   [`scripts/ci/rust-shards.ts`](../../scripts/ci/rust-shards.ts)) and passes
+   each matrix to its area's workflow as an input.
 2. **One job per area** calls that area's workflow (`ci-typescript.yml`,
    `ci-rust.yml`, `ci-pebble.yml`, `lint-markdown.yml`, `api-sync.yml`, `lint-actions.yml`, `lint-shell.yml`, `ci-android.yml`) through
    `workflow_call`, gated on its filter. An untouched area's job is skipped.
