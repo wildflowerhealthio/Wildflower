@@ -469,7 +469,7 @@ const scrubLogEntry = <L extends NonNullable<ScrubbableEvent['logentry']>>(
  * itself.
  *
  * Stack frames keep their source maps: the site's builds carry debug IDs
- * (`.github/actions/sentry-sourcemaps`), and the SDK lists each frame's script
+ * (`scripts/ci/upload-sentry-sourcemaps.sh`), and the SDK lists each frame's script
  * as a debug image whose `code_file` is the frame's `abs_path` or `filename`.
  * Sentry pairs a frame with its image by that path and finds the map by the
  * image's debug ID, never by URL; frame and image are rewritten alike, so the

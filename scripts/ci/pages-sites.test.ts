@@ -225,24 +225,20 @@ describe('pages-sites / affectedSites', () => {
   })
 })
 
-describe('pages-sites / the deploy workflows', () => {
-  const workflow = (name: string): string =>
-    readFileSync(join(repoRoot, '.github', 'workflows', name), 'utf8')
+describe('pages-sites / the deploy script', () => {
+  const script = readFileSync(join(repoRoot, 'scripts', 'ci', 'deploy-pages-sites.sh'), 'utf8')
 
-  it.each(['deploy-github-pages.yml', 'pr-preview.yml'])(
-    "should read only a planned site's own fields in %s",
-    (name) => {
-      // The matrices fan out over `pages-sites.ts plan …`, whose sites' keys
-      // are the only fields a `matrix.site.<field>` can name.
-      const fields = [...workflow(name).matchAll(/matrix\.site\.(\w+)/g)].map(([, field]) => field)
-      expect(fields.length).toBeGreaterThan(0)
-      const known: readonly string[] = Object.keys(MARKETING_PAGES_SITE)
-      for (const field of fields) expect(known).toContain(field)
-    }
-  )
+  it("should read only a planned site's own fields", () => {
+    // The script builds and publishes the sites of `pages-sites.ts plan …`,
+    // whose sites' keys are the only fields its `$(field <name>)` can read.
+    const fields = [...script.matchAll(/\$\(field (\w+)\)/g)].map(([, field]) => field)
+    expect(fields.length).toBeGreaterThan(0)
+    const known: readonly string[] = Object.keys(MARKETING_PAGES_SITE)
+    for (const field of fields) expect(known).toContain(field)
+  })
 
   it('should publish the 404 page branding-core holds', () => {
-    const declared = /not_found_page=(\S+)/.exec(workflow('deploy-pages-site.yml'))?.[1] ?? ''
+    const declared = /not_found_page=(\S+)/.exec(script)?.[1] ?? ''
     expect(declared).toMatch(/^slices\/branding\/branding-core\//)
     expect(existsSync(join(repoRoot, declared))).toBe(true)
   })

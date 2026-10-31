@@ -4,12 +4,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // The sites this repository publishes on GitHub Pages, and the plans the
-// deploy workflows fan out over. Each hosted app is published from the
+// deploy workflows build and publish. Each hosted app is published from the
 // `gh-pages` branch of its own repository, `wildflowerhealthio/<slug>-web`,
 // at `https://<slug>.wildflowerhealth.io/` (`APP_SLUGS`), and its PR previews
 // under `pr-<n>/` of that same branch; the marketing site is published at the
 // apex by this repository's Pages, and its PR previews under `pr-<n>/` of
-// `wildflowerhealthio/staging`. deploy-pages-site.yml publishes one site.
+// `wildflowerhealthio/staging`. scripts/ci/deploy-pages-sites.sh builds and
+// publishes a plan's sites.
 //
 //   node scripts/ci/pages-sites.ts plan production   # every app (the apex deploys on its own)
 //   node scripts/ci/pages-sites.ts plan preview      # the sites a branch's changes can affect

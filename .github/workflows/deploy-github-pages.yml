@@ -87,13 +87,7 @@ jobs:
         site: ${{ fromJSON(needs.plan.outputs.sites) }}
     uses: ./.github/workflows/deploy-pages-site.yml
     with:
-      slug: ${{ matrix.site.name }}
-      package: ${{ matrix.site.packageName }}
-      build-dir: ${{ matrix.site.buildDir }}
-      sentry-dsn-variable: ${{ matrix.site.sentryDsnVariable }}
-      pages-repository: ${{ matrix.site.pagesRepository }}
-      pages-branch: ${{ matrix.site.pagesBranch }}
-      site-url: ${{ matrix.site.siteUrl }}
+      site: ${{ toJSON(matrix.site) }}
       target: production
     secrets: inherit
 

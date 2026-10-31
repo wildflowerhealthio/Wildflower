@@ -6,9 +6,16 @@ name: PR Preview
 # `https://<slug>.wildflowerhealth.io/pr-<n>/`, on the app's own origin beside
 # its production build (sharing its localStorage, deliberately); the marketing
 # site's sits in `pr-<n>/` on `main` of `wildflowerhealthio/staging`, served at
-# `https://wildflowerhealthio.github.io/staging/pr-<n>/`. deploy-pages-site.yml
-# builds and publishes each one. Links between apps always go to production,
-# so a preview's links into another app open that app's production build.
+# `https://wildflowerhealthio.github.io/staging/pr-<n>/`. Links between apps
+# always go to production, so a preview's links into another app open that
+# app's production build.
+#
+# One job builds and publishes every affected site, one after another,
+# through the deploy-pages-sites action, which deploy-github-pages.yml runs
+# for each production app in a job of its own: one runner per push, with one
+# checkout and one install, rather than a job per site. A site whose build or
+# publish fails is reported and the rest still publish; the job fails at the
+# end, naming the failures. The teardown is one job too.
 #
 # Which sites a PR affects follows the TypeScript test shards' rule
 # (scripts/ci/pages-sites.ts, `affectedSites`): every site for a root config or
@@ -30,17 +37,17 @@ on:
 # One preview run per PR, and one teardown run per PR, in separate groups so
 # a reopen never cancels a teardown partway through. Cancelling an in-progress
 # preview is safe (unlike the production deploy): the preview is disposable,
-# and the newest push is what counts. A teardown and a deploy to the same
-# Pages branch and PR still never interleave: their jobs share the
-# `pages-<repository>-<pr>` group.
+# and the newest push is what counts. A teardown and a deploy of the same PR
+# still never interleave: their jobs share the `pages-preview-<pr>` group, so
+# a teardown waits for a deploy already publishing, and the other way round.
 concurrency:
   group: pr-preview-${{ github.event.number }}-${{ github.event.action == 'closed' && 'teardown' || 'deploy' }}
   cancel-in-progress: true
 
 # `pull-requests: write` lets the comment steps post and edit the preview
 # comment on this repo's PR. Contents write on the Pages repositories comes
-# from the App installation token deploy-pages-site.yml mints, not
-# `GITHUB_TOKEN`.
+# from an App installation token (minted by the deploy-pages-sites action, and
+# by the teardown), not `GITHUB_TOKEN`.
 permissions:
   contents: read
   pull-requests: write
@@ -86,27 +93,39 @@ jobs:
   deploy:
     name: Preview
     needs: plan
-    # GitHub fails a job whose matrix is empty, so a plan with no sites skips
-    # the job instead.
+    # A plan with no sites has nothing to deploy.
     if: github.event.action != 'closed' && needs.plan.outputs.sites != '[]'
-    strategy:
-      # Every affected site publishes, so one failing build doesn't hide the
-      # others' previews.
-      fail-fast: false
-      matrix:
-        site: ${{ fromJSON(needs.plan.outputs.sites) }}
-    uses: ./.github/workflows/deploy-pages-site.yml
-    with:
-      slug: ${{ matrix.site.name }}
-      package: ${{ matrix.site.packageName }}
-      build-dir: ${{ matrix.site.buildDir }}
-      sentry-dsn-variable: ${{ matrix.site.sentryDsnVariable }}
-      pages-repository: ${{ matrix.site.pagesRepository }}
-      pages-branch: ${{ matrix.site.pagesBranch }}
-      site-url: ${{ matrix.site.siteUrl }}
-      target: ${{ github.event.number }}
-      book: ${{ matrix.site.includesBook }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    # Shared with the teardown (see the workflow's concurrency above).
+    concurrency:
+      group: pages-preview-${{ github.event.number }}
+      cancel-in-progress: false
+    steps:
+      # persist-credentials:false, as in deploy-pages-site.yml: the persisted
+      # GITHUB_TOKEN extraheader would override the App token on the push.
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          cache: true
+          cache-save: false
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Deploy the previews
+        uses: ./.github/actions/deploy-pages-sites
+        with:
+          sites: ${{ needs.plan.outputs.sites }}
+          target: ${{ github.event.number }}
+          variables: ${{ toJSON(vars) }}
+          app-id: ${{ secrets.STAGING_APP_ID }}
+          app-private-key: ${{ secrets.STAGING_APP_PRIVATE_KEY }}
+          sentry-auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
   comment:
     name: Comment the preview links
@@ -150,18 +169,13 @@ jobs:
           scripts/ci/upsert-preview-comment.sh "$body"
 
   teardown:
-    name: Remove the ${{ matrix.site.name }} preview
+    name: Remove the previews
     needs: plan
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        site: ${{ fromJSON(needs.plan.outputs.sites) }}
-    # Shares the deploys' group, so a teardown never interleaves with a
-    # publish to the same preview.
+    # Shared with the deploy (see the workflow's concurrency above).
     concurrency:
-      group: pages-${{ matrix.site.pagesRepository }}-${{ github.event.number }}
+      group: pages-preview-${{ github.event.number }}
       cancel-in-progress: false
     steps:
       # persist-credentials:false, as in deploy-pages-site.yml: the persisted
@@ -171,6 +185,16 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Name the Pages repositories
+        id: repositories
+        env:
+          SITES: ${{ needs.plan.outputs.sites }}
+        run: |
+          repositories=$(jq -r '[.[].pagesRepository] | unique | join(",")' <<< "$SITES")
+          echo "repositories=$repositories" >> "$GITHUB_OUTPUT"
+
+      # One token for every site's repository, as in the deploy-pages-sites
+      # action.
       - name: Mint the Pages repository App token
         id: pages-token
         uses: actions/create-github-app-token@v3
@@ -178,16 +202,17 @@ jobs:
           client-id: ${{ secrets.STAGING_APP_ID }}
           private-key: ${{ secrets.STAGING_APP_PRIVATE_KEY }}
           owner: wildflowerhealthio
-          repositories: ${{ matrix.site.pagesRepository }}
+          repositories: ${{ steps.repositories.outputs.repositories }}
           permission-contents: write
 
+      # Every site has its turn; the step fails at the end, naming the
+      # previews it could not remove.
       - name: Remove pr-${{ github.event.number }}/
         env:
-          PAGES_REMOTE: https://x-access-token:${{ steps.pages-token.outputs.token }}@github.com/wildflowerhealthio/${{ matrix.site.pagesRepository }}.git
-          PAGES_BRANCH: ${{ matrix.site.pagesBranch }}
-          PAGES_COMMIT_MESSAGE: Remove the preview of ${{ github.repository }}#${{ github.event.number }}
-          PR_NUMBER: ${{ github.event.number }}
-        run: scripts/ci/publish-pages-branch.sh teardown "$PR_NUMBER"
+          SITES: ${{ needs.plan.outputs.sites }}
+          TARGET: ${{ github.event.number }}
+          PAGES_TOKEN: ${{ steps.pages-token.outputs.token }}
+        run: scripts/ci/deploy-pages-sites.sh teardown
 
   comment-teardown:
     name: Comment the previews' removal
