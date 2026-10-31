@@ -91,7 +91,7 @@ jobs:
           echo "sites=$sites" >> "$GITHUB_OUTPUT"
 
   deploy:
-    name: Preview
+    name: Push preview pages
     needs: plan
     # A plan with no sites has nothing to deploy.
     if: github.event.action != 'closed' && needs.plan.outputs.sites != '[]'
