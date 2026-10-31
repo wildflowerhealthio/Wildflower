@@ -73,9 +73,11 @@ jobs:
               - '**/package.json'
               - '**/tsconfig*.json'
               # Files TypeScript tests read rather than import: the Pages
-              # 404 page and the shell scripts under scripts/ci/.
+              # 404 page, the shell scripts under scripts/ci/ and the dev app
+              # ports vite.config.base.ts reads.
               - 'slices/branding/branding-core/github-pages/**'
               - 'scripts/ci/*.sh'
+              - 'dev-app-ports.json'
               # scripts/package-graph.test.ts checks the crates' dependencies
               # too, so a manifest-only Rust change must still run it.
               - 'Cargo.toml'

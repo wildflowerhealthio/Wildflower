@@ -378,6 +378,7 @@ describe('test-shards / selectionFor', () => {
       'pnpm-lock.yaml',
       'pnpm-workspace.yaml',
       'vite.config.base.ts',
+      'dev-app-ports.json',
       'package.json',
     ]) {
       expect(projectsFor([file])).toEqual(allProjectNames)

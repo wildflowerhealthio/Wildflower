@@ -147,7 +147,11 @@ plugins and dependencies its build resolves, through `actions/setup-java`'s
 `cache: gradle`. Its key is a hash of every `*.gradle*` and
 `gradle-wrapper.properties` file, nothing Rust. Unlike the Rust cache it saves
 on any branch whose key has no entry yet, but a pull request that leaves the
-Gradle files alone restores `main`'s entry exactly and so saves nothing.
+Gradle files alone restores `main`'s entry exactly and so saves nothing. The
+two jobs keep separate Gradle caches: the bundle job also hashes
+`.github/actions/build-android-bundle/action.yml`, since it downloads more than
+`check` does (lintVital, bundletool) and a shared key would keep only whichever
+job saved first, usually `check`.
 
 ## The Tauri system packages
 

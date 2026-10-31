@@ -32,12 +32,9 @@ jobs:
   deploy:
     name: Deploy ${{ fromJSON(inputs.site).name }}
     runs-on: ubuntu-latest
-    # One publish at a time per Pages branch and target: the newest
-    # production deploy is the one to keep. A group per repository alone
-    # would let a queued production deploy and a queued preview replace each
-    # other (GitHub keeps one pending run per group), so deploys to different
-    # parts of the branch run side by side and rely on the publish script's
-    # lease instead.
+    # One production publish at a time per Pages repository. GitHub keeps one
+    # pending run per group, so a newer queued deploy replaces an older
+    # queued one: the newest production deploy is the one to keep.
     concurrency:
       group: pages-${{ fromJSON(inputs.site).pagesRepository }}-${{ inputs.target }}
       cancel-in-progress: false
@@ -60,8 +57,9 @@ jobs:
           cache: true
           cache-save: false
 
-      # Restore only: the packages the sites build are mostly unchanged since
-      # main's last pack, which ts-cache-warm.yml saves. See
+      # Restore only: the shared packages the sites build replay main's
+      # last pack, which ts-cache-warm.yml saves, because each site's Sentry
+      # variables are set only for the site's own build. See
       # docs/TypeScript/CI Build Cache Explanation.md.
       - name: Cache vp pack outputs
         uses: ./.github/actions/vp-pack-cache
