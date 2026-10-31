@@ -10,6 +10,8 @@ type CheckboxBase = {
    */
   readonly indeterminate?: boolean
   readonly label: ReactNode
+  /** The input's accessible name, when it should differ from the visible label. */
+  readonly 'aria-label'?: string
   readonly className?: string
 }
 
@@ -35,6 +37,7 @@ const Checkbox = (props: CheckboxProps): JSX.Element => {
         className="checkbox-2"
         checked={checked}
         disabled={disabled}
+        aria-label={props['aria-label']}
         onChange={(event: ChangeEvent<HTMLInputElement>) => {
           props.onChange?.(event.target.checked)
           // A click clears `indeterminate`; put the prop back, as React does
