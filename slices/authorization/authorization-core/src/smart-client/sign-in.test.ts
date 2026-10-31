@@ -163,7 +163,7 @@ describe('beginSignIn', () => {
 
     // Act
     const result = await runToEither(
-      beginSignIn(SERVER, undefined, environment, 'minted-launch-nonce')
+      beginSignIn(SERVER, undefined, environment, { launch: 'minted-launch-nonce' })
     )
 
     // Assert

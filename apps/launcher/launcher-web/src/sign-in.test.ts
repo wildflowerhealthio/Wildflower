@@ -155,7 +155,9 @@ describe('startSignIn', () => {
     })
 
     // Act
-    const launched = await startSignIn(SERVER_URL, undefined, signInEnvironment(page), 'nonce-1')
+    const launched = await startSignIn(SERVER_URL, undefined, signInEnvironment(page), {
+      launch: 'nonce-1',
+    })
     const standalone = await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
 
     // Assert

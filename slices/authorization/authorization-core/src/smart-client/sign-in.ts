@@ -48,6 +48,7 @@ import {
   tokenRequestBody,
   type AccessGrant,
   type AuthorizationRejected,
+  type AuthorizationRequestParameters,
   type PendingAuthorization,
   type TokenExchangeFailed,
 } from './authorization-flow.ts'
@@ -110,6 +111,12 @@ interface SignInEnvironment {
 }
 
 /**
+ * What an authorization request may carry for one sign-in alone, beyond what
+ * the app's registration and the server's discovery fix.
+ */
+type AuthorizationRequestExtras = Pick<AuthorizationRequestParameters, 'launch'>
+
+/**
  * Start a sign-in against `serverUrl`: discover its endpoints, mint the PKCE
  * pair and the `state`, stash what the return leg needs, and yield the
  * authorization URL to navigate to.
@@ -126,10 +133,11 @@ interface SignInEnvironment {
  * the registered redirect URI can't carry it. `undefined` when the app has
  * nowhere particular to go.
  *
- * `launch` is the SMART EHR launch the app was opened with, sent as the
- * authorization request's `launch` so the server can tie the sign-in to it.
- * Without one, or with an empty one, the request is a standalone launch. The
- * return leg does not need it, so it stays out of the pending record.
+ * `request` carries what the authorization request may add for this sign-in
+ * alone (see {@link AuthorizationRequestExtras}): `launch`, the SMART EHR
+ * launch the app was opened with, sent so the server can tie the sign-in to
+ * it. Without one, or with an empty one, the request is a standalone launch.
+ * The return leg does not need it, so it stays out of the pending record.
  *
  * The pending record is written **before** the URL is yielded, so a caller
  * cannot navigate away from a flow whose verifier was never saved.
@@ -138,7 +146,7 @@ const beginSignIn = (
   serverUrl: string,
   returnTo: string | undefined,
   environment: SignInEnvironment,
-  launch?: string
+  request: AuthorizationRequestExtras = {}
 ): Effect.Effect<string, SignInError> =>
   Effect.gen(function* () {
     const { smartServer, endpoints } = yield* discoverSmartEndpoints(serverUrl, {
@@ -177,7 +185,7 @@ const beginSignIn = (
       state,
       codeChallenge,
       audience: smartServer.fhirBaseUrl,
-      launch,
+      ...request,
     })
   })
 
@@ -293,4 +301,4 @@ const sessionFrom = (grant: AccessGrant, pending: PendingAuthorization): Session
 })
 
 export { PendingRequestUnusable, beginSignIn, completeSignIn }
-export type { SignInError, PendingStore, SignInEnvironment, Session }
+export type { AuthorizationRequestExtras, SignInError, PendingStore, SignInEnvironment, Session }

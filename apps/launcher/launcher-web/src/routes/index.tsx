@@ -99,7 +99,7 @@ const browserSignIn: LandingSignIn = {
       target,
       returnToOnPage(window.location.href),
       signInEnvironment(window, basenameOf(window.location.pathname)),
-      launch
+      { launch }
     ),
   leave: (authorizationUrl) => {
     window.location.assign(authorizationUrl)

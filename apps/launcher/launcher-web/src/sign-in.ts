@@ -42,6 +42,7 @@ import {
   parsePendingAuthorization,
   redirectUriForRoute,
   SERVER_QUERY_PARAM,
+  type AuthorizationRequestExtras,
   type Session,
   type SignInEnvironment,
   type SignInError,
@@ -188,11 +189,11 @@ const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A
 /**
  * Start a sign-in against `serverUrl`, yielding the authorization URL for the
  * caller to navigate to. `returnTo` (raw, from {@link returnToOnPage}) rides the
- * pending record and comes back as the redeemed session's `returnTo`. `launch`
- * is the {@link EhrLaunch}'s token when the sign-in is to the server the page
- * was launched against; without it the sign-in is a standalone launch. The
- * pending record is written before the URL comes back, so a caller cannot leave
- * on a flow whose verifier was never saved.
+ * pending record and comes back as the redeemed session's `returnTo`.
+ * `request.launch` is the {@link EhrLaunch}'s token when the sign-in is to the
+ * server the page was launched against; without it the sign-in is a standalone
+ * launch. The pending record is written before the URL comes back, so a caller
+ * cannot leave on a flow whose verifier was never saved.
  *
  * It discovers at `serverUrl`, the FHIR base for a Wildflower server and a
  * plain SMART server alike (`beginSignIn`).
@@ -201,8 +202,8 @@ const startSignIn = (
   serverUrl: string,
   returnTo: string | undefined,
   environment: SignInEnvironment,
-  launch?: string
-): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment, launch))
+  request: AuthorizationRequestExtras = {}
+): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment, request))
 
 /**
  * The SMART EHR launch this page load was opened with — by the base opening a
