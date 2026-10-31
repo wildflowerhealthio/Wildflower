@@ -7,11 +7,11 @@ use serde::Serialize;
 
 /// One authorization request, by the key its consent surface looks it up by:
 /// a device-code request's or browser pairing's `user_code`, an
-/// authorization-code request's `id`.
+/// authorization-code request's or session widening's `id`.
 ///
 /// `Serialize` writes the shape the host's server status carries it in,
-/// `{"kind": "device", "userCode": …}`, `{"kind": "browser", "userCode": …}`
-/// or `{"kind": "oauth", "id": …}`.
+/// `{"kind": "device", "userCode": …}`, `{"kind": "browser", "userCode": …}`,
+/// `{"kind": "oauth", "id": …}` or `{"kind": "widening", "id": …}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind")]
 pub enum ConsentKey {
@@ -35,5 +35,11 @@ pub enum ConsentKey {
         /// The code the pairing page shows, which the device page looks the
         /// pairing up by.
         user_code: String,
+    },
+    /// A session widening, decided at its own consent card.
+    #[serde(rename = "widening")]
+    SessionWidening {
+        /// The widening's id, which its consent card looks it up by.
+        id: String,
     },
 }

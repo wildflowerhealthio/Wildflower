@@ -280,6 +280,26 @@ impl CodeRequest {
         })
     }
 
+    /// Keep the request waiting on its browser's limited page until at least
+    /// `until`: the browser asked the Owner to widen its session, and the
+    /// request waits on that decision, and on the page collecting it. A
+    /// request already waiting longer keeps its expiry. Decides nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`NotAwaitingLimitedPage`] for a request not waiting there at `now`.
+    pub fn extend_limited_page_wait_until(
+        &self,
+        until: DateTime<Utc>,
+        now: DateTime<Utc>,
+    ) -> Result<Self, NotAwaitingLimitedPage> {
+        self.require_awaiting_limited_page(now)?;
+        Ok(CodeRequest {
+            expires_at: self.expires_at.max(until),
+            ..self.clone()
+        })
+    }
+
     /// Deny the request at `now` while it waits on its browser's limited
     /// page: the page's Cancel, or a client disabled before the browser went
     /// on.
