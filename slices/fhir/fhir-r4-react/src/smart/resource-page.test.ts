@@ -14,7 +14,7 @@ import {
 import * as fc from 'fast-check'
 import type Client from 'fhirclient/Client'
 import HttpError from 'fhirclient/HttpError'
-import { describe, expect, test, vi } from 'vite-plus/test'
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 
 import {
   BundleDecodeError,
@@ -367,30 +367,43 @@ describe('fetchResourcePage', () => {
     expect(exit).toEqual(Exit.fail(new ResourcePageRequestError({ cause })))
   })
 
-  test('a fully-populated Observation survives the page element-for-element', async () => {
-    // The generated rows above are minimal by design: a whole-schema arbitrary
-    // costs roughly half a second per resource, far too much for a property.
-    // Two seeded whole-resource samples keep the wire path covered end to end —
-    // every element the schema can carry, out through encode and back through
-    // the page's decode.
-    const samples = fc.sample(Arbitrary.make(Observation.Schema), { numRuns: 2, seed: 573 })
+  describe('a whole-schema Observation', () => {
+    // At fast-check's default size a schema-generated Observation runs to ~50KB
+    // on the wire, and its encode and decode — not its generation — cost seconds.
+    // The smallest size keeps every element in play at a fraction of the bytes:
+    // arrays hold at most one item, so it takes more samples to cover them all.
+    beforeAll(() => {
+      fc.configureGlobal({ baseSize: 'xsmall' })
+    })
+    afterAll(() => {
+      fc.resetConfigureGlobal()
+    })
 
-    await Promise.all(
-      samples.map(async (observation) => {
-        const wire = encodeObservation(observation)
-        const { client } = stubSmartClient(bundle([wire], undefined))
+    test('a fully-populated Observation survives the page element-for-element', async () => {
+      // The generated rows above are minimal by design. Eight seeded
+      // whole-resource samples keep the wire path covered end to end — between
+      // them every element the schema's arbitrary populates, out through encode
+      // and back through the page's decode. (The arbitrary pins the `value[x]`
+      // and `effective[x]` slots to absent; their datatypes have their own tests.)
+      const samples = fc.sample(Arbitrary.make(Observation.Schema), { numRuns: 8, seed: 573 })
 
-        const page = await Effect.runPromise(
-          fetchResourcePage(client, observationRead, { first: 'pat-1' })
-        )
+      await Promise.all(
+        samples.map(async (observation) => {
+          const wire = encodeObservation(observation)
+          const { client } = stubSmartClient(bundle([wire], undefined))
 
-        expect(page.items).toHaveLength(1)
-        // Re-encoded rather than compared as decoded values: the decoded form
-        // holds `URL` and `DateTime.Utc` instances, which structural equality
-        // cannot tell apart.
-        expect(page.items.map((item) => encodeObservation(item))).toEqual([wire])
-      })
-    )
+          const page = await Effect.runPromise(
+            fetchResourcePage(client, observationRead, { first: 'pat-1' })
+          )
+
+          expect(page.items).toHaveLength(1)
+          // Re-encoded rather than compared as decoded values: the decoded form
+          // holds `URL` and `DateTime.Utc` instances, which structural equality
+          // cannot tell apart.
+          expect(page.items.map((item) => encodeObservation(item))).toEqual([wire])
+        })
+      )
+    })
   })
 })
 
