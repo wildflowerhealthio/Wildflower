@@ -438,15 +438,7 @@ const mapReferences =
       Match.exhaustive
     )
 
-/**
- * The `Identifier` naming a record by its key: `{ system: <id space>, value: <source id> }`.
- *
- * @remarks
- * A `system` that is not an absolute URI throws a `TypeError` here. That
- * reaches the caller as a defect rather than the typed `ParseError` a wrapped
- * `parse` advertises, deliberately: it means the source is misconfigured, not
- * that a response was bad.
- */
+/** The `Identifier` naming a record by its key: `{ system: <id space>, value: <source id> }`. */
 const identifierOf = (systemUrl: URL, value: string): IdentifierType => ({
   id: null,
   extension: [],
@@ -501,6 +493,11 @@ const rewriteRelativeReference =
  * id space. The one instance is written into every `Identifier.system` in
  * that space, so they alias: **treat it as immutable**, and clone before
  * mutating.
+ *
+ * An id space that is not an absolute URI throws a `TypeError` here. That
+ * reaches the caller as a defect rather than the typed `ParseError` a wrapped
+ * `parse` advertises, deliberately: it means the source is misconfigured, not
+ * that a response was bad.
  */
 const parsedOnce = (): ((idSpace: IdSpace.Type) => URL) => {
   const urls = new Map<IdSpace.Type, URL>()
