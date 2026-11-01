@@ -120,7 +120,7 @@ impl DeviceRequest {
     /// # Errors
     ///
     /// [`NotPending`] for a request no longer pending at `now`.
-    pub fn stamp_poll(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
+    pub fn to_poll_stamped(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
         self.require_pending(now)?;
         Ok(DeviceRequest {
             last_polled_at: Some(now),
@@ -255,11 +255,11 @@ mod tests {
 
     /// A poll stamp records the poll and leaves the state as it was.
     #[test]
-    fn stamp_poll_records_the_poll() {
-        let stamped = started().stamp_poll(at(1)).expect("stamps");
+    fn to_poll_stamped_records_the_poll() {
+        let stamped = started().to_poll_stamped(at(1)).expect("stamps");
         assert_eq!(stamped.last_polled_at, Some(at(1)));
         assert_eq!(stamped.state, PolledState::Pending);
-        assert_eq!(started().stamp_poll(at(5)), Err(NotPending));
+        assert_eq!(started().to_poll_stamped(at(5)), Err(NotPending));
     }
 
     /// The grant is keyed on the request's device name, or the client's.

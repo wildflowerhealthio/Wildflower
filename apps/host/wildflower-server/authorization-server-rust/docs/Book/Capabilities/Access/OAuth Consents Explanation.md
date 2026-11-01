@@ -38,7 +38,7 @@ The tests decide through a decider built over the [consent fixtures](<../Test Fi
 
 #### `raise_for_owner`
 
-**A browser that can read a prompt but not approve it hands it to the Owner.** The request's own [`raise_for_owner`](<../../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>) transition is written through the guarded replace, so a request decided meanwhile is not found.
+**A browser that can read a prompt but not approve it hands it to the Owner.** The request's own [`to_raised_for_owner`](<../../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_raised_for_owner>) transition is written through the guarded replace, so a request decided meanwhile is not found.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/consents/oauth.rs ConsentRaiser::raise_for_owner}}
 

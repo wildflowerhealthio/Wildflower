@@ -10,8 +10,8 @@ stateDiagram-v2
     [*] --> AwaitingLimitedPage: new, the session falls short
     [*] --> Pending: new
     AwaitingLimitedPage --> Pending: acknowledge_session_shortfall (Continue)
-    AwaitingLimitedPage --> Denied: deny_on_limited_page (Cancel)
-    Pending --> Pending: raise_for_owner
+    AwaitingLimitedPage --> Denied: to_denied_on_limited_page (Cancel)
+    Pending --> Pending: to_raised_for_owner
     Pending --> Approved: approve
     Pending --> Denied: deny
 ```
@@ -66,9 +66,9 @@ The same transition denies a request whose browser session ended before the appr
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::to_denied tests="tests::to_denied_decides_a_pending_request"}}
 
-#### `raise_for_owner`
+#### `to_raised_for_owner`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::raise_for_owner tests="tests::raise_for_owner_stops_the_request_counting_as_decidable_where_it_was_made"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::to_raised_for_owner tests="tests::to_raised_for_owner_stops_the_request_counting_as_decidable_where_it_was_made"}}
 
 #### `acknowledge_session_shortfall`
 
@@ -82,9 +82,9 @@ The browser asked the Owner to widen its session from the page: the request wait
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::extend_limited_page_wait_until tests="tests::extend_limited_page_wait_keeps_the_request_waiting_longer"}}
 
-#### `deny_on_limited_page`
+#### `to_denied_on_limited_page`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::deny_on_limited_page tests="tests::deny_on_limited_page_applies_only_while_the_request_waits_there"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::to_denied_on_limited_page tests="tests::to_denied_on_limited_page_applies_only_while_the_request_waits_there"}}
 
 #### `require_pending` and `require_awaiting_limited_page`
 

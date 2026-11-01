@@ -231,7 +231,7 @@ mod tests {
     fn a_poll_within_the_interval_of_the_last_one_is_too_soon() {
         let request = device_request();
         assert!(!request.is_polled_too_soon_at(at(0)));
-        let stamped = request.stamp_poll(at(10)).expect("stamps");
+        let stamped = request.to_poll_stamped(at(10)).expect("stamps");
         assert!(stamped.is_polled_too_soon_at(at(14)));
         assert!(!stamped.is_polled_too_soon_at(at(15)));
     }

@@ -14,7 +14,7 @@ Both are decided at the server's device page, where the Owner enters or confirms
 ```mermaid
 stateDiagram-v2
     [*] --> Pending: new
-    Pending --> Pending: stamp_poll
+    Pending --> Pending: to_poll_stamped
     Pending --> Approved: approve
     Pending --> Denied: deny
     Approved --> Claimed: claim, by the next poll
@@ -90,9 +90,9 @@ The Owner may settle the name the device goes by, which keys its [device grant](
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs DeviceRequest::to_denied tests="tests::to_denied_decides_a_pending_request"}}
 
-#### `stamp_poll`
+#### `to_poll_stamped`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs DeviceRequest::stamp_poll tests="tests::stamp_poll_records_the_poll"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs DeviceRequest::to_poll_stamped tests="tests::to_poll_stamped_records_the_poll"}}
 
 #### `require_pending`
 
@@ -132,9 +132,9 @@ The Owner may settle the name the browser goes by on the Owner's list of browser
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs PairingRequest::to_denied tests="tests::to_denied_decides_a_pending_pairing"}}
 
-#### `stamp_poll`
+#### `to_poll_stamped`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs PairingRequest::stamp_poll tests="tests::stamp_poll_records_the_poll_and_the_browser_s_name"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs PairingRequest::to_poll_stamped tests="tests::to_poll_stamped_records_the_poll_and_the_browser_s_name"}}
 
 #### `require_pending`
 

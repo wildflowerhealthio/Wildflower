@@ -4,7 +4,7 @@
 
 A browser paired with read-only access may run an app that asks for more. The code it earns would carry only what its session holds, so **the browser is told first, on the limited page, before anyone else is bothered**. `/oauth/authorize` parks the request awaiting that page and sends the browser to `/oauth/authorize/{id}/limited`. The page reads what the session lacks ([`session_shortfall`](<../Authority/Delegated Scopes Explanation.md#item-session_shortfall>)), then goes on (`…/continue`) or cancels (`…/cancel`).
 
-Until the browser goes on, the Owner isn't asked and nothing decides the request. Going on takes the branch the start would have taken: the fast path under a standing grant, the consent card, or the wait page. Only the browser that made the request can read, continue or cancel it. Once a browser session has gone on for an app, its later requests for that app skip the page. The request's two limited-page transitions are [`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--acknowledge_session_shortfall>) and [`CodeRequest::deny_on_limited_page`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny_on_limited_page>).
+Until the browser goes on, the Owner isn't asked and nothing decides the request. Going on takes the branch the start would have taken: the fast path under a standing grant, the consent card, or the wait page. Only the browser that made the request can read, continue or cancel it. Once a browser session has gone on for an app, its later requests for that app skip the page. The request's two limited-page transitions are [`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--acknowledge_session_shortfall>) and [`CodeRequest::to_denied_on_limited_page`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_denied_on_limited_page>).
 
 This file's own helpers are on the [Test Fixtures](<Test Fixtures Explanation.md#integrationsession_shortfall>) page, with the shared ones.
 
@@ -26,13 +26,13 @@ Relies on the per-session, per-client acknowledgement that [`CodeAuthorizationSt
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/session_shortfall.rs continue_for_an_app_disabled_since_denies_the_request}}
 
-Relies on [`CodeRequest::deny_on_limited_page`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny_on_limited_page>). Fixtures first used here: [`disable_client`](<Test Fixtures Explanation.md#item-disable_client>) and [`get_authorization_status`](<Test Fixtures Explanation.md#item-get_authorization_status>).
+Relies on [`CodeRequest::to_denied_on_limited_page`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_denied_on_limited_page>). Fixtures first used here: [`disable_client`](<Test Fixtures Explanation.md#item-disable_client>) and [`get_authorization_status`](<Test Fixtures Explanation.md#item-get_authorization_status>).
 
 ### `cancel_answers_the_app_access_denied`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/session_shortfall.rs cancel_answers_the_app_access_denied}}
 
-Relies on [`CodeRequest::deny_on_limited_page`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny_on_limited_page>), through [`SessionShortfall::cancel`](<../Capabilities/OAuth/Session Shortfall Explanation.md#item-SessionShortfall--cancel>).
+Relies on [`CodeRequest::to_denied_on_limited_page`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_denied_on_limited_page>), through [`SessionShortfall::cancel`](<../Capabilities/OAuth/Session Shortfall Explanation.md#item-SessionShortfall--cancel>).
 
 ### `the_owner_neither_sees_nor_decides_a_request_waiting_on_its_limited_page`
 
@@ -56,7 +56,7 @@ Relies on [`BrowserSession::new_same_device_session`](<../Domain/Browser Session
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/session_shortfall.rs without_a_standing_grant_continue_raises_the_request_for_the_owner}}
 
-Relies on [`CodeRequest::raise_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>) and [`ApprovableScopes::missing_approval_scopes`](<../Authority/Delegated Scopes Explanation.md#item-ApprovableScopes--missing_approval_scopes>), which decides between the consent card and the wait page. Fixtures first used here: [`decode_jwt_payload`](<Test Fixtures Explanation.md#item-decode_jwt_payload>), [`mint_browser_session_token`](<Test Fixtures Explanation.md#item-mint_browser_session_token>) and [`get_oauth_consent`](<Test Fixtures Explanation.md#item-get_oauth_consent>).
+Relies on [`CodeRequest::to_raised_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_raised_for_owner>) and [`ApprovableScopes::missing_approval_scopes`](<../Authority/Delegated Scopes Explanation.md#item-ApprovableScopes--missing_approval_scopes>), which decides between the consent card and the wait page. Fixtures first used here: [`decode_jwt_payload`](<Test Fixtures Explanation.md#item-decode_jwt_payload>), [`mint_browser_session_token`](<Test Fixtures Explanation.md#item-mint_browser_session_token>) and [`get_oauth_consent`](<Test Fixtures Explanation.md#item-get_oauth_consent>).
 
 ### `an_expired_request_on_the_limited_page_goes_no_further`
 

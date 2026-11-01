@@ -129,7 +129,11 @@ impl PairingRequest {
     /// # Errors
     ///
     /// [`NotPending`] for a pairing no longer pending at `now`.
-    pub fn stamp_poll(&self, browser_name: &str, now: DateTime<Utc>) -> Result<Self, NotPending> {
+    pub fn to_poll_stamped(
+        &self,
+        browser_name: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Self, NotPending> {
         self.require_pending(now)?;
         Ok(PairingRequest {
             browser_name: browser_name.to_owned(),
@@ -237,15 +241,15 @@ mod tests {
     /// A poll stamp records the poll and the browser's latest name, only
     /// while the pairing is pending.
     #[test]
-    fn stamp_poll_records_the_poll_and_the_browser_s_name() {
+    fn to_poll_stamped_records_the_poll_and_the_browser_s_name() {
         let stamped = started()
-            .stamp_poll("Kitchen laptop", at(1))
+            .to_poll_stamped("Kitchen laptop", at(1))
             .expect("stamps");
         assert_eq!(stamped.browser_name, "Kitchen laptop");
         assert_eq!(stamped.last_polled_at, Some(at(1)));
         assert_eq!(stamped.state, PolledState::Pending);
         assert_eq!(
-            started().stamp_poll("Kitchen laptop", at(5)),
+            started().to_poll_stamped("Kitchen laptop", at(5)),
             Err(NotPending)
         );
     }

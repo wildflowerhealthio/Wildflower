@@ -602,7 +602,7 @@ fn refuse_waiting_request(
         })
     };
     let refused = parked_request
-        .deny_on_limited_page(now)
+        .to_denied_on_limited_page(now)
         .map_err(|_| not_found())?;
     if !tx.replace_code_request(parked_request, &refused)? {
         return Err(not_found());

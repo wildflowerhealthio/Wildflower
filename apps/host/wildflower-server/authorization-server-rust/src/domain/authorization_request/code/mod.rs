@@ -251,7 +251,7 @@ impl CodeRequest {
     /// # Errors
     ///
     /// [`NotPending`] for a request not pending at `now`.
-    pub fn raise_for_owner(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
+    pub fn to_raised_for_owner(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
         self.require_pending(now)?;
         Ok(CodeRequest {
             decidable_in_requesting_browser: false,
@@ -307,7 +307,10 @@ impl CodeRequest {
     /// # Errors
     ///
     /// [`NotAwaitingLimitedPage`] for a request not waiting there at `now`.
-    pub fn deny_on_limited_page(&self, now: DateTime<Utc>) -> Result<Self, NotAwaitingLimitedPage> {
+    pub fn to_denied_on_limited_page(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<Self, NotAwaitingLimitedPage> {
         self.require_awaiting_limited_page(now)?;
         Ok(CodeRequest {
             state: CodeRequestState::Denied,
@@ -413,12 +416,12 @@ mod tests {
     /// Raising the request for the Owner clears only whether it is decidable
     /// in the requesting browser.
     #[test]
-    fn raise_for_owner_stops_the_request_counting_as_decidable_where_it_was_made() {
+    fn to_raised_for_owner_stops_the_request_counting_as_decidable_where_it_was_made() {
         let decidable = CodeRequest {
             decidable_in_requesting_browser: true,
             ..started(false)
         };
-        let raised = decidable.raise_for_owner(at(1)).expect("raises");
+        let raised = decidable.to_raised_for_owner(at(1)).expect("raises");
         assert_eq!(
             raised,
             CodeRequest {
@@ -426,7 +429,7 @@ mod tests {
                 ..decidable
             }
         );
-        assert_eq!(started(true).raise_for_owner(at(1)), Err(NotPending));
+        assert_eq!(started(true).to_raised_for_owner(at(1)), Err(NotPending));
     }
 
     /// Going on past the limited page makes the request pending and restarts
@@ -481,15 +484,17 @@ mod tests {
     /// Denying on the limited page applies only while the request waits
     /// there.
     #[test]
-    fn deny_on_limited_page_applies_only_while_the_request_waits_there() {
-        let cancelled = started(true).deny_on_limited_page(at(1)).expect("cancels");
+    fn to_denied_on_limited_page_applies_only_while_the_request_waits_there() {
+        let cancelled = started(true)
+            .to_denied_on_limited_page(at(1))
+            .expect("cancels");
         assert_eq!(cancelled.state, CodeRequestState::Denied);
         assert_eq!(
-            started(false).deny_on_limited_page(at(1)),
+            started(false).to_denied_on_limited_page(at(1)),
             Err(NotAwaitingLimitedPage)
         );
         assert_eq!(
-            started(true).deny_on_limited_page(at(5)),
+            started(true).to_denied_on_limited_page(at(5)),
             Err(NotAwaitingLimitedPage)
         );
     }

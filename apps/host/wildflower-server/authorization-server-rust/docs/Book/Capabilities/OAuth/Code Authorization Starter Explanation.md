@@ -76,7 +76,7 @@ The request is loaded by [`load_code_request_awaiting_limited_page`](<Session Sh
 
 ### `refuse_waiting_request`
 
-The denial is the request's own [`deny_on_limited_page`](<../../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny_on_limited_page>), the same transition as the limited page's Cancel. The Owner never saw the request, so nothing is republished.
+The denial is the request's own [`to_denied_on_limited_page`](<../../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_denied_on_limited_page>), the same transition as the limited page's Cancel. The Owner never saw the request, so nothing is republished.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs refuse_waiting_request tests="tests::continuing_for_a_client_disabled_since_denies_the_request"}}
 

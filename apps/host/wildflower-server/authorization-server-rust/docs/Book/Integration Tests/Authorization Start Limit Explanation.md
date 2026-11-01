@@ -6,7 +6,7 @@ Anyone who knows the server's domain can start an authorization request, and eve
 
 The layer [`limit_authorization_starts`](<../HTTP/Middleware Explanation.md#item-limit_authorization_starts>) sits on `/oauth/authorize`, `/oauth/device_authorization` and the limited page's `…/ask-to-widen` only. When a start asks depends on what it carries:
 
-- A live browser session that can decide consents, at `/oauth/authorize`, asks only when its request is to be raised for the Owner ([`CodeRequest::raise_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>)) or parked for the limited page. One it decides on its own [Consent Card](<Consent Card Explanation.md>) spends nothing, and going on past the limited page ([`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--acknowledge_session_shortfall>)) asks nothing more.
+- A live browser session that can decide consents, at `/oauth/authorize`, asks only when its request is to be raised for the Owner ([`CodeRequest::to_raised_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_raised_for_owner>)) or parked for the limited page. One it decides on its own [Consent Card](<Consent Card Explanation.md>) spends nothing, and going on past the limited page ([`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--acknowledge_session_shortfall>)) asks nothing more.
 - No live browser session, at `/oauth/authorize`, never asks: the browser is only sent to pairing.
 - Anything else, and every device-authorization start, asks at once, before the request is parsed.
 
@@ -62,7 +62,7 @@ Relies on [`limit_authorization_starts`](<../HTTP/Middleware Explanation.md#item
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_deciding_browser_s_request_raised_for_the_owner_asks_the_gate}}
 
-The session holds what the request asks for, so the limited page doesn't apply. Relies on [`CodeRequest::raise_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>). Fixtures first used here: [`decode_jwt_payload`](<Test Fixtures Explanation.md#item-decode_jwt_payload>), [`mint_browser_session_token`](<Test Fixtures Explanation.md#item-mint_browser_session_token>) and [`owner_prompt`](<Test Fixtures Explanation.md#item-owner_prompt>).
+The session holds what the request asks for, so the limited page doesn't apply. Relies on [`CodeRequest::to_raised_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_raised_for_owner>). Fixtures first used here: [`decode_jwt_payload`](<Test Fixtures Explanation.md#item-decode_jwt_payload>), [`mint_browser_session_token`](<Test Fixtures Explanation.md#item-mint_browser_session_token>) and [`owner_prompt`](<Test Fixtures Explanation.md#item-owner_prompt>).
 
 ### `a_deciding_browser_s_request_parked_for_the_limited_page_asks_the_gate`
 
@@ -94,10 +94,10 @@ Relies on [`limit_authorization_starts`](<../HTTP/Middleware Explanation.md#item
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs asking_the_owner_is_refused_by_the_limit_and_raises_nothing}}
 
-Relies on [`CodeRequest::raise_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>). Fixtures first used here: [`owner_decided_request`](<Test Fixtures Explanation.md#item-owner_decided_request>), [`ask_owner`](<Test Fixtures Explanation.md#item-authorization_start_limit--ask_owner>) and [`is_decidable_in_requesting_browser`](<Test Fixtures Explanation.md#item-is_decidable_in_requesting_browser>).
+Relies on [`CodeRequest::to_raised_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_raised_for_owner>). Fixtures first used here: [`owner_decided_request`](<Test Fixtures Explanation.md#item-owner_decided_request>), [`ask_owner`](<Test Fixtures Explanation.md#item-authorization_start_limit--ask_owner>) and [`is_decidable_in_requesting_browser`](<Test Fixtures Explanation.md#item-is_decidable_in_requesting_browser>).
 
 ### `asking_the_owner_spends_only_when_it_raises_a_request`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs asking_the_owner_spends_only_when_it_raises_a_request}}
 
-Relies on [`CodeRequest::raise_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>).
+Relies on [`CodeRequest::to_raised_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_raised_for_owner>).

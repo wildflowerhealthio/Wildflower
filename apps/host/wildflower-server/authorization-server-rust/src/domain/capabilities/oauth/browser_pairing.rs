@@ -329,7 +329,7 @@ fn record_poll(
     let browser_name = Some(browser_name.trim())
         .filter(|browser_name| !browser_name.is_empty())
         .unwrap_or(&request.browser_name);
-    if let Ok(stamped) = request.stamp_poll(browser_name, now) {
+    if let Ok(stamped) = request.to_poll_stamped(browser_name, now) {
         tx.replace_pairing_request(request, &stamped)?;
     }
     if request.browser_name == browser_name {
