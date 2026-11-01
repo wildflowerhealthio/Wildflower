@@ -29,22 +29,11 @@ type Type = typeof Schema.Type
  */
 type OfType = (resourceType: string) => Type
 
-/**
- * The id spaces of a FHIR server rooted at `base`: `<base>/<Type>` for each
- * type, worked out once per type.
- */
-const inFhirServer = (base: string): OfType => {
-  const byType = new Map<string, Type>()
-  return (resourceType) => {
-    const known = byType.get(resourceType)
-    if (known !== undefined) {
-      return known
-    }
-    const idSpace = Schema.make(`${base}/${resourceType}`)
-    byType.set(resourceType, idSpace)
-    return idSpace
-  }
-}
+/** The id spaces of a FHIR server rooted at `base`: `<base>/<Type>` for each type. */
+const inFhirServer =
+  (base: string): OfType =>
+  (resourceType) =>
+    Schema.make(`${base}/${resourceType}`)
 
 /** The id spaces of a source that keys every type in the one `system`. */
 const inSystem = (system: string): OfType => {
