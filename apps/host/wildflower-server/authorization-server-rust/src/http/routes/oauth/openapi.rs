@@ -132,3 +132,13 @@ pub(super) struct AuthorizationRequestNotFound {
     /// The request id the caller asked about.
     id: String,
 }
+
+/// The JSON 404 body a session widening the caller may not see gets: from the
+/// limited page's poll, one asked in another browser session, or none.
+#[derive(Serialize, ToSchema)]
+pub(super) struct SessionWideningNotFound {
+    /// Always `SessionWideningNotFound`.
+    error: String,
+    /// The widening id the caller asked about.
+    id: String,
+}

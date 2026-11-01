@@ -20,19 +20,22 @@
 
 use std::sync::Arc;
 
-use axum::routing::get;
-use axum::{Json, Router};
+use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use utoipa::ToSchema;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 use wildflowerhealthio_scope_capabilities::Authenticated;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveSessionReader;
 
-/// The `/session` route table.
-pub fn router() -> Router<Arc<AuthorizationServerState>> {
-    Router::new().route("/session", get(handle_get_session))
+/// The `/session` route table, as an `OpenApiRouter` so the spec is collected
+/// from the route that serves traffic.
+pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
+    OpenApiRouter::new().routes(routes!(handle_get_session))
 }
 
 /// What the caller's current access token carries: its scopes, and when the
@@ -40,7 +43,7 @@ pub fn router() -> Router<Arc<AuthorizationServerState>> {
 /// (`jti`/`iss`/`aud`/`patient`) is session plumbing no caller has asked for,
 /// and leaving it off keeps this from drifting into a general introspection
 /// endpoint. Widen it when something actually needs a field.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 struct SessionResponse {
     /// The `scope` claim split on whitespace — the scopes this session actually
@@ -48,12 +51,22 @@ struct SessionResponse {
     scopes: Vec<String>,
     /// When the browser session the token was minted under (its `sid`)
     /// expires; `null` for a token under no browser session.
+    #[schema(value_type = Option<String>, format = DateTime, required = true)]
     browser_session_expires_at: Option<DateTime<Utc>>,
 }
 
 /// `GET /authorization/session`: the caller's own scopes and its browser
 /// session's expiry, read from its claims through
 /// `Authenticated<LiveSessionReader>`, which no scope gates.
+#[utoipa::path(
+    get,
+    tag = "Session",
+    path = "/session",
+    responses(
+        (status = 200, description = "The caller's own scopes and its browser session's expiry", body = SessionResponse),
+        (status = 500, description = "The browser session store failed; logged, with no body"),
+    ),
+)]
 async fn handle_get_session(
     session: Authenticated<LiveSessionReader>,
 ) -> Result<Json<SessionResponse>, AuthorizationServerError> {

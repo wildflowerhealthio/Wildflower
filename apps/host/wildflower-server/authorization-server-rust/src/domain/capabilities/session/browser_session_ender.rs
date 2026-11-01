@@ -2,30 +2,44 @@
 //! the browser's own cookie holds. Built from the claims of that cookie's
 //! token, which the token verifier accepted, so it can end no other session.
 
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 
 use crate::domain::access_token::VerifiedClaims;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::grant_store::BrowserSessionsTx as _;
+use crate::domain::capabilities::access::revoke_browser_session;
 use crate::domain::GrantStore;
+use crate::ports::OwnerApproval;
 
-/// End a browser's own browser session. Holds the store lifted from the state.
+/// End a browser's own browser session. Holds the store and the republish
+/// port lifted from the state.
 pub(crate) struct BrowserSessionEnder<S: GrantStore> {
     /// The store holding the browser session the ender revokes.
     store: S,
+    /// Republishes the Owner prompt once ending the session has denied a
+    /// widening the Owner was being asked about.
+    owner_approval: Arc<dyn OwnerApproval>,
 }
 
 impl<S: GrantStore> BrowserSessionEnder<S> {
-    /// Build the ender over a store handle lifted from the state.
-    pub(crate) fn new(store: S) -> Self {
-        BrowserSessionEnder { store }
+    /// Build the ender over a store handle and the republish port, lifted
+    /// from the state.
+    pub(crate) fn new(store: S, owner_approval: Arc<dyn OwnerApproval>) -> Self {
+        BrowserSessionEnder {
+            store,
+            owner_approval,
+        }
     }
 
     /// Revoke, at `now`, the browser session `session_claims` name (their
     /// `sid`), ending everything minted under it. Claims with no `sid` name
     /// no session and end nothing; a session already revoked keeps its first
     /// revocation time. The row is kept, stamped revoked, so the token
-    /// verifier refuses every token naming it from then on.
+    /// verifier refuses every token naming it from then on. The session's
+    /// widenings still waiting for the Owner are denied
+    /// ([`revoke_browser_session`]), and the Owner prompt republished when
+    /// one was.
     ///
     /// # Errors
     ///
@@ -36,7 +50,12 @@ impl<S: GrantStore> BrowserSessionEnder<S> {
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
         if let Some(sid) = session_claims.sid.as_deref() {
-            self.store.write(|tx| tx.revoke_browser_session(sid, now))?;
+            let revoked_session = self
+                .store
+                .write(|tx| revoke_browser_session(tx, sid, now))?;
+            if revoked_session.widenings_denied {
+                self.owner_approval.republish_active();
+            }
         }
         Ok(())
     }
@@ -76,7 +95,10 @@ mod tests {
         let other = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         store.tx().insert_browser_session(&signed_out).unwrap();
         store.tx().insert_browser_session(&other).unwrap();
-        let ender = BrowserSessionEnder::new(store);
+        let ender = BrowserSessionEnder::new(
+            store,
+            Arc::new(crate::domain::test_fake::RecordingOwnerApproval::default()),
+        );
 
         ender.end(&claims(Some(&signed_out.sid)), now).unwrap();
         ender.end(&claims(None), now).unwrap();

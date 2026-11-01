@@ -59,14 +59,36 @@ fn documented_public_router(
         )
 }
 
+/// The `/authorization` surface, as an `OpenApiRouter` merged from each
+/// resource's router. [`router`] mounts its axum half behind the session
+/// gate; [`documented_router`] nests its spec half. `defer_start_limit`
+/// wraps the ask-owner route (see [`routes::oauth_consents::openapi_router`]).
+fn documented_authorization_router(
+    defer_start_limit: impl Fn(
+        UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+    ) -> UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+) -> OpenApiRouter<Arc<AuthorizationServerState>> {
+    OpenApiRouter::new()
+        .merge(routes::browser_sessions::openapi_router())
+        .merge(routes::clients::openapi_router())
+        .merge(routes::devices::openapi_router())
+        .merge(routes::grants::openapi_router())
+        .merge(routes::logout::openapi_router())
+        .merge(routes::oauth_consents::openapi_router(defer_start_limit))
+        .merge(routes::revocations::openapi_router())
+        .merge(routes::session::openapi_router())
+        .merge(routes::session_widenings::openapi_router())
+}
+
 /// The spec-only view of the whole documented surface: the pre-auth routes
-/// plus the documented slice of `/authorization` (the `/clients` routes; the rest of
-/// the admin surface is not documented yet). Never served as-is — [`router`]
-/// mounts the `/authorization` half behind the session gate.
+/// plus `/authorization`. Never served as-is — [`router`] mounts the
+/// `/authorization` half behind the session gate.
 #[cfg(test)]
 fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
-    documented_public_router(|routes, _start_route| routes)
-        .nest("/authorization", routes::clients::openapi_router())
+    documented_public_router(|routes, _start_route| routes).nest(
+        "/authorization",
+        documented_authorization_router(|routes| routes),
+    )
 }
 
 /// Build the authorization server's public HTTP surface. Routes live at
@@ -93,21 +115,14 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
         ))
     })
     .split_for_parts();
-    let (clients, _spec) = routes::clients::openapi_router().split_for_parts();
-    let access = Router::new()
-        .merge(clients)
-        .merge(routes::grants::router())
-        .merge(routes::browser_sessions::router())
-        .merge(routes::oauth_consents::router(|route| {
-            route.layer(axum_middleware::from_fn_with_state(
-                state.clone(),
-                middleware::defer_authorization_start_limit,
-            ))
-        }))
-        .merge(routes::devices::router())
-        .merge(routes::logout::router())
-        .merge(routes::revocations::router())
-        .merge(routes::session::router())
+    let (documented_authorization, _spec) = documented_authorization_router(|routes| {
+        routes.layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::defer_authorization_start_limit,
+        ))
+    })
+    .split_for_parts();
+    let access = documented_authorization
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_valid_session,
@@ -125,8 +140,9 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
         .with_state(state)
 }
 
-/// The authorization server OAuth + discovery + client-management `OpenAPI` document, collected from the very
-/// routes that serve traffic. `info` is set explicitly so the committed snapshot
+/// The authorization server's `OpenAPI` document — discovery, the OAuth API
+/// and the `/authorization` admin surface — collected from the very routes
+/// that serve traffic. `info` is set explicitly so the committed snapshot
 /// doesn't churn with the crate version. It generates the committed snapshot the
 /// TS spec-drift test guards and the published server-docs console renders.
 #[cfg(test)]
@@ -135,14 +151,16 @@ fn openapi_spec() -> utoipa::openapi::OpenApi {
 
     let (_router, mut spec) = documented_router().split_for_parts();
     spec.info = utoipa::openapi::Info::new("Wildflower Authorization OAuth API", "0.0.0");
-    // Every documented `/authorization` operation is scope-gated (the ungated
-    // `/authorization/session` isn't documented), so the gated paths are read off the
+    // Every documented `/authorization` operation is scope-gated but the
+    // caller's own logout and session read, so the gated paths are read off the
     // spec rather than listed by hand.
+    let ungated_paths = ["/authorization/logout", "/authorization/session"];
     let gated_paths: Vec<String> = spec
         .paths
         .paths
         .keys()
         .filter(|path| path.starts_with("/authorization/"))
+        .filter(|path| !ungated_paths.contains(&path.as_str()))
         .cloned()
         .collect();
     wildflowerhealthio_scope_capabilities::InsufficientScopeResponses::for_paths(gated_paths)

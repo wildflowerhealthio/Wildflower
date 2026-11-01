@@ -80,13 +80,14 @@ impl DeviceRequest {
         }
     }
 
-    /// Approve the request at `now` with `approval`, naming the device
-    /// `device_name` (`None` keeps the name it has).
+    /// The request as it would be once approved at `now` with `approval`,
+    /// naming the device `device_name` (`None` keeps the name it has).
+    /// Stores nothing.
     ///
     /// # Errors
     ///
     /// [`NotPending`] for a request no longer pending at `now`.
-    pub fn approve(
+    pub fn to_approved(
         &self,
         approval: Approval,
         device_name: Option<String>,
@@ -100,12 +101,12 @@ impl DeviceRequest {
         })
     }
 
-    /// Deny the request at `now`.
+    /// The request as it would be once denied at `now`. Stores nothing.
     ///
     /// # Errors
     ///
     /// [`NotPending`] for a request no longer pending at `now`.
-    pub fn deny(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
+    pub fn to_denied(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
         self.require_pending(now)?;
         Ok(DeviceRequest {
             state: PolledState::Denied,
@@ -156,7 +157,7 @@ impl Polled for DeviceRequest {
         &self.state
     }
 
-    fn claim(&self, now: DateTime<Utc>) -> Result<Self, NotClaimable> {
+    fn to_claimed(&self, now: DateTime<Utc>) -> Result<Self, NotClaimable> {
         Ok(DeviceRequest {
             state: claimed_state(self, now)?,
             ..self.clone()
@@ -223,25 +224,33 @@ mod tests {
     /// Approving records the approval and the device's settled name; `None`
     /// keeps the name it has; once decided, or past expiry, it is refused.
     #[test]
-    fn approve_records_the_approval_and_the_device_s_name() {
+    fn to_approved_records_the_approval_and_the_device_s_name() {
         let request = started();
         let renamed = request
-            .approve(approval(), Some("Reception iPad".to_owned()), at(1))
+            .to_approved(approval(), Some("Reception iPad".to_owned()), at(1))
             .expect("approves");
         assert_eq!(renamed.state, PolledState::Approved(approval()));
         assert_eq!(renamed.device_name.as_deref(), Some("Reception iPad"));
-        let kept_name = request.approve(approval(), None, at(1)).expect("approves");
+        let kept_name = request
+            .to_approved(approval(), None, at(1))
+            .expect("approves");
         assert_eq!(kept_name.device_name.as_deref(), Some("Kitchen iPad"));
-        assert_eq!(renamed.approve(approval(), None, at(1)), Err(NotPending));
-        assert_eq!(request.approve(approval(), None, at(5)), Err(NotPending));
+        assert_eq!(
+            renamed.to_approved(approval(), None, at(1)),
+            Err(NotPending)
+        );
+        assert_eq!(
+            request.to_approved(approval(), None, at(5)),
+            Err(NotPending)
+        );
     }
 
     /// Denying a pending request decides it, with no approval.
     #[test]
-    fn deny_decides_a_pending_request() {
-        let denied = started().deny(at(1)).expect("denies");
+    fn to_denied_decides_a_pending_request() {
+        let denied = started().to_denied(at(1)).expect("denies");
         assert_eq!(denied.state, PolledState::Denied);
-        assert_eq!(denied.deny(at(1)), Err(NotPending));
+        assert_eq!(denied.to_denied(at(1)), Err(NotPending));
     }
 
     /// A poll stamp records the poll and leaves the state as it was.

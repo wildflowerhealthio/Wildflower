@@ -41,7 +41,7 @@ async fn gate_rejects_a_revoked_jti() {
     // Denylist this token's jti; the same token is now rejected.
     let jti = jti_of(&owner_token);
     revocation_store_handle(&db)
-        .revoke_jti(&jti, Utc::now() + Duration::hours(1), "test")
+        .revoke_jti(&jti, Utc::now(), Utc::now() + Duration::hours(1), "test")
         .expect("revoke");
     let res = g
         .router

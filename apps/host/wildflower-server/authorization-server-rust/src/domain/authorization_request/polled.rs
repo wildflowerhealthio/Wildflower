@@ -1,9 +1,10 @@
 //! The polled flows — a device request and a browser pairing. Both show a
 //! `user_code` the Owner enters at the device page, are polled by what made
 //! them until the Owner decides, and are claimed once by the poll that
-//! redeems the approval. [`PolledState`] is their shared lifecycle, [`Polled`]
-//! what they share, and [`PolledRequest`] either one, as the device page
-//! loads it by its `user_code`.
+//! redeems the approval. [`PolledState`] is their shared lifecycle (a
+//! session widening, polled and claimed the same way but keyed by its id, has
+//! it too), [`Polled`] what they share, and [`PolledRequest`] either one, as
+//! the device page loads it by its `user_code`.
 
 use chrono::{DateTime, Utc};
 
@@ -73,13 +74,14 @@ pub trait Polled: Sized {
     /// Where the request stands.
     fn state(&self) -> &PolledState<Self::Approval>;
 
-    /// Claim the approved request at `now`, once: the poll that redeems the
-    /// Owner's approval.
+    /// The approved request as it would be once claimed at `now`: the poll
+    /// that redeems the Owner's approval, which may happen once. Stores
+    /// nothing.
     ///
     /// # Errors
     ///
     /// [`NotClaimable`] for a request not approved, or past its expiry.
-    fn claim(&self, now: DateTime<Utc>) -> Result<Self, NotClaimable>;
+    fn to_claimed(&self, now: DateTime<Utc>) -> Result<Self, NotClaimable>;
 
     /// Whether the request is past its expiry at `now`.
     fn is_expired_at(&self, now: DateTime<Utc>) -> bool {
@@ -101,7 +103,7 @@ pub trait Polled: Sized {
 }
 
 /// The claimed state of `request` at `now`: its approval, redeemed. The
-/// flows' [`Polled::claim`] build on it.
+/// flows' [`Polled::to_claimed`] build on it.
 pub(super) fn claimed_state<P: Polled>(
     request: &P,
     now: DateTime<Utc>,
@@ -237,15 +239,17 @@ mod tests {
     /// An approved, unexpired request is claimed once, keeping its approval;
     /// a pending one, a claimed one and an expired one are not claimable.
     #[test]
-    fn claim_redeems_an_approved_request_once() {
+    fn to_claimed_redeems_an_approved_request_once() {
         let request = device_request();
-        let approved = request.approve(approval(), None, at(1)).expect("approves");
-        let claimed = approved.claim(at(2)).expect("claims");
+        let approved = request
+            .to_approved(approval(), None, at(1))
+            .expect("approves");
+        let claimed = approved.to_claimed(at(2)).expect("claims");
         assert_eq!(claimed.state, PolledState::Claimed(approval()));
         assert_eq!(claimed.state.status(), RequestStatus::Claimed);
         assert_eq!(claimed.state.approval(), Some(&approval()));
-        assert_eq!(claimed.claim(at(2)), Err(NotClaimable));
-        assert_eq!(request.claim(at(2)), Err(NotClaimable));
-        assert_eq!(approved.claim(at(300)), Err(NotClaimable));
+        assert_eq!(claimed.to_claimed(at(2)), Err(NotClaimable));
+        assert_eq!(request.to_claimed(at(2)), Err(NotClaimable));
+        assert_eq!(approved.to_claimed(at(300)), Err(NotClaimable));
     }
 }

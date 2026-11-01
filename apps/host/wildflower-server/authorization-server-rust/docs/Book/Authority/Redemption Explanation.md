@@ -68,7 +68,7 @@ It carries the Owner's [approval](<../Domain/Authorization Request Explanation.m
 
 #### `consume`
 
-**A device request is claimed once.** The claim is the request's own [`claim`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--claim>) transition, written with the guarded replace under the scope's write lock, so of two polls racing for one approval, one wins. The standing grant is found by the device's [grant name](<../Domain/Authorization Request/Polled Requests Explanation.md#item-device_grant_name>).
+**A device request is claimed once.** The claim is the request's own [`to_claimed`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--to_claimed>) transition, written with the guarded replace under the scope's write lock, so of two polls racing for one approval, one wins. The standing grant is found by the device's [grant name](<../Domain/Authorization Request/Polled Requests Explanation.md#item-device_grant_name>).
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ConsumedDeviceRequest::consume tests="tests::a_device_request_reports_its_status_and_is_claimed_once"}}
 

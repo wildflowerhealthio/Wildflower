@@ -3,11 +3,12 @@
 //! route handler (`list_all`, `update_by_id`); `openapi_router()` is the only
 //! path table.
 //!
-//! Unlike the rest of `/authorization`, these routes are **documented**: they're built
-//! as an `OpenApiRouter` so the committed OpenAPI snapshot (and the TS drift
-//! test against `authorization-core`) cover them. [`crate::http`] splits it — the
-//! axum half is mounted under `/authorization` behind the session gate, the spec half
-//! is nested under `/authorization` in the documented surface.
+//! Like the rest of `/authorization`, these routes are built as an
+//! `OpenApiRouter` so the committed OpenAPI snapshot covers them, and the TS
+//! drift test against `authorization-core` compares them. [`crate::http`]
+//! splits it — the axum half is mounted under `/authorization` behind the
+//! session gate, the spec half is nested under `/authorization` in the
+//! documented surface.
 
 /// `GET /clients`, and the [`ClientBody`](list_all::ClientBody) both
 /// routes answer with.

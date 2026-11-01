@@ -10,7 +10,7 @@
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/bearer_only.rs a_device_grant_sets_no_cookie}}
 
-Relies on [`DeviceRequest::claim`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--claim>). Fixtures first used here: [`spin_up`](<Test Fixtures Explanation.md#item-spin_up>), [`seed_test_client`](<Test Fixtures Explanation.md#item-seed_test_client>), [`plant_device_request`](<Test Fixtures Explanation.md#item-plant_device_request>), [`store_handle`](<Test Fixtures Explanation.md#item-store_handle>), [`TEST_CLIENT_ID`](<Test Fixtures Explanation.md#item-TEST_CLIENT_ID>), [`TEST_CLIENT_SCOPE`](<Test Fixtures Explanation.md#item-TEST_CLIENT_SCOPE>), [`post_form`](<Test Fixtures Explanation.md#item-post_form>), [`set_cookie_values`](<Test Fixtures Explanation.md#item-set_cookie_values>) and [`body_json`](<Test Fixtures Explanation.md#item-body_json>).
+Relies on [`DeviceRequest::to_claimed`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--to_claimed>). Fixtures first used here: [`spin_up`](<Test Fixtures Explanation.md#item-spin_up>), [`seed_test_client`](<Test Fixtures Explanation.md#item-seed_test_client>), [`plant_device_request`](<Test Fixtures Explanation.md#item-plant_device_request>), [`store_handle`](<Test Fixtures Explanation.md#item-store_handle>), [`TEST_CLIENT_ID`](<Test Fixtures Explanation.md#item-TEST_CLIENT_ID>), [`TEST_CLIENT_SCOPE`](<Test Fixtures Explanation.md#item-TEST_CLIENT_SCOPE>), [`post_form`](<Test Fixtures Explanation.md#item-post_form>), [`set_cookie_values`](<Test Fixtures Explanation.md#item-set_cookie_values>) and [`body_json`](<Test Fixtures Explanation.md#item-body_json>).
 
 ### `a_refresh_grant_sets_no_cookie`
 

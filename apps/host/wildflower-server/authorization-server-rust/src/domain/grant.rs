@@ -25,6 +25,7 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::{Insertable, Queryable, Selectable};
 use serde::Serialize;
 use url::Url;
+use utoipa::ToSchema;
 
 use crate::db::grants::authorization_code::authorization_code_grants;
 use crate::db::grants::device::device_grants;
@@ -42,7 +43,7 @@ use crate::db::shared::{JsonStrings, UrlText};
 /// One grant per `(client_id, redirect_uri)`. Diesel-mapped 1:1 to the
 /// `authorization_code_grants` table; on the wire it rides inside
 /// [`Grant::AuthorizationCode`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Queryable, Selectable, Insertable)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema, Queryable, Selectable, Insertable)]
 #[serde(rename_all = "camelCase")]
 #[diesel(table_name = authorization_code_grants)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
@@ -60,17 +61,21 @@ pub struct AuthorizationCodeGrant {
     pub scopes: Vec<String>,
     /// When the Owner gave (or last re-confirmed) consent: the latest
     /// approval.
+    #[schema(value_type = String, format = DateTime)]
     pub granted_at: DateTime<Utc>,
     /// When this grant last let a code be issued without asking the Owner,
     /// at `/oauth/authorize` or at the limited page's Continue; `None` until
     /// it first does. A re-approval keeps it.
+    #[schema(value_type = Option<String>, format = DateTime, required = true)]
     pub last_used_at: Option<DateTime<Utc>>,
     /// The SMART patient the latest approval named, carried forward to the
     /// codes this grant lets be issued without asking the Owner.
+    #[schema(required = true)]
     pub patient: Option<String>,
     /// The exact redirect URI this grant covers — `/authorize` keys the
     /// consent-skip fast path on `(client_id, redirect_uri)`.
     #[diesel(serialize_as = UrlText, deserialize_as = UrlText)]
+    #[schema(value_type = String)]
     pub redirect_uri: Url,
 }
 
@@ -80,7 +85,7 @@ pub struct AuthorizationCodeGrant {
 /// A refresh family begun by the device's poll records the grant's `id`.
 /// Diesel-mapped 1:1 to the
 /// `device_grants` table; on the wire it rides inside [`Grant::DeviceCode`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Queryable, Selectable, Insertable)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema, Queryable, Selectable, Insertable)]
 #[serde(rename_all = "camelCase")]
 #[diesel(table_name = device_grants)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
@@ -96,11 +101,14 @@ pub struct DeviceGrant {
     pub scopes: Vec<String>,
     /// When the Owner gave (or last re-confirmed) consent: the latest
     /// approval.
+    #[schema(value_type = String, format = DateTime)]
     pub granted_at: DateTime<Utc>,
     /// When a refresh-token family this pairing earned last rotated; `None`
     /// until one first does. A re-pairing keeps it.
+    #[schema(value_type = Option<String>, format = DateTime, required = true)]
     pub last_used_at: Option<DateTime<Utc>>,
     /// The SMART patient the latest approval named, if any.
+    #[schema(required = true)]
     pub patient: Option<String>,
     /// The human-facing device name this pairing is keyed on. Defaults to
     /// the client's name when the device didn't name itself.
@@ -168,7 +176,7 @@ fn union_scopes_into(standing_ref: &mut Vec<String>, additional: &[String]) {
 /// kind names, so each variant serializes as its struct's camelCase fields
 /// with the tag alongside — the exact `grantType`-tagged union the TS
 /// `access-management` `GrantSchema` decodes (pinned by the tests below).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(tag = "grantType", rename_all = "snake_case")]
 pub enum Grant {
     /// A standing consent for a client at one redirect, tagged

@@ -6,9 +6,10 @@
 //! store calls:
 //!
 //!  - [`RequestApprover`] — approve a pending request (the flow's own
-//!    `approve` transition) and, for the code flow, issue its authorization
+//!    `to_approved` transition) and, for the code flow, issue its authorization
 //!    code (under a [`CodeAuthority`]: the Owner's `DelegatedScopes` or a
-//!    `StandingGrantCoverage`).
+//!    `StandingGrantCoverage`), or for a session widening, widen its browser
+//!    session (under `DelegatedScopes`).
 //!  - [`GrantRecorder`] — insert or widen the standing grant and, for a client
 //!    trusted on first use, its registration (under `DelegatedScopes`).
 //!  - [`AccessTokenMinter`] — read the active signing key, then sign a JWT
@@ -36,7 +37,9 @@ pub(crate) use access_token_minter::AccessTokenMinter;
 pub(crate) use browser_session_writer::BrowserSessionWriter;
 pub(crate) use grant_recorder::GrantRecorder;
 pub(crate) use refresh_family_writer::RefreshFamilyWriter;
-pub(crate) use request_approver::{CodeApproval, CodeAuthority, RequestApprover};
+pub(crate) use request_approver::{
+    CodeApproval, CodeAuthority, RequestApprover, SessionWideningOutcome,
+};
 
 #[cfg(test)]
 mod tests {
@@ -44,8 +47,8 @@ mod tests {
 
     /// The calls that grant authority — issuing a code, recording or widening
     /// a grant, widening a client registration, reading private key material
-    /// to sign with, seeding a key, issuing a refresh token, starting a
-    /// browser session. Each is written with a leading `.` so `tx.x(` matches
+    /// to sign with, seeding a key, issuing a refresh token, starting or
+    /// widening a browser session. Each is written with a leading `.` so `tx.x(` matches
     /// while a differently named method that merely ends the same way
     /// (`has_active_signing_key(`) does not.
     const PRIVILEGED_CALLS: &[&str] = &[
@@ -60,6 +63,7 @@ mod tests {
         ".insert_refresh_token_family_row(",
         ".insert_refresh_token(",
         ".insert_browser_session(",
+        ".update_browser_session_scopes(",
     ];
 
     /// Where a privileged call may legitimately appear: the writers themselves,
@@ -83,6 +87,10 @@ mod tests {
     /// The device request's and browser pairing's row conversion, which
     /// reads their states back from their columns.
     const USER_CODE_ROW_CONVERSION: &str = "db/authorization_requests/user_code_request_row.rs";
+    /// The session widening's row conversion, which reads its state back
+    /// from its columns.
+    const SESSION_WIDENING_ROW_CONVERSION: &str =
+        "db/authorization_requests/session_widening_request_row.rs";
     /// The writers, which call the approve transitions under a proof.
     const WRITERS: &str = "domain/capabilities/writers/";
     /// The in-memory fake and its fixtures, which arrange rows for tests.
@@ -105,11 +113,12 @@ mod tests {
     /// each may appear. An approved request is what a code, a device grant or
     /// a paired session is issued against, so only these may build one:
     ///
-    /// - each flow's `approve` transition, called only by the writers, under
+    /// - each flow's `to_approved` transition, called only by the writers, under
     ///   the proof they demand;
-    /// - each polled flow's `claim` transition, called only by the writers and
-    ///   by the two authority proofs whose single-use redemption it is
-    ///   (`ConsumedDeviceRequest` and `ClaimedBrowserPairing`);
+    /// - each polled flow's `to_claimed` transition, called only by the writers and
+    ///   by the three authority proofs whose single-use redemption it is
+    ///   (`ConsumedDeviceRequest`, `ClaimedBrowserPairing` and
+    ///   `ClaimedSessionWidening`);
     /// - the `Approved(` and `Claimed(` states, built only by the entity's
     ///   transitions and the flow's row conversion that reads them back (any
     ///   file may match on them);
@@ -117,17 +126,18 @@ mod tests {
     ///   another request's state over, built only there too.
     const APPROVAL_CONSTRUCTIONS: &[ApprovalConstruction] = &[
         ApprovalConstruction {
-            needle: ".approve(",
+            needle: ".to_approved(",
             allowed: &[WRITERS, TEST_FAKE],
             read_in_match_arms: false,
         },
         ApprovalConstruction {
-            needle: ".claim(",
+            needle: ".to_claimed(",
             allowed: &[
                 WRITERS,
                 TEST_FAKE,
                 "domain/authority/redemption.rs",
                 "domain/authority/browser_pairing.rs",
+                "domain/authority/session_widening.rs",
             ],
             read_in_match_arms: false,
         },
@@ -137,13 +147,19 @@ mod tests {
                 ENTITY,
                 CODE_ROW_CONVERSION,
                 USER_CODE_ROW_CONVERSION,
+                SESSION_WIDENING_ROW_CONVERSION,
                 TEST_FAKE,
             ],
             read_in_match_arms: true,
         },
         ApprovalConstruction {
             needle: "Claimed(",
-            allowed: &[ENTITY, USER_CODE_ROW_CONVERSION, TEST_FAKE],
+            allowed: &[
+                ENTITY,
+                USER_CODE_ROW_CONVERSION,
+                SESSION_WIDENING_ROW_CONVERSION,
+                TEST_FAKE,
+            ],
             read_in_match_arms: true,
         },
         ApprovalConstruction {
@@ -159,6 +175,11 @@ mod tests {
         ApprovalConstruction {
             needle: "PairingRequest {",
             allowed: &[ENTITY, USER_CODE_ROW_CONVERSION, TEST_FAKE],
+            read_in_match_arms: false,
+        },
+        ApprovalConstruction {
+            needle: "SessionWideningRequest {",
+            allowed: &[ENTITY, SESSION_WIDENING_ROW_CONVERSION, TEST_FAKE],
             read_in_match_arms: false,
         },
     ];

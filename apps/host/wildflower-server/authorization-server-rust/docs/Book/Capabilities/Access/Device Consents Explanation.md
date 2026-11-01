@@ -42,13 +42,13 @@ A code-flow request under the same code is not found here: it has its own prompt
 
 #### `approve_device_in`
 
-The device's own transition is [`DeviceRequest::approve`](<../../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--approve>), and the grant is named by [`device_grant_name`](<../../Domain/Authorization Request/Polled Requests Explanation.md#item-device_grant_name>).
+The device's own transition is [`DeviceRequest::to_approved`](<../../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--to_approved>), and the grant is named by [`device_grant_name`](<../../Domain/Authorization Request/Polled Requests Explanation.md#item-device_grant_name>).
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/consents/device.rs ConsentDecider::approve_device_in}}
 
 #### `approve_browser_pairing_in`
 
-The pairing's own transition is [`PairingRequest::approve`](<../../Domain/Authorization Request/Polled Requests Explanation.md#item-PairingRequest--approve>).
+The pairing's own transition is [`PairingRequest::to_approved`](<../../Domain/Authorization Request/Polled Requests Explanation.md#item-PairingRequest--to_approved>).
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/consents/device.rs ConsentDecider::approve_browser_pairing_in}}
 

@@ -11,10 +11,17 @@ use crate::ports::{Revocation, RevocationCheck};
 /// stringifying its error so the port stays free of the store's concrete type.
 /// The capabilities hold an `Arc<dyn Revocation>` built from a cloned store.
 impl Revocation for RevocationStore {
-    /// Put `jti` on the shared store's denylist until `expires_at`, recording
-    /// `reason`.
-    fn revoke_jti(&self, jti: &str, expires_at: DateTime<Utc>, reason: &str) -> Result<(), String> {
-        RevocationStore::revoke_jti(self, jti, expires_at, reason).map_err(|e| e.to_string())
+    /// Put `jti` on the shared store's denylist as of `revoked_as_of` until
+    /// `token_expires_at`, recording `reason`.
+    fn revoke_jti(
+        &self,
+        jti: &str,
+        revoked_as_of: DateTime<Utc>,
+        token_expires_at: DateTime<Utc>,
+        reason: &str,
+    ) -> Result<(), String> {
+        RevocationStore::revoke_jti(self, jti, revoked_as_of, token_expires_at, reason)
+            .map_err(|e| e.to_string())
     }
 
     /// Bump `subject`'s revocation epoch to now in the shared store, revoking

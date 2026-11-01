@@ -4,7 +4,7 @@
 
 The device-code flow (RFC 8628) is for a device with no browser of its own to send to `/oauth/authorize`: a TV, a watch, a command line. The device asks at `/oauth/device_authorization`, shows its user a short code, and polls `/oauth/token`. The Owner enters the code on the [Device Page](<Device Page Explanation.md>) and approves. Until then the device hears "not yet".
 
-The request is a [`DeviceRequest`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest>), one of the [polled requests](<../Domain/Authorization Request/Polled Requests Explanation.md>). The Owner's approval is recorded twice. The request carries the approval the poll redeems ([`DeviceRequest::approve`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--approve>)). A standing [`DeviceGrant`](<../Domain/Grant Explanation.md#item-DeviceGrant>) is what the Owner's list of authorized devices shows.
+The request is a [`DeviceRequest`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest>), one of the [polled requests](<../Domain/Authorization Request/Polled Requests Explanation.md>). The Owner's approval is recorded twice. The request carries the approval the poll redeems ([`DeviceRequest::to_approved`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--to_approved>)). A standing [`DeviceGrant`](<../Domain/Grant Explanation.md#item-DeviceGrant>) is what the Owner's list of authorized devices shows.
 
 The file also holds the token endpoint's [refresh-token](<../Domain/Refresh Token Explanation.md>) promises, for both flows: rotation, the family's deadline, binding to the client, and what revoking a grant does to its client's refresh tokens.
 
@@ -20,25 +20,25 @@ Relies on [`DeviceRequest::stamp_poll`](<../Domain/Authorization Request/Polled 
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/device_code.rs device_grant_single_use_then_expired_token}}
 
-Relies on [`DeviceRequest::claim`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--claim>).
+Relies on [`DeviceRequest::to_claimed`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--to_claimed>).
 
 ### `device_consent_clamps_granted_scopes_to_client_allowed`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/device_code.rs device_consent_clamps_granted_scopes_to_client_allowed}}
 
-Relies on [`DeviceRequest::approve`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--approve>); the clamp is [`DelegatedScopes::clamp`](<../Authority/Delegated Scopes Explanation.md#item-DelegatedScopes--clamp>), with the ceiling [`ApprovableScopes::for_device`](<../Authority/Delegated Scopes Explanation.md#item-ApprovableScopes--for_device>). Fixtures first used here: [`seed_client_with_redirect`](<Test Fixtures Explanation.md#item-seed_client_with_redirect>) and [`build_request`](<Test Fixtures Explanation.md#item-build_request>).
+Relies on [`DeviceRequest::to_approved`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--to_approved>); the clamp is [`DelegatedScopes::clamp`](<../Authority/Delegated Scopes Explanation.md#item-DelegatedScopes--clamp>), with the ceiling [`ApprovableScopes::for_device`](<../Authority/Delegated Scopes Explanation.md#item-ApprovableScopes--for_device>). Fixtures first used here: [`seed_client_with_redirect`](<Test Fixtures Explanation.md#item-seed_client_with_redirect>) and [`build_request`](<Test Fixtures Explanation.md#item-build_request>).
 
 ### `device_consent_threads_patient_onto_request`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/device_code.rs device_consent_threads_patient_onto_request}}
 
-Relies on [`DeviceRequest::approve`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--approve>).
+Relies on [`DeviceRequest::to_approved`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--to_approved>).
 
 ### `device_consent_allows_expansion_beyond_requested`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/device_code.rs device_consent_allows_expansion_beyond_requested}}
 
-Relies on [`DeviceRequest::approve`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--approve>) and [`ApprovableScopes::for_device`](<../Authority/Delegated Scopes Explanation.md#item-ApprovableScopes--for_device>).
+Relies on [`DeviceRequest::to_approved`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--to_approved>) and [`ApprovableScopes::for_device`](<../Authority/Delegated Scopes Explanation.md#item-ApprovableScopes--for_device>).
 
 ### `device_authorization_carries_device_name_to_consent`
 
@@ -62,7 +62,7 @@ Relies on [`device_name_from_user_agent`](<../HTTP/Routes/Device Authorization E
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/device_code.rs device_consent_approver_can_adjust_device_name}}
 
-Relies on [`DeviceRequest::approve`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--approve>).
+Relies on [`DeviceRequest::to_approved`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--to_approved>).
 
 ### `device_approval_mints_durable_grant_and_links_refresh_family`
 

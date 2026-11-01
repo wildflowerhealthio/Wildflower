@@ -20,7 +20,12 @@ fn stamped_refusal(response: &axum::response::Response) -> Option<RequestRefusal
 /// Revoke `token` by denylisting its `jti`.
 fn revoke(db: &TestDb, token: &str) {
     revocation_store_handle(db)
-        .revoke_jti(&jti_of(token), Utc::now() + Duration::hours(1), "test")
+        .revoke_jti(
+            &jti_of(token),
+            Utc::now(),
+            Utc::now() + Duration::hours(1),
+            "test",
+        )
         .expect("revoke");
 }
 

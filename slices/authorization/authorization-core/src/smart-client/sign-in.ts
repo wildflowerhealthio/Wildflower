@@ -114,7 +114,7 @@ interface SignInEnvironment {
  * What an authorization request may carry for one sign-in alone, beyond what
  * the app's registration and the server's discovery fix.
  */
-type AuthorizationRequestExtras = Pick<AuthorizationRequestParameters, 'launch'>
+type AuthorizationRequestExtras = Pick<AuthorizationRequestParameters, 'launch' | 'prompt'>
 
 /**
  * Start a sign-in against `serverUrl`: discover its endpoints, mint the PKCE
@@ -134,10 +134,11 @@ type AuthorizationRequestExtras = Pick<AuthorizationRequestParameters, 'launch'>
  * nowhere particular to go.
  *
  * `request` carries what the authorization request may add for this sign-in
- * alone (see {@link AuthorizationRequestExtras}): `launch`, the SMART EHR
- * launch the app was opened with, sent so the server can tie the sign-in to
- * it. Without one, or with an empty one, the request is a standalone launch.
- * The return leg does not need it, so it stays out of the pending record.
+ * alone, neither of which the return leg needs, so both stay out of the
+ * pending record: `launch`, the SMART EHR launch the app was opened with, sent
+ * so the server can tie the sign-in to it (without one, or with an empty one,
+ * the request is a standalone launch); and `prompt`, sent to show the
+ * server's limited page again (see {@link AuthorizationRequestExtras}).
  *
  * The pending record is written **before** the URL is yielded, so a caller
  * cannot navigate away from a flow whose verifier was never saved.

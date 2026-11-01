@@ -41,6 +41,10 @@
 //!    claimed once by the poll of the page that started it: the authority a
 //!    paired browser session is started and its token minted under, with the
 //!    scopes the Owner granted.
+//!  - [`ClaimedSessionWidening`] — a session widening the Owner approved,
+//!    claimed once by the limited page of the browser whose session it
+//!    widened: the authority that browser's wider session token is minted
+//!    under, for the same session.
 //!  - [`TokenEntitlement`] — the enum the minter mints under, one variant per
 //!    proof above that a token may be minted for; each carries its claims
 //!    privately, so a token's scopes are never a caller-assembled slice.
@@ -59,14 +63,15 @@
 //! Not proofs: the registration-acknowledgement check (a consent-UI rule run
 //! before anything is written) and the request transitions that grant no
 //! authority (park, poll stamps, deny, raise for the Owner, the limited
-//! page's Continue and Cancel), which any flow writes through the guarded
-//! replace.
+//! page's Continue and Cancel, and its ask to widen the session), which any
+//! flow writes through the guarded replace.
 
 mod authenticated_client;
 mod browser_pairing;
 mod delegated_scopes;
 mod redemption;
 mod same_device_sign_in;
+mod session_widening;
 mod standing_grant;
 mod token_entitlement;
 
@@ -80,5 +85,6 @@ pub(crate) use redemption::{
     ValidatedRefreshToken,
 };
 pub(crate) use same_device_sign_in::RedeemedSameDeviceSignInCode;
+pub(crate) use session_widening::ClaimedSessionWidening;
 pub(crate) use standing_grant::{GrantCoverage, StandingGrantCoverage};
 pub(crate) use token_entitlement::TokenEntitlement;

@@ -143,7 +143,8 @@ pub(super) struct BrowserPairingNotFound {
     responses(
         (status = 200, description = "The started pairing", body = StartedBrowserPairingBody),
         (status = 400, description = "`next` is no path on this server", body = BrowserPairingRefused),
-        (status = 403, description = "The browser-session client is disabled", body = BrowserPairingRefused)
+        (status = 403, description = "The browser-session client is disabled", body = BrowserPairingRefused),
+        (status = 500, description = "No unused user code could be generated, or a store failed; logged, with no body")
     )
 )]
 pub(super) async fn handle_browser_pairing_start(
@@ -195,8 +196,11 @@ pub(super) async fn handle_browser_pairing_start(
     path = "/pair/poll",
     request_body(content = BrowserPairingPollBody, content_type = "application/json"),
     responses(
-        (status = 200, description = "Where the pairing stands", body = BrowserPairingStatusBody),
-        (status = 404, description = "No pairing has the pairing code", body = BrowserPairingNotFound)
+        (status = 200, description = "Where the pairing stands", body = BrowserPairingStatusBody, headers(
+            ("Set-Cookie" = String, description = "The browser's paired session token as its `__Host-browser_session` cookie, set only when the status is `approved`")
+        )),
+        (status = 404, description = "No pairing has the pairing code", body = BrowserPairingNotFound),
+        (status = 500, description = "A store failed, the paired session couldn't be stored, or its token couldn't be minted; logged, with no body")
     )
 )]
 pub(super) async fn handle_browser_pairing_poll(

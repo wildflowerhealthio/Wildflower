@@ -15,6 +15,7 @@ use std::rc::Rc;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_request::polled::PolledRequest;
+use crate::domain::authorization_request::session_widening::SessionWideningRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
@@ -55,6 +56,8 @@ pub(crate) struct FakeTables {
     code_authorization_requests: RefCell<HashMap<String, CodeRequest>>,
     /// The device requests and browser pairings, by id: the `user_code_requests` table.
     user_code_requests: RefCell<HashMap<String, PolledRequest>>,
+    /// The `session_widening_requests` table, by id.
+    session_widening_requests: RefCell<HashMap<String, SessionWideningRequest>>,
     /// The `authorization_codes` table, by code.
     authorization_codes: RefCell<HashMap<String, AuthorizationCode>>,
     /// The `refresh_token_families` table, by family id.
@@ -85,6 +88,8 @@ struct Snapshot {
     code_authorization_requests: HashMap<String, CodeRequest>,
     /// The `user_code_requests` map, as it stood.
     user_code_requests: HashMap<String, PolledRequest>,
+    /// The `session_widening_requests` map, as it stood.
+    session_widening_requests: HashMap<String, SessionWideningRequest>,
     /// The `authorization_codes` map, as it stood.
     authorization_codes: HashMap<String, AuthorizationCode>,
     /// The `families` map, as it stood.
@@ -111,6 +116,7 @@ impl FakeTables {
             signing_keys: self.signing_keys.borrow().clone(),
             code_authorization_requests: self.code_authorization_requests.borrow().clone(),
             user_code_requests: self.user_code_requests.borrow().clone(),
+            session_widening_requests: self.session_widening_requests.borrow().clone(),
             authorization_codes: self.authorization_codes.borrow().clone(),
             families: self.families.borrow().clone(),
             tokens: self.tokens.borrow().clone(),
@@ -131,6 +137,7 @@ impl FakeTables {
         *self.signing_keys.borrow_mut() = snapshot.signing_keys;
         *self.code_authorization_requests.borrow_mut() = snapshot.code_authorization_requests;
         *self.user_code_requests.borrow_mut() = snapshot.user_code_requests;
+        *self.session_widening_requests.borrow_mut() = snapshot.session_widening_requests;
         *self.authorization_codes.borrow_mut() = snapshot.authorization_codes;
         *self.families.borrow_mut() = snapshot.families;
         *self.tokens.borrow_mut() = snapshot.tokens;

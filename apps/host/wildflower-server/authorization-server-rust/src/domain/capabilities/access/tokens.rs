@@ -36,16 +36,17 @@ impl TokenRevoker {
         TokenRevoker { revocation }
     }
 
-    /// Denylist a single token by `jti` until its own expiry, tagged with the
-    /// reason `admin`. The caller passes the token's expiry so the denylist row
-    /// can be swept once the token would have expired anyway.
+    /// Denylist a single token by `jti` as of `now` until its own expiry,
+    /// tagged with the reason `admin`. The caller passes the token's expiry so
+    /// the denylist row can be swept once the token would have expired anyway.
     pub(crate) fn revoke_jti(
         &self,
         jti: &str,
-        expires_at: DateTime<Utc>,
+        now: DateTime<Utc>,
+        token_expires_at: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
         self.revocation
-            .revoke_jti(jti, expires_at, "admin")
+            .revoke_jti(jti, now, token_expires_at, "admin")
             .map_err(|e| AuthorizationServerError::infrastructure("revoke_jti failed", e))
     }
 

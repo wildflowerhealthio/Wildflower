@@ -41,6 +41,8 @@ The `/oauth` surfaces' error enums hold the shared `InternalError` instead, whic
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/errors.rs AuthorizationRequestNotFoundBody}}
 
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/errors.rs SessionWideningNotFoundBody}}
+
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/errors.rs GrantNotFoundBody}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/errors.rs BrowserSessionNotFoundBody}}
@@ -120,3 +122,7 @@ The consent card is the requesting browser itself, so it follows the redirect di
 The consent capability's [`ConsentOutcome`](<../Capabilities/Access/Consents Explanation.md>), variant for variant.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/wire_representations.rs ConsentResult::from}}
+
+### `PolledConsentResult`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/wire_representations.rs PolledConsentResult}}

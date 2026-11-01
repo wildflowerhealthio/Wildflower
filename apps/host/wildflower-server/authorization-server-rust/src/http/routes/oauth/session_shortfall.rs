@@ -65,7 +65,7 @@ pub(super) struct SessionShortfallNextBody {
 /// The `sid` of the browser session `headers` carry, as the limited page's
 /// calls are answered in it; the `404` an unknown request `id` gets when they
 /// carry none.
-fn requesting_sid(
+pub(super) fn requesting_sid(
     token_verifier: &LiveTokenVerifier,
     headers: &HeaderMap,
     id: &str,

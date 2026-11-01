@@ -89,13 +89,14 @@ impl PairingRequest {
         }
     }
 
-    /// Approve the pairing at `now` with `approval`, naming the browser
-    /// `browser_name` (`None` keeps the name it has).
+    /// The pairing as it would be once approved at `now` with `approval`,
+    /// naming the browser `browser_name` (`None` keeps the name it has).
+    /// Stores nothing.
     ///
     /// # Errors
     ///
     /// [`NotPending`] for a pairing no longer pending at `now`.
-    pub fn approve(
+    pub fn to_approved(
         &self,
         approval: PairingApproval,
         browser_name: Option<String>,
@@ -109,12 +110,12 @@ impl PairingRequest {
         })
     }
 
-    /// Deny the pairing at `now`.
+    /// The pairing as it would be once denied at `now`. Stores nothing.
     ///
     /// # Errors
     ///
     /// [`NotPending`] for a pairing no longer pending at `now`.
-    pub fn deny(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
+    pub fn to_denied(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
         self.require_pending(now)?;
         Ok(PairingRequest {
             state: PolledState::Denied,
@@ -166,7 +167,7 @@ impl Polled for PairingRequest {
         &self.state
     }
 
-    fn claim(&self, now: DateTime<Utc>) -> Result<Self, NotClaimable> {
+    fn to_claimed(&self, now: DateTime<Utc>) -> Result<Self, NotClaimable> {
         Ok(PairingRequest {
             state: claimed_state(self, now)?,
             ..self.clone()
@@ -208,24 +209,29 @@ mod tests {
     /// Approving records the approval and the browser's settled name; `None`
     /// keeps the name it has.
     #[test]
-    fn approve_records_the_approval_and_the_browser_s_name() {
+    fn to_approved_records_the_approval_and_the_browser_s_name() {
         let request = started();
         let renamed = request
-            .approve(approval(), Some("Ruth's laptop".to_owned()), at(1))
+            .to_approved(approval(), Some("Ruth's laptop".to_owned()), at(1))
             .expect("approves");
         assert_eq!(renamed.state, PolledState::Approved(approval()));
         assert_eq!(renamed.browser_name, "Ruth's laptop");
-        let kept_name = request.approve(approval(), None, at(1)).expect("approves");
+        let kept_name = request
+            .to_approved(approval(), None, at(1))
+            .expect("approves");
         assert_eq!(kept_name.browser_name, "Firefox on Linux");
-        assert_eq!(renamed.approve(approval(), None, at(1)), Err(NotPending));
+        assert_eq!(
+            renamed.to_approved(approval(), None, at(1)),
+            Err(NotPending)
+        );
     }
 
     /// Denying a pending pairing decides it.
     #[test]
-    fn deny_decides_a_pending_pairing() {
-        let denied = started().deny(at(1)).expect("denies");
+    fn to_denied_decides_a_pending_pairing() {
+        let denied = started().to_denied(at(1)).expect("denies");
         assert_eq!(denied.state, PolledState::Denied);
-        assert_eq!(denied.deny(at(2)), Err(NotPending));
+        assert_eq!(denied.to_denied(at(2)), Err(NotPending));
     }
 
     /// A poll stamp records the poll and the browser's latest name, only
@@ -246,12 +252,12 @@ mod tests {
 
     /// An approved pairing is claimed once, keeping its approval.
     #[test]
-    fn claim_redeems_an_approved_pairing_once() {
+    fn to_claimed_redeems_an_approved_pairing_once() {
         let approved = started()
-            .approve(approval(), None, at(1))
+            .to_approved(approval(), None, at(1))
             .expect("approves");
-        let claimed = approved.claim(at(2)).expect("claims");
+        let claimed = approved.to_claimed(at(2)).expect("claims");
         assert_eq!(claimed.state, PolledState::Claimed(approval()));
-        assert_eq!(claimed.claim(at(3)), Err(NotClaimable));
+        assert_eq!(claimed.to_claimed(at(3)), Err(NotClaimable));
     }
 }

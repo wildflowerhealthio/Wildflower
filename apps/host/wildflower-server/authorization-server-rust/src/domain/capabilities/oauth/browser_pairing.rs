@@ -611,7 +611,7 @@ mod tests {
         assert!(pairing
             .store
             .tx()
-            .replace_pairing_request(&read, &read.deny(Utc::now()).unwrap())
+            .replace_pairing_request(&read, &read.to_denied(Utc::now()).unwrap())
             .unwrap());
         assert!(matches!(
             pairing.poll(&denied.pairing_code, "", Utc::now()).unwrap(),

@@ -37,6 +37,12 @@ The router passes a closure that layers the start limit; the spec passes one tha
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/mod.rs ApiDoc}}
 
+### `documented_authorization_router`
+
+The router passes a closure that layers the deferred start limit on the ask-owner route; the spec passes one that leaves it as it is.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/mod.rs documented_authorization_router}}
+
 ### `documented_router`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/mod.rs documented_router}}

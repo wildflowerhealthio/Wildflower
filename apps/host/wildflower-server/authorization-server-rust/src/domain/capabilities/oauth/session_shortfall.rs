@@ -5,8 +5,9 @@
 //! ([`CodeAuthorizationStarter::continue_past_session_shortfall`]) or cancels.
 //! Every operation answers only the browser session the request was made in,
 //! so a leaked request id reads, continues and cancels nothing. What a session
-//! holds is read from its row ([`browser_session_grant`]), not from the
-//! browser's session token, so the page and `/oauth/authorize` judge it alike.
+//! holds is read from its row ([`browser_session_grant`]), which a widening
+//! the Owner approved grows, so the page and `/oauth/authorize` see the wider
+//! session whether or not the browser has taken its wider token yet.
 //!
 //! [`CodeAuthorizationStarter::continue_past_session_shortfall`]:
 //! super::CodeAuthorizationStarter::continue_past_session_shortfall
@@ -56,8 +57,7 @@ pub(crate) fn browser_session_grant(
     now: DateTime<Utc>,
 ) -> Result<Option<Grant>, AuthorizationServerError> {
     Ok(tx
-        .browser_session_by_sid(sid)?
-        .filter(|browser_session| browser_session.is_live_at(now, stale_session_cutoff))
+        .live_browser_session(sid, stale_session_cutoff, now)?
         .map(|browser_session| Grant::parse(browser_session.scopes)))
 }
 
@@ -104,13 +104,15 @@ impl<S: GrantStore> SessionShortfall<S> {
     /// hold, and the app asking, in a read scope. The missing scopes come from
     /// [`session_shortfall`] against the session's grant as its row holds it
     /// now ([`browser_session_grant`]), the same check `/oauth/authorize`
-    /// made when it parked the request.
+    /// made when it parked the request, so a session the Owner widened since
+    /// lacks only what it still lacks.
     ///
     /// # Errors
     ///
     /// See [`load_code_request_awaiting_limited_page`];
     /// [`AuthorizationServerError::AuthorizationRequestNotFound`] too once the
-    /// session has ended, since no code is issued under it; the store's.
+    /// session has ended, as the ask answers, since no code is issued under
+    /// it; the store's.
     pub(crate) fn read(
         &self,
         id: &str,

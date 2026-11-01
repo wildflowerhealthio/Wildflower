@@ -213,15 +213,15 @@ impl CodeRequest {
         }
     }
 
-    /// Approve the request at `now` with `approval`. The request records the
-    /// approval as made; the code issued for it carries only what the
-    /// requesting browser's session also covers, a bound
-    /// `RequestApprover::approve_for_code` applies.
+    /// The request as it would be once approved at `now` with `approval`.
+    /// Stores nothing. The request records the approval as made; the code
+    /// issued for it carries only what the requesting browser's session also
+    /// covers, a bound `RequestApprover::approve_for_code` applies.
     ///
     /// # Errors
     ///
     /// [`NotPending`] for a request not pending at `now`.
-    pub fn approve(&self, approval: Approval, now: DateTime<Utc>) -> Result<Self, NotPending> {
+    pub fn to_approved(&self, approval: Approval, now: DateTime<Utc>) -> Result<Self, NotPending> {
         self.require_pending(now)?;
         Ok(CodeRequest {
             state: CodeRequestState::Approved(approval),
@@ -229,14 +229,14 @@ impl CodeRequest {
         })
     }
 
-    /// Deny the request at `now`: the Owner's or the requesting browser's
-    /// no, or a request whose browser session ended before the approval
-    /// could land.
+    /// The request as it would be once denied at `now`: the Owner's or the
+    /// requesting browser's no, or a request whose browser session ended
+    /// before the approval could land. Stores nothing.
     ///
     /// # Errors
     ///
     /// [`NotPending`] for a request not pending at `now`.
-    pub fn deny(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
+    pub fn to_denied(&self, now: DateTime<Utc>) -> Result<Self, NotPending> {
         self.require_pending(now)?;
         Ok(CodeRequest {
             state: CodeRequestState::Denied,
@@ -276,6 +276,26 @@ impl CodeRequest {
         Ok(CodeRequest {
             state: CodeRequestState::Pending,
             expires_at: now + ttl,
+            ..self.clone()
+        })
+    }
+
+    /// Keep the request waiting on its browser's limited page until at least
+    /// `until`: the browser asked the Owner to widen its session, and the
+    /// request waits on that decision, and on the page collecting it. A
+    /// request already waiting longer keeps its expiry. Decides nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`NotAwaitingLimitedPage`] for a request not waiting there at `now`.
+    pub fn extend_limited_page_wait_until(
+        &self,
+        until: DateTime<Utc>,
+        now: DateTime<Utc>,
+    ) -> Result<Self, NotAwaitingLimitedPage> {
+        self.require_awaiting_limited_page(now)?;
+        Ok(CodeRequest {
+            expires_at: self.expires_at.max(until),
             ..self.clone()
         })
     }
@@ -366,25 +386,28 @@ mod tests {
     /// Approving records the approval; past expiry, once decided, or while
     /// on the limited page, it is refused.
     #[test]
-    fn approve_records_the_approval_only_while_pending() {
+    fn to_approved_records_the_approval_only_while_pending() {
         let request = started(false);
-        let approved = request.approve(approval(), at(1)).expect("approves");
+        let approved = request.to_approved(approval(), at(1)).expect("approves");
         assert_eq!(approved.state, CodeRequestState::Approved(approval()));
         assert_eq!(approved.state.approval(), Some(&approval()));
         assert_eq!(approved.state.status(), RequestStatus::Approved);
-        assert_eq!(request.approve(approval(), at(5)), Err(NotPending));
-        assert_eq!(approved.approve(approval(), at(1)), Err(NotPending));
-        assert_eq!(started(true).approve(approval(), at(1)), Err(NotPending));
+        assert_eq!(request.to_approved(approval(), at(5)), Err(NotPending));
+        assert_eq!(approved.to_approved(approval(), at(1)), Err(NotPending));
+        assert_eq!(
+            started(true).to_approved(approval(), at(1)),
+            Err(NotPending)
+        );
     }
 
     /// Denying a pending request decides it, with no approval.
     #[test]
-    fn deny_decides_a_pending_request() {
-        let denied = started(false).deny(at(1)).expect("denies");
+    fn to_denied_decides_a_pending_request() {
+        let denied = started(false).to_denied(at(1)).expect("denies");
         assert_eq!(denied.state, CodeRequestState::Denied);
         assert_eq!(denied.state.approval(), None);
-        assert_eq!(denied.deny(at(1)), Err(NotPending));
-        assert_eq!(started(true).deny(at(1)), Err(NotPending));
+        assert_eq!(denied.to_denied(at(1)), Err(NotPending));
+        assert_eq!(started(true).to_denied(at(1)), Err(NotPending));
     }
 
     /// Raising the request for the Owner clears only whether it is decidable
@@ -422,6 +445,35 @@ mod tests {
         );
         assert_eq!(
             waiting.acknowledge_session_shortfall(Duration::minutes(5), at(5)),
+            Err(NotAwaitingLimitedPage)
+        );
+    }
+
+    /// Extending the limited page's wait keeps the request there until the
+    /// later of its expiry and the new one, only while it waits there.
+    #[test]
+    fn extend_limited_page_wait_keeps_the_request_waiting_longer() {
+        let waiting = started(true);
+        let extended = waiting
+            .extend_limited_page_wait_until(at(8), at(3))
+            .expect("extends");
+        assert_eq!(
+            extended,
+            CodeRequest {
+                expires_at: at(8),
+                ..waiting.clone()
+            }
+        );
+        assert_eq!(
+            waiting.extend_limited_page_wait_until(at(4), at(3)),
+            Ok(waiting.clone())
+        );
+        assert_eq!(
+            started(false).extend_limited_page_wait_until(at(6), at(1)),
+            Err(NotAwaitingLimitedPage)
+        );
+        assert_eq!(
+            waiting.extend_limited_page_wait_until(at(10), at(5)),
             Err(NotAwaitingLimitedPage)
         );
     }

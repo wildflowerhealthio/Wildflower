@@ -20,20 +20,32 @@ use std::sync::Arc;
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
-use axum::{Json, Router};
+use axum::Json;
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
-use serde_json::json;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::Scoped;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveTokenRevoker;
 
-/// The `/revocations` route table.
-pub fn router() -> Router<Arc<AuthorizationServerState>> {
-    Router::new().route("/revocations", post(handle_create_revocation))
+/// The `/revocations` route table, as an `OpenApiRouter` so the spec is
+/// collected from the route that serves traffic.
+pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
+    OpenApiRouter::new().routes(routes!(handle_create_revocation))
+}
+
+/// The `400` a malformed revocation body gets.
+#[derive(Debug, Serialize, ToSchema)]
+struct RevocationRefusedBody {
+    /// The refusal's name: `MissingExpiresAt`, `AmbiguousRevocation`,
+    /// `EmptyRevocation` or `ExpiresAtInPast`.
+    error: &'static str,
+    /// A sentence saying what the body should have been.
+    detail: String,
 }
 
 /// Error half of the revocations handler. The request-body validation failures
@@ -79,7 +91,7 @@ impl IntoResponse for RevocationError {
         match self {
             RevocationError::BadRequest { error, detail } => (
                 StatusCode::BAD_REQUEST,
-                Json(json!({ "error": error, "detail": detail })),
+                Json(RevocationRefusedBody { error, detail }),
             )
                 .into_response(),
             RevocationError::Store(error) => error.into_response(),
@@ -103,6 +115,30 @@ struct RevocationRequest {
     /// A subject (`sub` / `client_id`) whose whole token cohort to bulk-revoke
     /// via an epoch bump to now.
     subject: Option<String>,
+}
+
+/// `POST /authorization/revocations` body as the spec describes it: exactly
+/// one of the two modes. Only the spec reads it; the route reads the looser
+/// [`RevocationRequest`] so it can answer each malformed body with its own
+/// `400`.
+#[derive(ToSchema)]
+#[serde(untagged)]
+#[allow(dead_code)]
+enum RevocationRequestBody {
+    /// Bulk-revoke every token the subject holds that was issued up to now.
+    Subject {
+        /// The `sub` claim (the `client_id`) whose tokens die.
+        subject: String,
+    },
+    /// Denylist one token until its own expiry.
+    #[serde(rename_all = "camelCase")]
+    Token {
+        /// The token's `jti` claim.
+        jti: String,
+        /// The token's own expiry (RFC 3339), in the future.
+        #[schema(value_type = String, format = DateTime)]
+        expires_at: DateTime<Utc>,
+    },
 }
 
 /// A validated revocation request: exactly one of the two mutually-exclusive
@@ -157,6 +193,17 @@ impl RevocationRequest {
 /// `204 No Content` on success; `400` with `error` and `detail` for a body that
 /// names neither mode, both, a `jti` without `expiresAt`, or an `expiresAt`
 /// already past.
+#[utoipa::path(
+    post,
+    tag = "Access management",
+    path = "/revocations",
+    request_body = RevocationRequestBody,
+    responses(
+        (status = 204, description = "The token is denylisted, or the subject's tokens are revoked"),
+        (status = 400, description = "The body names neither mode, both, a `jti` without `expiresAt`, or an `expiresAt` already past", body = RevocationRefusedBody),
+        (status = 500, description = "The revocation store failed; logged, with no body"),
+    ),
+)]
 async fn handle_create_revocation(
     tokens: Scoped<LiveTokenRevoker>,
     Json(request): Json<RevocationRequest>,
@@ -169,13 +216,14 @@ async fn handle_create_revocation(
             // than silently no-op'ing. (A too-early-but-future `expiresAt` can't
             // prematurely un-revoke a live token — the store's `purge_expired`
             // retention floor guards that.)
-            if expires_at <= Utc::now() {
+            let now = Utc::now();
+            if expires_at <= now {
                 return Err(RevocationError::bad_request(
                     "ExpiresAtInPast",
                     "`expiresAt` is in the past; the token has already expired",
                 ));
             }
-            tokens.revoke_jti(&jti, expires_at)?;
+            tokens.revoke_jti(&jti, now, expires_at)?;
         }
         Revocation::Subject { subject } => tokens.revoke_subject(&subject)?,
     }

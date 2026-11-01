@@ -50,7 +50,7 @@ pub(crate) type LiveBrowserSessionEnder = BrowserSessionEnder<SqliteGrantStore>;
 
 impl FromState for LiveBrowserSessionEnder {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        BrowserSessionEnder::new(state.store.clone())
+        BrowserSessionEnder::new(state.store.clone(), state.owner_approval())
     }
 }
 

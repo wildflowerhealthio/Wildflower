@@ -284,7 +284,7 @@ fn deny_pending_request(
     id: &str,
 ) -> Result<(), AuthorizationServerError> {
     let denied = pending_request
-        .deny(now)
+        .to_denied(now)
         .map_err(|_| consent_not_found(id))?;
     if tx.replace_code_request(pending_request, &denied)? {
         Ok(())

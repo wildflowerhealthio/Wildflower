@@ -2,23 +2,22 @@
 //! a device or a browser pairing, looked up by the code it shows.
 
 use chrono::Utc;
-use std::sync::Arc;
 
 use axum::extract::Path;
-use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::domain::authorization_request::polled::PolledRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{DeviceConsentView, Scoped};
-use crate::http::state::AuthorizationServerState;
+use crate::http::errors::DeviceConsentNotFoundBody;
 use crate::live_bindings::LiveConsentReader;
 
 /// What asks at the device page: a device, through the RFC 8628 device-code
 /// flow, or a browser pairing for a browser session. On the wire, `"device"`
 /// or `"browser"`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum DeviceConsentKind {
     /// A device's request, through the device-code flow.
@@ -33,7 +32,7 @@ pub(crate) enum DeviceConsentKind {
 /// envelope* the approver may grant up to (device consent is expandable): a
 /// device client's full allowed-scope set, a browser's the Owner's scopes.
 /// Local to this one route (its only reader).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DeviceConsent {
     /// What asks: `device` for a device's request, `browser` for a pairing.
@@ -62,14 +61,20 @@ pub(crate) struct DeviceConsent {
     pub(crate) missing_approval_scopes: Vec<String>,
 }
 
-/// The `GET` method on `/devices/{userCode}`.
-pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
-    get(handle_get_device_consent)
-}
-
 /// `GET /authorization/devices/{userCode}` — load a pending device-code consent prompt for
 /// the launcher to render (scope `wildflower/AuthorizationRequest.r`).
-async fn handle_get_device_consent(
+#[utoipa::path(
+    get,
+    tag = "Owner consent",
+    path = "/devices/{userCode}",
+    params(("userCode" = String, Path, description = "The code the device page shows")),
+    responses(
+        (status = 200, description = "The pending device or pairing request, for the device page", body = DeviceConsent),
+        (status = 404, description = "No pending device or pairing request has that user code", body = DeviceConsentNotFoundBody),
+        (status = 500, description = "A store failed; logged, with no body"),
+    ),
+)]
+pub(super) async fn handle_get_device_consent(
     consents: Scoped<LiveConsentReader>,
     Path(user_code): Path<String>,
 ) -> Result<Json<DeviceConsent>, AuthorizationServerError> {

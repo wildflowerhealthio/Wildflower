@@ -13,9 +13,9 @@ The first three live under `/authorization`, behind [`require_valid_session`](<.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session.rs self}}
 
-### `router`
+### `openapi_router`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session.rs router}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session.rs openapi_router}}
 
 ### `handle_get_session`
 
@@ -33,9 +33,9 @@ The [Scope Gating](<../../Integration Tests/Scope Gating Explanation.md>) tests 
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/logout.rs self}}
 
-### `router`
+### `openapi_router`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/logout.rs router}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/logout.rs openapi_router}}
 
 ### `handle_logout`
 
@@ -51,15 +51,21 @@ The [Revocation](<../../Integration Tests/Revocation Explanation.md>), [Scope Ga
 
 The daily sweep keeps a denylisted `jti` until the longest token this server mints, issued at the moment of revocation, would have expired (see [`setup_authorization_server`](<../../Assembly/Setup Explanation.md#item-setup_authorization_server>)). So an `expiresAt` that is too early can't free a live token.
 
-### `router`
+### `openapi_router`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs router}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs openapi_router}}
 
 ### `RevocationRequest`
 
 **The body's fields are all optional on the wire**, so a body naming neither mode, both, or a `jti` without its expiry gets a `400` saying which, rather than a generic parse error.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationRequest}}
+
+### `RevocationRequestBody`
+
+The spec describes the body as the client sends it, one mode or the other.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationRequestBody}}
 
 #### `into_revocation`
 
@@ -80,6 +86,8 @@ Each mode goes through the [token revoker](<../../Capabilities/Access/Tokens Exp
 The `400` is this route's own shape, `{ "error": …, "detail": … }`. A store failure renders as every other `/authorization` failure does.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationError}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationRefusedBody}}
 
 #### `bad_request`
 

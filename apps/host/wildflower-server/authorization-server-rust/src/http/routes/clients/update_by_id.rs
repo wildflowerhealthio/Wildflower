@@ -45,6 +45,7 @@ pub(crate) struct UpdateClientBody {
         (status = 200, description = "The client as stored", body = ClientBody),
         (status = 404, description = "No client with that id", body = ClientNotFoundBody),
         (status = 409, description = "The client is essential: disabling it would leave the Owner no way in", body = EssentialClientBody),
+        (status = 500, description = "A store failed; logged, with no body"),
     ),
 )]
 pub(super) async fn handle_update_client(

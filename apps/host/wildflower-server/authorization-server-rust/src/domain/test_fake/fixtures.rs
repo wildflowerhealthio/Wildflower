@@ -21,6 +21,7 @@ use crate::domain::authorization_request::pairing::{
     NewPairingRequestArgs, PairingApproval, PairingRequest,
 };
 use crate::domain::authorization_request::polled::Polled as _;
+use crate::domain::authorization_request::session_widening::SessionWideningApproval;
 use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
 use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
@@ -87,7 +88,7 @@ pub(crate) fn device_with_status(request: DeviceRequest, status: RequestStatus) 
     let decided_at = request.expires_at - Duration::milliseconds(1);
     let approve = |request: &DeviceRequest| {
         request
-            .approve(
+            .to_approved(
                 fixture_approval(&request.requested_scopes),
                 None,
                 decided_at,
@@ -97,9 +98,11 @@ pub(crate) fn device_with_status(request: DeviceRequest, status: RequestStatus) 
     match status {
         RequestStatus::Pending => request,
         RequestStatus::Approved => approve(&request),
-        RequestStatus::Denied => request.deny(decided_at).expect("a pending fixture denies"),
+        RequestStatus::Denied => request
+            .to_denied(decided_at)
+            .expect("a pending fixture denies"),
         RequestStatus::Claimed => approve(&request)
-            .claim(decided_at)
+            .to_claimed(decided_at)
             .expect("an approved fixture is claimed"),
         RequestStatus::AwaitingLimitedPage => panic!("a device request has no limited page"),
     }
@@ -118,9 +121,11 @@ pub(crate) fn code_with_status(request: CodeRequest, status: RequestStatus) -> C
             ..request
         },
         RequestStatus::Approved => request
-            .approve(fixture_approval(&request.requested_scopes), decided_at)
+            .to_approved(fixture_approval(&request.requested_scopes), decided_at)
             .expect("a pending fixture approves"),
-        RequestStatus::Denied => request.deny(decided_at).expect("a pending fixture denies"),
+        RequestStatus::Denied => request
+            .to_denied(decided_at)
+            .expect("a pending fixture denies"),
         RequestStatus::Claimed => panic!("a code request is never claimed"),
     }
 }
@@ -178,12 +183,12 @@ pub(crate) fn approve_stored(
     let requester_name = requester_name.map(str::to_owned);
     let landed = match request {
         AuthorizationRequest::Code(read) => {
-            let approved = read.approve(approval, now).expect("pending");
+            let approved = read.to_approved(approval, now).expect("pending");
             tx.replace_code_request(&read, &approved)
         }
         AuthorizationRequest::Device(read) => {
             let approved = read
-                .approve(approval, requester_name, now)
+                .to_approved(approval, requester_name, now)
                 .expect("pending");
             tx.replace_device_request(&read, &approved)
         }
@@ -192,9 +197,16 @@ pub(crate) fn approve_stored(
                 granted_scopes: approval.granted_scopes,
             };
             let approved = read
-                .approve(approval, requester_name, now)
+                .to_approved(approval, requester_name, now)
                 .expect("pending");
             tx.replace_pairing_request(&read, &approved)
+        }
+        AuthorizationRequest::SessionWidening(read) => {
+            let approval = SessionWideningApproval {
+                granted_scopes: approval.granted_scopes,
+            };
+            let approved = read.to_approved(approval, now).expect("pending");
+            tx.replace_session_widening_request(&read, &approved)
         }
     };
     assert!(landed.unwrap());

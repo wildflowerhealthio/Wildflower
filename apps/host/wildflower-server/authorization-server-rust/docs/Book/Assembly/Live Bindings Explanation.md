@@ -31,6 +31,12 @@ The write port is [`Revocation`](<Ports and Adapters Explanation.md#item-revocat
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/state.rs AuthorizationServerState::revocation}}
 
+#### `owner_approval`
+
+The port is [`OwnerApproval`](<Ports and Adapters Explanation.md#item-OwnerApproval>), which the state implements itself.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/state.rs AuthorizationServerState::owner_approval}}
+
 #### `revocation_check`
 
 The read port is [`RevocationCheck`](<Ports and Adapters Explanation.md#item-RevocationCheck>).

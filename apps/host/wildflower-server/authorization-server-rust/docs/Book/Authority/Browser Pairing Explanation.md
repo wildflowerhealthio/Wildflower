@@ -18,7 +18,7 @@ The tests store and approve pairings with the [pairing fixtures](<Test Fixtures 
 
 #### `claim`
 
-The one constructor. The claim is the request's own [`claim`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-PairingRequest--claim>) transition, written with the [guarded replace](<../Domain/Authorization Request Explanation.md#transitions-and-the-guarded-replace>), so **an approved pairing starts one session at most**. The session is a [new paired session](<../Domain/Browser Session Explanation.md#item-BrowserSession--new_paired_session>), named as the Owner renamed the browser or as it named itself.
+The one constructor. The claim is the request's own [`to_claimed`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-PairingRequest--to_claimed>) transition, written with the [guarded replace](<../Domain/Authorization Request Explanation.md#transitions-and-the-guarded-replace>), so **an approved pairing starts one session at most**. The session is a [new paired session](<../Domain/Browser Session Explanation.md#item-BrowserSession--new_paired_session>), named as the Owner renamed the browser or as it named itself.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/browser_pairing.rs ClaimedBrowserPairing::claim tests="tests::only_an_approved_pairing_is_claimed"}}
 

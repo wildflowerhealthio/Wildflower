@@ -19,15 +19,13 @@ They live under `/authorization`, behind [`require_valid_session`](<../Middlewar
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/mod.rs self}}
 
-### `router`
+### `openapi_router`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/mod.rs router}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/mod.rs openapi_router}}
 
 ### `list_all`
 
 The handler reads through the [grants reader](<../../Capabilities/Access/Grants Explanation.md>)'s [`list`](<../../Capabilities/Access/Grants Explanation.md#item-GrantsReader--list>).
-
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/list_all.rs route}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/list_all.rs handle_list_grants}}
 
@@ -35,15 +33,11 @@ The handler reads through the [grants reader](<../../Capabilities/Access/Grants 
 
 The handler reads through [`get`](<../../Capabilities/Access/Grants Explanation.md#item-GrantsReader--get>).
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/get_by_id.rs route}}
-
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/get_by_id.rs handle_get_grant}}
 
 ### `revoke_by_id`
 
 **Revoking a grant takes back everything it let the app hold.** The [grants revoker](<../../Capabilities/Access/Grants Explanation.md>)'s [`revoke`](<../../Capabilities/Access/Grants Explanation.md#item-GrantsRevoker--revoke>) owns the cascade: the grant is deleted, the app's refresh-token families are expired, and its revocation epoch moves to now, so its live access tokens die too. It needs `wildflower/Grant.d` alone, not `wildflower/Token.d`.
-
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/revoke_by_id.rs route}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/revoke_by_id.rs handle_revoke_grant}}
 
@@ -81,9 +75,9 @@ The [Client Management](<../../Integration Tests/Client Management Explanation.m
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/mod.rs self}}
 
-### `router`
+### `openapi_router`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/mod.rs router}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/mod.rs openapi_router}}
 
 ### `list_all`
 
@@ -93,15 +87,11 @@ The [Client Management](<../../Integration Tests/Client Management Explanation.m
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs BrowserSessionBody::from}}
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs route}}
-
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs handle_list_browser_sessions}}
 
 ### `revoke_by_id`
 
 **Revoking a browser session ends everything minted under it**: the browser's own token, and every access token and refresh family an app it signed in to holds. The caller may revoke its own session, which signs that browser out. It goes through the [browser sessions revoker](<../../Capabilities/Access/Browser Sessions Explanation.md>)'s [`revoke`](<../../Capabilities/Access/Browser Sessions Explanation.md#item-BrowserSessionsRevoker--revoke>).
-
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/revoke_by_id.rs route}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/revoke_by_id.rs handle_revoke_browser_session}}
 

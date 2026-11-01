@@ -42,7 +42,7 @@ impl ClaimedBrowserPairing {
         session_ttl: Duration,
         now: DateTime<Utc>,
     ) -> Result<Option<Self>, AuthorizationServerError> {
-        let Ok(claimed) = pairing_request.claim(now) else {
+        let Ok(claimed) = pairing_request.to_claimed(now) else {
             return Ok(None);
         };
         let Some(approval) = claimed.state.approval() else {

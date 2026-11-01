@@ -70,7 +70,7 @@ Relies on [`OwnerPrompt::for_request`](<../Domain/Owner Prompt Explanation.md#it
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/oauth_endpoints.rs deciding_an_oauth_consent_clears_the_owner_prompt}}
 
-Relies on [`CodeRequest::approve`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--approve>), [`CodeRequest::deny`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny>) and [`OwnerPrompt`](<../Domain/Owner Prompt Explanation.md#item-OwnerPrompt>).
+Relies on [`CodeRequest::to_approved`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_approved>), [`CodeRequest::to_denied`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_denied>) and [`OwnerPrompt`](<../Domain/Owner Prompt Explanation.md#item-OwnerPrompt>).
 
 ### `the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer_one`
 
@@ -82,7 +82,7 @@ Relies on [`PendingConsentWatcher::until_settled`](<../Assembly/OAuth Bindings E
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/oauth_endpoints.rs a_fast_pathed_authorize_never_becomes_the_owner_prompt}}
 
-Relies on [`GrantCoverage::resolve`](<../Authority/Standing Grant Explanation.md#item-GrantCoverage--resolve>) and [`CodeRequest::approve`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--approve>). Fixtures first used here: [`seed_test_client`](<Test Fixtures Explanation.md#item-seed_test_client>), [`authorize_and_approve`](<Test Fixtures Explanation.md#item-authorize_and_approve>) and [`location_of`](<Test Fixtures Explanation.md#item-location_of>).
+Relies on [`GrantCoverage::resolve`](<../Authority/Standing Grant Explanation.md#item-GrantCoverage--resolve>) and [`CodeRequest::to_approved`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_approved>). Fixtures first used here: [`seed_test_client`](<Test Fixtures Explanation.md#item-seed_test_client>), [`authorize_and_approve`](<Test Fixtures Explanation.md#item-authorize_and_approve>) and [`location_of`](<Test Fixtures Explanation.md#item-location_of>).
 
 ### `authorize_host_app_disallowed_scope_still_redirects_invalid_scope`
 

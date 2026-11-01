@@ -38,7 +38,7 @@ Relies on [`OwnerPrompt::for_request`](<../Domain/Owner Prompt Explanation.md#it
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settles_the_wait_page}}
 
-Relies on [`CodeRequest::approve`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--approve>), through [`ConsentDecider::approve_oauth_consent`](<../Capabilities/Access/OAuth Consents Explanation.md#item-ConsentDecider--approve_oauth_consent>). Fixtures first used here: [`decide`](<Test Fixtures Explanation.md#item-consent_card--decide>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>) and [`status_of`](<Test Fixtures Explanation.md#item-status_of>).
+Relies on [`CodeRequest::to_approved`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_approved>), through [`ConsentDecider::approve_oauth_consent`](<../Capabilities/Access/OAuth Consents Explanation.md#item-ConsentDecider--approve_oauth_consent>). Fixtures first used here: [`decide`](<Test Fixtures Explanation.md#item-consent_card--decide>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>) and [`status_of`](<Test Fixtures Explanation.md#item-status_of>).
 
 ### `a_scope_that_was_not_requested_is_not_granted`
 
@@ -56,7 +56,7 @@ Relies on [`PresentedClientChange::would_change_registration`](<../Domain/Client
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs denying_sends_access_denied_to_the_client_and_settles_the_wait_page}}
 
-Relies on [`CodeRequest::deny`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny>).
+Relies on [`CodeRequest::to_denied`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_denied>).
 
 ### `the_consent_card_is_locked_down_and_uncached`
 
