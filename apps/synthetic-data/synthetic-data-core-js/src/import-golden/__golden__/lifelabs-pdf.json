@@ -1,0 +1,766 @@
+{
+  "excluded": [],
+  "notes": {
+    "lifelabs-pdf": []
+  },
+  "review": [
+    {
+      "disposition": "Included",
+      "group": "lifelabs-pdf",
+      "key": "0:lifelabs-report.pdf/source-file/lifelabs-report.pdf",
+      "resource": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+      "title": "lifelabs-report.pdf"
+    },
+    {
+      "disposition": "Included",
+      "group": "lifelabs-pdf",
+      "key": "0:lifelabs-report.pdf/Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b",
+      "resource": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b",
+      "title": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b"
+    },
+    {
+      "disposition": "Included",
+      "group": "lifelabs-pdf",
+      "key": "0:lifelabs-report.pdf/Practitioner/wf-137fa84b1bd8c50085270ab8338ec759",
+      "resource": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759",
+      "title": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759"
+    },
+    {
+      "disposition": "Included",
+      "group": "lifelabs-pdf",
+      "key": "0:lifelabs-report.pdf/Patient/wf-929179822271976c1757d6f21670ddfd",
+      "resource": "Patient/wf-929179822271976c1757d6f21670ddfd",
+      "title": "Patient/wf-929179822271976c1757d6f21670ddfd"
+    },
+    {
+      "disposition": "Included",
+      "group": "lifelabs-pdf",
+      "key": "0:lifelabs-report.pdf/Observation/wf-9720aaee0f5f747b30b6b794b85cd404",
+      "resource": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404",
+      "title": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404"
+    },
+    {
+      "disposition": "Included",
+      "group": "lifelabs-pdf",
+      "key": "0:lifelabs-report.pdf/Observation/wf-d48dd6b6316eba1fb28f4f4c89396684",
+      "resource": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684",
+      "title": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684"
+    },
+    {
+      "disposition": "Included",
+      "group": "lifelabs-pdf",
+      "key": "0:lifelabs-report.pdf/DiagnosticReport/wf-bfceff03e1708baeffb6156b2a7448e3",
+      "resource": "DiagnosticReport/wf-bfceff03e1708baeffb6156b2a7448e3",
+      "title": "DiagnosticReport/wf-bfceff03e1708baeffb6156b2a7448e3"
+    },
+    {
+      "disposition": "Included",
+      "group": "lifelabs-pdf",
+      "key": "0:lifelabs-report.pdf/Observation/wf-3a2491bf06f64c173c7e85ce78904780",
+      "resource": "Observation/wf-3a2491bf06f64c173c7e85ce78904780",
+      "title": "Observation/wf-3a2491bf06f64c173c7e85ce78904780"
+    },
+    {
+      "disposition": "Included",
+      "group": "lifelabs-pdf",
+      "key": "0:lifelabs-report.pdf/DiagnosticReport/wf-35d65b4646cf3301647821030d22822c",
+      "resource": "DiagnosticReport/wf-35d65b4646cf3301647821030d22822c",
+      "title": "DiagnosticReport/wf-35d65b4646cf3301647821030d22822c"
+    }
+  ],
+  "sourceFileRePicks": [
+    {
+      "rePicked": [
+        "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09"
+      ],
+      "written": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09"
+    }
+  ],
+  "written": [
+    {
+      "basedOn": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "LAB",
+              "display": "Laboratory",
+              "extension": [],
+              "system": "http://terminology.hl7.org/CodeSystem/v2-0074"
+            }
+          ],
+          "extension": []
+        }
+      ],
+      "code": {
+        "coding": [
+          {
+            "code": "11502-2",
+            "display": "Laboratory report",
+            "extension": [],
+            "system": "http://loinc.org/"
+          }
+        ],
+        "extension": [],
+        "text": "Chemistry"
+      },
+      "conclusionCode": [],
+      "contained": [],
+      "effectiveDateTime": "2026-10-21T12:26:00.000Z",
+      "extension": [],
+      "id": "wf-35d65b4646cf3301647821030d22822c",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "955b4a2e0deab847"
+        },
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/lab-number",
+          "value": "2026-NN6198463"
+        }
+      ],
+      "imagingStudy": [],
+      "issued": "2026-10-21T17:52:00.000Z",
+      "media": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "performer": [
+        {
+          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
+          "extension": []
+        }
+      ],
+      "presentedForm": [],
+      "resourceType": "DiagnosticReport",
+      "result": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+            "value": "e707dfd6d358d4b1"
+          },
+          "reference": "Observation/wf-3a2491bf06f64c173c7e85ce78904780"
+        }
+      ],
+      "resultsInterpreter": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+            "value": "89cbf94afbd515b7"
+          },
+          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b"
+        },
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+            "value": "aaaf66a1620d6aae"
+          },
+          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759"
+        }
+      ],
+      "specimen": [],
+      "status": "final",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "a5ff7f4bd78368a3"
+        },
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+      }
+    },
+    {
+      "basedOn": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "LAB",
+              "display": "Laboratory",
+              "extension": [],
+              "system": "http://terminology.hl7.org/CodeSystem/v2-0074"
+            }
+          ],
+          "extension": []
+        }
+      ],
+      "code": {
+        "coding": [
+          {
+            "code": "11502-2",
+            "display": "Laboratory report",
+            "extension": [],
+            "system": "http://loinc.org/"
+          }
+        ],
+        "extension": [],
+        "text": "Chemistry"
+      },
+      "conclusionCode": [],
+      "contained": [],
+      "effectiveDateTime": "2026-09-01T13:09:00.000Z",
+      "extension": [],
+      "id": "wf-bfceff03e1708baeffb6156b2a7448e3",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "1182b282c7978560"
+        },
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/lab-number",
+          "value": "2026-PF2780400"
+        }
+      ],
+      "imagingStudy": [],
+      "issued": "2026-09-01T20:38:00.000Z",
+      "media": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "performer": [
+        {
+          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
+          "extension": []
+        }
+      ],
+      "presentedForm": [],
+      "resourceType": "DiagnosticReport",
+      "result": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+            "value": "d0a244442a06d3e0"
+          },
+          "reference": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404"
+        },
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+            "value": "89a50a75b0a929da"
+          },
+          "reference": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684"
+        }
+      ],
+      "resultsInterpreter": [
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+            "value": "89cbf94afbd515b7"
+          },
+          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b"
+        },
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+            "value": "aaaf66a1620d6aae"
+          },
+          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759"
+        }
+      ],
+      "specimen": [],
+      "status": "final",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "a5ff7f4bd78368a3"
+        },
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+      }
+    },
+    {
+      "author": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "lifelabs-pdf-archive",
+              "extension": [],
+              "system": "https://wildflowerhealth.io/fhir/sid/lifelabs"
+            }
+          ],
+          "extension": []
+        }
+      ],
+      "contained": [],
+      "content": [
+        {
+          "attachment": {
+            "contentType": "application/pdf",
+            "data": "JVBERi0xLjcKeyJmb3JtYXQiOiJ3aWxkZmxvd2VyLXBvc2l0aW9uZWQtdGV4dCIsInZlcnNpb24iOjEsImZpbGVOYW1lIjoiUmVwb3J0cy5wZGYiLCJwYWdlcyI6W3sicGFnZU51bWJlciI6MSwid2lkdGgiOjYxMiwiaGVpZ2h0Ijo3OTIsInJ1bnMiOlt7InRleHQiOiJQYXRpZW50OiIsIngiOjAsInkiOjE1LCJ3aWR0aCI6MzYuMzIsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiJPS0FGT1IsIEFWRVJZIiwieCI6MzcsInkiOjEzLCJ3aWR0aCI6NjQuNjEsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJMYWIgTm86IiwieCI6MjEzLCJ5IjoxNSwid2lkdGgiOjMxLjc4LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiMjAyNi1QRjI3ODA0MDAiLCJ4IjoyNTAsInkiOjEzLCJ3aWR0aCI6NjkuNTgsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJSZWZlcmVuY2UgIzoiLCJ4IjoyMTMsInkiOjMwLCJ3aWR0aCI6NTQuNDgwMDAwMDAwMDAwMDA0LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiIiwieCI6MjcxLCJ5IjoyOCwid2lkdGgiOjAsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJBZ2U6IiwieCI6MCwieSI6NDUsIndpZHRoIjoxOC4xNiwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IjUxIHllYXJzIiwieCI6MjUsInkiOjQzLCJ3aWR0aCI6MzkuNzYsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJTZXg6IiwieCI6MTEzLCJ5Ijo0NSwid2lkdGgiOjE4LjE2LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiRiIsIngiOjEzNywieSI6NDMsIndpZHRoIjo0Ljk3LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiUGF0aWVudCBJRDoiLCJ4IjoyMTMsInkiOjQ1LCJ3aWR0aCI6NDkuOTQsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiIiLCJ4IjoyNjEsInkiOjQzLCJ3aWR0aCI6MCwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IkRhdGUgb2YgQmlydGg6IiwieCI6MCwieSI6NTcsIndpZHRoIjo2My41NiwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IlNlcCAyMSAxOTc0IiwieCI6NTksInkiOjU1LCJ3aWR0aCI6NTQuNjY5OTk5OTk5OTk5OTk1LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiUmVmZXJyaW5nIFNpdGUgSUQ6IiwieCI6MjEzLCJ5Ijo1Nywid2lkdGgiOjgxLjcyLCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiIiwieCI6MjkwLCJ5Ijo1NSwid2lkdGgiOjAsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJBZGRyZXNzOiIsIngiOjQ4NCwieSI6NjQsIndpZHRoIjozNi4zMiwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IkhDICM6IiwieCI6MCwieSI6NzIsIndpZHRoIjoyMi43LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiIiwieCI6MjksInkiOjcxLCJ3aWR0aCI6MCwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IlBhdGllbnQncyBQaG9uZToiLCJ4IjowLCJ5Ijo4Nywid2lkdGgiOjcyLjY0LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiIiwieCI6NzIsInkiOjgzLCJ3aWR0aCI6MCwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IkRhdGUgb2YgU2VydmljZToiLCJ4IjoyMTMsInkiOjg3LCJ3aWR0aCI6NzIuNjQsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiJTZXAgMSAyMDI2IDA5OjA5IiwieCI6Mjg0LCJ5Ijo4Mywid2lkdGgiOjc5LjUyLCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiVGVsZXBob25lOiIsIngiOjQ4NCwieSI6OTYsIndpZHRoIjo0NS40LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiIiwieCI6NTU2LCJ5Ijo5Niwid2lkdGgiOjAsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJSZXBvcnRlZCBvbjoiLCJ4IjoyMTMsInkiOjk5LCJ3aWR0aCI6NTQuNDgwMDAwMDAwMDAwMDA0LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiU2VwIDEgMjAyNiAxNjozOCIsIngiOjI3MSwieSI6OTksIndpZHRoIjo3OS41MiwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IlRvbGwgRnJlZToiLCJ4Ijo0ODQsInkiOjEwNSwid2lkdGgiOjQ1LjQsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiIiLCJ4Ijo1NTYsInkiOjEwNSwid2lkdGgiOjAsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJPcmRlcmVkIGJ5OiIsIngiOjAsInkiOjExNCwid2lkdGgiOjQ5Ljk0LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiUk9ZIERSLiBBTk5FIiwieCI6NjAsInkiOjExMSwid2lkdGgiOjU5LjY0LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiRmF4OiIsIngiOjQ4NCwieSI6MTE3LCJ3aWR0aCI6MTguMTYsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiIiLCJ4Ijo1NTYsInkiOjExNywid2lkdGgiOjAsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJDb3B5IFRvOiIsIngiOjAsInkiOjEyNiwid2lkdGgiOjM2LjMyLCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiT1NFSSBEUi4gS1dBTUUiLCJ4Ijo2MCwieSI6MTI2LCJ3aWR0aCI6NjkuNTgsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJUZXN0IiwieCI6MTEwLCJ5IjoxNDEsIndpZHRoIjoxOC4xNiwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IkZsYWciLCJ4IjoyNTEsInkiOjE0MSwid2lkdGgiOjE4LjE2LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiUmVzdWx0IiwieCI6MjgzLCJ5IjoxNDEsIndpZHRoIjoyNy4yNDAwMDAwMDAwMDAwMDIsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiJSZWZlcmVuY2UgUmFuZ2UgLSBVbml0cyIsIngiOjM5MSwieSI6MTQxLCJ3aWR0aCI6MTA0LjQyLCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiTGFiIExpYy4gIyIsIngiOjU2OSwieSI6MTQxLCJ3aWR0aCI6NDUuNCwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IjEgRXhhbXBsZSBCbHZkLiIsIngiOjUyNywieSI6NjQsIndpZHRoIjo3NC41NSwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IlRvcm9udG8sIE9udGFyaW8iLCJ4Ijo1MjcsInkiOjczLCJ3aWR0aCI6NzkuNTIsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJDYW5hZGEgTTBNIDBNMCIsIngiOjUyNywieSI6ODIsIndpZHRoIjo2OS41OCwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IkNoZW1pc3RyeSIsIngiOjAsInkiOjE1OSwid2lkdGgiOjQ0LjczLCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiRWxlY3Ryb2x5dGVzIiwieCI6MTQsInkiOjE3MSwid2lkdGgiOjU5LjY0LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiU29kaXVtIiwieCI6MjgsInkiOjE4Mywid2lkdGgiOjI5LjgyLCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiMTM5IiwieCI6MjgzLCJ5IjoxODMsIndpZHRoIjoxNC45MSwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IjEzNSAtIDE0NSIsIngiOjM5MSwieSI6MTgzLCJ3aWR0aCI6NDQuNzMsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJtbW9sL0wiLCJ4Ijo0ODUsInkiOjE4Mywid2lkdGgiOjI5LjgyLCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiIzU2ODciLCJ4Ijo1ODYsInkiOjE4Mywid2lkdGgiOjI0Ljg0OTk5OTk5OTk5OTk5OCwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IlBvdGFzc2l1bSIsIngiOjI4LCJ5IjoxOTUsIndpZHRoIjo0NC43MywiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IkhJIiwieCI6MjU1LCJ5IjoxOTUsIndpZHRoIjo5Ljk0LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiNS40IiwieCI6MjgzLCJ5IjoxOTUsIndpZHRoIjoxNC45MSwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IjMuNSAtIDUuMCIsIngiOjM5MSwieSI6MTk1LCJ3aWR0aCI6NDQuNzMsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJtbW9sL0wiLCJ4Ijo0ODUsInkiOjE5NSwid2lkdGgiOjI5LjgyLCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiVmVyaWZpZWQgYnkgcmVwZWF0IGFuYWx5c2lzLiIsIngiOjI4MywieSI6MjA3LCJ3aWR0aCI6MTM5LjE2LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiTGFiIC0gNTY4NzogTGlmZUxhYnMsIDEwMCBJbnRlcm5hdGlvbmFsIEJsdmQuLCBUb3JvbnRvLCBPbnRhcmlvLiIsIngiOjE0LCJ5Ijo3MjMsIndpZHRoIjozMTguMDgsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJQYWdlIiwieCI6MjY5LCJ5Ijo3MzUsIndpZHRoIjoxOS44OCwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IjEiLCJ4IjoyOTcsInkiOjczNSwid2lkdGgiOjQuOTcsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJvZiIsIngiOjMxMiwieSI6NzM1LCJ3aWR0aCI6OS45NCwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IjEiLCJ4IjozMjYsInkiOjczNSwid2lkdGgiOjQuOTcsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJGSU5BTCBSRVNVTFRTIiwieCI6MTQsInkiOjczOCwid2lkdGgiOjY0LjYxLCJmb250U2l6ZSI6OS45NH1dfSx7InBhZ2VOdW1iZXIiOjIsIndpZHRoIjo2MTIsImhlaWdodCI6NzkyLCJydW5zIjpbeyJ0ZXh0IjoiUGF0aWVudDoiLCJ4IjowLCJ5IjoxNSwid2lkdGgiOjM2LjMyLCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiT0tBRk9SLCBBVkVSWSIsIngiOjM3LCJ5IjoxMywid2lkdGgiOjY0LjYxLCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiTGFiIE5vOiIsIngiOjIxMywieSI6MTUsIndpZHRoIjozMS43OCwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IjIwMjYtTk42MTk4NDYzIiwieCI6MjUwLCJ5IjoxMywid2lkdGgiOjY5LjU4LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiUmVmZXJlbmNlICM6IiwieCI6MjEzLCJ5IjozMCwid2lkdGgiOjU0LjQ4MDAwMDAwMDAwMDAwNCwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IiIsIngiOjI3MSwieSI6MjgsIndpZHRoIjowLCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiQWdlOiIsIngiOjAsInkiOjQ1LCJ3aWR0aCI6MTguMTYsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiI1MiB5ZWFycyIsIngiOjI1LCJ5Ijo0Mywid2lkdGgiOjM5Ljc2LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiU2V4OiIsIngiOjExMywieSI6NDUsIndpZHRoIjoxOC4xNiwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IkYiLCJ4IjoxMzcsInkiOjQzLCJ3aWR0aCI6NC45NywiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IlBhdGllbnQgSUQ6IiwieCI6MjEzLCJ5Ijo0NSwid2lkdGgiOjQ5Ljk0LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiIiwieCI6MjYxLCJ5Ijo0Mywid2lkdGgiOjAsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJEYXRlIG9mIEJpcnRoOiIsIngiOjAsInkiOjU3LCJ3aWR0aCI6NjMuNTYsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiJTZXAgMjEgMTk3NCIsIngiOjU5LCJ5Ijo1NSwid2lkdGgiOjU0LjY2OTk5OTk5OTk5OTk5NSwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IlJlZmVycmluZyBTaXRlIElEOiIsIngiOjIxMywieSI6NTcsIndpZHRoIjo4MS43MiwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IiIsIngiOjI5MCwieSI6NTUsIndpZHRoIjowLCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiQWRkcmVzczoiLCJ4Ijo0ODQsInkiOjY0LCJ3aWR0aCI6MzYuMzIsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiJIQyAjOiIsIngiOjAsInkiOjcyLCJ3aWR0aCI6MjIuNywiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IiIsIngiOjI5LCJ5Ijo3MSwid2lkdGgiOjAsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJQYXRpZW50J3MgUGhvbmU6IiwieCI6MCwieSI6ODcsIndpZHRoIjo3Mi42NCwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IiIsIngiOjcyLCJ5Ijo4Mywid2lkdGgiOjAsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJEYXRlIG9mIFNlcnZpY2U6IiwieCI6MjEzLCJ5Ijo4Nywid2lkdGgiOjcyLjY0LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiT2N0IDIxIDIwMjYgMDg6MjYiLCJ4IjoyODQsInkiOjgzLCJ3aWR0aCI6ODQuNDksImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJUZWxlcGhvbmU6IiwieCI6NDg0LCJ5Ijo5Niwid2lkdGgiOjQ1LjQsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiIiLCJ4Ijo1NTYsInkiOjk2LCJ3aWR0aCI6MCwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IlJlcG9ydGVkIG9uOiIsIngiOjIxMywieSI6OTksIndpZHRoIjo1NC40ODAwMDAwMDAwMDAwMDQsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiJPY3QgMjEgMjAyNiAxMzo1MiIsIngiOjI3MSwieSI6OTksIndpZHRoIjo4NC40OSwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IlRvbGwgRnJlZToiLCJ4Ijo0ODQsInkiOjEwNSwid2lkdGgiOjQ1LjQsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiIiLCJ4Ijo1NTYsInkiOjEwNSwid2lkdGgiOjAsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJPcmRlcmVkIGJ5OiIsIngiOjAsInkiOjExNCwid2lkdGgiOjQ5Ljk0LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiUk9ZIERSLiBBTk5FIiwieCI6NjAsInkiOjExMSwid2lkdGgiOjU5LjY0LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiRmF4OiIsIngiOjQ4NCwieSI6MTE3LCJ3aWR0aCI6MTguMTYsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiIiLCJ4Ijo1NTYsInkiOjExNywid2lkdGgiOjAsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJDb3B5IFRvOiIsIngiOjAsInkiOjEyNiwid2lkdGgiOjM2LjMyLCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiT1NFSSBEUi4gS1dBTUUiLCJ4Ijo2MCwieSI6MTI2LCJ3aWR0aCI6NjkuNTgsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJUZXN0IiwieCI6MTEwLCJ5IjoxNDEsIndpZHRoIjoxOC4xNiwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IkZsYWciLCJ4IjoyNTEsInkiOjE0MSwid2lkdGgiOjE4LjE2LCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiUmVzdWx0IiwieCI6MjgzLCJ5IjoxNDEsIndpZHRoIjoyNy4yNDAwMDAwMDAwMDAwMDIsImZvbnRTaXplIjo5LjA4fSx7InRleHQiOiJSZWZlcmVuY2UgUmFuZ2UgLSBVbml0cyIsIngiOjM5MSwieSI6MTQxLCJ3aWR0aCI6MTA0LjQyLCJmb250U2l6ZSI6OS4wOH0seyJ0ZXh0IjoiTGFiIExpYy4gIyIsIngiOjU2OSwieSI6MTQxLCJ3aWR0aCI6NDUuNCwiZm9udFNpemUiOjkuMDh9LHsidGV4dCI6IjEgRXhhbXBsZSBCbHZkLiIsIngiOjUyNywieSI6NjQsIndpZHRoIjo3NC41NSwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IlRvcm9udG8sIE9udGFyaW8iLCJ4Ijo1MjcsInkiOjczLCJ3aWR0aCI6NzkuNTIsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJDYW5hZGEgTTBNIDBNMCIsIngiOjUyNywieSI6ODIsIndpZHRoIjo2OS41OCwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IkNoZW1pc3RyeSIsIngiOjAsInkiOjE1OSwid2lkdGgiOjQ0LjczLCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiTGl2ZXIgRnVuY3Rpb24iLCJ4IjoxNCwieSI6MTcxLCJ3aWR0aCI6NjkuNTgsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJBTFQiLCJ4IjoyOCwieSI6MTgzLCJ3aWR0aCI6MTQuOTEsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiIyMiIsIngiOjI4MywieSI6MTgzLCJ3aWR0aCI6OS45NCwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6Ijw0MSIsIngiOjM5MSwieSI6MTgzLCJ3aWR0aCI6MTQuOTEsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiJVL0wiLCJ4Ijo0ODUsInkiOjE4Mywid2lkdGgiOjE0LjkxLCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiIzU2ODciLCJ4Ijo1ODYsInkiOjE4Mywid2lkdGgiOjI0Ljg0OTk5OTk5OTk5OTk5OCwiZm9udFNpemUiOjkuOTR9LHsidGV4dCI6IkxhYiAtIDU2ODc6IExpZmVMYWJzLCAxMDAgSW50ZXJuYXRpb25hbCBCbHZkLiwgVG9yb250bywgT250YXJpby4iLCJ4IjoxNCwieSI6NzIzLCJ3aWR0aCI6MzE4LjA4LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiUGFnZSIsIngiOjI2OSwieSI6NzM1LCJ3aWR0aCI6MTkuODgsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiIxIiwieCI6Mjk3LCJ5Ijo3MzUsIndpZHRoIjo0Ljk3LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0Ijoib2YiLCJ4IjozMTIsInkiOjczNSwid2lkdGgiOjkuOTQsImZvbnRTaXplIjo5Ljk0fSx7InRleHQiOiIxIiwieCI6MzI2LCJ5Ijo3MzUsIndpZHRoIjo0Ljk3LCJmb250U2l6ZSI6OS45NH0seyJ0ZXh0IjoiRklOQUwgUkVTVUxUUyIsIngiOjE0LCJ5Ijo3MzgsIndpZHRoIjo2NC42MSwiZm9udFNpemUiOjkuOTR9XX1dfQ==",
+            "extension": [],
+            "hash": "JcWbkjex4Q29T25Eg9XfPD3irPp6ba2nzH/CY1Rz2OE=",
+            "size": 8047,
+            "title": "lifelabs-report.pdf"
+          },
+          "extension": [],
+          "modifierExtension": []
+        }
+      ],
+      "description": "LifeLabs report: lifelabs-report.pdf",
+      "extension": [],
+      "id": "wf-3719d2ce1889d1105ae2b545ebb14f09",
+      "identifier": [],
+      "modifierExtension": [],
+      "relatesTo": [],
+      "resourceType": "DocumentReference",
+      "securityLabel": [],
+      "status": "current",
+      "type": {
+        "coding": [
+          {
+            "code": "lifelabs-pdf-archive",
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs"
+          }
+        ],
+        "extension": []
+      }
+    },
+    {
+      "basedOn": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "laboratory",
+              "display": "Laboratory",
+              "extension": [],
+              "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+            }
+          ],
+          "extension": [],
+          "text": "Chemistry · Liver Function"
+        }
+      ],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "ALT"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "effectiveDateTime": "2026-10-21T12:26:00.000Z",
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-3a2491bf06f64c173c7e85ce78904780",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "e707dfd6d358d4b1"
+        }
+      ],
+      "interpretation": [],
+      "issued": "2026-10-21T17:52:00.000Z",
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [
+        {
+          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
+          "extension": []
+        }
+      ],
+      "referenceRange": [
+        {
+          "appliesTo": [],
+          "extension": [],
+          "high": {
+            "code": "U/L",
+            "extension": [],
+            "system": "http://unitsofmeasure.org",
+            "unit": "U/L",
+            "value": 41
+          },
+          "modifierExtension": [],
+          "text": "<41"
+        }
+      ],
+      "resourceType": "Observation",
+      "status": "final",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "a5ff7f4bd78368a3"
+        },
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+      },
+      "valueQuantity": {
+        "code": "U/L",
+        "extension": [],
+        "system": "http://unitsofmeasure.org",
+        "unit": "U/L",
+        "value": 22
+      }
+    },
+    {
+      "basedOn": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "laboratory",
+              "display": "Laboratory",
+              "extension": [],
+              "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+            }
+          ],
+          "extension": [],
+          "text": "Chemistry · Electrolytes"
+        }
+      ],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "Sodium"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "effectiveDateTime": "2026-09-01T13:09:00.000Z",
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-9720aaee0f5f747b30b6b794b85cd404",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "d0a244442a06d3e0"
+        }
+      ],
+      "interpretation": [],
+      "issued": "2026-09-01T20:38:00.000Z",
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [
+        {
+          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
+          "extension": []
+        }
+      ],
+      "referenceRange": [
+        {
+          "appliesTo": [],
+          "extension": [],
+          "high": {
+            "code": "mmol/L",
+            "extension": [],
+            "system": "http://unitsofmeasure.org",
+            "unit": "mmol/L",
+            "value": 145
+          },
+          "low": {
+            "code": "mmol/L",
+            "extension": [],
+            "system": "http://unitsofmeasure.org",
+            "unit": "mmol/L",
+            "value": 135
+          },
+          "modifierExtension": [],
+          "text": "135 - 145"
+        }
+      ],
+      "resourceType": "Observation",
+      "status": "final",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "a5ff7f4bd78368a3"
+        },
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+      },
+      "valueQuantity": {
+        "code": "mmol/L",
+        "extension": [],
+        "system": "http://unitsofmeasure.org",
+        "unit": "mmol/L",
+        "value": 139
+      }
+    },
+    {
+      "basedOn": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "laboratory",
+              "display": "Laboratory",
+              "extension": [],
+              "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+            }
+          ],
+          "extension": [],
+          "text": "Chemistry · Electrolytes"
+        }
+      ],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "Potassium"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "effectiveDateTime": "2026-09-01T13:09:00.000Z",
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-d48dd6b6316eba1fb28f4f4c89396684",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "89a50a75b0a929da"
+        }
+      ],
+      "interpretation": [
+        {
+          "coding": [
+            {
+              "code": "H",
+              "display": "High",
+              "extension": [],
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
+            }
+          ],
+          "extension": [],
+          "text": "HI"
+        }
+      ],
+      "issued": "2026-09-01T20:38:00.000Z",
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [
+        {
+          "extension": [],
+          "text": "Verified by repeat analysis."
+        }
+      ],
+      "partOf": [],
+      "performer": [
+        {
+          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
+          "extension": []
+        }
+      ],
+      "referenceRange": [
+        {
+          "appliesTo": [],
+          "extension": [],
+          "high": {
+            "code": "mmol/L",
+            "extension": [],
+            "system": "http://unitsofmeasure.org",
+            "unit": "mmol/L",
+            "value": 5
+          },
+          "low": {
+            "code": "mmol/L",
+            "extension": [],
+            "system": "http://unitsofmeasure.org",
+            "unit": "mmol/L",
+            "value": 3.5
+          },
+          "modifierExtension": [],
+          "text": "3.5 - 5.0"
+        }
+      ],
+      "resourceType": "Observation",
+      "status": "final",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "a5ff7f4bd78368a3"
+        },
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+      },
+      "valueQuantity": {
+        "code": "mmol/L",
+        "extension": [],
+        "system": "http://unitsofmeasure.org",
+        "unit": "mmol/L",
+        "value": 5.4
+      }
+    },
+    {
+      "address": [],
+      "birthDate": "1974-09-21",
+      "communication": [],
+      "contact": [],
+      "contained": [],
+      "extension": [],
+      "gender": "female",
+      "generalPractitioner": [],
+      "id": "wf-929179822271976c1757d6f21670ddfd",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "a5ff7f4bd78368a3"
+        },
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date",
+          "value": "okafor;avery;1974-09-21"
+        }
+      ],
+      "link": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "name": [
+        {
+          "extension": [],
+          "family": "OKAFOR",
+          "given": [
+            "AVERY"
+          ],
+          "prefix": [],
+          "suffix": [],
+          "text": "OKAFOR, AVERY"
+        }
+      ],
+      "photo": [],
+      "resourceType": "Patient",
+      "telecom": []
+    },
+    {
+      "address": [],
+      "communication": [],
+      "contained": [],
+      "extension": [],
+      "id": "wf-137fa84b1bd8c50085270ab8338ec759",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "aaaf66a1620d6aae"
+        },
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
+          "value": "OSEI DR. KWAME"
+        }
+      ],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "name": [
+        {
+          "extension": [],
+          "given": [],
+          "prefix": [],
+          "suffix": [],
+          "text": "OSEI DR. KWAME"
+        }
+      ],
+      "photo": [],
+      "qualification": [],
+      "resourceType": "Practitioner",
+      "telecom": []
+    },
+    {
+      "address": [],
+      "communication": [],
+      "contained": [],
+      "extension": [],
+      "id": "wf-d2f7e22f205a20ea746c212ca5a4a24b",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
+          "value": "89cbf94afbd515b7"
+        },
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
+          "value": "ROY DR. ANNE"
+        }
+      ],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "name": [
+        {
+          "extension": [],
+          "given": [],
+          "prefix": [],
+          "suffix": [],
+          "text": "ROY DR. ANNE"
+        }
+      ],
+      "photo": [],
+      "qualification": [],
+      "resourceType": "Practitioner",
+      "telecom": []
+    }
+  ]
+}

@@ -108,6 +108,17 @@ through the real importers, and serves a snapshot's files from memory as a
 `Snapshot.Reader.FileFetcher` (`fetcherOf`) — for this package's tests and
 `synthetic-data-react`'s.
 
+`src/import-golden/` is the **import golden pin**: fixed picks of every source
+kind (the committed HAR and Rexall fixtures, and one hand-written person run
+through each generator at a fixed as-of), imported headless through
+`importer-core` with every default accepted, and compared byte for byte with
+the goldens in `__golden__/` (sorted keys, two-space indent, a trailing
+newline; `vp fmt` leaves them alone). A LifeLabs pick is `%PDF-` and the
+positioned text it prints, as JSON, which the test's fake
+`PositionedTextExtractor` reads back. A golden diff is a change to
+what an import writes; `vp test -u` regenerates them. See the importer's
+[Adding a File-Format Importer How-To](../../../slices/importer/docs/Adding%20a%20File-Format%20Importer%20How-To.md#7-tests-per-layer).
+
 ## Layering
 
 Depends on `fhir-r4` (`FhirResourceSchema`, the resource types),
@@ -115,8 +126,10 @@ Depends on `fhir-r4` (`FhirResourceSchema`, the resource types),
 `sha256Base64`) and the two importers whose source files a snapshot carries,
 `har-importer-core` and `dicom-importer-core` (their `format` and
 `sourceFileFormat`). The tests also
-use the Rexall, Shoppers and DICOM generators and `synthetic-data-fundamentals`,
-as dev dependencies only. Never imports a `-react`, `-node` or `-tauri`
+use the Rexall, Shoppers, LifeLabs and DICOM generators,
+`synthetic-data-fundamentals`, and, for the import golden pin, `importer-core`,
+`lifelabs-pdf-importer-core` and the file formats and sources its picks are built
+from, as dev dependencies only. Never imports a `-react`, `-node` or `-tauri`
 package.
 
 ## Rules

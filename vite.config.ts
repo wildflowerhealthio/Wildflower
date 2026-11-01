@@ -132,6 +132,10 @@ export default defineConfig({
       // collapse its short arrays onto one line and break the test on the next
       // `vp fmt` — so leave its formatting to the serde_json emitter.
       '**/openapi/*.openapi.json',
+      // The import golden pin's goldens (`synthetic-data-core-js`), written by
+      // `vp test -u` as `JSON.stringify` indents them and compared byte for
+      // byte, so oxfmt must not collapse their short arrays either.
+      '**/__golden__/*.json',
       // The SMART discovery document `fhir-r4-rust` serves, committed the same
       // way by its `smart_configuration_snapshot_is_up_to_date` test.
       'apps/host/wildflower-server/fhir-r4-rust/snapshots/*.json',
