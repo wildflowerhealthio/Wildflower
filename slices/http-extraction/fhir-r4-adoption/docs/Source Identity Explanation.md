@@ -88,12 +88,20 @@ loudly.
 
 ## What adoption does to a resource
 
-`adoptResource(source)` is the per-resource rewrite. Given a `SourceIdentity`
-(`{ system, baseUrl? }`) it:
+`adoptInIdSpace(idSpace)` is the per-resource rewrite of a record and the id
+it is adopted under. The `IdSpace` says who assigned that id: a `FhirServer`
+(its root is the hash domain and identifier system, and a reference under
+`${base}/` reads as relative), a `SourceSystem` (a Wildflower-minted coding
+system), a `ContentDigest` `within` one of those, or a `SourceFile`.
+`adoptResource(source)` is the decode-time entry point over it: given a
+`SourceIdentity` (`{ system, baseUrl? }`) it adopts in the source's
+`FhirServer` space when it has a `baseUrl` and its `SourceSystem` space when
+not, and it:
 
 1. **Takes its `DecodedId`.** `FoundInSource` is the id the source gave it.
    A resource whose `id` is `null` (third-party FHIR JSON, where `id` is
-   optional) is `GeneratedFromContent` instead: FNV-1a 64 over its FHIR JSON as
+   optional) is `GeneratedFromContent` instead, adopted as a `ContentDigest`
+   within the source's space: FNV-1a 64 over its FHIR JSON as
    `FhirResourceSchema` encodes it, fields in schema order, as sixteen hex
    digits. So every adopted resource has an id (`adoptResource` returns
    `FhirResourceWithId`), and a re-import of the same capture lands on the same

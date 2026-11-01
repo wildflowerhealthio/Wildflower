@@ -16,13 +16,21 @@ FHIR-free.
   digest of its content when it gave none (FNV-1a 64 over its FHIR JSON as
   `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(resource)`
   picks one.
-- `src/adopt-resource.ts` — `adoptResource(source)`, the per-resource rewrite:
-  the derived id, the source identifier a `FoundInSource` id records as
-  `identifier[0]` (a `GeneratedFromContent` one records none), and the per-type
-  reference rewrite. `originalIdOf` reads the source's id back off an adopted
-  resource; `adoptedReferenceOf` spells a reference to a resource a source's
-  import adopts, for a resource written outside that source. `SourceIdentity`
-  is `{ system, baseUrl? }`.
+- `src/id-space.ts` — `IdSpace`, the space a decoded record's id belongs to:
+  `FhirServer` (a server's root), `SourceSystem` (a Wildflower-minted coding
+  system), `ContentDigest` (a digest id `within` one of those) or `SourceFile`
+  (a picked file's own `DocumentReference`). Its getters state the hash
+  domain, whether the source assigned the id, the `${base}/` self-reference
+  prefix, and the URI naming the space (`<base>/<Type>` for a server).
+- `src/adopt-resource.ts` — `adoptInIdSpace(idSpace)`, the per-resource
+  rewrite of a record and its explicit source id: the derived id, the source
+  identifier a source-assigned id records as `identifier[0]` (a
+  `ContentDigest` or `SourceFile` one records none), and the per-type
+  reference rewrite. `adoptResource(source)` is the decode-time wrapper: it
+  takes the id space from a `SourceIdentity` (`{ system, baseUrl? }`) and the
+  source id from `DecodedId.of`. `originalIdOf` reads the source's id back off
+  an adopted resource; `adoptedReferenceOf` spells a reference to a resource a
+  source's import adopts, for a resource written outside that source.
 - `src/adopt-under-recognized-root.ts` — `adoptUnderRecognizedRoot(kind)`,
   which takes a `HttpResponseKind<FhirResource>` to a
   `HttpResponseKind<FhirResourceWithId>` whose `parse` adopts every resource
