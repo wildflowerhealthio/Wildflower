@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/fhir-r4-adoption",
   "version": "0.0.0",
   "private": true,
-  "description": "The FHIR R4 side of extraction: how a resource decoded from a source becomes the device's own — adoptInIdSpace keys it under a local id derived from its IdSpace, its type and its source id and rewrites its references, adoptResource does so under the source's identity, DecodedId is the id it is adopted under (the source's own, or one generated from its content when the source gave none), and adoptUnderRecognizedRoot adopts every resource a response kind parses under the identity its tryRecognize mints. No DOM, no fs, no React.",
+  "description": "The FHIR R4 side of extraction: how a resource decoded from a source becomes the device's own — adoptInIdSpace keys it under a local id derived from (IdSpace, type, source id), an IdSpace being the system its source id belongs to, and rewrites its relative references into their targets' id spaces, adoptResource does so under the source's identity, DecodedId is the id it is adopted under (the source's own, or one generated from its content when the source gave none), and adoptUnderRecognizedRoot adopts every resource a response kind parses under the identity its tryRecognize mints. No DOM, no fs, no React.",
   "license": "MIT",
   "repository": {
     "type": "git",

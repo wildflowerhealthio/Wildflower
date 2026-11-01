@@ -51,8 +51,10 @@ const adoptedRooted = adoptUnderRecognizedRoot(rootedKind)
 describe('adoptUnderRecognizedRoot', () => {
   test('adopts under the recognized source when it carries a baseUrl', async () => {
     const [resource] = await Effect.runPromise(adoptedRooted.parse(responseAt(`${ROOT}/Patient`)))
-    expect(resource?.id).toBe(localResourceId(ROOT, 'Patient', 'src-9'))
-    expect(resource === undefined ? null : originalIdOf({ system: ROOT }, resource)).toBe('src-9')
+    expect(resource?.id).toBe(localResourceId(`${ROOT}/Patient`, 'Patient', 'src-9'))
+    expect(
+      resource === undefined ? null : originalIdOf({ system: ROOT, baseUrl: ROOT }, resource)
+    ).toBe('src-9')
   })
 
   test('adopts under a source with no baseUrl (a portal sid)', async () => {
@@ -119,7 +121,7 @@ describe('adoptUnderRecognizedRoot', () => {
   // synchronously runnable with `Effect.runSync`.
   test('keeps a synchronous parse synchronously runnable', () => {
     expect(Effect.runSync(adoptedRooted.parse(responseAt(`${ROOT}/Patient`)))[0]?.id).toBe(
-      localResourceId(ROOT, 'Patient', 'src-9')
+      localResourceId(`${ROOT}/Patient`, 'Patient', 'src-9')
     )
   })
 

@@ -1,108 +1,63 @@
-import { Data, Option } from 'effect'
+import { WILDFLOWER_IDENTIFIER_SYSTEM_BASE } from '@wildflowerhealthio/fhir-r4/data-types'
+import { Schema as EffectSchema } from 'effect'
 
 /**
- * The space a decoded record's id belongs to: who assigned the id, and so what
- * derives the record's local id from it and what the record's references mean.
+ * An id space: the system a record's source id belongs to, as an absolute URI.
  *
  * @remarks
- * - `FhirServer` — an id a FHIR server assigned. `base` is the server's root,
- *   the hash domain and source identifier system; the server spells its own
- *   references absolutely under `${base}/` as well as relatively.
- * - `SourceSystem` — an id a scraped source or a file format assigned, in a
- *   Wildflower-minted coding `system` (a pharmacy's account `sid`, LifeLabs'
- *   or DICOM's digest space).
- * - `ContentDigest` — a record its source gave no id, keyed by a digest of its
- *   content. It is hashed, and its references read, `within` the space its
- *   source's other records are in, but no source identifier records the
- *   digest: the source knows the record by no id at all.
- * - `SourceFile` — a picked file's own `DocumentReference`, keyed in its
- *   format's coding `system` by a digest of the file. No source identifier.
- *   Adoption rewrites its references like any other record's, so it is
- *   adopted as minted, before anything links it to what it holds.
- */
-type Type = Data.TaggedEnum<{
-  FhirServer: { readonly base: string }
-  SourceSystem: { readonly system: string }
-  ContentDigest: { readonly within: Origin }
-  SourceFile: { readonly system: string }
-}>
-
-/** A space whose ids the source assigned: what a {@link Type} `ContentDigest` sits `within`. */
-type Origin = Data.TaggedEnum<{
-  FhirServer: { readonly base: string }
-  SourceSystem: { readonly system: string }
-}>
-
-const { FhirServer, SourceSystem, ContentDigest, SourceFile, $match } = Data.taggedEnum<Type>()
-
-/**
- * The domain a record's local id is hashed under: the first component of
- * `localResourceId`, for the record and for every reference it holds.
+ * A record is keyed by (id space, resource type, source id). Its local id is
+ * `localResourceId` of that key, and its source identifier is
+ * `{ system: <id space>, value: <source id> }`, so the id space must be an
+ * absolute URI that `new URL` accepts.
  *
- * @remarks
- * It is also the `Identifier.system` of every source identifier adoption
- * writes, so it must be an absolute URI.
+ * - A FHIR server's id space for a type is `<base>/<Type>`
+ *   (`https://example.com/fhir/Patient`): its ids are unique per type
+ *   ({@link inFhirServer}).
+ * - A portal's is its Wildflower-minted `…/fhir/sid/<source>` system, for
+ *   every type ({@link inSystem}).
+ * - A picked source file's is its format's coding system.
+ * - A record its source gave no id is keyed by a digest of its content, in
+ *   {@link CONTENT_DIGEST}.
  */
-const hashDomainOf = (idSpace: Type): string =>
-  $match(idSpace, {
-    FhirServer: ({ base }) => base,
-    SourceSystem: ({ system }) => system,
-    ContentDigest: ({ within }) => hashDomainOf(within),
-    SourceFile: ({ system }) => system,
-  })
+const Schema = EffectSchema.String.pipe(EffectSchema.brand('IdSpace'))
+
+type Type = typeof Schema.Type
 
 /**
- * Whether the source assigned the id, so a source identifier can record it.
- * A content digest or a source file's id is Wildflower's, not the source's.
+ * Where a source keys its records of each type: the id space a record, or a
+ * reference's target, of `resourceType` belongs to in that source.
  */
-const isSourceAssigned = (idSpace: Type): boolean =>
-  $match(idSpace, {
-    FhirServer: () => true,
-    SourceSystem: () => true,
-    ContentDigest: () => false,
-    SourceFile: () => false,
-  })
+type OfType = (resourceType: string) => Type
 
 /**
- * The `${base}/` prefix a FHIR server's absolute self-references carry, read
- * back to their relative form; `None` when the space is not a FHIR server's.
+ * The id spaces of a FHIR server rooted at `base`: `<base>/<Type>` for each
+ * type, worked out once per type.
  */
-const selfReferencePrefixIfFhirServer = (idSpace: Type): Option.Option<string> =>
-  $match(idSpace, {
-    FhirServer: ({ base }) => Option.some(`${base}/`),
-    SourceSystem: () => Option.none(),
-    ContentDigest: ({ within }) => selfReferencePrefixIfFhirServer(within),
-    SourceFile: () => Option.none(),
-  })
-
-/**
- * The URI naming the space a `resourceType` id sits in: `<base>/<Type>` for a
- * FHIR server, whose ids are unique per type, and the coding system otherwise.
- *
- * @remarks
- * A content digest names the space it sits `within`, not a space of its own.
- * Its local id is hashed in that space too, so a digest and a source id with
- * the same text are one (id space, type, id) key exactly as they are one
- * derived id: a key that told them apart would let two records claim the same
- * local id.
- */
-const uriOf = (idSpace: Type, resourceType: string): string =>
-  $match(idSpace, {
-    FhirServer: ({ base }) => `${base}/${resourceType}`,
-    SourceSystem: ({ system }) => system,
-    ContentDigest: ({ within }) => uriOf(within, resourceType),
-    SourceFile: ({ system }) => system,
-  })
-
-export {
-  $match,
-  ContentDigest,
-  FhirServer,
-  SourceFile,
-  SourceSystem,
-  hashDomainOf,
-  isSourceAssigned,
-  selfReferencePrefixIfFhirServer,
-  uriOf,
+const inFhirServer = (base: string): OfType => {
+  const byType = new Map<string, Type>()
+  return (resourceType) => {
+    const known = byType.get(resourceType)
+    if (known !== undefined) {
+      return known
+    }
+    const idSpace = Schema.make(`${base}/${resourceType}`)
+    byType.set(resourceType, idSpace)
+    return idSpace
+  }
 }
-export type { Origin, Type }
+
+/** The id spaces of a source that keys every type in the one `system`. */
+const inSystem = (system: string): OfType => {
+  const idSpace = Schema.make(system)
+  return () => idSpace
+}
+
+/**
+ * The id space of a record its source gave no id, whose source id is a digest
+ * of its content. Shared by every source, as Wildflower's other minted
+ * identifier systems are; the digest itself is scoped to its source.
+ */
+const CONTENT_DIGEST: Type = Schema.make(`${WILDFLOWER_IDENTIFIER_SYSTEM_BASE}/content-digest`)
+
+export { CONTENT_DIGEST, Schema, inFhirServer, inSystem }
+export type { OfType, Type }

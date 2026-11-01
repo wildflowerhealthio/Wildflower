@@ -29,7 +29,7 @@ extracts with. It is the first of the per-source packages;
   `responseKinds`): the tuple (Patient, Observation, Observation-list, in that
   order), widened to `HttpResponseKind<FhirResource>`, and mapped through
   `fhir-r4-adoption`'s `adoptUnderRecognizedRoot` — so
-  each resource is keyed under the root of the URL it arrived on, the identity
+  each resource is keyed in `<root>/<Type>` of the URL it arrived on, the identity
   read per response from the kind's own `tryRecognize`, no single system
   inferred. A module-level constant (the combinator takes no source parameter),
   so the array is stable by identity and every consumer shares the same kinds.
