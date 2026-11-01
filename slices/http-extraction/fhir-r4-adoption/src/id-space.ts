@@ -17,6 +17,8 @@ import { Data, Option } from 'effect'
  *   digest: the source knows the record by no id at all.
  * - `SourceFile` — a picked file's own `DocumentReference`, keyed in its
  *   format's coding `system` by a digest of the file. No source identifier.
+ *   Adoption rewrites its references like any other record's, so it is
+ *   adopted as minted, before anything links it to what it holds.
  */
 type Type = Data.TaggedEnum<{
   FhirServer: { readonly base: string }

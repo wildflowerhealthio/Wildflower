@@ -1075,13 +1075,13 @@ describe('adoptInIdSpace', () => {
 
   test('SourceFile: keys under its coding system and records no source identifier', () => {
     const adopted = adoptInIdSpace(IdSpace.SourceFile({ system: SYSTEM }))({
-      sourceId: 'hash|report.pdf',
+      sourceId: 'file-digest',
       resource: { ...sample(DocumentReference.Schema, 16), identifier: [OWN_IDENTIFIER] },
     })
     if (adopted.resourceType !== 'DocumentReference') {
       throw new Error('unreachable: adopted a DocumentReference')
     }
-    expect(adopted.id).toBe(localResourceId(SYSTEM, 'DocumentReference', 'hash|report.pdf'))
+    expect(adopted.id).toBe(localResourceId(SYSTEM, 'DocumentReference', 'file-digest'))
     expect(adopted.identifier).toEqual([OWN_IDENTIFIER])
   })
 
