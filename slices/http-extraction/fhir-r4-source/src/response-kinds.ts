@@ -8,7 +8,7 @@ import { PatientResponseKind } from './response-kinds/patient-response-kind.ts'
 
 /**
  * The three FHIR R4 response kinds — Patient, Observation, Observation-list —
- * each adopted so its resources key under the root its own `tryRecognize`
+ * each adopted so its resources key in `<root>/<Type>` of the root its own `tryRecognize`
  * mints for the response's URL.
  *
  * @remarks

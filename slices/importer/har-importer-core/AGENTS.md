@@ -90,7 +90,7 @@ shell's shared `persistTransactionBundle`.
   the flat pool responses are recognized and decoded through is
   `SourceDescriptor.poolOf(fhirSources)` — derived from the same list, so the
   toggles and the recognizer route can never disagree. The kinds are consumed
-  **pre-adopted** (each resource already keyed under the root of the URL it arrived
+  **pre-adopted** (each resource already keyed in `<root>/<Type>` of the URL it arrived
   on), never re-adopted here. Registering another source is one static append to
   `fhirSources`.
 - `src/anonymizer/` — **the shape-preserving pseudonymizer** behind the
