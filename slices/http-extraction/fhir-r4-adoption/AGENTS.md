@@ -60,7 +60,7 @@ spelled structurally there.
   schema's encode refuses dies there, rather than minting an id from a value
   that has no FHIR JSON.
 - **Each `adoptX` maps a variant to itself by construction, not by the type
-  system.** `adoptResource` is declared `FhirResource → FhirResourceWithId`; an
+  system.** `adoptInIdSpace` returns `FhirResourceWithId`, the whole union; an
   `adoptX` returning a different variant would compile.
 - **Never adopt a locally minted resource.** `web-trace-core`'s traces already
   carry their derived id; adopting one would hash a hash.

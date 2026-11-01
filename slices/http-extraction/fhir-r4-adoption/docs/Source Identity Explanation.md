@@ -96,7 +96,8 @@ system), a `ContentDigest` `within` one of those, or a `SourceFile`.
 `adoptResource(source)` is the decode-time entry point over it: given a
 `SourceIdentity` (`{ system, baseUrl? }`) it adopts in the source's
 `FhirServer` space when it has a `baseUrl` and its `SourceSystem` space when
-not, and it:
+not (a `baseUrl` that is not the `system` is a misconfigured source, and dies),
+and it:
 
 1. **Takes its `DecodedId`.** `FoundInSource` is the id the source gave it.
    A resource whose `id` is `null` (third-party FHIR JSON, where `id` is
@@ -139,9 +140,9 @@ For one `Reference`:
 
 ```text
 reference.reference is null                              → unchanged
-strip a leading `${baseUrl}/` when the source declares one
+strip a leading `${base}/` when the id space is a FHIR server's
 the remainder does not match `^[A-Za-z]+/[A-Za-z0-9\-.]{1,64}$`  → unchanged
-otherwise → reference := `${Type}/${localResourceId(system, Type, id)}`
+otherwise → reference := `${Type}/${localResourceId(hashDomain, Type, id)}`
             identifier := the existing one, or the source's id
 ```
 
@@ -184,7 +185,7 @@ stores (a synthetic lab result filed on the Patient a pharmacy import made);
 | `PlanDefinition`     | `subjectReference`, `action[].subjectReference` (recursively through nested `action[]`)                                                                                                                                                                                                                                                                                   |
 | `Procedure`          | `subject`, `encounter`, `recorder`, `asserter`, `location`, `basedOn[]`, `partOf[]`, `performer[].actor`, `performer[].onBehalfOf`, `reasonReference[]`, `report[]`, `complicationDetail[]`, `focalDevice[].manipulated`, `usedReference[]`, `note[].authorReference`                                                                                                     |
 
-`adoptResource` dispatches with `Match.exhaustive` over the closed `FhirResource`
+`adoptInIdSpace` dispatches with `Match.exhaustive` over the closed `FhirResource`
 union, so a resource type added to the union without an adopt function is a
 compile error rather than a resource that silently keeps its source's id.
 
@@ -274,7 +275,7 @@ Consequences worth knowing:
   `FhirResourceWithId`: everything downstream of extraction knows each resource
   has the id it is written under.
 
-Note the variant preservation inside `adoptResource` is real but unchecked: each
+Note the variant preservation inside `adoptInIdSpace` is real but unchecked: each
 `adoptX` maps a variant to itself **by construction**, and an `adoptX` that
 returned a different variant would compile. That is stated on the function.
 

@@ -16,8 +16,9 @@ const fhirServer = IdSpace.FhirServer({ base: BASE })
 const sourceSystem = IdSpace.SourceSystem({ system: SYSTEM })
 
 describe('IdSpace', () => {
-  for (const { idSpace, hashDomain, isSourceAssigned, selfReferencePrefix, uri } of [
+  for (const { label, idSpace, hashDomain, isSourceAssigned, selfReferencePrefix, uri } of [
     {
+      label: 'FhirServer',
       idSpace: fhirServer,
       hashDomain: BASE,
       isSourceAssigned: true,
@@ -25,6 +26,7 @@ describe('IdSpace', () => {
       uri: `${BASE}/Patient`,
     },
     {
+      label: 'SourceSystem',
       idSpace: sourceSystem,
       hashDomain: SYSTEM,
       isSourceAssigned: true,
@@ -32,6 +34,7 @@ describe('IdSpace', () => {
       uri: SYSTEM,
     },
     {
+      label: 'ContentDigest within FhirServer',
       idSpace: IdSpace.ContentDigest({ within: fhirServer }),
       hashDomain: BASE,
       isSourceAssigned: false,
@@ -39,6 +42,7 @@ describe('IdSpace', () => {
       uri: `${BASE}/Patient`,
     },
     {
+      label: 'ContentDigest within SourceSystem',
       idSpace: IdSpace.ContentDigest({ within: sourceSystem }),
       hashDomain: SYSTEM,
       isSourceAssigned: false,
@@ -46,6 +50,7 @@ describe('IdSpace', () => {
       uri: SYSTEM,
     },
     {
+      label: 'SourceFile',
       idSpace: IdSpace.SourceFile({ system: SYSTEM }),
       hashDomain: SYSTEM,
       isSourceAssigned: false,
@@ -53,13 +58,6 @@ describe('IdSpace', () => {
       uri: SYSTEM,
     },
   ]) {
-    const label = IdSpace.$match(idSpace, {
-      FhirServer: () => 'FhirServer',
-      SourceSystem: () => 'SourceSystem',
-      ContentDigest: ({ within }) => `ContentDigest within ${within._tag}`,
-      SourceFile: () => 'SourceFile',
-    })
-
     test(`${label}: states its hash domain, assignment, prefix and URI`, () => {
       expect({
         hashDomain: IdSpace.hashDomainOf(idSpace),

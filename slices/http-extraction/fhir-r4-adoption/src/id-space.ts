@@ -78,7 +78,13 @@ const selfReferencePrefixIfFhirServer = (idSpace: Type): Option.Option<string> =
 /**
  * The URI naming the space a `resourceType` id sits in: `<base>/<Type>` for a
  * FHIR server, whose ids are unique per type, and the coding system otherwise.
- * A content digest names the space it sits `within`.
+ *
+ * @remarks
+ * A content digest names the space it sits `within`, not a space of its own.
+ * Its local id is hashed in that space too, so a digest and a source id with
+ * the same text are one (id space, type, id) key exactly as they are one
+ * derived id: a key that told them apart would let two records claim the same
+ * local id.
  */
 const uriOf = (idSpace: Type, resourceType: string): string =>
   $match(idSpace, {

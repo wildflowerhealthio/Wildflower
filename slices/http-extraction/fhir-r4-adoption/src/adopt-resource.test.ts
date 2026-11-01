@@ -1109,6 +1109,8 @@ describe('adoptInIdSpace', () => {
   }
 
   test('adoptResource refuses a FHIR source whose baseUrl is not its system', () => {
-    expect(() => adoptResource({ system: SYSTEM, baseUrl: BASE })).toThrow()
+    expect(() => adoptResource({ system: SYSTEM, baseUrl: BASE })).toThrow(
+      `A FHIR source's baseUrl ${BASE} is not its system ${SYSTEM}`
+    )
   })
 })

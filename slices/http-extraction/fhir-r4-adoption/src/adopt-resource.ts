@@ -88,8 +88,11 @@ interface PreparedIdSpace {
    * a response was bad.
    */
   readonly systemUrl: URL
-  /** Whether a record's own id is recorded as its source identifier. */
-  readonly isSourceAssigned: boolean
+  /**
+   * Whether a record's id is recorded as its source identifier: exactly when
+   * the source assigned it ({@link IdSpace.isSourceAssigned}).
+   */
+  readonly recordsSourceIdentifier: boolean
   /** The `${base}/` prefix an absolute self-reference is stripped of, if any. */
   readonly selfReferencePrefix: string | null
 }
@@ -100,7 +103,7 @@ const prepare = (idSpace: IdSpace.Type): PreparedIdSpace => {
   return {
     hashDomain,
     systemUrl: new URL(hashDomain),
-    isSourceAssigned: IdSpace.isSourceAssigned(idSpace),
+    recordsSourceIdentifier: IdSpace.isSourceAssigned(idSpace),
     selfReferencePrefix: Option.getOrNull(IdSpace.selfReferencePrefixIfFhirServer(idSpace)),
   }
 }
@@ -118,15 +121,15 @@ const sourceIdentifier = (prepared: PreparedIdSpace, value: string): IdentifierT
 })
 
 /**
- * `own` with the record's source identifier prepended when the source assigned
- * its id, and as it is when it did not.
+ * `own` with the record's source identifier prepended when the space records
+ * one, and as it is when it does not.
  */
 const identifiersAdopting = (
   prepared: PreparedIdSpace,
   sourceId: string,
   own: readonly IdentifierType[]
 ): readonly IdentifierType[] =>
-  prepared.isSourceAssigned ? [sourceIdentifier(prepared, sourceId), ...own] : own
+  prepared.recordsSourceIdentifier ? [sourceIdentifier(prepared, sourceId), ...own] : own
 
 /**
  * Rewrite one `Reference` so it names the local id of the resource it points at.
@@ -663,7 +666,10 @@ const adoptInIdSpace = (idSpace: IdSpace.Type) => {
  *
  * @remarks
  * A FHIR source's `baseUrl` is its `system` (`recognizeFhirRoot` mints both
- * from the one root); one that differs is a misconfigured source, and dies.
+ * from the one root), and a `FhirServer` space has the one `base` for both
+ * jobs. A source whose two differ has no id space, so it dies as a defect, as
+ * a `system` that is not an absolute URI does: it is misconfigured, not fed a
+ * bad response.
  */
 const idSpaceOfSource = (source: SourceIdentity): IdSpace.Origin => {
   if (source.baseUrl === undefined) {
