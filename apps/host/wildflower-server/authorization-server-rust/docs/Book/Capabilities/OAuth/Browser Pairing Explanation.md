@@ -68,7 +68,7 @@ A `next` is allowed by the [sign-in destinations](<../../Domain/Same Device Sign
 
 ### `record_poll`
 
-The stamp is the pairing's own [`stamp_poll`](<../../Domain/Authorization Request/Polled Requests Explanation.md#item-PairingRequest--stamp_poll>).
+The stamp is the pairing's own [`to_poll_stamped`](<../../Domain/Authorization Request/Polled Requests Explanation.md#item-PairingRequest--to_poll_stamped>).
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/browser_pairing.rs record_poll}}
 

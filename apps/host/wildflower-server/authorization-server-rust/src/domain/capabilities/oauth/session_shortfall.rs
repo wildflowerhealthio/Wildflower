@@ -157,7 +157,9 @@ impl<S: GrantStore> SessionShortfall<S> {
             || AuthorizationServerError::AuthorizationRequestNotFound { id: id.to_owned() };
         let cancelled = self.store.write(|tx| {
             let request = load_code_request_awaiting_limited_page(tx, id, sid, now)?;
-            let cancelled = request.deny_on_limited_page(now).map_err(|_| not_found())?;
+            let cancelled = request
+                .to_denied_on_limited_page(now)
+                .map_err(|_| not_found())?;
             if tx.replace_code_request(&request, &cancelled)? {
                 Ok(cancelled)
             } else {
@@ -409,7 +411,7 @@ mod tests {
             .replace_code_request(&read_by_cancel, &continued)
             .unwrap());
         let cancelled = read_by_cancel
-            .deny_on_limited_page(now)
+            .to_denied_on_limited_page(now)
             .expect("the Cancel's read still waits");
         assert!(!session_shortfall
             .store

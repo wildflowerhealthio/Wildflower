@@ -42,6 +42,6 @@ The missing scopes come from {{#code-link apps/host/wildflower-server/authorizat
 
 #### `cancel`
 
-The denial is the request's own [`deny_on_limited_page`](<../../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny_on_limited_page>), written through the [guarded replace](<../../Domain/Authorization Request Explanation.md#transitions-and-the-guarded-replace>). In the race test, the Cancel's denial, built from its earlier read, is still a valid transition on paper, but its replace finds the row gone on past the page and writes nothing.
+The denial is the request's own [`to_denied_on_limited_page`](<../../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_denied_on_limited_page>), written through the [guarded replace](<../../Domain/Authorization Request Explanation.md#transitions-and-the-guarded-replace>). In the race test, the Cancel's denial, built from its earlier read, is still a valid transition on paper, but its replace finds the row gone on past the page and writes nothing.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/session_shortfall.rs SessionShortfall::cancel tests="tests::cancel_denies_the_request_and_answers_access_denied tests::a_cancel_racing_a_continue_leaves_the_continued_request_alone"}}

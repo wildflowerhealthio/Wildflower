@@ -92,7 +92,7 @@ impl<S: GrantStore> ConsentRaiser<S> {
                 return Ok(OwnerRaising::StartLimited);
             }
             let raised = pending_request
-                .raise_for_owner(now)
+                .to_raised_for_owner(now)
                 .map_err(|_| consent_not_found(id))?;
             if tx.replace_code_request(&pending_request, &raised)? {
                 Ok(OwnerRaising::Raised)

@@ -1058,7 +1058,7 @@ mod tests {
         let continued = read
             .acknowledge_session_shortfall(Duration::minutes(5), now)
             .expect("continues");
-        let cancelled = read.deny_on_limited_page(now).expect("cancels");
+        let cancelled = read.to_denied_on_limited_page(now).expect("cancels");
         assert!(store
             .write(|tx| tx.replace_code_request(&read, &continued))
             .expect("replace"));
@@ -1089,11 +1089,11 @@ mod tests {
                 .write(|tx| tx.replace_device_request(&read, changed))
                 .expect("replace")
         };
-        assert!(replace(&read.stamp_poll(now).expect("stamps")));
+        assert!(replace(&read.to_poll_stamped(now).expect("stamps")));
         assert!(replace(
             &read.to_approved(approval, None, now).expect("approves")
         ));
-        assert!(!replace(&read.stamp_poll(now).expect("stamps")));
+        assert!(!replace(&read.to_poll_stamped(now).expect("stamps")));
         let Some(AuthorizationRequest::Device(device)) = stored(&store, "dev-1") else {
             panic!("the device request is stored");
         };

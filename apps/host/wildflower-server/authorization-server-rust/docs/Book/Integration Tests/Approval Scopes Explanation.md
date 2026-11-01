@@ -73,4 +73,4 @@ Relies on [`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorizatio
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/approval_scopes.rs asking_the_owner_raises_a_request_decidable_in_the_requesting_browser}}
 
-Relies on [`CodeRequest::raise_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>). Fixtures first used here: [`ask_owner`](<Test Fixtures Explanation.md#item-approval_scopes--ask_owner>) and [`get_authorization_status`](<Test Fixtures Explanation.md#item-get_authorization_status>).
+Relies on [`CodeRequest::to_raised_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--to_raised_for_owner>). Fixtures first used here: [`ask_owner`](<Test Fixtures Explanation.md#item-approval_scopes--ask_owner>) and [`get_authorization_status`](<Test Fixtures Explanation.md#item-get_authorization_status>).

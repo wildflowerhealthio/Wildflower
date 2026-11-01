@@ -334,7 +334,7 @@ impl ConsumedDeviceRequest {
                 if request.is_polled_too_soon_at(now) {
                     return Ok(Err(TokenExchangeError::SlowDown));
                 }
-                if let Ok(stamped) = request.stamp_poll(now) {
+                if let Ok(stamped) = request.to_poll_stamped(now) {
                     tx.replace_device_request(&request, &stamped)?;
                 }
                 return Ok(Err(TokenExchangeError::AuthorizationPending));
