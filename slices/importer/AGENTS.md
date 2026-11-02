@@ -29,13 +29,13 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
   (resource-agnostic, format-agnostic) — the `FileImporter` contract (an
   interface a binding writes as a literal, with its `sourceFileFormat` coding
-  constants and optional `linkSourceFile` and `finish` hooks) and
+  constants and optional `linkSourceFile` and `linkToSourceFiles` hooks) and
   `DecodeFunction.make`, the one constructor of the batch `decode`: a binding
   gives how one set of files decodes (`decodeFileSet`) and — only if its files
   are read together — the key they share (`groupBy`). Back comes one
   `FormatDecode.Decoded` per format: each file set apart, its records in
   `DecodedFileSet.Section`s under review keys namespaced so one set's keys cannot
-  collide with another's, plus an `unreadableFiles` row per pick that
+  collide with another's, plus an `unreadableFiles` row per picked file that
   rejected. Also the `PickedFile` vocabulary and the codec that stores a
   pick as a source file and reads it back, the `FormatDetector` seam
   the picker sniffs with, the pure per-resource `StagedImport` model, and the
@@ -185,8 +185,9 @@ sits above `http-extraction` and below every binding.
   a batch may span formats — `importer-core`'s `readBatch` groups the pick by
   format, runs each format's own batch `decode` under that format's
   settings, and imports what it decoded: `importer-core`'s import stage mints
-  each pick's source file `DocumentReference` under the format's constants,
-  lets the format link it and finish its records, lists it among the reviewed
+  each picked file's source file `DocumentReference` under the format's
+  constants, lets the format link it to the records and the records to it,
+  lists it among the reviewed
   sections, and stamps every extracted resource's `meta.source` with it;
   nothing else mints or stamps anything. Which files decode _together_ is its own business too:
   HAR and LifeLabs decode a file at a time, DICOM a whole study — the shell

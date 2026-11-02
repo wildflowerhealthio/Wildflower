@@ -85,11 +85,12 @@ shell runs across every file the format claimed. That lifted decode:
 `importer-core`'s import stage (`importDecoded`, which `readBatch` runs over
 every format's `decode`) then, per set:
 
-- mints a source file for **every** picked file;
+- mints a source file for **every** picked file, its `masterIdentifier` what
+  the picked file identified itself as (§1);
 - lets the format link each source file to what the set decoded to
-  (`linkSourceFile`, §4) and finish each record once the source files exist
-  (`finish`, §4), and prepends the source files as their own **"Source file"** /
-  **"Source files"** section;
+  (`linkSourceFile`, §4) and each record to the source files it was read from
+  (`linkToSourceFiles`, §4), and prepends the source files as their own
+  **"Source file"** / **"Source files"** section;
 - stamps every extracted resource's `meta.source` with the set's representative
   source file — the one with the lexicographically smallest id, which is a content
   hash, so the stamp is the same however the files were picked.
@@ -110,10 +111,15 @@ The requirement surfaces at `importer-core`'s `readBatch` as part of
 A new service of this kind is one more `Effect.provide` there. Tests provide a
 fake layer built from hand-written fixtures.
 
-A format whose synthesized resources name the stored file (DICOM's
-`ImagingStudy` `gridfsFileId` extension) writes the member's pick `id` there and
-swaps it for the source file's id in its `finish` (§4), rather than computing
-the mint itself.
+A format whose records name the stored file they were read from (DICOM's
+`ImagingStudy` `gridfsFileId` extension) does not name it at decode: a decode
+never sees a source file. Its `decodeFileSet` instead says what each picked
+file's own content identifies it as, a FHIR `Identifier` by the picked file's
+`id` in the `identifiedAs` it returns beside its `DecodedFile` (DICOM: the SOP
+Instance UID as `urn:oid:<uid>` under `urn:ietf:rfc:3986`). The import stage
+writes that onto the file's source file as `masterIdentifier`, and the
+format's `linkToSourceFiles` (§4) matches each record to a source file by it.
+A format whose files name nothing leaves `identifiedAs` out.
 
 Four obligations:
 
@@ -205,19 +211,19 @@ what the file _is_, and when it reached the device is the server's own
 source file back yields the stored one, so decode-then-encode is the identity on it.
 
 State **`linkSourceFile`** on the importer when the format's source files point
-at what was read out of them. The import stage runs it once per member, with
-that member's minted source file and the set's records, adopted, so it reads
-the links off the resources already produced rather than parsing the files a
-second time:
+at what was read out of them. The import stage runs it once per picked file,
+with that file's source file, as minted, and the set's records, adopted, so it
+reads the links off the resources already produced rather than parsing the
+files a second time:
 
 ```ts
 const linkToPatientAndStudy = (
-  minted: DocumentReference.Type,
+  sourceFile: DocumentReference.Type,
   decoded: DecodedFile.DecodedFile
 ): DocumentReference.Type => ({
-  ...minted,
+  ...sourceFile,
   subject: patientReferenceOf(decoded),
-  context: { ...(minted.context ?? emptyContext), related: relatedOf(decoded) },
+  context: { ...(sourceFile.context ?? emptyContext), related: relatedOf(decoded) },
 })
 ```
 
@@ -231,11 +237,16 @@ like any other resource. The reviewer can exclude its row, in which case it is
 simply not written — and the extracted resources keep their `meta.source`,
 because the import stamped them and nothing downstream rewrites them.
 
-State **`finish`** on the importer when a record names the file it was read
-from. The import stage runs it over every adopted record of the set once the
-source files are minted, with each member's source file id by its pick `id`.
-DICOM's `withSourceFileIds` points each `ImagingStudy` instance's
-`gridfsFileId` at its own file's source file there.
+State **`linkToSourceFiles`** on the importer when a record names the file it
+was read from: the counterpart of `linkSourceFile`. The import stage runs it,
+an effect, over every adopted record of the set once the source files are
+linked, with each picked file of the set and its source file
+(`FileImporter.PickedSourceFile`). It matches a record to a source file by the
+source file's `masterIdentifier` (§1), reading only FHIR. DICOM's
+`addGridfsFileIds` sets each `ImagingStudy` instance's `gridfsFileId` to the
+source file whose `masterIdentifier` is the instance's `uid`, and dies on an
+instance none matches, since the decode built every instance from one of those
+files. Left out, every record is kept as it is.
 
 ## 5. Assemble the importer
 
@@ -261,7 +272,7 @@ const myImporter: FileImporter.Type<MySettings, typeof format> = {
   // only when your source files link to what was read out of them:
   linkSourceFile: linkMySourceFile,
   // only when a record names the file it was read from:
-  finish: withMySourceFileIds,
+  linkToSourceFiles: linkMyRecordToSourceFiles,
   decode: DecodeFunction.make({
     format,
     decodeFileSet: decodeMyFormat,
@@ -294,8 +305,8 @@ it. Nothing about the set depends on the order it was picked in — the
 representative whose source file stamps `meta.source` is the picked file with the
 smallest source file id, and a source file id is a content hash. `meta.source` holds
 one reference, so a set spanning files keeps per-file provenance some other way:
-DICOM's `finish` stamps each `ImagingStudy.instance` with its own source file's
-id (`gridfsFileId`).
+DICOM's `linkToSourceFiles` stamps each `ImagingStudy.instance` with its own
+source file's id (`gridfsFileId`).
 
 Do not smuggle cross-file state through `settings`: `groupBy` is where "these
 files belong together" is said.

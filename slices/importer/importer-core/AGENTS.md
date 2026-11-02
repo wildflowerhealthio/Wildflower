@@ -40,28 +40,29 @@ package alone and a layer that provides those.
   made the device's own, a source file is minted and `meta.source` is
   stamped. **`importDecoded(importer, decoded)`** takes one format's
   `FormatDecode.Decoded` and the **`ImportingFormat`** it reads off the
-  format's importer (`sourceFileFormat`, `linkSourceFile`, `finish`), and
-  returns its `FormatDecode.Result`, never failing. Per file set it mints a
-  source file for **every** picked file
-  (`Schema.encode(PickedFile.FromDocumentReference)`),
-  adopts each `FromSource` section's records with `fhir-r4-adoption`'s
-  `adoptUnderKey` (their references keyed in the section's system family) and
-  keeps each `Adopted` section's as they are, runs
-  `linkSourceFile` over each minted source file with the set's adopted
-  records and `finish` over every record with each picked file's source file id
-  by the picked file's id, stamps every record's `meta.source` with the set's
-  **representative** — the picked file whose source file id is lexicographically
-  smallest, and a source file id is a content hash, so the stamp is
-  independent of the order the files were picked in
-  (`MetaSource.stampDecoded`) — and prepends the source files as the set's **"Source file"** / **"Source files"** section.
-  Nothing is de-duplicated across sets or files: each set's records are kept
-  and keyed as they are. A set whose source file cannot be minted becomes one
-  `unreadableFiles` row per picked file, after the decode's own. It provides
-  `PickedFile.Format` internally, so what it returns requires nothing.
+  format's importer (`sourceFileFormat`, `linkSourceFile`,
+  `linkToSourceFiles`), and returns its `FormatDecode.Result`, never failing.
+  Per file set it mints a source file for **every** picked file
+  (`Schema.encode(PickedFile.FromDocumentReference)`), its `masterIdentifier`
+  what the picked file identified itself as; adopts each `FromSource`
+  section's records with `fhir-r4-adoption`'s `adoptUnderKey` (their
+  references keyed in the section's system family) and keeps each `Adopted`
+  section's as they are; runs `linkSourceFile` over each source file with the
+  set's adopted records, then `linkToSourceFiles` over every record with each
+  picked file and its linked source file; stamps every record's `meta.source`
+  with the set's **representative** — the picked file whose source file id is
+  lexicographically smallest, and a source file id is a content hash, so the
+  stamp is independent of the order the files were picked in
+  (`MetaSource.stampDecoded`) — and prepends the source files as the set's
+  **"Source file"** / **"Source files"** section. Nothing is de-duplicated
+  across sets or files: each set's records are kept and keyed as they are. A
+  set whose source file cannot be minted becomes one `unreadableFiles` row per
+  picked file, after the decode's own. It provides `PickedFile.Format`
+  internally, so what it returns requires nothing.
 - `src/read-batch.ts` — the read half as pure functions over a
   **`ReadRegistry<R>`** (`format`, `detect` and `decode` of each format's
   `FileImporter`, its decodes requiring `R`, and the `sourceFileFormat`,
-  `linkSourceFile` and `finish` the import stage reads — deliberately not the whole
+  `linkSourceFile` and `linkToSourceFiles` the import stage reads — deliberately not the whole
   `BoundFormat`, so a test can stand up a fake registry with just those
   fields). `readBatch` and `redecodeFormat` require the `R` of the registry
   they are handed: `DecodeRequirements` for `formatRegistry`, `never` for a
@@ -218,7 +219,7 @@ through the same stage. Imports no `*-importer-react` and no `web-trace-core`.
 - **Source files are minted here, and decided by each format.** What a source
   file is, which resources point at it, and what happens to those links when
   the reviewer excludes it are each format's decisions, stated on its importer
-  (`sourceFileFormat`, `linkSourceFile`, `finish`); the import stage only runs
+  (`sourceFileFormat`, `linkSourceFile`, `linkToSourceFiles`); the import stage only runs
   them. `planWrite` treats the source file row as any other resource. Do not
   reintroduce a shell-side mint, a side map of source files, or a "primary
   file".
