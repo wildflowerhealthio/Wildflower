@@ -59,6 +59,7 @@
     "@wildflowerhealthio/dicom-importer-core": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/har-importer-core": "workspace:*",
+    "@wildflowerhealthio/importer-core": "workspace:*",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "effect": "catalog:"
   }
