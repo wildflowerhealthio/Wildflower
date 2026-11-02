@@ -682,4 +682,4 @@ const adoptedReferenceOf = (
     (system) => new URL(system)
   )({ ...IdentifierAndReference.emptyReference, reference: `${resourceType}/${originalId}` })
 
-export { adoptResource, adoptUnderKey, adoptedReferenceOf, originalIdOf, type ResourceWithSourceId }
+export { adoptResource, adoptedReferenceOf, originalIdOf }
