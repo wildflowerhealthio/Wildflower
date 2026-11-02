@@ -4,8 +4,8 @@ import {
   ImagingStudy,
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { type FileImporter, PickedFile } from '@wildflowerhealthio/importer-fundamentals'
-import { Cause, DateTime, Effect, Exit, Option, Schema } from 'effect'
+import { FileImporter, PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { DateTime, Effect, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { sopInstanceIdentifier } from './decode.ts'
@@ -204,11 +204,15 @@ describe('addGridfsFileIds', () => {
     expect(gridfsFileIdsOf(linked)).toEqual([['I1', ['doc-a']]])
   })
 
-  it('dies on an instance no source file identifies itself as', async () => {
-    const exit = await Effect.runPromiseExit(
-      addGridfsFileIds(studyOf([{ uid: 'I9' }]), [await pickedSourceFile('doc-a', 'I1')])
+  it('fails with SourceFileNotFound on an instance no source file identifies itself as', async () => {
+    const error = await Effect.runPromise(
+      Effect.flip(
+        addGridfsFileIds(studyOf([{ uid: 'I9' }]), [await pickedSourceFile('doc-a', 'I1')])
+      )
     )
-    expect(Exit.isFailure(exit) && Cause.isDie(exit.cause)).toBe(true)
+    expect(error).toEqual(
+      new FileImporter.SourceFileNotFound({ identifier: sopInstanceIdentifier('I9') })
+    )
   })
 
   it('keeps any other resource as it is', async () => {

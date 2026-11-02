@@ -120,7 +120,9 @@ describe('decodeStudy', () => {
   it("identifies each picked file as its SOP Instance UID, in FHIR's OID convention", async () => {
     const pickedFiles = sample()
     const result = await Effect.runPromise(decodeStudy(pickedFiles, defaultDicomSettings))
-    const identifier = result.identifiedAs?.get(pickedFiles[0].id)
+    const [identified] = result.pickedFiles ?? []
+    expect(identified?.pickedFile).toBe(pickedFiles[0])
+    const identifier = Option.getOrUndefined(identified?.identifiedAs ?? Option.none())
     expect(identifier?.system?.href).toBe('urn:ietf:rfc:3986')
     expect(identifier?.value).toBe('urn:oid:1.2.3.4.5.1.1')
     expect(identifier).toEqual(sopInstanceIdentifier('1.2.3.4.5.1.1'))

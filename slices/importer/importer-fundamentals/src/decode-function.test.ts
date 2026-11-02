@@ -1,6 +1,6 @@
 import { IdentifierAndReference, withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, Either, Option, ParseResult, Schema } from 'effect'
+import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as DecodeFunction from './decode-function.ts'
@@ -125,7 +125,10 @@ describe('DecodeFunction.make', () => {
         Effect.succeed({
           sections: [],
           notes: [],
-          identifiedAs: new Map([[pickedFiles[0].id, identifier]]),
+          pickedFiles: Arr.map(pickedFiles, (file, index) => ({
+            pickedFile: file,
+            identifiedAs: index === 0 ? Option.some(identifier) : Option.none(),
+          })),
         }),
     })
     const decoded = await Effect.runPromise(identifying(files, null))

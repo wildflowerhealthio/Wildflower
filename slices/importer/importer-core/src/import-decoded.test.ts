@@ -12,7 +12,7 @@ import {
   DecodedFile,
   DecodedFileSet,
   DecodeFunction,
-  type FileImporter,
+  FileImporter,
   FormatDecode,
   MetaSource,
   PickedFile,
@@ -335,7 +335,10 @@ describe('decode and import (batch behavior)', () => {
       decodeFileSet: (pickedFiles) =>
         Effect.map(decodeBytes(pickedFiles[0]), (decoded) => ({
           ...decoded,
-          identifiedAs: new Map([[pickedFiles[0].id, identifierOf(pickedFiles[0])]]),
+          pickedFiles: Arr.map(pickedFiles, (file) => ({
+            pickedFile: file,
+            identifiedAs: Option.some(identifierOf(file)),
+          })),
         })),
     })
     const file = oneFile('a.bin', new Uint8Array([7]))
@@ -569,6 +572,40 @@ describe('a grouped decode', () => {
       'test/2:b-2.bin',
     ])
     expect(result.decoded.notes).toEqual(['a: 2 files'])
+  })
+
+  it('reports the picked files of a set whose records name no source file as unreadable', async () => {
+    const identifier = Schema.decodeSync(IdentifierAndReference.IdentifierSchema)({
+      system: 'urn:ietf:rfc:3986',
+      value: 'urn:oid:1.2.9',
+    })
+    const notFound = new FileImporter.SourceFileNotFound({ identifier })
+    const unlinkable = decodeAndImport(
+      {
+        sourceFileFormat,
+        // Set `b`'s records name a file none of its picked files identifies as.
+        linkToSourceFiles: (resource, sourceFiles) =>
+          sourceFiles.some((linked) => linked.pickedFile.fileName.startsWith('b-'))
+            ? Effect.fail(notFound)
+            : Effect.succeed(resource),
+      },
+      DecodeFunction.make({ format: testFormat, groupBy: groupByName, decodeFileSet: decodeGroup })
+    )
+    const result = await Effect.runPromise(
+      unlinkable(
+        asBatch([
+          oneFile('a-1.bin', new Uint8Array([1])),
+          oneFile('b-1.bin', new Uint8Array([2])),
+          oneFile('b-2.bin', new Uint8Array([3])),
+        ]),
+        null
+      )
+    )
+    expect(result.unreadableFiles.map((one) => [one.id, one.error])).toEqual([
+      ['test/1:b-1.bin', notFound],
+      ['test/2:b-2.bin', notFound],
+    ])
+    expect(result.decoded.notes).toEqual(['a: 1 files'])
   })
 
   it('reports the picks no set claimed in pick order, ahead of the sets that rejected', async () => {
