@@ -1,4 +1,4 @@
-import { adoptedReferenceOf, SourceIdentity } from '@wildflowerhealthio/fhir-r4-adoption'
+import { adoptedReferenceOf, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   SHOPPERS_DRUGMART_SYSTEM,
@@ -67,7 +67,7 @@ interface ShoppersAccount {
  */
 const shoppersPatientReferenceOf = (patient: ShoppersPatient): ReferenceType =>
   adoptedReferenceOf(
-    SourceIdentity.OneSystem({ system: SHOPPERS_DRUGMART_SYSTEM }),
+    SystemFamily.FixedAcrossResourceTypes({ system: SHOPPERS_DRUGMART_SYSTEM }),
     'Patient',
     patient.patientId
   )

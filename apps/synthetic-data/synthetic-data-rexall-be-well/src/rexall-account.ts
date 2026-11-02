@@ -1,4 +1,4 @@
-import { adoptedReferenceOf, SourceIdentity } from '@wildflowerhealthio/fhir-r4-adoption'
+import { adoptedReferenceOf, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   type CarebookProfile,
@@ -40,7 +40,7 @@ interface RexallAccount extends Pick<ProfileIdentifiers, 'uid' | 'reportingGuid'
  */
 const rexallPatientReferenceOf = (account: RexallAccount): ReferenceType =>
   adoptedReferenceOf(
-    SourceIdentity.OneSystem({ system: REXALL_CAREBOOK_SYSTEM }),
+    SystemFamily.FixedAcrossResourceTypes({ system: REXALL_CAREBOOK_SYSTEM }),
     'Patient',
     account.uid
   )

@@ -5,23 +5,23 @@ import type { HttpResponse } from './http-response.ts'
 
 /**
  * What a {@link HttpResponseKind.tryRecognize} match tells a router: how
- * specific the claim is, and (optionally) the identity this response's
- * resources key under.
+ * specific the claim is, and (optionally) the identifier systems this
+ * response's resources key under.
  */
 interface RecognizedUrlData {
   /** The number routing ranks by, highest wins — see the `Specificity` tiers. */
   readonly specificity: number
   /**
-   * The source this response's resources key under: a FHIR server at `root`,
-   * or a source that keys every record in the one `system`. Absent =
-   * recognized but mints no identity (a recorder records, it doesn't import).
-   * Structurally `fhir-r4-adoption`'s `SourceIdentity`, on purpose — this
-   * package stays FHIR-free, and adoption, above it, reads the shape as its
-   * own.
+   * The identifier systems this response's resources key under, per resource
+   * type: one `system` fixed across types, or `<baseUrl>/<Type>` in the FHIR
+   * style. Absent = recognized but mints no identity (a recorder records, it
+   * doesn't import). Structurally `fhir-r4-adoption`'s `SystemFamily`, on
+   * purpose — this package stays FHIR-free, and adoption, above it, reads the
+   * shape as its own.
    */
-  readonly source?:
-    | { readonly _tag: 'FhirServer'; readonly root: string }
-    | { readonly _tag: 'OneSystem'; readonly system: string }
+  readonly systemFamily?:
+    | { readonly _tag: 'FixedAcrossResourceTypes'; readonly system: string }
+    | { readonly _tag: 'FhirStyleBaseUrl'; readonly baseUrl: string }
 }
 
 /**

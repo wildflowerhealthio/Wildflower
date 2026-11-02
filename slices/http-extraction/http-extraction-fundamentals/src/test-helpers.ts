@@ -84,7 +84,7 @@ const SimpleResponseKind: HttpResponseKind.HttpResponseKind<typeof SimpleSchema.
     tryRecognize: (url) =>
       recognizeMatching(/\/people\/\d+$/, {
         specificity: Specificity.PORTAL,
-        source: { _tag: 'OneSystem', system: 'https://example.test/people' },
+        systemFamily: { _tag: 'FixedAcrossResourceTypes', system: 'https://example.test/people' },
       })(url),
     parse: (response) =>
       Effect.map(Schema.decode(Schema.parseJson(SimpleSchema))(response.text()), (data) => [data]),

@@ -8,10 +8,10 @@ import type { UrlMatcher } from './url-match.ts'
 /**
  * Build a portal-tier `tryRecognize` from a URL matcher and a constant source
  * system. The returned function yields
- * `{ specificity: PORTAL, source: OneSystem { system } }` for any URL the
- * matcher claims, `None` otherwise — the portal counterpart of
- * `fhir-r4-source`'s `recognizeFhirRoot`, which reads a FHIR server's root
- * off the URL itself.
+ * `{ specificity: PORTAL, systemFamily: FixedAcrossResourceTypes { system } }`
+ * for any URL the matcher claims, `None` otherwise — the portal counterpart
+ * of `fhir-r4-source`'s `recognizeFhirRoot`, which reads a FHIR server's base
+ * URL off the URL itself.
  *
  * Accepts either a {@link UrlMatcher} (which enforces its own `verb` list, so
  * the `method` argument is honoured) or a `RegExp` (tested against the URL
@@ -27,7 +27,10 @@ const recognizePortal =
     const matched =
       matcher instanceof RegExp ? matcher.test(url) : Option.isSome(matcher(url, method))
     return matched
-      ? Option.some({ specificity: Specificity.PORTAL, source: { _tag: 'OneSystem', system } })
+      ? Option.some({
+          specificity: Specificity.PORTAL,
+          systemFamily: { _tag: 'FixedAcrossResourceTypes', system },
+        })
       : Option.none()
   }
 

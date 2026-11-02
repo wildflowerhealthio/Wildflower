@@ -1,4 +1,4 @@
-import { adoptResource, SourceIdentity } from '@wildflowerhealthio/fhir-r4-adoption'
+import { adoptResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 /**
  * The FHIR synthesis on its own: the parsed `Report` model's types,
  * `toFhirResources`, and {@link adoptedResourcesOf} — synthesis then adoption
@@ -20,7 +20,7 @@ import type * as Report from './entities/report.ts'
 import { type ReportResources, type SynthesisOptions, toFhirResources } from './fhir/to-fhir.ts'
 import { LIFELABS_SYSTEM } from './source-system.ts'
 
-const adopt = adoptResource(SourceIdentity.OneSystem({ system: LIFELABS_SYSTEM }))
+const adopt = adoptResource(SystemFamily.FixedAcrossResourceTypes({ system: LIFELABS_SYSTEM }))
 
 /** One report's resources adopted: each under the id it is written to. */
 interface AdoptedReportResources extends Omit<ReportResources, 'resources'> {
