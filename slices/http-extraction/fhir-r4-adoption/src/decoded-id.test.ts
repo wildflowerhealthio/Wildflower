@@ -20,9 +20,9 @@ import {
 import { Arbitrary, FastCheck as fc, Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { adoptResource, originalIdOf } from './adopt-resource.ts'
 import * as DecodedId from './decoded-id.ts'
-import * as SystemFamily from './system-family.ts'
 
 /**
  * Covers the id a decoded resource is adopted under: its own when it has one,

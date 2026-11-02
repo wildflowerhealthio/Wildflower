@@ -4,7 +4,11 @@ import {
 } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
+import {
+  type HttpResponse,
+  Specificity,
+  SystemFamily,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Logger, Option, Schema } from 'effect'
@@ -108,7 +112,7 @@ describe('PrescriptionHistoryResponseKind', () => {
       ).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          systemFamily: { _tag: 'FixedAcrossResourceTypes', system: SHOPPERS_DRUGMART_SYSTEM },
+          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SHOPPERS_DRUGMART_SYSTEM }),
         })
       )
     })

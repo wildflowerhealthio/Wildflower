@@ -14,7 +14,11 @@ import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
+import {
+  type HttpResponse,
+  Specificity,
+  SystemFamily,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 
 import {
@@ -206,7 +210,7 @@ describe('PrescriptionResponseKind', () => {
       expect(PrescriptionResponseKind.tryRecognize(STATUS_URL, Option.none())).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          systemFamily: { _tag: 'FixedAcrossResourceTypes', system: SHOPPERS_DRUGMART_SYSTEM },
+          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SHOPPERS_DRUGMART_SYSTEM }),
         })
       )
     })

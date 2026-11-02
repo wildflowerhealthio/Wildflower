@@ -19,13 +19,22 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   `parse`. `tryRecognize(url)` returns `Option<RecognizedUrlData>` — `None` when
   the kind does not claim the URL, `Some { specificity, source? }` when it does,
   where each kind constructs its **own** identity: recognition, root, and
-  confidence are one read. `systemFamily` (structurally `fhir-r4-adoption`'s
-  `SystemFamily`, on purpose) is the identifier systems this response's
-  resources key under, per resource type — one `system` fixed across types,
-  or `<baseUrl>/<Type>` in the FHIR style — and is **absent** for a kind that recognizes but mints no identity (a
+  confidence are one read. `systemFamily` (a `SystemFamily`) is the
+  identifier systems this response's resources key under, per resource type,
+  and is **absent** for a kind that recognizes but mints no identity (a
   recorder records, it does not import). `parse` takes an `HttpResponse` and
   returns `Effect<readonly TParsed[], ParseError>` — a pure decode, never
   navigation. `make` shallow-clones and deep-freezes.
+- **`SystemFamily`** (`src/system-family.ts`) — how the `Identifier.system` of
+  a source id is chosen per resource type in one context, two kinds:
+  `FixedAcrossResourceTypes { system }`, the one system whatever the type (a
+  portal, a file format), or `FhirStyleBaseUrl { baseUrl }`, the type appended
+  to a base URL. `systemFor(family, Type)` is the system `family` gives
+  `Type`; `relativise(family)` reads a FHIR server's absolute spelling of its
+  own record, `<baseUrl>/Type/id`, back to the relative `Type/id` and leaves
+  every literal alone under a fixed system. Data, not a closure, so a kind's
+  `tryRecognize` can mint one and a test can compare it. `fhir-r4-adoption`
+  keys what a kind decodes by it.
 - **`UrlMatch`** (`src/url-match.ts`) — the declarative URL-recognition regex
   builder a kind's `tryRecognize` is made from (`make` / `literal` / `id`,
   `pathEnd` vs `mustHaveQuery` boundaries). A `make` call returns the

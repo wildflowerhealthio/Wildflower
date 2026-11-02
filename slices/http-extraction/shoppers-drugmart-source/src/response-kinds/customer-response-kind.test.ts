@@ -1,6 +1,10 @@
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
+import {
+  type HttpResponse,
+  Specificity,
+  SystemFamily,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
@@ -120,7 +124,7 @@ describe('CustomerResponseKind', () => {
       ).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          systemFamily: { _tag: 'FixedAcrossResourceTypes', system: SHOPPERS_DRUGMART_SYSTEM },
+          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SHOPPERS_DRUGMART_SYSTEM }),
         })
       )
     })

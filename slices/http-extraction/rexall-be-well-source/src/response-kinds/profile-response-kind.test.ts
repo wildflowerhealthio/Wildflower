@@ -1,5 +1,9 @@
 import type { Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
+import {
+  type HttpResponse,
+  Specificity,
+  SystemFamily,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult } from 'effect'
@@ -54,7 +58,7 @@ describe('ProfileResponseKind', () => {
       expect(ProfileResponseKind.tryRecognize(PROFILE_URL, Option.some('GET'))).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          systemFamily: { _tag: 'FixedAcrossResourceTypes', system: REXALL_CAREBOOK_SYSTEM },
+          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: REXALL_CAREBOOK_SYSTEM }),
         })
       )
     })

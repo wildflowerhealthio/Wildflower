@@ -4,6 +4,7 @@ import {
   type HttpResponse,
   HttpResponseKind,
   type RecognizedUrlData,
+  SystemFamily,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { Effect, Either, Option, ParseResult, Schema } from 'effect'
@@ -41,7 +42,7 @@ const patientKind = (
 /** A kind whose `tryRecognize` mints FHIR-style systems under its root. */
 const rootedKind = patientKind('RootedKind', {
   specificity: 50,
-  systemFamily: { _tag: 'FhirStyleBaseUrl', baseUrl: ROOT },
+  systemFamily: SystemFamily.FhirStyleBaseUrl({ baseUrl: ROOT }),
 })
 
 const responseAt = (url: string): HttpResponse.HttpResponse => makeHttpResponse({ url })
@@ -59,7 +60,7 @@ describe('adoptUnderRecognizedRoot', () => {
     const adopted = adoptUnderRecognizedRoot(
       patientKind('SidKind', {
         specificity: 100,
-        systemFamily: { _tag: 'FixedAcrossResourceTypes', system: SID },
+        systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SID }),
       })
     )
     const [resource] = await Effect.runPromise(
@@ -72,7 +73,7 @@ describe('adoptUnderRecognizedRoot', () => {
     const adopted = adoptUnderRecognizedRoot(
       patientKind(
         'IdLessKind',
-        { specificity: 50, systemFamily: { _tag: 'FhirStyleBaseUrl', baseUrl: ROOT } },
+        { specificity: 50, systemFamily: SystemFamily.FhirStyleBaseUrl({ baseUrl: ROOT }) },
         () => Effect.succeed([patient(null)])
       )
     )
@@ -112,7 +113,7 @@ describe('adoptUnderRecognizedRoot', () => {
     const adopted = adoptUnderRecognizedRoot(
       patientKind(
         'FailingKind',
-        { specificity: 50, systemFamily: { _tag: 'FhirStyleBaseUrl', baseUrl: ROOT } },
+        { specificity: 50, systemFamily: SystemFamily.FhirStyleBaseUrl({ baseUrl: ROOT }) },
         () => Effect.fail(failure)
       )
     )

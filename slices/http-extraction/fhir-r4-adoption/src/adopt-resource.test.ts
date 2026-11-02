@@ -28,9 +28,9 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, FastCheck as fc, Schema, SchemaAST } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { adoptUnderKey, adoptResource, adoptedReferenceOf, originalIdOf } from './adopt-resource.ts'
 import * as DecodedId from './decoded-id.ts'
-import * as SystemFamily from './system-family.ts'
 
 /**
  * Covers adoption of a single resource: the derived id, the injected source

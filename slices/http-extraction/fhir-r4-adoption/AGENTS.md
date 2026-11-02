@@ -18,14 +18,6 @@ FHIR-free.
   `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(system,
   resource)` picks one; `CONTENT_DIGEST_SYSTEM` is the system a digest id is
   in.
-- `src/system-family.ts` — `SystemFamily`, how the `Identifier.system` of a
-  source id is chosen per resource type in one context, two kinds:
-  `FixedAcrossResourceTypes { system }`, the one system whatever the type (a
-  portal, a file format), or `FhirStyleBaseUrl { baseUrl }`, the type
-  appended to a base URL. `systemFor(family, Type)` is the system `family`
-  gives `Type`; `relativise(family)` reads a FHIR server's absolute spelling
-  of its own record, `<baseUrl>/Type/id`, back to the relative `Type/id`, and
-  leaves every reference alone under a fixed system.
 - `src/adopt-resource.ts` — `adoptUnderKey(targetsIn)`, the per-resource
   rewrite of a record and its key `{ system, sourceId, resource }`: the
   derived id, `{ system, value: sourceId }` as `identifier[0]`, and each
@@ -52,8 +44,8 @@ Pure: no DOM, no `fs`, no React. Depends on `fhir-r4`,
 packages in this slice, the file importers (`dicom-importer-core`,
 `lifelabs-pdf-importer-core`) and the synthetic-data generators build on it. It must
 never import from `slices/importer`, and `http-extraction-fundamentals` must
-never import it: `RecognizedUrlData.systemFamily` is `SystemFamily`'s shape,
-spelled structurally there.
+never import it: `SystemFamily` is defined there, and this package
+re-exports it for the file importers.
 
 ## Traps
 

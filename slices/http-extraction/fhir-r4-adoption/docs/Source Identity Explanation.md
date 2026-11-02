@@ -91,7 +91,8 @@ loudly.
 A record is keyed by **(system, resource type, source id)**: the system is
 FHIR's `Identifier.system`, the namespace the record's source id is unique
 in, an absolute URI. Which system a type gets in one context is a **system
-family** (`SystemFamily`), two kinds:
+family** (`http-extraction-fundamentals`' `SystemFamily`, which adoption
+re-exports), two kinds:
 
 - **Fixed across resource types** (`FixedAcrossResourceTypes { system }`):
   the one system whatever the type. A portal's Wildflower-minted
@@ -255,9 +256,8 @@ It takes a single `HttpResponseKind<FhirResource>` to a
 adopts the parse output under the identity **the kind's own `tryRecognize`
 mints for the response's URL** — read verbatim from
 `kind.tryRecognize(response.url, response.method).systemFamily`, with no
-source passed in. `RecognizedUrlData.systemFamily` is `SystemFamily`'s shape,
-spelled
-structurally in `http-extraction-fundamentals`, which stays FHIR-free. Each
+source passed in. `RecognizedUrlData.systemFamily` is a `SystemFamily`,
+defined in `http-extraction-fundamentals`, which stays FHIR-free. Each
 kind constructs its own identity, so recognition and the namespace a resource
 keys under are the one decision:
 

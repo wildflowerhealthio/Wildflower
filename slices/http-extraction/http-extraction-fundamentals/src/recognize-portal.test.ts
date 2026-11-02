@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { recognizePortal } from './recognize-portal.ts'
 import { Specificity } from './specificity.ts'
+import * as SystemFamily from './system-family.ts'
 import * as UrlMatch from './url-match.ts'
 
 const SYSTEM = 'https://portal.example/system'
@@ -15,7 +16,7 @@ describe('recognizePortal', () => {
       expect(tryRecognize('https://portal.example/rx', Option.some('GET'))).toEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          systemFamily: { _tag: 'FixedAcrossResourceTypes', system: SYSTEM },
+          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SYSTEM }),
         })
       )
     })
@@ -41,7 +42,7 @@ describe('recognizePortal', () => {
       expect(tryRecognize('https://portal.example/rx', Option.some('GET'))).toEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          systemFamily: { _tag: 'FixedAcrossResourceTypes', system: SYSTEM },
+          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SYSTEM }),
         })
       )
     })

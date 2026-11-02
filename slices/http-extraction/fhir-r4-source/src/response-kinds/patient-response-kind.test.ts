@@ -8,6 +8,7 @@ import {
   type HttpMethod,
   type HttpResponse,
   Specificity,
+  SystemFamily,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 
@@ -64,7 +65,7 @@ describe('PatientResponseKind', () => {
       expect(recognized).toStrictEqual(
         Option.some({
           specificity: Specificity.PROTOCOL,
-          systemFamily: { _tag: 'FhirStyleBaseUrl', baseUrl: root },
+          systemFamily: SystemFamily.FhirStyleBaseUrl({ baseUrl: root }),
         })
       )
     })
