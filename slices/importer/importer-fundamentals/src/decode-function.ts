@@ -59,8 +59,8 @@ interface Config<TFormat extends string, TSettings, R = never> {
     | ((file: PickedFile.Type) => Either.Either<string, ParseResult.ParseError>)
     | undefined
   /**
-   * One set's decode, every resource in it already adopted: each reaches the
-   * import stage as an `Adopted` record.
+   * One set's decode, every resource in it already adopted: each section
+   * reaches the import stage as an `Adopted` one.
    */
   readonly decodeFileSet: (
     members: Arr.NonEmptyReadonlyArray<PickedFile.Type>,

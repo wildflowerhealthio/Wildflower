@@ -2,7 +2,7 @@ import { type FhirResource, Practitioner } from '@wildflowerhealthio/fhir-r4/res
 import { HarFromJson, HttpArchive, emitHar } from '@wildflowerhealthio/http-archive'
 import {
   type DecodedFile,
-  DecodedRecord,
+  DecodedFileSet,
   PickedFile,
   Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -142,17 +142,12 @@ const readOne = async (
     )
   }
   return {
-    sections: fileSet.sections.map((section) => ({
-      title: section.title,
-      resources: section.entries.map(({ key, title, record }) => ({
-        key,
-        title,
-        resource: DecodedRecord.$match(record, {
-          Adopted: ({ resource }) => resource,
-          FromSource: () => expect.fail('the HAR decode adopts its records'),
-        }),
-      })),
-    })),
+    sections: fileSet.sections.map(
+      DecodedFileSet.Section.$match({
+        Adopted: ({ title, entries }) => ({ title, resources: entries }),
+        FromSource: () => expect.fail('the HAR decode adopts its records'),
+      })
+    ),
     notes: fileSet.notes,
   }
 }

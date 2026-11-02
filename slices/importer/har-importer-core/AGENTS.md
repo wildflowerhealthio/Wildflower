@@ -48,8 +48,8 @@ shell's shared `persistTransactionBundle`.
   archive:
   `decodeHar`, then `review.ts`'s `preview` over the pool filtered by the
   settings' enabled kinds, then `mergeSharedResources`, folded into a
-  `DecodedFile` whose already adopted resources reach the import stage as
-  `Adopted` records —
+  `DecodedFile` whose already adopted resources reach the import stage in
+  `Adopted` sections —
   one section per URL (first-seen order, only responses that parsed to at
   least one resource) plus one diagnostic note per response that yielded
   nothing (no kind matched, every matching kind disabled, parse failure, body

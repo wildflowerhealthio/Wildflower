@@ -14,10 +14,9 @@ import {
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type DecodedFileSet,
+  DecodedFileSet,
   type FileImporter,
   DecodedFile,
-  DecodedRecord,
   type FormatDecode,
   LinkableResource,
   type PickedFile,
@@ -334,17 +333,12 @@ const run = (files: readonly PickedFile.NamedBytes[]): Promise<FormatDecode.Deco
 
 /** One file set's records, every one of them adopted at decode. */
 const adoptedOf = (fileSet: DecodedFileSet.Type): DecodedFile.DecodedFile => ({
-  sections: fileSet.sections.map((section) => ({
-    title: section.title,
-    resources: section.entries.map(({ key, title, record }) => ({
-      key,
-      title,
-      resource: DecodedRecord.$match(record, {
-        Adopted: ({ resource }) => resource,
-        FromSource: () => expect.fail('the DICOM decode adopts its records'),
-      }),
-    })),
-  })),
+  sections: fileSet.sections.map(
+    DecodedFileSet.Section.$match({
+      Adopted: ({ title, entries }) => ({ title, resources: entries }),
+      FromSource: () => expect.fail('the DICOM decode adopts its records'),
+    })
+  ),
   notes: fileSet.notes,
 })
 

@@ -70,19 +70,18 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   out of one file set carries — which is what keeps a fixed key like DICOM's
   `patient`, or HAR's per-archive `har-entry-<index>`, from colliding across the
   files one format claimed.
-- `src/decoded-record.ts` — the **`DecodedRecord`** namespace: one record a
-  decode read out of a file, as the import stage receives it.
-  **`Adopted { resource }`** is already the device's own, with its `wf-` id,
-  and the stage keeps it as it is; it is transitional, while decoders still
-  adopt what they read. **`FromSource { system, sourceId, resource }`** is the
-  resource as its source gave it beside its key less its type, which the stage
-  adopts.
 - `src/decoded-file-set.ts` — the **`DecodedFileSet`** namespace: one file
   set as its format decoded it. **`Type`** is its `members` (the picks read
-  together, in pick order), its `sections` and its `notes`; a **`Section`** is
-  a title, the **`systemFamily`** its source batch keys each type in (one per
-  batch, not per record, `None` for a section of `Adopted` records only) and
-  its **`Entry`**s, each a review key, a title and a `DecodedRecord`.
+  together, in pick order), its `sections` and its `notes`. A **`Section`** is
+  a titled group of records from one source batch, each entry a review key, a
+  title and its record, in one of two cases: **`Adopted`**, every record
+  already the device's own and kept as it is (what every format's
+  `decodeFileSet` still returns, transitional while decoders adopt what they
+  read), or **`FromSource`**, each record as its source gave it beside its key
+  less its type (`system`, `sourceId`), with the **`systemFamily`** the batch
+  keys each type in (one per batch, not per record), which the import stage
+  adopts it under. The "Source file(s)" section is the import stage's own,
+  never decoded.
   **`ofAdopted(members, decoded)`** lifts a set's decode of already adopted
   resources into one.
 - `src/decode-function.ts` — the **`DecodeFunction`** namespace: the batch
@@ -95,7 +94,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `Config`'s `decodeFileSet`.
   **`make(config)`** takes one **`Config`**: the `format`, a `decodeFileSet`
   (the picks of one set in, a `DecodedFile` of adopted resources out, each of
-  which reaches the import stage as an `Adopted` record), and — optionally — a
+  which reaches the import stage in an `Adopted` section), and — optionally — a
   `groupBy`. **`groupBy`** is called per file and returns the key it shares
   with its set-mates, or a `Left` that reports it as its own `unreadableFiles`
   row (pick order, ahead of any failing set); left out, every file is its own

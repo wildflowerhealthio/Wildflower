@@ -43,9 +43,9 @@ package alone and a layer that provides those.
   format's importer (`sourceFileFormat`, `linkSourceFile`, `finish`), and
   returns its `FormatDecode.Result`, never failing. Per file set it mints a
   source file for **every** member (`Schema.encode(PickedFile.FromDocumentReference)`),
-  adopts each `FromSource` record with `fhir-r4-adoption`'s `adoptUnderKey`
-  (its references keyed in its section's system family; a `FromSource` record
-  in a section with none dies) and keeps each `Adopted` one, runs
+  adopts each `FromSource` section's records with `fhir-r4-adoption`'s
+  `adoptUnderKey` (their references keyed in the section's system family) and
+  keeps each `Adopted` section's as they are, runs
   `linkSourceFile` over each minted source file with the set's adopted
   records and `finish` over every record with each member's source file id by
   its pick id, stamps every record's `meta.source` with the set's

@@ -33,8 +33,8 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `DecodeFunction.make`, the one constructor of the batch `decode`: a binding
   gives how one set of files decodes (`decodeFileSet`) and — only if its files
   are read together — the key they share (`groupBy`). Back comes one
-  `FormatDecode.Decoded` per format: each file set apart, its records
-  `DecodedRecord`s under review keys namespaced so one set's keys cannot
+  `FormatDecode.Decoded` per format: each file set apart, its records in
+  `DecodedFileSet.Section`s under review keys namespaced so one set's keys cannot
   collide with another's, plus an `unreadableFiles` row per pick that
   rejected. Also the `PickedFile` vocabulary and the codec that stores a
   pick as a source file and reads it back, the `FormatDetector` seam

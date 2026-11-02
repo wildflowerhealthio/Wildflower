@@ -79,7 +79,7 @@ shell runs across every file the format claimed. That lifted decode:
   cannot collide on a key (see the obligations below);
 - folds a `ParseError` into one `unreadableFiles` row per pick of the failing
   set;
-- returns each set apart with its members, each resource an `Adopted` record.
+- returns each set apart with its members, its sections `Adopted` ones.
 
 `importer-core`'s import stage (`importDecoded`, which `readBatch` runs over
 every format's `decode`) then, per set:

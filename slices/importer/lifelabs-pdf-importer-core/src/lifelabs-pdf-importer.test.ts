@@ -74,13 +74,14 @@ describe('lifeLabsPdfImporter decode', () => {
 
           expect(decoded.unreadableFiles).toEqual([])
           expect(decoded.fileSets.map((fileSet) => fileSet.members)).toEqual([[file]])
-          const entries = decoded.fileSets.flatMap((fileSet) =>
-            fileSet.sections.flatMap((section) => section.entries)
+          const sections = decoded.fileSets.flatMap((fileSet) => fileSet.sections)
+          expect(sections.map((section) => section._tag)).toEqual(sections.map(() => 'Adopted'))
+          const keys = sections.flatMap((section) =>
+            section.entries.map((entry: { readonly key: string }) => entry.key)
           )
-          expect(entries.length).toBeGreaterThan(0)
-          for (const { key, record } of entries) {
+          expect(keys.length).toBeGreaterThan(0)
+          for (const key of keys) {
             expect(key.startsWith(FormatDecode.keyPrefix(file))).toBe(true)
-            expect(record._tag).toBe('Adopted')
           }
         }
       ),

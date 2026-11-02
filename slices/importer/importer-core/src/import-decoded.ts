@@ -1,14 +1,13 @@
 import { adoptUnderKey } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   DecodedFile,
-  type DecodedFileSet,
-  DecodedRecord,
+  DecodedFileSet,
   type FileImporter,
   FormatDecode,
   MetaSource,
   PickedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema } from 'effect'
+import { Array as Arr, Effect, Function, Order, type ParseResult, Schema } from 'effect'
 
 /**
  * The import stage: one format's decode, file set by file set, made the
@@ -18,8 +17,8 @@ import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema
  * @remarks
  * Per set, {@link importFileSet} mints a source file for every member
  * (`PickedFile.FromDocumentReference`'s encode), adopts each `FromSource`
- * record (`adoptUnderKey`, its references keyed in its section's system
- * family) and keeps each `Adopted` one, runs the format's `linkSourceFile`
+ * section's records (`adoptUnderKey`, their references keyed in the section's
+ * system family) and keeps each `Adopted` section's, runs the format's `linkSourceFile`
  * over every source file and its `finish` over every record, stamps every
  * record's `meta.source` with the set's representative source file, and
  * leads with the source files as the set's own section. Each set's records are
@@ -47,32 +46,24 @@ const sourceFileKey = (file: PickedFile.Type): string =>
 const mintSourceFile = Schema.encode(PickedFile.FromDocumentReference)
 
 /**
- * One section's records, adopted: each `FromSource` record under its key, its
- * references keyed in the section's system family, each `Adopted` one as it
- * is.
- *
- * @remarks
- * A `FromSource` record in a section that names no system family is a decode
- * that broke `DecodedFileSet.Section`'s contract, and dies here.
+ * One section's records, adopted: a `FromSource` section's each under its
+ * key, its references keyed in the section's system family; an `Adopted`
+ * section's as they are.
  */
-const adoptSection = (section: DecodedFileSet.Section): DecodedFile.Section => {
-  const adopt = Option.map(section.systemFamily, adoptUnderKey)
-  return {
-    title: section.title,
-    resources: section.entries.map(({ key, title, record }): DecodedFile.Resource => ({
-      key,
+const adoptSection = DecodedFileSet.Section.$match({
+  Adopted: ({ title, entries }): DecodedFile.Section => ({ title, resources: entries }),
+  FromSource: ({ title, systemFamily, entries }): DecodedFile.Section => {
+    const adopt = adoptUnderKey(systemFamily)
+    return {
       title,
-      resource: DecodedRecord.$match(record, {
-        Adopted: ({ resource }) => resource,
-        FromSource: (fromSource) =>
-          Option.getOrThrowWith(
-            adopt,
-            () => new Error(`${key}: a FromSource record in a section with no system family`)
-          )(fromSource),
-      }),
-    })),
-  }
-}
+      resources: entries.map((entry) => ({
+        key: entry.key,
+        title: entry.title,
+        resource: adopt(entry),
+      })),
+    }
+  },
+})
 
 /**
  * Import one file set: mint its members' source files, adopt its records, let

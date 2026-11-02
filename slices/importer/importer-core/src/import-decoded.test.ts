@@ -10,15 +10,14 @@ import {
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodedFile,
-  type DecodedFileSet,
-  DecodedRecord,
+  DecodedFileSet,
   DecodeFunction,
   FormatDecode,
   MetaSource,
   PickedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Array as Arr, Cause, Effect, Either, Exit, Option, ParseResult, Schema } from 'effect'
+import { Array as Arr, Effect, Either, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -596,12 +595,6 @@ const decodedOf = (
   unreadableFiles: [],
 })
 
-const entryOf = (key: string, record: DecodedRecord.Type): DecodedFileSet.Entry => ({
-  key,
-  title: key,
-  record,
-})
-
 /** The records `decoded` imports to, the source file section left out. */
 const importedRecords = async (
   decoded: FormatDecode.Decoded<typeof testFormat>
@@ -630,14 +623,14 @@ describe('the records the import adopts', () => {
     expect(
       await importedRecords(
         decodedOf([
-          {
+          DecodedFileSet.Section.FromSource({
             title: 'records',
-            systemFamily: Option.some(family),
+            systemFamily: family,
             entries: [
-              entryOf('patient', DecodedRecord.FromSource(patient)),
-              entryOf('observation', DecodedRecord.FromSource(observation)),
+              { key: 'patient', title: 'patient', ...patient },
+              { key: 'observation', title: 'observation', ...observation },
             ],
-          },
+          }),
         ])
       )
     ).toEqual(
@@ -654,20 +647,19 @@ describe('the records the import adopts', () => {
     const baseUrl = 'https://r4.example.test/fhir'
     const [observation] = await importedRecords(
       decodedOf([
-        {
+        DecodedFileSet.Section.FromSource({
           title: 'records',
-          systemFamily: Option.some(SystemFamily.FhirStyleBaseUrl({ baseUrl })),
+          systemFamily: SystemFamily.FhirStyleBaseUrl({ baseUrl }),
           entries: [
-            entryOf(
-              'observation',
-              DecodedRecord.FromSource({
-                system: `${baseUrl}/Observation`,
-                sourceId: 'o1',
-                resource: sourceObservation,
-              })
-            ),
+            {
+              key: 'observation',
+              title: 'observation',
+              system: `${baseUrl}/Observation`,
+              sourceId: 'o1',
+              resource: sourceObservation,
+            },
           ],
-        },
+        }),
       ])
     )
     expect(observation?.resourceType === 'Observation' && observation.subject?.reference).toBe(
@@ -681,38 +673,12 @@ describe('the records the import adopts', () => {
     expect(
       await importedRecords(
         decodedOf([
-          {
+          DecodedFileSet.Section.Adopted({
             title: 'records',
-            systemFamily: Option.none(),
-            entries: [entryOf('patient', DecodedRecord.Adopted({ resource: adopted }))],
-          },
+            entries: [{ key: 'patient', title: 'patient', resource: adopted }],
+          }),
         ])
       )
     ).toEqual([MetaSource.stamp(adopted, MetaSource.makeReference(sourceFileId ?? ''))])
-  })
-
-  it('dies on a FromSource record in a section that names no system family', async () => {
-    const exit = await Effect.runPromiseExit(
-      importDecoded(
-        { sourceFileFormat },
-        decodedOf([
-          {
-            title: 'records',
-            systemFamily: Option.none(),
-            entries: [
-              entryOf(
-                'patient',
-                DecodedRecord.FromSource({
-                  system: SOURCE_SYSTEM,
-                  sourceId: 'p1',
-                  resource: sourcePatient,
-                })
-              ),
-            ],
-          },
-        ])
-      )
-    )
-    expect(Exit.isFailure(exit) && Cause.isDie(exit.cause)).toBe(true)
   })
 })

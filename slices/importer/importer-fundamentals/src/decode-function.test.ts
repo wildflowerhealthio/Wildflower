@@ -1,10 +1,10 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, Either, Option, ParseResult, Schema } from 'effect'
+import { Effect, Either, ParseResult, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as DecodeFunction from './decode-function.ts'
-import * as DecodedRecord from './decoded-record.ts'
+import * as DecodedFileSet from './decoded-file-set.ts'
 import * as FormatDecode from './format-decode.ts'
 import type * as PickedFile from './picked-file.ts'
 
@@ -63,32 +63,30 @@ describe('DecodeFunction.make', () => {
         {
           members: [a1, a2],
           sections: [
-            {
+            DecodedFileSet.Section.Adopted({
               title: 'a-1.bin',
-              systemFamily: Option.none(),
               entries: [a1, a2].map((member) => ({
                 key: `${FormatDecode.keyPrefix(a1)}${member.fileName}`,
                 title: member.fileName,
-                record: DecodedRecord.Adopted({ resource: fakeResource(`${member.bytes[0]}`) }),
+                resource: fakeResource(`${member.bytes[0]}`),
               })),
-            },
+            }),
           ],
           notes: ['2 files'],
         },
         {
           members: [b1],
           sections: [
-            {
+            DecodedFileSet.Section.Adopted({
               title: 'b-1.bin',
-              systemFamily: Option.none(),
               entries: [
                 {
                   key: `${FormatDecode.keyPrefix(b1)}b-1.bin`,
                   title: 'b-1.bin',
-                  record: DecodedRecord.Adopted({ resource: fakeResource('2') }),
+                  resource: fakeResource('2'),
                 },
               ],
-            },
+            }),
           ],
           notes: ['1 files'],
         },

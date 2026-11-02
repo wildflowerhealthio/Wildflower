@@ -20,8 +20,8 @@ FHIR-free.
   in.
 - `src/adopt-resource.ts` — `adoptUnderKey(family)` adopts a record under
   the key it is handed (`{ system, sourceId, resource }`), its references
-  keyed in `family`; `importer-core`'s import stage calls it for a decoded
-  `FromSource` record. `adoptResource(family)`: the derived id, the
+  keyed in `family`; `importer-core`'s import stage calls it for each record
+  of a decoded `FromSource` section. `adoptResource(family)`: the derived id, the
   source id as `identifier[0]` (taken from `DecodedId.of`), and each
   reference whose literal relativises (`SystemFamily.relativise`) to a
   `Type/id` rewritten into `systemFor(family, Type)` through the per-type
