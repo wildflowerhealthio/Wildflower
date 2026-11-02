@@ -8,7 +8,7 @@
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { Array as Arr, Data, Option } from 'effect'
+import { type Array as Arr, Data, Option } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
@@ -90,28 +90,29 @@ interface Type {
   readonly notes: readonly string[]
 }
 
+/** `pickedFile`, identifying as nothing: a picked file of a format whose files do not name themselves. */
+const unidentified = (pickedFile: PickedFile.Type): PickedFileIdentity => ({
+  pickedFile,
+  identifiedAs: Option.none(),
+})
+
 /**
  * `decoded`, a set's decode of already adopted resources, as `Adopted`
  * sections.
  *
- * @param identifiedAs - What each picked file identifies itself as, by the
- *   picked file's `id`; a file it leaves out, or every file when it is left
- *   out, identifies as nothing
+ * @param pickedFiles - The set's picked files, in the order they were picked,
+ *   each beside what it identifies itself as
  */
 const ofAdopted = (
-  pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
-  decoded: DecodedFile.DecodedFile,
-  identifiedAs: ReadonlyMap<string, IdentifierAndReference.IdentifierType> = new Map()
+  pickedFiles: Arr.NonEmptyReadonlyArray<PickedFileIdentity>,
+  decoded: DecodedFile.DecodedFile
 ): Type => ({
-  pickedFiles: Arr.map(pickedFiles, (pickedFile) => ({
-    pickedFile,
-    identifiedAs: Option.fromNullable(identifiedAs.get(pickedFile.id)),
-  })),
+  pickedFiles,
   sections: decoded.sections.map((section) =>
     Section.Adopted({ title: section.title, entries: section.resources })
   ),
   notes: decoded.notes,
 })
 
-export { ofAdopted, Section }
+export { ofAdopted, Section, unidentified }
 export type { PickedFileIdentity, Type }

@@ -236,28 +236,26 @@ const decodeStudy = (
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)
 
-    const headers = yield* Effect.forEach(pickedFiles, (pickedFile) =>
+    const pickedFilesWithHeaders = yield* Effect.forEach(pickedFiles, (pickedFile) =>
       Effect.map(headerOf(pickedFile), (header) => ({ pickedFile, header }))
     )
-    const files: readonly StudyFile[] = headers.map(({ pickedFile, header }) => ({
+    const files: readonly StudyFile[] = pickedFilesWithHeaders.map(({ pickedFile, header }) => ({
       fileName: pickedFile.fileName,
       header,
     }))
-    const identifiedAs = new Map(
-      headers.map(({ pickedFile, header }) => [
-        pickedFile.id,
-        sopInstanceIdentifier(header.sopInstanceUid),
-      ])
-    )
+    const identifiedPickedFiles = Arr.map(pickedFilesWithHeaders, ({ pickedFile, header }) => ({
+      pickedFile,
+      identifiedAs: Option.some(sopInstanceIdentifier(header.sopInstanceUid)),
+    }))
     const ordered = orderedInstances(files)
     const head = ordered[0]
-    if (head === undefined) return { sections: [], notes: [], identifiedAs }
+    if (head === undefined) return { sections: [], notes: [], pickedFiles: identifiedPickedFiles }
 
     if (patientOriginalId(head.header) === undefined) {
       return {
         sections: [],
         notes: ['No patient identity in the DICOM header (no PatientID or PatientName).'],
-        identifiedAs,
+        pickedFiles: identifiedPickedFiles,
       }
     }
 
@@ -284,7 +282,7 @@ const decodeStudy = (
     const sections: DecodedFile.Section[] =
       labeled.length > 0 ? [{ title: sectionTitle(head.header), resources: labeled }] : []
 
-    return { sections, notes, identifiedAs }
+    return { sections, notes, pickedFiles: identifiedPickedFiles }
   })
 
 export {

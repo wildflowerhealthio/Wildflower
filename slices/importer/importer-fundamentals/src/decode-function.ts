@@ -21,7 +21,6 @@
  * @packageDocumentation
  */
 
-import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { ParseResult } from 'effect'
 import { Array as Arr, Effect, Either } from 'effect'
 
@@ -49,13 +48,14 @@ type Type<in TSettings, TFormat extends string, out R = never> = (
  * every one already adopted, and what its picked files identify themselves as.
  *
  * @remarks
- * `identifiedAs` holds, by picked file `id`, the FHIR `Identifier` a file's own
- * content names it by (`DecodedFileSet.PickedFileIdentity`), for a format whose
- * files name themselves; DICOM states each file's SOP Instance UID there. Left
- * out, as by every other format, no picked file identifies as anything.
+ * `pickedFiles` is the set's picked files, in the order they were picked, each
+ * beside the FHIR `Identifier` its own content names it by
+ * (`DecodedFileSet.PickedFileIdentity`), for a format whose files name
+ * themselves; DICOM pairs each file with its SOP Instance UID. Left out, as by
+ * every other format, each picked file identifies as nothing.
  */
 interface FileSetDecode extends DecodedFile.DecodedFile {
-  readonly identifiedAs?: ReadonlyMap<string, IdentifierAndReference.IdentifierType> | undefined
+  readonly pickedFiles?: Arr.NonEmptyReadonlyArray<DecodedFileSet.PickedFileIdentity> | undefined
 }
 
 /** What {@link make} needs of a format, `R` being what its `decodeFileSet` requires. */
@@ -91,9 +91,8 @@ const decodeSet = <TSettings, R>(
 ): Effect.Effect<DecodedFileSet.Type, ParseResult.ParseError, R> =>
   Effect.map(config.decodeFileSet(pickedFiles, settings), (decoded) =>
     DecodedFileSet.ofAdopted(
-      pickedFiles,
-      DecodedFile.namespaceKeys(decoded, FormatDecode.keyPrefix(pickedFiles[0])),
-      decoded.identifiedAs
+      decoded.pickedFiles ?? Arr.map(pickedFiles, DecodedFileSet.unidentified),
+      DecodedFile.namespaceKeys(decoded, FormatDecode.keyPrefix(pickedFiles[0]))
     )
   )
 
