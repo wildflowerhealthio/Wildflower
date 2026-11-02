@@ -109,9 +109,11 @@ family** (`SystemFamily`), two kinds:
   one system every source shares, not a family.
 
 `SystemFamily.systemFor(family, Type)` is the system a family gives `Type`,
-and `SystemFamily.relativise(family)` is its reference rule. `adoptWithSourceId(family)` is the per-resource
-rewrite of a record and its key `{ system, sourceId, resource }`, `family`
-saying where each reference's target is keyed. `adoptResource(family)` is the
+and `SystemFamily.relativise(family)` is its reference rule. `adoptWithSourceId(targetsIn)` is the per-resource
+rewrite of a record and its key `{ system, sourceId, resource }`, `targetsIn`
+the family each reference's target is keyed in; the family goes no deeper
+than the reference rewrite, which is the one place a type is only known once
+a reference has been read. `adoptResource(family)` is the
 decode-time entry point over it, which:
 
 1. **Relativises its references** (`SystemFamily.relativise`). Under
@@ -148,10 +150,9 @@ its original id survives only in the provenance trace. It is still adopted rathe
 than passed through, because a reference _to_ a Binary from a sibling resource
 has to land on the same derived id. `originalIdOf` returns `null` for a Binary.
 
-`originalIdOf(source, resource)` reads the source's id back off an adopted
-resource — `identifier[0]` counts only if re-deriving from it in the system
-the family gives its type reproduces the resource's own id, so it is `null`
-for a record its
+`originalIdOf(system, resource)` reads the source's id back off an adopted
+resource — `identifier[0]` counts only if re-deriving from it in `system`
+reproduces the resource's own id, so it is `null` for a record its
 source gave no id. Anything that needs the source's id after adoption (to build
 a source-server URL, say) reads it there, never off `resource.id`.
 
@@ -186,7 +187,7 @@ already fills it with its own pharmacy id; the original `Type/id` stays
 recoverable by resolving the rewritten reference and reading the target's
 `identifier[0]`.
 
-`adoptedReferenceOf(source, Type, id)` applies this rule to a bare `Type/id`,
+`adoptedReferenceOf(system, Type, id)` applies this rule to a bare `Type/id`,
 for a resource written outside that source that must point at what its import
 stores (a synthetic lab result filed on the Patient a pharmacy import made);
 `fhir-r4/resources`' `withSubject` files such a resource on it.

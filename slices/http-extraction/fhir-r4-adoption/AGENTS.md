@@ -26,15 +26,16 @@ FHIR-free.
   gives `Type`; `relativise(family)` reads a FHIR server's absolute spelling
   of its own record, `<baseUrl>/Type/id`, back to the relative `Type/id`, and
   leaves every reference alone under a fixed system.
-- `src/adopt-resource.ts` — `adoptWithSourceId(family)`, the per-resource
+- `src/adopt-resource.ts` — `adoptWithSourceId(targetsIn)`, the per-resource
   rewrite of a record and its key `{ system, sourceId, resource }`: the
   derived id, `{ system, value: sourceId }` as `identifier[0]`, and each
-  relative `Type/id` reference rewritten into `systemFor(family, Type)`
+  relative `Type/id` reference rewritten into `systemFor(targetsIn, Type)`
   through the per-type reference table (`mapReferences`).
   `adoptResource(family)` is the decode-time wrapper: it relativises a FHIR
   server's absolute references to itself, and takes the source id from
-  `DecodedId.of`. `originalIdOf` reads the source's id back off
-  an adopted resource; `adoptedReferenceOf` spells a reference to a resource a
+  `DecodedId.of`. `originalIdOf(system, resource)` reads the source's id back
+  off an adopted resource; `adoptedReferenceOf(system, Type, id)` spells a
+  reference to a resource a
   source's import adopts, for a resource written outside that source.
 - `src/adopt-under-recognized-root.ts` — `adoptUnderRecognizedRoot(kind)`,
   which takes a `HttpResponseKind<FhirResource>` to a

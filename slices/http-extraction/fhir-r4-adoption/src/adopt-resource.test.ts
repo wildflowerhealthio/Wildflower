@@ -652,24 +652,24 @@ describe('adoptResource', () => {
     const adopted = adopt(binary)
     expect(adopted.id).toBe(localResourceId(fhirSystem('Binary'), 'Binary', 'src-1'))
     expect('identifier' in adopted).toBe(false)
-    expect(originalIdOf(SOURCE, adopted)).toBeNull()
+    expect(originalIdOf(fhirSystem('Binary'), adopted)).toBeNull()
   })
 
   test('round-trips the source id back off every non-Binary resource', () => {
     for (const resource of resources) {
       if (resource.resourceType === 'Binary') continue
-      expect(originalIdOf(SOURCE, adopt(resource))).toBe('src-1')
+      expect(originalIdOf(fhirSystem(resource.resourceType), adopt(resource))).toBe('src-1')
     }
   })
 
-  test('reads no source id off a resource adopted under a different source', () => {
+  test('reads no source id off a resource adopted in a different system', () => {
     const adopted = adopt({ ...sample(Observation.Schema, 13), id: 'src-1' })
-    expect(originalIdOf(RELATIVE_SOURCE, adopted)).toBeNull()
+    expect(originalIdOf(SYSTEM, adopted)).toBeNull()
   })
 
   test('reads no source id off a resource that was never adopted', () => {
     const raw = { ...sample(Observation.Schema, 13), id: 'src-1', identifier: [] }
-    expect(originalIdOf(SOURCE, raw)).toBeNull()
+    expect(originalIdOf(fhirSystem('Observation'), raw)).toBeNull()
   })
 })
 
@@ -717,9 +717,10 @@ describe('reference rewriting', () => {
         fc.constantFrom(SOURCE, RELATIVE_SOURCE),
         fc.constantFrom('Patient', 'Practitioner', 'MedicationRequest'),
         fc.oneof(fc.uuid(), fc.string({ maxLength: 70 })),
-        (source, resourceType, originalId) => {
-          expect(adoptedReferenceOf(source, resourceType, originalId)).toEqual(
-            subjectOf(source, reference({ reference: `${resourceType}/${originalId}` }))
+        (family, resourceType, originalId) => {
+          const system = SystemFamily.systemFor(family, resourceType)
+          expect(adoptedReferenceOf(system, resourceType, originalId)).toEqual(
+            subjectOf(family, reference({ reference: `${resourceType}/${originalId}` }))
           )
         }
       ),
