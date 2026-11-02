@@ -18,17 +18,15 @@ FHIR-free.
   `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(system,
   resource)` picks one; `CONTENT_DIGEST_SYSTEM` is the system a digest id is
   in.
-- `src/adopt-resource.ts` — `adoptUnderKey(targetsIn)`, the per-resource
-  rewrite of a record and its key `{ system, sourceId, resource }`: the
-  derived id, `{ system, value: sourceId }` as `identifier[0]`, and each
-  relative `Type/id` reference rewritten into `systemFor(targetsIn, Type)`
-  through the per-type reference table (`mapReferences`).
-  `adoptResource(family)` is the decode-time wrapper: it relativises a FHIR
-  server's absolute references to itself, and takes the source id from
-  `DecodedId.of`. `originalIdOf(system, resource)` reads the source's id back
-  off an adopted resource; `adoptedReferenceOf(system, Type, id)` spells a
-  reference to a resource a
-  source's import adopts, for a resource written outside that source.
+- `src/adopt-resource.ts` — `adoptResource(family)`: the derived id, the
+  source id as `identifier[0]` (taken from `DecodedId.of`), and each
+  reference whose literal relativises (`SystemFamily.relativise`) to a
+  `Type/id` rewritten into `systemFor(family, Type)` through the per-type
+  reference table (`mapReferences`); any other reference keeps its original
+  spelling. `originalIdOf(family, resource)` reads the source's id back off
+  an adopted resource; `adoptedReferenceOf(family, Type, id)` spells a
+  reference to a resource a source's import adopts, for a resource written
+  outside that source.
 - `src/adopt-under-recognized-root.ts` — `adoptUnderRecognizedRoot(kind)`,
   which takes a `HttpResponseKind<FhirResource>` to a
   `HttpResponseKind<FhirResourceWithId>` whose `parse` adopts every resource
@@ -58,7 +56,7 @@ re-exports it for the file importers.
   schema's encode refuses dies there, rather than minting an id from a value
   that has no FHIR JSON.
 - **Each `mapReferences` row maps a variant to itself by construction, not by
-  the type system.** `adoptUnderKey` returns `FhirResourceWithId`, the whole
+  the type system.** `adoptResource` returns `FhirResourceWithId`, the whole
   union; a row returning a different variant would compile.
 - **Never adopt a locally minted resource.** `web-trace-core`'s traces already
   carry their derived id; adopting one would hash a hash.
