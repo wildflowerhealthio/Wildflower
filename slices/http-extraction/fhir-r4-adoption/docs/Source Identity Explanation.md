@@ -145,11 +145,12 @@ its original id survives only in the provenance trace. It is still adopted rathe
 than passed through, because a reference _to_ a Binary from a sibling resource
 has to land on the same derived id. `originalIdOf` returns `null` for a Binary.
 
-`originalIdOf(family, resource)` reads the source's id back off an adopted
-resource — `identifier[0]` counts only if re-deriving from it in the system
-`family` gives the resource's type reproduces the resource's own id, so it is
-`null` for a record its source gave no id, whose `identifier[0]` is a content
-digest rather than a source id. Anything that needs the source's id after adoption (to build
+`originalIdOf(system, resource)` reads the source's id back off an adopted
+resource. `system` is the one adoption keys the type in — `<baseUrl>/<Type>`
+for a FHIR-style source, not the base. `identifier[0]` counts only if
+re-deriving from it in `system` reproduces the resource's own id, and never
+when `system` is the content-digest one, so it is `null` for a record its
+source gave no id. Anything that needs the source's id after adoption (to build
 a source-server URL, say) reads it there, never off `resource.id`.
 
 ### The reference rule
@@ -190,7 +191,8 @@ already fills it with its own pharmacy id; the original `Type/id` stays
 recoverable by resolving the rewritten reference and reading the target's
 `identifier[0]`.
 
-`adoptedReferenceOf(family, Type, id)` applies this rule to a bare `Type/id`,
+`adoptedReferenceOf(system, Type, id)` applies this rule to a bare `Type/id` in
+the system adoption keys `Type` in,
 for a resource written outside that source that must point at what its import
 stores (a synthetic lab result filed on the Patient a pharmacy import made);
 `fhir-r4/resources`' `withSubject` files such a resource on it.

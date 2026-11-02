@@ -53,11 +53,7 @@ describe('adoptUnderRecognizedRoot', () => {
   test('adopts under the FHIR-style systems its tryRecognize mints', async () => {
     const [resource] = await Effect.runPromise(adoptedRooted.parse(responseAt(`${ROOT}/Patient`)))
     expect(resource?.id).toBe(localResourceId(`${ROOT}/Patient`, 'Patient', 'src-9'))
-    expect(
-      resource === undefined
-        ? null
-        : originalIdOf(SystemFamily.FhirStyleBaseUrl({ baseUrl: ROOT }), resource)
-    ).toBe('src-9')
+    expect(resource === undefined ? null : originalIdOf(`${ROOT}/Patient`, resource)).toBe('src-9')
   })
 
   test('adopts under a fixed system (a portal sid)', async () => {

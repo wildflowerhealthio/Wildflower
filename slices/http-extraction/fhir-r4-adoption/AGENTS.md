@@ -23,10 +23,11 @@ FHIR-free.
   reference whose literal relativises (`SystemFamily.relativise`) to a
   `Type/id` rewritten into `systemFor(family, Type)` through the per-type
   reference table (`mapReferences`); any other reference keeps its original
-  spelling. `originalIdOf(family, resource)` reads the source's id back off
-  an adopted resource; `adoptedReferenceOf(family, Type, id)` spells a
+  spelling. `originalIdOf(system, resource)` reads the source's id back off
+  an adopted resource; `adoptedReferenceOf(system, Type, id)` spells a
   reference to a resource a source's import adopts, for a resource written
-  outside that source.
+  outside that source. Both take the system adoption keys the type in
+  (`systemFor(family, Type)`), never a FHIR base URL.
 - `src/adopt-under-recognized-root.ts` — `adoptUnderRecognizedRoot(kind)`,
   which takes a `HttpResponseKind<FhirResource>` to a
   `HttpResponseKind<FhirResourceWithId>` whose `parse` adopts every resource

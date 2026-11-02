@@ -120,7 +120,7 @@ describe('DecodedId.of', () => {
         expect(adopted.identifier.slice(1)).toEqual(resource.identifier)
       }
       // The source knows it by no id, so no source id reads back off it.
-      expect(originalIdOf(SOURCE, adopted)).toBeNull()
+      expect(originalIdOf(`${BASE}/${resourceType}`, adopted)).toBeNull()
     })
   }
 
