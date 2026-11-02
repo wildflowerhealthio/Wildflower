@@ -6,7 +6,7 @@
       "code": {
         "coding": [],
         "extension": [],
-        "text": "Body Weight"
+        "text": "Heart rate"
       },
       "component": [],
       "contained": [],
@@ -14,12 +14,12 @@
       "extension": [],
       "focus": [],
       "hasMember": [],
-      "id": "wf-191149d8007f132c09c8b4279388f177",
+      "id": "wf-ccf71e528bb55d1c13c768c66c5ded7f",
       "identifier": [
         {
           "extension": [],
-          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4",
-          "value": "obs-a"
+          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Observation",
+          "value": "obs-b"
         }
       ],
       "interpretation": [],
@@ -43,7 +43,7 @@
       "code": {
         "coding": [],
         "extension": [],
-        "text": "Heart rate"
+        "text": "Body Weight"
       },
       "component": [],
       "contained": [],
@@ -51,12 +51,12 @@
       "extension": [],
       "focus": [],
       "hasMember": [],
-      "id": "wf-19114cd8007f184509c8b5279388f32a",
+      "id": "wf-ccf721528bb5623513c769c66c5def32",
       "identifier": [
         {
           "extension": [],
-          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4",
-          "value": "obs-b"
+          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Observation",
+          "value": "obs-a"
         }
       ],
       "interpretation": [],
@@ -94,22 +94,22 @@
       "disposition": "Included",
       "group": "har",
       "key": "0:chrome-fhir-capture.har/har-entry-2:0",
-      "resource": "Patient/wf-a4cea3adef75d5a6ea0fa8481fe40afb",
-      "title": "Patient/wf-a4cea3adef75d5a6ea0fa8481fe40afb"
+      "resource": "Patient/wf-62d4dc847caeb8995ccfe531f36957c4",
+      "title": "Patient/wf-62d4dc847caeb8995ccfe531f36957c4"
     },
     {
       "disposition": "Excluded",
       "group": "har",
       "key": "0:chrome-fhir-capture.har/har-entry-3:0",
-      "resource": "Observation/wf-191149d8007f132c09c8b4279388f177",
-      "title": "Observation/wf-191149d8007f132c09c8b4279388f177"
+      "resource": "Observation/wf-ccf721528bb5623513c769c66c5def32",
+      "title": "Observation/wf-ccf721528bb5623513c769c66c5def32"
     },
     {
       "disposition": "Excluded",
       "group": "har",
       "key": "0:chrome-fhir-capture.har/har-entry-3:1",
-      "resource": "Observation/wf-19114cd8007f184509c8b5279388f32a",
-      "title": "Observation/wf-19114cd8007f184509c8b5279388f32a"
+      "resource": "Observation/wf-ccf71e528bb55d1c13c768c66c5ded7f",
+      "title": "Observation/wf-ccf71e528bb55d1c13c768c66c5ded7f"
     }
   ],
   "sourceFileRePicks": [
@@ -189,11 +189,11 @@
       "extension": [],
       "gender": "female",
       "generalPractitioner": [],
-      "id": "wf-a4cea3adef75d5a6ea0fa8481fe40afb",
+      "id": "wf-62d4dc847caeb8995ccfe531f36957c4",
       "identifier": [
         {
           "extension": [],
-          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4",
+          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Patient",
           "value": "eXYZ123"
         }
       ],

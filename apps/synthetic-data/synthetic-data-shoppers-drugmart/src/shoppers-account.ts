@@ -66,7 +66,7 @@ interface ShoppersAccount {
  * filed on.
  */
 const shoppersPatientReferenceOf = (patient: ShoppersPatient): ReferenceType =>
-  adoptedReferenceOf({ system: SHOPPERS_DRUGMART_SYSTEM }, 'Patient', patient.patientId)
+  adoptedReferenceOf(SHOPPERS_DRUGMART_SYSTEM, 'Patient', patient.patientId)
 
 export { shoppersPatientReferenceOf }
 export type { ShoppersAccount, ShoppersAddress, ShoppersPatient, ShoppersStore }

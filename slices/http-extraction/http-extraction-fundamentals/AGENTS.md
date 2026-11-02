@@ -19,12 +19,22 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   `parse`. `tryRecognize(url)` returns `Option<RecognizedUrlData>` — `None` when
   the kind does not claim the URL, `Some { specificity, source? }` when it does,
   where each kind constructs its **own** identity: recognition, root, and
-  confidence are one read. `source` (structurally `fhir-r4-adoption`'s
-  `SourceIdentity`, on purpose) is the namespace this response's resources key
-  under, and is **absent** for a kind that recognizes but mints no identity (a
+  confidence are one read. `systemFamily` (a `SystemFamily`) is the
+  identifier systems this response's resources key under, per resource type,
+  and is **absent** for a kind that recognizes but mints no identity (a
   recorder records, it does not import). `parse` takes an `HttpResponse` and
   returns `Effect<readonly TParsed[], ParseError>` — a pure decode, never
   navigation. `make` shallow-clones and deep-freezes.
+- **`SystemFamily`** (`src/system-family.ts`) — how the `Identifier.system` of
+  a source id is chosen per resource type in one context, two kinds:
+  `FixedAcrossResourceTypes { system }`, the one system whatever the type (a
+  portal, a file format), or `FhirStyleBaseUrl { baseUrl }`, the type appended
+  to a base URL. `systemFor(family, Type)` is the system `family` gives
+  `Type`; `relativise(family)` reads a FHIR server's absolute spelling of its
+  own record, `<baseUrl>/Type/id`, back to the relative `Type/id` and leaves
+  every literal alone under a fixed system. Data, not a closure, so a kind's
+  `tryRecognize` can mint one and a test can compare it. `fhir-r4-adoption`
+  keys what a kind decodes by it.
 - **`UrlMatch`** (`src/url-match.ts`) — the declarative URL-recognition regex
   builder a kind's `tryRecognize` is made from (`make` / `literal` / `id`,
   `pathEnd` vs `mustHaveQuery` boundaries). A `make` call returns the
@@ -32,7 +42,7 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   **and** root are one read of one `^`-anchored, scheme-required pattern (group 1
   captures `https?://<authority><base path>`), so they can never disagree. A
   non-`http(s)` or scheme-less URL is `None` (a deliberate tightening — a root
-  must be a URL a `SourceIdentity` can key under).
+  must be a URL a `SystemFamily` can build systems on).
 - **`HttpResponse`** (`src/http-response.ts`) — what a `parse` sees: `id` /
   `url` / `status` / `statusText` / `headers` (`Headers`) / `startedAt` /
   `bytes()` / `text()`. An interface, not a class, so an acquisition path can

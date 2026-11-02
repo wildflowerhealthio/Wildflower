@@ -8,6 +8,7 @@ import {
   type HttpMethod,
   type HttpResponse,
   Specificity,
+  SystemFamily,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 
@@ -47,7 +48,7 @@ const runParse = (
 describe('PatientResponseKind', () => {
   describe('tryRecognize', () => {
     it.each([
-      // A recognized URL yields its own root as the source (system === baseUrl),
+      // A recognized URL yields FHIR-style systems under its own root,
       // absorbing the per-URL root-capture cases.
       { url: 'https://r4.smarthealthit.org/Patient/123', root: 'https://r4.smarthealthit.org' },
       { url: 'https://example.com/Patient/abc', root: 'https://example.com' },
@@ -62,7 +63,10 @@ describe('PatientResponseKind', () => {
     ])('recognizes "$url" under root "$root"', ({ url, root }) => {
       const recognized = PatientResponseKind.tryRecognize(url, GET)
       expect(recognized).toStrictEqual(
-        Option.some({ specificity: Specificity.PROTOCOL, source: { system: root, baseUrl: root } })
+        Option.some({
+          specificity: Specificity.PROTOCOL,
+          systemFamily: SystemFamily.FhirStyleBaseUrl({ baseUrl: root }),
+        })
       )
     })
 

@@ -564,7 +564,7 @@ describe('ImporterScreen', () => {
     expect(identifiers).toEqual([
       `${DEVICE}|s-1`,
       `${Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM}|${DERIVED.value}`,
-      'https://r4.example.org/baseR4|pat-7',
+      'https://r4.example.org/baseR4/Patient|pat-7',
     ])
     const subjects = writes()
       .filter((write) => write.url.includes('/Observation/'))

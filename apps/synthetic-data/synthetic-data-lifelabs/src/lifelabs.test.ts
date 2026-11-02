@@ -39,7 +39,7 @@ const pharmacyPatientArbitrary = fc
     ),
     originalId: fc.uuid(),
   })
-  .map(({ system, originalId }) => adoptedReferenceOf({ system }, 'Patient', originalId))
+  .map(({ system, originalId }) => adoptedReferenceOf(system, 'Patient', originalId))
 
 const inputsArbitrary = fc.record({
   asOf: asOfArbitrary,

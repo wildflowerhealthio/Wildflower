@@ -87,7 +87,7 @@ const isValidUid = (uid: string): boolean =>
 
 /** A pharmacy Patient's reference, as a pharmacy generator names it. */
 const PHARMACY_PATIENT = adoptedReferenceOf(
-  { system: 'https://example.com/fhir/sid/pharmacy' },
+  'https://example.com/fhir/sid/pharmacy',
   'Patient',
   'P-1'
 )

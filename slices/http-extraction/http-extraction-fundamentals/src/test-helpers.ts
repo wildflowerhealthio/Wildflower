@@ -5,6 +5,7 @@ import type { HttpMethod } from './http-method.ts'
 import * as HttpResponseKind from './http-response-kind.ts'
 import * as HttpResponse from './http-response.ts'
 import { Specificity } from './specificity.ts'
+import * as SystemFamily from './system-family.ts'
 
 /**
  * Fields a test wants to vary on an
@@ -64,7 +65,7 @@ const SimpleSchema = Schema.Struct({
 
 /**
  * Recognize a URL matching `pattern` with a fixed `specificity` (and optional
- * `source`), `None` otherwise — the `tryRecognize` shape the test kinds share.
+ * `systemFamily`), `None` otherwise — the `tryRecognize` shape the test kinds share.
  */
 const recognizeMatching =
   (
@@ -76,7 +77,7 @@ const recognizeMatching =
 
 // The two reusable kinds carry DISTINCT specificities so a routing test can
 // exercise the highest-specificity-wins ranking, and `SimpleResponseKind`
-// carries a `source` (so `recognize`/`routeTo` can be checked minting an
+// carries a `systemFamily` (so `recognize`/`routeTo` can be checked minting an
 // identity) while `AnotherResponseKind` mints none.
 const SimpleResponseKind: HttpResponseKind.HttpResponseKind<typeof SimpleSchema.Type> =
   HttpResponseKind.make({
@@ -84,7 +85,9 @@ const SimpleResponseKind: HttpResponseKind.HttpResponseKind<typeof SimpleSchema.
     tryRecognize: (url) =>
       recognizeMatching(/\/people\/\d+$/, {
         specificity: Specificity.PORTAL,
-        source: { system: 'https://example.test/people' },
+        systemFamily: SystemFamily.FixedAcrossResourceTypes({
+          system: 'https://example.test/people',
+        }),
       })(url),
     parse: (response) =>
       Effect.map(Schema.decode(Schema.parseJson(SimpleSchema))(response.text()), (data) => [data]),

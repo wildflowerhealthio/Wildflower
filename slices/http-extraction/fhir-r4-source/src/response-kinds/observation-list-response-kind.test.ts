@@ -8,6 +8,7 @@ import {
   type HttpMethod,
   type HttpResponse,
   Specificity,
+  SystemFamily,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 
@@ -83,7 +84,10 @@ describe('ObservationListResponseKind', () => {
       },
     ])('recognizes "$url" under root "$root"', ({ url, root }) => {
       expect(ObservationListResponseKind.tryRecognize(url, GET)).toStrictEqual(
-        Option.some({ specificity: Specificity.PROTOCOL, source: { system: root, baseUrl: root } })
+        Option.some({
+          specificity: Specificity.PROTOCOL,
+          systemFamily: SystemFamily.FhirStyleBaseUrl({ baseUrl: root }),
+        })
       )
     })
 

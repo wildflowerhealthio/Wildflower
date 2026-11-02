@@ -1,28 +1,33 @@
 # AGENTS.md — slices/http-extraction/fhir-r4-adoption
 
 The **FHIR R4 side of extraction**: how a resource decoded from a source
-becomes the device's own. A resource is adopted under its source's identity —
-keyed under a local id derived from the source's system, its type and the id
-it is adopted under, its references rewritten to land on their targets'
-derived ids — and comes out with an id whether or not the source gave it one.
+becomes the device's own. A resource is keyed by (system, type, source id) —
+the system being FHIR's `Identifier.system`, the one its source id belongs to
+— under a local id derived from that key, its references rewritten to land on their targets'
+derived ids, and comes out with an id whether or not the source gave it one.
 It sits above `fhir-r4` (the resource schemas and `localResourceId`) and
 `http-extraction-fundamentals` (the response-kind vocabulary), which stays
 FHIR-free.
 
 ## Shape
 
-- `src/decoded-id.ts` — `DecodedId`, the id a decoded resource is adopted
-  under: `FoundInSource` the id the source gave it, or `GeneratedFromContent` a
-  digest of its content when it gave none (FNV-1a 64 over its FHIR JSON as
-  `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(resource)`
-  picks one.
-- `src/adopt-resource.ts` — `adoptResource(source)`, the per-resource rewrite:
-  the derived id, the source identifier a `FoundInSource` id records as
-  `identifier[0]` (a `GeneratedFromContent` one records none), and the per-type
-  reference rewrite. `originalIdOf` reads the source's id back off an adopted
-  resource; `adoptedReferenceOf` spells a reference to a resource a source's
-  import adopts, for a resource written outside that source. `SourceIdentity`
-  is `{ system, baseUrl? }`.
+- `src/decoded-id.ts` — `DecodedId`, the source id a decoded resource is
+  adopted under: `FoundInSource` the id the source gave it, or
+  `GeneratedFromContent` a digest of its content when it gave none (FNV-1a 64
+  over the system its id would have been in and its FHIR JSON as
+  `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(system,
+  resource)` picks one; `CONTENT_DIGEST_SYSTEM` is the system a digest id is
+  in.
+- `src/adopt-resource.ts` — `adoptResource(family)`: the derived id, the
+  source id as `identifier[0]` (taken from `DecodedId.of`), and each
+  reference whose literal relativises (`SystemFamily.relativise`) to a
+  `Type/id` rewritten into `systemFor(family, Type)` through the per-type
+  reference table (`mapReferences`); any other reference keeps its original
+  spelling. `originalIdOf(system, resource)` reads the source's id back off
+  an adopted resource; `adoptedReferenceOf(system, Type, id)` spells a
+  reference to a resource a source's import adopts, for a resource written
+  outside that source. Both take the system adoption keys the type in
+  (`systemFor(family, Type)`), never a FHIR base URL.
 - `src/adopt-under-recognized-root.ts` — `adoptUnderRecognizedRoot(kind)`,
   which takes a `HttpResponseKind<FhirResource>` to a
   `HttpResponseKind<FhirResourceWithId>` whose `parse` adopts every resource
@@ -38,22 +43,22 @@ Pure: no DOM, no `fs`, no React. Depends on `fhir-r4`,
 packages in this slice, the file importers (`dicom-importer-core`,
 `lifelabs-pdf-importer-core`) and the synthetic-data generators build on it. It must
 never import from `slices/importer`, and `http-extraction-fundamentals` must
-never import it: `RecognizedUrlData.source` is `SourceIdentity`'s shape,
-spelled structurally there.
+never import it: `SystemFamily` is defined there, and this package
+re-exports it for the file importers.
 
 ## Traps
 
 - **Every derived id is persisted wire format.** Ids come from `fhir-r4`'s
-  `localResourceId`; a content digest is its hash input for a resource with no
-  id of its own, so changing what `DecodedId.of` digests re-keys every such
-  resource already stored.
+  `localResourceId` over (system, type, source id), so changing a source's
+  system family re-keys every resource in it, and changing what `DecodedId.of` digests
+  re-keys every resource with no id of its own.
 - **A resource that does not encode is a defect.** `DecodedId.of` encodes
   through `FhirResourceSchema`; a kind whose decode lets through what the
   schema's encode refuses dies there, rather than minting an id from a value
   that has no FHIR JSON.
-- **Each `adoptX` maps a variant to itself by construction, not by the type
-  system.** `adoptResource` is declared `FhirResource → FhirResourceWithId`; an
-  `adoptX` returning a different variant would compile.
+- **Each `mapReferences` row maps a variant to itself by construction, not by
+  the type system.** `adoptResource` returns `FhirResourceWithId`, the whole
+  union; a row returning a different variant would compile.
 - **Never adopt a locally minted resource.** `web-trace-core`'s traces already
   carry their derived id; adopting one would hash a hash.
 

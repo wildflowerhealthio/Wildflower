@@ -33,13 +33,13 @@ describe('fhirR4ResponseKinds', () => {
     ])
   })
 
-  it("keys a resource under its own URL's root", () => {
+  it("keys a resource in its type's id space under its own URL's root", () => {
     const root = 'https://r4.example.org/baseR4'
     const [patient] = parse('PatientResponseKind', `${root}/Patient/pat-7`, {
       resourceType: 'Patient',
       id: 'pat-7',
     })
-    expect(patient?.id).toBe(localResourceId(root, 'Patient', 'pat-7'))
+    expect(patient?.id).toBe(localResourceId(`${root}/Patient`, 'Patient', 'pat-7'))
   })
 
   it('keys resources from different servers under their own roots, no shared system', () => {
@@ -55,11 +55,11 @@ describe('fhirR4ResponseKinds', () => {
       status: 'final',
       code: { text: 'Weight' },
     })
-    expect(fromA?.id).toBe(localResourceId(rootA, 'Patient', '1'))
-    expect(fromB?.id).toBe(localResourceId(rootB, 'Observation', '2'))
+    expect(fromA?.id).toBe(localResourceId(`${rootA}/Patient`, 'Patient', '1'))
+    expect(fromB?.id).toBe(localResourceId(`${rootB}/Observation`, 'Observation', '2'))
   })
 
-  it("rewrites a relative reference under the referring resource's own root", () => {
+  it("rewrites a relative reference into its target type's id space under the referring resource's root", () => {
     const root = 'https://r4.example.org/baseR4'
     const [observation] = parse('ObservationResponseKind', `${root}/Observation/obs-1`, {
       resourceType: 'Observation',
@@ -70,7 +70,7 @@ describe('fhirR4ResponseKinds', () => {
     })
     if (observation?.resourceType !== 'Observation') throw new Error('expected an Observation')
     expect(observation.subject?.reference).toBe(
-      `Patient/${localResourceId(root, 'Patient', 'pat-7')}`
+      `Patient/${localResourceId(`${root}/Patient`, 'Patient', 'pat-7')}`
     )
   })
 

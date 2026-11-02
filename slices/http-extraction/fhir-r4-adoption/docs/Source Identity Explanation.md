@@ -33,7 +33,7 @@ by it:
 Every imported resource is keyed under a **derived local id**:
 
 ```text
-localResourceId(sourceSystem, resourceType, originalId) → "wf-<32 lowercase hex>"
+localResourceId(system, resourceType, sourceId) → "wf-<32 lowercase hex>"
 ```
 
 It lives in `fhir-r4/identity` and is two 64-bit FNV-1a lanes over the three
@@ -56,7 +56,7 @@ Properties that matter:
   `[A-Za-z0-9\-.]`, whatever went in.
 - **The resource type is an input**, which is what separates Rexall's
   request/dispense pair.
-- **The source system is an input**, which is what keeps two servers apart.
+- **The system is an input**, which is what keeps two servers apart.
 
 The `wf-` prefix is fixed rather than per-source. Source attribution lives in the
 identifier, not in the id.
@@ -70,7 +70,7 @@ A separator is only unambiguous if no component can contain it, which is a
 precondition on every caller rather than a property of the function: with a
 `\n` join, `('a', 'b\nc', 'x')` and `('a\nb', 'c', 'x')` would both spell
 `a\nb\nc\nx` and collide outright. Nothing on a production path reaches such a
-pair — `system` is a regex-validated root URL or a minted constant, and
+pair — the system is a regex-validated root URL plus a type or a minted constant, and
 `resourceType` is a union literal or the `[A-Za-z]+` capture from
 `RELATIVE_REFERENCE` — but the function whose job is to make ids unambiguous
 should not depend on its callers to be.
@@ -88,26 +88,51 @@ loudly.
 
 ## What adoption does to a resource
 
-`adoptResource(source)` is the per-resource rewrite. Given a `SourceIdentity`
-(`{ system, baseUrl? }`) it:
+A record is keyed by **(system, resource type, source id)**: the system is
+FHIR's `Identifier.system`, the namespace the record's source id is unique
+in, an absolute URI. Which system a type gets in one context is a **system
+family** (`http-extraction-fundamentals`' `SystemFamily`, which adoption
+re-exports), two kinds:
 
-1. **Takes its `DecodedId`.** `FoundInSource` is the id the source gave it.
-   A resource whose `id` is `null` (third-party FHIR JSON, where `id` is
-   optional) is `GeneratedFromContent` instead: FNV-1a 64 over its FHIR JSON as
-   `FhirResourceSchema` encodes it, fields in schema order, as sixteen hex
-   digits. So every adopted resource has an id (`adoptResource` returns
-   `FhirResourceWithId`), and a re-import of the same capture lands on the same
-   one. Such a resource skips step 3: the source gave it no id, so no
-   identifier claims one, and it keeps only the identifiers it arrived with
-   (`originalIdOf` reads `null` off it).
-2. **Derives the id** from `(system, resourceType, decodedId.value)`.
-3. **Prepends one `Identifier`** carrying the source's own id —
-   `identifier[0] = { system: <source system>, value: <original id> }`. Every
-   identifier the source already wrote is kept, behind it. There is deliberately
-   no "already adopted?" guard: adoption runs exactly once per resource, at one
-   choke point, so a source that publishes its own base URL as an identifier
-   system yields a benign duplicate and nothing worse.
-4. **Rewrites references** through the per-type field table below.
+- **Fixed across resource types** (`FixedAcrossResourceTypes { system }`):
+  the one system whatever the type. A portal's Wildflower-minted
+  `…/fhir/sid/<source>` URI, or a picked source file's format coding system
+  (`PickedFile` mints its `DocumentReference` id in it).
+- **FHIR style** (`FhirStyleBaseUrl { baseUrl }`): the type appended to a
+  base URL, `<baseUrl>/<Type>` (`https://example.com/fhir/Patient`), since a
+  FHIR server's ids are unique per type. The server may also spell a
+  reference to its own record absolutely, `<baseUrl>/Type/id`, which
+  `SystemFamily.relativise` reads as the relative `Type/id`.
+- A record its source gave no id is keyed in
+  `https://wildflowerhealth.io/fhir/identifier/content-digest`
+  (`DecodedId.CONTENT_DIGEST_SYSTEM`), beside Wildflower's other minted
+  identifier systems, with a digest of its content as its source id. That is
+  one system every source shares, not a family.
+
+`SystemFamily.systemFor(family, Type)` is the system a family gives `Type`,
+and `SystemFamily.relativise(family)` is how it reads a reference literal.
+`adoptResource(family)` adopts one decoded resource:
+
+1. **Takes its `DecodedId`.** `FoundInSource` is the id the source gave it,
+   in the system the family gives its type. A resource whose `id` is `null`
+   (third-party FHIR JSON, where `id` is optional) is `GeneratedFromContent`
+   instead, in the content-digest system: FNV-1a 64 over the system the
+   family gives its type and its FHIR JSON as `FhirResourceSchema` encodes it,
+   fields in schema order, as sixteen hex digits — the resource as decoded,
+   its references in their original spelling. The digest system is shared
+   by every source, and a relative reference means a different target in a
+   different source, so the digest is scoped to its source: the same content
+   from two servers is two records. So every adopted resource has an id
+   (`adoptResource` returns `FhirResourceWithId`), and a re-import of the same
+   capture lands on the same one.
+2. **Derives the id** from `(system, resourceType, sourceId)`.
+3. **Prepends one `Identifier`** naming it by its key —
+   `identifier[0] = { system, value: <source id> }`, a digest included. Every identifier the source already wrote is kept, behind it.
+   There is deliberately no "already adopted?" guard: adoption runs exactly
+   once per resource, at one choke point, so a source that publishes the same
+   system as an identifier yields a benign duplicate and nothing worse.
+4. **Rewrites references** through the per-type field table below, each
+   keyed in the family whichever system the resource itself is keyed in.
 
 The digest leaves `meta` out. `meta` describes the response (`lastUpdated`,
 `versionId`), not the record, so a fresh capture of the same id-less record
@@ -120,27 +145,41 @@ its original id survives only in the provenance trace. It is still adopted rathe
 than passed through, because a reference _to_ a Binary from a sibling resource
 has to land on the same derived id. `originalIdOf` returns `null` for a Binary.
 
-`originalIdOf(source, resource)` reads the source's id back off an adopted
-resource — `identifier[0]` counts only if re-deriving from it reproduces the
-resource's own id. Anything that needs the source's id after adoption (to build
+`originalIdOf(system, resource)` reads the source's id back off an adopted
+resource. `system` is the one adoption keys the type in — `<baseUrl>/<Type>`
+for a FHIR-style source, not the base. `identifier[0]` counts only if
+re-deriving from it in `system` reproduces the resource's own id, and never
+when `system` is the content-digest one, so it is `null` for a record its
+source gave no id. Anything that needs the source's id after adoption (to build
 a source-server URL, say) reads it there, never off `resource.id`.
 
 ### The reference rule
 
-For one `Reference`:
+A reference's target is keyed in the system the family gives **its own
+type**, not the referring record's: a FHIR server's `Observation.subject` of
+`Patient/abc` is `(<baseUrl>/Patient, Patient, abc)`, and a digest record's
+references are keyed in its source like any other record's. For one
+`Reference`:
 
 ```text
-reference.reference is null                              → unchanged
-strip a leading `${baseUrl}/` when the source declares one
-the remainder does not match `^[A-Za-z]+/[A-Za-z0-9\-.]{1,64}$`  → unchanged
-otherwise → reference := `${Type}/${localResourceId(system, Type, id)}`
-            identifier := the existing one, or the source's id
+reference.reference is null                                        → unchanged
+relativise(family)(reference.reference) does not match
+  `^[A-Za-z]+/[A-Za-z0-9\-.]{1,64}$`                               → unchanged
+otherwise → reference := `${Type}/${localResourceId(systemFor(family, Type), Type, id)}`
+            identifier := the existing one, or { system: systemFor(family, Type), value: id }
 ```
 
-The grammar check is what leaves alone: `#fragment` contained references,
-`urn:uuid:`, foreign absolute URLs, version-specific `Type/id/_history/v`, ids
-carrying a space, and hyphenated pseudo-types like carebook's
-`rexall-pharmacy-location/pharmacy-4821`.
+Under FHIR-style systems, `relativise` reads a literal under `<baseUrl>/` as
+the rest of it, so a server's absolute `<baseUrl>/Type/id` adopts exactly as
+its `Type/id`. Under a fixed system it reads every literal as it is.
+
+The grammar check is what leaves alone, and an unchanged reference keeps its
+original spelling, absolute or relative: `#fragment` contained references,
+`urn:uuid:`, foreign absolute URLs, version-specific `Type/id/_history/v`
+(relative or under the base), search URLs, ids over 64 characters or carrying
+a space, a base that is only a prefix of the server's (`https://h/fhir`
+against `https://h/fhir/R4/Patient/1`), and hyphenated pseudo-types like
+carebook's `rexall-pharmacy-location/pharmacy-4821`.
 
 Rewrites apply to **any** resource-type token, not only the types the store
 holds. The derivation is deterministic, so a `Location/x` link resolves
@@ -152,7 +191,8 @@ already fills it with its own pharmacy id; the original `Type/id` stays
 recoverable by resolving the rewritten reference and reading the target's
 `identifier[0]`.
 
-`adoptedReferenceOf(source, Type, id)` applies this rule to a bare `Type/id`,
+`adoptedReferenceOf(system, Type, id)` applies this rule to a bare `Type/id` in
+the system adoption keys `Type` in,
 for a resource written outside that source that must point at what its import
 stores (a synthetic lab result filed on the Patient a pharmacy import made);
 `fhir-r4/resources`' `withSubject` files such a resource on it.
@@ -176,9 +216,9 @@ stores (a synthetic lab result filed on the Patient a pharmacy import made);
 | `PlanDefinition`     | `subjectReference`, `action[].subjectReference` (recursively through nested `action[]`)                                                                                                                                                                                                                                                                                   |
 | `Procedure`          | `subject`, `encounter`, `recorder`, `asserter`, `location`, `basedOn[]`, `partOf[]`, `performer[].actor`, `performer[].onBehalfOf`, `reasonReference[]`, `report[]`, `complicationDetail[]`, `focalDevice[].manipulated`, `usedReference[]`, `note[].authorReference`                                                                                                     |
 
-`adoptResource` dispatches with `Match.exhaustive` over the closed `FhirResource`
-union, so a resource type added to the union without an adopt function is a
-compile error rather than a resource that silently keeps its source's id.
+`mapReferences` dispatches with `Match.exhaustive` over the closed `FhirResource`
+union, so a resource type added to the union without a row is a compile error
+rather than a resource whose references silently keep the source's ids.
 
 The list is explicit rather than a structural walk, so what gets rewritten is
 readable and reviewable. `adopt-resource.test.ts` guards it from both sides:
@@ -219,22 +259,24 @@ It takes a single `HttpResponseKind<FhirResource>` to a
 `HttpResponseKind<FhirResourceWithId>`, replacing its `parse` with one that
 adopts the parse output under the identity **the kind's own `tryRecognize`
 mints for the response's URL** — read verbatim from
-`kind.tryRecognize(response.url, response.method).source`, with no source
-passed in. `RecognizedUrlData.source` is `SourceIdentity`'s shape, spelled
-structurally in `http-extraction-fundamentals`, which stays FHIR-free. Each
+`kind.tryRecognize(response.url, response.method).systemFamily`, with no
+source passed in. `RecognizedUrlData.systemFamily` is a `SystemFamily`,
+defined in `http-extraction-fundamentals`, which stays FHIR-free. Each
 kind constructs its own identity, so recognition and the namespace a resource
 keys under are the one decision:
 
-- **FHIR** (`fhir-r4-source`) — `tryRecognize` returns `source: { system: root,
-  baseUrl: root }`, the root captured by the kind's own `UrlMatch`. So a resource
-  keys under the root of the URL it arrived on, and `baseUrl` makes a server that
-  spells its own references absolutely rewrite them the same as relative ones.
+- **FHIR** (`fhir-r4-source`) — `tryRecognize` returns
+  `systemFamily: FhirStyleBaseUrl { baseUrl }`, the root captured by the
+  kind's own `UrlMatch`. So a resource keys in `<baseUrl>/<Type>` of the URL
+  it arrived on, and a server that spells its own references absolutely under
+  it rewrites them the same as relative ones.
 - **Rexall / Shoppers** (`rexall-be-well-source`, `shoppers-drugmart-source`) —
   `tryRecognize` (via `http-extraction-fundamentals`' `recognizePortal`) stays
-  URL-gated but mints a constant `source: { system: SID }`
+  URL-gated but mints a constant
+  `systemFamily: FixedAcrossResourceTypes { system: SID }`
   (`REXALL_CAREBOOK_SYSTEM` / `SHOPPERS_DRUGMART_SYSTEM`, Wildflower-minted `sid`
-  URIs in each package's `source-system.ts`), no `baseUrl` because references
-  are relative.
+  URIs in each package's `source-system.ts`): one system whatever the type,
+  and references already relative.
 
 The seam is applied per kind at **module load**: each per-source package in
 `slices/http-extraction` `.map`s its kind list through the combinator once in its
@@ -249,7 +291,7 @@ Consequences worth knowing:
   applies it once and every consumer shares the same frozen kind **by
   reference**.
 - **An unrecognized URL fails as a `ParseError`.** A `parse` on a response whose
-  `tryRecognize` returns `None` — or `Some` with no `source` — **fails** with a
+  `tryRecognize` returns `None` — or `Some` with no `systemFamily` — **fails** with a
   `ParseError` naming the real reason ("URL not recognized by this kind — cannot
   adopt an identity"), on the same channel a decode failure uses. No channel
   widening, no defect, and `Extraction.parseWith` folds it to an ordinary
@@ -266,9 +308,9 @@ Consequences worth knowing:
   `FhirResourceWithId`: everything downstream of extraction knows each resource
   has the id it is written under.
 
-Note the variant preservation inside `adoptResource` is real but unchecked: each
-`adoptX` maps a variant to itself **by construction**, and an `adoptX` that
-returned a different variant would compile. That is stated on the function.
+Note the variant preservation inside `mapReferences` is real but unchecked: each
+row maps a variant to itself **by construction**, and a row that returned a
+different variant would compile. That is stated on the function.
 
 ## web-trace mints its own ids, at its codec
 
@@ -308,7 +350,7 @@ Every resource in the store is keyed by this derivation — there is no second i
 format to recognize, so nothing reads or writes one. Adoption likewise runs
 exactly once per resource, at the response-kind seam, so there is deliberately
 no "already adopted?" guard: such a guard has to guess, and a source that
-publishes its own base URL as an identifier system makes it guess wrong.
+publishes its own `<base>/<Type>` as an identifier system makes it guess wrong.
 
 ## The identity map
 
@@ -335,8 +377,8 @@ narrowed to a `Patient` or `Practitioner` and an identifier with both a
 `system` and a `value`. A referent comes in one of two kinds:
 
 - **As a resource**: the decode emitted the `Patient` or `Practitioner`
-  itself. It is keyed by its `identifier[0]`, the source's own id adoption put
-  there, and answers to every identifier it brings: its own, and the one its
+  itself. It is keyed by its `identifier[0]`, the key adoption put there (its
+  source id in its system, or its content digest), and answers to every identifier it brings: its own, and the one its
   demographics derive (below).
 - **By mention only**: mentions name it by a logical reference and no decode
   emitted its resource. A Shoppers account id on a history fill is one; so is

@@ -131,11 +131,11 @@ describe('decodeHar + runExtraction', () => {
       expect(extraction.bodyAbsent).toHaveLength(0)
       expect(extraction.parseFailures).toEqual([])
       expect(ofType(extraction, 'Patient').map((resource) => resource.id)).toEqual([
-        localResourceId(root, 'Patient', 'pat-7'),
+        localResourceId(`${root}/Patient`, 'Patient', 'pat-7'),
       ])
       expect(ofType(extraction, 'Observation').map((resource) => resource.id)).toEqual([
-        localResourceId(root, 'Observation', 'obs-1'),
-        localResourceId(root, 'Observation', 'obs-2'),
+        localResourceId(`${root}/Observation`, 'Observation', 'obs-1'),
+        localResourceId(`${root}/Observation`, 'Observation', 'obs-2'),
       ])
     })
 
@@ -170,14 +170,14 @@ describe('decodeHar + runExtraction', () => {
         ])
       )
 
-      // Each Patient is keyed under its own server's root, so the two ids differ
+      // Each Patient is keyed in its own server's id space, so the two ids differ
       // even though both are `pat-*` — no collision across servers.
       expect(ofType(extraction, 'Patient').map((resource) => resource.id)).toEqual([
-        localResourceId(rootA, 'Patient', 'pat-7'),
-        localResourceId(rootB, 'Patient', 'pat-9'),
+        localResourceId(`${rootA}/Patient`, 'Patient', 'pat-7'),
+        localResourceId(`${rootB}/Patient`, 'Patient', 'pat-9'),
       ])
       expect(ofType(extraction, 'Observation').map((resource) => resource.id)).toEqual([
-        localResourceId(rootB, 'Observation', 'obs-b1'),
+        localResourceId(`${rootB}/Observation`, 'Observation', 'obs-b1'),
       ])
     })
 
@@ -191,11 +191,11 @@ describe('decodeHar + runExtraction', () => {
       expect(extraction.bodyAbsent).toHaveLength(0)
       expect(extraction.parseFailures).toEqual([])
       expect(ofType(extraction, 'Patient').map((resource) => resource.id)).toEqual([
-        localResourceId(root, 'Patient', 'eXYZ123'),
+        localResourceId(`${root}/Patient`, 'Patient', 'eXYZ123'),
       ])
       expect(ofType(extraction, 'Observation').map((resource) => resource.id)).toEqual([
-        localResourceId(root, 'Observation', 'obs-a'),
-        localResourceId(root, 'Observation', 'obs-b'),
+        localResourceId(`${root}/Observation`, 'Observation', 'obs-a'),
+        localResourceId(`${root}/Observation`, 'Observation', 'obs-b'),
       ])
     })
   })

@@ -33,7 +33,7 @@ const notAdoptableError = (name: string, url: string, reason: string): ParseResu
  * `docs/Source Identity Explanation.md`. Only `parse` is wrapped, and only
  * with `Effect.map` over a successful decode, so the error channel and
  * synchronous runnability are untouched. A `parse` on a URL the kind does not
- * recognize — or recognizes without minting a `source` — fails with
+ * recognize — or recognizes without minting a `systemFamily` — fails with
  * {@link notAdoptableError}; routing never hands a kind such a response, so
  * that arm guards a misuse, not a normal input. Do **not** route a
  * locally-minted resource through this (web-trace's traces already carry the
@@ -55,16 +55,18 @@ const adoptUnderRecognizedRoot = (
               'URL not recognized by this kind — cannot adopt an identity'
             )
           ),
-        onSome: ({ source }) =>
-          source === undefined
+        onSome: ({ systemFamily }) =>
+          systemFamily === undefined
             ? Effect.fail(
                 notAdoptableError(
                   kind.name,
                   response.url,
-                  'recognized but mints no source identity — cannot adopt'
+                  'recognized but mints no system family — cannot adopt'
                 )
               )
-            : Effect.map(kind.parse(response), (resources) => resources.map(adoptResource(source))),
+            : Effect.map(kind.parse(response), (resources) =>
+                resources.map(adoptResource(systemFamily))
+              ),
       }),
   })
 

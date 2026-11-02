@@ -31,7 +31,7 @@ persistence, HAR, files, or apps.
   through it. See its [AGENTS.md](./fhir-r4-adoption/AGENTS.md).
 - **`fhir-r4-source`** — the first per-source package: `fhirR4Source`, a
   `SourceDescriptor` whose `responseKinds` are the FHIR R4 kinds pre-adopted so
-  each resource keys under the root of the URL it arrived on — the single
+  each resource keys in `<root>/<Type>` of the URL it arrived on — the single
   definition an archive import consumes. See its
   [AGENTS.md](./fhir-r4-source/AGENTS.md).
 - **`rexall-be-well-source`** — the Rexall Be Well source: three response kinds

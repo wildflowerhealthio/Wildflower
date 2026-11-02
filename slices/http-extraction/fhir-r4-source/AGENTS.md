@@ -16,11 +16,12 @@ extracts with. It is the first of the per-source packages;
   carry no resource.
 - `src/recognize-fhir-root.ts` — `recognizeFhirRoot(matcher)`, which turns a
   fused `UrlMatch.UrlMatcher` into the kind's `tryRecognize`: `Some` a
-  `PROTOCOL`-tier `RecognizedUrlData` whose `source` is `{ system: root, baseUrl:
-  root }` (root = the matcher's own capture, so there is no second hand-written
-  root regex to keep in step), `None` when the matcher does not claim the URL. A
-  FHIR server spells its own references absolutely under that same prefix, which
-  is why root rides both `system` and `baseUrl`.
+  `PROTOCOL`-tier `RecognizedUrlData` whose `systemFamily` is the FHIR style
+  under the matcher's own captured root, `FhirStyleBaseUrl { baseUrl }` (so
+  there is no second hand-written root regex to keep in step), `None` when the
+  matcher does not claim the URL. Adoption keys each type in
+  `<baseUrl>/<Type>` and reads the server's absolute spelling of its own
+  references back to relative ones.
 - `src/source.ts` — `fhirR4Source`, the package's one exported surface: the
   `SourceDescriptor` (`name: 'fhir-r4'`, display strings, and the pre-adopted
   `responseKinds`). Consumers reach the tuple through
@@ -29,7 +30,7 @@ extracts with. It is the first of the per-source packages;
   `responseKinds`): the tuple (Patient, Observation, Observation-list, in that
   order), widened to `HttpResponseKind<FhirResource>`, and mapped through
   `fhir-r4-adoption`'s `adoptUnderRecognizedRoot` — so
-  each resource is keyed under the root of the URL it arrived on, the identity
+  each resource is keyed in `<root>/<Type>` of the URL it arrived on, the identity
   read per response from the kind's own `tryRecognize`, no single system
   inferred. A module-level constant (the combinator takes no source parameter),
   so the array is stable by identity and every consumer shares the same kinds.
