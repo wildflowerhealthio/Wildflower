@@ -29,7 +29,7 @@ import { Arbitrary, FastCheck as fc, Schema, SchemaAST } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { adoptUnderKey, adoptResource, adoptedReferenceOf, originalIdOf } from './adopt-resource.ts'
+import { adoptResource, adoptedReferenceOf, originalIdOf } from './adopt-resource.ts'
 import * as DecodedId from './decoded-id.ts'
 
 /**
@@ -647,24 +647,32 @@ describe('adoptResource', () => {
     const adopted = adopt(binary)
     expect(adopted.id).toBe(localResourceId(fhirSystem('Binary'), 'Binary', 'src-1'))
     expect('identifier' in adopted).toBe(false)
-    expect(originalIdOf(fhirSystem('Binary'), adopted)).toBeNull()
+    expect(originalIdOf(SOURCE, adopted)).toBeNull()
   })
 
   test('round-trips the source id back off every non-Binary resource', () => {
     for (const resource of resources) {
       if (resource.resourceType === 'Binary') continue
-      expect(originalIdOf(fhirSystem(resource.resourceType), adopt(resource))).toBe('src-1')
+      expect(originalIdOf(SOURCE, adopt(resource))).toBe('src-1')
     }
   })
 
-  test('reads no source id off a resource adopted in a different system', () => {
+  test('reads no source id off a resource adopted under a different family', () => {
     const adopted = adopt({ ...sample(Observation.Schema, 13), id: 'src-1' })
-    expect(originalIdOf(SYSTEM, adopted)).toBeNull()
+    expect(originalIdOf(RELATIVE_SOURCE, adopted)).toBeNull()
+  })
+
+  test('reads the source id back off a resource adopted under a fixed system', () => {
+    const adopted = adoptResource(RELATIVE_SOURCE)({
+      ...sample(Observation.Schema, 13),
+      id: 'src-1',
+    })
+    expect(originalIdOf(RELATIVE_SOURCE, adopted)).toBe('src-1')
   })
 
   test('reads no source id off a resource that was never adopted', () => {
     const raw = { ...sample(Observation.Schema, 13), id: 'src-1', identifier: [] }
-    expect(originalIdOf(fhirSystem('Observation'), raw)).toBeNull()
+    expect(originalIdOf(SOURCE, raw)).toBeNull()
   })
 })
 
@@ -713,8 +721,7 @@ describe('reference rewriting', () => {
         fc.constantFrom('Patient', 'Practitioner', 'MedicationRequest'),
         fc.oneof(fc.uuid(), fc.string({ maxLength: 70 })),
         (family, resourceType, originalId) => {
-          const system = SystemFamily.systemFor(family, resourceType)
-          expect(adoptedReferenceOf(system, resourceType, originalId)).toEqual(
+          expect(adoptedReferenceOf(family, resourceType, originalId)).toEqual(
             subjectOf(family, reference({ reference: `${resourceType}/${originalId}` }))
           )
         }
@@ -749,6 +756,27 @@ describe('reference rewriting', () => {
       reference({ reference: 'https://source.example/baseR4/Patient/pat-7' })
     )
     expect(absolute).toEqual(relative)
+  })
+
+  // Each of these is under the server's own base, but relativises to
+  // something that is still not a `Type/id`, so it keeps its absolute
+  // spelling rather than a half-relativised one.
+  for (const [label, target] of [
+    ['a versioned reference', `${BASE}/Patient/pat-7/_history/2`],
+    ['a search URL', `${BASE}/Patient?identifier=mrn|9`],
+    ['an id past 64 characters', `${BASE}/Patient/${'a'.repeat(65)}`],
+  ] as const) {
+    test(`keeps ${label} under the base in its absolute spelling`, () => {
+      const original = reference({ reference: target })
+      expect(subjectOf(SOURCE, original)).toEqual(original)
+    })
+  }
+
+  test('keeps a reference under a longer base the family is only a prefix of', () => {
+    const original = reference({ reference: 'https://h.example/fhir/R4/Patient/1' })
+    expect(
+      subjectOf(SystemFamily.FhirStyleBaseUrl({ baseUrl: 'https://h.example/fhir' }), original)
+    ).toEqual(original)
   })
 
   test('leaves an absolute reference alone when the systems are not FHIR style', () => {
@@ -1003,33 +1031,31 @@ describe('reference rewriting', () => {
   })
 })
 
-describe('adoptUnderKey', () => {
+describe('adoptResource keys', () => {
   const OWN_IDENTIFIER = identifier({ value: 'mrn-9' })
 
-  /** A Patient whose own id adoption must not read, linked to `generalPractitioner`. */
-  const patientLinking = (generalPractitioner: string): typeof Patient.Schema.Type => ({
+  /** A Patient with `id`, linked to `generalPractitioner`. */
+  const patientLinking = (
+    id: string | null,
+    generalPractitioner: string
+  ): typeof Patient.Schema.Type => ({
     ...sample(Patient.Schema, 12),
-    id: 'ignored',
+    id,
     identifier: [OWN_IDENTIFIER],
     generalPractitioner: [reference({ reference: generalPractitioner })],
   })
 
   const adoptPatientIn = (
     family: SystemFamily.Type,
-    system: string,
-    generalPractitioner: string
+    patient: typeof Patient.Schema.Type
   ): WithMandatoryId<typeof Patient.Schema.Type> => {
-    const adopted = adoptUnderKey(family)({
-      system,
-      sourceId: 'src-1',
-      resource: patientLinking(generalPractitioner),
-    })
+    const adopted = adoptResource(family)(patient)
     if (adopted.resourceType !== 'Patient') throw new Error('unreachable: adopted a Patient')
     return adopted
   }
 
-  test("keys the record in its own system and each reference in its target type's", () => {
-    const adopted = adoptPatientIn(SOURCE, fhirSystem('Patient'), 'Practitioner/prac-3')
+  test("the record in its own system and each reference in its target type's", () => {
+    const adopted = adoptPatientIn(SOURCE, patientLinking('src-1', 'Practitioner/prac-3'))
     expect(adopted.id).toBe(localResourceId(fhirSystem('Patient'), 'Patient', 'src-1'))
     expect(adopted.identifier).toEqual([
       identifier({ value: 'src-1', system: new URL(fhirSystem('Patient')) }),
@@ -1043,53 +1069,28 @@ describe('adoptUnderKey', () => {
     ])
   })
 
-  test('keys every type in the one system when it is fixed across types', () => {
-    const adopted = adoptPatientIn(RELATIVE_SOURCE, SYSTEM, 'Practitioner/prac-3')
+  test('every type in the one system when it is fixed across types', () => {
+    const adopted = adoptPatientIn(RELATIVE_SOURCE, patientLinking('src-1', 'Practitioner/prac-3'))
     expect(adopted.id).toBe(localResourceId(SYSTEM, 'Patient', 'src-1'))
-    expect(adopted.generalPractitioner[0]?.identifier).toEqual(
-      identifier({ value: 'prac-3', system: new URL(SYSTEM) })
-    )
+    expect(adopted.identifier[0]).toEqual(identifier({ value: 'src-1', system: new URL(SYSTEM) }))
+    expect(adopted.generalPractitioner).toEqual([
+      reference({
+        reference: `Practitioner/${localResourceId(SYSTEM, 'Practitioner', 'prac-3')}`,
+        identifier: identifier({ value: 'prac-3', system: new URL(SYSTEM) }),
+      }),
+    ])
   })
 
-  test('records a content-digest source id like any other, its references in the source', () => {
-    const adopted = adoptPatientIn(SOURCE, DecodedId.CONTENT_DIGEST_SYSTEM, 'Practitioner/prac-3')
-    expect(adopted.id).toBe(localResourceId(DecodedId.CONTENT_DIGEST_SYSTEM, 'Patient', 'src-1'))
+  test('an id-less record under its content digest, its references in the source', () => {
+    const patient = patientLinking(null, 'Practitioner/prac-3')
+    const { value: digest } = DecodedId.of(fhirSystem('Patient'), patient)
+    const adopted = adoptPatientIn(SOURCE, patient)
+    expect(adopted.id).toBe(localResourceId(DecodedId.CONTENT_DIGEST_SYSTEM, 'Patient', digest))
     expect(adopted.identifier[0]).toEqual(
-      identifier({ value: 'src-1', system: new URL(DecodedId.CONTENT_DIGEST_SYSTEM) })
+      identifier({ value: digest, system: new URL(DecodedId.CONTENT_DIGEST_SYSTEM) })
     )
     expect(adopted.generalPractitioner[0]?.identifier).toEqual(
       identifier({ value: 'prac-3', system: new URL(fhirSystem('Practitioner')) })
     )
   })
-
-  test('leaves an absolute reference alone: relativising is the FHIR source path', () => {
-    const absolute = `${BASE}/Patient/pat-7`
-    const adopted = adoptPatientIn(SOURCE, fhirSystem('Patient'), absolute)
-    expect(adopted.generalPractitioner).toEqual([reference({ reference: absolute })])
-  })
-
-  // `adoptResource` is the decode-time wrapper: the family's system for a
-  // resource its source gave an id, the content-digest system for one it gave none.
-  for (const [label, family] of [
-    ['FHIR-style systems', SOURCE],
-    ['a fixed system', RELATIVE_SOURCE],
-  ] as const) {
-    test(`adoptResource under ${label} is adoptUnderKey under the decoded id`, () => {
-      for (const resource of resources) {
-        const system = SystemFamily.systemFor(family, resource.resourceType)
-        expect(adoptResource(family)(resource)).toEqual(
-          adoptUnderKey(family)({ system, sourceId: 'src-1', resource })
-        )
-        const idLess = { ...resource, id: null }
-        const { value: digest } = DecodedId.of(system, idLess)
-        expect(adoptResource(family)(idLess)).toEqual(
-          adoptUnderKey(family)({
-            system: DecodedId.CONTENT_DIGEST_SYSTEM,
-            sourceId: digest,
-            resource: idLess,
-          })
-        )
-      }
-    })
-  }
 })

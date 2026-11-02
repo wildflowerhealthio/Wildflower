@@ -15,9 +15,9 @@ import { adoptUnderRecognizedRoot } from './adopt-under-recognized-root.ts'
 
 /**
  * Covers the per-kind `adoptUnderRecognizedRoot`: the identity is read verbatim
- * off `tryRecognize` (both FHIR-style systems and a fixed one), the
- * two failing arms (an unrecognized URL and a recognized-but-source-less kind),
- * and the referential stability of a single module-level application.
+ * off `tryRecognize` (both FHIR-style systems and a fixed one), the two
+ * failing arms (an unrecognized URL and a recognized kind that mints no system
+ * family), and the referential stability of a single module-level application.
  */
 
 const patient = (id: string | null): FhirResource =>
@@ -53,7 +53,11 @@ describe('adoptUnderRecognizedRoot', () => {
   test('adopts under the FHIR-style systems its tryRecognize mints', async () => {
     const [resource] = await Effect.runPromise(adoptedRooted.parse(responseAt(`${ROOT}/Patient`)))
     expect(resource?.id).toBe(localResourceId(`${ROOT}/Patient`, 'Patient', 'src-9'))
-    expect(resource === undefined ? null : originalIdOf(`${ROOT}/Patient`, resource)).toBe('src-9')
+    expect(
+      resource === undefined
+        ? null
+        : originalIdOf(SystemFamily.FhirStyleBaseUrl({ baseUrl: ROOT }), resource)
+    ).toBe('src-9')
   })
 
   test('adopts under a fixed system (a portal sid)', async () => {

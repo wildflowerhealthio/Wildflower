@@ -1,4 +1,4 @@
-import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4-adoption'
+import { adoptedReferenceOf, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Quantity } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   DiagnosticReport,
@@ -39,7 +39,9 @@ const pharmacyPatientArbitrary = fc
     ),
     originalId: fc.uuid(),
   })
-  .map(({ system, originalId }) => adoptedReferenceOf({ system }, 'Patient', originalId))
+  .map(({ system, originalId }) =>
+    adoptedReferenceOf(SystemFamily.FixedAcrossResourceTypes({ system }), 'Patient', originalId)
+  )
 
 const inputsArbitrary = fc.record({
   asOf: asOfArbitrary,

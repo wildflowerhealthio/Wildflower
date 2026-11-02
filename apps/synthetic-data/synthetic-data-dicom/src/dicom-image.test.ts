@@ -7,7 +7,7 @@ import {
   withElementsSpliced,
   writeDicom,
 } from '@wildflowerhealthio/dicom/test-helpers'
-import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4-adoption'
+import { adoptedReferenceOf, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import type { Person } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
@@ -87,7 +87,7 @@ const isValidUid = (uid: string): boolean =>
 
 /** A pharmacy Patient's reference, as a pharmacy generator names it. */
 const PHARMACY_PATIENT = adoptedReferenceOf(
-  { system: 'https://example.com/fhir/sid/pharmacy' },
+  SystemFamily.FixedAcrossResourceTypes({ system: 'https://example.com/fhir/sid/pharmacy' }),
   'Patient',
   'P-1'
 )
