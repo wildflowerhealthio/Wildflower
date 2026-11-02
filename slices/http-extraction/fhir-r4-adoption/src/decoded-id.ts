@@ -1,3 +1,4 @@
+import { WILDFLOWER_IDENTIFIER_SYSTEM_BASE } from '@wildflowerhealthio/fhir-r4/data-types'
 import { joinIdComponents } from '@wildflowerhealthio/fhir-r4/identity'
 import { type FhirResource, FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
 import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
@@ -5,14 +6,14 @@ import { Data, Schema, Struct } from 'effect'
 
 /**
  * The id a decoded resource is adopted under: its source id, which with its
- * id space and type keys it.
+ * system and type keys it.
  *
  * @remarks
- * `FoundInSource` when the source gave the resource an id, keyed in the
- * source's own id space. `GeneratedFromContent` when it gave none (third-party
- * FHIR JSON, where `id` is optional), so the id is a digest of the resource's
- * content ({@link of}), keyed in `IdSpace.CONTENT_DIGEST`. Either is recorded
- * as the adopted resource's source identifier.
+ * `FoundInSource` when the source gave the resource an id, in the system the
+ * source keys its type in. `GeneratedFromContent` when it gave none
+ * (third-party FHIR JSON, where `id` is optional), so the id is a digest of
+ * the resource's content ({@link of}), in {@link CONTENT_DIGEST_SYSTEM}.
+ * Either is recorded as the adopted resource's source identifier.
  */
 type Type = Data.TaggedEnum<{
   FoundInSource: { readonly value: string }
@@ -21,6 +22,13 @@ type Type = Data.TaggedEnum<{
 
 const { FoundInSource, GeneratedFromContent, $match } = Data.taggedEnum<Type>()
 
+/**
+ * The system a record its source gave no id is keyed in, its source id being
+ * a digest of its content. Shared by every source, as Wildflower's other
+ * minted identifier systems are; the digest itself is scoped to its source.
+ */
+const CONTENT_DIGEST_SYSTEM = `${WILDFLOWER_IDENTIFIER_SYSTEM_BASE}/content-digest`
+
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
 
 /**
@@ -28,10 +36,10 @@ const encodeResource = Schema.encodeSync(FhirResourceSchema)
  * without its `meta`.
  *
  * @remarks
- * `scope` is the id space the resource's id would have had in its source. The
- * digest space is shared by every source, and a record's relative references
- * mean different targets in different sources, so the same content from two
- * sources must not digest to one id.
+ * `scope` is the system the resource's id would have been in had its source
+ * given it one. The digest system is shared by every source, and a record's
+ * relative references mean different targets in different sources, so the
+ * same content from two sources must not digest to one id.
  *
  * The JSON is the resource encoded through {@link FhirResourceSchema}, which
  * writes its fields in schema order whatever order the source sent them in,
@@ -51,7 +59,7 @@ const contentDigestOf = (scope: string, resource: FhirResource): string =>
  * The id `resource` is adopted under: its own, or, when it has none, a digest
  * of its content.
  *
- * @param scope - The id space the resource's own id would be in
+ * @param scope - The system the resource's own id would be in
  * @param resource - A resource as its source decoded it
  * @returns `FoundInSource` its `id`, or `GeneratedFromContent` its content digest
  *   when its `id` is `null`
@@ -61,5 +69,5 @@ const of = (scope: string, resource: FhirResource): Type =>
     ? GeneratedFromContent({ value: contentDigestOf(scope, resource) })
     : FoundInSource({ value: resource.id })
 
-export { $match, of }
+export { $match, CONTENT_DIGEST_SYSTEM, of }
 export type { Type }

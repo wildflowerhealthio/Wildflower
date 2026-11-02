@@ -23,29 +23,11 @@ import type {
   Procedure,
   ServiceRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Match } from 'effect'
+import { Function, Match } from 'effect'
 
 import * as DecodedId from './decoded-id.ts'
-import * as IdSpace from './id-space.ts'
-
-/**
- * The source system a batch of resources was imported from.
- *
- * @remarks
- * For a portal or a file format, `system` is the Wildflower-minted `sid` URI
- * naming it: the id space of every record it gives an id. For a FHIR source,
- * `baseUrl` is the server's configured root: the id space of its records of
- * a type is `<baseUrl>/<Type>`, and a reference it spells absolutely under
- * `${baseUrl}/` is read back to its relative form, so
- * `https://host/baseR4/Patient/1` and `Patient/1` adopt to the same target.
- * Leave `baseUrl` unset for a source whose ids are not a FHIR server's.
- */
-interface SourceIdentity {
-  /** Absolute URI naming the source system; its id space when it has no `baseUrl`. */
-  readonly system: string
-  /** A FHIR server's root, when the source is one. */
-  readonly baseUrl?: string
-}
+import * as FhirRoot from './fhir-root.ts'
+import * as SourceIdentity from './source-identity.ts'
 
 /**
  * FHIR R4's relative-reference grammar: a resource-type token, `/`, and a
@@ -438,7 +420,7 @@ const mapReferences =
       Match.exhaustive
     )
 
-/** The `Identifier` naming a record by its key: `{ system: <id space>, value: <source id> }`. */
+/** The `Identifier` naming a record by its key: `{ system, value: <source id> }`. */
 const identifierOf = (systemUrl: URL, value: string): IdentifierType => ({
   id: null,
   extension: [],
@@ -452,8 +434,8 @@ const identifierOf = (systemUrl: URL, value: string): IdentifierType => ({
 
 /**
  * The relative `reference` rewritten to name its target's local id, keyed in
- * the id space `idSpaceOf` gives the target's type, with the target's source
- * id beside it as `Reference.identifier`; every other reference as it is.
+ * the system `source` keys the target's type in, with the target's source id
+ * beside it as `Reference.identifier`; every other reference as it is.
  *
  * @remarks
  * Rewrites apply to **any** resource-type token, not only the types this
@@ -468,7 +450,7 @@ const identifierOf = (systemUrl: URL, value: string): IdentifierType => ({
  * the target's `identifier[0]`.
  */
 const rewriteRelativeReference =
-  (idSpaceOf: IdSpace.OfType, systemUrlOf: (idSpace: IdSpace.Type) => URL) =>
+  (source: SourceIdentity.Type, urlOf: (url: string) => URL) =>
   (reference: ReferenceType): ReferenceType => {
     const match = reference.reference === null ? null : RELATIVE_REFERENCE.exec(reference.reference)
     const resourceType = match?.[1]
@@ -476,66 +458,65 @@ const rewriteRelativeReference =
     if (resourceType === undefined || sourceId === undefined) {
       return reference
     }
-    const idSpace = idSpaceOf(resourceType)
+    const system = SourceIdentity.systemFor(source, resourceType)
     return {
       ...reference,
-      reference: `${resourceType}/${localResourceId(idSpace, resourceType, sourceId)}`,
-      identifier: reference.identifier ?? identifierOf(systemUrlOf(idSpace), sourceId),
+      reference: `${resourceType}/${localResourceId(system, resourceType, sourceId)}`,
+      identifier: reference.identifier ?? identifierOf(urlOf(system), sourceId),
     }
   }
 
 /**
- * Each id space parsed once, for one adoption.
+ * `new URL`, memoised for one adoption.
  *
  * @remarks
  * `new URL` is the most expensive thing in this file, and a page of 250
- * `Observation`s carries a few thousand references — so it is paid once per
- * id space. The one instance is written into every `Identifier.system` in
- * that space, so they alias: **treat it as immutable**, and clone before
- * mutating.
+ * `Observation`s carries a few thousand references — so each system is parsed
+ * once. The one instance is written into every `Identifier.system` in that
+ * system, so they alias: **treat it as immutable**, and clone before mutating.
  *
- * An id space that is not an absolute URI throws a `TypeError` here. That
+ * A system that is not an absolute URI throws a `TypeError` here. That
  * reaches the caller as a defect rather than the typed `ParseError` a wrapped
  * `parse` advertises, deliberately: it means the source is misconfigured, not
  * that a response was bad.
  */
-const parsedOnce = (): ((idSpace: IdSpace.Type) => URL) => {
-  const urls = new Map<IdSpace.Type, URL>()
-  return (idSpace) => {
-    const known = urls.get(idSpace)
+const memoisedUrlOf = (): ((url: string) => URL) => {
+  const urls = new Map<string, URL>()
+  return (url) => {
+    const known = urls.get(url)
     if (known !== undefined) {
       return known
     }
-    const url = new URL(idSpace)
-    urls.set(idSpace, url)
-    return url
+    const parsed = new URL(url)
+    urls.set(url, parsed)
+    return parsed
   }
 }
 
-/** A decoded record and its key, less its type: the id space and source id it is adopted under. */
+/** A decoded record and its key, less its type: the system and source id it is adopted under. */
 interface ResourceWithSourceId {
-  /** The system `sourceId` belongs to. */
-  readonly idSpace: IdSpace.Type
-  /** The record's id in `idSpace`: the source's, or a digest when it gave none. */
+  /** The system `sourceId` belongs to: an absolute URI. */
+  readonly system: string
+  /** The record's id in `system`: the source's, or a digest when it gave none. */
   readonly sourceId: string
   /** The resource as decoded; its own `id` is not read. */
   readonly resource: FhirResource
 }
 
 /**
- * Re-key a decoded record under its key (id space, type, source id): derive
- * its local id from the key, record `{ system: idSpace, value: sourceId }` as
+ * Re-key a decoded record under its key (system, type, source id): derive its
+ * local id from the key, record `{ system, value: sourceId }` as
  * `identifier[0]`, and rewrite its relative `Type/id` references so they still
  * point at their targets.
  *
- * @param idSpaceOf - The source's id space for each type: where a reference's
- *   target is keyed
+ * @param source - The source the record's references resolve in: where each
+ *   reference's target is keyed
  * @returns A function from one decoded record and its key to its adopted form
  *
  * @remarks
- * A reference's target is keyed in its own type's id space in the source, not
- * the referring record's: a FHIR server's `Observation` points at
- * `<base>/Patient`. Only a relative `Type/id` is rewritten; a source that
+ * A reference's target is keyed in the system the source keys its own type
+ * in, not the referring record's: a FHIR server's `Observation` points at
+ * `<root>/Patient`. Only a relative `Type/id` is rewritten; a source that
  * spells references absolutely relativises them first ({@link adoptResource}).
  *
  * `Binary` is adopted but gets **no** identifier — FHIR R4 gives `Binary` no
@@ -547,69 +528,63 @@ interface ResourceWithSourceId {
  * is no "already adopted?" guard are all in
  * this package's `docs/Source Identity Explanation.md`.
  */
-const adoptInIdSpace = (idSpaceOf: IdSpace.OfType) => {
-  const systemUrlOf = parsedOnce()
-  const rewriteReferences = mapReferences(rewriteRelativeReference(idSpaceOf, systemUrlOf))
-  return ({ idSpace, sourceId, resource }: ResourceWithSourceId): FhirResourceWithId => {
+const adoptWithSourceId = (source: SourceIdentity.Type) => {
+  const urlOf = memoisedUrlOf()
+  const rewriteReferences = mapReferences(rewriteRelativeReference(source, urlOf))
+  return ({ system, sourceId, resource }: ResourceWithSourceId): FhirResourceWithId => {
     const rewritten = rewriteReferences(resource)
-    const id = localResourceId(idSpace, rewritten.resourceType, sourceId)
+    const id = localResourceId(system, rewritten.resourceType, sourceId)
     return rewritten.resourceType === 'Binary'
       ? { ...rewritten, id }
       : {
           ...rewritten,
           id,
-          identifier: [identifierOf(systemUrlOf(idSpace), sourceId), ...rewritten.identifier],
+          identifier: [identifierOf(urlOf(system), sourceId), ...rewritten.identifier],
         }
   }
 }
 
-/** The id space a source keys each type in: `<baseUrl>/<Type>` for a FHIR server, its `system` otherwise. */
-const idSpaceOfSource = (source: SourceIdentity): IdSpace.OfType =>
-  source.baseUrl === undefined
-    ? IdSpace.inSystem(source.system)
-    : IdSpace.inFhirServer(source.baseUrl)
-
 /**
- * `reference` with a FHIR server's absolute spelling of its own record,
- * `${baseUrl}/Type/id`, read back to the relative `Type/id`.
+ * A FHIR server's absolute references to its own records read back to
+ * relative ones ({@link FhirRoot.relativise}); another source's resource as
+ * it is.
  */
-const relativisedUnder =
-  (baseUrl: string) =>
-  (reference: ReferenceType): ReferenceType =>
-    reference.reference?.startsWith(`${baseUrl}/`) === true
-      ? { ...reference, reference: reference.reference.slice(baseUrl.length + 1) }
-      : reference
+const relativiseOwnReferences = (
+  source: SourceIdentity.Type
+): ((resource: FhirResource) => FhirResource) =>
+  SourceIdentity.$match(source, {
+    FhirServer: ({ root }) => mapReferences(FhirRoot.relativise(root)),
+    OneSystem: () => Function.identity,
+  })
 
 /**
- * Re-key a resource under this source's namespace: {@link adoptInIdSpace}, in
- * the source's own id space for a resource it gave an id, and in
- * {@link IdSpace.CONTENT_DIGEST} for one it did not.
+ * Re-key a resource under this source's namespace: {@link adoptWithSourceId},
+ * in the system the source keys its type in for a resource it gave an id, and
+ * in {@link DecodedId.CONTENT_DIGEST_SYSTEM} for one it did not.
  *
- * @param source - The system the resource was imported from
+ * @param source - The source the resource was imported from
  * @returns A function from one decoded resource to its adopted form
  *
  * @remarks
  * The resource is adopted under its `DecodedId`: its own id, or, when its
  * `id` is `null`, one generated from its content, so every adopted resource
  * has one, and a re-import of the same capture lands on the same id rather
- * than beside it. The digest is scoped to the id space the record's type has
- * in this source.
+ * than beside it. The digest is scoped to the system the record's type has in
+ * this source.
  *
  * A FHIR server's absolute references to itself are relativised first, so the
  * core only ever sees relative ones.
  */
-const adoptResource = (source: SourceIdentity) => {
-  const idSpaceOf = idSpaceOfSource(source)
-  const adopt = adoptInIdSpace(idSpaceOf)
-  const { baseUrl } = source
-  const relativise = baseUrl === undefined ? null : mapReferences(relativisedUnder(baseUrl))
+const adoptResource = (source: SourceIdentity.Type) => {
+  const adopt = adoptWithSourceId(source)
+  const relativise = relativiseOwnReferences(source)
   return (decoded: FhirResource): FhirResourceWithId => {
-    const resource = relativise === null ? decoded : relativise(decoded)
-    const ownIdSpace = idSpaceOf(resource.resourceType)
-    return DecodedId.$match(DecodedId.of(ownIdSpace, resource), {
-      FoundInSource: ({ value }) => adopt({ idSpace: ownIdSpace, sourceId: value, resource }),
+    const resource = relativise(decoded)
+    const ownSystem = SourceIdentity.systemFor(source, resource.resourceType)
+    return DecodedId.$match(DecodedId.of(ownSystem, resource), {
+      FoundInSource: ({ value }) => adopt({ system: ownSystem, sourceId: value, resource }),
       GeneratedFromContent: ({ value }) =>
-        adopt({ idSpace: IdSpace.CONTENT_DIGEST, sourceId: value, resource }),
+        adopt({ system: DecodedId.CONTENT_DIGEST_SYSTEM, sourceId: value, resource }),
     })
   }
 }
@@ -617,7 +592,7 @@ const adoptResource = (source: SourceIdentity) => {
 /**
  * Read the source's own id back off a resource {@link adoptResource} adopted.
  *
- * @param source - The system the resource was imported from
+ * @param source - The source the resource was imported from
  * @param resource - The adopted resource
  * @returns The id the source used, or `null` when there is none to read
  *
@@ -625,14 +600,14 @@ const adoptResource = (source: SourceIdentity) => {
  * `null` for a `Binary` (which carries no `identifier`), for a resource that was
  * never adopted, for one its source gave no id, and for one adopted under a
  * different source — the check is a round-trip: `identifier[0]` only counts as
- * the source id if re-deriving from it in the source's id space reproduces the
- * resource's own id.
+ * the source id if re-deriving from it in the source's system for its type
+ * reproduces the resource's own id.
  *
  * This is what a caller reads when it needs the source's id to build a
  * source-server URL: an adopted resource's `resource.id` is the local id, not
  * the remote one.
  */
-const originalIdOf = (source: SourceIdentity, resource: FhirResource): string | null => {
+const originalIdOf = (source: SourceIdentity.Type, resource: FhirResource): string | null => {
   if (resource.resourceType === 'Binary') {
     return null
   }
@@ -640,8 +615,8 @@ const originalIdOf = (source: SourceIdentity, resource: FhirResource): string | 
   if (candidate === undefined || candidate.value === null) {
     return null
   }
-  const idSpace = idSpaceOfSource(source)(resource.resourceType)
-  return localResourceId(idSpace, resource.resourceType, candidate.value) === resource.id
+  const system = SourceIdentity.systemFor(source, resource.resourceType)
+  return localResourceId(system, resource.resourceType, candidate.value) === resource.id
     ? candidate.value
     : null
 }
@@ -663,23 +638,22 @@ const originalIdOf = (source: SourceIdentity, resource: FhirResource): string | 
  * leaves it.
  */
 const adoptedReferenceOf = (
-  source: SourceIdentity,
+  source: SourceIdentity.Type,
   resourceType: string,
   originalId: string
 ): ReferenceType =>
   rewriteRelativeReference(
-    idSpaceOfSource(source),
-    parsedOnce()
+    source,
+    memoisedUrlOf()
   )({
     ...IdentifierAndReference.emptyReference,
     reference: `${resourceType}/${originalId}`,
   })
 
 export {
-  adoptInIdSpace,
   adoptResource,
+  adoptWithSourceId,
   adoptedReferenceOf,
   originalIdOf,
   type ResourceWithSourceId,
-  type SourceIdentity,
 }

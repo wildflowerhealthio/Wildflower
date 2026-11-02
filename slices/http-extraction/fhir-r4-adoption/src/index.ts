@@ -1,18 +1,19 @@
 /**
  * The FHIR R4 side of extraction: how a resource decoded from a source becomes
- * the device's own, keyed under a local id derived from its id space, its type
- * and its source id, with an id whether or not the source gave it one.
+ * the device's own, keyed under a local id derived from the system its source
+ * id belongs to, its type and that id, with an id whether or not the source
+ * gave it one.
  *
  * @packageDocumentation
  */
 export {
-  adoptInIdSpace,
   adoptResource,
+  adoptWithSourceId,
   adoptedReferenceOf,
   originalIdOf,
   type ResourceWithSourceId,
-  type SourceIdentity,
 } from './adopt-resource.ts'
 export { adoptUnderRecognizedRoot } from './adopt-under-recognized-root.ts'
 export * as DecodedId from './decoded-id.ts'
-export * as IdSpace from './id-space.ts'
+export * as FhirRoot from './fhir-root.ts'
+export * as SourceIdentity from './source-identity.ts'

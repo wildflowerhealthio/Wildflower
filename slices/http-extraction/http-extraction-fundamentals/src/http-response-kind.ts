@@ -12,12 +12,16 @@ interface RecognizedUrlData {
   /** The number routing ranks by, highest wins — see the `Specificity` tiers. */
   readonly specificity: number
   /**
-   * The namespace this response's resources key under; absent = recognized but
-   * mints no identity (a recorder records, it doesn't import). Structurally
-   * `fhir-r4-adoption`'s `SourceIdentity`, on purpose — this package stays
-   * FHIR-free, and adoption, above it, reads the shape as its own.
+   * The source this response's resources key under: a FHIR server at `root`,
+   * or a source that keys every record in the one `system`. Absent =
+   * recognized but mints no identity (a recorder records, it doesn't import).
+   * Structurally `fhir-r4-adoption`'s `SourceIdentity`, on purpose — this
+   * package stays FHIR-free, and adoption, above it, reads the shape as its
+   * own.
    */
-  readonly source?: { readonly system: string; readonly baseUrl?: string }
+  readonly source?:
+    | { readonly _tag: 'FhirServer'; readonly root: string }
+    | { readonly _tag: 'OneSystem'; readonly system: string }
 }
 
 /**

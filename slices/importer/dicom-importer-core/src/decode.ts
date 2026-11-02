@@ -6,7 +6,7 @@
  * @packageDocumentation
  */
 import { DicomHeader } from '@wildflowerhealthio/dicom'
-import { adoptResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { adoptResource, SourceIdentity } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
@@ -28,7 +28,7 @@ import type { StudyInstance } from './fhir/to-fhir.ts'
 import type { DicomSettings } from './settings.ts'
 import { DICOM_SYSTEM } from './source-system.ts'
 
-const adopt = adoptResource({ system: DICOM_SYSTEM })
+const adopt = adoptResource(SourceIdentity.OneSystem({ system: DICOM_SYSTEM }))
 
 const labelAdopted = (resource: FhirResource, key: string, title: string): DecodedFile.Resource => {
   const adopted = adopt(resource)
