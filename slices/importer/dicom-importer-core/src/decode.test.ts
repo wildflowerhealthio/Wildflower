@@ -14,9 +14,10 @@ import {
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type DecodeFunction,
+  type DecodedFileSet,
   type FileImporter,
   DecodedFile,
+  DecodedRecord,
   type FormatDecode,
   LinkableResource,
   type PickedFile,
@@ -29,7 +30,13 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { DicomHeader } from '@wildflowerhealthio/dicom'
-import { decodeStudy, studyGroupKey, studyKey } from './decode.ts'
+import {
+  decodeStudy,
+  linkToPatientAndStudy,
+  studyGroupKey,
+  studyKey,
+  withSourceFileIds,
+} from './decode.ts'
 import { dicomImporter } from './dicom-importer.ts'
 import { type DicomSettings } from './settings.ts'
 import { DICOM_SYSTEM } from './source-system.ts'
@@ -42,9 +49,8 @@ import { DICOM_SYSTEM } from './source-system.ts'
 const defaultDicomSettings: DicomSettings = { timeZone: 'America/Toronto' }
 
 /**
- * A stored source file with the given id — the shape the decode constructor hands
- * each member. Only its `id` matters here: it is what an instance's
- * `gridfsFileId` names.
+ * A stored source file with the given id — the shape the import stage hands
+ * `linkToPatientAndStudy`. Only its `id` matters here.
  */
 const sourceFileWithId = (id: string): PickedFile.SourceFile =>
   Schema.decodeSync(withMandatoryId(DocumentReference.Schema))({
@@ -56,17 +62,16 @@ const sourceFileWithId = (id: string): PickedFile.SourceFile =>
 
 /**
  * One file of a study — what the decode function hands this decode once it has
- * grouped the pick and minted the source files. The header is parsed by
- * `decodeStudy` itself, so nothing is passed alongside the bytes.
+ * grouped the pick. The header is parsed by `decodeStudy` itself, so nothing
+ * is passed alongside the bytes.
  */
 const studyFile = (
   tags: DicomTagMap,
-  { fileName = 'sample.dcm', sourceFileId = 'doc-1', index = 0 } = {}
-): DecodeFunction.WithSourceFile => ({
+  { fileName = 'sample.dcm', index = 0 } = {}
+): PickedFile.Type => ({
   id: `${index}:${fileName}`,
   fileName,
   bytes: writeDicom(tags),
-  sourceFile: sourceFileWithId(sourceFileId),
 })
 
 const SAMPLE_TAGS: DicomTagMap = {
@@ -83,9 +88,7 @@ const SAMPLE_TAGS: DicomTagMap = {
   AccessionNumber: 'ACC001',
 }
 
-const sample = (
-  overrides: DicomTagMap = {}
-): Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile> => [
+const sample = (overrides: DicomTagMap = {}): Arr.NonEmptyReadonlyArray<PickedFile.Type> => [
   studyFile({ ...SAMPLE_TAGS, ...overrides }),
 ]
 
@@ -115,7 +118,7 @@ describe('decodeStudy', () => {
     expect(keys).toEqual(['patient', 'service-request', 'imaging-study'])
   })
 
-  it('ImagingStudy instance carries its own file id as its gridfsFileId', async () => {
+  it('ImagingStudy instance carries its own pick id as its gridfsFileId', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
 
     const studyEntry = result.sections[0].resources.find((r) => r.key === 'imaging-study')
@@ -123,7 +126,7 @@ describe('decodeStudy', () => {
     if (study?.resourceType !== 'ImagingStudy') throw new Error('expected ImagingStudy')
     const instance = study.series[0].instance[0]
     expect(instance.extension).toEqual([
-      expect.objectContaining({ url: 'gridfsFileId', valueString: 'doc-1' }),
+      expect.objectContaining({ url: 'gridfsFileId', valueString: '0:sample.dcm' }),
     ])
   })
 
@@ -207,14 +210,14 @@ describe('decodeStudy', () => {
   })
 
   describe('a study spread across files', () => {
-    const twoFiles: Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile> = [
+    const twoFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type> = [
       studyFile(
         { ...SAMPLE_TAGS, SeriesInstanceUID: '1.2.3.4.5.2', SeriesNumber: 2, SOPInstanceUID: 'I2' },
-        { fileName: 'b.dcm', sourceFileId: 'doc-b', index: 0 }
+        { fileName: 'b.dcm', index: 0 }
       ),
       studyFile(
         { ...SAMPLE_TAGS, SeriesInstanceUID: '1.2.3.4.5.1', SeriesNumber: 1, SOPInstanceUID: 'I1' },
-        { fileName: 'a.dcm', sourceFileId: 'doc-a', index: 1 }
+        { fileName: 'a.dcm', index: 1 }
       ),
     ]
 
@@ -237,7 +240,7 @@ describe('decodeStudy', () => {
     })
 
     it('notes an AccessionNumber the files disagree on, and does not merge them', async () => {
-      const conflicting: Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile> = [
+      const conflicting: Arr.NonEmptyReadonlyArray<PickedFile.Type> = [
         twoFiles[0],
         studyFile(
           {
@@ -247,7 +250,7 @@ describe('decodeStudy', () => {
             SOPInstanceUID: 'I1',
             AccessionNumber: 'ACC002',
           },
-          { fileName: 'a.dcm', sourceFileId: 'doc-a', index: 1 }
+          { fileName: 'a.dcm', index: 1 }
         ),
       ]
       const result = await Effect.runPromise(decodeStudy(conflicting, defaultDicomSettings))
@@ -315,9 +318,8 @@ describe('sectionTitle', () => {
 })
 
 /**
- * The batch decode as the importer exposes it: `DecodeFunction.make` is what
- * provides the source-file context, and the source files it mints under the
- * format's real coding constants are half of what these tests are about.
+ * The batch decode as the importer exposes it, its file sets apart. The
+ * import stage over it, source files and all, is `importer-core`'s to test.
  */
 const decode = dicomImporter.decode
 
@@ -327,15 +329,31 @@ const SETTINGS: DicomSettings = { timeZone: 'America/Toronto' }
 const asBatch = (files: readonly PickedFile.NamedBytes[]): readonly PickedFile.Type[] =>
   files.map((file, index) => ({ ...file, id: `${index}:${file.fileName}` }))
 
-const run = (files: readonly PickedFile.NamedBytes[]): Promise<FormatDecode.Result<string>> =>
+const run = (files: readonly PickedFile.NamedBytes[]): Promise<FormatDecode.Decoded<string>> =>
   Effect.runPromise(decode(asBatch(files), SETTINGS))
 
-const resourcesOf = (result: FormatDecode.Result<string>): readonly DecodedFile.Resource[] =>
-  DecodedFile.resources(result.decoded)
+/** One file set's records, every one of them adopted at decode. */
+const adoptedOf = (fileSet: DecodedFileSet.Type): DecodedFile.DecodedFile => ({
+  sections: fileSet.sections.map((section) => ({
+    title: section.title,
+    resources: section.entries.map(({ key, title, record }) => ({
+      key,
+      title,
+      resource: DecodedRecord.$match(record, {
+        Adopted: ({ resource }) => resource,
+        FromSource: () => expect.fail('the DICOM decode adopts its records'),
+      }),
+    })),
+  })),
+  notes: fileSet.notes,
+})
+
+const resourcesOf = (result: FormatDecode.Decoded<string>): readonly DecodedFile.Resource[] =>
+  result.fileSets.flatMap((fileSet) => DecodedFile.resources(adoptedOf(fileSet)))
 
 /** Every decoded resource of one type, across every section. */
 const of = <K extends FhirResourceWithId['resourceType']>(
-  result: FormatDecode.Result<string>,
+  result: FormatDecode.Decoded<string>,
   resourceType: K
 ): readonly Extract<FhirResourceWithId, { readonly resourceType: K }>[] =>
   resourcesOf(result)
@@ -345,16 +363,21 @@ const of = <K extends FhirResourceWithId['resourceType']>(
         resource.resourceType === resourceType
     )
 
-const studiesOf = (result: FormatDecode.Result<string>): readonly ImagingStudy.Type[] =>
+const studiesOf = (result: FormatDecode.Decoded<string>): readonly ImagingStudy.Type[] =>
   of(result, 'ImagingStudy')
 
-const sourceFilesOf = (result: FormatDecode.Result<string>): readonly DocumentReference.Type[] =>
-  of(result, 'DocumentReference')
+/** The sections a study was decoded into. */
+const studySections = (result: FormatDecode.Decoded<string>): readonly DecodedFile.Section[] =>
+  result.fileSets
+    .flatMap((fileSet) => adoptedOf(fileSet).sections)
+    .filter((section) => section.resources.some((one) => one.key.endsWith('imaging-study')))
 
-/** The sections a study was decoded into — the source file sections are the rest. */
-const studySections = (result: FormatDecode.Result<string>): readonly DecodedFile.Section[] =>
-  result.decoded.sections.filter((section) =>
-    section.resources.some((one) => one.key.endsWith('imaging-study'))
+/** Each file set's source file as `linkToPatientAndStudy` links it, minted under `doc`. */
+const linkedSourceFilesOf = (
+  result: FormatDecode.Decoded<string>
+): readonly PickedFile.SourceFile[] =>
+  result.fileSets.map((fileSet) =>
+    linkToPatientAndStudy(sourceFileWithId('doc'), adoptedOf(fileSet))
   )
 
 /** A study fixture's files, ready to pick. */
@@ -394,17 +417,14 @@ describe('the DICOM batch decode', () => {
     expect(studySections(result)).toHaveLength(1)
   })
 
-  it('mints one source file per file, all filed under the patient and related to the study', async () => {
+  it('links each source file to the patient and the study its set decoded to', async () => {
     const result = await run([
       file('1', { SOPInstanceUID: 'I1', InstanceNumber: 1 }),
       file('2', { SOPInstanceUID: 'I2', InstanceNumber: 2 }),
     ])
-    const sourceFiles = sourceFilesOf(result)
-    expect(sourceFiles).toHaveLength(2)
-
     const [study] = studiesOf(result)
     const [patient] = of(result, 'Patient')
-    for (const sourceFile of sourceFiles) {
+    for (const sourceFile of linkedSourceFilesOf(result)) {
       expect(sourceFile.subject?.reference).toBe(`Patient/${patient.id}`)
       expect(sourceFile.context?.related.map((one) => one.reference)).toEqual([
         `ImagingStudy/${study.id}`,
@@ -412,30 +432,22 @@ describe('the DICOM batch decode', () => {
     }
   })
 
-  it('lists the source files in one "Source files" section ahead of the study', async () => {
-    const result = await run([
-      file('1', { SOPInstanceUID: 'I1' }),
-      file('2', { SOPInstanceUID: 'I2' }),
-    ])
-    const [first] = result.decoded.sections
-    expect(first.title).toBe('Source files')
-    expect(first.resources.map((one) => one.key)).toEqual([
-      '0:1/source-file/1',
-      '1:2/source-file/2',
-    ])
-  })
-
-  it('gives each instance the source file of its own file', async () => {
-    const result = await run([
+  it("finishes each instance's gridfsFileId as the source file of its own file", async () => {
+    const files = asBatch([
       file('1', { SOPInstanceUID: 'I1', InstanceNumber: 1 }),
       file('2', { SOPInstanceUID: 'I2', InstanceNumber: 2 }),
     ])
-    const sourceFileIds = sourceFilesOf(result).map((one) => one.id)
-    const [study] = studiesOf(result)
+    const result = await Effect.runPromise(decode(files, SETTINGS))
+    const sourceFileIds = new Map(files.map((one) => [one.id, `doc-${one.fileName}`]))
+    const [study] = of(result, 'ImagingStudy').map((one) => withSourceFileIds(one, sourceFileIds))
+    if (study?.resourceType !== 'ImagingStudy') throw expect.fail('expected an ImagingStudy')
     const instanceFileIds = study.series.flatMap((series) =>
-      series.instance.map((instance) => instance.extension[0]?.valueString)
+      series.instance.map((instance) => [instance.uid, instance.extension[0]?.valueString])
     )
-    expect(new Set(instanceFileIds)).toEqual(new Set(sourceFileIds))
+    expect(instanceFileIds).toEqual([
+      ['I1', 'doc-1'],
+      ['I2', 'doc-2'],
+    ])
   })
 
   it('splits a pick spanning two studies into two file sets', async () => {
@@ -463,7 +475,7 @@ describe('the DICOM batch decode', () => {
     expect(new Set(studies.map((one) => one.subject.reference)).size).toBe(2)
 
     const studyById = new Map(studies.map((one) => [`ImagingStudy/${one.id}`, one]))
-    for (const sourceFile of sourceFilesOf(result)) {
+    for (const sourceFile of linkedSourceFilesOf(result)) {
       const [related] = sourceFile.context?.related.map((one) => one.reference) ?? []
       expect(studyById.get(related ?? '')?.subject.reference).toBe(sourceFile.subject?.reference)
     }
@@ -548,25 +560,7 @@ describe('the DICOM batch decode', () => {
     const files = [file('1', { SOPInstanceUID: 'I1' }), file('2', { SOPInstanceUID: 'I2' })]
     const result = await Effect.runPromise(decode(asBatch(files), { timeZone: 'Mars/Olympus' }))
     expect(result.unreadableFiles).toHaveLength(2)
-    expect(result.decoded.sections).toEqual([])
-  })
-
-  it('stamps every resource of a study with the smallest of its source file ids', async () => {
-    const result = await run([
-      file('1', { SOPInstanceUID: 'I1', InstanceNumber: 1 }),
-      file('2', { SOPInstanceUID: 'I2', InstanceNumber: 2 }),
-    ])
-    const smallest = sourceFilesOf(result)
-      .map((one) => one.id ?? '')
-      .toSorted((left, right) => left.localeCompare(right))[0]
-    // The source file rows are the set's own section, prepended after the stamp —
-    // what carries a `meta.source` is what was read *out of* the files.
-    const stamps = new Set(
-      resourcesOf(result)
-        .filter((entry) => entry.resource.resourceType !== 'DocumentReference')
-        .map((entry) => entry.resource.meta?.source)
-    )
-    expect(stamps).toEqual(new Set([`DocumentReference/${smallest}`]))
+    expect(result.fileSets).toEqual([])
   })
 
   describe('over a generated study', () => {
@@ -615,12 +609,20 @@ describe('the DICOM batch decode', () => {
           const files = picksOf(fixture)
           const forward = await run(files)
           const reversed = await run(files.toReversed())
-          const bodies = (result: FormatDecode.Result<string>): readonly unknown[] =>
-            resourcesOf(result)
-              .map((entry) => entry.resource)
-              .filter((resource) => resource.resourceType !== 'DocumentReference')
+          // Each instance's gridfsFileId as the import finishes it: the
+          // source file of its own file, whatever slot it was picked in.
+          const bodies = (
+            picks: readonly PickedFile.NamedBytes[],
+            result: FormatDecode.Decoded<string>
+          ): readonly unknown[] => {
+            const sourceFileIds = new Map(
+              asBatch(picks).map((one) => [one.id, `doc-${one.fileName}`])
+            )
+            return resourcesOf(result)
+              .map((entry) => withSourceFileIds(entry.resource, sourceFileIds))
               .toSorted((left, right) => (left.id ?? '').localeCompare(right.id ?? ''))
-          expect(bodies(reversed)).toEqual(bodies(forward))
+          }
+          expect(bodies(files.toReversed(), reversed)).toEqual(bodies(files, forward))
         }),
         { numRuns: numRunsFor({ base: 20 }) }
       )

@@ -1,11 +1,15 @@
 import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
-import { DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
+import {
+  DecodedFile,
+  DecodeFunction,
+  type FormatDecode,
+  type PickedFile,
+} from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor } from '@wildflowerhealthio/positioned-text'
-import { Effect, Layer, ParseResult, Schema } from 'effect'
+import { Array as Arr, Effect, Layer, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -17,6 +21,7 @@ import {
   redecodeFormat,
 } from './read-batch.ts'
 import { defaultFormatSettings, type FormatKind, formatKinds, formatRegistry } from './registry.ts'
+import { isSourceFileOf } from './resolve-mentions.ts'
 
 /**
  * The batch read over a fake registry whose formats claim files by name
@@ -57,57 +62,65 @@ const reviewKeys = (result: FormatDecode.Result<FormatKind>): readonly string[] 
 const fakeResource = (id: string): FhirResourceWithId =>
   Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
-/** A fake decode: aggregates files into one FormatDecodeResult. A file whose first byte is 0 is unreadable. */
-const fakeDecode =
-  <K extends FormatKind>(kind: K) =>
-  (files: readonly PickedFile.Type[], settings: unknown): Effect.Effect<FormatDecode.Result<K>> =>
-    Effect.succeed({
-      id: FormatDecode.makeId(kind, files),
-      title: files.map((f) => f.fileName).join(', '),
-      files,
-      format: kind,
-      decoded: {
-        sections: files
-          .filter((file) => file.bytes[0] !== 0)
-          .map((file) => ({
-            title: `${kind}:${JSON.stringify(settings)}`,
-            resources: [
+/** A fake decode: one section per file, under the settings. A file whose first byte is 0 is unreadable. */
+const fakeDecode = <K extends FormatKind>(kind: K): DecodeFunction.Type<unknown, K> =>
+  DecodeFunction.make({
+    format: kind,
+    decodeFileSet: ([file], settings) =>
+      file.bytes[0] === 0
+        ? Effect.fail(
+            new ParseResult.ParseError({
+              issue: new ParseResult.Type(Schema.Unknown.ast, file.fileName, 'zero'),
+            })
+          )
+        : Effect.succeed({
+            sections: [
               {
-                key: `r:${file.fileName}`,
-                title: `Patient/${kind}-${file.fileName}`,
-                resource: fakeResource(`${kind}-${file.fileName}`),
+                title: `${kind}:${JSON.stringify(settings)}`,
+                resources: [
+                  {
+                    key: `r:${file.fileName}`,
+                    title: `Patient/${kind}-${file.fileName}`,
+                    resource: fakeResource(`${kind}-${file.fileName}`),
+                  },
+                ],
               },
             ],
-          })),
-        notes: [],
-      },
-      unreadableFiles: files
-        .filter((file) => file.bytes[0] === 0)
-        .map((file) => ({
-          id: FormatDecode.makeId(kind, [file]),
-          title: file.fileName,
-          pickedFile: file,
-          error: new ParseResult.ParseError({
-            issue: new ParseResult.Type(Schema.Unknown.ast, file.fileName, 'zero'),
+            notes: [],
           }),
-        })),
-    })
+  })
+
+/** Source-file constants for a fake format. */
+const sourceFileFormatOf = (kind: FormatKind): PickedFile.FormatValue => ({
+  coding: { system: 'https://example.test/fhir/CodeSystem/source-file', code: kind },
+  contentType: 'application/octet-stream',
+  descriptionPrefix: `${kind}: `,
+})
+
+/** The sections a format's decode read out of its files, its source file sections left out. */
+const extractedSections = (
+  result: FormatDecode.Result<FormatKind>
+): readonly DecodedFile.Section[] =>
+  result.decoded.sections.filter((section) => section.title !== 'Source file')
 
 const fakeRegistry: ReadRegistry<never> = {
   har: {
     format: 'har',
     detect: (_b: Uint8Array, name: string) => kindOf(name) === 'har',
     decode: fakeDecode('har'),
+    sourceFileFormat: sourceFileFormatOf('har'),
   },
   'lifelabs-pdf': {
     format: 'lifelabs-pdf',
     detect: (_b: Uint8Array, name: string) => kindOf(name) === 'lifelabs-pdf',
     decode: fakeDecode('lifelabs-pdf'),
+    sourceFileFormat: sourceFileFormatOf('lifelabs-pdf'),
   },
   dicom: {
     format: 'dicom',
     detect: (_b: Uint8Array, name: string) => kindOf(name) === 'dicom',
     decode: fakeDecode('dicom'),
+    sourceFileFormat: sourceFileFormatOf('dicom'),
   },
 }
 
@@ -157,7 +170,7 @@ describe('readBatch', () => {
           expect(result.format).toBe(kind)
           const expectedReadable = expectedFiles.filter((f) => f.bytes[0] !== 0)
           const expectedUnreadable = expectedFiles.filter((f) => f.bytes[0] === 0)
-          expect(result.decoded.sections.length).toBe(expectedReadable.length)
+          expect(extractedSections(result).length).toBe(expectedReadable.length)
           expect(result.unreadableFiles.length).toBe(expectedUnreadable.length)
         }
         const expectedUnrecognized = picks.filter((pick) => kindOf(pick.fileName) === undefined)
@@ -175,7 +188,9 @@ describe('readBatch', () => {
     const batch = await Effect.runPromise(
       readBatch(fakeRegistry, settings, [{ fileName: 'har-a', bytes: new Uint8Array([1]) }])
     )
-    expect(batch.formats.har.decoded.sections[0]?.title).toBe(`har:${JSON.stringify(settings.har)}`)
+    expect(extractedSections(batch.formats.har)[0]?.title).toBe(
+      `har:${JSON.stringify(settings.har)}`
+    )
   })
 })
 
@@ -205,7 +220,7 @@ describe('redecodeFormat', () => {
               before.formats[kind].unreadableFiles.map((file) => file.id)
             )
             expect(reviewKeys(after.formats[kind])).toEqual(reviewKeys(before.formats[kind]))
-            for (const section of after.formats[kind].decoded.sections) {
+            for (const section of extractedSections(after.formats[kind])) {
               expect(section.title).toBe(`${changed}:${JSON.stringify(settings[changed])}`)
             }
           }
@@ -257,6 +272,76 @@ describe('readBatch over the real registry', () => {
     expect(batch.formats.dicom.decoded.sections.length).toBeGreaterThan(1)
     expect(batch.unrecognizedFiles.length).toBe(1)
     expect(batch.unrecognizedFiles[0]?.title).toBe('notes.txt')
+  })
+})
+
+/** One file of a two-file DICOM study, named by its instance. */
+const studyFile = (instance: number): PickedFile.NamedBytes => ({
+  fileName: `scan-${instance}.dcm`,
+  bytes: writeDicom({
+    StudyInstanceUID: '1.2.3.4.5',
+    SeriesInstanceUID: '1.2.3.4.5.1',
+    SOPInstanceUID: `1.2.3.4.5.1.${instance}`,
+    InstanceNumber: instance,
+    SOPClassUID: '1.2.840.10008.5.1.4.1.1.2',
+    PatientName: { family: 'Doe', given: 'John', text: 'Doe John' },
+    PatientID: 'P001',
+    Modality: 'CT',
+  }),
+})
+
+describe('a DICOM study read over the real registry', () => {
+  const readStudy = async (
+    picks: readonly PickedFile.NamedBytes[]
+  ): Promise<readonly FhirResourceWithId[]> => {
+    const batch = await Effect.runPromise(
+      readBatch(formatRegistry, defaultFormatSettings, picks).pipe(
+        Effect.provide(extractorReadingBlankPage)
+      )
+    )
+    expect(batch.formats.dicom.unreadableFiles).toEqual([])
+    return DecodedFile.resources(batch.formats.dicom.decoded).map((entry) => entry.resource)
+  }
+
+  it("files every source file under the study's patient, each instance naming its own, every record stamped with the smallest", async () => {
+    const resources = await readStudy([studyFile(1), studyFile(2)])
+    const sourceFiles = resources.filter((one) => isSourceFileOf('dicom', one))
+    const [patient] = resources.filter((one) => one.resourceType === 'Patient')
+    const [study] = resources.filter((one) => one.resourceType === 'ImagingStudy')
+    if (study?.resourceType !== 'ImagingStudy') throw expect.fail('expected an ImagingStudy')
+    const sourceFileIdByName = new Map(
+      sourceFiles.map((one) => [
+        one.resourceType === 'DocumentReference' ? one.content[0]?.attachment.title : null,
+        one.id,
+      ])
+    )
+
+    expect(
+      sourceFiles.map((one) =>
+        one.resourceType === 'DocumentReference'
+          ? [one.subject?.reference, one.context?.related.map((related) => related.reference)]
+          : []
+      )
+    ).toEqual(Arr.makeBy(2, () => [`Patient/${patient?.id}`, [`ImagingStudy/${study.id}`]]))
+    expect(study.series[0]?.instance.map((instance) => instance.extension[0]?.valueString)).toEqual(
+      [sourceFileIdByName.get('scan-1.dcm'), sourceFileIdByName.get('scan-2.dcm')]
+    )
+    const [smallest] = sourceFiles.map((one) => one.id).toSorted()
+    expect(
+      new Set(
+        resources.filter((one) => !isSourceFileOf('dicom', one)).map((one) => one.meta?.source)
+      )
+    ).toEqual(new Set([`DocumentReference/${smallest}`]))
+  })
+
+  it('reads the same study, picked in any order, to the same records', async () => {
+    const recordsOf = async (
+      picks: readonly PickedFile.NamedBytes[]
+    ): Promise<readonly FhirResourceWithId[]> =>
+      (await readStudy(picks)).filter((one) => !isSourceFileOf('dicom', one))
+    expect(await recordsOf([studyFile(2), studyFile(1)])).toEqual(
+      await recordsOf([studyFile(1), studyFile(2)])
+    )
   })
 })
 

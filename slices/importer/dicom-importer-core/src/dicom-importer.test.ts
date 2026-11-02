@@ -1,12 +1,8 @@
-import { DicomHeader } from '@wildflowerhealthio/dicom'
-import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
-import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
-import { PickedFile, type FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
-import { DateTime, Effect, Either, Option, Schema } from 'effect'
+import { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { DateTime, Effect, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { dicomImporter } from './dicom-importer.ts'
-import { patientOriginalId } from './fhir/to-fhir.ts'
 import { defaultDicomSettings } from './settings.ts'
 import {
   DICOM_SOURCE_FILE_CODE,
@@ -62,17 +58,6 @@ describe('DICOM source file coding', () => {
   })
 })
 
-const sampleDicomBytes = (): Uint8Array =>
-  writeDicom({
-    StudyInstanceUID: '1.2.3.4.5',
-    SeriesInstanceUID: '1.2.3.4.5.1',
-    SOPInstanceUID: '1.2.3.4.5.1.1',
-    SOPClassUID: '1.2.840.10008.5.1.4.1.1.2',
-    PatientName: { family: 'Doe', given: 'John', text: 'Doe John' },
-    PatientID: 'P001',
-    Modality: 'CT',
-  })
-
 describe('dicomImporter', () => {
   it('has the dicom format tag', () => {
     expect(dicomImporter.format).toBe('dicom')
@@ -101,80 +86,6 @@ describe('dicomImporter', () => {
   })
 
   describe('decode', () => {
-    /** The `Patient/<id>` reference the header's patient identity derives. */
-    const headerPatientReference = (bytes: Uint8Array): string => {
-      const parsed = DicomHeader.tryFromDicomFile(bytes)
-      if (Either.isLeft(parsed)) throw new Error(parsed.left.reason)
-      const originalId = patientOriginalId(parsed.right)
-      if (originalId === undefined) throw new Error('expected a patient identity in the header')
-      return `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', originalId)}`
-    }
-
-    const readStudy = async (file: PickedFile.Type): Promise<FormatDecode.Result<string>> => {
-      const result = await Effect.runPromise(dicomImporter.decode([file], defaultDicomSettings))
-      if (result.unreadableFiles.length > 0) throw new Error('expected a readable result')
-      return result
-    }
-
-    /** The one id every resource of a result must agree on: its source file's. */
-    const sourceFileIdOfStudy = (result: FormatDecode.Result<string>): string => {
-      const [section] = result.decoded.sections
-      expect(section.title).toBe('Source file')
-      expect(section.resources).toHaveLength(1)
-      const [row] = section.resources
-      expect(row.key).toBe('0:sample.dcm/source-file/sample.dcm')
-      expect(row.resource.resourceType).toBe('DocumentReference')
-      const { id } = row.resource
-      if (id === null) throw new Error('expected a minted source file id')
-      return id
-    }
-
-    const imagingStudyInstanceId = (result: FormatDecode.Result<string>): string | undefined => {
-      for (const section of result.decoded.sections) {
-        for (const { resource } of section.resources) {
-          if (resource.resourceType !== 'ImagingStudy') continue
-          const [extension] = resource.series[0].instance[0].extension
-          expect(extension.url).toBe('gridfsFileId')
-          return extension.valueString ?? undefined
-        }
-      }
-      return undefined
-    }
-
-    it('mints a source file subject to the header-derived Patient', async () => {
-      const bytes = sampleDicomBytes()
-      const study = await readStudy({ id: '0:sample.dcm', fileName: 'sample.dcm', bytes })
-      const [section] = study.decoded.sections
-      expect(section.title).toBe('Source file')
-      const [row] = section.resources
-      expect(row.key).toBe('0:sample.dcm/source-file/sample.dcm')
-      if (row.resource.resourceType !== 'DocumentReference')
-        throw new Error('expected a source file')
-      expect(row.resource.subject?.reference).toBe(headerPatientReference(bytes))
-    })
-
-    it('stamps every extracted resource, and the ImagingStudy instance, with that one id', async () => {
-      const study = await readStudy({
-        id: '0:sample.dcm',
-        fileName: 'sample.dcm',
-        bytes: sampleDicomBytes(),
-      })
-      const id = sourceFileIdOfStudy(study)
-      const extracted = study.decoded.sections.slice(1).flatMap((section) => section.resources)
-      expect(extracted.length).toBeGreaterThan(0)
-      for (const { resource } of extracted) {
-        expect(resource.meta?.source).toBe(`DocumentReference/${id}`)
-      }
-      expect(imagingStudyInstanceId(study)).toBe(id)
-    })
-
-    it('mints the same source file id for the same file on every decode', async () => {
-      const bytes = sampleDicomBytes()
-      const first = await readStudy({ id: '0:sample.dcm', fileName: 'sample.dcm', bytes })
-      const second = await readStudy({ id: '0:sample.dcm', fileName: 'sample.dcm', bytes })
-      expect(sourceFileIdOfStudy(second)).toBe(sourceFileIdOfStudy(first))
-    })
-
     it('collects an unreadable file for bytes that are not DICOM', async () => {
       const result = await Effect.runPromise(
         dicomImporter.decode(
@@ -188,7 +99,7 @@ describe('dicomImporter', () => {
           defaultDicomSettings
         )
       )
-      expect(result.decoded.sections).toHaveLength(0)
+      expect(result.fileSets).toHaveLength(0)
       expect(result.unreadableFiles).toHaveLength(1)
     })
   })

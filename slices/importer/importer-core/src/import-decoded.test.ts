@@ -612,6 +612,14 @@ const importedRecords = async (
   )
 }
 
+/** The ids of the source files `decoded` imports to. */
+const importedSourceFileIds = async (
+  decoded: FormatDecode.Decoded<typeof testFormat>
+): Promise<readonly string[]> => {
+  const result = await Effect.runPromise(importDecoded({ sourceFileFormat }, decoded))
+  return (result.decoded.sections[0]?.resources ?? []).map((entry) => entry.resource.id)
+}
+
 describe('the records the import adopts', () => {
   it('adopts a FromSource record under its key, its references keyed in its section family', async () => {
     const family = SystemFamily.FixedAcrossResourceTypes({ system: SOURCE_SYSTEM })
@@ -708,11 +716,3 @@ describe('the records the import adopts', () => {
     expect(Exit.isFailure(exit) && Cause.isDie(exit.cause)).toBe(true)
   })
 })
-
-/** The ids of the source files `decoded` imports to. */
-const importedSourceFileIds = async (
-  decoded: FormatDecode.Decoded<typeof testFormat>
-): Promise<readonly string[]> => {
-  const result = await Effect.runPromise(importDecoded({ sourceFileFormat }, decoded))
-  return (result.decoded.sections[0]?.resources ?? []).map((entry) => entry.resource.id)
-}

@@ -1,4 +1,4 @@
-import { PickedFile, DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
+import { PickedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
 import { Effect, Layer, ParseResult, Schema } from 'effect'
@@ -54,19 +54,8 @@ const extractorRefusing: Layer.Layer<PositionedTextExtractor> = Layer.succeed(
   { extract: () => Effect.fail(new UnreadablePdf({ cause: new Error('Invalid PDF structure.') })) }
 )
 
-const readDecoded = (
-  result: FormatDecode.Result<string>
-): FormatDecode.Result<string>['decoded'] => {
-  if (result.unreadableFiles.length > 0) {
-    throw new Error(
-      `expected a readable result, got ${result.unreadableFiles.length} unreadable files`
-    )
-  }
-  return result.decoded
-}
-
 describe('lifeLabsPdfImporter decode', () => {
-  it('property: a pick is reviewed with its minted source file, and every resource points at it', async () => {
+  it('property: a pick is one file set of adopted records, keyed under the pick', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
@@ -77,24 +66,21 @@ describe('lifeLabsPdfImporter decode', () => {
             bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
           }
 
-          const decoded = readDecoded(
-            await Effect.runPromise(
-              lifeLabsPdfImporter
-                .decode([file], SETTINGS)
-                .pipe(Effect.provide(extractorPrinting(reports)))
-            )
+          const decoded = await Effect.runPromise(
+            lifeLabsPdfImporter
+              .decode([file], SETTINGS)
+              .pipe(Effect.provide(extractorPrinting(reports)))
           )
 
-          const [sourceSection] = decoded.sections
-          expect(sourceSection?.title).toBe('Source file')
-          const sourceRow = sourceSection?.resources[0]
-          expect(sourceSection?.resources).toHaveLength(1)
-          expect(sourceRow?.key).toBe(`${FormatDecode.keyPrefix(file)}source-file/${file.fileName}`)
-          expect(sourceRow?.resource.resourceType).toBe('DocumentReference')
-          const sourceId = sourceRow?.resource.id
-          expect(sourceId).toEqual(expect.any(String))
-          for (const item of DecodedFile.resources(decoded).slice(1)) {
-            expect(item.resource.meta?.source).toBe(`DocumentReference/${sourceId}`)
+          expect(decoded.unreadableFiles).toEqual([])
+          expect(decoded.fileSets.map((fileSet) => fileSet.members)).toEqual([[file]])
+          const entries = decoded.fileSets.flatMap((fileSet) =>
+            fileSet.sections.flatMap((section) => section.entries)
+          )
+          expect(entries.length).toBeGreaterThan(0)
+          for (const { key, record } of entries) {
+            expect(key.startsWith(FormatDecode.keyPrefix(file))).toBe(true)
+            expect(record._tag).toBe('Adopted')
           }
         }
       ),
@@ -115,7 +101,7 @@ describe('lifeLabsPdfImporter decode', () => {
         .pipe(Effect.provide(extractorRefusing))
     )
 
-    expect(result.decoded.sections).toHaveLength(0)
+    expect(result.fileSets).toHaveLength(0)
     expect(result.unreadableFiles).toHaveLength(1)
     const [unreadable] = result.unreadableFiles
     expect(unreadable?.title).toBe(file.fileName)

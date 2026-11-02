@@ -85,10 +85,9 @@ const minimalHeader = (overrides: Partial<DicomHeader.Type> = {}): DicomHeader.T
  * about one header's tags, which a one-instance study states exactly as a
  * single file used to; the study-level cases below build sets of several.
  */
-const oneFileStudy = (
-  header: DicomHeader.Type,
-  sourceFileId?: string
-): readonly StudyInstance[] => [{ header, sourceFileId }]
+const oneFileStudy = (header: DicomHeader.Type, fileId?: string): readonly StudyInstance[] => [
+  { header, fileId },
+]
 
 describe('toFhirResources', () => {
   it('produces deterministic ids from the same tags (property)', () => {
@@ -167,7 +166,7 @@ describe('toFhirResources', () => {
     expect(study.basedOn).toEqual([])
   })
 
-  it('ImagingStudy instance carries a gridfsFileId extension when a source file id is given', async () => {
+  it('ImagingStudy instance carries a gridfsFileId extension when a file id is given', async () => {
     const resources = await Effect.runPromise(
       toFhirResources(oneFileStudy(minimalHeader(), 'doc-ref-id-123'), SETTINGS)
     )
@@ -180,7 +179,7 @@ describe('toFhirResources', () => {
     ])
   })
 
-  it('ImagingStudy instance has no extension when no source file id is given', async () => {
+  it('ImagingStudy instance has no extension when no file id is given', async () => {
     const resources = await Effect.runPromise(
       toFhirResources(oneFileStudy(minimalHeader()), SETTINGS)
     )
@@ -408,10 +407,10 @@ describe('fhirDateTime', () => {
  * A study spread across files: the same study and patient in every header,
  * differing only in what a file legitimately differs in.
  */
-const instanceOf = (
-  overrides: Partial<DicomHeader.Type>,
-  sourceFileId?: string
-): StudyInstance => ({ header: minimalHeader(overrides), sourceFileId })
+const instanceOf = (overrides: Partial<DicomHeader.Type>, fileId?: string): StudyInstance => ({
+  header: minimalHeader(overrides),
+  fileId,
+})
 
 describe('toFhirResources over a study of several files', () => {
   const twoSeries: readonly StudyInstance[] = [
@@ -602,6 +601,6 @@ describe('studySeries', () => {
       instanceOf({ sopInstanceUid: 'I1', instanceNumber: 1 }, 'doc-b'),
       instanceOf({ sopInstanceUid: 'I1', instanceNumber: 1 }, 'doc-a'),
     ]
-    expect(orderedInstances(instances).map((one) => one.sourceFileId)).toEqual(['doc-a', 'doc-b'])
+    expect(orderedInstances(instances).map((one) => one.fileId)).toEqual(['doc-a', 'doc-b'])
   })
 })

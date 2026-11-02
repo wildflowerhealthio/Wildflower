@@ -36,6 +36,7 @@
     "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/har-importer-core": "workspace:*",
     "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/importer-core": "workspace:*",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/medication-core": "workspace:*",

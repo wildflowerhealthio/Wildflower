@@ -9,6 +9,7 @@ import type {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { defaultHarSettings, harImporter } from '@wildflowerhealthio/har-importer-core'
+import { importDecoded } from '@wildflowerhealthio/importer-core'
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
@@ -65,14 +66,18 @@ interface Imported {
   readonly patients: readonly Patient.Type[]
 }
 
-/** `har` through `harImporter.decode`, as one picked file. */
+/** `har` through the HAR importer and the import stage, as one picked file. */
 const importHar = async (har: string): Promise<Imported> => {
   const picked: PickedFile.Type = {
     id: '0:rexall.har',
     fileName: 'rexall.har',
     bytes: new TextEncoder().encode(har),
   }
-  const result = await Effect.runPromise(harImporter.decode([picked], defaultHarSettings))
+  const result = await Effect.runPromise(
+    harImporter
+      .decode([picked], defaultHarSettings)
+      .pipe(Effect.flatMap((decoded) => importDecoded(harImporter, decoded)))
+  )
   const resources = result.decoded.sections
     .filter((section) => section.title !== 'Source file')
     .flatMap((section) => section.resources.map((entry) => entry.resource))
