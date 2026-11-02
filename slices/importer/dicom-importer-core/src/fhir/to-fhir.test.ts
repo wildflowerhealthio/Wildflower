@@ -85,9 +85,7 @@ const minimalHeader = (overrides: Partial<DicomHeader.Type> = {}): DicomHeader.T
  * about one header's tags, which a one-instance study states exactly as a
  * single file used to; the study-level cases below build sets of several.
  */
-const oneFileStudy = (header: DicomHeader.Type, fileId?: string): readonly StudyInstance[] => [
-  { header, fileId },
-]
+const oneFileStudy = (header: DicomHeader.Type): readonly StudyInstance[] => [{ header }]
 
 describe('toFhirResources', () => {
   it('produces deterministic ids from the same tags (property)', () => {
@@ -166,20 +164,7 @@ describe('toFhirResources', () => {
     expect(study.basedOn).toEqual([])
   })
 
-  it('ImagingStudy instance carries a gridfsFileId extension when a file id is given', async () => {
-    const resources = await Effect.runPromise(
-      toFhirResources(oneFileStudy(minimalHeader(), 'doc-ref-id-123'), SETTINGS)
-    )
-    const study = resources.find((r) => r.resourceType === 'ImagingStudy')
-    expect(study).toBeDefined()
-    if (study?.resourceType !== 'ImagingStudy') return
-    const instance = study.series[0].instance[0]
-    expect(instance.extension).toEqual([
-      expect.objectContaining({ url: 'gridfsFileId', valueString: 'doc-ref-id-123' }),
-    ])
-  })
-
-  it('ImagingStudy instance has no extension when no file id is given', async () => {
+  it('ImagingStudy instance has no extension', async () => {
     const resources = await Effect.runPromise(
       toFhirResources(oneFileStudy(minimalHeader()), SETTINGS)
     )
@@ -407,25 +392,30 @@ describe('fhirDateTime', () => {
  * A study spread across files: the same study and patient in every header,
  * differing only in what a file legitimately differs in.
  */
-const instanceOf = (overrides: Partial<DicomHeader.Type>, fileId?: string): StudyInstance => ({
+const instanceOf = (overrides: Partial<DicomHeader.Type>): StudyInstance => ({
   header: minimalHeader(overrides),
-  fileId,
 })
 
 describe('toFhirResources over a study of several files', () => {
   const twoSeries: readonly StudyInstance[] = [
-    instanceOf(
-      { seriesInstanceUid: 'S2', seriesNumber: 2, sopInstanceUid: 'I3', instanceNumber: 1 },
-      'doc-3'
-    ),
-    instanceOf(
-      { seriesInstanceUid: 'S1', seriesNumber: 1, sopInstanceUid: 'I2', instanceNumber: 2 },
-      'doc-2'
-    ),
-    instanceOf(
-      { seriesInstanceUid: 'S1', seriesNumber: 1, sopInstanceUid: 'I1', instanceNumber: 1 },
-      'doc-1'
-    ),
+    instanceOf({
+      seriesInstanceUid: 'S2',
+      seriesNumber: 2,
+      sopInstanceUid: 'I3',
+      instanceNumber: 1,
+    }),
+    instanceOf({
+      seriesInstanceUid: 'S1',
+      seriesNumber: 1,
+      sopInstanceUid: 'I2',
+      instanceNumber: 2,
+    }),
+    instanceOf({
+      seriesInstanceUid: 'S1',
+      seriesNumber: 1,
+      sopInstanceUid: 'I1',
+      instanceNumber: 1,
+    }),
   ]
 
   const studyOf = async (
@@ -451,18 +441,6 @@ describe('toFhirResources over a study of several files', () => {
     expect(study.series.map((one) => one.uid)).toEqual(['S1', 'S2'])
     expect(study.series[0].instance.map((one) => one.uid)).toEqual(['I1', 'I2'])
     expect(study.series[1].instance.map((one) => one.uid)).toEqual(['I3'])
-  })
-
-  it('gives each instance the gridfsFileId of its own file', async () => {
-    const study = await studyOf(twoSeries)
-    const extensionsByUid = study.series.flatMap((series) =>
-      series.instance.map((instance) => [instance.uid, instance.extension[0]?.valueString])
-    )
-    expect(extensionsByUid).toEqual([
-      ['I1', 'doc-1'],
-      ['I2', 'doc-2'],
-      ['I3', 'doc-3'],
-    ])
   })
 
   it('carries every distinct modality of the study', async () => {
@@ -538,15 +516,12 @@ describe('toFhirResources over a study of several files', () => {
         fc.uniqueArray(fc.integer({ min: 1, max: 6 }), { minLength: 2, maxLength: 6 }),
         async (instanceNumbers) => {
           const instances = instanceNumbers.map((number) =>
-            instanceOf(
-              {
-                seriesInstanceUid: `S${number % 2}`,
-                seriesNumber: number % 2,
-                sopInstanceUid: `I${number}`,
-                instanceNumber: number,
-              },
-              `doc-${number}`
-            )
+            instanceOf({
+              seriesInstanceUid: `S${number % 2}`,
+              seriesNumber: number % 2,
+              sopInstanceUid: `I${number}`,
+              instanceNumber: number,
+            })
           )
           const one = await Effect.runPromise(toFhirResources(instances, SETTINGS))
           const other = await Effect.runPromise(toFhirResources(instances.toReversed(), SETTINGS))
@@ -598,9 +573,12 @@ describe('studySeries', () => {
 
   it('keeps every instance, including two files sharing a SOPInstanceUID', () => {
     const instances = [
-      instanceOf({ sopInstanceUid: 'I1', instanceNumber: 1 }, 'doc-b'),
-      instanceOf({ sopInstanceUid: 'I1', instanceNumber: 1 }, 'doc-a'),
+      instanceOf({ sopInstanceUid: 'I1', instanceNumber: 1, sopClassUid: '1.2.2' }),
+      instanceOf({ sopInstanceUid: 'I1', instanceNumber: 1, sopClassUid: '1.2.1' }),
     ]
-    expect(orderedInstances(instances).map((one) => one.fileId)).toEqual(['doc-a', 'doc-b'])
+    expect(orderedInstances(instances).map((one) => one.header.sopClassUid)).toEqual([
+      '1.2.1',
+      '1.2.2',
+    ])
   })
 })

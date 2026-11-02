@@ -32,9 +32,9 @@ import { DicomHeader } from '@wildflowerhealthio/dicom'
 import {
   decodeStudy,
   linkToPatientAndStudy,
+  sopInstanceIdentifier,
   studyGroupKey,
   studyKey,
-  withSourceFileIds,
 } from './decode.ts'
 import { dicomImporter } from './dicom-importer.ts'
 import { type DicomSettings } from './settings.ts'
@@ -117,16 +117,20 @@ describe('decodeStudy', () => {
     expect(keys).toEqual(['patient', 'service-request', 'imaging-study'])
   })
 
-  it('ImagingStudy instance carries its own pick id as its gridfsFileId', async () => {
-    const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
+  it("identifies each picked file as its SOP Instance UID, in FHIR's OID convention", async () => {
+    const pickedFiles = sample()
+    const result = await Effect.runPromise(decodeStudy(pickedFiles, defaultDicomSettings))
+    const identifier = result.identifiedAs?.get(pickedFiles[0].id)
+    expect(identifier?.system?.href).toBe('urn:ietf:rfc:3986')
+    expect(identifier?.value).toBe('urn:oid:1.2.3.4.5.1.1')
+    expect(identifier).toEqual(sopInstanceIdentifier('1.2.3.4.5.1.1'))
+  })
 
-    const studyEntry = result.sections[0].resources.find((r) => r.key === 'imaging-study')
-    const study = studyEntry?.resource
+  it('names no file on an ImagingStudy instance', async () => {
+    const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
+    const study = result.sections[0].resources.find((r) => r.key === 'imaging-study')?.resource
     if (study?.resourceType !== 'ImagingStudy') throw new Error('expected ImagingStudy')
-    const instance = study.series[0].instance[0]
-    expect(instance.extension).toEqual([
-      expect.objectContaining({ url: 'gridfsFileId', valueString: '0:sample.dcm' }),
-    ])
+    expect(study.series[0].instance[0].extension).toEqual([])
   })
 
   it('section title includes modality, description, and date', async () => {
@@ -426,24 +430,6 @@ describe('the DICOM batch decode', () => {
     }
   })
 
-  it("finishes each instance's gridfsFileId as the source file of its own file", async () => {
-    const files = asBatch([
-      file('1', { SOPInstanceUID: 'I1', InstanceNumber: 1 }),
-      file('2', { SOPInstanceUID: 'I2', InstanceNumber: 2 }),
-    ])
-    const result = await Effect.runPromise(decode(files, SETTINGS))
-    const sourceFileIds = new Map(files.map((one) => [one.id, `doc-${one.fileName}`]))
-    const [study] = of(result, 'ImagingStudy').map((one) => withSourceFileIds(one, sourceFileIds))
-    if (study?.resourceType !== 'ImagingStudy') throw expect.fail('expected an ImagingStudy')
-    const instanceFileIds = study.series.flatMap((series) =>
-      series.instance.map((instance) => [instance.uid, instance.extension[0]?.valueString])
-    )
-    expect(instanceFileIds).toEqual([
-      ['I1', 'doc-1'],
-      ['I2', 'doc-2'],
-    ])
-  })
-
   it('splits a pick spanning two studies into two file sets', async () => {
     const result = await run([
       file('1', { StudyInstanceUID: '1.2.3.4.5', SOPInstanceUID: 'I1' }),
@@ -603,20 +589,11 @@ describe('the DICOM batch decode', () => {
           const files = picksOf(fixture)
           const forward = await run(files)
           const reversed = await run(files.toReversed())
-          // Each instance's gridfsFileId as the import finishes it: the
-          // source file of its own file, whatever slot it was picked in.
-          const bodies = (
-            picks: readonly PickedFile.NamedBytes[],
-            result: FormatDecode.Decoded<string>
-          ): readonly unknown[] => {
-            const sourceFileIds = new Map(
-              asBatch(picks).map((one) => [one.id, `doc-${one.fileName}`])
-            )
-            return resourcesOf(result)
-              .map((entry) => withSourceFileIds(entry.resource, sourceFileIds))
-              .toSorted((left, right) => (left.id ?? '').localeCompare(right.id ?? ''))
-          }
-          expect(bodies(files.toReversed(), reversed)).toEqual(bodies(files, forward))
+          const bodies = (result: FormatDecode.Decoded<string>): readonly unknown[] =>
+            resourcesOf(result)
+              .map((entry) => entry.resource)
+              .toSorted((left, right) => left.id.localeCompare(right.id))
+          expect(bodies(reversed)).toEqual(bodies(forward))
         }),
         { numRuns: numRunsFor({ base: 20 }) }
       )

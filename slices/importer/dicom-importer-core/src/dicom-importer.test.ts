@@ -1,8 +1,15 @@
-import { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
-import { DateTime, Effect, Option, Schema } from 'effect'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  type FhirResourceWithId,
+  ImagingStudy,
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { type FileImporter, PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { Cause, DateTime, Effect, Exit, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { dicomImporter } from './dicom-importer.ts'
+import { sopInstanceIdentifier } from './decode.ts'
+import { addGridfsFileIds, dicomImporter, GRIDFS_FILE_ID_EXTENSION_URL } from './dicom-importer.ts'
 import { defaultDicomSettings } from './settings.ts'
 import {
   DICOM_SOURCE_FILE_CODE,
@@ -102,5 +109,113 @@ describe('dicomImporter', () => {
       expect(result.fileSets).toHaveLength(0)
       expect(result.unreadableFiles).toHaveLength(1)
     })
+  })
+})
+
+/** An `ImagingStudy` of one series whose instances carry `instances`' uids and extensions. */
+const studyOf = (
+  instances: readonly { readonly uid: string; readonly extension?: readonly object[] }[]
+): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(ImagingStudy.Schema))({
+    resourceType: 'ImagingStudy',
+    id: 'study',
+    status: 'available',
+    subject: { reference: 'Patient/p' },
+    series: [
+      {
+        uid: 'S1',
+        modality: { system: 'http://dicom.nema.org/resources/ontology/DCM', code: 'CT' },
+        instance: instances.map(({ uid, extension = [] }) => ({
+          uid,
+          sopClass: { system: 'urn:dicom:uid', code: '1.2.840.10008.5.1.4.1.1.2' },
+          extension,
+        })),
+      },
+    ],
+  })
+
+/** A picked file and its source file, stored under `id`, identifying itself as the instance `uid`. */
+const pickedSourceFile = async (
+  id: string,
+  uid: string
+): Promise<FileImporter.PickedSourceFile> => {
+  const pickedFile = { id: `0:${id}.dcm`, fileName: `${id}.dcm`, bytes: new Uint8Array([1]) }
+  const sourceFile = await mint(pickedFile.bytes, pickedFile.fileName)
+  return {
+    pickedFile,
+    sourceFile: { ...sourceFile, id, masterIdentifier: sopInstanceIdentifier(uid) },
+  }
+}
+
+/** Each instance's uid beside its `gridfsFileId`. */
+const gridfsFileIdsOf = (resource: FhirResourceWithId): readonly (readonly unknown[])[] =>
+  resource.resourceType === 'ImagingStudy'
+    ? resource.series.flatMap((series) =>
+        series.instance.map((instance) => [
+          instance.uid,
+          instance.extension
+            .filter((extension) => extension.url === GRIDFS_FILE_ID_EXTENSION_URL)
+            .map((extension) => extension.valueString),
+        ])
+      )
+    : []
+
+describe('addGridfsFileIds', () => {
+  it('names on each instance the source file that identifies itself as its uid', async () => {
+    const sourceFiles = [
+      await pickedSourceFile('doc-b', 'I2'),
+      await pickedSourceFile('doc-a', 'I1'),
+    ]
+    const linked = await Effect.runPromise(
+      addGridfsFileIds(studyOf([{ uid: 'I1' }, { uid: 'I2' }]), sourceFiles)
+    )
+    expect(gridfsFileIdsOf(linked)).toEqual([
+      ['I1', ['doc-a']],
+      ['I2', ['doc-b']],
+    ])
+  })
+
+  it('replaces a gridfsFileId already there and keeps every other extension', async () => {
+    const other = { url: 'https://example.test/other', valueString: 'kept' }
+    const linked = await Effect.runPromise(
+      addGridfsFileIds(
+        studyOf([
+          {
+            uid: 'I1',
+            extension: [other, { url: GRIDFS_FILE_ID_EXTENSION_URL, valueString: 'stale' }],
+          },
+        ]),
+        [await pickedSourceFile('doc-a', 'I1')]
+      )
+    )
+    expect(gridfsFileIdsOf(linked)).toEqual([['I1', ['doc-a']]])
+    expect(
+      linked.resourceType === 'ImagingStudy' &&
+        linked.series[0]?.instance[0]?.extension.map((extension) => extension.url)
+    ).toEqual([other.url, GRIDFS_FILE_ID_EXTENSION_URL])
+  })
+
+  it('names the smallest source file id when two files carry the same uid', async () => {
+    const sourceFiles = [
+      await pickedSourceFile('doc-b', 'I1'),
+      await pickedSourceFile('doc-a', 'I1'),
+    ]
+    const linked = await Effect.runPromise(addGridfsFileIds(studyOf([{ uid: 'I1' }]), sourceFiles))
+    expect(gridfsFileIdsOf(linked)).toEqual([['I1', ['doc-a']]])
+  })
+
+  it('dies on an instance no source file identifies itself as', async () => {
+    const exit = await Effect.runPromiseExit(
+      addGridfsFileIds(studyOf([{ uid: 'I9' }]), [await pickedSourceFile('doc-a', 'I1')])
+    )
+    expect(Exit.isFailure(exit) && Cause.isDie(exit.cause)).toBe(true)
+  })
+
+  it('keeps any other resource as it is', async () => {
+    const patient = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+      resourceType: 'Patient',
+      id: 'p',
+    })
+    expect(await Effect.runPromise(addGridfsFileIds(patient, []))).toBe(patient)
   })
 })

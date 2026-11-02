@@ -12,12 +12,13 @@ import {
   DecodedFile,
   DecodedFileSet,
   DecodeFunction,
+  type FileImporter,
   FormatDecode,
   MetaSource,
   PickedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Array as Arr, Effect, Either, ParseResult, Schema } from 'effect'
+import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -215,14 +216,14 @@ const linkingDecode = decodeAndImport(
     sourceFileFormat,
     // The decode's own resources name the links, so a format never parses its
     // file twice to derive one.
-    linkSourceFile: (minted, decoded): PickedFile.SourceFile => {
+    linkSourceFile: (sourceFile, decoded): PickedFile.SourceFile => {
       const first = DecodedFile.resources(decoded)[0]
-      if (first === undefined) return minted
+      if (first === undefined) return sourceFile
       const reference = referenceValue(`Patient/${first.resource.id}`)
       return {
-        ...minted,
+        ...sourceFile,
         subject: reference,
-        context: { ...(minted.context ?? emptyContext), related: [reference] },
+        context: { ...(sourceFile.context ?? emptyContext), related: [reference] },
       }
     },
   },
@@ -242,8 +243,8 @@ describe('the source file a format links off its import', () => {
   it('should keep the minted id, and stamp meta.source with it', async () => {
     const file = oneFile('scan.bin', new Uint8Array([9]))
     const minted = await mintedSourceFile(decode, file)
-    const finished = await mintedSourceFile(linkingDecode, file)
-    expect(finished.id).toBe(minted.id)
+    const linked = await mintedSourceFile(linkingDecode, file)
+    expect(linked.id).toBe(minted.id)
 
     const result = await Effect.runPromise(linkingDecode([file], null))
     const extracted = result.decoded.sections
@@ -297,14 +298,14 @@ describe('decode and import (batch behavior)', () => {
     )
   })
 
-  it("should finish every record with each file's source file id, by its pick id", async () => {
-    const seen: ReadonlyMap<string, string>[] = []
-    const finishing = decodeAndImport(
+  it("should link every record to each picked file of its set and that file's source file", async () => {
+    const seen: (readonly FileImporter.PickedSourceFile[])[] = []
+    const linking = decodeAndImport(
       {
         sourceFileFormat,
-        finish: (resource, sourceFileIds) => {
-          seen.push(sourceFileIds)
-          return resource
+        linkToSourceFiles: (resource, sourceFiles) => {
+          seen.push(sourceFiles)
+          return Effect.succeed(resource)
         },
       },
       decodeEachByte
@@ -313,14 +314,38 @@ describe('decode and import (batch behavior)', () => {
       oneFile('a.bin', new Uint8Array([1])),
       oneFile('b.bin', new Uint8Array([2])),
     ])
-    const result = await Effect.runPromise(finishing(files, null))
+    const result = await Effect.runPromise(linking(files, null))
     const listed = result.decoded.sections
       .filter((section) => section.title === 'Source file')
-      .map((section) => section.resources[0]?.resource.id)
+      .map((section) => section.resources[0]?.resource)
     expect(seen).toEqual([
-      new Map([[files[0]?.id, listed[0]]]),
-      new Map([[files[1]?.id, listed[1]]]),
+      [{ pickedFile: files[0], sourceFile: listed[0] }],
+      [{ pickedFile: files[1], sourceFile: listed[1] }],
     ])
+  })
+
+  it("should write what a picked file identifies itself as as its source file's masterIdentifier", async () => {
+    const identifierOf = (file: PickedFile.Type): IdentifierAndReference.IdentifierType =>
+      Schema.decodeSync(IdentifierAndReference.IdentifierSchema)({
+        system: 'urn:ietf:rfc:3986',
+        value: `urn:oid:1.2.${file.bytes[0] ?? 0}`,
+      })
+    const identifying = DecodeFunction.make({
+      format: testFormat,
+      decodeFileSet: (pickedFiles) =>
+        Effect.map(decodeBytes(pickedFiles[0]), (decoded) => ({
+          ...decoded,
+          identifiedAs: new Map([[pickedFiles[0].id, identifierOf(pickedFiles[0])]]),
+        })),
+    })
+    const file = oneFile('a.bin', new Uint8Array([7]))
+    const identified = await mintedSourceFile(
+      decodeAndImport({ sourceFileFormat }, identifying),
+      file
+    )
+    const unidentified = await mintedSourceFile(decode, file)
+    expect(identified).toEqual({ ...unidentified, masterIdentifier: identifierOf(file) })
+    expect(unidentified.masterIdentifier).toBeNull()
   })
 
   it('property: every review key across a multi-file batch is distinct', async () => {
@@ -591,7 +616,9 @@ const decodedOf = (
 ): FormatDecode.Decoded<typeof testFormat> => ({
   format: testFormat,
   files: [scan],
-  fileSets: [{ pickedFiles: [scan], sections, notes: [] }],
+  fileSets: [
+    { pickedFiles: [{ pickedFile: scan, identifiedAs: Option.none() }], sections, notes: [] },
+  ],
   unreadableFiles: [],
 })
 

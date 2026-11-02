@@ -1,6 +1,6 @@
-import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { IdentifierAndReference, withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, Either, ParseResult, Schema } from 'effect'
+import { Effect, Either, Option, ParseResult, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as DecodeFunction from './decode-function.ts'
@@ -19,6 +19,12 @@ const pickedFile = (index: number, fileName: string, bytes: number[]): PickedFil
   id: `${index}:${fileName}`,
   fileName,
   bytes: new Uint8Array(bytes),
+})
+
+/** A picked file that identifies itself as nothing, as every set of `decode` holds it. */
+const unidentified = (file: PickedFile.Type): DecodedFileSet.PickedFileIdentity => ({
+  pickedFile: file,
+  identifiedAs: Option.none(),
 })
 
 /** Files grouped by the prefix before their `-`; a set with an empty file rejects whole. */
@@ -61,7 +67,7 @@ describe('DecodeFunction.make', () => {
       files,
       fileSets: [
         {
-          pickedFiles: [a1, a2],
+          pickedFiles: [a1, a2].map(unidentified),
           sections: [
             DecodedFileSet.Section.Adopted({
               title: 'a-1.bin',
@@ -75,7 +81,7 @@ describe('DecodeFunction.make', () => {
           notes: ['2 files'],
         },
         {
-          pickedFiles: [b1],
+          pickedFiles: [b1].map(unidentified),
           sections: [
             DecodedFileSet.Section.Adopted({
               title: 'b-1.bin',
@@ -99,9 +105,35 @@ describe('DecodeFunction.make', () => {
     const decoded = await Effect.runPromise(
       decode([pickedFile(0, 'a-1.bin', [1]), pickedFile(1, 'b-1.bin', [])], null)
     )
-    expect(decoded.fileSets.map((fileSet) => fileSet.pickedFiles.map((one) => one.id))).toEqual([
-      ['0:a-1.bin'],
-    ])
+    expect(
+      decoded.fileSets.map((fileSet) => fileSet.pickedFiles.map((one) => one.pickedFile.id))
+    ).toEqual([['0:a-1.bin']])
     expect(decoded.unreadableFiles.map((one) => one.id)).toEqual(['test/1:b-1.bin'])
+  })
+
+  it('pairs each picked file with what its decode says it identifies itself as', async () => {
+    const identifier = Schema.decodeSync(IdentifierAndReference.IdentifierSchema)({
+      system: 'urn:ietf:rfc:3986',
+      value: 'urn:oid:1.2.3',
+    })
+    const files = [pickedFile(0, 'a-1.bin', [1]), pickedFile(1, 'a-2.bin', [2])]
+    const [first, second] = files
+    const identifying = DecodeFunction.make({
+      format: 'test',
+      groupBy: () => Either.right('a'),
+      decodeFileSet: (pickedFiles) =>
+        Effect.succeed({
+          sections: [],
+          notes: [],
+          identifiedAs: new Map([[pickedFiles[0].id, identifier]]),
+        }),
+    })
+    const decoded = await Effect.runPromise(identifying(files, null))
+    expect(decoded.fileSets.map((fileSet) => fileSet.pickedFiles)).toEqual([
+      [
+        { pickedFile: first, identifiedAs: Option.some(identifier) },
+        { pickedFile: second, identifiedAs: Option.none() },
+      ],
+    ])
   })
 })

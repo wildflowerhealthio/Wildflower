@@ -1,7 +1,7 @@
 import { PickedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
-import { Effect, Layer, ParseResult, Schema } from 'effect'
+import { Effect, Layer, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -55,7 +55,7 @@ const extractorRefusing: Layer.Layer<PositionedTextExtractor> = Layer.succeed(
 )
 
 describe('lifeLabsPdfImporter decode', () => {
-  it('property: a pick is one file set of adopted records, keyed under the pick', async () => {
+  it('property: a picked file is one file set of adopted records, keyed under the picked file', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
@@ -73,7 +73,9 @@ describe('lifeLabsPdfImporter decode', () => {
           )
 
           expect(decoded.unreadableFiles).toEqual([])
-          expect(decoded.fileSets.map((fileSet) => fileSet.pickedFiles)).toEqual([[file]])
+          expect(decoded.fileSets.map((fileSet) => fileSet.pickedFiles)).toEqual([
+            [{ pickedFile: file, identifiedAs: Option.none() }],
+          ])
           const sections = decoded.fileSets.flatMap((fileSet) => fileSet.sections)
           expect(sections.map((section) => section._tag)).toEqual(sections.map(() => 'Adopted'))
           const keys = sections.flatMap((section) =>
