@@ -318,10 +318,14 @@ describe('decode and import (batch behavior)', () => {
     const listed = result.decoded.sections
       .filter((section) => section.title === 'Source file')
       .map((section) => section.resources[0]?.resource)
-    expect(seen).toEqual([
-      [{ pickedFile: files[0], sourceFile: listed[0] }],
-      [{ pickedFile: files[1], sourceFile: listed[1] }],
-    ])
+    // Sets are linked concurrently, so the hook sees them in no fixed order.
+    expect(seen).toHaveLength(2)
+    expect(seen).toEqual(
+      expect.arrayContaining([
+        [{ pickedFile: files[0], sourceFile: listed[0] }],
+        [{ pickedFile: files[1], sourceFile: listed[1] }],
+      ])
+    )
   })
 
   it("should write what a picked file identifies itself as as its source file's masterIdentifier", async () => {
