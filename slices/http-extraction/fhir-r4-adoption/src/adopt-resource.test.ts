@@ -28,12 +28,7 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, FastCheck as fc, Schema, SchemaAST } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import {
-  adoptWithSourceId,
-  adoptResource,
-  adoptedReferenceOf,
-  originalIdOf,
-} from './adopt-resource.ts'
+import { adoptUnderKey, adoptResource, adoptedReferenceOf, originalIdOf } from './adopt-resource.ts'
 import * as DecodedId from './decoded-id.ts'
 import * as SystemFamily from './system-family.ts'
 
@@ -1008,7 +1003,7 @@ describe('reference rewriting', () => {
   })
 })
 
-describe('adoptWithSourceId', () => {
+describe('adoptUnderKey', () => {
   const OWN_IDENTIFIER = identifier({ value: 'mrn-9' })
 
   /** A Patient whose own id adoption must not read, linked to `generalPractitioner`. */
@@ -1024,7 +1019,7 @@ describe('adoptWithSourceId', () => {
     system: string,
     generalPractitioner: string
   ): WithMandatoryId<typeof Patient.Schema.Type> => {
-    const adopted = adoptWithSourceId(family)({
+    const adopted = adoptUnderKey(family)({
       system,
       sourceId: 'src-1',
       resource: patientLinking(generalPractitioner),
@@ -1079,16 +1074,16 @@ describe('adoptWithSourceId', () => {
     ['FHIR-style systems', SOURCE],
     ['a fixed system', RELATIVE_SOURCE],
   ] as const) {
-    test(`adoptResource under ${label} is adoptWithSourceId under the decoded id`, () => {
+    test(`adoptResource under ${label} is adoptUnderKey under the decoded id`, () => {
       for (const resource of resources) {
         const system = SystemFamily.systemFor(family, resource.resourceType)
         expect(adoptResource(family)(resource)).toEqual(
-          adoptWithSourceId(family)({ system, sourceId: 'src-1', resource })
+          adoptUnderKey(family)({ system, sourceId: 'src-1', resource })
         )
         const idLess = { ...resource, id: null }
         const { value: digest } = DecodedId.of(system, idLess)
         expect(adoptResource(family)(idLess)).toEqual(
-          adoptWithSourceId(family)({
+          adoptUnderKey(family)({
             system: DecodedId.CONTENT_DIGEST_SYSTEM,
             sourceId: digest,
             resource: idLess,

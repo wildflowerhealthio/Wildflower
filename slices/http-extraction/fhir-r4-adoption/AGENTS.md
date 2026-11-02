@@ -15,7 +15,7 @@ FHIR-free.
   adopted under: `FoundInSource` the id the source gave it, or
   `GeneratedFromContent` a digest of its content when it gave none (FNV-1a 64
   over the system its id would have been in and its FHIR JSON as
-  `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(scope,
+  `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(system,
   resource)` picks one; `CONTENT_DIGEST_SYSTEM` is the system a digest id is
   in.
 - `src/system-family.ts` — `SystemFamily`, how the `Identifier.system` of a
@@ -26,7 +26,7 @@ FHIR-free.
   gives `Type`; `relativise(family)` reads a FHIR server's absolute spelling
   of its own record, `<baseUrl>/Type/id`, back to the relative `Type/id`, and
   leaves every reference alone under a fixed system.
-- `src/adopt-resource.ts` — `adoptWithSourceId(targetsIn)`, the per-resource
+- `src/adopt-resource.ts` — `adoptUnderKey(targetsIn)`, the per-resource
   rewrite of a record and its key `{ system, sourceId, resource }`: the
   derived id, `{ system, value: sourceId }` as `identifier[0]`, and each
   relative `Type/id` reference rewritten into `systemFor(targetsIn, Type)`
@@ -66,7 +66,7 @@ spelled structurally there.
   schema's encode refuses dies there, rather than minting an id from a value
   that has no FHIR JSON.
 - **Each `mapReferences` row maps a variant to itself by construction, not by
-  the type system.** `adoptWithSourceId` returns `FhirResourceWithId`, the whole
+  the type system.** `adoptUnderKey` returns `FhirResourceWithId`, the whole
   union; a row returning a different variant would compile.
 - **Never adopt a locally minted resource.** `web-trace-core`'s traces already
   carry their derived id; adopting one would hash a hash.

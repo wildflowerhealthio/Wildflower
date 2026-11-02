@@ -109,7 +109,7 @@ family** (`SystemFamily`), two kinds:
   one system every source shares, not a family.
 
 `SystemFamily.systemFor(family, Type)` is the system a family gives `Type`,
-and `SystemFamily.relativise(family)` is its reference rule. `adoptWithSourceId(targetsIn)` is the per-resource
+and `SystemFamily.relativise(family)` is its reference rule. `adoptUnderKey(targetsIn)` is the per-resource
 rewrite of a record and its key `{ system, sourceId, resource }`, `targetsIn`
 the family each reference's target is keyed in; the family goes no deeper
 than the reference rewrite, which is the one place a type is only known once

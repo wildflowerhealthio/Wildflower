@@ -40,7 +40,7 @@ const adopt = adoptResource(SOURCE)
 
 const SCOPE = `${BASE}/Patient`
 
-/** `DecodedId.of` scoped as {@link SOURCE} scopes `resource`'s type. */
+/** `DecodedId.of` in the system {@link SOURCE} gives `resource`'s type. */
 const decodedIdOf = (resource: FhirResource): DecodedId.Type =>
   DecodedId.of(`${BASE}/${resource.resourceType}`, resource)
 
