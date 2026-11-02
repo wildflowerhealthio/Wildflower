@@ -1,7 +1,15 @@
-import { Extension, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { Extension, type IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { DecodeFunction, FileImporter } from '@wildflowerhealthio/importer-fundamentals'
-import { Array as Arr, Effect, Option, Order, pipe, Predicate } from 'effect'
+import {
+  Array as Arr,
+  Effect,
+  Option,
+  Order,
+  pipe,
+  Predicate,
+  Record as EffectRecord,
+} from 'effect'
 
 import {
   decodeStudy,
@@ -40,30 +48,36 @@ const sourceFileFormat = {
 const GRIDFS_FILE_ID_EXTENSION_URL = 'gridfsFileId'
 
 /**
- * The id of the source file an instance with SOP Instance UID `uid` was read
- * from: the one whose `masterIdentifier` is that UID, the smallest id when two
- * files carry the same one, so the choice does not depend on the order they
- * were picked in.
+ * A key two identifiers share exactly when `identifierEquivalence` holds them
+ * the same: their `system` and their `value`.
  */
-const sourceFileIdOf = (
-  uid: string,
+const identityKeyOf = (identifier: IdentifierAndReference.IdentifierType): string =>
+  JSON.stringify([identifier.system?.href ?? null, identifier.value ?? null])
+
+/**
+ * The id of each source file, by the key ({@link identityKeyOf}) of its
+ * `masterIdentifier`: the smallest id when two files carry the same one, so the
+ * choice does not depend on the order they were picked in.
+ */
+const sourceFileIdsByIdentity = (
   sourceFiles: readonly FileImporter.PickedSourceFile[]
-): Option.Option<string> => {
-  const identifier = sopInstanceIdentifier(uid)
-  return pipe(
+): EffectRecord.ReadonlyRecord<string, string> =>
+  pipe(
     sourceFiles,
     Arr.filterMap(({ sourceFile }) =>
-      Option.fromNullable(sourceFile.masterIdentifier).pipe(
-        Option.filter((master) => IdentifierAndReference.identifierEquivalence(master, identifier)),
-        Option.as(sourceFile.id)
-      )
+      Option.map(Option.fromNullable(sourceFile.masterIdentifier), (master) => ({
+        identityKey: identityKeyOf(master),
+        sourceFileId: sourceFile.id,
+      }))
     ),
-    Arr.match({
-      onEmpty: Option.none,
-      onNonEmpty: (ids) => Option.some(Arr.min(ids, Order.string)),
-    })
+    Arr.groupBy(({ identityKey }) => identityKey),
+    EffectRecord.map((group) =>
+      Arr.min(
+        Arr.map(group, ({ sourceFileId }) => sourceFileId),
+        Order.string
+      )
+    )
   )
-}
 
 /**
  * The study's `ImagingStudy` with each instance's `gridfsFileId` set to the
@@ -89,17 +103,14 @@ const addGridfsFileIds = (
   sourceFiles: readonly FileImporter.PickedSourceFile[]
 ): Effect.Effect<FhirResourceWithId, FileImporter.SourceFileNotFound> => {
   if (resource.resourceType !== 'ImagingStudy') return Effect.succeed(resource)
+  const sourceFileIds = sourceFileIdsByIdentity(sourceFiles)
   return Effect.map(
     Effect.forEach(resource.series, (series) =>
       Effect.map(
-        Effect.forEach(series.instance, (instance) =>
-          Option.match(sourceFileIdOf(instance.uid, sourceFiles), {
-            onNone: () =>
-              Effect.fail(
-                new FileImporter.SourceFileNotFound({
-                  identifier: sopInstanceIdentifier(instance.uid),
-                })
-              ),
+        Effect.forEach(series.instance, (instance) => {
+          const identifier = sopInstanceIdentifier(instance.uid)
+          return Option.match(EffectRecord.get(sourceFileIds, identityKeyOf(identifier)), {
+            onNone: () => Effect.fail(new FileImporter.SourceFileNotFound({ identifier })),
             onSome: (sourceFileId) =>
               Effect.succeed({
                 ...instance,
@@ -111,7 +122,7 @@ const addGridfsFileIds = (
                 ],
               }),
           })
-        ),
+        }),
         (instance) => ({ ...series, instance })
       )
     ),
