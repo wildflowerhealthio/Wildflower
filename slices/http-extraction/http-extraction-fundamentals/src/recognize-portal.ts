@@ -3,6 +3,7 @@ import { Option } from 'effect'
 import type { HttpMethod } from './http-method.ts'
 import type { RecognizedUrlData } from './http-response-kind.ts'
 import { Specificity } from './specificity.ts'
+import * as SystemFamily from './system-family.ts'
 import type { UrlMatcher } from './url-match.ts'
 
 /**
@@ -29,7 +30,7 @@ const recognizePortal =
     return matched
       ? Option.some({
           specificity: Specificity.PORTAL,
-          systemFamily: { _tag: 'FixedAcrossResourceTypes', system },
+          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system }),
         })
       : Option.none()
   }

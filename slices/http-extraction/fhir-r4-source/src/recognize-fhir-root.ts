@@ -2,6 +2,7 @@ import {
   type HttpMethod,
   type RecognizedUrlData,
   Specificity,
+  SystemFamily,
   type UrlMatch,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Option, pipe } from 'effect'
@@ -22,7 +23,7 @@ const recognizeFhirRoot =
       matcher(url, method),
       Option.map((root) => ({
         specificity: Specificity.PROTOCOL,
-        systemFamily: { _tag: 'FhirStyleBaseUrl', baseUrl: root },
+        systemFamily: SystemFamily.FhirStyleBaseUrl({ baseUrl: root }),
       }))
     )
 

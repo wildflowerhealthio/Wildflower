@@ -23,10 +23,10 @@ import type {
   Procedure,
   ServiceRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
+import { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Match } from 'effect'
 
 import * as DecodedId from './decoded-id.ts'
-import * as SystemFamily from './system-family.ts'
 
 /**
  * FHIR R4's relative-reference grammar: a resource-type token, `/`, and a
@@ -431,6 +431,15 @@ const identifierOf = (systemUrl: URL, value: string): IdentifierType => ({
   value,
 })
 
+/** {@link SystemFamily.relativise} lifted over a `Reference`: its literal relativised, the rest as it is. */
+const relativiseReference = (family: SystemFamily.Type) => {
+  const relativise = SystemFamily.relativise(family)
+  return (reference: ReferenceType): ReferenceType =>
+    reference.reference === null
+      ? reference
+      : { ...reference, reference: relativise(reference.reference) }
+}
+
 /**
  * `reference` rewritten to name its target's local id, keyed in `system` with
  * the target's source id beside it as `Reference.identifier`.
@@ -592,7 +601,7 @@ const adoptUnderKey = (targetsIn: SystemFamily.Type) => {
  */
 const adoptResource = (family: SystemFamily.Type) => {
   const adopt = adoptUnderKey(family)
-  const relativise = mapReferences(SystemFamily.relativise(family))
+  const relativise = mapReferences(relativiseReference(family))
   return (decoded: FhirResource): FhirResourceWithId => {
     const resource = relativise(decoded)
     const ownSystem = SystemFamily.systemFor(family, resource.resourceType)

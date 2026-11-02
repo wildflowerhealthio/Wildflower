@@ -5,6 +5,7 @@ import type { HttpMethod } from './http-method.ts'
 import * as HttpResponseKind from './http-response-kind.ts'
 import * as HttpResponse from './http-response.ts'
 import { Specificity } from './specificity.ts'
+import * as SystemFamily from './system-family.ts'
 
 /**
  * Fields a test wants to vary on an
@@ -84,7 +85,9 @@ const SimpleResponseKind: HttpResponseKind.HttpResponseKind<typeof SimpleSchema.
     tryRecognize: (url) =>
       recognizeMatching(/\/people\/\d+$/, {
         specificity: Specificity.PORTAL,
-        systemFamily: { _tag: 'FixedAcrossResourceTypes', system: 'https://example.test/people' },
+        systemFamily: SystemFamily.FixedAcrossResourceTypes({
+          system: 'https://example.test/people',
+        }),
       })(url),
     parse: (response) =>
       Effect.map(Schema.decode(Schema.parseJson(SimpleSchema))(response.text()), (data) => [data]),

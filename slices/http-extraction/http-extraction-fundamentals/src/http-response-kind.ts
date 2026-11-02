@@ -2,6 +2,7 @@ import { deepFreeze } from '@wildflowerhealthio/kitchen-sink'
 import type { Effect, Option, ParseResult } from 'effect'
 import type { HttpMethod } from './http-method.ts'
 import type { HttpResponse } from './http-response.ts'
+import type * as SystemFamily from './system-family.ts'
 
 /**
  * What a {@link HttpResponseKind.tryRecognize} match tells a router: how
@@ -13,15 +14,10 @@ interface RecognizedUrlData {
   readonly specificity: number
   /**
    * The identifier systems this response's resources key under, per resource
-   * type: one `system` fixed across types, or `<baseUrl>/<Type>` in the FHIR
-   * style. Absent = recognized but mints no identity (a recorder records, it
-   * doesn't import). Structurally `fhir-r4-adoption`'s `SystemFamily`, on
-   * purpose — this package stays FHIR-free, and adoption, above it, reads the
-   * shape as its own.
+   * type ({@link SystemFamily}). Absent = recognized but mints no identity (a
+   * recorder records, it doesn't import).
    */
-  readonly systemFamily?:
-    | { readonly _tag: 'FixedAcrossResourceTypes'; readonly system: string }
-    | { readonly _tag: 'FhirStyleBaseUrl'; readonly baseUrl: string }
+  readonly systemFamily?: SystemFamily.Type
 }
 
 /**
