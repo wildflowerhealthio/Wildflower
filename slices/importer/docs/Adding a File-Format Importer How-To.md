@@ -24,8 +24,8 @@ registry entries; it touches neither `importer-fundamentals` nor
 `http-extraction`. There is **no per-format review UI**: the shell renders every
 format's decoded sections through one generalized per-resource review (include
 checkboxes, inline JSON edit, diagnostic notes). A format's whole review surface
-is what its `decodeFileSet` puts in a `DecodedFile` — sections of labeled
-resources, plus a note per thing that did not become a resource.
+is what its `decodeFileSet` returns — sections of labeled resources, plus a
+note per thing that did not become a resource.
 
 | Piece           | Where                                          | Contract                                                      |
 | --------------- | ---------------------------------------------- | ------------------------------------------------------------- |
@@ -57,15 +57,31 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 You write **one file set at a time**. `decodeFileSet(pickedFiles, settings)` takes
 the picked files that are decoded together — each a `PickedFile.Type`
 (`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) —
-and yields a `DecodedFile`: titled sections of labeled, adopted resources,
-plus diagnostic notes.
+and yields a `DecodeFunction.FileSetDecode`: titled `FromSource` sections of
+labeled resources as the source gave them, plus diagnostic notes.
 
 ```ts
+const MY_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: MY_SYSTEM })
+const withMySourceId = withSourceId(MY_SYSTEM_FAMILY)
+
 const decodeMyFormat = (
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: MySettings
-): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> => …
+): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> => …
+// each section:
+//   DecodedFileSet.Section.FromSource({
+//     title,
+//     systemFamily: MY_SYSTEM_FAMILY,
+//     entries: resources.map((resource) => ({ key, title, ...withMySourceId(resource) })),
+//   })
 ```
+
+A section's `systemFamily` is the systems your source keys each resource type
+in (`SystemFamily`, from `fhir-r4-adoption`): a document format's own
+Wildflower-minted `sid` URI for every type, as LifeLabs and DICOM state.
+`withSourceId(family)` pairs each resource with its key: its own id in that
+system, or a digest of its content when it has none. The decode never makes a
+`wf-` id; the import stage does.
 
 A format whose files stand alone reads `pickedFiles[0]` and says nothing more:
 each picked file is its own set by default, in the order the files were picked.
@@ -80,13 +96,16 @@ shell runs across every file the format claimed. That lifted decode:
   cannot collide on a key (see the obligations below);
 - folds a `ParseError` into one `unreadableFiles` row per picked file of the
   failing set;
-- returns each set apart with its picked files, its sections `Adopted` ones.
+- returns each set apart with its picked files and its sections.
 
 `importer-core`'s import stage (`importDecoded`, which `readBatch` runs over
 every format's `decode`) then, per set:
 
 - mints a source file for **every** picked file, its `masterIdentifier` what
   the picked file identified itself as (§1);
+- adopts each `FromSource` section's records under their keys
+  (`fhir-r4-adoption`'s `adoptUnderKey`, references keyed in the section's
+  family), so every record has its `wf-` id before the hooks below run;
 - lets the format link each source file to what the set decoded to
   (`linkSourceFile`, §4) and each record to the source files it was read from
   (`linkToSourceFiles`, §4), and prepends the source files as their own
@@ -117,7 +136,7 @@ fake layer built from hand-written fixtures.
 A format whose records name the stored file they were read from (DICOM's
 `ImagingStudy` `gridfsFileId` extension) does not name it at decode: a decode
 never sees a source file. Its `decodeFileSet` instead says what each picked
-file's own content identifies it as: beside its `DecodedFile` it returns
+file's own content identifies it as: beside its sections it returns
 `pickedFiles`, each picked file it was handed paired with a FHIR `Identifier`
 as `identifiedAs` (`DecodedFileSet.PickedFileIdentity`; DICOM: the SOP Instance
 UID as `urn:oid:<uid>` under `urn:ietf:rfc:3986`). The import stage writes that
@@ -128,7 +147,7 @@ identifies as nothing.
 
 Four obligations:
 
-- **Stable resource keys.** A `DecodedFile.Resource`'s `key` must be stable
+- **Stable resource keys.** A section entry's `key` must be stable
   across settings changes where the underlying resource is unchanged (HAR keys
   by `responseId:index`, DICOM by the resource's role), because the reviewer's
   per-resource exclusions and inline edits are keyed by it and must survive a

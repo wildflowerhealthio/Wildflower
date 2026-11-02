@@ -113,7 +113,7 @@ re-exports), two kinds:
 and `SystemFamily.relativise(family)` is how it reads a reference literal.
 `adoptResource(family)` adopts one decoded resource:
 
-1. **Takes its `DecodedId`.** `FoundInSource` is the id the source gave it,
+1. **Takes its `DecodedId`** (`withSourceId`). `FoundInSource` is the id the source gave it,
    in the system the family gives its type. A resource whose `id` is `null`
    (third-party FHIR JSON, where `id` is optional) is `GeneratedFromContent`
    instead, in the content-digest system: FNV-1a 64 over the system the
@@ -255,14 +255,19 @@ afterwards — rewriting it earlier is dead work.
 
 ## Where a record is adopted
 
-`adoptResource(family)` takes the `DecodedId` itself; `adoptUnderKey(family)`
-adopts a record under the key it is handed, `{ system, sourceId, resource }`,
-its references keyed in `family`. `importer-core`'s import stage
-(`importDecoded`) calls `adoptUnderKey` for each record of a decoded
-`FromSource` section, the family being the section's: one per source batch,
-never per record. The source kinds below and the file importers adopt at
-decode instead, through `adoptResource`, and their records reach the import
-stage in `Adopted` sections, kept as they are.
+`withSourceId(family)` reads a decoded record's key off it: its `DecodedId`,
+beside the system that id is in, as `{ system, sourceId, resource }`.
+`adoptUnderKey(family)` adopts a record under the key it is handed, its
+references keyed in `family`, and `adoptResource(family)` is the two together.
+
+The file importers' decoders (`lifelabs-pdf-importer-core`,
+`dicom-importer-core`) call `withSourceId` under their
+`FixedAcrossResourceTypes` family and return `FromSource` sections.
+`importer-core`'s import stage (`importDecoded`) calls `adoptUnderKey` for each
+record of a `FromSource` section, the family being the section's: one per
+source batch, never per record. The source kinds below adopt at decode
+instead, through `adoptResource`, and their records reach the import stage in
+`Adopted` sections, kept as they are.
 
 ## Where a source package states its identity
 

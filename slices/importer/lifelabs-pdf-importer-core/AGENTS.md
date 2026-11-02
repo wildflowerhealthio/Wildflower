@@ -78,10 +78,13 @@ that hands back a hand-written positioned-text document.
   runs its `extract` on the picked file's bytes
   and hands the extracted `Document.Type` to `decodeLifeLabsPdfDocument`,
   which runs the
-  dialect, then the FHIR synthesis and adoption (`synthesis.ts`'s
-  `adoptedResourcesOf`), yielding a `DecodedFile`: one
-  section per report, titled by **`reportSectionTitle`** (the report's `Lab No`
-  and date of service, `'LifeLabs report'` when both are masked), and no notes.
+  dialect, then the FHIR synthesis, each resource beside its source id
+  (`synthesis.ts`'s `resourcesWithSourceIdsOf`), yielding one `FromSource`
+  section per report under `LIFELABS_SYSTEM_FAMILY`, titled by
+  **`reportSectionTitle`** (the report's `Lab No` and date of service,
+  `'LifeLabs report'` when both are masked), and no notes. The import stage
+  adopts the records. Each review row is keyed and titled
+  `<Type>/<source id>`.
   Both extraction failure (`UnreadablePdf`) and an unrecognized LifeLabs
   document surface as `ParseError` — the one error channel the batch decode folds into that file's
   `unreadableFiles` entry. It reads only the picked file's name and bytes: this
@@ -89,9 +92,11 @@ that hands back a hand-written positioned-text document.
   `meta.source` stamping.
 - `src/synthesis.ts` — **the FHIR synthesis without the PDF decoder**,
   exported as the `/synthesis` subpath: the `Report` model's types,
-  `toFhirResources`, **`adoptedResourcesOf`** (synthesis then adoption under
-  `LIFELABS_SYSTEM`, the resources a decode yields) and the
-  `ReportResources` / `SynthesisOptions` types, none of which requires an
+  `toFhirResources`, **`LIFELABS_SYSTEM_FAMILY`**,
+  **`resourcesWithSourceIdsOf`** (synthesis, each resource beside its source
+  id in that family: the records a decode yields), **`adoptedResourcesOf`**
+  (those records adopted with `adoptUnderKey`, as an import writes them) and
+  the `ReportResources` / `SynthesisOptions` types, none of which requires an
   extractor. For callers that build reports themselves
   (`synthetic-data-lifelabs`). The main entry does not re-export it: it
   carries the importer's own surface (decode, detect, the importer, `Report`,
@@ -143,8 +148,8 @@ dependencies, directly or through other packages. Depends on
 `positioned-text` (the positioned-text schema, the neutral seam between
 extraction and the dialect, and the `PositionedTextExtractor` service the
 decode requires), `fhir-r4` (resource schemas, `joinIdComponents`), `fhir-r4-adoption`
-(`adoptResource`),
-`importer-fundamentals` (`DecodeFunction.make`, `DecodedFile`, `PickedFile`),
+(`withSourceId`, and `adoptUnderKey` for `adoptedResourcesOf`),
+`importer-fundamentals` (`DecodeFunction.make`, `DecodedFileSet`, `PickedFile`),
 `kitchen-sink`
 (`fnv1a64` for deterministic id hashing, `numRunsFor` in tests), and `effect`
 (peer; `Report.tryFromDocument` returns an `Effect`). `fast-check` is a

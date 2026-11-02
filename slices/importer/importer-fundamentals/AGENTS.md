@@ -90,14 +90,15 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `masterIdentifier`. A **`Section`** is a titled group of records from one
   source batch, each entry a review key, a title and its record, in one of two
   cases: **`Adopted`**, every record already the device's own and kept as it
-  is (what every format's `decodeFileSet` still returns, transitional while
-  decoders adopt what they read), or **`FromSource`**, each record as its
+  is (what the HAR decoder still returns, deleted once it returns
+  `FromSource` sections), or **`FromSource`**, each record as its
   source gave it beside its key less its type (`system`, `sourceId`), with the
   **`systemFamily`** the batch keys each type in (one per batch, not per
   record), which the import stage adopts it under. The "Source file(s)"
   section is the import stage's own, never decoded.
-  **`ofAdopted(pickedFiles, decoded)`** lifts a set's decode of already
-  adopted resources, beside its `PickedFileIdentity`s, into one;
+  A `FromSource` record is a **`FromSourceEntry`** (LifeLabs and DICOM build
+  theirs with `fhir-r4-adoption`'s `withSourceId`).
+  **`namespaceKeys(sections, prefix)`** prefixes every entry's review key;
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
 - `src/decode-function.ts` — the **`DecodeFunction`** namespace: the batch
   decode's signature **and the one constructor that builds it**. **`Type`** is
@@ -108,9 +109,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `FileImporter.Type` carries the same `R`, and `make` takes it from the
   `Config`'s `decodeFileSet`.
   **`make(config)`** takes one **`Config`**: the `format`, a `decodeFileSet`
-  (the picked files of one set in, a **`FileSetDecode`** out: a `DecodedFile`
-  of adopted resources, each section of which reaches the import stage as an
-  `Adopted` one, and optionally `pickedFiles`, each picked file of the set
+  (the picked files of one set in, a **`FileSetDecode`** out: its `Section`s
+  as the import stage receives them, its notes, and optionally `pickedFiles`,
+  each picked file of the set
   paired with the `Identifier` it identifies as; left out, each identifies as
   nothing), and — optionally — a `groupBy`. **`groupBy`** is called per
   file and returns the key it shares with its set-mates, or a `Left` that
@@ -125,6 +126,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `unreadableFiles` row per picked file of the failing set. It returns each
   set apart, with its picked files, because `importer-core`'s import stage
   builds each set's source files and sets its records' `meta.source` from them.
+  **`fromAdopted(decodedFile)`** wraps a `DecodedFile` of already adopted
+  resources as `Adopted` sections, for the HAR decoder; it goes with the
+  `Adopted` case.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two
