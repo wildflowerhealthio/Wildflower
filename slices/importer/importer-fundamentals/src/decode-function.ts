@@ -1,36 +1,33 @@
 /**
  * The batch decode every format binding exposes — files and settings in, one
- * `FormatDecode.Result` out, never failing — and the one constructor that
+ * `FormatDecode.Decoded` out, never failing — and the one constructor that
  * builds it.
  *
  * @remarks
- * {@link make} is where source file handling lives: it mints a
- * `DocumentReference` for every picked file, lists the source files among the
- * reviewed sections, stamps `meta.source` on everything the decode produced,
- * and provides the format's `PickedFile.Format` internally, so what a binding
- * writes is a literal and what a consumer holds requires only what the
- * format's own `decodeFileSet` does — nothing, for a format that reads its
- * bytes itself.
+ * {@link make} groups a batch into file sets, decodes each set, namespaces its
+ * review keys, and folds a set that fails into `unreadableFiles` rows. It
+ * returns each set's decode apart, with its members, because
+ * `importer-core`'s import stage (`importDecoded`) mints each set's source
+ * files and makes its records the device's own.
  *
  * What differs between formats is {@link Config.groupBy} — which files are
  * decoded together. Left out, every file is its own set; a format whose files
  * must be read together (DICOM's studies) says which key they share and gets
- * the same minting, key-namespacing and failure folding around it. A format
- * that needs a parse to state that key parses twice — once in `groupBy` for
- * the key, once in `decodeFileSet` for the contents — which is a deliberate
- * trade of a little work for a constructor with no parsed-value passthrough in
- * it.
+ * the same key-namespacing and failure folding around it. A format that needs
+ * a parse to state that key parses twice — once in `groupBy` for the key, once
+ * in `decodeFileSet` for the contents — which is a deliberate trade of a
+ * little work for a constructor with no parsed-value passthrough in it.
  *
  * @packageDocumentation
  */
 
 import type { ParseResult } from 'effect'
-import { Array as Arr, Effect, Either, Schema } from 'effect'
+import { Array as Arr, Effect, Either, Function } from 'effect'
 
+import * as DecodedFileSet from './decoded-file-set.ts'
 import * as DecodedFile from './decoded-file.ts'
 import * as FormatDecode from './format-decode.ts'
-import * as MetaSource from './meta-source.ts'
-import * as PickedFile from './picked-file.ts'
+import type * as PickedFile from './picked-file.ts'
 
 /**
  * The batch decode the shell runs: every file of one format, under that
@@ -44,19 +41,11 @@ import * as PickedFile from './picked-file.ts'
 type Type<in TSettings, TFormat extends string, out R = never> = (
   files: readonly PickedFile.Type[],
   settings: TSettings
-) => Effect.Effect<FormatDecode.Result<TFormat>, never, R>
-
-/**
- * One file of a set as {@link Config.decodeFileSet} reads it: the pick, plus
- * the source file minted for it.
- */
-type WithSourceFile = PickedFile.Type & { readonly sourceFile: PickedFile.SourceFile }
+) => Effect.Effect<FormatDecode.Decoded<TFormat>, never, R>
 
 /** What {@link make} needs of a format, `R` being what its `decodeFileSet` requires. */
 interface Config<TFormat extends string, TSettings, R = never> {
   readonly format: TFormat
-  /** The format's source file constants — {@link make} provides them internally. */
-  readonly sourceFileFormat: PickedFile.FormatValue
   /**
    * Which files are decoded together, as the key they share.
    *
@@ -69,118 +58,28 @@ interface Config<TFormat extends string, TSettings, R = never> {
   readonly groupBy?:
     | ((file: PickedFile.Type) => Either.Either<string, ParseResult.ParseError>)
     | undefined
+  /**
+   * One set's decode, every resource in it already adopted: each reaches the
+   * import stage as an `Adopted` record.
+   */
   readonly decodeFileSet: (
-    members: Arr.NonEmptyReadonlyArray<WithSourceFile>,
+    members: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
     settings: TSettings
   ) => Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, R>
-  /**
-   * What this set's source files are listed and stamped as, read off its decode.
-   *
-   * @remarks
-   * Runs after the decode, once per member, with that member's minted source file
-   * and the set's whole decode — so a format names the subject and the related
-   * resources off what it already extracted. **The source file's `id` must not
-   * change**: the row that is listed and the reference every resource's
-   * `meta.source` names are both read off the result. Left out, a source file is
-   * stored exactly as minted — which keeps an engineering artifact out of
-   * `Patient/$everything`.
-   */
-  readonly linkSourceFile?:
-    | ((minted: PickedFile.SourceFile, decoded: DecodedFile.DecodedFile) => PickedFile.SourceFile)
-    | undefined
 }
 
-/** The section title one picked file's source file is reviewed under. */
-const SOURCE_FILE_SECTION_TITLE = 'Source file'
-
-/** The section title several source files read together are reviewed under. */
-const SOURCE_FILES_SECTION_TITLE = 'Source files'
-
-/** The review key of a source file row, stable across a settings re-decode. */
-const sourceFileKey = (file: PickedFile.Type): string =>
-  `${FormatDecode.keyPrefix(file)}source-file/${file.fileName}`
-
-const mintSourceFile = Schema.encode(PickedFile.FromDocumentReference)
-
-/** A source file stored exactly as minted — what a format that states no {@link Config.linkSourceFile} gets. */
-const asMinted = (minted: PickedFile.SourceFile): PickedFile.SourceFile => minted
-
-/**
- * The member whose source file stamps `meta.source` on the set's resources: the
- * one with the lexicographically smallest source file id.
- *
- * @remarks
- * A source file's id is a content hash of the file's bytes and name, so the
- * smallest of them is a fact about the set and not about the order it was
- * picked in — which is what makes the same study, picked any way round,
- * synthesize identical resources. Review keys need only survive a settings
- * re-decode, so they are namespaced by the set's first member in pick order
- * instead.
- */
-const representativeOf = (
-  withSourceFiles: Arr.NonEmptyReadonlyArray<WithSourceFile>
-): WithSourceFile =>
-  withSourceFiles.reduce((smallest, one) =>
-    sourceFileId(one) < sourceFileId(smallest) ? one : smallest
-  )
-
-/** A source file's logical id, the one it is stored under. */
-const sourceFileId = (one: WithSourceFile): string => one.sourceFile.id
-
-/**
- * Decode one set: mint a source file per pick, decode them together, let the
- * format finish each source file off the decode, and lead with the source files it is
- * about to store.
- */
+/** Decode one set, its review keys namespaced by its first member in pick order. */
 const decodeSet = <TSettings, R>(
   members: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: TSettings,
   config: Config<string, TSettings, R>
-): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, PickedFile.Format | R> =>
-  Effect.gen(function* () {
-    const withSourceFiles = yield* Effect.forEach(
+): Effect.Effect<DecodedFileSet.Type, ParseResult.ParseError, R> =>
+  Effect.map(config.decodeFileSet(members, settings), (decoded) =>
+    DecodedFileSet.ofAdopted(
       members,
-      (file): Effect.Effect<WithSourceFile, ParseResult.ParseError, PickedFile.Format> =>
-        Effect.map(mintSourceFile(file), (sourceFile) => ({ ...file, sourceFile })),
-      { concurrency: 'unbounded' }
+      DecodedFile.namespaceKeys(decoded, FormatDecode.keyPrefix(members[0]))
     )
-
-    const decoded = yield* config.decodeFileSet(withSourceFiles, settings)
-
-    const finish = config.linkSourceFile ?? asMinted
-    const finished: Arr.NonEmptyReadonlyArray<WithSourceFile> = Arr.map(withSourceFiles, (one) => ({
-      ...one,
-      sourceFile: finish(one.sourceFile, decoded),
-    }))
-
-    const stamped = MetaSource.stampDecoded(
-      DecodedFile.namespaceKeys(decoded, FormatDecode.keyPrefix(members[0])),
-      MetaSource.makeReference(sourceFileId(representativeOf(finished)))
-    )
-
-    const rows = finished.map((one): DecodedFile.Resource => ({
-      key: sourceFileKey(one),
-      title: one.fileName,
-      resource: one.sourceFile,
-    }))
-
-    // Their own section ahead of what was read out of them, so the reviewer
-    // sees what is about to be stored before what it yielded.
-    const title = rows.length === 1 ? SOURCE_FILE_SECTION_TITLE : SOURCE_FILES_SECTION_TITLE
-    return { ...stamped, sections: [{ title, resources: rows }, ...stamped.sections] }
-  })
-
-/** The `unreadableFiles` row one pick is reported as. */
-const unreadableRow = (
-  format: string,
-  file: PickedFile.Type,
-  error: ParseResult.ParseError
-): FormatDecode.UnreadableFile => ({
-  id: FormatDecode.makeFileId(format, file),
-  title: file.fileName,
-  pickedFile: file,
-  error,
-})
+  )
 
 /** What the sets a batch groups into, and the picks that reached none of them. */
 interface Grouped {
@@ -224,75 +123,54 @@ const groupFiles = (
  * Build a format's batch `decode` from how its files group and how one group
  * reads.
  *
- * @param config - The format's tag, its source file constants, its
- *   `decodeFileSet`, and optionally its `groupBy` — for a format whose files
- *   are read together — and its `linkSourceFile`
+ * @param config - The format's tag, its `decodeFileSet`, and optionally its
+ *   `groupBy`, for a format whose files are read together
  * @returns The format's batch decode: never failing, requiring what
  *   `decodeFileSet` requires
  *
  * @remarks
  * Sets are decoded concurrently and each is independent: one that rejects
  * yields an `unreadableFiles` row per pick in it while the rest stay
- * reviewable. Within a set the source files are minted concurrently too, but they
- * are finished after the decode, because {@link Config.linkSourceFile} reads it.
+ * reviewable.
  */
 const make = <TFormat extends string, TSettings, R = never>(
   config: Config<TFormat, TSettings, R>
 ): Type<TSettings, TFormat, R> => {
   const groupBy = config.groupBy ?? ((file: PickedFile.Type) => Either.right(file.id))
-  return (files, settings): Effect.Effect<FormatDecode.Result<TFormat>, never, R> => {
+  return (files, settings): Effect.Effect<FormatDecode.Decoded<TFormat>, never, R> => {
     const grouped = groupFiles(files, groupBy)
-    const decoded = Effect.forEach(
+    return Effect.forEach(
       grouped.fileSets,
-      (
-        members
-      ): Effect.Effect<
-        Either.Either<DecodedFile.DecodedFile, readonly FormatDecode.UnreadableFile[]>,
-        never,
-        PickedFile.Format | R
-      > =>
+      (members) =>
         decodeSet(members, settings, config).pipe(
-          Effect.map(Either.right),
-          Effect.catchAll((error) =>
+          Effect.mapError((error) =>
             // A set is read as a whole, so a set that rejects rejects every pick
             // in it — each with its own row, naming the file the reviewer picked.
-            Effect.succeed(
-              Either.left(members.map((file) => unreadableRow(config.format, file, error)))
-            )
-          )
+            members.map((file) => FormatDecode.unreadableFile(config.format, file, error))
+          ),
+          Effect.either
         ),
       { concurrency: 'unbounded' }
     ).pipe(
-      Effect.map((results): FormatDecode.Result<TFormat> => {
-        const sections: DecodedFile.Section[] = []
-        const notes: string[] = []
-        // The picks no set claimed come first, in pick order, ahead of the sets
-        // that rejected.
-        const unreadableFiles: FormatDecode.UnreadableFile[] = grouped.unreadable.map((one) =>
-          unreadableRow(config.format, one.file, one.error)
-        )
-        for (const result of results) {
-          Either.match(result, {
-            onLeft: (rejected) => unreadableFiles.push(...rejected),
-            onRight: (one) => {
-              sections.push(...one.sections)
-              notes.push(...one.notes)
-            },
-          })
-        }
+      Effect.map((results): FormatDecode.Decoded<TFormat> => {
+        const [rejected, fileSets] = Arr.partitionMap(results, Function.identity)
         return {
-          id: FormatDecode.makeId(config.format, files),
-          title: files.map((file) => file.fileName).join(', '),
-          files,
           format: config.format,
-          decoded: { sections, notes },
-          unreadableFiles,
+          files,
+          fileSets,
+          // The picks no set claimed come first, in pick order, ahead of the
+          // sets that rejected.
+          unreadableFiles: [
+            ...grouped.unreadable.map((one) =>
+              FormatDecode.unreadableFile(config.format, one.file, one.error)
+            ),
+            ...rejected.flat(),
+          ],
         }
       })
     )
-    return Effect.provideService(decoded, PickedFile.Format, config.sourceFileFormat)
   }
 }
 
-export { SOURCE_FILE_SECTION_TITLE, SOURCE_FILES_SECTION_TITLE, make }
-export type { WithSourceFile, Config, Type }
+export { make }
+export type { Config, Type }

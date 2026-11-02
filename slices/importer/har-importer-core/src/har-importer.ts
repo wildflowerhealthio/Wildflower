@@ -101,7 +101,6 @@ const harImporter: FileImporter.Type<HarSettings, typeof format> = {
   sourceFileFormat,
   decode: DecodeFunction.make({
     format,
-    sourceFileFormat,
     decodeFileSet: (members, settings) =>
       decodeHar(members[0].bytes, settings).pipe(
         Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),

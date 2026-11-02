@@ -3,7 +3,10 @@
  *
  * @packageDocumentation
  */
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
+
 import type * as DecodeFunction from './decode-function.ts'
+import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
 
 /**
@@ -19,8 +22,9 @@ import type * as PickedFile from './picked-file.ts'
  * prototype to lose.
  *
  * There is no constructor: every field is either a constant the binding states
- * or a function it already has. `decode` comes from `DecodeFunction.make`,
- * which is where the source-file constants below are put to work.
+ * or a function it already has. `decode` comes from `DecodeFunction.make`;
+ * the source-file constants and the two hooks below are what `importer-core`'s
+ * import stage reads when it mints a set's source files.
  *
  * `R` is what `decode` requires of whoever runs it: `never` for a format that
  * reads its bytes itself, a platform service (LifeLabs' PDF extraction) for
@@ -42,6 +46,36 @@ interface Type<TSettings, TFormat extends string, R = never> {
    * `PickedFile.FromDocumentReference`).
    */
   readonly sourceFileFormat: PickedFile.FormatValue
+  /**
+   * What one set's source files are listed and stamped as, read off the set's
+   * import.
+   *
+   * @remarks
+   * Runs once per member, with that member's minted source file and the set's
+   * records, adopted, so a format names the subject and the related resources
+   * off what it already extracted. **The source file's `id` must not change**:
+   * the row that is listed and the reference every resource's `meta.source`
+   * names are both read off the result. Left out, a source file is stored
+   * exactly as minted, which keeps an engineering artifact out of
+   * `Patient/$everything`.
+   */
+  readonly linkSourceFile?:
+    | ((minted: PickedFile.SourceFile, decoded: DecodedFile.DecodedFile) => PickedFile.SourceFile)
+    | undefined
+  /**
+   * One adopted record of a set, finished once its source files are minted.
+   *
+   * @remarks
+   * `sourceFileIds` holds each member's source file id by the member's pick
+   * `id`, for a record that names the file it was read from. Left out, every
+   * record is kept as it is.
+   */
+  readonly finish?:
+    | ((
+        resource: FhirResourceWithId,
+        sourceFileIds: ReadonlyMap<string, string>
+      ) => FhirResourceWithId)
+    | undefined
 }
 
 export type { Type }

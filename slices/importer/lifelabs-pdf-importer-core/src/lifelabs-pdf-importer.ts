@@ -38,7 +38,6 @@ const lifeLabsPdfImporter: FileImporter.Type<
   sourceFileFormat,
   decode: DecodeFunction.make({
     format,
-    sourceFileFormat,
     decodeFileSet: (members, settings) => decodeLifeLabsPdf(members[0], settings),
   }),
 }

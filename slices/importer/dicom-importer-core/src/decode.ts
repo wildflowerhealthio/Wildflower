@@ -8,18 +8,19 @@
 import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { adoptResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { DocumentReferenceContext, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type DecodeFunction,
-  DecodedFile,
-  type PickedFile,
-} from '@wildflowerhealthio/importer-fundamentals'
+  DocumentReferenceContext,
+  type FhirResource,
+  type FhirResourceWithId,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { DecodedFile, type PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 
 import { dicomCalendarDate } from './fhir/dates.ts'
 import {
   accessionNumbers,
+  GRIDFS_FILE_ID_EXTENSION_URL,
   orderedInstances,
   patientOriginalId,
   toFhirResources,
@@ -35,7 +36,7 @@ const labelAdopted = (resource: FhirResource, key: string, title: string): Decod
   return { key, title, resource: adopted }
 }
 
-/** One file of a study, as the synthesis sees it: its header, its source file, its pick. */
+/** One file of a study, as the synthesis sees it: its header, its pick's id, its name. */
 interface StudyFile extends StudyInstance {
   readonly fileName: string
 }
@@ -144,12 +145,12 @@ const referenceValue = (reference: string): typeof IdentifierAndReference.Refere
 const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
 
 /**
- * Finish a study's source file off the study's own decode: file it under the
+ * Link a study's source file to the study's own import: file it under the
  * `Patient` the decode synthesized, and relate it to the `ImagingStudy` it was
  * read into.
  *
  * @param minted - The source file as `PickedFile.FromDocumentReference` minted it
- * @param decoded - The whole study's decode
+ * @param decoded - The whole study's records, adopted
  * @returns The source file to store and list, with the same id it was minted under
  *
  * @remarks
@@ -187,11 +188,50 @@ const linkToPatientAndStudy = (
 }
 
 /**
+ * The study's `ImagingStudy` with each instance's `gridfsFileId` naming the
+ * source file storing its file, rather than its pick; any other resource as it
+ * is. The DICOM importer's `finish`.
+ *
+ * @param resource - One adopted resource of the study
+ * @param sourceFileIds - Each member's source file id, by its pick's `id`
+ *
+ * @remarks
+ * Every `gridfsFileId` the decode wrote is a member's pick id, so one missing
+ * from `sourceFileIds` is a broken import, not a case to keep.
+ */
+const withSourceFileIds = (
+  resource: FhirResourceWithId,
+  sourceFileIds: ReadonlyMap<string, string>
+): FhirResourceWithId => {
+  if (resource.resourceType !== 'ImagingStudy') return resource
+  const sourceFileIdOf = (pickId: string | null): string => {
+    const sourceFileId = sourceFileIds.get(pickId ?? '')
+    if (sourceFileId === undefined) throw new Error(`No source file for the pick ${pickId}`)
+    return sourceFileId
+  }
+  return {
+    ...resource,
+    series: resource.series.map((series) => ({
+      ...series,
+      instance: series.instance.map((instance) => ({
+        ...instance,
+        extension: instance.extension.map((extension) =>
+          extension.url === GRIDFS_FILE_ID_EXTENSION_URL
+            ? { ...extension, valueString: sourceFileIdOf(extension.valueString) }
+            : extension
+        ),
+      })),
+    })),
+  }
+}
+
+/**
  * Decode one study's picked files into a section of adopted, labeled FHIR
  * resources.
  *
- * @param members - Every picked `.dcm` of one study, in pick order, each with
- *   the source file storing it (whose id is the instance's `gridfsFileId`)
+ * @param members - Every picked `.dcm` of one study, in pick order; each
+ *   instance's `gridfsFileId` is its file's pick id until
+ *   {@link withSourceFileIds} names the source file
  * @param settings - The import's settings; its `timeZone` is what
  *   `ImagingStudy.started` is resolved against
  * @returns One section when the study carries a patient, plus notes for what
@@ -215,7 +255,7 @@ const linkToPatientAndStudy = (
  * setting for the whole pick, so an unresolvable zone fails every set.
  */
 const decodeStudy = (
-  members: Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile>,
+  members: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: DicomSettings
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.gen(function* () {
@@ -225,7 +265,7 @@ const decodeStudy = (
       Effect.map(headerOf(member), (header) => ({
         fileName: member.fileName,
         header,
-        sourceFileId: member.sourceFile.id,
+        fileId: member.id,
       }))
     )
     const ordered = orderedInstances(files)
@@ -265,5 +305,12 @@ const decodeStudy = (
     return { sections, notes }
   })
 
-export { linkToPatientAndStudy, decodeStudy, sectionTitle, studyGroupKey, studyKey }
+export {
+  decodeStudy,
+  linkToPatientAndStudy,
+  sectionTitle,
+  studyGroupKey,
+  studyKey,
+  withSourceFileIds,
+}
 export type { StudyFile }

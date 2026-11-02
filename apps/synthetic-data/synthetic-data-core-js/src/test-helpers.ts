@@ -1,5 +1,7 @@
+// oxlint-disable import/max-dependencies -- every source's generator, through its importer and the import stage
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { defaultHarSettings, harImporter } from '@wildflowerhealthio/har-importer-core'
+import { importDecoded } from '@wildflowerhealthio/importer-core'
 import { sha256Base64 } from '@wildflowerhealthio/importer-fundamentals'
 import type { DateTime } from 'effect'
 import { Effect, Either } from 'effect'
@@ -33,10 +35,12 @@ import * as Reader from './snapshot-reader.ts'
  * snapshot's files served to a reader from memory.
  */
 
-/** Every resource `bytes` imports to through `harImporter.decode`, picked as `fileName`. */
+/** Every resource `bytes` imports to through the HAR importer and the import stage, picked as `fileName`. */
 const importHar = (bytes: Uint8Array, fileName: string): Promise<readonly FhirResource[]> =>
   Effect.runPromise(
-    harImporter.decode([{ id: `0:${fileName}`, fileName, bytes }], defaultHarSettings)
+    harImporter
+      .decode([{ id: `0:${fileName}`, fileName, bytes }], defaultHarSettings)
+      .pipe(Effect.flatMap((decoded) => importDecoded(harImporter, decoded)))
   ).then((result) =>
     result.decoded.sections.flatMap((section) => section.resources.map((entry) => entry.resource))
   )

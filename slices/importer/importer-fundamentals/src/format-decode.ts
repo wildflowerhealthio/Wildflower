@@ -21,6 +21,7 @@
  */
 
 import { type ParseResult } from 'effect'
+import type * as DecodedFileSet from './decoded-file-set.ts'
 import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
 
@@ -34,6 +35,18 @@ const makeFileId = (format: string, file: PickedFile.Type): string => `${format}
 /** The namespace every review key decoded out of one file set carries — see the module remarks. */
 const keyPrefix = (file: PickedFile.Type): string => `${file.id}/`
 
+/**
+ * One format's decode, file set by file set, as its `decode` returns it:
+ * `importer-core`'s import stage (`importDecoded`) makes it a {@link Result}.
+ */
+interface Decoded<TFormat extends string> {
+  readonly format: TFormat
+  readonly files: readonly PickedFile.Type[]
+  readonly fileSets: readonly DecodedFileSet.Type[]
+  readonly unreadableFiles: readonly UnreadableFile[]
+}
+
+/** One format's imported decode: its file sets' records the device's own, merged into one review. */
 interface Result<TFormat extends string> {
   readonly id: string
   readonly title: string
@@ -50,6 +63,18 @@ interface UnreadableFile {
   readonly error: ParseResult.ParseError
 }
 
+/** The {@link UnreadableFile} row one pick of `format` is reported as. */
+const unreadableFile = (
+  format: string,
+  file: PickedFile.Type,
+  error: ParseResult.ParseError
+): UnreadableFile => ({
+  id: makeFileId(format, file),
+  title: file.fileName,
+  pickedFile: file,
+  error,
+})
+
 /** A format with no claimed files — the seed for unclaimed format slots. */
 const emptyResult = <K extends string>(kind: K): Result<K> => ({
   id: makeId(kind, []),
@@ -60,5 +85,5 @@ const emptyResult = <K extends string>(kind: K): Result<K> => ({
   unreadableFiles: [],
 })
 
-export { emptyResult, keyPrefix, makeFileId, makeId }
-export type { Result, UnreadableFile }
+export { emptyResult, keyPrefix, makeFileId, makeId, unreadableFile }
+export type { Decoded, Result, UnreadableFile }

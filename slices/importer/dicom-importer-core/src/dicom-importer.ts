@@ -1,6 +1,6 @@
 import { DecodeFunction, type FileImporter } from '@wildflowerhealthio/importer-fundamentals'
 
-import { linkToPatientAndStudy, decodeStudy, studyGroupKey } from './decode.ts'
+import { decodeStudy, linkToPatientAndStudy, studyGroupKey, withSourceFileIds } from './decode.ts'
 import { detectDicom } from './detect.ts'
 import { defaultDicomSettings, type DicomSettings } from './settings.ts'
 import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from './source-system.ts'
@@ -26,7 +26,8 @@ const sourceFileFormat = {
  * independent — each states one instance of a study whose counts, modality set
  * and earliest `started` only the whole set knows. Its source files link to what
  * the study decoded to, because a DICOM file is a clinical document and
- * belongs in its patient's record.
+ * belongs in its patient's record, and its `finish` points each `ImagingStudy`
+ * instance at the source file storing its file.
  */
 const dicomImporter: FileImporter.Type<DicomSettings, typeof format> = {
   format,
@@ -34,12 +35,12 @@ const dicomImporter: FileImporter.Type<DicomSettings, typeof format> = {
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
   sourceFileFormat,
+  linkSourceFile: linkToPatientAndStudy,
+  finish: withSourceFileIds,
   decode: DecodeFunction.make({
     format,
-    sourceFileFormat,
     groupBy: studyGroupKey,
     decodeFileSet: decodeStudy,
-    linkSourceFile: linkToPatientAndStudy,
   }),
 }
 
