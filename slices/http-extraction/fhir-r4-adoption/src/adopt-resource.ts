@@ -461,8 +461,8 @@ const adoptedReference = (
  * `Reference.identifier`; every other reference exactly as it is.
  *
  * @remarks
- * The one reference rewrite, shared by {@link adoptResource} and
- * {@link adoptedReferenceOf}, so the two cannot drift.
+ * The one reference rewrite {@link adoptResource} runs; it spells each
+ * match with {@link adoptedReference}, as {@link adoptedReferenceOf} does.
  *
  * The literal is read through {@link SystemFamily.relativise}, so a FHIR
  * server's absolute `<baseUrl>/Type/id` lands where its `Type/id` does. A
@@ -619,67 +619,68 @@ const adoptResource = (family: SystemFamily.Type) => {
 /**
  * Read the source's own id back off a resource {@link adoptResource} adopted.
  *
- * @param family - The systems the resource's source keys each type in, as
- *   passed to {@link adoptResource}
+ * @param system - The system adoption keys the resource's type in: for a
+ *   FHIR-style source `<baseUrl>/<Type>`, not the base itself
+ *   ({@link SystemFamily.systemFor})
  * @param resource - The adopted resource
  * @returns The id the source used, or `null` when there is none to read
  *
  * @remarks
- * The system is the one `family` gives the resource's type, derived as
- * adoption derives it. `null` for a `Binary` (which carries no `identifier`),
- * for a resource that was never adopted, for one adopted under a different
- * family, and for one its source gave no id — its `identifier[0]` is a
- * content digest keyed in {@link DecodedId.CONTENT_DIGEST_SYSTEM}, not a
- * source id. The check is a round-trip: `identifier[0]` only counts as the
- * source id if re-deriving from it in the family's system reproduces the
+ * `null` for a `Binary` (which carries no `identifier`), for a resource that was
+ * never adopted, for one adopted under a different system, and for one its
+ * source gave no id — including when `system` is
+ * {@link DecodedId.CONTENT_DIGEST_SYSTEM}, since a digest is Wildflower's, not
+ * the source's. Otherwise the check is a round-trip: `identifier[0]` only
+ * counts as the source id if re-deriving from it in `system` reproduces the
  * resource's own id.
  *
  * This is what a caller reads when it needs the source's id to build a
  * source-server URL: an adopted resource's `resource.id` is the local id, not
  * the remote one.
  */
-const originalIdOf = (family: SystemFamily.Type, resource: FhirResource): string | null => {
-  if (!hasIdentifier(resource)) {
+const originalIdOf = (system: string, resource: FhirResource): string | null => {
+  if (system === DecodedId.CONTENT_DIGEST_SYSTEM || !hasIdentifier(resource)) {
     return null
   }
   const candidate = resource.identifier[0]
   if (candidate === undefined || candidate.value === null) {
     return null
   }
-  const system = SystemFamily.systemFor(family, resource.resourceType)
   return localResourceId(system, resource.resourceType, candidate.value) === resource.id
     ? candidate.value
     : null
 }
 
 /**
- * A reference to a resource an import adopts under `family`, spelled as
- * adoption rewrites the source's own `resourceType/originalId`: the local id,
- * with the source's id beside it as `Reference.identifier`.
+ * A reference to a resource an import adopts in `system`, spelled as adoption
+ * rewrites the source's own `resourceType/originalId`: the local id, with the
+ * source's id beside it as `Reference.identifier`.
  *
- * @param family - The systems the target's source keys each type in, as
- *   passed to {@link adoptResource}
+ * @param system - The system adoption keys the target's type in: for a
+ *   FHIR-style source `<baseUrl>/<Type>`, not the base itself
+ *   ({@link SystemFamily.systemFor})
  * @param resourceType - The target's type (`Patient`)
  * @param originalId - The id the source gave the target
  *
  * @remarks
  * For a resource written outside that source that has to point at what its
  * import stores — a lab result filed on the Patient a pharmacy import made.
- * It runs adoption's own rewrite ({@link rewriteReference}) on the bare
- * `resourceType/originalId`, so the two cannot drift. An `originalId` outside
- * FHIR's id grammar is left unrewritten, as adoption leaves it. The system is
- * parsed per call: this runs a handful of times per synthetic account, not
- * thousands per page, so the memo adoption pays for is not worth the aliasing
- * here.
+ * It is {@link adoptResource}'s own spelling ({@link adoptedReference}), so
+ * given the system adoption uses for the type, the two agree. An `originalId` outside FHIR's id grammar is left
+ * unrewritten, as adoption leaves it. `system` is parsed per call: this runs
+ * a handful of times per synthetic account, not thousands per page, so the
+ * memo adoption pays for is not worth the aliasing here.
  */
 const adoptedReferenceOf = (
-  family: SystemFamily.Type,
+  system: string,
   resourceType: string,
   originalId: string
 ): ReferenceType =>
-  rewriteReference(
-    family,
-    (system) => new URL(system)
-  )({ ...IdentifierAndReference.emptyReference, reference: `${resourceType}/${originalId}` })
+  RELATIVE_REFERENCE.test(`${resourceType}/${originalId}`)
+    ? adoptedReference(system, new URL(system), resourceType, originalId, {
+        ...IdentifierAndReference.emptyReference,
+        reference: `${resourceType}/${originalId}`,
+      })
+    : { ...IdentifierAndReference.emptyReference, reference: `${resourceType}/${originalId}` }
 
 export { adoptResource, adoptedReferenceOf, originalIdOf }
