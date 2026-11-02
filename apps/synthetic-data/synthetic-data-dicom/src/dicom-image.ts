@@ -3,9 +3,10 @@ import { dicomImporter } from '@wildflowerhealthio/dicom-importer-core'
 import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResource, withSubject } from '@wildflowerhealthio/fhir-r4/resources'
 import { importDecoded } from '@wildflowerhealthio/importer-core'
+import type { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'
 import { Person, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
-import { Data, DateTime, Effect, Either, type ParseResult } from 'effect'
+import { Data, DateTime, Effect, Either } from 'effect'
 
 /**
  * The DICOM generator: a real, already de-identified image re-identified as a
@@ -49,7 +50,7 @@ class UnencodableValue extends Data.TaggedError('UnencodableValue')<{
 
 /** A re-identification the DICOM importer could not read back. */
 class UnreadableReidentifiedFile extends Data.TaggedError('UnreadableReidentifiedFile')<{
-  readonly error: ParseResult.ParseError
+  readonly error: FormatDecode.UnreadableFile['error']
 }> {}
 
 /** Who and when a de-identified image is re-identified as. */

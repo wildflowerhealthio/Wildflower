@@ -2769,6 +2769,9 @@ importers:
       '@wildflowerhealthio/importer-core':
         specifier: workspace:*
         version: link:../../../slices/importer/importer-core
+      '@wildflowerhealthio/importer-fundamentals':
+        specifier: workspace:*
+        version: link:../../../slices/importer/importer-fundamentals
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink

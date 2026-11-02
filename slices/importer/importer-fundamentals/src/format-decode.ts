@@ -24,6 +24,7 @@
 import { type ParseResult } from 'effect'
 import type * as DecodedFileSet from './decoded-file-set.ts'
 import type * as DecodedFile from './decoded-file.ts'
+import type * as FileImporter from './file-importer.ts'
 import type * as PickedFile from './picked-file.ts'
 
 /** The id of one format's whole decode result — deterministic in its files and their order. */
@@ -57,18 +58,23 @@ interface Result<TFormat extends string> {
   readonly unreadableFiles: readonly UnreadableFile[]
 }
 
+/**
+ * One picked file that yielded nothing reviewable, and why: its decode
+ * rejected it (`ParseError`), or a record read out of its set named a file no
+ * picked file identifies as (`FileImporter.SourceFileNotFound`).
+ */
 interface UnreadableFile {
   readonly id: string
   readonly title: string
   readonly pickedFile: PickedFile.Type
-  readonly error: ParseResult.ParseError
+  readonly error: ParseResult.ParseError | FileImporter.SourceFileNotFound
 }
 
 /** The {@link UnreadableFile} row one picked file of `format` is reported as. */
 const makeUnreadableFile = (
   format: string,
   file: PickedFile.Type,
-  error: ParseResult.ParseError
+  error: UnreadableFile['error']
 ): UnreadableFile => ({
   id: makeFileId(format, file),
   title: file.fileName,

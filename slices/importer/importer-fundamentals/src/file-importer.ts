@@ -3,8 +3,9 @@
  *
  * @packageDocumentation
  */
+import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import type { Effect } from 'effect'
+import { Data, type Effect } from 'effect'
 
 import type * as DecodeFunction from './decode-function.ts'
 import type * as DecodedFile from './decoded-file.ts'
@@ -14,6 +15,24 @@ import type * as PickedFile from './picked-file.ts'
 interface PickedSourceFile {
   readonly pickedFile: PickedFile.Type
   readonly sourceFile: PickedFile.SourceFile
+}
+
+/**
+ * A record names a file by an identifier that no picked file of its set
+ * identifies as, so `linkToSourceFiles` has no source file to point it at.
+ *
+ * @remarks
+ * The import stage reports the set's picked files as unreadable rather than
+ * store a record pointing at a file that is not there.
+ */
+class SourceFileNotFound extends Data.TaggedError('SourceFileNotFound')<{
+  readonly identifier: IdentifierAndReference.IdentifierType
+}> {
+  // Data.TaggedError leaves `.message` empty by default; a human-readable
+  // description keeps the failure legible to whoever surfaces it.
+  override get message(): string {
+    return `no picked file identifies as ${this.identifier.system?.href ?? '(no system)'} ${this.identifier.value ?? '(no value)'}`
+  }
 }
 
 /**
@@ -90,8 +109,9 @@ interface Type<TSettings, TFormat extends string, R = never> {
     | ((
         resource: FhirResourceWithId,
         sourceFiles: readonly PickedSourceFile[]
-      ) => Effect.Effect<FhirResourceWithId>)
+      ) => Effect.Effect<FhirResourceWithId, SourceFileNotFound>)
     | undefined
 }
 
+export { SourceFileNotFound }
 export type { PickedSourceFile, Type }

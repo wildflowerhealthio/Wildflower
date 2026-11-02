@@ -87,7 +87,11 @@ const adoptSection = DecodedFileSet.Section.$match({
 const importFileSet = (
   importer: ImportingFormat,
   fileSet: DecodedFileSet.Type
-): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, PickedFile.Format> =>
+): Effect.Effect<
+  DecodedFile.DecodedFile,
+  ParseResult.ParseError | FileImporter.SourceFileNotFound,
+  PickedFile.Format
+> =>
   Effect.gen(function* () {
     const sourceFiles = yield* Effect.all(
       Arr.map(fileSet.pickedFiles, ({ pickedFile, identifiedAs }) =>
@@ -153,7 +157,9 @@ const importFileSet = (
  *
  * @remarks
  * Sets are imported concurrently and each is independent: one whose source file
- * cannot be minted yields an `unreadableFiles` row per picked file, after the
+ * cannot be built, or whose records name a file none of its picked files
+ * identifies as (`FileImporter.SourceFileNotFound`), yields an
+ * `unreadableFiles` row per picked file, after the
  * rows the decode already reported, while the rest stay reviewable. It provides
  * the `PickedFile.Format` service from the importer's `sourceFileFormat`
  * internally, so nothing it returns carries a requirement.

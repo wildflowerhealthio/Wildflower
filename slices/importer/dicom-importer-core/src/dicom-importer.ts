@@ -1,6 +1,6 @@
 import { Extension, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { DecodeFunction, type FileImporter } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodeFunction, FileImporter } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Effect, Option, Order, pipe, Predicate } from 'effect'
 
 import {
@@ -73,18 +73,21 @@ const sourceFileIdOf = (
  * @param resource - One adopted resource of the study
  * @param sourceFiles - Each picked file of the study and its source file, its
  *   `masterIdentifier` the file's SOP Instance UID
+ * @returns The resource, or a `SourceFileNotFound` for the first instance whose
+ *   SOP Instance UID no source file carries
  *
  * @remarks
  * Reads only FHIR: an instance's `uid` is its file's SOP Instance UID, which is
  * what that file's source file carries as its `masterIdentifier`. The decode
  * built every instance from one of these files, so an instance no source file
- * matches is a broken import and dies. A `gridfsFileId` already on an instance
- * is replaced; any other extension is kept.
+ * matches fails the study, which the import stage reports as unreadable. A
+ * `gridfsFileId` already on an instance is replaced; any other extension is
+ * kept.
  */
 const addGridfsFileIds = (
   resource: FhirResourceWithId,
   sourceFiles: readonly FileImporter.PickedSourceFile[]
-): Effect.Effect<FhirResourceWithId> => {
+): Effect.Effect<FhirResourceWithId, FileImporter.SourceFileNotFound> => {
   if (resource.resourceType !== 'ImagingStudy') return Effect.succeed(resource)
   return Effect.map(
     Effect.forEach(resource.series, (series) =>
@@ -92,7 +95,11 @@ const addGridfsFileIds = (
         Effect.forEach(series.instance, (instance) =>
           Option.match(sourceFileIdOf(instance.uid, sourceFiles), {
             onNone: () =>
-              Effect.dieMessage(`No source file for the DICOM instance ${instance.uid}`),
+              Effect.fail(
+                new FileImporter.SourceFileNotFound({
+                  identifier: sopInstanceIdentifier(instance.uid),
+                })
+              ),
             onSome: (sourceFileId) =>
               Effect.succeed({
                 ...instance,
