@@ -99,26 +99,25 @@ family** (`SystemFamily`), two kinds:
   (`PickedFile` mints its `DocumentReference` id in it).
 - **FHIR style** (`FhirStyleBaseUrl { baseUrl }`): the type appended to a
   base URL, `<baseUrl>/<Type>` (`https://example.com/fhir/Patient`), since a
-  FHIR server's ids are unique per type. That rule, and reading the server's
-  absolute spelling of its own record (`<baseUrl>/Type/id`) back to the
-  relative `Type/id`, are the two rules a base URL carries
-  (`FhirBaseUrl.systemFor`, `FhirBaseUrl.relativise`).
+  FHIR server's ids are unique per type. The server may also spell a
+  reference to its own record absolutely, `<baseUrl>/Type/id`, which
+  `SystemFamily.relativise` reads back to the relative `Type/id`.
 - A record its source gave no id is keyed in
   `https://wildflowerhealth.io/fhir/identifier/content-digest`
   (`DecodedId.CONTENT_DIGEST_SYSTEM`), beside Wildflower's other minted
   identifier systems, with a digest of its content as its source id. That is
   one system every source shares, not a family.
 
-`SystemFamily.systemFor(family, Type)` is the one operation over a family:
-the system it gives `Type`. `adoptWithSourceId(family)` is the per-resource
+`SystemFamily.systemFor(family, Type)` is the system a family gives `Type`,
+and `SystemFamily.relativise(family)` is its reference rule. `adoptWithSourceId(family)` is the per-resource
 rewrite of a record and its key `{ system, sourceId, resource }`, `family`
 saying where each reference's target is keyed. `adoptResource(family)` is the
 decode-time entry point over it, which:
 
-1. **Relativises a FHIR server's own references.** Under FHIR-style systems,
-   a reference under `<baseUrl>/` is read back to its relative `Type/id`, so
-   the absolute and relative spellings adopt alike. Under a fixed system the
-   resource is left as it is.
+1. **Relativises its references** (`SystemFamily.relativise`). Under
+   FHIR-style systems, a reference under `<baseUrl>/` is read back to its
+   relative `Type/id`, so the absolute and relative spellings adopt alike.
+   Under a fixed system every reference is left as it is.
 2. **Takes its `DecodedId`.** `FoundInSource` is the id the source gave it,
    in the system the family gives its type. A resource whose `id` is `null`
    (third-party FHIR JSON, where `id` is optional) is `GeneratedFromContent`

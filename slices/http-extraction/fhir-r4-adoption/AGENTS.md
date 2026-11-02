@@ -18,16 +18,14 @@ FHIR-free.
   `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(scope,
   resource)` picks one; `CONTENT_DIGEST_SYSTEM` is the system a digest id is
   in.
-- `src/fhir-base-url.ts` — `FhirBaseUrl`, the two rules a FHIR server's base
-  URL carries: `systemFor(baseUrl, Type)` is `<baseUrl>/<Type>`, the system
-  that type's ids are in, and `relativise(baseUrl)` reads the server's
-  absolute spelling of its own record back to the relative `Type/id`.
 - `src/system-family.ts` — `SystemFamily`, how the `Identifier.system` of a
   source id is chosen per resource type in one context, two kinds:
   `FixedAcrossResourceTypes { system }`, the one system whatever the type (a
   portal, a file format), or `FhirStyleBaseUrl { baseUrl }`, the type
-  appended to a base URL. `systemFor(family, Type)` is the one operation: the
-  system `family` gives `Type`.
+  appended to a base URL. `systemFor(family, Type)` is the system `family`
+  gives `Type`; `relativise(family)` reads a FHIR server's absolute spelling
+  of its own record, `<baseUrl>/Type/id`, back to the relative `Type/id`, and
+  leaves every reference alone under a fixed system.
 - `src/adopt-resource.ts` — `adoptWithSourceId(family)`, the per-resource
   rewrite of a record and its key `{ system, sourceId, resource }`: the
   derived id, `{ system, value: sourceId }` as `identifier[0]`, and each
