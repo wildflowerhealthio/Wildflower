@@ -35,7 +35,7 @@ import {
   originalIdOf,
 } from './adopt-resource.ts'
 import * as DecodedId from './decoded-id.ts'
-import * as SourceIdentity from './source-identity.ts'
+import * as SystemFamily from './system-family.ts'
 
 /**
  * Covers adoption of a single resource: the derived id, the injected source
@@ -57,16 +57,16 @@ import * as SourceIdentity from './source-identity.ts'
 
 const BASE = 'https://source.example/baseR4'
 
-/** A FHIR server's source: its system for a type is `<root>/<Type>`. */
-const SOURCE = SourceIdentity.FhirServer({ root: BASE })
+/** A FHIR server's systems: `<baseUrl>/<Type>` for each type. */
+const SOURCE = SystemFamily.FhirStyleBaseUrl({ baseUrl: BASE })
 
 /** {@link SOURCE}'s system for `resourceType`. */
 const fhirSystem = (resourceType: string): string => `${BASE}/${resourceType}`
 
 const SYSTEM = 'https://wildflowerhealth.io/fhir/sid/example-portal'
 
-/** A portal's source: one system for every type, and references always relative. */
-const RELATIVE_SOURCE = SourceIdentity.OneSystem({ system: SYSTEM })
+/** A portal's systems: the one system whatever the type, and references always relative. */
+const RELATIVE_SOURCE = SystemFamily.FixedAcrossResourceTypes({ system: SYSTEM })
 
 const adopt = adoptResource(SOURCE)
 
@@ -680,8 +680,8 @@ describe('reference rewriting', () => {
     subject,
   })
 
-  const subjectOf = (source: SourceIdentity.Type, subject: ReferenceType): ReferenceType | null => {
-    const adopted = adoptResource(source)(observationWith(subject))
+  const subjectOf = (family: SystemFamily.Type, subject: ReferenceType): ReferenceType | null => {
+    const adopted = adoptResource(family)(observationWith(subject))
     if (adopted.resourceType !== 'Observation') throw new Error('unreachable: adopted Observation')
     return adopted.subject
   }
@@ -755,7 +755,7 @@ describe('reference rewriting', () => {
     expect(absolute).toEqual(relative)
   })
 
-  test('leaves an absolute reference alone when the source is not a FHIR server', () => {
+  test('leaves an absolute reference alone when the systems are not FHIR style', () => {
     const target = 'https://source.example/baseR4/Patient/pat-7'
     expect(subjectOf(RELATIVE_SOURCE, reference({ reference: target }))?.reference).toBe(target)
   })
@@ -1019,11 +1019,11 @@ describe('adoptWithSourceId', () => {
   })
 
   const adoptPatientIn = (
-    source: SourceIdentity.Type,
+    family: SystemFamily.Type,
     system: string,
     generalPractitioner: string
   ): WithMandatoryId<typeof Patient.Schema.Type> => {
-    const adopted = adoptWithSourceId(source)({
+    const adopted = adoptWithSourceId(family)({
       system,
       sourceId: 'src-1',
       resource: patientLinking(generalPractitioner),
@@ -1047,7 +1047,7 @@ describe('adoptWithSourceId', () => {
     ])
   })
 
-  test('keys every type of a portal in its one system', () => {
+  test('keys every type in the one system when it is fixed across types', () => {
     const adopted = adoptPatientIn(RELATIVE_SOURCE, SYSTEM, 'Practitioner/prac-3')
     expect(adopted.id).toBe(localResourceId(SYSTEM, 'Patient', 'src-1'))
     expect(adopted.generalPractitioner[0]?.identifier).toEqual(
@@ -1072,22 +1072,22 @@ describe('adoptWithSourceId', () => {
     expect(adopted.generalPractitioner).toEqual([reference({ reference: absolute })])
   })
 
-  // `adoptResource` is the decode-time wrapper: the source's own system for a
-  // resource it gave an id, the content-digest system for one it gave none.
-  for (const [label, source] of [
-    ['a FHIR server', SOURCE],
-    ['a portal', RELATIVE_SOURCE],
+  // `adoptResource` is the decode-time wrapper: the family's system for a
+  // resource its source gave an id, the content-digest system for one it gave none.
+  for (const [label, family] of [
+    ['FHIR-style systems', SOURCE],
+    ['a fixed system', RELATIVE_SOURCE],
   ] as const) {
-    test(`adoptResource for ${label} is adoptWithSourceId under the decoded id`, () => {
+    test(`adoptResource under ${label} is adoptWithSourceId under the decoded id`, () => {
       for (const resource of resources) {
-        const system = SourceIdentity.systemFor(source, resource.resourceType)
-        expect(adoptResource(source)(resource)).toEqual(
-          adoptWithSourceId(source)({ system, sourceId: 'src-1', resource })
+        const system = SystemFamily.systemFor(family, resource.resourceType)
+        expect(adoptResource(family)(resource)).toEqual(
+          adoptWithSourceId(family)({ system, sourceId: 'src-1', resource })
         )
         const idLess = { ...resource, id: null }
         const { value: digest } = DecodedId.of(system, idLess)
-        expect(adoptResource(source)(idLess)).toEqual(
-          adoptWithSourceId(source)({
+        expect(adoptResource(family)(idLess)).toEqual(
+          adoptWithSourceId(family)({
             system: DecodedId.CONTENT_DIGEST_SYSTEM,
             sourceId: digest,
             resource: idLess,

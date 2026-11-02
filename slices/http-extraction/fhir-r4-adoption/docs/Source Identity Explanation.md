@@ -89,40 +89,41 @@ loudly.
 ## What adoption does to a resource
 
 A record is keyed by **(system, resource type, source id)**: the system is
-FHIR's `Identifier.system`, the absolute URI the record's source id belongs
-to. Which system that is follows from what the source is (`SourceIdentity`,
-two cases):
+FHIR's `Identifier.system`, the namespace the record's source id is unique
+in, an absolute URI. Which system a type gets in one context is a **system
+family** (`SystemFamily`), two kinds:
 
-- A **FHIR server** (`FhirServer { root }`) keys each type in its own system
-  under the root, `<root>/<Type>` (`https://example.com/fhir/Patient`), since
-  its ids are unique per type. That rule, and reading the server's absolute
-  spelling of its own record (`<root>/Type/id`) back to the relative `Type/id`,
-  are the two rules a root carries (`FhirRoot.systemFor`,
-  `FhirRoot.relativise`).
-- A **one-system source** (`OneSystem { system }`) keys every type in that
-  system: a portal's Wildflower-minted `…/fhir/sid/<source>` URI, or a picked
-  source file's format coding system (`PickedFile` mints its
-  `DocumentReference` id in it).
+- **Fixed across resource types** (`FixedAcrossResourceTypes { system }`):
+  the one system whatever the type. A portal's Wildflower-minted
+  `…/fhir/sid/<source>` URI, or a picked source file's format coding system
+  (`PickedFile` mints its `DocumentReference` id in it).
+- **FHIR style** (`FhirStyleBaseUrl { baseUrl }`): the type appended to a
+  base URL, `<baseUrl>/<Type>` (`https://example.com/fhir/Patient`), since a
+  FHIR server's ids are unique per type. That rule, and reading the server's
+  absolute spelling of its own record (`<baseUrl>/Type/id`) back to the
+  relative `Type/id`, are the two rules a base URL carries
+  (`FhirBaseUrl.systemFor`, `FhirBaseUrl.relativise`).
 - A record its source gave no id is keyed in
   `https://wildflowerhealth.io/fhir/identifier/content-digest`
   (`DecodedId.CONTENT_DIGEST_SYSTEM`), beside Wildflower's other minted
-  identifier systems, with a digest of its content as its source id.
+  identifier systems, with a digest of its content as its source id. That is
+  one system every source shares, not a family.
 
-`SourceIdentity.systemFor(source, Type)` is the one operation over a source:
-the system it keys `Type` in. `adoptWithSourceId(source)` is the per-resource
-rewrite of a record and its key `{ system, sourceId, resource }`, `source`
-saying where each reference's target is keyed. `adoptResource(source)` is the
+`SystemFamily.systemFor(family, Type)` is the one operation over a family:
+the system it gives `Type`. `adoptWithSourceId(family)` is the per-resource
+rewrite of a record and its key `{ system, sourceId, resource }`, `family`
+saying where each reference's target is keyed. `adoptResource(family)` is the
 decode-time entry point over it, which:
 
-1. **Relativises a FHIR server's own references.** A reference under
-   `<root>/` is read back to its relative `Type/id`, so the absolute and
-   relative spellings adopt alike. A one-system source's resource is left as
-   it is.
+1. **Relativises a FHIR server's own references.** Under FHIR-style systems,
+   a reference under `<baseUrl>/` is read back to its relative `Type/id`, so
+   the absolute and relative spellings adopt alike. Under a fixed system the
+   resource is left as it is.
 2. **Takes its `DecodedId`.** `FoundInSource` is the id the source gave it,
-   in the system the source keys its type in. A resource whose `id` is `null`
+   in the system the family gives its type. A resource whose `id` is `null`
    (third-party FHIR JSON, where `id` is optional) is `GeneratedFromContent`
-   instead, in the content-digest system: FNV-1a 64 over the system its id
-   would have been in and its FHIR JSON as `FhirResourceSchema` encodes it,
+   instead, in the content-digest system: FNV-1a 64 over the system the
+   family gives its type and its FHIR JSON as `FhirResourceSchema` encodes it,
    fields in schema order, as sixteen hex digits. The digest system is shared
    by every source, and a relative reference means a different target in a
    different source, so the digest is scoped to its source: the same content
@@ -150,24 +151,24 @@ has to land on the same derived id. `originalIdOf` returns `null` for a Binary.
 
 `originalIdOf(source, resource)` reads the source's id back off an adopted
 resource — `identifier[0]` counts only if re-deriving from it in the system
-the source keys its type in reproduces the resource's own id, so it is `null`
+the family gives its type reproduces the resource's own id, so it is `null`
 for a record its
 source gave no id. Anything that needs the source's id after adoption (to build
 a source-server URL, say) reads it there, never off `resource.id`.
 
 ### The reference rule
 
-A reference's target is keyed in the system the source keys **its own type**
-in, not the referring record's: a FHIR server's `Observation.subject` of
-`Patient/abc` is `(<root>/Patient, Patient, abc)`, and a digest record's
+A reference's target is keyed in the system the family gives **its own
+type**, not the referring record's: a FHIR server's `Observation.subject` of
+`Patient/abc` is `(<baseUrl>/Patient, Patient, abc)`, and a digest record's
 references are keyed in its source like any other record's. For one
 `Reference`:
 
 ```text
 reference.reference is null                                      → unchanged
 reference.reference does not match `^[A-Za-z]+/[A-Za-z0-9\-.]{1,64}$` → unchanged
-otherwise → reference := `${Type}/${localResourceId(systemFor(source, Type), Type, id)}`
-            identifier := the existing one, or { system: systemFor(source, Type), value: id }
+otherwise → reference := `${Type}/${localResourceId(systemFor(family, Type), Type, id)}`
+            identifier := the existing one, or { system: systemFor(family, Type), value: id }
 ```
 
 The grammar check is what leaves alone: `#fragment` contained references,
@@ -253,23 +254,25 @@ It takes a single `HttpResponseKind<FhirResource>` to a
 `HttpResponseKind<FhirResourceWithId>`, replacing its `parse` with one that
 adopts the parse output under the identity **the kind's own `tryRecognize`
 mints for the response's URL** — read verbatim from
-`kind.tryRecognize(response.url, response.method).source`, with no source
-passed in. `RecognizedUrlData.source` is `SourceIdentity`'s shape, spelled
+`kind.tryRecognize(response.url, response.method).systemFamily`, with no
+source passed in. `RecognizedUrlData.systemFamily` is `SystemFamily`'s shape,
+spelled
 structurally in `http-extraction-fundamentals`, which stays FHIR-free. Each
 kind constructs its own identity, so recognition and the namespace a resource
 keys under are the one decision:
 
 - **FHIR** (`fhir-r4-source`) — `tryRecognize` returns
-  `source: FhirServer { root }`, the root captured by the kind's own
-  `UrlMatch`. So a resource keys in `<root>/<Type>` of the URL it arrived on,
-  and a server that spells its own references absolutely under the root
-  rewrites them the same as relative ones.
+  `systemFamily: FhirStyleBaseUrl { baseUrl }`, the root captured by the
+  kind's own `UrlMatch`. So a resource keys in `<baseUrl>/<Type>` of the URL
+  it arrived on, and a server that spells its own references absolutely under
+  it rewrites them the same as relative ones.
 - **Rexall / Shoppers** (`rexall-be-well-source`, `shoppers-drugmart-source`) —
   `tryRecognize` (via `http-extraction-fundamentals`' `recognizePortal`) stays
-  URL-gated but mints a constant `source: OneSystem { system: SID }`
+  URL-gated but mints a constant
+  `systemFamily: FixedAcrossResourceTypes { system: SID }`
   (`REXALL_CAREBOOK_SYSTEM` / `SHOPPERS_DRUGMART_SYSTEM`, Wildflower-minted `sid`
-  URIs in each package's `source-system.ts`): one system for every type, and
-  references already relative.
+  URIs in each package's `source-system.ts`): one system whatever the type,
+  and references already relative.
 
 The seam is applied per kind at **module load**: each per-source package in
 `slices/http-extraction` `.map`s its kind list through the combinator once in its

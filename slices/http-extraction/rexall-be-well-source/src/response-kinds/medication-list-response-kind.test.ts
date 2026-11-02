@@ -65,11 +65,11 @@ describe('MedicationListResponseKind', () => {
       )
     })
 
-    it('mints the portal source (one system for every type) at portal specificity', () => {
+    it('mints its system, fixed across resource types, at portal specificity', () => {
       expect(MedicationListResponseKind.tryRecognize(LIST_URL, Option.some('GET'))).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          source: { _tag: 'OneSystem', system: REXALL_CAREBOOK_SYSTEM },
+          systemFamily: { _tag: 'FixedAcrossResourceTypes', system: REXALL_CAREBOOK_SYSTEM },
         })
       )
     })

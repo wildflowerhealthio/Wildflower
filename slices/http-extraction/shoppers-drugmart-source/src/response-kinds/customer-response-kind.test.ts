@@ -111,7 +111,7 @@ describe('CustomerResponseKind', () => {
       expect(Option.isSome(CustomerResponseKind.tryRecognize(url, Option.none()))).toBe(match)
     })
 
-    it('mints the portal source (one system for every type) at portal specificity', () => {
+    it('mints its system, fixed across resource types, at portal specificity', () => {
       expect(
         CustomerResponseKind.tryRecognize(
           `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}`,
@@ -120,7 +120,7 @@ describe('CustomerResponseKind', () => {
       ).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          source: { _tag: 'OneSystem', system: SHOPPERS_DRUGMART_SYSTEM },
+          systemFamily: { _tag: 'FixedAcrossResourceTypes', system: SHOPPERS_DRUGMART_SYSTEM },
         })
       )
     })

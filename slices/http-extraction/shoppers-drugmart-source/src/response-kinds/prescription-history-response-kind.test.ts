@@ -99,7 +99,7 @@ describe('PrescriptionHistoryResponseKind', () => {
       )
     })
 
-    it('mints the portal source (one system for every type) at portal specificity', () => {
+    it('mints its system, fixed across resource types, at portal specificity', () => {
       expect(
         PrescriptionHistoryResponseKind.tryRecognize(
           `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`,
@@ -108,7 +108,7 @@ describe('PrescriptionHistoryResponseKind', () => {
       ).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          source: { _tag: 'OneSystem', system: SHOPPERS_DRUGMART_SYSTEM },
+          systemFamily: { _tag: 'FixedAcrossResourceTypes', system: SHOPPERS_DRUGMART_SYSTEM },
         })
       )
     })

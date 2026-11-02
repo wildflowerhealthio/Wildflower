@@ -19,10 +19,10 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   `parse`. `tryRecognize(url)` returns `Option<RecognizedUrlData>` — `None` when
   the kind does not claim the URL, `Some { specificity, source? }` when it does,
   where each kind constructs its **own** identity: recognition, root, and
-  confidence are one read. `source` (structurally `fhir-r4-adoption`'s
-  `SourceIdentity`, on purpose) is the source this response's resources key
-  under — a FHIR server at a `root`, or a source with one `system` for every
-  type — and is **absent** for a kind that recognizes but mints no identity (a
+  confidence are one read. `systemFamily` (structurally `fhir-r4-adoption`'s
+  `SystemFamily`, on purpose) is the identifier systems this response's
+  resources key under, per resource type — one `system` fixed across types,
+  or `<baseUrl>/<Type>` in the FHIR style — and is **absent** for a kind that recognizes but mints no identity (a
   recorder records, it does not import). `parse` takes an `HttpResponse` and
   returns `Effect<readonly TParsed[], ParseError>` — a pure decode, never
   navigation. `make` shallow-clones and deep-freezes.
@@ -33,7 +33,7 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   **and** root are one read of one `^`-anchored, scheme-required pattern (group 1
   captures `https?://<authority><base path>`), so they can never disagree. A
   non-`http(s)` or scheme-less URL is `None` (a deliberate tightening — a root
-  must be a URL a `SourceIdentity` can key under).
+  must be a URL a `SystemFamily` can build systems on).
 - **`HttpResponse`** (`src/http-response.ts`) — what a `parse` sees: `id` /
   `url` / `status` / `statusText` / `headers` (`Headers`) / `startedAt` /
   `bytes()` / `text()`. An interface, not a class, so an acquisition path can

@@ -18,21 +18,22 @@ FHIR-free.
   `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(scope,
   resource)` picks one; `CONTENT_DIGEST_SYSTEM` is the system a digest id is
   in.
-- `src/fhir-root.ts` — `FhirRoot`, the two rules a FHIR server's root
-  carries: `systemFor(root, Type)` is `<root>/<Type>`, the system that type's
-  ids are in, and `relativise(root)` reads the server's absolute spelling of
-  its own record back to the relative `Type/id`.
-- `src/source-identity.ts` — `SourceIdentity`, what a batch was imported
-  from, two cases: `FhirServer { root }`, or `OneSystem { system }` for a
-  source that keys every type in one system (a portal, a file format).
-  `systemFor(source, Type)` is the one operation: the system `source` keys
-  `Type` in.
-- `src/adopt-resource.ts` — `adoptWithSourceId(source)`, the per-resource
+- `src/fhir-base-url.ts` — `FhirBaseUrl`, the two rules a FHIR server's base
+  URL carries: `systemFor(baseUrl, Type)` is `<baseUrl>/<Type>`, the system
+  that type's ids are in, and `relativise(baseUrl)` reads the server's
+  absolute spelling of its own record back to the relative `Type/id`.
+- `src/system-family.ts` — `SystemFamily`, how the `Identifier.system` of a
+  source id is chosen per resource type in one context, two kinds:
+  `FixedAcrossResourceTypes { system }`, the one system whatever the type (a
+  portal, a file format), or `FhirStyleBaseUrl { baseUrl }`, the type
+  appended to a base URL. `systemFor(family, Type)` is the one operation: the
+  system `family` gives `Type`.
+- `src/adopt-resource.ts` — `adoptWithSourceId(family)`, the per-resource
   rewrite of a record and its key `{ system, sourceId, resource }`: the
   derived id, `{ system, value: sourceId }` as `identifier[0]`, and each
-  relative `Type/id` reference rewritten into `systemFor(source, Type)`
+  relative `Type/id` reference rewritten into `systemFor(family, Type)`
   through the per-type reference table (`mapReferences`).
-  `adoptResource(source)` is the decode-time wrapper: it relativises a FHIR
+  `adoptResource(family)` is the decode-time wrapper: it relativises a FHIR
   server's absolute references to itself, and takes the source id from
   `DecodedId.of`. `originalIdOf` reads the source's id back off
   an adopted resource; `adoptedReferenceOf` spells a reference to a resource a
@@ -52,14 +53,14 @@ Pure: no DOM, no `fs`, no React. Depends on `fhir-r4`,
 packages in this slice, the file importers (`dicom-importer-core`,
 `lifelabs-pdf-importer-core`) and the synthetic-data generators build on it. It must
 never import from `slices/importer`, and `http-extraction-fundamentals` must
-never import it: `RecognizedUrlData.source` is `SourceIdentity`'s shape,
+never import it: `RecognizedUrlData.systemFamily` is `SystemFamily`'s shape,
 spelled structurally there.
 
 ## Traps
 
 - **Every derived id is persisted wire format.** Ids come from `fhir-r4`'s
   `localResourceId` over (system, type, source id), so changing a source's
-  system re-keys every resource in it, and changing what `DecodedId.of` digests
+  system family re-keys every resource in it, and changing what `DecodedId.of` digests
   re-keys every resource with no id of its own.
 - **A resource that does not encode is a defect.** `DecodedId.of` encodes
   through `FhirResourceSchema`; a kind whose decode lets through what the

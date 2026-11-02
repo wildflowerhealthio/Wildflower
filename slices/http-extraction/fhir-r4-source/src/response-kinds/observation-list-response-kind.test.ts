@@ -83,7 +83,10 @@ describe('ObservationListResponseKind', () => {
       },
     ])('recognizes "$url" under root "$root"', ({ url, root }) => {
       expect(ObservationListResponseKind.tryRecognize(url, GET)).toStrictEqual(
-        Option.some({ specificity: Specificity.PROTOCOL, source: { _tag: 'FhirServer', root } })
+        Option.some({
+          specificity: Specificity.PROTOCOL,
+          systemFamily: { _tag: 'FhirStyleBaseUrl', baseUrl: root },
+        })
       )
     })
 

@@ -14,7 +14,7 @@ import { adoptUnderRecognizedRoot } from './adopt-under-recognized-root.ts'
 
 /**
  * Covers the per-kind `adoptUnderRecognizedRoot`: the identity is read verbatim
- * off `tryRecognize` (both a FHIR server and a one-system source), the
+ * off `tryRecognize` (both FHIR-style systems and a fixed one), the
  * two failing arms (an unrecognized URL and a recognized-but-source-less kind),
  * and the referential stability of a single module-level application.
  */
@@ -38,10 +38,10 @@ const patientKind = (
     parse,
   })
 
-/** A kind whose `tryRecognize` mints a FHIR server at its root. */
+/** A kind whose `tryRecognize` mints FHIR-style systems under its root. */
 const rootedKind = patientKind('RootedKind', {
   specificity: 50,
-  source: { _tag: 'FhirServer', root: ROOT },
+  systemFamily: { _tag: 'FhirStyleBaseUrl', baseUrl: ROOT },
 })
 
 const responseAt = (url: string): HttpResponse.HttpResponse => makeHttpResponse({ url })
@@ -49,17 +49,22 @@ const responseAt = (url: string): HttpResponse.HttpResponse => makeHttpResponse(
 const adoptedRooted = adoptUnderRecognizedRoot(rootedKind)
 
 describe('adoptUnderRecognizedRoot', () => {
-  test('adopts under the FHIR server its tryRecognize mints', async () => {
+  test('adopts under the FHIR-style systems its tryRecognize mints', async () => {
     const [resource] = await Effect.runPromise(adoptedRooted.parse(responseAt(`${ROOT}/Patient`)))
     expect(resource?.id).toBe(localResourceId(`${ROOT}/Patient`, 'Patient', 'src-9'))
     expect(
-      resource === undefined ? null : originalIdOf({ _tag: 'FhirServer', root: ROOT }, resource)
+      resource === undefined
+        ? null
+        : originalIdOf({ _tag: 'FhirStyleBaseUrl', baseUrl: ROOT }, resource)
     ).toBe('src-9')
   })
 
-  test('adopts under a one-system source (a portal sid)', async () => {
+  test('adopts under a fixed system (a portal sid)', async () => {
     const adopted = adoptUnderRecognizedRoot(
-      patientKind('SidKind', { specificity: 100, source: { _tag: 'OneSystem', system: SID } })
+      patientKind('SidKind', {
+        specificity: 100,
+        systemFamily: { _tag: 'FixedAcrossResourceTypes', system: SID },
+      })
     )
     const [resource] = await Effect.runPromise(
       adopted.parse(responseAt('https://portal.example/Patient'))
@@ -71,7 +76,7 @@ describe('adoptUnderRecognizedRoot', () => {
     const adopted = adoptUnderRecognizedRoot(
       patientKind(
         'IdLessKind',
-        { specificity: 50, source: { _tag: 'FhirServer', root: ROOT } },
+        { specificity: 50, systemFamily: { _tag: 'FhirStyleBaseUrl', baseUrl: ROOT } },
         () => Effect.succeed([patient(null)])
       )
     )
@@ -88,7 +93,7 @@ describe('adoptUnderRecognizedRoot', () => {
     expect(result.left._tag).toBe('ParseError')
   })
 
-  test('fails with a ParseError when the kind recognizes but mints no source', async () => {
+  test('fails with a ParseError when the kind recognizes but mints no system family', async () => {
     const adopted = adoptUnderRecognizedRoot(patientKind('NoSourceKind', { specificity: 0 }))
     const result = await Effect.runPromise(
       Effect.either(adopted.parse(responseAt('https://portal.example/Patient')))
@@ -111,7 +116,7 @@ describe('adoptUnderRecognizedRoot', () => {
     const adopted = adoptUnderRecognizedRoot(
       patientKind(
         'FailingKind',
-        { specificity: 50, source: { _tag: 'FhirServer', root: ROOT } },
+        { specificity: 50, systemFamily: { _tag: 'FhirStyleBaseUrl', baseUrl: ROOT } },
         () => Effect.fail(failure)
       )
     )

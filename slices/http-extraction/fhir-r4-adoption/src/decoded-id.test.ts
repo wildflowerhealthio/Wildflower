@@ -22,7 +22,7 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { adoptResource, originalIdOf } from './adopt-resource.ts'
 import * as DecodedId from './decoded-id.ts'
-import * as SourceIdentity from './source-identity.ts'
+import * as SystemFamily from './system-family.ts'
 
 /**
  * Covers the id a decoded resource is adopted under: its own when it has one,
@@ -34,7 +34,7 @@ import * as SourceIdentity from './source-identity.ts'
 
 const BASE = 'https://source.example/baseR4'
 
-const SOURCE = SourceIdentity.FhirServer({ root: BASE })
+const SOURCE = SystemFamily.FhirStyleBaseUrl({ baseUrl: BASE })
 
 const adopt = adoptResource(SOURCE)
 

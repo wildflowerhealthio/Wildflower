@@ -15,7 +15,7 @@ describe('recognizePortal', () => {
       expect(tryRecognize('https://portal.example/rx', Option.some('GET'))).toEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          source: { _tag: 'OneSystem', system: SYSTEM },
+          systemFamily: { _tag: 'FixedAcrossResourceTypes', system: SYSTEM },
         })
       )
     })
@@ -41,7 +41,7 @@ describe('recognizePortal', () => {
       expect(tryRecognize('https://portal.example/rx', Option.some('GET'))).toEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          source: { _tag: 'OneSystem', system: SYSTEM },
+          systemFamily: { _tag: 'FixedAcrossResourceTypes', system: SYSTEM },
         })
       )
     })
