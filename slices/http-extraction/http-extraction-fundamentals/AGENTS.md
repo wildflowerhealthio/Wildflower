@@ -20,8 +20,9 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   the kind does not claim the URL, `Some { specificity, source? }` when it does,
   where each kind constructs its **own** identity: recognition, root, and
   confidence are one read. `source` (structurally `fhir-r4-adoption`'s
-  `SourceIdentity`, on purpose) is the namespace this response's resources key
-  under, and is **absent** for a kind that recognizes but mints no identity (a
+  `SourceIdentity`, on purpose) is the source this response's resources key
+  under — a FHIR server at a `root`, or a source with one `system` for every
+  type — and is **absent** for a kind that recognizes but mints no identity (a
   recorder records, it does not import). `parse` takes an `HttpResponse` and
   returns `Effect<readonly TParsed[], ParseError>` — a pure decode, never
   navigation. `make` shallow-clones and deep-freezes.

@@ -16,11 +16,11 @@ extracts with. It is the first of the per-source packages;
   carry no resource.
 - `src/recognize-fhir-root.ts` — `recognizeFhirRoot(matcher)`, which turns a
   fused `UrlMatch.UrlMatcher` into the kind's `tryRecognize`: `Some` a
-  `PROTOCOL`-tier `RecognizedUrlData` whose `source` is `{ system: root, baseUrl:
-  root }` (root = the matcher's own capture, so there is no second hand-written
-  root regex to keep in step), `None` when the matcher does not claim the URL. A
-  FHIR server spells its own references absolutely under that same prefix, which
-  is why root rides both `system` and `baseUrl`.
+  `PROTOCOL`-tier `RecognizedUrlData` whose `source` is the FHIR server at
+  the matcher's own captured root, `FhirServer { root }` (so there is no second
+  hand-written root regex to keep in step), `None` when the matcher does not
+  claim the URL. Adoption keys each type in `<root>/<Type>` and reads the
+  server's absolute spelling of its own references back to relative ones.
 - `src/source.ts` — `fhirR4Source`, the package's one exported surface: the
   `SourceDescriptor` (`name: 'fhir-r4'`, display strings, and the pre-adopted
   `responseKinds`). Consumers reach the tuple through
