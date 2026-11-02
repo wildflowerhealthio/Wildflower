@@ -432,8 +432,32 @@ const identifierOf = (systemUrl: URL, value: string): IdentifierType => ({
 })
 
 /**
+ * `reference` rewritten to name its target's local id, keyed in `system` with
+ * the target's source id beside it as `Reference.identifier`.
+ *
+ * @remarks
+ * The one spelling of an adopted reference, shared by the per-resource
+ * rewrite and {@link adoptedReferenceOf}, so the two cannot drift. A
+ * pre-existing `Reference.identifier` is kept: the slot is 0..1 and some
+ * sources already fill it with their own vendor identifier; the original
+ * `Type/id` stays recoverable by resolving the rewritten reference and
+ * reading the target's `identifier[0]`.
+ */
+const adoptedReference = (
+  system: string,
+  systemUrl: URL,
+  resourceType: string,
+  sourceId: string,
+  reference: ReferenceType
+): ReferenceType => ({
+  ...reference,
+  reference: `${resourceType}/${localResourceId(system, resourceType, sourceId)}`,
+  identifier: reference.identifier ?? identifierOf(systemUrl, sourceId),
+})
+
+/**
  * The relative `reference` rewritten to name its target's local id, keyed in
- * the system `family` gives the target's type, with the target's source id
+ * the system `targetsIn` gives the target's type, with the target's source id
  * beside it as `Reference.identifier`; every other reference as it is.
  *
  * @remarks
@@ -442,14 +466,9 @@ const identifierOf = (systemUrl: URL, value: string): IdentifierType => ({
  * resolves retroactively if that type is ever imported from the same source, and
  * dangles exactly as it did before if it never is — with the original id still
  * readable from the `Reference.identifier` this writes.
- *
- * A pre-existing `Reference.identifier` is kept. The slot is 0..1 and some
- * sources already fill it with their own vendor identifier; the original
- * `Type/id` stays recoverable by resolving the rewritten reference and reading
- * the target's `identifier[0]`.
  */
 const rewriteRelativeReference =
-  (family: SystemFamily.Type, urlOf: (url: string) => URL) =>
+  (targetsIn: SystemFamily.Type, urlOf: (url: string) => URL) =>
   (reference: ReferenceType): ReferenceType => {
     const match = reference.reference === null ? null : RELATIVE_REFERENCE.exec(reference.reference)
     const resourceType = match?.[1]
@@ -457,12 +476,8 @@ const rewriteRelativeReference =
     if (resourceType === undefined || sourceId === undefined) {
       return reference
     }
-    const system = SystemFamily.systemFor(family, resourceType)
-    return {
-      ...reference,
-      reference: `${resourceType}/${localResourceId(system, resourceType, sourceId)}`,
-      identifier: reference.identifier ?? identifierOf(urlOf(system), sourceId),
-    }
+    const system = SystemFamily.systemFor(targetsIn, resourceType)
+    return adoptedReference(system, urlOf(system), resourceType, sourceId, reference)
   }
 
 /**
@@ -508,12 +523,13 @@ interface ResourceWithSourceId {
  * `identifier[0]`, and rewrite its relative `Type/id` references so they still
  * point at their targets.
  *
- * @param family - The systems the record's references resolve in: where each
- *   reference's target is keyed
+ * @param targetsIn - The systems the record's references resolve in: where
+ *   each reference's target is keyed. The record's own system comes with the
+ *   record
  * @returns A function from one decoded record and its key to its adopted form
  *
  * @remarks
- * A reference's target is keyed in the system the family gives its own type,
+ * A reference's target is keyed in the system `targetsIn` gives its own type,
  * not the referring record's: a FHIR server's `Observation` points at
  * `<baseUrl>/Patient`. Only a relative `Type/id` is rewritten; a source that
  * spells references absolutely relativises them first ({@link adoptResource}).
@@ -527,9 +543,9 @@ interface ResourceWithSourceId {
  * is no "already adopted?" guard are all in
  * this package's `docs/Source Identity Explanation.md`.
  */
-const adoptWithSourceId = (family: SystemFamily.Type) => {
+const adoptWithSourceId = (targetsIn: SystemFamily.Type) => {
   const urlOf = memoisedUrlOf()
-  const rewriteReferences = mapReferences(rewriteRelativeReference(family, urlOf))
+  const rewriteReferences = mapReferences(rewriteRelativeReference(targetsIn, urlOf))
   return ({ system, sourceId, resource }: ResourceWithSourceId): FhirResourceWithId => {
     const rewritten = rewriteReferences(resource)
     const id = localResourceId(system, rewritten.resourceType, sourceId)
@@ -578,22 +594,22 @@ const adoptResource = (family: SystemFamily.Type) => {
 /**
  * Read the source's own id back off a resource {@link adoptResource} adopted.
  *
- * @param family - The systems the resource's source keys each type in
+ * @param system - The system the resource's source keys its type in
  * @param resource - The adopted resource
  * @returns The id the source used, or `null` when there is none to read
  *
  * @remarks
  * `null` for a `Binary` (which carries no `identifier`), for a resource that was
  * never adopted, for one its source gave no id, and for one adopted under a
- * different source — the check is a round-trip: `identifier[0]` only counts as
- * the source id if re-deriving from it in the system `family` gives its type
- * reproduces the resource's own id.
+ * different system — the check is a round-trip: `identifier[0]` only counts as
+ * the source id if re-deriving from it in `system` reproduces the resource's
+ * own id.
  *
  * This is what a caller reads when it needs the source's id to build a
  * source-server URL: an adopted resource's `resource.id` is the local id, not
  * the remote one.
  */
-const originalIdOf = (family: SystemFamily.Type, resource: FhirResource): string | null => {
+const originalIdOf = (system: string, resource: FhirResource): string | null => {
   if (resource.resourceType === 'Binary') {
     return null
   }
@@ -601,40 +617,38 @@ const originalIdOf = (family: SystemFamily.Type, resource: FhirResource): string
   if (candidate === undefined || candidate.value === null) {
     return null
   }
-  const system = SystemFamily.systemFor(family, resource.resourceType)
   return localResourceId(system, resource.resourceType, candidate.value) === resource.id
     ? candidate.value
     : null
 }
 
 /**
- * A reference to a resource `source`'s import adopts, spelled as adoption
- * rewrites that source's own `resourceType/originalId`: the local id, with the
+ * A reference to a resource an import adopts in `system`, spelled as adoption
+ * rewrites the source's own `resourceType/originalId`: the local id, with the
  * source's id beside it as `Reference.identifier`.
  *
- * @param family - The systems the target's source keys each type in
+ * @param system - The system the target's source keys its type in
  * @param resourceType - The target's type (`Patient`)
  * @param originalId - The id the source gave the target
  *
  * @remarks
  * For a resource written outside that source that has to point at what its
  * import stores — a lab result filed on the Patient a pharmacy import made.
- * It is {@link adoptResource}'s own rewrite, so the two cannot drift. An
- * `originalId` outside FHIR's id grammar is left unrewritten, as adoption
- * leaves it.
+ * It is {@link adoptResource}'s own spelling ({@link adoptedReference}), so
+ * the two cannot drift. An `originalId` outside FHIR's id grammar is left
+ * unrewritten, as adoption leaves it.
  */
 const adoptedReferenceOf = (
-  family: SystemFamily.Type,
+  system: string,
   resourceType: string,
   originalId: string
 ): ReferenceType =>
-  rewriteRelativeReference(
-    family,
-    memoisedUrlOf()
-  )({
-    ...IdentifierAndReference.emptyReference,
-    reference: `${resourceType}/${originalId}`,
-  })
+  RELATIVE_REFERENCE.test(`${resourceType}/${originalId}`)
+    ? adoptedReference(system, new URL(system), resourceType, originalId, {
+        ...IdentifierAndReference.emptyReference,
+        reference: `${resourceType}/${originalId}`,
+      })
+    : { ...IdentifierAndReference.emptyReference, reference: `${resourceType}/${originalId}` }
 
 export {
   adoptResource,
