@@ -105,10 +105,12 @@ const harImporter: FileImporter.Type<HarSettings, typeof format> = {
       decodeHar(pickedFiles[0].bytes, settings).pipe(
         Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
         Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
-        Effect.map((previews): DecodedFile.DecodedFile => ({
-          sections: sectionsByUrl(previews),
-          notes: notesFor(previews),
-        }))
+        Effect.map((previews) =>
+          DecodeFunction.fromAdopted({
+            sections: sectionsByUrl(previews),
+            notes: notesFor(previews),
+          })
+        )
       ),
   }),
 }

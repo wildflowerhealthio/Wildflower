@@ -6,11 +6,12 @@
  * @packageDocumentation
  */
 import { DicomHeader } from '@wildflowerhealthio/dicom'
-import { adoptResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { SystemFamily, withSourceId } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodedFile,
+  DecodedFileSet,
   type DecodeFunction,
   type PickedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -28,12 +29,21 @@ import type { StudyInstance } from './fhir/to-fhir.ts'
 import type { DicomSettings } from './settings.ts'
 import { DICOM_SYSTEM } from './source-system.ts'
 
-const adopt = adoptResource(SystemFamily.FixedAcrossResourceTypes({ system: DICOM_SYSTEM }))
+/** The systems DICOM keys its records in: `DICOM_SYSTEM`, whatever the type. */
+const DICOM_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: DICOM_SYSTEM })
 
-const labelAdopted = (resource: FhirResource, key: string, title: string): DecodedFile.Resource => {
-  const adopted = adopt(resource)
-  return { key, title, resource: adopted }
-}
+const withDicomSourceId = withSourceId(DICOM_SYSTEM_FAMILY)
+
+/** A record as its review row, beside the source id it is adopted under. */
+const labelWithSourceId = (
+  resource: FhirResource,
+  key: string,
+  title: string
+): DecodedFileSet.FromSourceEntry => ({
+  key,
+  title,
+  ...withDicomSourceId(resource),
+})
 
 /** One file of a study, as the synthesis sees it: its header and its name. */
 interface StudyFile extends StudyInstance {
@@ -200,8 +210,8 @@ const linkToPatientAndStudy = (
 }
 
 /**
- * Decode one study's picked files into a section of adopted, labeled FHIR
- * resources.
+ * Decode one study's picked files into a `FromSource` section of labeled FHIR
+ * resources, each beside its source id under `DICOM_SYSTEM`.
  *
  * @param pickedFiles - Every picked `.dcm` of one study, in the order they were
  *   picked
@@ -261,26 +271,36 @@ const decodeStudy = (
 
     const notes = studyNotes(files)
     const resources = yield* toFhirResources(files, settings)
-    const labeled: DecodedFile.Resource[] = []
+    const labeled: DecodedFileSet.FromSourceEntry[] = []
 
     for (const resource of resources) {
       switch (resource.resourceType) {
         case 'Patient':
-          labeled.push(labelAdopted(resource, 'patient', `Patient/${resource.id}`))
+          labeled.push(labelWithSourceId(resource, 'patient', `Patient/${resource.id}`))
           break
         case 'ServiceRequest':
-          labeled.push(labelAdopted(resource, 'service-request', `ServiceRequest/${resource.id}`))
+          labeled.push(
+            labelWithSourceId(resource, 'service-request', `ServiceRequest/${resource.id}`)
+          )
           break
         case 'ImagingStudy':
-          labeled.push(labelAdopted(resource, 'imaging-study', `ImagingStudy/${resource.id}`))
+          labeled.push(labelWithSourceId(resource, 'imaging-study', `ImagingStudy/${resource.id}`))
           break
         default:
           break
       }
     }
 
-    const sections: DecodedFile.Section[] =
-      labeled.length > 0 ? [{ title: sectionTitle(head.header), resources: labeled }] : []
+    const sections =
+      labeled.length > 0
+        ? [
+            DecodedFileSet.Section.FromSource({
+              title: sectionTitle(head.header),
+              systemFamily: DICOM_SYSTEM_FAMILY,
+              entries: labeled,
+            }),
+          ]
+        : []
 
     return { sections, notes, pickedFiles: identifiedPickedFiles }
   })
