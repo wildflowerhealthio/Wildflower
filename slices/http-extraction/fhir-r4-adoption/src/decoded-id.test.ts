@@ -20,21 +20,21 @@ import {
 import { Arbitrary, FastCheck as fc, Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { adoptResource, originalIdOf, type SourceIdentity } from './adopt-resource.ts'
+import { adoptResource, originalIdOf } from './adopt-resource.ts'
 import * as DecodedId from './decoded-id.ts'
-import * as IdSpace from './id-space.ts'
+import * as SourceIdentity from './source-identity.ts'
 
 /**
  * Covers the id a decoded resource is adopted under: its own when it has one,
  * and a digest of its content when it has none — the same for the same record
  * however its source ordered its fields or stamped its `meta`, different for
  * different content or a different source — and that a generated id is keyed
- * and recorded in the content-digest id space.
+ * and recorded in the content-digest system.
  */
 
 const BASE = 'https://source.example/baseR4'
 
-const SOURCE: SourceIdentity = { system: BASE, baseUrl: BASE }
+const SOURCE = SourceIdentity.FhirServer({ root: BASE })
 
 const adopt = adoptResource(SOURCE)
 
@@ -105,14 +105,16 @@ describe('DecodedId.of', () => {
       expect(decodedIdOf(second)).toEqual(decodedIdOf(first))
     })
 
-    test(`${resourceType}: is keyed and recorded in the content-digest id space`, () => {
+    test(`${resourceType}: is keyed and recorded in the content-digest system`, () => {
       const adopted = adopt(resource)
       const digest = decodedIdOf(resource).value
-      expect(adopted.id).toBe(localResourceId(IdSpace.CONTENT_DIGEST, resourceType, digest))
+      expect(adopted.id).toBe(
+        localResourceId(DecodedId.CONTENT_DIGEST_SYSTEM, resourceType, digest)
+      )
       expect(adopted.id).not.toBe(adopt({ ...resource, id: 'src-1' }).id)
       if ('identifier' in adopted && 'identifier' in resource) {
         expect(adopted.identifier[0]).toMatchObject({
-          system: new URL(IdSpace.CONTENT_DIGEST),
+          system: new URL(DecodedId.CONTENT_DIGEST_SYSTEM),
           value: digest,
         })
         expect(adopted.identifier.slice(1)).toEqual(resource.identifier)

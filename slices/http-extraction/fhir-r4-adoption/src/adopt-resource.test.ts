@@ -29,14 +29,13 @@ import { Arbitrary, FastCheck as fc, Schema, SchemaAST } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
-  adoptInIdSpace,
+  adoptWithSourceId,
   adoptResource,
   adoptedReferenceOf,
   originalIdOf,
-  type SourceIdentity,
 } from './adopt-resource.ts'
 import * as DecodedId from './decoded-id.ts'
-import * as IdSpace from './id-space.ts'
+import * as SourceIdentity from './source-identity.ts'
 
 /**
  * Covers adoption of a single resource: the derived id, the injected source
@@ -58,16 +57,16 @@ import * as IdSpace from './id-space.ts'
 
 const BASE = 'https://source.example/baseR4'
 
-/** A FHIR server's source: its id space for a type is `<base>/<Type>`. */
-const SOURCE: SourceIdentity = { system: BASE, baseUrl: BASE }
+/** A FHIR server's source: its system for a type is `<root>/<Type>`. */
+const SOURCE = SourceIdentity.FhirServer({ root: BASE })
 
-/** {@link SOURCE}'s id space for `resourceType`. */
-const fhirIdSpace = (resourceType: string): string => `${BASE}/${resourceType}`
+/** {@link SOURCE}'s system for `resourceType`. */
+const fhirSystem = (resourceType: string): string => `${BASE}/${resourceType}`
 
-/** A source whose references are always relative — no `baseUrl`. */
-const RELATIVE_SOURCE: SourceIdentity = {
-  system: 'https://wildflowerhealth.io/fhir/sid/example-portal',
-}
+const SYSTEM = 'https://wildflowerhealth.io/fhir/sid/example-portal'
+
+/** A portal's source: one system for every type, and references always relative. */
+const RELATIVE_SOURCE = SourceIdentity.OneSystem({ system: SYSTEM })
 
 const adopt = adoptResource(SOURCE)
 
@@ -608,7 +607,7 @@ describe('adoptResource', () => {
 
     test(`${resourceType}: derives the local id`, () => {
       expect(adopt(resource).id).toBe(
-        localResourceId(fhirIdSpace(resourceType), resourceType, 'src-1')
+        localResourceId(fhirSystem(resourceType), resourceType, 'src-1')
       )
     })
 
@@ -640,7 +639,7 @@ describe('adoptResource', () => {
     if (adopted.resourceType !== 'Patient') throw new Error('unreachable: adopted a Patient')
 
     expect(adopted.identifier[0]).toEqual(
-      identifier({ value: 'src-1', system: new URL(fhirIdSpace('Patient')) })
+      identifier({ value: 'src-1', system: new URL(fhirSystem('Patient')) })
     )
     // Compared by value. Adoption necessarily builds a new array, so there is
     // no reference to assert on — and an implementation that rebuilt it from a
@@ -651,7 +650,7 @@ describe('adoptResource', () => {
   test('Binary is adopted but gets no identifier — R4 gives it none', () => {
     const binary = { ...sample(Binary.Schema, 11), id: 'src-1' }
     const adopted = adopt(binary)
-    expect(adopted.id).toBe(localResourceId(fhirIdSpace('Binary'), 'Binary', 'src-1'))
+    expect(adopted.id).toBe(localResourceId(fhirSystem('Binary'), 'Binary', 'src-1'))
     expect('identifier' in adopted).toBe(false)
     expect(originalIdOf(SOURCE, adopted)).toBeNull()
   })
@@ -681,7 +680,7 @@ describe('reference rewriting', () => {
     subject,
   })
 
-  const subjectOf = (source: SourceIdentity, subject: ReferenceType): ReferenceType | null => {
+  const subjectOf = (source: SourceIdentity.Type, subject: ReferenceType): ReferenceType | null => {
     const adopted = adoptResource(source)(observationWith(subject))
     if (adopted.resourceType !== 'Observation') throw new Error('unreachable: adopted Observation')
     return adopted.subject
@@ -730,7 +729,7 @@ describe('reference rewriting', () => {
 
   test('records the original target id on the reference when the slot is free', () => {
     expect(subjectOf(SOURCE, reference({ reference: 'Patient/pat-7' }))?.identifier).toEqual(
-      identifier({ value: 'pat-7', system: new URL(fhirIdSpace('Patient')) })
+      identifier({ value: 'pat-7', system: new URL(fhirSystem('Patient')) })
     )
   })
 
@@ -756,7 +755,7 @@ describe('reference rewriting', () => {
     expect(absolute).toEqual(relative)
   })
 
-  test('leaves an absolute reference alone when the source declares no baseUrl', () => {
+  test('leaves an absolute reference alone when the source is not a FHIR server', () => {
     const target = 'https://source.example/baseR4/Patient/pat-7'
     expect(subjectOf(RELATIVE_SOURCE, reference({ reference: target }))?.reference).toBe(target)
   })
@@ -783,7 +782,7 @@ describe('reference rewriting', () => {
 
   test('rewrites a type this package does not store, so the link resolves if it is ever imported', () => {
     expect(subjectOf(SOURCE, reference({ reference: 'Organization/org-3' }))?.reference).toBe(
-      `Organization/${localResourceId(fhirIdSpace('Organization'), 'Organization', 'org-3')}`
+      `Organization/${localResourceId(fhirSystem('Organization'), 'Organization', 'org-3')}`
     )
   })
 
@@ -808,7 +807,7 @@ describe('reference rewriting', () => {
     if (adopted.resourceType !== 'Observation') throw new Error('unreachable: adopted Observation')
 
     expect(adopted.note[0]?.authorReference?.reference).toBe(
-      `Practitioner/${localResourceId(fhirIdSpace('Practitioner'), 'Practitioner', 'prac-3')}`
+      `Practitioner/${localResourceId(fhirSystem('Practitioner'), 'Practitioner', 'prac-3')}`
     )
     // The rest of the note is carried, not rebuilt.
     expect(adopted.note[0]?.text).toBe('Reviewed with the patient.')
@@ -834,7 +833,7 @@ describe('reference rewriting', () => {
   // one is placed explicitly rather than left to whatever the sample generated.
   test('rewrites every reference nested in a CarePlan activity and its detail', () => {
     const localRef = (resourceType: string, sourceId: string): string =>
-      `${resourceType}/${localResourceId(fhirIdSpace(resourceType), resourceType, sourceId)}`
+      `${resourceType}/${localResourceId(fhirSystem(resourceType), resourceType, sourceId)}`
     const detail = {
       id: null,
       extension: [],
@@ -947,10 +946,10 @@ describe('reference rewriting', () => {
 
     const [outer] = adopted.action
     expect(outer?.subjectReference?.reference).toBe(
-      `Group/${localResourceId(fhirIdSpace('Group'), 'Group', 'outer')}`
+      `Group/${localResourceId(fhirSystem('Group'), 'Group', 'outer')}`
     )
     expect(outer?.action[0]?.subjectReference?.reference).toBe(
-      `Group/${localResourceId(fhirIdSpace('Group'), 'Group', 'inner')}`
+      `Group/${localResourceId(fhirSystem('Group'), 'Group', 'inner')}`
     )
   })
 
@@ -985,7 +984,7 @@ describe('reference rewriting', () => {
     if (adopted.resourceType !== 'Procedure') throw new Error('unreachable: adopted a Procedure')
 
     const localRef = (resourceType: string, sourceId: string): string =>
-      `${resourceType}/${localResourceId(fhirIdSpace(resourceType), resourceType, sourceId)}`
+      `${resourceType}/${localResourceId(fhirSystem(resourceType), resourceType, sourceId)}`
     expect(adopted.basedOn[0]?.reference).toBe(`ServiceRequest/${request.id}`)
     expect(adopted.performer[0]?.actor.reference).toBe(localRef('Practitioner', 'prac-1'))
     expect(adopted.performer[0]?.onBehalfOf?.reference).toBe(localRef('Organization', 'org-1'))
@@ -1008,8 +1007,7 @@ describe('reference rewriting', () => {
   })
 })
 
-describe('adoptInIdSpace', () => {
-  const SYSTEM = RELATIVE_SOURCE.system
+describe('adoptWithSourceId', () => {
   const OWN_IDENTIFIER = identifier({ value: 'mrn-9' })
 
   /** A Patient whose own id adoption must not read, linked to `generalPractitioner`. */
@@ -1021,12 +1019,12 @@ describe('adoptInIdSpace', () => {
   })
 
   const adoptPatientIn = (
-    idSpaceOf: IdSpace.OfType,
-    idSpace: IdSpace.Type,
+    source: SourceIdentity.Type,
+    system: string,
     generalPractitioner: string
   ): WithMandatoryId<typeof Patient.Schema.Type> => {
-    const adopted = adoptInIdSpace(idSpaceOf)({
-      idSpace,
+    const adopted = adoptWithSourceId(source)({
+      system,
       sourceId: 'src-1',
       resource: patientLinking(generalPractitioner),
     })
@@ -1034,28 +1032,23 @@ describe('adoptInIdSpace', () => {
     return adopted
   }
 
-  test("keys the record in its own id space and each reference in its target type's", () => {
-    const idSpaceOf = IdSpace.inFhirServer(BASE)
-    const adopted = adoptPatientIn(idSpaceOf, idSpaceOf('Patient'), 'Practitioner/prac-3')
-    expect(adopted.id).toBe(localResourceId(fhirIdSpace('Patient'), 'Patient', 'src-1'))
+  test("keys the record in its own system and each reference in its target type's", () => {
+    const adopted = adoptPatientIn(SOURCE, fhirSystem('Patient'), 'Practitioner/prac-3')
+    expect(adopted.id).toBe(localResourceId(fhirSystem('Patient'), 'Patient', 'src-1'))
     expect(adopted.identifier).toEqual([
-      identifier({ value: 'src-1', system: new URL(fhirIdSpace('Patient')) }),
+      identifier({ value: 'src-1', system: new URL(fhirSystem('Patient')) }),
       OWN_IDENTIFIER,
     ])
     expect(adopted.generalPractitioner).toEqual([
       reference({
-        reference: `Practitioner/${localResourceId(fhirIdSpace('Practitioner'), 'Practitioner', 'prac-3')}`,
-        identifier: identifier({ value: 'prac-3', system: new URL(fhirIdSpace('Practitioner')) }),
+        reference: `Practitioner/${localResourceId(fhirSystem('Practitioner'), 'Practitioner', 'prac-3')}`,
+        identifier: identifier({ value: 'prac-3', system: new URL(fhirSystem('Practitioner')) }),
       }),
     ])
   })
 
   test('keys every type of a portal in its one system', () => {
-    const adopted = adoptPatientIn(
-      IdSpace.inSystem(SYSTEM),
-      IdSpace.Schema.make(SYSTEM),
-      'Practitioner/prac-3'
-    )
+    const adopted = adoptPatientIn(RELATIVE_SOURCE, SYSTEM, 'Practitioner/prac-3')
     expect(adopted.id).toBe(localResourceId(SYSTEM, 'Patient', 'src-1'))
     expect(adopted.generalPractitioner[0]?.identifier).toEqual(
       identifier({ value: 'prac-3', system: new URL(SYSTEM) })
@@ -1063,40 +1056,39 @@ describe('adoptInIdSpace', () => {
   })
 
   test('records a content-digest source id like any other, its references in the source', () => {
-    const idSpaceOf = IdSpace.inFhirServer(BASE)
-    const adopted = adoptPatientIn(idSpaceOf, IdSpace.CONTENT_DIGEST, 'Practitioner/prac-3')
-    expect(adopted.id).toBe(localResourceId(IdSpace.CONTENT_DIGEST, 'Patient', 'src-1'))
+    const adopted = adoptPatientIn(SOURCE, DecodedId.CONTENT_DIGEST_SYSTEM, 'Practitioner/prac-3')
+    expect(adopted.id).toBe(localResourceId(DecodedId.CONTENT_DIGEST_SYSTEM, 'Patient', 'src-1'))
     expect(adopted.identifier[0]).toEqual(
-      identifier({ value: 'src-1', system: new URL(IdSpace.CONTENT_DIGEST) })
+      identifier({ value: 'src-1', system: new URL(DecodedId.CONTENT_DIGEST_SYSTEM) })
     )
     expect(adopted.generalPractitioner[0]?.identifier).toEqual(
-      identifier({ value: 'prac-3', system: new URL(fhirIdSpace('Practitioner')) })
+      identifier({ value: 'prac-3', system: new URL(fhirSystem('Practitioner')) })
     )
   })
 
   test('leaves an absolute reference alone: relativising is the FHIR source path', () => {
     const absolute = `${BASE}/Patient/pat-7`
-    const adopted = adoptPatientIn(IdSpace.inFhirServer(BASE), IdSpace.Schema.make(BASE), absolute)
+    const adopted = adoptPatientIn(SOURCE, fhirSystem('Patient'), absolute)
     expect(adopted.generalPractitioner).toEqual([reference({ reference: absolute })])
   })
 
-  // `adoptResource` is the decode-time wrapper: the source's own space for a
-  // resource it gave an id, the content-digest space for one it gave none.
-  for (const [label, source, idSpaceOf] of [
-    ['a FHIR server', SOURCE, IdSpace.inFhirServer(BASE)],
-    ['a portal', RELATIVE_SOURCE, IdSpace.inSystem(SYSTEM)],
+  // `adoptResource` is the decode-time wrapper: the source's own system for a
+  // resource it gave an id, the content-digest system for one it gave none.
+  for (const [label, source] of [
+    ['a FHIR server', SOURCE],
+    ['a portal', RELATIVE_SOURCE],
   ] as const) {
-    test(`adoptResource for ${label} is adoptInIdSpace under the decoded id`, () => {
+    test(`adoptResource for ${label} is adoptWithSourceId under the decoded id`, () => {
       for (const resource of resources) {
-        const idSpace = idSpaceOf(resource.resourceType)
+        const system = SourceIdentity.systemFor(source, resource.resourceType)
         expect(adoptResource(source)(resource)).toEqual(
-          adoptInIdSpace(idSpaceOf)({ idSpace, sourceId: 'src-1', resource })
+          adoptWithSourceId(source)({ system, sourceId: 'src-1', resource })
         )
         const idLess = { ...resource, id: null }
-        const { value: digest } = DecodedId.of(idSpace, idLess)
+        const { value: digest } = DecodedId.of(system, idLess)
         expect(adoptResource(source)(idLess)).toEqual(
-          adoptInIdSpace(idSpaceOf)({
-            idSpace: IdSpace.CONTENT_DIGEST,
+          adoptWithSourceId(source)({
+            system: DecodedId.CONTENT_DIGEST_SYSTEM,
             sourceId: digest,
             resource: idLess,
           })

@@ -13,7 +13,10 @@ describe('recognizePortal', () => {
 
     it('claims a matching URL at the portal tier under the given system', () => {
       expect(tryRecognize('https://portal.example/rx', Option.some('GET'))).toEqual(
-        Option.some({ specificity: Specificity.PORTAL, source: { system: SYSTEM } })
+        Option.some({
+          specificity: Specificity.PORTAL,
+          source: { _tag: 'OneSystem', system: SYSTEM },
+        })
       )
     })
 
@@ -36,7 +39,10 @@ describe('recognizePortal', () => {
 
     it('claims a matching URL under a declared verb', () => {
       expect(tryRecognize('https://portal.example/rx', Option.some('GET'))).toEqual(
-        Option.some({ specificity: Specificity.PORTAL, source: { system: SYSTEM } })
+        Option.some({
+          specificity: Specificity.PORTAL,
+          source: { _tag: 'OneSystem', system: SYSTEM },
+        })
       )
     })
 

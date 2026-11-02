@@ -50,11 +50,11 @@ describe('ProfileResponseKind', () => {
       expect(Option.isSome(ProfileResponseKind.tryRecognize(url, Option.some('GET')))).toBe(match)
     })
 
-    it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
+    it('mints the portal source (one system for every type) at portal specificity', () => {
       expect(ProfileResponseKind.tryRecognize(PROFILE_URL, Option.some('GET'))).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          source: { system: REXALL_CAREBOOK_SYSTEM },
+          source: { _tag: 'OneSystem', system: REXALL_CAREBOOK_SYSTEM },
         })
       )
     })

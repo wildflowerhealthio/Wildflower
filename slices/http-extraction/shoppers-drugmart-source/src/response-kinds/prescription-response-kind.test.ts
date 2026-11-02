@@ -202,11 +202,11 @@ describe('PrescriptionResponseKind', () => {
       expect(Option.isSome(PrescriptionResponseKind.tryRecognize(url, Option.none()))).toBe(match)
     })
 
-    it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
+    it('mints the portal source (one system for every type) at portal specificity', () => {
       expect(PrescriptionResponseKind.tryRecognize(STATUS_URL, Option.none())).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          source: { system: SHOPPERS_DRUGMART_SYSTEM },
+          source: { _tag: 'OneSystem', system: SHOPPERS_DRUGMART_SYSTEM },
         })
       )
     })
