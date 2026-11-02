@@ -28,20 +28,15 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 
 - **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
   (resource-agnostic, format-agnostic) — the `FileImporter` contract (an
-  interface a binding writes as a literal) and `DecodeFunction.make`, the one
-  constructor of the batch `decode` the shell runs: a binding gives its
-  `sourceFileFormat` (its coding constants), how one set of files decodes
-  (`decodeFileSet`), and — only if its files are read together — the key they
-  share (`groupBy`), plus an optional `linkSourceFile` that finishes each minted
-  source file off the decode.
-  Back comes one `FormatDecode.Result` per format: the merged sections and
-  notes, plus an `unreadableFiles` row per pick that rejected. The constructor
-  owns the source file half — the deterministic mint for every pick, the source file
-  section, the `meta.source` stamp — and provides the format's
-  `PickedFile.Format` service
-  internally, which is what keeps `sourceFileFormat` spelled once per binding,
-  and it namespaces each set's review keys so one set's keys cannot collide
-  with another's. Also the `PickedFile` vocabulary and the codec that stores a
+  interface a binding writes as a literal, with its `sourceFileFormat` coding
+  constants and optional `linkSourceFile` and `finish` hooks) and
+  `DecodeFunction.make`, the one constructor of the batch `decode`: a binding
+  gives how one set of files decodes (`decodeFileSet`) and — only if its files
+  are read together — the key they share (`groupBy`). Back comes one
+  `FormatDecode.Decoded` per format: each file set apart, its records
+  `DecodedRecord`s under review keys namespaced so one set's keys cannot
+  collide with another's, plus an `unreadableFiles` row per pick that
+  rejected. Also the `PickedFile` vocabulary and the codec that stores a
   pick as a source file and reads it back, the `FormatDetector` seam
   the picker sniffs with, the pure per-resource `StagedImport` model, and the
   **identity map**: the referents a batch names, the `LinkChoice` per referent
@@ -53,8 +48,8 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
   `harImporter` for format `'har'`: HAR decode through the
   pre-adopted FHIR response-kind pool into per-URL sections (with a note per
-  response that yielded nothing), under the HAR source-file coding its importer
-  mints from inside `decode`. The kind toggles are a _setting_
+  response that yielded nothing), under the HAR source-file coding the import
+  stage mints its source files with. The kind toggles are a _setting_
   (`HarSettings.disabledKinds`), applied inside `decode` too.
 - **[`har-importer-react`](./har-importer-react/AGENTS.md)** (the HAR UI) —
   `HarSettingsPicker`, the whole-import kind toggles grouped by source. The
@@ -88,7 +83,9 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `formatRegistry`, `defaultFormatSettings`, and `formatKinds` derived from the
   registry) and the batch machinery over it: `groupByFormat` splits a pick by
   the first claiming `detect`, `decodeFormat` runs one format's `decode` under
-  its own settings, `readBatch` yields a `DecodedBatch` — one
+  its own settings and imports it through `importDecoded` — the import stage,
+  the one place a decoded record is adopted, a source file is minted and
+  `meta.source` is stamped — `readBatch` yields a `DecodedBatch` — one
   `FormatDecode.Result` per registered format plus the `UnrecognizedFile`s —
   `claimedFormats` names the formats that actually took part, `redecodeFormat`
   re-runs one format's files from their retained picks under new settings,
@@ -186,11 +183,12 @@ sits above `http-extraction` and below every binding.
   name. The picker runs each registered format's `detect` on every
   drop and yields the pick tagged with the first format that claims it, so
   a batch may span formats — `importer-core`'s `readBatch` groups the pick by
-  format and runs each format's own batch `decode` under that format's
-  settings. A format's `decode` mints its own source file `DocumentReference`
-  for every pick, lists it among the reviewed sections, and stamps every
-  extracted resource's `meta.source` with it; nothing above the binding mints
-  or stamps anything. Which files decode _together_ is its own business too:
+  format, runs each format's own batch `decode` under that format's
+  settings, and imports what it decoded: `importer-core`'s import stage mints
+  each pick's source file `DocumentReference` under the format's constants,
+  lets the format link it and finish its records, lists it among the reviewed
+  sections, and stamps every extracted resource's `meta.source` with it;
+  nothing else mints or stamps anything. Which files decode _together_ is its own business too:
   HAR and LifeLabs decode a file at a time, DICOM a whole study — the shell
   hands every claimed file to one `decode` either way, and the server
   source-file list hands on every row the reviewer selected without deciding
@@ -213,8 +211,8 @@ sits above `http-extraction` and below every binding.
   package — the importer has no HTTP wire union to derive.
 - **The slice imports only the accepted seams.** `har-importer-core` depends on
   `web-trace-core` for the HAR codec and the source-file coding constants only —
-  the `meta.source` stamping and the source-file mint come from
-  `importer-fundamentals` — plus `http-extraction-fundamentals`
+  the `meta.source` stamping and the source-file mint are `importer-core`'s
+  import stage — plus `http-extraction-fundamentals`
   (extraction + recognition), `fhir-r4-source` (the pre-adopted pool),
   `importer-fundamentals` (the contract), and `fhir-r4` (resources). It
   re-derives none of them.

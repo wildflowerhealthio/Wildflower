@@ -34,7 +34,7 @@ resources, plus a note per thing that did not become a resource.
 | Importer        | `*-importer-core/src/<format>-importer.ts`     | one `FileImporter.Type` literal over `DecodeFunction.make`    |
 | Settings        | `*-importer-core/src/settings.ts`              | `TSettings` + `defaultSettings` (an empty record if none)     |
 | Persistence     | shell-owned                                    | one shared `persistBatchBundle` — write no sink               |
-| Source file     | the `sourceFileFormat` you state               | minted inside `decode` by `DecodeFunction.make`               |
+| Source file     | the `sourceFileFormat` you state               | minted by `importer-core`'s import stage                      |
 | Settings picker | `*-importer-react/src/settings-picker.tsx`     | `SettingsPickerProps<TSettings>` (`importer-fundamentals`)    |
 | Registry entry  | `importer-core/src/registry.ts`                | `FormatSettings` + `formatRegistry` + `defaultFormatSettings` |
 | Picker entry    | `importer-react/src/registry.ts`               | the same key's `SettingsPicker`                               |
@@ -56,13 +56,13 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 
 You write **one file set at a time**. `decodeFileSet(members, settings)` takes
 the picks that are decoded together — each a `PickedFile.Type`
-(`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) plus
-the `sourceFile` minted for it — and yields a `DecodedFile`: titled sections of
-labeled resources, plus diagnostic notes.
+(`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) —
+and yields a `DecodedFile`: titled sections of labeled, adopted resources,
+plus diagnostic notes.
 
 ```ts
 const decodeMyFormat = (
-  members: Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile>,
+  members: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: MySettings
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> => …
 ```
@@ -73,22 +73,28 @@ pick is its own set by default, in pick order. A format whose files must be read
 study — states a `groupBy` instead (see §5).
 
 `DecodeFunction.make` lifts that into the batch `decode(files, settings)` the
-shell runs across every file the format claimed. That lifted decode is what:
+shell runs across every file the format claimed. That lifted decode:
 
-- mints a source file for **every** pick and hands each member its own before the
-  decode runs;
-- lets the format finish each source file off the decode (`linkSourceFile`, §4) and
-  prepends them as their own **"Source file"** / **"Source files"** section;
-- stamps every extracted resource's `meta.source` with the set's representative
-  source file — the one with the lexicographically smallest id, which is a content
-  hash, so the stamp is the same however the files were picked;
 - **namespaces every review key** with the set's first picked file, so two sets
   cannot collide on a key (see the obligations below);
 - folds a `ParseError` into one `unreadableFiles` row per pick of the failing
-  set.
+  set;
+- returns each set apart with its members, each resource an `Adopted` record.
 
-The resulting `decode` **never fails**, requires **nothing but what your
-`decodeFileSet` requires**, and writes nothing — so a preview can never reach the
+`importer-core`'s import stage (`importDecoded`, which `readBatch` runs over
+every format's `decode`) then, per set:
+
+- mints a source file for **every** pick;
+- lets the format link each source file to what the set decoded to
+  (`linkSourceFile`, §4) and finish each record once the source files exist
+  (`finish`, §4), and prepends the source files as their own **"Source file"** /
+  **"Source files"** section;
+- stamps every extracted resource's `meta.source` with the set's representative
+  source file — the one with the lexicographically smallest id, which is a content
+  hash, so the stamp is the same however the files were picked.
+
+The decode and the import **never fail**, require **nothing but what your
+`decodeFileSet` requires**, and write nothing — so a preview can never reach the
 write client by construction, and one bad file in a batch of five leaves the
 other four reviewable. The whole opt-in seam rests on this.
 
@@ -103,9 +109,10 @@ The requirement surfaces at `importer-core`'s `readBatch` as part of
 A new service of this kind is one more `Effect.provide` there. Tests provide a
 fake layer built from hand-written fixtures.
 
-A member's `sourceFile.id` is where a format whose synthesized resources name the
-stored file (DICOM's `ImagingStudy` `gridfsFileId` extension) reads it, rather
-than recomputing it.
+A format whose synthesized resources name the stored file (DICOM's
+`ImagingStudy` `gridfsFileId` extension) writes the member's pick `id` there and
+swaps it for the source file's id in its `finish` (§4), rather than computing
+the mint itself.
 
 Four obligations:
 
@@ -165,9 +172,8 @@ the bytes verbatim. It is **the format's**, not the shell's — but a binding do
 not write the encoding. You state one **`sourceFileFormat`** — a
 `PickedFile.FormatValue`: a `coding` (`{ system, code }`), a `contentType`, a
 `descriptionPrefix` (conventionally `` `${display.title}: ` ``), and optionally
-a `securityLabel` — on the importer and hand the same constant to
-`DecodeFunction.make`. Everything else is `PickedFile`'s, read under those
-constants:
+a `securityLabel` — on the importer, and the import stage mints under it.
+Everything else is `PickedFile`'s, read under those constants:
 
 | What you need                           | How to get it                                         |
 | --------------------------------------- | ----------------------------------------------------- |
@@ -175,8 +181,8 @@ constants:
 | the disjoint predicate for a server row | `PickedFile.isSourceFile(sourceFileFormat)(resource)` |
 | the name-and-bytes reader               | `Schema.decode(PickedFile.FromDocumentReference)`     |
 
-That schema requires the `PickedFile.Format` service. `DecodeFunction.make`
-provides it internally from the `sourceFileFormat` you handed it, so nothing
+That schema requires the `PickedFile.Format` service. The import stage
+provides it internally from your importer's `sourceFileFormat`, so nothing
 your binding exports carries the requirement; a reader above the binding — the
 shell's server source-file list, or your binding's own test — provides it from
 the importer's own constants:
@@ -197,10 +203,11 @@ what the file _is_, and when it reached the device is the server's own
 `meta.lastUpdated`. The encode ignores the value's own `id`, and reading an
 source file back yields the stored one, so decode-then-encode is the identity on it.
 
-Pass **`linkSourceFile`** when the format's source files point at what was read out of
-them. It runs after the decode, once per member, with that member's minted
-source file and the set's whole decode, so it reads the links off the resources
-already produced rather than parsing the files a second time:
+State **`linkSourceFile`** on the importer when the format's source files point
+at what was read out of them. The import stage runs it once per member, with
+that member's minted source file and the set's records, adopted, so it reads
+the links off the resources already produced rather than parsing the files a
+second time:
 
 ```ts
 const linkToPatientAndStudy = (
@@ -221,7 +228,13 @@ because its header names the patient, and its `related` is what tells a reader
 of the server list which study a source file was read into. The source file is reviewed
 like any other resource. The reviewer can exclude its row, in which case it is
 simply not written — and the extracted resources keep their `meta.source`,
-because the decode stamped them and nothing downstream rewrites them.
+because the import stamped them and nothing downstream rewrites them.
+
+State **`finish`** on the importer when a record names the file it was read
+from. The import stage runs it over every adopted record of the set once the
+source files are minted, with each member's source file id by its pick `id`.
+DICOM's `withSourceFileIds` points each `ImagingStudy` instance's
+`gridfsFileId` at its own file's source file there.
 
 ## 5. Assemble the importer
 
@@ -244,31 +257,31 @@ const myImporter: FileImporter.Type<MySettings, typeof format> = {
   detect: (bytes, fileName) => fileName.toLowerCase().endsWith('.myfmt') || myMagic(bytes),
   defaultSettings: defaultMySettings,
   sourceFileFormat,
+  // only when your source files link to what was read out of them:
+  linkSourceFile: linkMySourceFile,
+  // only when a record names the file it was read from:
+  finish: withMySourceFileIds,
   decode: DecodeFunction.make({
     format,
-    sourceFileFormat,
     decodeFileSet: decodeMyFormat,
     // only when your files are read together:
     groupBy: myGroupKey,
-    // only when your source files link to what was read out of them:
-    linkSourceFile: linkMySourceFile,
   }),
 }
 ```
 
 The importer is a **literal**, not a constructor call: every field is either a
 constant you state or a function you already have. `sourceFileFormat` is spelled
-once and appears twice in that one object — on the importer, where a reader of
-the server list projects it, and in the `DecodeFunction.make` config, where the
-mint uses it — so the two cannot disagree.
+once, on the importer, where both the import stage's mint and a reader of the
+server list read it, so the two cannot disagree.
 
 **A format whose files are read together states a `groupBy`.** It is called per
 picked file and returns the key that file shares with its set-mates, or a `Left`
 when the file states none — which reports it as its own `unreadableFiles` row,
 ahead of any failing set, in pick order. Sets come out in the order the picks
-that opened them arrived. Nothing else changes — the mint, the source file section,
-the key namespacing, the `meta.source` stamp and the failure folding are the
-constructor's either way.
+that opened them arrived. Nothing else changes — the key namespacing and the
+failure folding are the constructor's, and the mint, the source file section
+and the `meta.source` stamp the import stage's, either way.
 
 `dicom-importer-core` is the worked example. What decodes together there is a
 **study**: the files of one `StudyInstanceUID` (and patient) make up one
@@ -280,8 +293,8 @@ it. Nothing about the set depends on the order it was picked in — the
 representative whose source file stamps `meta.source` is the member with the
 smallest source file id, and a source file id is a content hash. `meta.source` holds
 one reference, so a set spanning files keeps per-file provenance some other way:
-DICOM stamps each `ImagingStudy.instance` with its own source file's id
-(`gridfsFileId`).
+DICOM's `finish` stamps each `ImagingStudy.instance` with its own source file's
+id (`gridfsFileId`).
 
 Do not smuggle cross-file state through `settings`: `groupBy` is where "these
 files belong together" is said.

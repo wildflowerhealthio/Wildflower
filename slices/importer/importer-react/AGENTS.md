@@ -305,8 +305,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   `importer-core`), then one `persistTransactionBundle` of exactly the
   resources of its `Included` decisions, in the plan's order, the linked
   records first. It adds nothing to any
-  resource — no id locking, no provenance stamping — because the format's
-  `decode` already minted the source file and stamped every extracted
+  resource — no id locking, no provenance stamping — because the import stage
+  already minted the source file and stamped every extracted
   resource's `meta.source`. The transaction lands whole or not at all, so a
   rejected entry refuses the batch and every entry reports the one cause;
   there is no separate upload step to fail.
@@ -373,9 +373,10 @@ The importer has no HTTP wire union to derive, so there is no separate
   The continuation cursor comes out of a bundle's `next` link through
   `fhir-r4/clients`' `nextPageToken` (see the trap); `keys.ts` holds the
   query-key roots.
-- **The source file is a reviewed resource the format minted.** Every pick's
-  source file `DocumentReference` is minted inside that format's
-  `decode` (by the batch decode `DecodeFunction.make` built) and arrives as its own
+- **The source file is a reviewed resource the import stage minted.** Every
+  pick's source file `DocumentReference` is minted by `importer-core`'s import
+  stage, which `readBatch` and `redecodeFormat` run over every format's
+  `decode`, under that format's constants, and arrives as its own
   "Source file" section ahead of that file's extracted ones, keyed
   `<pick id>/source-file/<fileName>`. The shell neither mints it nor
   keys it, and dispatches on no format tag to get it: it reviews the row like
@@ -423,8 +424,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   extracted resources, no upload-then-persist sequence and no ordering to
   protect. `importBatch` hands the `Included` decisions' resources, in the
   plan's order, to one `persistTransactionBundle`: it does not look for the
-  source file, lock an id, or write `meta.source`, because the format's
-  `decode` already minted the source file at a deterministic id and stamped
+  source file, lock an id, or write `meta.source`, because the import stage
+  already minted the source file at a deterministic id and stamped
   every extracted resource with its reference. A source file row the reviewer
   **excluded** is simply not written, and the resources keep their
   `meta.source` — the link points at a `DocumentReference` this batch chose not
@@ -520,8 +521,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   editing — a preview is inspection, not another entry point to the
   review flow.
 - **A source file's id is derived from its bytes and name, so re-importing upserts.**
-  The mint `DecodeFunction.make` runs inside each format's `decode`
-  derives the resource id with `localResourceId` over the file's SHA-256 and
+  The import stage's mint derives the resource id with `localResourceId` over the file's SHA-256 and
   name — deterministic, not a per-pick uuid — so its bundle entry is a PUT to a
   stable `DocumentReference/<id>` and re-importing the same file under the same
   name overwrites in place rather than piling up duplicates; a file re-picked

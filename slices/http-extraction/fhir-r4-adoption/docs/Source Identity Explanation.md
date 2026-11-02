@@ -252,6 +252,17 @@ descending would not terminate anyway.
 source-system URI, and the importer's decode stamps it with a reference to the
 source-file `DocumentReference` afterwards — rewriting it earlier is dead work.
 
+## Where a record is adopted
+
+`adoptResource(family)` takes the `DecodedId` itself; `adoptUnderKey(family)`
+adopts a record under the key it is handed, `{ system, sourceId, resource }`,
+its references keyed in `family`. `importer-core`'s import stage
+(`importDecoded`) calls `adoptUnderKey` for each decoded `FromSource` record,
+the family being its section's: one per source batch, never per record. The
+source kinds below and the file importers adopt at decode instead, through
+`adoptResource`, and their records reach the import stage `Adopted`, kept as
+they are.
+
 ## Where a source package states its identity
 
 Adoption is **one option-less per-kind combinator**, `adoptUnderRecognizedRoot`.

@@ -18,7 +18,10 @@ FHIR-free.
   `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(system,
   resource)` picks one; `CONTENT_DIGEST_SYSTEM` is the system a digest id is
   in.
-- `src/adopt-resource.ts` — `adoptResource(family)`: the derived id, the
+- `src/adopt-resource.ts` — `adoptUnderKey(family)` adopts a record under
+  the key it is handed (`{ system, sourceId, resource }`), its references
+  keyed in `family`; `importer-core`'s import stage calls it for a decoded
+  `FromSource` record. `adoptResource(family)`: the derived id, the
   source id as `identifier[0]` (taken from `DecodedId.of`), and each
   reference whose literal relativises (`SystemFamily.relativise`) to a
   `Type/id` rewritten into `systemFor(family, Type)` through the per-type
@@ -41,7 +44,8 @@ FHIR-free.
 Pure: no DOM, no `fs`, no React. Depends on `fhir-r4`,
 `http-extraction-fundamentals`, `kitchen-sink` and `effect`. The per-source
 packages in this slice, the file importers (`dicom-importer-core`,
-`lifelabs-pdf-importer-core`) and the synthetic-data generators build on it. It must
+`lifelabs-pdf-importer-core`), `importer-core`'s import stage and the
+synthetic-data generators build on it. It must
 never import from `slices/importer`, and `http-extraction-fundamentals` must
 never import it: `SystemFamily` is defined there, and this package
 re-exports it for the file importers.
