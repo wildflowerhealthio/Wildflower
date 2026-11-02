@@ -59,7 +59,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   (what a format's `decode` returns: its files, its **`DecodedFileSet`**s
   apart, and its **`UnreadableFile`** rows), **`Result<K>`** (one format's
   imported decode, as `importer-core`'s import stage makes it: its id, title,
-  files, merged `DecodedFile` and unreadable rows), **`unreadableFile`** (the
+  files, merged `DecodedFile` and unreadable rows), **`makeUnreadableFile`** (the
   row one pick is reported as), **`emptyResult`** for a format that claimed
   nothing, and the identity derivations every id and review key is built from.
   All three read a picked file's **`id`** — minted once, over the whole batch in

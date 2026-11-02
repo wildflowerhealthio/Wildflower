@@ -146,7 +146,7 @@ const make = <TFormat extends string, TSettings, R = never>(
           Effect.mapError((error) =>
             // A set is read as a whole, so a set that rejects rejects every pick
             // in it — each with its own row, naming the file the reviewer picked.
-            members.map((file) => FormatDecode.unreadableFile(config.format, file, error))
+            members.map((file) => FormatDecode.makeUnreadableFile(config.format, file, error))
           ),
           Effect.either
         ),
@@ -162,7 +162,7 @@ const make = <TFormat extends string, TSettings, R = never>(
           // sets that rejected.
           unreadableFiles: [
             ...grouped.unreadable.map((one) =>
-              FormatDecode.unreadableFile(config.format, one.file, one.error)
+              FormatDecode.makeUnreadableFile(config.format, one.file, one.error)
             ),
             ...rejected.flat(),
           ],

@@ -64,7 +64,7 @@ interface UnreadableFile {
 }
 
 /** The {@link UnreadableFile} row one pick of `format` is reported as. */
-const unreadableFile = (
+const makeUnreadableFile = (
   format: string,
   file: PickedFile.Type,
   error: ParseResult.ParseError
@@ -85,5 +85,5 @@ const emptyResult = <K extends string>(kind: K): Result<K> => ({
   unreadableFiles: [],
 })
 
-export { emptyResult, keyPrefix, makeFileId, makeId, unreadableFile }
+export { emptyResult, keyPrefix, makeFileId, makeId, makeUnreadableFile }
 export type { Decoded, Result, UnreadableFile }

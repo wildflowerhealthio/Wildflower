@@ -161,7 +161,9 @@ const importDecoded = <TFormat extends string>(
     (fileSet) =>
       importFileSet(importer, fileSet).pipe(
         Effect.mapError((error) =>
-          fileSet.members.map((file) => FormatDecode.unreadableFile(decoded.format, file, error))
+          fileSet.members.map((file) =>
+            FormatDecode.makeUnreadableFile(decoded.format, file, error)
+          )
         ),
         Effect.either
       ),
