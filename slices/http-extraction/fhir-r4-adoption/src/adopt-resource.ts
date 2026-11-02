@@ -507,6 +507,19 @@ const memoisedUrlOf = (): ((url: string) => URL) => {
   }
 }
 
+/**
+ * Whether FHIR R4 gives `resource`'s type an `identifier` element.
+ *
+ * @remarks
+ * `Binary` is the one type in the union without one, so its source id
+ * survives only in the provenance trace. A type added to the union without
+ * `identifier` is added here, and nowhere else.
+ */
+const hasIdentifier = (
+  resource: FhirResource
+): resource is Exclude<FhirResource, { readonly resourceType: 'Binary' }> =>
+  resource.resourceType !== 'Binary'
+
 /** A decoded record and its key, less its type: the system and source id it is adopted under. */
 interface ResourceWithSourceId {
   /** The system `sourceId` belongs to: an absolute URI. */
@@ -543,24 +556,24 @@ interface ResourceWithSourceId {
  * is no "already adopted?" guard are all in
  * this package's `docs/Source Identity Explanation.md`.
  */
-const adoptWithSourceId = (targetsIn: SystemFamily.Type) => {
+const adoptUnderKey = (targetsIn: SystemFamily.Type) => {
   const urlOf = memoisedUrlOf()
   const rewriteReferences = mapReferences(rewriteRelativeReference(targetsIn, urlOf))
   return ({ system, sourceId, resource }: ResourceWithSourceId): FhirResourceWithId => {
     const rewritten = rewriteReferences(resource)
     const id = localResourceId(system, rewritten.resourceType, sourceId)
-    return rewritten.resourceType === 'Binary'
-      ? { ...rewritten, id }
-      : {
+    return hasIdentifier(rewritten)
+      ? {
           ...rewritten,
           id,
           identifier: [identifierOf(urlOf(system), sourceId), ...rewritten.identifier],
         }
+      : { ...rewritten, id }
   }
 }
 
 /**
- * Re-key a resource under its source's systems: {@link adoptWithSourceId}, in
+ * Re-key a resource under its source's systems: {@link adoptUnderKey}, in
  * the system `family` gives its type for a resource its source gave an id,
  * and in {@link DecodedId.CONTENT_DIGEST_SYSTEM} for one it did not.
  *
@@ -578,12 +591,13 @@ const adoptWithSourceId = (targetsIn: SystemFamily.Type) => {
  * the core only ever sees relative ones.
  */
 const adoptResource = (family: SystemFamily.Type) => {
-  const adopt = adoptWithSourceId(family)
+  const adopt = adoptUnderKey(family)
   const relativise = mapReferences(SystemFamily.relativise(family))
   return (decoded: FhirResource): FhirResourceWithId => {
     const resource = relativise(decoded)
     const ownSystem = SystemFamily.systemFor(family, resource.resourceType)
-    return DecodedId.$match(DecodedId.of(ownSystem, resource), {
+    const sourceId = DecodedId.of(ownSystem, resource)
+    return DecodedId.$match(sourceId, {
       FoundInSource: ({ value }) => adopt({ system: ownSystem, sourceId: value, resource }),
       GeneratedFromContent: ({ value }) =>
         adopt({ system: DecodedId.CONTENT_DIGEST_SYSTEM, sourceId: value, resource }),
@@ -610,7 +624,7 @@ const adoptResource = (family: SystemFamily.Type) => {
  * the remote one.
  */
 const originalIdOf = (system: string, resource: FhirResource): string | null => {
-  if (resource.resourceType === 'Binary') {
+  if (!hasIdentifier(resource)) {
     return null
   }
   const candidate = resource.identifier[0]
@@ -636,7 +650,9 @@ const originalIdOf = (system: string, resource: FhirResource): string | null => 
  * import stores — a lab result filed on the Patient a pharmacy import made.
  * It is {@link adoptResource}'s own spelling ({@link adoptedReference}), so
  * the two cannot drift. An `originalId` outside FHIR's id grammar is left
- * unrewritten, as adoption leaves it.
+ * unrewritten, as adoption leaves it. `system` is parsed per call: this runs
+ * a handful of times per synthetic account, not thousands per page, so the
+ * memo adoption pays for is not worth the aliasing here.
  */
 const adoptedReferenceOf = (
   system: string,
@@ -650,10 +666,4 @@ const adoptedReferenceOf = (
       })
     : { ...IdentifierAndReference.emptyReference, reference: `${resourceType}/${originalId}` }
 
-export {
-  adoptResource,
-  adoptWithSourceId,
-  adoptedReferenceOf,
-  originalIdOf,
-  type ResourceWithSourceId,
-}
+export { adoptResource, adoptUnderKey, adoptedReferenceOf, originalIdOf, type ResourceWithSourceId }

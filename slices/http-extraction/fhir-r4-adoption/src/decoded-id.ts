@@ -32,11 +32,11 @@ const CONTENT_DIGEST_SYSTEM = `${WILDFLOWER_IDENTIFIER_SYSTEM_BASE}/content-dige
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
 
 /**
- * Sixteen hex digits of FNV-1a 64 over `scope` and the resource's FHIR JSON,
+ * Sixteen hex digits of FNV-1a 64 over `system` and the resource's FHIR JSON,
  * without its `meta`.
  *
  * @remarks
- * `scope` is the system the resource's id would have been in had its source
+ * `system` is the one the resource's id would have been in had its source
  * given it one. The digest system is shared by every source, and a record's
  * relative references mean different targets in different sources, so the
  * same content from two sources must not digest to one id.
@@ -50,8 +50,8 @@ const encodeResource = Schema.encodeSync(FhirResourceSchema)
  * A resource that does not encode is a defect, thrown here: it means a
  * kind's decode let through what the schema's encode refuses.
  */
-const contentDigestOf = (scope: string, resource: FhirResource): string =>
-  fnv1a64(joinIdComponents([scope, JSON.stringify(Struct.omit(encodeResource(resource), 'meta'))]))
+const contentDigestOf = (system: string, resource: FhirResource): string =>
+  fnv1a64(joinIdComponents([system, JSON.stringify(Struct.omit(encodeResource(resource), 'meta'))]))
     .toString(16)
     .padStart(16, '0')
 
@@ -59,14 +59,14 @@ const contentDigestOf = (scope: string, resource: FhirResource): string =>
  * The id `resource` is adopted under: its own, or, when it has none, a digest
  * of its content.
  *
- * @param scope - The system the resource's own id would be in
+ * @param system - The system the resource's own id would be in
  * @param resource - A resource as its source decoded it
  * @returns `FoundInSource` its `id`, or `GeneratedFromContent` its content digest
  *   when its `id` is `null`
  */
-const of = (scope: string, resource: FhirResource): Type =>
+const of = (system: string, resource: FhirResource): Type =>
   resource.id === null
-    ? GeneratedFromContent({ value: contentDigestOf(scope, resource) })
+    ? GeneratedFromContent({ value: contentDigestOf(system, resource) })
     : FoundInSource({ value: resource.id })
 
 export { $match, CONTENT_DIGEST_SYSTEM, of }

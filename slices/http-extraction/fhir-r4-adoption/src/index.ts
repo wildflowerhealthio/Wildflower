@@ -8,7 +8,7 @@
  */
 export {
   adoptResource,
-  adoptWithSourceId,
+  adoptUnderKey,
   adoptedReferenceOf,
   originalIdOf,
   type ResourceWithSourceId,
