@@ -161,7 +161,7 @@ interface StoredSourceFile {
 
 /**
  * The source file a file of this format would be stored as, minted exactly as the
- * decode mints it.
+ * import stage mints it.
  *
  * @param format - The format's source file constants, from its registry entry
  * @param fileName - The stored file's name

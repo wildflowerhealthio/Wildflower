@@ -56,7 +56,8 @@ package alone and a layer that provides those.
   (`MetaSource.stampDecoded`) — and prepends the source files as the set's
   **"Source file"** / **"Source files"** section. Nothing is de-duplicated
   across sets or files: each set's records are kept and keyed as they are. A
-  set whose source file cannot be minted becomes one `unreadableFiles` row per
+  set whose source file cannot be minted, or whose `linkToSourceFiles` fails
+  with `FileImporter.SourceFileNotFound`, becomes one `unreadableFiles` row per
   picked file, after the decode's own. It provides `PickedFile.Format`
   internally, so what it returns requires nothing.
 - `src/read-batch.ts` — the read half as pure functions over a

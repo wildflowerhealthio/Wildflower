@@ -18,9 +18,9 @@ import {
 } from './source-system.ts'
 
 /**
- * The source file this format's importer mints for a picked file — the schema
- * driven under `dicomImporter`'s own format constants, which is the same
- * context its batch `decode` mints under.
+ * The source file the import stage mints for a picked file of this format —
+ * the schema driven under `dicomImporter`'s own format constants, which is
+ * what `importDecoded` provides it under.
  */
 const mint = (bytes: Uint8Array, fileName = 'scan.dcm'): Promise<PickedFile.SourceFile> =>
   Effect.runPromise(

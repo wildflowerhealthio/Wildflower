@@ -192,7 +192,7 @@ describe('ImporterScreen', () => {
 
   it('lists a re-picked server source file as a pre-excluded row and uploads nothing', async () => {
     // Arrange — one source file already on the server, minted from the recognized
-    // HAR exactly as this format's decode would mint it
+    // HAR exactly as the import stage would mint it
     const stored = await storedSourceFile(
       formatRegistry.har.sourceFileFormat,
       'server-session.har',

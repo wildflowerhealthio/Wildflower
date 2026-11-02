@@ -249,8 +249,9 @@ descending would not terminate anyway.
 `groupIdentifier`, and `Attachment.url`.
 
 `meta.source` is not a rewrite site because at adoption time it holds a
-source-system URI, and the importer's decode stamps it with a reference to the
-source-file `DocumentReference` afterwards — rewriting it earlier is dead work.
+source-system URI, and the importer's import stage (`importer-core`'s
+`importDecoded`) sets it to a reference to the source-file `DocumentReference`
+afterwards — rewriting it earlier is dead work.
 
 ## Where a record is adopted
 

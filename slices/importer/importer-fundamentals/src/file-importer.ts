@@ -50,7 +50,7 @@ class SourceFileNotFound extends Data.TaggedError('SourceFileNotFound')<{
  * There is no constructor: every field is either a constant the binding states
  * or a function it already has. `decode` comes from `DecodeFunction.make`;
  * the source-file constants and the two hooks below are what `importer-core`'s
- * import stage reads when it mints a set's source files.
+ * import stage reads when it builds and stores a set's source files.
  *
  * `R` is what `decode` requires of whoever runs it: `never` for a format that
  * reads its bytes itself, a platform service (LifeLabs' PDF extraction) for
@@ -73,17 +73,25 @@ interface Type<TSettings, TFormat extends string, R = never> {
    */
   readonly sourceFileFormat: PickedFile.FormatValue
   /**
-   * What one set's source files are listed and stamped as, read off the set's
-   * import.
+   * Fills in what a source file points at, from the records read out of the
+   * files it was decoded with.
    *
    * @remarks
-   * Runs once per picked file of the set, with that picked file's source file,
-   * as minted, and the set's records, adopted, so a format names the subject
-   * and the related resources off what it already extracted. **The source
-   * file's `id` must not change**: the row that is listed and the reference
-   * every resource's `meta.source` names are both read off the result. Left
-   * out, a source file is stored exactly as minted, which keeps an engineering
-   * artifact out of `Patient/$everything`.
+   * The import stage calls it once for each picked file, after it has decoded
+   * the file's set and built the file's source-file `DocumentReference`. It is
+   * given that `DocumentReference` and every record the set decoded to, and
+   * returns the `DocumentReference` to store. DICOM's sets `subject` to the
+   * study's `Patient` and `context.related` to its `ImagingStudy`, so the
+   * stored file sits in the patient's record beside the study it holds.
+   *
+   * **It must return the `id` it was given.** That id is a hash of the file's
+   * bytes and name, which is what makes importing the same file again update
+   * the one stored copy instead of adding a second; the review row and every
+   * record's `meta.source` use whatever id comes back.
+   *
+   * Left out, the source file is stored as built, with no `subject` and no
+   * `related`, which keeps a file that is not about a patient out of
+   * `Patient/$everything`.
    */
   readonly linkSourceFile?:
     | ((
@@ -92,18 +100,29 @@ interface Type<TSettings, TFormat extends string, R = never> {
       ) => PickedFile.SourceFile)
     | undefined
   /**
-   * One adopted record of a set, made to name the source files it was read
-   * from: the counterpart of `linkSourceFile`, which makes a source file
-   * name the records read out of it.
+   * Points a record at the source files it was read from, for a format whose
+   * records name their own file.
    *
    * @remarks
-   * Runs over every record of the set once its source files are linked, with
-   * each picked file of the set and its source file, which carries as its
-   * `masterIdentifier` what the picked file identified itself as
-   * (`DecodedFileSet.PickedFileIdentity`). That is what a record matches a
-   * source file by, since the decode that built the record never saw a source
-   * file. DICOM names each `ImagingStudy` instance's source file there. Left
-   * out, every record is kept as it is.
+   * The import stage calls it once for each record of a set, after
+   * `linkSourceFile` has run on every source file of the set. It is given the
+   * record and, for each picked file of the set, the picked file and its
+   * source-file `DocumentReference` ({@link PickedSourceFile}), and returns the
+   * record to store. The decode never sees a source file's id, so the hook
+   * finds a record's file by `masterIdentifier`: each `DocumentReference`
+   * carries there what the decode said its picked file identifies as
+   * (`DecodedFileSet.PickedFileIdentity`).
+   *
+   * DICOM's sets each `ImagingStudy` instance's `gridfsFileId` extension to the
+   * id of the source file whose `masterIdentifier` is the instance's SOP
+   * Instance UID, so the OHIF viewer can fetch that instance's image.
+   *
+   * A record naming a file that no source file of the set identifies as fails
+   * with {@link SourceFileNotFound}; the import stage then reports every
+   * picked file of that set as unreadable and the rest of the batch stays
+   * reviewable.
+   *
+   * Left out, every record is stored as it is.
    */
   readonly linkToSourceFiles?:
     | ((

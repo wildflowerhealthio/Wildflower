@@ -46,7 +46,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `masterIdentifier`, what its picked file identified itself as
   (`DecodedFileSet.PickedFileIdentity`), since the decode that built the
   record never saw a source file; DICOM sets each `ImagingStudy` instance's
-  `gridfsFileId` there.
+  `gridfsFileId` there. A record naming a file no source file of the set
+  identifies as fails with **`SourceFileNotFound`**, which the import stage
+  reports as an unreadable row per picked file of the set. An
+  `UnreadableFile`'s `error` is that or a decode's `ParseError`.
 
 - `src/format-detector.ts` — the **`FormatDetector`** namespace: **`Type`**
   (`{ format, detect }`, the two fields it takes to claim a picked file) and
@@ -93,9 +96,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   **`systemFamily`** the batch keys each type in (one per batch, not per
   record), which the import stage adopts it under. The "Source file(s)"
   section is the import stage's own, never decoded.
-  **`ofAdopted(pickedFiles, decoded, identifiedAs?)`** lifts a set's decode of
-  already adopted resources into one, each picked file identified as nothing
-  unless `identifiedAs` names it.
+  **`ofAdopted(pickedFiles, decoded)`** lifts a set's decode of already
+  adopted resources, beside its `PickedFileIdentity`s, into one;
+  **`unidentified(pickedFile)`** is a picked file identifying as nothing.
 - `src/decode-function.ts` — the **`DecodeFunction`** namespace: the batch
   decode's signature **and the one constructor that builds it**. **`Type`** is
   the signature a `FileImporter` exposes (files and settings in, one
@@ -107,8 +110,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   **`make(config)`** takes one **`Config`**: the `format`, a `decodeFileSet`
   (the picked files of one set in, a **`FileSetDecode`** out: a `DecodedFile`
   of adopted resources, each section of which reaches the import stage as an
-  `Adopted` one, and optionally `identifiedAs`, each picked file's `Identifier`
-  by its `id`), and — optionally — a `groupBy`. **`groupBy`** is called per
+  `Adopted` one, and optionally `pickedFiles`, each picked file of the set
+  paired with the `Identifier` it identifies as; left out, each identifies as
+  nothing), and — optionally — a `groupBy`. **`groupBy`** is called per
   file and returns the key it shares with its set-mates, or a `Left` that
   reports it as its own `unreadableFiles` row (in the order the files were
   picked, ahead of any failing set); left out, every file is its own set, keyed
@@ -120,7 +124,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   (`FormatDecode.keyPrefix`), and folds a `ParseError` into one
   `unreadableFiles` row per picked file of the failing set. It returns each
   set apart, with its picked files, because `importer-core`'s import stage
-  mints each set's source files and stamps its records with them.
+  builds each set's source files and sets its records' `meta.source` from them.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two

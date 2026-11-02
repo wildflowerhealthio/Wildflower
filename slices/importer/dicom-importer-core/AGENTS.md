@@ -83,7 +83,7 @@ carrying the one `ImagingStudy` its files make up.
   itself**. A header that parsed in `studyGroupKey` parses
   again; that double parse is the deliberate price of a decode constructor with
   no parsed-value passthrough. It yields one section of adopted, labeled FHIR
-  resources, and identifies each picked file as its SOP Instance UID
+  resources, and pairs each picked file with its SOP Instance UID
   (**`sopInstanceIdentifier`**: `{ system: 'urn:ietf:rfc:3986', value:
   'urn:oid:<SOPInstanceUID>' }`, FHIR's OID convention), which the import
   stage writes as its source file's `masterIdentifier`. Titled
@@ -125,8 +125,10 @@ carrying the one `ImagingStudy` its files make up.
   OHIF viewer's FHIR extension reads it to fetch the file) to the id of the
   source file whose `masterIdentifier` is the instance's `uid` as
   `sopInstanceIdentifier` spells it — the smallest id when two files share a
-  UID — replacing any `gridfsFileId` already there and keeping other
-  extensions; an instance no source file matches is a defect and dies. It
+  UID, looked up in a map of the set's source files built once per study —
+  replacing any `gridfsFileId` already there and keeping other extensions; an
+  instance no source file matches fails with `FileImporter.SourceFileNotFound`,
+  which the import stage reports as the study's files being unreadable. It
   reads only FHIR, no header. Per instance, so a study spanning files keeps
   per-file provenance that one `meta.source` could not. The one format so far
   that states a `groupBy`: decoding a study's files independently would yield

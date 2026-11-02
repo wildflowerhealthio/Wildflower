@@ -93,7 +93,10 @@ every format's `decode`) then, per set:
   **"Source file"** / **"Source files"** section;
 - stamps every extracted resource's `meta.source` with the set's representative
   source file — the one with the lexicographically smallest id, which is a content
-  hash, so the stamp is the same however the files were picked.
+  hash, so the stamp is the same however the files were picked;
+- reports every picked file of a set as an `unreadableFiles` row when its
+  source files cannot be built or `linkToSourceFiles` fails
+  (`FileImporter.SourceFileNotFound`), leaving the other sets reviewable.
 
 The decode and the import **never fail**, require **nothing but what your
 `decodeFileSet` requires**, and write nothing — so a preview can never reach the
@@ -114,12 +117,14 @@ fake layer built from hand-written fixtures.
 A format whose records name the stored file they were read from (DICOM's
 `ImagingStudy` `gridfsFileId` extension) does not name it at decode: a decode
 never sees a source file. Its `decodeFileSet` instead says what each picked
-file's own content identifies it as, a FHIR `Identifier` by the picked file's
-`id` in the `identifiedAs` it returns beside its `DecodedFile` (DICOM: the SOP
-Instance UID as `urn:oid:<uid>` under `urn:ietf:rfc:3986`). The import stage
-writes that onto the file's source file as `masterIdentifier`, and the
-format's `linkToSourceFiles` (§4) matches each record to a source file by it.
-A format whose files name nothing leaves `identifiedAs` out.
+file's own content identifies it as: beside its `DecodedFile` it returns
+`pickedFiles`, each picked file it was handed paired with a FHIR `Identifier`
+as `identifiedAs` (`DecodedFileSet.PickedFileIdentity`; DICOM: the SOP Instance
+UID as `urn:oid:<uid>` under `urn:ietf:rfc:3986`). The import stage writes that
+onto the file's source file as `masterIdentifier`, and the format's
+`linkToSourceFiles` (§4) matches each record to a source file by it. A format
+whose files name nothing leaves `pickedFiles` out, and each picked file
+identifies as nothing.
 
 Four obligations:
 
@@ -170,7 +175,7 @@ parameter. `importer-core`'s `planWrite` turns the batch's reviewed selections
 into a `WriteDecision` per reviewed resource, and the shell sends the
 `Included` ones, every format's and the batch's linked records, as one
 `POST /` transaction bundle. The confirm adds nothing to any resource: the
-`meta.source` links are already there, stamped by the decode.
+`meta.source` links are already there, set by the import stage.
 
 ## 4. The source file
 
@@ -210,11 +215,12 @@ what the file _is_, and when it reached the device is the server's own
 `meta.lastUpdated`. The encode ignores the value's own `id`, and reading an
 source file back yields the stored one, so decode-then-encode is the identity on it.
 
-State **`linkSourceFile`** on the importer when the format's source files point
-at what was read out of them. The import stage runs it once per picked file,
-with that file's source file, as minted, and the set's records, adopted, so it
-reads the links off the resources already produced rather than parsing the
-files a second time:
+State **`linkSourceFile`** on the importer when the format's source files should
+point at what was read out of them. The import stage calls it once for each
+picked file, with that file's source-file `DocumentReference` as built and
+every record the file's set decoded to, and stores the `DocumentReference` it
+returns. It reads the links off the records already produced rather than
+parsing the files a second time:
 
 ```ts
 const linkToPatientAndStudy = (
@@ -227,9 +233,10 @@ const linkToPatientAndStudy = (
 })
 ```
 
-**Do not change the `id`.** The row that is listed for review and the reference
-every resource's `meta.source` names are both read back off what you return.
-The default is the source file exactly as minted — no `subject`, no `related` —
+**Do not change the `id`.** It is a hash of the file's bytes and name, which is
+what makes importing the same file again update the one stored copy instead of
+adding a second; the review row and every record's `meta.source` use whatever
+id you return. The default is the source file as built — no `subject`, no `related` —
 which keeps an engineering artifact out of `Patient/$everything`; DICOM opts in
 because its header names the patient, and its `related` is what tells a reader
 of the server list which study a source file was read into. The source file is reviewed
@@ -237,16 +244,18 @@ like any other resource. The reviewer can exclude its row, in which case it is
 simply not written — and the extracted resources keep their `meta.source`,
 because the import stamped them and nothing downstream rewrites them.
 
-State **`linkToSourceFiles`** on the importer when a record names the file it
-was read from: the counterpart of `linkSourceFile`. The import stage runs it,
-an effect, over every adopted record of the set once the source files are
-linked, with each picked file of the set and its source file
-(`FileImporter.PickedSourceFile`). It matches a record to a source file by the
-source file's `masterIdentifier` (§1), reading only FHIR. DICOM's
-`addGridfsFileIds` sets each `ImagingStudy` instance's `gridfsFileId` to the
-source file whose `masterIdentifier` is the instance's `uid`, and dies on an
-instance none matches, since the decode built every instance from one of those
-files. Left out, every record is kept as it is.
+State **`linkToSourceFiles`** on the importer when a record should name the
+file it was read from. The import stage calls it once for each record of a
+set, after `linkSourceFile` has run, with the record and each picked file of
+the set beside its source file (`FileImporter.PickedSourceFile`), and stores
+the record its effect returns. It finds a record's file by the source file's
+`masterIdentifier` (§1), reading only FHIR. DICOM's `addGridfsFileIds` sets
+each `ImagingStudy` instance's `gridfsFileId` to the id of the source file
+whose `masterIdentifier` is the instance's SOP Instance UID, so the OHIF viewer
+can fetch the instance's image. A record that names a file no source file of
+the set identifies as fails with `FileImporter.SourceFileNotFound`, which
+reports that set's picked files as unreadable. Left out, every record is
+stored as it is.
 
 ## 5. Assemble the importer
 
@@ -305,7 +314,7 @@ it. Nothing about the set depends on the order it was picked in — the
 representative whose source file stamps `meta.source` is the picked file with the
 smallest source file id, and a source file id is a content hash. `meta.source` holds
 one reference, so a set spanning files keeps per-file provenance some other way:
-DICOM's `linkToSourceFiles` stamps each `ImagingStudy.instance` with its own
+DICOM's `linkToSourceFiles` sets on each `ImagingStudy.instance` its own
 source file's id (`gridfsFileId`).
 
 Do not smuggle cross-file state through `settings`: `groupBy` is where "these
