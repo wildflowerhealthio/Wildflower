@@ -1,6 +1,14 @@
+import { Extension, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { DecodeFunction, type FileImporter } from '@wildflowerhealthio/importer-fundamentals'
+import { Array as Arr, Effect, Option, Order, pipe, Predicate } from 'effect'
 
-import { decodeStudy, linkToPatientAndStudy, studyGroupKey, withSourceFileIds } from './decode.ts'
+import {
+  decodeStudy,
+  linkToPatientAndStudy,
+  sopInstanceIdentifier,
+  studyGroupKey,
+} from './decode.ts'
 import { detectDicom } from './detect.ts'
 import { defaultDicomSettings, type DicomSettings } from './settings.ts'
 import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from './source-system.ts'
@@ -18,6 +26,93 @@ const sourceFileFormat = {
 }
 
 /**
+ * The extension URL on an `ImagingStudy` instance carrying the id of the
+ * source file that stores that instance's DICOM file: the link from each
+ * imported instance back to the file it was read from.
+ *
+ * @remarks
+ * Per *instance*, which is why a study spanning many files keeps per-file
+ * provenance that `meta.source` alone could not carry: `meta.source` names one
+ * source file, and a study has as many source files as it has files. A
+ * `valueString`, because the OHIF viewer's FHIR extension reads it to fetch the
+ * file's bytes.
+ */
+const GRIDFS_FILE_ID_EXTENSION_URL = 'gridfsFileId'
+
+/**
+ * The id of the source file an instance with SOP Instance UID `uid` was read
+ * from: the one whose `masterIdentifier` is that UID, the smallest id when two
+ * files carry the same one, so the choice does not depend on the order they
+ * were picked in.
+ */
+const sourceFileIdOf = (
+  uid: string,
+  sourceFiles: readonly FileImporter.PickedSourceFile[]
+): Option.Option<string> => {
+  const identifier = sopInstanceIdentifier(uid)
+  return pipe(
+    sourceFiles,
+    Arr.filterMap(({ sourceFile }) =>
+      Option.fromNullable(sourceFile.masterIdentifier).pipe(
+        Option.filter((master) => IdentifierAndReference.identifierEquivalence(master, identifier)),
+        Option.as(sourceFile.id)
+      )
+    ),
+    Arr.match({
+      onEmpty: Option.none,
+      onNonEmpty: (ids) => Option.some(Arr.min(ids, Order.string)),
+    })
+  )
+}
+
+/**
+ * The study's `ImagingStudy` with each instance's `gridfsFileId` set to the
+ * source file storing its file; any other resource as it is. The DICOM
+ * importer's `linkToSourceFiles`.
+ *
+ * @param resource - One adopted resource of the study
+ * @param sourceFiles - Each picked file of the study and its source file, its
+ *   `masterIdentifier` the file's SOP Instance UID
+ *
+ * @remarks
+ * Reads only FHIR: an instance's `uid` is its file's SOP Instance UID, which is
+ * what that file's source file carries as its `masterIdentifier`. The decode
+ * built every instance from one of these files, so an instance no source file
+ * matches is a broken import and dies. A `gridfsFileId` already on an instance
+ * is replaced; any other extension is kept.
+ */
+const addGridfsFileIds = (
+  resource: FhirResourceWithId,
+  sourceFiles: readonly FileImporter.PickedSourceFile[]
+): Effect.Effect<FhirResourceWithId> => {
+  if (resource.resourceType !== 'ImagingStudy') return Effect.succeed(resource)
+  return Effect.map(
+    Effect.forEach(resource.series, (series) =>
+      Effect.map(
+        Effect.forEach(series.instance, (instance) =>
+          Option.match(sourceFileIdOf(instance.uid, sourceFiles), {
+            onNone: () =>
+              Effect.dieMessage(`No source file for the DICOM instance ${instance.uid}`),
+            onSome: (sourceFileId) =>
+              Effect.succeed({
+                ...instance,
+                extension: [
+                  ...instance.extension.filter(
+                    Predicate.not(Extension.hasUrl(GRIDFS_FILE_ID_EXTENSION_URL))
+                  ),
+                  { ...Extension.emptyAt(GRIDFS_FILE_ID_EXTENSION_URL), valueString: sourceFileId },
+                ],
+              }),
+          })
+        ),
+        (instance) => ({ ...series, instance })
+      )
+    ),
+    (series) => ({ ...resource, series })
+  )
+}
+
+/**
  * The DICOM importer: a pick of `.dcm` files in, one `ImagingStudy` per study
  * out.
  *
@@ -26,8 +121,9 @@ const sourceFileFormat = {
  * independent — each states one instance of a study whose counts, modality set
  * and earliest `started` only the whole set knows. Its source files link to what
  * the study decoded to, because a DICOM file is a clinical document and
- * belongs in its patient's record, and its `finish` points each `ImagingStudy`
- * instance at the source file storing its file.
+ * belongs in its patient's record, and its `linkToSourceFiles`
+ * ({@link addGridfsFileIds}) points each `ImagingStudy` instance at the source
+ * file storing its file.
  */
 const dicomImporter: FileImporter.Type<DicomSettings, typeof format> = {
   format,
@@ -36,7 +132,7 @@ const dicomImporter: FileImporter.Type<DicomSettings, typeof format> = {
   defaultSettings: defaultDicomSettings,
   sourceFileFormat,
   linkSourceFile: linkToPatientAndStudy,
-  finish: withSourceFileIds,
+  linkToSourceFiles: addGridfsFileIds,
   decode: DecodeFunction.make({
     format,
     groupBy: studyGroupKey,
@@ -44,4 +140,4 @@ const dicomImporter: FileImporter.Type<DicomSettings, typeof format> = {
   }),
 }
 
-export { dicomImporter }
+export { addGridfsFileIds, dicomImporter, GRIDFS_FILE_ID_EXTENSION_URL }

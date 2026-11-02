@@ -1,13 +1,13 @@
 import { adoptUnderKey } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
-  DecodedFile,
+  type DecodedFile,
   DecodedFileSet,
   type FileImporter,
   FormatDecode,
   MetaSource,
   PickedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Array as Arr, Effect, Function, Order, type ParseResult, Schema } from 'effect'
+import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema } from 'effect'
 
 /**
  * The import stage: one format's decode, file set by file set, made the
@@ -16,13 +16,14 @@ import { Array as Arr, Effect, Function, Order, type ParseResult, Schema } from 
  *
  * @remarks
  * Per set, {@link importFileSet} mints a source file for every picked file
- * (`PickedFile.FromDocumentReference`'s encode), adopts each `FromSource`
- * section's records (`adoptUnderKey`, their references keyed in the section's
- * system family) and keeps each `Adopted` section's, runs the format's
- * `linkSourceFile` over every source file and its `finish` over every record,
- * stamps every record's `meta.source` with the set's representative source
- * file, and leads with the source files as the set's own section. Each set's
- * records are keyed as they are: nothing is de-duplicated across sets or files.
+ * (`PickedFile.FromDocumentReference`'s encode, its `masterIdentifier` what the
+ * picked file identified itself as), adopts each `FromSource` section's records
+ * (`adoptUnderKey`, their references keyed in the section's system family) and
+ * keeps each `Adopted` section's, runs the format's `linkSourceFile` over every
+ * source file and its `linkToSourceFiles` over every record, stamps every
+ * record's `meta.source` with the set's representative source file, and leads
+ * with the source files as the set's own section. Each set's records are keyed
+ * as they are: nothing is de-duplicated across sets or files.
  *
  * @packageDocumentation
  */
@@ -30,7 +31,7 @@ import { Array as Arr, Effect, Function, Order, type ParseResult, Schema } from 
 /** What the import stage reads off a format's importer: its source-file constants and hooks. */
 type ImportingFormat = Pick<
   FileImporter.Type<unknown, string, unknown>,
-  'sourceFileFormat' | 'linkSourceFile' | 'finish'
+  'sourceFileFormat' | 'linkSourceFile' | 'linkToSourceFiles'
 >
 
 /** The section title one picked file's source file is reviewed under. */
@@ -68,10 +69,15 @@ const adoptSection = DecodedFileSet.Section.$match({
 
 /**
  * Import one file set: mint its picked files' source files, adopt its records,
- * let the format link each source file and finish each record, stamp, and lead
- * with the source files it is about to store.
+ * let the format link each source file to the records and each record to the
+ * source files, stamp, and lead with the source files it is about to store.
  *
  * @remarks
+ * A source file carries what its picked file identified itself as
+ * (`DecodedFileSet.PickedFileIdentity`) as its `masterIdentifier`, which is
+ * what a format's `linkToSourceFiles` matches a record's own identifiers
+ * against.
+ *
  * `meta.source` names the set's representative: the picked file whose source
  * file id is lexicographically smallest. A source file's id is a content hash
  * of the file's bytes and name, so the smallest of them is a fact about the set
@@ -84,8 +90,11 @@ const importFileSet = (
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, PickedFile.Format> =>
   Effect.gen(function* () {
     const sourceFiles = yield* Effect.all(
-      Arr.map(fileSet.pickedFiles, (pickedFile) =>
-        Effect.map(sourceFileOf(pickedFile), (sourceFile) => ({ pickedFile, sourceFile }))
+      Arr.map(fileSet.pickedFiles, ({ pickedFile, identifiedAs }) =>
+        Effect.map(sourceFileOf(pickedFile), (sourceFile) => ({
+          pickedFile,
+          sourceFile: { ...sourceFile, masterIdentifier: Option.getOrNull(identifiedAs) },
+        }))
       ),
       { concurrency: 'unbounded' }
     )
@@ -100,15 +109,20 @@ const importFileSet = (
       sourceFile: linkSourceFile(sourceFile, adopted),
     }))
 
-    const finish = importer.finish ?? Function.identity
-    const sourceFileIds = new Map(
-      linked.map(({ pickedFile, sourceFile }) => [pickedFile.id, sourceFile.id])
+    const linkToSourceFiles = importer.linkToSourceFiles ?? Effect.succeed
+    const sections = yield* Effect.forEach(adopted.sections, (section) =>
+      Effect.map(
+        Effect.forEach(section.resources, (entry) =>
+          Effect.map(linkToSourceFiles(entry.resource, linked), (resource) => ({
+            ...entry,
+            resource,
+          }))
+        ),
+        (resources) => ({ ...section, resources })
+      )
     )
     const stamped = MetaSource.stampDecoded(
-      DecodedFile.mapResources(adopted, (entry) => ({
-        ...entry,
-        resource: finish(entry.resource, sourceFileIds),
-      })),
+      { ...adopted, sections },
       MetaSource.makeReference(
         Arr.min(
           Arr.map(linked, ({ sourceFile }) => sourceFile.id),
@@ -152,8 +166,8 @@ const importDecoded = <TFormat extends string>(
     decoded.fileSets,
     (fileSet) =>
       Effect.mapError(importFileSet(importer, fileSet), (error) =>
-        fileSet.pickedFiles.map((file) =>
-          FormatDecode.makeUnreadableFile(decoded.format, file, error)
+        fileSet.pickedFiles.map(({ pickedFile }) =>
+          FormatDecode.makeUnreadableFile(decoded.format, pickedFile, error)
         )
       ),
     { concurrency: 'unbounded' }

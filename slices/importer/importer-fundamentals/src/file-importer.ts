@@ -4,10 +4,17 @@
  * @packageDocumentation
  */
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
+import type { Effect } from 'effect'
 
 import type * as DecodeFunction from './decode-function.ts'
 import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
+
+/** One picked file of a set, beside the source file the import stage stores it as. */
+interface PickedSourceFile {
+  readonly pickedFile: PickedFile.Type
+  readonly sourceFile: PickedFile.SourceFile
+}
 
 /**
  * Everything the shell needs to turn a picked file of one format into
@@ -66,19 +73,25 @@ interface Type<TSettings, TFormat extends string, R = never> {
       ) => PickedFile.SourceFile)
     | undefined
   /**
-   * One adopted record of a set, finished once its source files are minted.
+   * One adopted record of a set, made to name the source files it was read
+   * from: the counterpart of `linkSourceFile`, which makes a source file
+   * name the records read out of it.
    *
    * @remarks
-   * `sourceFileIds` holds each member's source file id by the member's pick
-   * `id`, for a record that names the file it was read from. Left out, every
-   * record is kept as it is.
+   * Runs over every record of the set once its source files are linked, with
+   * each picked file of the set and its source file, which carries as its
+   * `masterIdentifier` what the picked file identified itself as
+   * (`DecodedFileSet.PickedFileIdentity`). That is what a record matches a
+   * source file by, since the decode that built the record never saw a source
+   * file. DICOM names each `ImagingStudy` instance's source file there. Left
+   * out, every record is kept as it is.
    */
-  readonly finish?:
+  readonly linkToSourceFiles?:
     | ((
         resource: FhirResourceWithId,
-        sourceFileIds: ReadonlyMap<string, string>
-      ) => FhirResourceWithId)
+        sourceFiles: readonly PickedSourceFile[]
+      ) => Effect.Effect<FhirResourceWithId>)
     | undefined
 }
 
-export type { Type }
+export type { PickedSourceFile, Type }

@@ -51,7 +51,7 @@ import { type FormatKind, formatKinds, type FormatSettings } from './registry.ts
 type ReadRegistry<R = unknown> = {
   readonly [K in FormatKind]: Pick<
     FileImporter.Type<FormatSettings[K], K, R>,
-    'format' | 'detect' | 'decode' | 'sourceFileFormat' | 'linkSourceFile' | 'finish'
+    'format' | 'detect' | 'decode' | 'sourceFileFormat' | 'linkSourceFile' | 'linkToSourceFiles'
   >
 }
 

@@ -8,19 +8,18 @@
 import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { adoptResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { DocumentReferenceContext, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  DocumentReferenceContext,
-  type FhirResource,
-  type FhirResourceWithId,
-} from '@wildflowerhealthio/fhir-r4/resources'
-import { DecodedFile, type PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+  DecodedFile,
+  type DecodeFunction,
+  type PickedFile,
+} from '@wildflowerhealthio/importer-fundamentals'
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 
 import { dicomCalendarDate } from './fhir/dates.ts'
 import {
   accessionNumbers,
-  GRIDFS_FILE_ID_EXTENSION_URL,
   orderedInstances,
   patientOriginalId,
   toFhirResources,
@@ -36,10 +35,23 @@ const labelAdopted = (resource: FhirResource, key: string, title: string): Decod
   return { key, title, resource: adopted }
 }
 
-/** One file of a study, as the synthesis sees it: its header, its pick's id, its name. */
+/** One file of a study, as the synthesis sees it: its header and its name. */
 interface StudyFile extends StudyInstance {
   readonly fileName: string
 }
+
+/** The `Identifier.system` FHIR spells a URI-valued identifier in, an OID as `urn:oid:<oid>`. */
+const URI_IDENTIFIER_SYSTEM = 'urn:ietf:rfc:3986'
+
+const decodeIdentifier = Schema.decodeSync(IdentifierAndReference.IdentifierSchema)
+
+/**
+ * A DICOM instance's SOP Instance UID as a FHIR `Identifier`, in FHIR's OID
+ * convention: what a `.dcm` file identifies itself as, and what an
+ * `ImagingStudy` instance's `uid` names.
+ */
+const sopInstanceIdentifier = (sopInstanceUid: string): IdentifierAndReference.IdentifierType =>
+  decodeIdentifier({ system: URI_IDENTIFIER_SYSTEM, value: `urn:oid:${sopInstanceUid}` })
 
 const asParseError = (reason: string): ParseResult.ParseError =>
   new ParseResult.ParseError({
@@ -188,54 +200,17 @@ const linkToPatientAndStudy = (
 }
 
 /**
- * The study's `ImagingStudy` with each instance's `gridfsFileId` naming the
- * source file storing its file, rather than its pick; any other resource as it
- * is. The DICOM importer's `finish`.
- *
- * @param resource - One adopted resource of the study
- * @param sourceFileIds - Each member's source file id, by its pick's `id`
- *
- * @remarks
- * Every `gridfsFileId` the decode wrote is a member's pick id, so one missing
- * from `sourceFileIds` is a broken import, not a case to keep.
- */
-const withSourceFileIds = (
-  resource: FhirResourceWithId,
-  sourceFileIds: ReadonlyMap<string, string>
-): FhirResourceWithId => {
-  if (resource.resourceType !== 'ImagingStudy') return resource
-  const sourceFileIdOf = (pickId: string | null): string => {
-    const sourceFileId = sourceFileIds.get(pickId ?? '')
-    if (sourceFileId === undefined) throw new Error(`No source file for the pick ${pickId}`)
-    return sourceFileId
-  }
-  return {
-    ...resource,
-    series: resource.series.map((series) => ({
-      ...series,
-      instance: series.instance.map((instance) => ({
-        ...instance,
-        extension: instance.extension.map((extension) =>
-          extension.url === GRIDFS_FILE_ID_EXTENSION_URL
-            ? { ...extension, valueString: sourceFileIdOf(extension.valueString) }
-            : extension
-        ),
-      })),
-    })),
-  }
-}
-
-/**
  * Decode one study's picked files into a section of adopted, labeled FHIR
  * resources.
  *
- * @param pickedFiles - Every picked `.dcm` of one study, in pick order; each
- *   instance's `gridfsFileId` is its file's pick id until
- *   {@link withSourceFileIds} names the source file
+ * @param pickedFiles - Every picked `.dcm` of one study, in the order they were
+ *   picked
  * @param settings - The import's settings; its `timeZone` is what
  *   `ImagingStudy.started` is resolved against
  * @returns One section when the study carries a patient, plus notes for what
- *   could not be extracted and what each file contributed; fails with a
+ *   could not be extracted and what each file contributed, and each picked
+ *   file identified as its SOP Instance UID ({@link sopInstanceIdentifier});
+ *   fails with a
  *   `ParseError` when a header does not parse, when the time zone is not one
  *   the runtime resolves, or when a synthesized resource does not satisfy its
  *   schema
@@ -257,25 +232,32 @@ const withSourceFileIds = (
 const decodeStudy = (
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: DicomSettings
-): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
+): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)
 
-    const files: readonly StudyFile[] = yield* Effect.forEach(pickedFiles, (pickedFile) =>
-      Effect.map(headerOf(pickedFile), (header) => ({
-        fileName: pickedFile.fileName,
-        header,
-        fileId: pickedFile.id,
-      }))
+    const headers = yield* Effect.forEach(pickedFiles, (pickedFile) =>
+      Effect.map(headerOf(pickedFile), (header) => ({ pickedFile, header }))
+    )
+    const files: readonly StudyFile[] = headers.map(({ pickedFile, header }) => ({
+      fileName: pickedFile.fileName,
+      header,
+    }))
+    const identifiedAs = new Map(
+      headers.map(({ pickedFile, header }) => [
+        pickedFile.id,
+        sopInstanceIdentifier(header.sopInstanceUid),
+      ])
     )
     const ordered = orderedInstances(files)
     const head = ordered[0]
-    if (head === undefined) return { sections: [], notes: [] }
+    if (head === undefined) return { sections: [], notes: [], identifiedAs }
 
     if (patientOriginalId(head.header) === undefined) {
       return {
         sections: [],
         notes: ['No patient identity in the DICOM header (no PatientID or PatientName).'],
+        identifiedAs,
       }
     }
 
@@ -302,15 +284,15 @@ const decodeStudy = (
     const sections: DecodedFile.Section[] =
       labeled.length > 0 ? [{ title: sectionTitle(head.header), resources: labeled }] : []
 
-    return { sections, notes }
+    return { sections, notes, identifiedAs }
   })
 
 export {
   decodeStudy,
   linkToPatientAndStudy,
   sectionTitle,
+  sopInstanceIdentifier,
   studyGroupKey,
   studyKey,
-  withSourceFileIds,
 }
 export type { StudyFile }

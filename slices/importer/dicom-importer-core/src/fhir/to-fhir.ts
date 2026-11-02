@@ -54,21 +54,6 @@ const sourceId = (components: readonly string[]): string =>
 const DCM_CODING_SYSTEM = 'http://dicom.nema.org/resources/ontology/DCM'
 const DICOM_UID_SYSTEM = 'urn:dicom:uid'
 
-/**
- * The extension URL stamped on an `ImagingStudy` instance, carrying the id of
- * the `DocumentReference` that stores that one DICOM file's raw bytes — the
- * link from each synthesized instance back to the file it was read from.
- *
- * @remarks
- * Per *instance*, which is why a study spanning many files keeps per-file
- * provenance that `meta.source` alone could not carry: `meta.source` names one
- * source file, and a study has as many source files as it has files. A
- * `valueString`, because the OHIF viewer's FHIR extension reads it to fetch
- * the file's bytes. The synthesis writes the file's {@link StudyInstance.fileId}
- * here, which the import stage's `finish` replaces with the source file's id.
- */
-const GRIDFS_FILE_ID_EXTENSION_URL = 'gridfsFileId'
-
 const genderOf = (sex: string | undefined): string | undefined => {
   if (sex === undefined) return undefined
   switch (sex.trim().toUpperCase()) {
@@ -261,12 +246,6 @@ const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire |
 interface StudyInstance {
   /** The file's parsed DICOM header. */
   readonly header: DicomHeader.Type
-  /**
-   * The id the decode knows this file by, when known — its pick's `id` —
-   * stamped onto this instance as its `gridfsFileId` extension, so every
-   * instance names its own file rather than the study naming one.
-   */
-  readonly fileId?: string | undefined
 }
 
 /**
@@ -307,22 +286,21 @@ const compareText = (left: string, right: string): number => {
 
 /**
  * Order two instances within their series: by `InstanceNumber`, then by
- * `SOPInstanceUID`, then by the id the decode knows their file by.
+ * `SOPInstanceUID`, then by `SOPClassUID`.
  *
  * @remarks
- * Total, and a function of the headers alone whenever the first two separate
- * the instances. That is what makes the import idempotent: the same study
- * picked in any file order imports to the same resources, byte for byte, once
- * the import stage has given each instance its source file's id, so a
- * re-import overwrites rather than reshuffling. The last tiebreak matters for
- * the one case the first two do not separate — two files carrying the same
- * `SOPInstanceUID`, which a study spanning two folders can produce — and
- * there the pick's slot decides.
+ * A function of the headers alone, which is what makes the import idempotent:
+ * the same study picked in any file order imports to the same resources, byte
+ * for byte, so a re-import overwrites rather than reshuffling. The last
+ * tiebreak matters for two files carrying the same `SOPInstanceUID`, which a
+ * study spanning two folders can produce; two instances it leaves tied agree
+ * on every field an instance is synthesized from, so their order shows in
+ * nothing written.
  */
 const compareInstances = (left: StudyInstance, right: StudyInstance): number =>
   (left.header.instanceNumber ?? UNNUMBERED) - (right.header.instanceNumber ?? UNNUMBERED) ||
   compareText(left.header.sopInstanceUid, right.header.sopInstanceUid) ||
-  compareText(left.fileId ?? '', right.fileId ?? '')
+  compareText(left.header.sopClassUid, right.header.sopClassUid)
 
 /** Order two series within their study: by `SeriesNumber`, then by `SeriesInstanceUID`. */
 const compareSeries = (left: StudySeries, right: StudySeries): number => {
@@ -421,7 +399,7 @@ const accessionNumbers = (instances: readonly StudyInstance[]): readonly string[
   )
 
 /** One instance of a series, as `ImagingStudy.series.instance` carries it. */
-const instanceWire = ({ header, fileId }: StudyInstance): Wire => {
+const instanceWire = ({ header }: StudyInstance): Wire => {
   const wire: Wire = {
     uid: header.sopInstanceUid,
     sopClass: {
@@ -430,9 +408,6 @@ const instanceWire = ({ header, fileId }: StudyInstance): Wire => {
     },
   }
   if (header.instanceNumber !== undefined) wire['number'] = header.instanceNumber
-  if (fileId !== undefined) {
-    wire['extension'] = [{ url: GRIDFS_FILE_ID_EXTENSION_URL, valueString: fileId }]
-  }
   return wire
 }
 
@@ -522,7 +497,7 @@ type DicomFhirResources =
  * Synthesize FHIR resources from one study's files.
  *
  * @param instances - Every picked file of one study — same `StudyInstanceUID`,
- *   same patient — in any order, each with the id the decode knows it by
+ *   same patient — in any order
  * @param settings - The import's settings; its `timeZone` is what
  *   `ImagingStudy.started` is resolved against (see `dates.ts`)
  * @returns The resources in write order: Patient first (when the headers carry
@@ -586,7 +561,6 @@ const toFhirResources = (
 
 export {
   accessionNumbers,
-  GRIDFS_FILE_ID_EXTENSION_URL,
   fhirDate,
   fhirDateTime,
   imagingStudyOriginalId,

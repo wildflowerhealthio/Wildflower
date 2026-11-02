@@ -21,6 +21,7 @@
  * @packageDocumentation
  */
 
+import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { ParseResult } from 'effect'
 import { Array as Arr, Effect, Either } from 'effect'
 
@@ -42,6 +43,20 @@ type Type<in TSettings, TFormat extends string, out R = never> = (
   files: readonly PickedFile.Type[],
   settings: TSettings
 ) => Effect.Effect<FormatDecode.Decoded<TFormat>, never, R>
+
+/**
+ * One set's decode as a format's `decodeFileSet` returns it: its records,
+ * every one already adopted, and what its picked files identify themselves as.
+ *
+ * @remarks
+ * `identifiedAs` holds, by picked file `id`, the FHIR `Identifier` a file's own
+ * content names it by (`DecodedFileSet.PickedFileIdentity`), for a format whose
+ * files name themselves; DICOM states each file's SOP Instance UID there. Left
+ * out, as by every other format, no picked file identifies as anything.
+ */
+interface FileSetDecode extends DecodedFile.DecodedFile {
+  readonly identifiedAs?: ReadonlyMap<string, IdentifierAndReference.IdentifierType> | undefined
+}
 
 /** What {@link make} needs of a format, `R` being what its `decodeFileSet` requires. */
 interface Config<TFormat extends string, TSettings, R = never> {
@@ -65,7 +80,7 @@ interface Config<TFormat extends string, TSettings, R = never> {
   readonly decodeFileSet: (
     pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
     settings: TSettings
-  ) => Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, R>
+  ) => Effect.Effect<FileSetDecode, ParseResult.ParseError, R>
 }
 
 /** Decode one set, its review keys namespaced by its first picked file. */
@@ -77,7 +92,8 @@ const decodeSet = <TSettings, R>(
   Effect.map(config.decodeFileSet(pickedFiles, settings), (decoded) =>
     DecodedFileSet.ofAdopted(
       pickedFiles,
-      DecodedFile.namespaceKeys(decoded, FormatDecode.keyPrefix(pickedFiles[0]))
+      DecodedFile.namespaceKeys(decoded, FormatDecode.keyPrefix(pickedFiles[0])),
+      decoded.identifiedAs
     )
   )
 
@@ -168,4 +184,4 @@ const make = <TFormat extends string, TSettings, R = never>(
 }
 
 export { make }
-export type { Config, Type }
+export type { Config, FileSetDecode, Type }
