@@ -1,6 +1,7 @@
 /**
- * One file set as its format decoded it: the picks read together, and the
- * records read out of them, before the import stage makes them the device's.
+ * One file set as its format decoded it: the picked files read together, and
+ * the records read out of them, before the import stage makes them the
+ * device's.
  *
  * @packageDocumentation
  */
@@ -62,22 +63,22 @@ type Section = Data.TaggedEnum<{
 const Section = Data.taggedEnum<Section>()
 
 /**
- * One file set's decode: its members, in pick order, and its sections and
- * notes, every review key already namespaced by the set's first member
- * (`FormatDecode.keyPrefix`).
+ * One file set's decode: its picked files, in the order they were picked, and
+ * its sections and notes, every review key already namespaced by the set's
+ * first picked file (`FormatDecode.keyPrefix`).
  */
 interface Type {
-  readonly members: Arr.NonEmptyReadonlyArray<PickedFile.Type>
+  readonly pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>
   readonly sections: readonly Section[]
   readonly notes: readonly string[]
 }
 
 /** `decoded`, a set's decode of already adopted resources, as `Adopted` sections. */
 const ofAdopted = (
-  members: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
+  pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   decoded: DecodedFile.DecodedFile
 ): Type => ({
-  members,
+  pickedFiles,
   sections: decoded.sections.map((section) =>
     Section.Adopted({ title: section.title, entries: section.resources })
   ),

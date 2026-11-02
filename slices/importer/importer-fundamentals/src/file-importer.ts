@@ -51,16 +51,19 @@ interface Type<TSettings, TFormat extends string, R = never> {
    * import.
    *
    * @remarks
-   * Runs once per member, with that member's minted source file and the set's
-   * records, adopted, so a format names the subject and the related resources
-   * off what it already extracted. **The source file's `id` must not change**:
-   * the row that is listed and the reference every resource's `meta.source`
-   * names are both read off the result. Left out, a source file is stored
-   * exactly as minted, which keeps an engineering artifact out of
-   * `Patient/$everything`.
+   * Runs once per picked file of the set, with that picked file's source file,
+   * as minted, and the set's records, adopted, so a format names the subject
+   * and the related resources off what it already extracted. **The source
+   * file's `id` must not change**: the row that is listed and the reference
+   * every resource's `meta.source` names are both read off the result. Left
+   * out, a source file is stored exactly as minted, which keeps an engineering
+   * artifact out of `Patient/$everything`.
    */
   readonly linkSourceFile?:
-    | ((minted: PickedFile.SourceFile, decoded: DecodedFile.DecodedFile) => PickedFile.SourceFile)
+    | ((
+        sourceFile: PickedFile.SourceFile,
+        decoded: DecodedFile.DecodedFile
+      ) => PickedFile.SourceFile)
     | undefined
   /**
    * One adopted record of a set, finished once its source files are minted.

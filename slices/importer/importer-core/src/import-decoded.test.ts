@@ -92,7 +92,7 @@ const decodeAndImport =
 
 const decodeEachByte = DecodeFunction.make({
   format: testFormat,
-  decodeFileSet: (members) => decodeBytes(members[0]),
+  decodeFileSet: (pickedFiles) => decodeBytes(pickedFiles[0]),
 })
 
 const decode = decodeAndImport({ sourceFileFormat }, decodeEachByte)
@@ -297,7 +297,7 @@ describe('decode and import (batch behavior)', () => {
     )
   })
 
-  it("should finish every record with each member's source file id, by its pick id", async () => {
+  it("should finish every record with each file's source file id, by its pick id", async () => {
     const seen: ReadonlyMap<string, string>[] = []
     const finishing = decodeAndImport(
       {
@@ -405,24 +405,24 @@ const groupByName = (file: PickedFile.Type): Either.Either<string, ParseResult.P
   return group === undefined ? Either.left(emptyFileError(file.fileName)) : Either.right(group)
 }
 
-/** One section per set, one resource per member; a set with an empty file rejects whole. */
+/** One section per set, one resource per file; a set with an empty file rejects whole. */
 const decodeGroup = (
-  members: Arr.NonEmptyReadonlyArray<PickedFile.Type>
+  pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
-  members.some((member) => member.bytes.length === 0)
-    ? Effect.fail(emptyFileError(members[0].fileName))
+  pickedFiles.some((file) => file.bytes.length === 0)
+    ? Effect.fail(emptyFileError(pickedFiles[0].fileName))
     : Effect.succeed({
         sections: [
           {
-            title: groupOf(members[0].fileName) ?? members[0].fileName,
-            resources: members.map((member) => ({
-              key: `member/${member.id}`,
-              title: member.fileName,
-              resource: fakeResource(`${member.bytes[0] ?? 0}`),
+            title: groupOf(pickedFiles[0].fileName) ?? pickedFiles[0].fileName,
+            resources: pickedFiles.map((file) => ({
+              key: `file/${file.id}`,
+              title: file.fileName,
+              resource: fakeResource(`${file.bytes[0] ?? 0}`),
             })),
           },
         ],
-        notes: [`${groupOf(members[0].fileName) ?? '?'}: ${members.length} files`],
+        notes: [`${groupOf(pickedFiles[0].fileName) ?? '?'}: ${pickedFiles.length} files`],
       })
 
 const groupedDecode = decodeAndImport(
@@ -469,7 +469,7 @@ describe('a grouped decode', () => {
     )
   })
 
-  it('namespaces a set by its first picked member and stamps it with one source file', async () => {
+  it('namespaces a set by its first picked file and stamps it with one source file', async () => {
     const files = asBatch([
       oneFile('s-1.bin', new Uint8Array([1])),
       oneFile('s-2.bin', new Uint8Array([2])),
@@ -482,8 +482,8 @@ describe('a grouped decode', () => {
       .filter((section) => section.title === 's')
       .flatMap((section) => section.resources)
     expect(extracted.map((entry) => entry.key)).toEqual([
-      `${prefix}member/${first.id}`,
-      `${prefix}member/${second.id}`,
+      `${prefix}file/${first.id}`,
+      `${prefix}file/${second.id}`,
     ])
     expect(stampsOf(result).size).toBe(1)
     // Both source files are listed, each keyed by its own pick.
@@ -527,7 +527,7 @@ describe('a grouped decode', () => {
     expect(result.decoded.notes).toEqual(['b: 2 files', '10: 1 files', '2: 1 files'])
   })
 
-  it('rejects exactly the members of a failing set, leaving its neighbours readable', async () => {
+  it('rejects exactly the picked files of a failing set, leaving its neighbours readable', async () => {
     const result = await Effect.runPromise(
       groupedDecode(
         asBatch([
@@ -591,7 +591,7 @@ const decodedOf = (
 ): FormatDecode.Decoded<typeof testFormat> => ({
   format: testFormat,
   files: [scan],
-  fileSets: [{ members: [scan], sections, notes: [] }],
+  fileSets: [{ pickedFiles: [scan], sections, notes: [] }],
   unreadableFiles: [],
 })
 

@@ -25,30 +25,30 @@ const pickedFile = (index: number, fileName: string, bytes: number[]): PickedFil
 const decode = DecodeFunction.make({
   format: 'test',
   groupBy: (file) => Either.right(file.fileName.split('-')[0] ?? ''),
-  decodeFileSet: (members) =>
-    members.some((member) => member.bytes.length === 0)
+  decodeFileSet: (pickedFiles) =>
+    pickedFiles.some((file) => file.bytes.length === 0)
       ? Effect.fail(
           new ParseResult.ParseError({
-            issue: new ParseResult.Type(Schema.Unknown.ast, members[0].fileName, 'empty file'),
+            issue: new ParseResult.Type(Schema.Unknown.ast, pickedFiles[0].fileName, 'empty file'),
           })
         )
       : Effect.succeed({
           sections: [
             {
-              title: members[0].fileName,
-              resources: members.map((member) => ({
-                key: member.fileName,
-                title: member.fileName,
-                resource: fakeResource(`${member.bytes[0]}`),
+              title: pickedFiles[0].fileName,
+              resources: pickedFiles.map((file) => ({
+                key: file.fileName,
+                title: file.fileName,
+                resource: fakeResource(`${file.bytes[0]}`),
               })),
             },
           ],
-          notes: [`${members.length} files`],
+          notes: [`${pickedFiles.length} files`],
         }),
 })
 
 describe('DecodeFunction.make', () => {
-  it('returns each set apart, its members in pick order and its records Adopted under namespaced keys', async () => {
+  it('returns each set apart, its picked files in the order they were picked and its sections Adopted under namespaced keys', async () => {
     const files = [
       pickedFile(0, 'a-1.bin', [1]),
       pickedFile(1, 'b-1.bin', [2]),
@@ -61,21 +61,21 @@ describe('DecodeFunction.make', () => {
       files,
       fileSets: [
         {
-          members: [a1, a2],
+          pickedFiles: [a1, a2],
           sections: [
             DecodedFileSet.Section.Adopted({
               title: 'a-1.bin',
-              entries: [a1, a2].map((member) => ({
-                key: `${FormatDecode.keyPrefix(a1)}${member.fileName}`,
-                title: member.fileName,
-                resource: fakeResource(`${member.bytes[0]}`),
+              entries: [a1, a2].map((file) => ({
+                key: `${FormatDecode.keyPrefix(a1)}${file.fileName}`,
+                title: file.fileName,
+                resource: fakeResource(`${file.bytes[0]}`),
               })),
             }),
           ],
           notes: ['2 files'],
         },
         {
-          members: [b1],
+          pickedFiles: [b1],
           sections: [
             DecodedFileSet.Section.Adopted({
               title: 'b-1.bin',
@@ -95,11 +95,11 @@ describe('DecodeFunction.make', () => {
     })
   })
 
-  it('reports every member of a set that rejects, leaving its neighbours decoded', async () => {
+  it('reports every file of a set that rejects, leaving its neighbours decoded', async () => {
     const decoded = await Effect.runPromise(
       decode([pickedFile(0, 'a-1.bin', [1]), pickedFile(1, 'b-1.bin', [])], null)
     )
-    expect(decoded.fileSets.map((fileSet) => fileSet.members.map((one) => one.id))).toEqual([
+    expect(decoded.fileSets.map((fileSet) => fileSet.pickedFiles.map((one) => one.id))).toEqual([
       ['0:a-1.bin'],
     ])
     expect(decoded.unreadableFiles.map((one) => one.id)).toEqual(['test/1:b-1.bin'])

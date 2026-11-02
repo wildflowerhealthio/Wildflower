@@ -6,7 +6,7 @@
  * @remarks
  * {@link make} groups a batch into file sets, decodes each set, namespaces its
  * review keys, and folds a set that fails into `unreadableFiles` rows. It
- * returns each set's decode apart, with its members, because
+ * returns each set's decode apart, with its picked files, because
  * `importer-core`'s import stage (`importDecoded`) mints each set's source
  * files and makes its records the device's own.
  *
@@ -63,25 +63,25 @@ interface Config<TFormat extends string, TSettings, R = never> {
    * reaches the import stage as an `Adopted` one.
    */
   readonly decodeFileSet: (
-    members: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
+    pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
     settings: TSettings
   ) => Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, R>
 }
 
-/** Decode one set, its review keys namespaced by its first member in pick order. */
+/** Decode one set, its review keys namespaced by its first picked file. */
 const decodeSet = <TSettings, R>(
-  members: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
+  pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: TSettings,
   config: Config<string, TSettings, R>
 ): Effect.Effect<DecodedFileSet.Type, ParseResult.ParseError, R> =>
-  Effect.map(config.decodeFileSet(members, settings), (decoded) =>
+  Effect.map(config.decodeFileSet(pickedFiles, settings), (decoded) =>
     DecodedFileSet.ofAdopted(
-      members,
-      DecodedFile.namespaceKeys(decoded, FormatDecode.keyPrefix(members[0]))
+      pickedFiles,
+      DecodedFile.namespaceKeys(decoded, FormatDecode.keyPrefix(pickedFiles[0]))
     )
   )
 
-/** What the sets a batch groups into, and the picks that reached none of them. */
+/** What the sets a batch groups into, and the picked files that reached none of them. */
 interface Grouped {
   readonly fileSets: readonly Arr.NonEmptyReadonlyArray<PickedFile.Type>[]
   readonly unreadable: readonly {
@@ -91,12 +91,12 @@ interface Grouped {
 }
 
 /**
- * Group a batch by the key its format states, keeping the picks that stated
- * none.
+ * Group a batch by the key its format states, keeping the picked files that
+ * stated none.
  *
  * @remarks
- * The sets come out ordered by the pick that opened each — the order the
- * reviewer picked the files in, which is also the order their members keep
+ * The sets come out ordered by the picked file that opened each — the order the
+ * reviewer picked the files in, which is also the order their picked files keep
  * within a set. A `Map` rather than `Array.groupBy`'s record, which hoists
  * integer-like keys ahead of the rest in numeric order.
  */
@@ -130,7 +130,7 @@ const groupFiles = (
  *
  * @remarks
  * Sets are decoded concurrently and each is independent: one that rejects
- * yields an `unreadableFiles` row per pick in it while the rest stay
+ * yields an `unreadableFiles` row per picked file in it while the rest stay
  * reviewable.
  */
 const make = <TFormat extends string, TSettings, R = never>(
@@ -141,12 +141,13 @@ const make = <TFormat extends string, TSettings, R = never>(
     const grouped = groupFiles(files, groupBy)
     return Effect.forEach(
       grouped.fileSets,
-      (members) =>
-        decodeSet(members, settings, config).pipe(
+      (pickedFiles) =>
+        decodeSet(pickedFiles, settings, config).pipe(
           Effect.mapError((error) =>
-            // A set is read as a whole, so a set that rejects rejects every pick
-            // in it — each with its own row, naming the file the reviewer picked.
-            members.map((file) => FormatDecode.makeUnreadableFile(config.format, file, error))
+            // A set is read as a whole, so a set that rejects rejects every
+            // picked file in it — each with its own row, naming the file the
+            // reviewer picked.
+            pickedFiles.map((file) => FormatDecode.makeUnreadableFile(config.format, file, error))
           ),
           Effect.either
         ),
@@ -158,8 +159,8 @@ const make = <TFormat extends string, TSettings, R = never>(
           format: config.format,
           files,
           fileSets,
-          // The picks no set claimed come first, in pick order, ahead of the
-          // sets that rejected.
+          // The picked files no set claimed come first, in the order they were
+          // picked, ahead of the sets that rejected.
           unreadableFiles: [
             ...grouped.unreadable.map((one) =>
               FormatDecode.makeUnreadableFile(config.format, one.file, one.error)

@@ -77,7 +77,7 @@ const studyKey = (header: DicomHeader.Type): string =>
  * @returns The study's key, or the reason the file states none
  *
  * @remarks
- * Headers only, which is cheap enough to run over a whole pick before any
+ * Headers only, which is cheap enough to run over every picked file before any
  * synthesis. A file `dicom-parser` rejects is a `Left`: it states no
  * `StudyInstanceUID`, so there is no study to put it in, and folding it into a
  * neighbour's set would hide which file failed. The decode constructor turns
@@ -149,7 +149,7 @@ const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
  * `Patient` the decode synthesized, and relate it to the `ImagingStudy` it was
  * read into.
  *
- * @param minted - The source file as `PickedFile.FromDocumentReference` minted it
+ * @param sourceFile - The source file as `PickedFile.FromDocumentReference` minted it
  * @param decoded - The whole study's records, adopted
  * @returns The source file to store and list, with the same id it was minted under
  *
@@ -166,21 +166,21 @@ const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
  * are both read back off this result.
  */
 const linkToPatientAndStudy = (
-  minted: PickedFile.SourceFile,
+  sourceFile: PickedFile.SourceFile,
   decoded: DecodedFile.DecodedFile
 ): PickedFile.SourceFile => {
   const subject = referenceTo(decoded, 'Patient')
   const study = referenceTo(decoded, 'ImagingStudy')
   return {
-    ...minted,
+    ...sourceFile,
     subject: Option.match(subject, {
-      onNone: () => minted.subject,
+      onNone: () => sourceFile.subject,
       onSome: (reference) => referenceValue(reference),
     }),
     context: Option.match(study, {
-      onNone: () => minted.context,
+      onNone: () => sourceFile.context,
       onSome: (reference) => ({
-        ...(minted.context ?? emptyContext),
+        ...(sourceFile.context ?? emptyContext),
         related: [referenceValue(reference)],
       }),
     }),
@@ -229,7 +229,7 @@ const withSourceFileIds = (
  * Decode one study's picked files into a section of adopted, labeled FHIR
  * resources.
  *
- * @param members - Every picked `.dcm` of one study, in pick order; each
+ * @param pickedFiles - Every picked `.dcm` of one study, in pick order; each
  *   instance's `gridfsFileId` is its file's pick id until
  *   {@link withSourceFileIds} names the source file
  * @param settings - The import's settings; its `timeZone` is what
@@ -241,31 +241,31 @@ const withSourceFileIds = (
  *   schema
  *
  * @remarks
- * Each member's header is parsed here, having already been parsed once in
+ * Each picked file's header is parsed here, having already been parsed once in
  * `groupBy` for the study key. A header that parsed there parses again; a
  * `Left` here is a `ParseError` for the whole set, which the decode constructor
- * folds into one `unreadableFiles` row per member.
+ * folds into one `unreadableFiles` row per picked file.
  *
  * The resource keys are fixed — `patient`, `service-request`,
  * `imaging-study` — and are unique only *within* one study; the decode
- * function namespaces them by the set's first pick.
+ * function namespaces them by the set's first picked file.
  *
  * The time zone is rejected rather than substituted — a guess would write
  * `started` instants hours from what the equipment recorded — and it is one
- * setting for the whole pick, so an unresolvable zone fails every set.
+ * setting for the whole batch, so an unresolvable zone fails every set.
  */
 const decodeStudy = (
-  members: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
+  pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: DicomSettings
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)
 
-    const files: readonly StudyFile[] = yield* Effect.forEach(members, (member) =>
-      Effect.map(headerOf(member), (header) => ({
-        fileName: member.fileName,
+    const files: readonly StudyFile[] = yield* Effect.forEach(pickedFiles, (pickedFile) =>
+      Effect.map(headerOf(pickedFile), (header) => ({
+        fileName: pickedFile.fileName,
         header,
-        fileId: member.id,
+        fileId: pickedFile.id,
       }))
     )
     const ordered = orderedInstances(files)

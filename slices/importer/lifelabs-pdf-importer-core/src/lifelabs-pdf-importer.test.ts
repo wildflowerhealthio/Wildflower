@@ -73,7 +73,7 @@ describe('lifeLabsPdfImporter decode', () => {
           )
 
           expect(decoded.unreadableFiles).toEqual([])
-          expect(decoded.fileSets.map((fileSet) => fileSet.members)).toEqual([[file]])
+          expect(decoded.fileSets.map((fileSet) => fileSet.pickedFiles)).toEqual([[file]])
           const sections = decoded.fileSets.flatMap((fileSet) => fileSet.sections)
           expect(sections.map((section) => section._tag)).toEqual(sections.map(() => 'Adopted'))
           const keys = sections.flatMap((section) =>

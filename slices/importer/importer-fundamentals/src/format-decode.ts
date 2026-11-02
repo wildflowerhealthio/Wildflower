@@ -4,10 +4,11 @@
  *
  * @remarks
  * All of them are built on a picked file's `id` — minted once, over the whole
- * batch in pick order, by `importer-core`'s `readBatch`. Position takes part in
- * it because picking two files that share a name is ordinary (two `report.pdf`s
- * out of two folders) and a name alone would collide; and a settings re-decode
- * hands the same files back, so everything keyed by an id survives one.
+ * batch in the order the files were picked, by `importer-core`'s `readBatch`.
+ * Position takes part in it because picking two files that share a name is
+ * ordinary (two `report.pdf`s out of two folders) and a name alone would
+ * collide; and a settings re-decode hands the same files back, so everything
+ * keyed by an id survives one.
  *
  * {@link keyPrefix} is the one that carries weight beyond uniqueness. A
  * `decodeFileSet` keys resources within *one* set — DICOM's fixed `patient`,
@@ -29,7 +30,7 @@ import type * as PickedFile from './picked-file.ts'
 const makeId = (format: string, files: readonly PickedFile.Type[]): string =>
   `${format}/${files.map((file) => file.id).join(',')}`
 
-/** The id of one file within its format's batch — an {@link UnreadableFile} row's, and an unrecognized pick's. */
+/** The id of one file within its format's batch — an {@link UnreadableFile} row's, and an unrecognized picked file's. */
 const makeFileId = (format: string, file: PickedFile.Type): string => `${format}/${file.id}`
 
 /** The namespace every review key decoded out of one file set carries — see the module remarks. */
@@ -63,7 +64,7 @@ interface UnreadableFile {
   readonly error: ParseResult.ParseError
 }
 
-/** The {@link UnreadableFile} row one pick of `format` is reported as. */
+/** The {@link UnreadableFile} row one picked file of `format` is reported as. */
 const makeUnreadableFile = (
   format: string,
   file: PickedFile.Type,

@@ -15,14 +15,14 @@ import { Array as Arr, Effect, Function, Order, type ParseResult, Schema } from 
  * and `meta.source` is stamped.
  *
  * @remarks
- * Per set, {@link importFileSet} mints a source file for every member
+ * Per set, {@link importFileSet} mints a source file for every picked file
  * (`PickedFile.FromDocumentReference`'s encode), adopts each `FromSource`
  * section's records (`adoptUnderKey`, their references keyed in the section's
- * system family) and keeps each `Adopted` section's, runs the format's `linkSourceFile`
- * over every source file and its `finish` over every record, stamps every
- * record's `meta.source` with the set's representative source file, and
- * leads with the source files as the set's own section. Each set's records are
- * keyed as they are: nothing is de-duplicated across sets or files.
+ * system family) and keeps each `Adopted` section's, runs the format's
+ * `linkSourceFile` over every source file and its `finish` over every record,
+ * stamps every record's `meta.source` with the set's representative source
+ * file, and leads with the source files as the set's own section. Each set's
+ * records are keyed as they are: nothing is de-duplicated across sets or files.
  *
  * @packageDocumentation
  */
@@ -43,7 +43,8 @@ const SOURCE_FILES_SECTION_TITLE = 'Source files'
 const sourceFileKey = (file: PickedFile.Type): string =>
   `${FormatDecode.keyPrefix(file)}source-file/${file.fileName}`
 
-const mintSourceFile = Schema.encode(PickedFile.FromDocumentReference)
+/** A picked file's source file, as `PickedFile.FromDocumentReference` stores it. */
+const sourceFileOf = Schema.encode(PickedFile.FromDocumentReference)
 
 /**
  * One section's records, adopted: a `FromSource` section's each under its
@@ -66,15 +67,15 @@ const adoptSection = DecodedFileSet.Section.$match({
 })
 
 /**
- * Import one file set: mint its members' source files, adopt its records, let
- * the format link each source file and finish each record, stamp, and lead
+ * Import one file set: mint its picked files' source files, adopt its records,
+ * let the format link each source file and finish each record, stamp, and lead
  * with the source files it is about to store.
  *
  * @remarks
- * `meta.source` names the set's representative: the member whose source file
- * id is lexicographically smallest. A source file's id is a content hash of the
- * file's bytes and name, so the smallest of them is a fact about the set and
- * not about the order it was picked in, which is what makes the same study,
+ * `meta.source` names the set's representative: the picked file whose source
+ * file id is lexicographically smallest. A source file's id is a content hash
+ * of the file's bytes and name, so the smallest of them is a fact about the set
+ * and not about the order it was picked in, which is what makes the same study,
  * picked any way round, import identical resources.
  */
 const importFileSet = (
@@ -82,9 +83,9 @@ const importFileSet = (
   fileSet: DecodedFileSet.Type
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, PickedFile.Format> =>
   Effect.gen(function* () {
-    const minted = yield* Effect.all(
-      Arr.map(fileSet.members, (member) =>
-        Effect.map(mintSourceFile(member), (sourceFile) => ({ member, sourceFile }))
+    const sourceFiles = yield* Effect.all(
+      Arr.map(fileSet.pickedFiles, (pickedFile) =>
+        Effect.map(sourceFileOf(pickedFile), (sourceFile) => ({ pickedFile, sourceFile }))
       ),
       { concurrency: 'unbounded' }
     )
@@ -94,14 +95,14 @@ const importFileSet = (
     }
 
     const linkSourceFile = importer.linkSourceFile ?? Function.identity
-    const linked = Arr.map(minted, ({ member, sourceFile }) => ({
-      member,
+    const linked = Arr.map(sourceFiles, ({ pickedFile, sourceFile }) => ({
+      pickedFile,
       sourceFile: linkSourceFile(sourceFile, adopted),
     }))
 
     const finish = importer.finish ?? Function.identity
     const sourceFileIds = new Map(
-      linked.map(({ member, sourceFile }) => [member.id, sourceFile.id])
+      linked.map(({ pickedFile, sourceFile }) => [pickedFile.id, sourceFile.id])
     )
     const stamped = MetaSource.stampDecoded(
       DecodedFile.mapResources(adopted, (entry) => ({
@@ -116,9 +117,9 @@ const importFileSet = (
       )
     )
 
-    const rows = linked.map(({ member, sourceFile }): DecodedFile.Resource => ({
-      key: sourceFileKey(member),
-      title: member.fileName,
+    const rows = linked.map(({ pickedFile, sourceFile }): DecodedFile.Resource => ({
+      key: sourceFileKey(pickedFile),
+      title: pickedFile.fileName,
       resource: sourceFile,
     }))
     // Their own section ahead of what was read out of them, so the reviewer
@@ -137,11 +138,11 @@ const importFileSet = (
  * @returns The imported result, never failing
  *
  * @remarks
- * Sets are imported concurrently and each is independent: one whose source
- * file cannot be minted yields an `unreadableFiles` row per member, after the
- * rows the decode already reported, while the rest stay reviewable. It
- * provides the `PickedFile.Format` service from the importer's
- * `sourceFileFormat` internally, so nothing it returns carries a requirement.
+ * Sets are imported concurrently and each is independent: one whose source file
+ * cannot be minted yields an `unreadableFiles` row per picked file, after the
+ * rows the decode already reported, while the rest stay reviewable. It provides
+ * the `PickedFile.Format` service from the importer's `sourceFileFormat`
+ * internally, so nothing it returns carries a requirement.
  */
 const importDecoded = <TFormat extends string>(
   importer: ImportingFormat,
@@ -152,7 +153,7 @@ const importDecoded = <TFormat extends string>(
     (fileSet) =>
       importFileSet(importer, fileSet).pipe(
         Effect.mapError((error) =>
-          fileSet.members.map((file) =>
+          fileSet.pickedFiles.map((file) =>
             FormatDecode.makeUnreadableFile(decoded.format, file, error)
           )
         ),

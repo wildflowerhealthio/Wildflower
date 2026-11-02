@@ -71,9 +71,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `patient`, or HAR's per-archive `har-entry-<index>`, from colliding across the
   files one format claimed.
 - `src/decoded-file-set.ts` — the **`DecodedFileSet`** namespace: one file
-  set as its format decoded it. **`Type`** is its `members` (the picks read
-  together, in pick order), its `sections` and its `notes`. A **`Section`** is
-  a titled group of records from one source batch, each entry a review key, a
+  set as its format decoded it. **`Type`** is its `pickedFiles` (read
+  together, in the order they were picked), its `sections` and its `notes`. A
+  **`Section`** is a titled group of records from one source batch, each entry a review key, a
   title and its record, in one of two cases: **`Adopted`**, every record
   already the device's own and kept as it is (what every format's
   `decodeFileSet` still returns, transitional while decoders adopt what they
@@ -82,7 +82,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   keys each type in (one per batch, not per record), which the import stage
   adopts it under. The "Source file(s)" section is the import stage's own,
   never decoded.
-  **`ofAdopted(members, decoded)`** lifts a set's decode of already adopted
+  **`ofAdopted(pickedFiles, decoded)`** lifts a set's decode of already adopted
   resources into one.
 - `src/decode-function.ts` — the **`DecodeFunction`** namespace: the batch
   decode's signature **and the one constructor that builds it**. **`Type`** is
@@ -93,20 +93,20 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `FileImporter.Type` carries the same `R`, and `make` takes it from the
   `Config`'s `decodeFileSet`.
   **`make(config)`** takes one **`Config`**: the `format`, a `decodeFileSet`
-  (the picks of one set in, a `DecodedFile` of adopted resources out, each of
-  which reaches the import stage in an `Adopted` section), and — optionally — a
-  `groupBy`. **`groupBy`** is called per file and returns the key it shares
-  with its set-mates, or a `Left` that reports it as its own `unreadableFiles`
-  row (pick order, ahead of any failing set); left out, every file is its own
-  set, keyed by its own id. A format that needs a parse to state that key
+  (the picked files of one set in, a `DecodedFile` of adopted resources out,
+  each section of which reaches the import stage as an `Adopted` one), and —
+  optionally — a `groupBy`. **`groupBy`** is called per file and returns the
+  key it shares with its set-mates, or a `Left` that reports it as its own
+  `unreadableFiles` row (in the order the files were picked, ahead of any
+  failing set); left out, every file is its own set, keyed by its own id. A format that needs a parse to state that key
   **parses twice** — once here, once in `decodeFileSet` — which is the
   deliberate price of a constructor with no parsed-value passthrough in it.
   Per set, concurrently across sets, `make` runs `decodeFileSet`,
   **namespaces the decode's review keys** by the set's first picked file
   (`FormatDecode.keyPrefix`), and folds a `ParseError` into one
-  `unreadableFiles` row per pick of the failing set. It returns each set
-  apart, with its members, because `importer-core`'s import stage mints each
-  set's source files and stamps its records with them.
+  `unreadableFiles` row per picked file of the failing set. It returns each
+  set apart, with its picked files, because `importer-core`'s import stage
+  mints each set's source files and stamps its records with them.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two

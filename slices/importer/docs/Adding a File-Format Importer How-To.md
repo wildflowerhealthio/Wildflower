@@ -54,37 +54,38 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 
 ## 1. The decode
 
-You write **one file set at a time**. `decodeFileSet(members, settings)` takes
-the picks that are decoded together — each a `PickedFile.Type`
+You write **one file set at a time**. `decodeFileSet(pickedFiles, settings)` takes
+the picked files that are decoded together — each a `PickedFile.Type`
 (`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) —
 and yields a `DecodedFile`: titled sections of labeled, adopted resources,
 plus diagnostic notes.
 
 ```ts
 const decodeMyFormat = (
-  members: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
+  pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: MySettings
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> => …
 ```
 
-A format whose files stand alone reads `members[0]` and says nothing more: each
-pick is its own set by default, in pick order. A format whose files must be read
-**together** — a multi-part archive, a manifest naming its siblings, a DICOM
-study — states a `groupBy` instead (see §5).
+A format whose files stand alone reads `pickedFiles[0]` and says nothing more:
+each picked file is its own set by default, in the order the files were picked.
+A format whose files must be read **together** — a multi-part archive, a
+manifest naming its siblings, a DICOM study — states a `groupBy` instead (see
+§5).
 
 `DecodeFunction.make` lifts that into the batch `decode(files, settings)` the
 shell runs across every file the format claimed. That lifted decode:
 
 - **namespaces every review key** with the set's first picked file, so two sets
   cannot collide on a key (see the obligations below);
-- folds a `ParseError` into one `unreadableFiles` row per pick of the failing
-  set;
-- returns each set apart with its members, its sections `Adopted` ones.
+- folds a `ParseError` into one `unreadableFiles` row per picked file of the
+  failing set;
+- returns each set apart with its picked files, its sections `Adopted` ones.
 
 `importer-core`'s import stage (`importDecoded`, which `readBatch` runs over
 every format's `decode`) then, per set:
 
-- mints a source file for **every** pick;
+- mints a source file for **every** picked file;
 - lets the format link each source file to what the set decoded to
   (`linkSourceFile`, §4) and finish each record once the source files exist
   (`finish`, §4), and prepends the source files as their own **"Source file"** /
@@ -278,10 +279,10 @@ server list read it, so the two cannot disagree.
 **A format whose files are read together states a `groupBy`.** It is called per
 picked file and returns the key that file shares with its set-mates, or a `Left`
 when the file states none — which reports it as its own `unreadableFiles` row,
-ahead of any failing set, in pick order. Sets come out in the order the picks
-that opened them arrived. Nothing else changes — the key namespacing and the
-failure folding are the constructor's, and the mint, the source file section
-and the `meta.source` stamp the import stage's, either way.
+ahead of any failing set, in the order the files were picked. Sets come out in
+the order the picked files that opened them arrived. Nothing else changes — the
+key namespacing and the failure folding are the constructor's, and the mint, the
+source file section and the `meta.source` stamp the import stage's, either way.
 
 `dicom-importer-core` is the worked example. What decodes together there is a
 **study**: the files of one `StudyInstanceUID` (and patient) make up one
@@ -290,7 +291,7 @@ states. Its `studyGroupKey` parses the header and returns `studyKey(header)`.
 Parsing there and again in `decodeStudy` is deliberate: there is no parsed-value
 passthrough, and the second parse buys a constructor with one less concept in
 it. Nothing about the set depends on the order it was picked in — the
-representative whose source file stamps `meta.source` is the member with the
+representative whose source file stamps `meta.source` is the picked file with the
 smallest source file id, and a source file id is a content hash. `meta.source` holds
 one reference, so a set spanning files keeps per-file provenance some other way:
 DICOM's `finish` stamps each `ImagingStudy.instance` with its own source file's
