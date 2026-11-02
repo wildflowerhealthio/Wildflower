@@ -148,33 +148,27 @@ const importDecoded = <TFormat extends string>(
   importer: ImportingFormat,
   decoded: FormatDecode.Decoded<TFormat>
 ): Effect.Effect<FormatDecode.Result<TFormat>> =>
-  Effect.forEach(
+  Effect.partition(
     decoded.fileSets,
     (fileSet) =>
-      importFileSet(importer, fileSet).pipe(
-        Effect.mapError((error) =>
-          fileSet.pickedFiles.map((file) =>
-            FormatDecode.makeUnreadableFile(decoded.format, file, error)
-          )
-        ),
-        Effect.either
+      Effect.mapError(importFileSet(importer, fileSet), (error) =>
+        fileSet.pickedFiles.map((file) =>
+          FormatDecode.makeUnreadableFile(decoded.format, file, error)
+        )
       ),
     { concurrency: 'unbounded' }
   ).pipe(
-    Effect.map((results): FormatDecode.Result<TFormat> => {
-      const [rejected, imported] = Arr.partitionMap(results, Function.identity)
-      return {
-        id: FormatDecode.makeId(decoded.format, decoded.files),
-        title: decoded.files.map((file) => file.fileName).join(', '),
-        files: decoded.files,
-        format: decoded.format,
-        decoded: {
-          sections: imported.flatMap((one) => one.sections),
-          notes: imported.flatMap((one) => one.notes),
-        },
-        unreadableFiles: [...decoded.unreadableFiles, ...rejected.flat()],
-      }
-    }),
+    Effect.map(([rejected, imported]): FormatDecode.Result<TFormat> => ({
+      id: FormatDecode.makeId(decoded.format, decoded.files),
+      title: decoded.files.map((file) => file.fileName).join(', '),
+      files: decoded.files,
+      format: decoded.format,
+      decoded: {
+        sections: imported.flatMap((one) => one.sections),
+        notes: imported.flatMap((one) => one.notes),
+      },
+      unreadableFiles: [...decoded.unreadableFiles, ...rejected.flat()],
+    })),
     Effect.provideService(PickedFile.Format, importer.sourceFileFormat)
   )
 

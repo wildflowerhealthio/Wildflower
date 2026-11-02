@@ -22,7 +22,7 @@
  */
 
 import type { ParseResult } from 'effect'
-import { Array as Arr, Effect, Either, Function } from 'effect'
+import { Array as Arr, Effect, Either } from 'effect'
 
 import * as DecodedFileSet from './decoded-file-set.ts'
 import * as DecodedFile from './decoded-file.ts'
@@ -139,36 +139,30 @@ const make = <TFormat extends string, TSettings, R = never>(
   const groupBy = config.groupBy ?? ((file: PickedFile.Type) => Either.right(file.id))
   return (files, settings): Effect.Effect<FormatDecode.Decoded<TFormat>, never, R> => {
     const grouped = groupFiles(files, groupBy)
-    return Effect.forEach(
+    return Effect.partition(
       grouped.fileSets,
       (pickedFiles) =>
-        decodeSet(pickedFiles, settings, config).pipe(
-          Effect.mapError((error) =>
-            // A set is read as a whole, so a set that rejects rejects every
-            // picked file in it — each with its own row, naming the file the
-            // reviewer picked.
-            pickedFiles.map((file) => FormatDecode.makeUnreadableFile(config.format, file, error))
-          ),
-          Effect.either
+        Effect.mapError(decodeSet(pickedFiles, settings, config), (error) =>
+          // A set is read as a whole, so a set that rejects rejects every
+          // picked file in it — each with its own row, naming the file the
+          // reviewer picked.
+          pickedFiles.map((file) => FormatDecode.makeUnreadableFile(config.format, file, error))
         ),
       { concurrency: 'unbounded' }
     ).pipe(
-      Effect.map((results): FormatDecode.Decoded<TFormat> => {
-        const [rejected, fileSets] = Arr.partitionMap(results, Function.identity)
-        return {
-          format: config.format,
-          files,
-          fileSets,
-          // The picked files no set claimed come first, in the order they were
-          // picked, ahead of the sets that rejected.
-          unreadableFiles: [
-            ...grouped.unreadable.map((one) =>
-              FormatDecode.makeUnreadableFile(config.format, one.file, one.error)
-            ),
-            ...rejected.flat(),
-          ],
-        }
-      })
+      Effect.map(([rejected, fileSets]): FormatDecode.Decoded<TFormat> => ({
+        format: config.format,
+        files,
+        fileSets,
+        // The picked files no set claimed come first, in the order they were
+        // picked, ahead of the sets that rejected.
+        unreadableFiles: [
+          ...grouped.unreadable.map((one) =>
+            FormatDecode.makeUnreadableFile(config.format, one.file, one.error)
+          ),
+          ...rejected.flat(),
+        ],
+      }))
     )
   }
 }
