@@ -1,6 +1,5 @@
-import { Data } from 'effect'
-
-import * as FhirBaseUrl from './fhir-base-url.ts'
+import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
+import { Data, Function } from 'effect'
 
 /**
  * A family of identifier systems: how the `Identifier.system` of a record's
@@ -16,9 +15,10 @@ import * as FhirBaseUrl from './fhir-base-url.ts'
  * - `FixedAcrossResourceTypes`: one `system` whatever the type. A portal's
  *   Wildflower-minted `…/fhir/sid/<source>` URI, or a format's coding system
  *   for a picked source file.
- * - `FhirStyleBaseUrl`: the type is appended to `baseUrl`, so a `Patient`'s
- *   system is `<baseUrl>/Patient` ({@link FhirBaseUrl.systemFor}). A FHIR
- *   server's ids are unique per type, which is why.
+ * - `FhirStyleBaseUrl`: the type appended to `baseUrl`, so a `Patient`'s
+ *   system is `<baseUrl>/Patient`, the `[base]/[type]` of a FHIR server's
+ *   `[base]/[type]/[id]`. A FHIR server's ids are unique per type, which is
+ *   why.
  *
  * Structurally `http-extraction-fundamentals`' `RecognizedUrlData.systemFamily`,
  * which stays FHIR-free: each response kind's `tryRecognize` mints one of
@@ -35,8 +35,30 @@ const { FixedAcrossResourceTypes, FhirStyleBaseUrl, $match } = Data.taggedEnum<T
 const systemFor = (family: Type, resourceType: string): string =>
   $match(family, {
     FixedAcrossResourceTypes: ({ system }) => system,
-    FhirStyleBaseUrl: ({ baseUrl }) => FhirBaseUrl.systemFor(baseUrl, resourceType),
+    FhirStyleBaseUrl: ({ baseUrl }) => `${baseUrl}/${resourceType}`,
   })
 
-export { $match, FhirStyleBaseUrl, FixedAcrossResourceTypes, systemFor }
+/**
+ * `reference` as the relative `Type/id` adoption rewrites, for one family;
+ * any other reference as it is.
+ *
+ * @remarks
+ * A FHIR server may spell a reference to its own record absolutely,
+ * `<baseUrl>/Type/id`, which is the same target as `Type/id`, so under
+ * `FhirStyleBaseUrl` that prefix is read back off. A fixed system has no
+ * absolute spelling of its own, so under `FixedAcrossResourceTypes` every
+ * reference is already as relative as it will be.
+ */
+const relativise = (family: Type): ((reference: ReferenceType) => ReferenceType) =>
+  $match(family, {
+    FixedAcrossResourceTypes: () => Function.identity,
+    FhirStyleBaseUrl:
+      ({ baseUrl }) =>
+      (reference: ReferenceType) =>
+        reference.reference?.startsWith(`${baseUrl}/`) === true
+          ? { ...reference, reference: reference.reference.slice(baseUrl.length + 1) }
+          : reference,
+  })
+
+export { $match, FhirStyleBaseUrl, FixedAcrossResourceTypes, relativise, systemFor }
 export type { Type }

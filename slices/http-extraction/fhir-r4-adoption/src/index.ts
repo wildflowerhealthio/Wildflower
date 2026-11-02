@@ -15,5 +15,4 @@ export {
 } from './adopt-resource.ts'
 export { adoptUnderRecognizedRoot } from './adopt-under-recognized-root.ts'
 export * as DecodedId from './decoded-id.ts'
-export * as FhirBaseUrl from './fhir-base-url.ts'
 export * as SystemFamily from './system-family.ts'

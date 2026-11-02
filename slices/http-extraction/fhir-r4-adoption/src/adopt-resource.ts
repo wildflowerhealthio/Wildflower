@@ -23,10 +23,9 @@ import type {
   Procedure,
   ServiceRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Function, Match } from 'effect'
+import { Match } from 'effect'
 
 import * as DecodedId from './decoded-id.ts'
-import * as FhirBaseUrl from './fhir-base-url.ts'
 import * as SystemFamily from './system-family.ts'
 
 /**
@@ -545,18 +544,6 @@ const adoptWithSourceId = (family: SystemFamily.Type) => {
 }
 
 /**
- * A FHIR server's absolute references to its own records read back to
- * relative ones ({@link FhirBaseUrl.relativise}); any other resource as it is.
- */
-const relativiseOwnReferences = (
-  family: SystemFamily.Type
-): ((resource: FhirResource) => FhirResource) =>
-  SystemFamily.$match(family, {
-    FhirStyleBaseUrl: ({ baseUrl }) => mapReferences(FhirBaseUrl.relativise(baseUrl)),
-    FixedAcrossResourceTypes: () => Function.identity,
-  })
-
-/**
  * Re-key a resource under its source's systems: {@link adoptWithSourceId}, in
  * the system `family` gives its type for a resource its source gave an id,
  * and in {@link DecodedId.CONTENT_DIGEST_SYSTEM} for one it did not.
@@ -571,12 +558,12 @@ const relativiseOwnReferences = (
  * than beside it. The digest is scoped to the system `family` gives the
  * record's type.
  *
- * A FHIR server's absolute references to itself are relativised first, so the
- * core only ever sees relative ones.
+ * Every reference is relativised first ({@link SystemFamily.relativise}), so
+ * the core only ever sees relative ones.
  */
 const adoptResource = (family: SystemFamily.Type) => {
   const adopt = adoptWithSourceId(family)
-  const relativise = relativiseOwnReferences(family)
+  const relativise = mapReferences(SystemFamily.relativise(family))
   return (decoded: FhirResource): FhirResourceWithId => {
     const resource = relativise(decoded)
     const ownSystem = SystemFamily.systemFor(family, resource.resourceType)
