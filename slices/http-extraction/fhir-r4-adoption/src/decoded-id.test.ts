@@ -21,7 +21,7 @@ import { Arbitrary, FastCheck as fc, Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { adoptResource, originalIdOf } from './adopt-resource.ts'
+import { adoptResource, originalIdOf, withSourceId } from './adopt-resource.ts'
 import * as DecodedId from './decoded-id.ts'
 
 /**
@@ -136,5 +136,23 @@ describe('DecodedId.of', () => {
     expect(DecodedId.of('https://a.example/fhir/Observation', observation)).not.toEqual(
       DecodedId.of('https://b.example/fhir/Observation', observation)
     )
+  })
+})
+
+describe('withSourceId', () => {
+  const keyed = withSourceId(SOURCE)
+
+  test('keys a resource with its own id under the system its type is in', () => {
+    const patient = { ...sampleWithoutId(Patient.Schema, 12), id: 'src-1' }
+    expect(keyed(patient)).toEqual({ system: SCOPE, sourceId: 'src-1', resource: patient })
+  })
+
+  test('keys a resource with no id by its content digest in the content-digest system', () => {
+    const patient = sampleWithoutId(Patient.Schema, 12)
+    expect(keyed(patient)).toEqual({
+      system: DecodedId.CONTENT_DIGEST_SYSTEM,
+      sourceId: decodedIdOf(patient).value,
+      resource: patient,
+    })
   })
 })

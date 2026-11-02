@@ -1,4 +1,10 @@
-import { DecodedFile, Referent } from '@wildflowerhealthio/importer-fundamentals'
+import { adoptUnderKey } from '@wildflowerhealthio/fhir-r4-adoption'
+import {
+  DecodedFile,
+  DecodedFileSet,
+  type DecodeFunction,
+  Referent,
+} from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
 import { Effect, Either, Layer, ParseResult } from 'effect'
@@ -9,6 +15,7 @@ import { decodeLifeLabsPdf, decodeLifeLabsPdfDocument, reportSectionTitle } from
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
 import { patientOriginalId, practitionerOriginalId } from './fhir/to-fhir.ts'
 import { LIFELABS_SYSTEM } from './source-system.ts'
+import { LIFELABS_SYSTEM_FAMILY } from './synthesis.ts'
 import { layoutDocument } from './test-helpers.ts'
 
 /**
@@ -22,6 +29,41 @@ import { layoutDocument } from './test-helpers.ts'
 
 const SETTINGS = { timeZone: 'America/Vancouver' }
 
+/** Every record of a decode, failing on a section that is not `FromSource`. */
+const entriesOf = (
+  decoded: DecodeFunction.FileSetDecode
+): readonly DecodedFileSet.FromSourceEntry[] =>
+  decoded.sections.flatMap(
+    DecodedFileSet.Section.$match({
+      Adopted: () => expect.fail('the LifeLabs decode keeps its records as their source gave them'),
+      FromSource: ({ entries }) => entries,
+    })
+  )
+
+/**
+ * A decode's records adopted as the import stage adopts them: each
+ * `FromSource` section's under its key, its references keyed in its family.
+ */
+const adoptedOf = (decoded: DecodeFunction.FileSetDecode): DecodedFile.DecodedFile => ({
+  sections: decoded.sections.map(
+    DecodedFileSet.Section.$match({
+      Adopted: () => expect.fail('the LifeLabs decode keeps its records as their source gave them'),
+      FromSource: ({ title, systemFamily, entries }) => {
+        const adopt = adoptUnderKey(systemFamily)
+        return {
+          title,
+          resources: entries.map((entry) => ({
+            key: entry.key,
+            title: entry.title,
+            resource: adopt(entry),
+          })),
+        }
+      },
+    })
+  ),
+  notes: decoded.notes,
+})
+
 describe('decodeLifeLabsPdfDocument', () => {
   it('property: a document with LifeLabs reports decodes to one titled section per report', () => {
     fc.assert(
@@ -34,52 +76,59 @@ describe('decodeLifeLabsPdfDocument', () => {
         expect(decoded.sections.map((section) => section.title)).toEqual(
           reports.map(reportSectionTitle)
         )
-        const labeled = DecodedFile.resources(decoded)
-        expect(labeled.length).toBeGreaterThan(0)
-        for (const item of labeled) {
-          expect(item).toHaveProperty('key')
-          expect(item).toHaveProperty('title')
-          expect(item).toHaveProperty('resource')
-        }
+        expect(entriesOf(decoded).length).toBeGreaterThan(0)
       }),
       { numRuns: numRunsFor({ base: 30 }) }
     )
   })
 
-  it('property: key and title follow the {resourceType}/{id} format', () => {
+  it('property: key and title follow the {resourceType}/{source id} format', () => {
     fc.assert(
       fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
-        for (const item of DecodedFile.resources(decoded)) {
-          const type = item.resource.resourceType
-          const expected = `${type}/${item.resource.id}`
-          expect(item.key).toBe(expected)
-          expect(item.title).toBe(expected)
+        for (const entry of entriesOf(decoded)) {
+          const expected = `${entry.resource.resourceType}/${entry.sourceId}`
+          expect(entry.key).toBe(expected)
+          expect(entry.title).toBe(expected)
         }
       }),
       { numRuns: numRunsFor({ base: 30 }) }
     )
   })
 
-  it('property: each resource has been adopted under the LifeLabs source system', () => {
+  it('property: each record is keyed by its own id in the LifeLabs system', () => {
     fc.assert(
       fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
-        for (const item of DecodedFile.resources(decoded)) {
-          const resource = item.resource
-          // Adopted resources receive a derived local id with the 'wf-' prefix
+        for (const section of decoded.sections) {
+          expect(section).toMatchObject({ systemFamily: LIFELABS_SYSTEM_FAMILY })
+        }
+        const entries = entriesOf(decoded)
+        expect(entries.map(({ system, sourceId }) => [system, sourceId])).toEqual(
+          entries.map(({ resource }) => [LIFELABS_SYSTEM, resource.id])
+        )
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
+  it('property: each record adopts under the LifeLabs system', () => {
+    fc.assert(
+      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+        const document = layoutDocument(reports)
+
+        const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
+
+        for (const { resource } of DecodedFile.resources(adoptedOf(decoded))) {
           expect(resource.id).toMatch(/^wf-[0-9a-f]{32}$/)
-          // Non-Binary resources carry the source system in identifier[0]
           if (resource.resourceType !== 'Binary') {
-            const identifier = resource.identifier[0]
-            expect(identifier).toBeDefined()
-            expect(String(identifier.system)).toBe(LIFELABS_SYSTEM)
+            expect(String(resource.identifier[0]?.system)).toBe(LIFELABS_SYSTEM)
           }
         }
       }),
@@ -101,7 +150,7 @@ describe('decodeLifeLabsPdfDocument', () => {
         ]
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
-        const referents = Effect.runSync(Referent.discover([decoded]))
+        const referents = Effect.runSync(Referent.discover([adoptedOf(decoded)]))
 
         for (const referent of referents) {
           expect(referent._tag).toBe('AsResource')
