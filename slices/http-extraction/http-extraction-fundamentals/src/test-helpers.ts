@@ -65,7 +65,7 @@ const SimpleSchema = Schema.Struct({
 
 /**
  * Recognize a URL matching `pattern` with a fixed `specificity` (and optional
- * `source`), `None` otherwise — the `tryRecognize` shape the test kinds share.
+ * `systemFamily`), `None` otherwise — the `tryRecognize` shape the test kinds share.
  */
 const recognizeMatching =
   (
@@ -77,7 +77,7 @@ const recognizeMatching =
 
 // The two reusable kinds carry DISTINCT specificities so a routing test can
 // exercise the highest-specificity-wins ranking, and `SimpleResponseKind`
-// carries a `source` (so `recognize`/`routeTo` can be checked minting an
+// carries a `systemFamily` (so `recognize`/`routeTo` can be checked minting an
 // identity) while `AnotherResponseKind` mints none.
 const SimpleResponseKind: HttpResponseKind.HttpResponseKind<typeof SimpleSchema.Type> =
   HttpResponseKind.make({

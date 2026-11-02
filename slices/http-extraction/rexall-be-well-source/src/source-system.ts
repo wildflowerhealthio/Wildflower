@@ -12,7 +12,7 @@
  * orphans everything already imported from Rexall.
  *
  * Its own leaf module (not `source.ts`) so the response kinds can read it for
- * their `tryRecognize` `systemFamily.system` without importing `source.ts`, which
+ * the fixed system their `tryRecognize` mints without importing `source.ts`, which
  * imports *them* — the split breaks that cycle.
  */
 const REXALL_CAREBOOK_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/rexall-carebook'
