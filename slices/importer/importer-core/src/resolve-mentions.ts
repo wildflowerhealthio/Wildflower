@@ -72,9 +72,10 @@ interface ResolvedBatch extends DecodedBatch {
 }
 
 /**
- * Whether `resource` is `kind`'s own source file: the `DocumentReference` its
- * `decode` minted for a picked file, filed under a patient at decode or
- * deliberately under none, so never one the review asks a patient for.
+ * Whether `resource` is `kind`'s own source file: the `DocumentReference` the
+ * import stage minted for a picked file, filed under a patient by the format's
+ * `linkSourceFile` or deliberately under none, so never one the review asks a
+ * patient for.
  */
 const isSourceFileOf = (kind: FormatKind, resource: FhirResourceWithId): boolean =>
   resource.resourceType === 'DocumentReference' &&

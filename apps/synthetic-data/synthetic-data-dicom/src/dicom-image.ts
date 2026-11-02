@@ -2,9 +2,11 @@ import { DataElement, Part10 } from '@wildflowerhealthio/dicom'
 import { dicomImporter } from '@wildflowerhealthio/dicom-importer-core'
 import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResource, withSubject } from '@wildflowerhealthio/fhir-r4/resources'
+import { importDecoded } from '@wildflowerhealthio/importer-core'
+import type { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'
 import { Person, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
-import { Data, DateTime, Effect, Either, type ParseResult } from 'effect'
+import { Data, DateTime, Effect, Either } from 'effect'
 
 /**
  * The DICOM generator: a real, already de-identified image re-identified as a
@@ -48,7 +50,7 @@ class UnencodableValue extends Data.TaggedError('UnencodableValue')<{
 
 /** A re-identification the DICOM importer could not read back. */
 class UnreadableReidentifiedFile extends Data.TaggedError('UnreadableReidentifiedFile')<{
-  readonly error: ParseResult.ParseError
+  readonly error: FormatDecode.UnreadableFile['error']
 }> {}
 
 /** Who and when a de-identified image is re-identified as. */
@@ -362,8 +364,9 @@ const reidentify = (
   })
 
 /**
- * Read a re-identified file as the DICOM importer does, and file what it
- * makes on a Patient another source's import made for the person.
+ * Read a re-identified file as an import of it does, through the DICOM
+ * importer and the import stage, and file what it makes on a Patient another
+ * source's import made for the person.
  *
  * @param reidentifiedFile - A file {@link reidentify} wrote
  * @param fileName - The name the file is picked under, which the source-file
@@ -371,7 +374,7 @@ const reidentify = (
  * @param subject - A reference to the person's Patient from another source's
  *   import (`rexallPatientReferenceOf`, `shoppersPatientReferenceOf`); every
  *   resource is filed on it
- * @returns What `dicomImporter.decode` makes of the file — the source-file
+ * @returns What the import makes of the file — the source-file
  *   `DocumentReference` carrying its bytes, the `ImagingStudy` and, when an
  *   accession number was written, the `ServiceRequest` — adopted under
  *   `DICOM_SYSTEM`, with no `Patient` and every `subject` replaced by
@@ -387,10 +390,11 @@ const importWithSubject = (
   subject: ReferenceType
 ): Effect.Effect<readonly FhirResource[], UnreadableReidentifiedFile> =>
   Effect.gen(function* () {
-    const result = yield* dicomImporter.decode(
-      [{ id: `0:${fileName}`, fileName, bytes: reidentifiedFile }],
-      { timeZone: EQUIPMENT_TIME_ZONE }
-    )
+    const result = yield* dicomImporter
+      .decode([{ id: `0:${fileName}`, fileName, bytes: reidentifiedFile }], {
+        timeZone: EQUIPMENT_TIME_ZONE,
+      })
+      .pipe(Effect.flatMap((decoded) => importDecoded(dicomImporter, decoded)))
     const [unreadable] = result.unreadableFiles
     if (unreadable !== undefined) {
       return yield* new UnreadableReidentifiedFile({ error: unreadable.error })

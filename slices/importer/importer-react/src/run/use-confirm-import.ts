@@ -46,9 +46,9 @@ import {
  * writes: the stored copies the server does not hold unchanged, and the new
  * records a written resource names) handed to
  * one `POST /` transaction bundle. The source file is one of
- * those reviewed resources — its format's `decode` minted it, listed it in
- * its own "Source file" section, and stamped every extracted resource's
- * `meta.source` with it — so a confirm writes it in the *same* bundle as
+ * those reviewed resources — the import stage (`importer-core`'s
+ * `importDecoded`) minted it, listed it in its own "Source file" section, and
+ * stamped every extracted resource's `meta.source` with it — so a confirm writes it in the *same* bundle as
  * the resources it names, and this hook adds nothing to any resource. A
  * source-file row the reviewer excluded is simply not written; the
  * resources keep their `meta.source`.

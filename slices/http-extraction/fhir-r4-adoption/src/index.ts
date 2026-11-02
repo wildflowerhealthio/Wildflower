@@ -6,7 +6,7 @@
  *
  * @packageDocumentation
  */
-export { adoptResource, adoptedReferenceOf, originalIdOf } from './adopt-resource.ts'
+export { adoptResource, adoptedReferenceOf, adoptUnderKey, originalIdOf } from './adopt-resource.ts'
 export { adoptUnderRecognizedRoot } from './adopt-under-recognized-root.ts'
 export * as DecodedId from './decoded-id.ts'
 export { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'

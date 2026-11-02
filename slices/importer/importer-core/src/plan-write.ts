@@ -22,9 +22,9 @@ import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
  * @remarks
  * The write set is the reviewed objects themselves — the exclusions applied
  * and the inline edits substituted — with no re-parse and no rewriting: a
- * format's `decode` already minted its source-file `DocumentReference` and
- * stamped every extracted resource's `meta.source`, so the confirm has no
- * provenance to add. A source-file row the reviewer excluded is simply not
+ * batch's import stage (`importDecoded`) already minted each source-file
+ * `DocumentReference` and stamped every extracted resource's `meta.source`, so
+ * the confirm has no provenance to add. A source-file row the reviewer excluded is simply not
  * written; the resources that name it keep their `meta.source` (the id is
  * deterministic in the file's bytes and name, so a later upload of the same
  * file resolves the link).

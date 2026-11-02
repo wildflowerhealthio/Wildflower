@@ -54,18 +54,6 @@ const sourceId = (components: readonly string[]): string =>
 const DCM_CODING_SYSTEM = 'http://dicom.nema.org/resources/ontology/DCM'
 const DICOM_UID_SYSTEM = 'urn:dicom:uid'
 
-/**
- * The extension URL stamped on an `ImagingStudy` instance, carrying the id of
- * the `DocumentReference` that stores that one DICOM file's raw bytes — the
- * link from each synthesized instance back to the file it was read from.
- *
- * @remarks
- * Per *instance*, which is why a study spanning many files keeps per-file
- * provenance that `meta.source` alone could not carry: `meta.source` names one
- * source file, and a study has as many source files as it has files.
- */
-const GRIDFS_FILE_ID_EXTENSION_URL = 'gridfsFileId'
-
 const genderOf = (sex: string | undefined): string | undefined => {
   if (sex === undefined) return undefined
   switch (sex.trim().toUpperCase()) {
@@ -247,7 +235,7 @@ const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire |
 
 /**
  * One file of a study, as the synthesis sees it: its parsed header and the id
- * of the `DocumentReference` storing its bytes.
+ * the decode knows the file by.
  *
  * @remarks
  * The whole file set, not one file, is what {@link toFhirResources} takes: a
@@ -258,12 +246,6 @@ const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire |
 interface StudyInstance {
   /** The file's parsed DICOM header. */
   readonly header: DicomHeader.Type
-  /**
-   * The id of the `DocumentReference` storing this file's raw bytes, when
-   * known — stamped onto this instance as its `gridfsFileId` extension, so
-   * every instance names its own source file rather than the study naming one.
-   */
-  readonly sourceFileId?: string | undefined
 }
 
 /**
@@ -304,20 +286,21 @@ const compareText = (left: string, right: string): number => {
 
 /**
  * Order two instances within their series: by `InstanceNumber`, then by
- * `SOPInstanceUID`, then by the source file they came from.
+ * `SOPInstanceUID`, then by `SOPClassUID`.
  *
  * @remarks
- * Total, and a function of the files alone — no tie is broken by pick order.
- * That is what makes the whole synthesis idempotent: the same study picked in
- * any file order yields the same resources, byte for byte, so a re-import
- * overwrites rather than reshuffling. The last tiebreak matters for the one
- * case the first two do not separate — two files carrying the same
- * `SOPInstanceUID`, which a study spanning two folders can produce.
+ * A function of the headers alone, which is what makes the import idempotent:
+ * the same study picked in any file order imports to the same resources, byte
+ * for byte, so a re-import overwrites rather than reshuffling. The last
+ * tiebreak matters for two files carrying the same `SOPInstanceUID`, which a
+ * study spanning two folders can produce; two instances it leaves tied agree
+ * on every field an instance is synthesized from, so their order shows in
+ * nothing written.
  */
 const compareInstances = (left: StudyInstance, right: StudyInstance): number =>
   (left.header.instanceNumber ?? UNNUMBERED) - (right.header.instanceNumber ?? UNNUMBERED) ||
   compareText(left.header.sopInstanceUid, right.header.sopInstanceUid) ||
-  compareText(left.sourceFileId ?? '', right.sourceFileId ?? '')
+  compareText(left.header.sopClassUid, right.header.sopClassUid)
 
 /** Order two series within their study: by `SeriesNumber`, then by `SeriesInstanceUID`. */
 const compareSeries = (left: StudySeries, right: StudySeries): number => {
@@ -361,8 +344,7 @@ const studySeries = <T extends StudyInstance>(instances: readonly T[]): readonly
 /**
  * The study's instances in study order — every series' instances, series by
  * series. The first of them is the study's representative: the header the
- * `Patient` and the section title are read off, and the source file the
- * study-level resources' `meta.source` names.
+ * `Patient` and the section title are read off.
  */
 const orderedInstances = <T extends StudyInstance>(instances: readonly T[]): readonly T[] =>
   studySeries(instances).flatMap((series) => series.instances)
@@ -417,7 +399,7 @@ const accessionNumbers = (instances: readonly StudyInstance[]): readonly string[
   )
 
 /** One instance of a series, as `ImagingStudy.series.instance` carries it. */
-const instanceWire = ({ header, sourceFileId }: StudyInstance): Wire => {
+const instanceWire = ({ header }: StudyInstance): Wire => {
   const wire: Wire = {
     uid: header.sopInstanceUid,
     sopClass: {
@@ -426,9 +408,6 @@ const instanceWire = ({ header, sourceFileId }: StudyInstance): Wire => {
     },
   }
   if (header.instanceNumber !== undefined) wire['number'] = header.instanceNumber
-  if (sourceFileId !== undefined) {
-    wire['extension'] = [{ url: GRIDFS_FILE_ID_EXTENSION_URL, valueString: sourceFileId }]
-  }
   return wire
 }
 
@@ -518,7 +497,7 @@ type DicomFhirResources =
  * Synthesize FHIR resources from one study's files.
  *
  * @param instances - Every picked file of one study — same `StudyInstanceUID`,
- *   same patient — in any order, each with the id of the source file storing it
+ *   same patient — in any order
  * @param settings - The import's settings; its `timeZone` is what
  *   `ImagingStudy.started` is resolved against (see `dates.ts`)
  * @returns The resources in write order: Patient first (when the headers carry
@@ -531,8 +510,8 @@ type DicomFhirResources =
  * not the first picked file — is what the `Patient` and the study's
  * describing attributes are read from, and the accession the `ServiceRequest`
  * is built from is the first stated in that same order. Every choice this
- * makes is a function of the files alone (see {@link compareInstances}), so the
- * same study picked in any order, or re-picked file by file, synthesizes
+ * makes is a function of the files' headers (see {@link compareInstances}), so
+ * the same study picked in any order, or re-picked file by file, synthesizes
  * identical resources under identical ids.
  *
  * Files that disagree on `AccessionNumber` are *not* merged into one request:

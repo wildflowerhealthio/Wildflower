@@ -36,9 +36,34 @@ package alone and a layer that provides those.
   `resolveMentions` also assembles its batch through. All four are
   mapped or exhaustive types over `FormatKind`, so missing any of them is a
   compile error.
+- `src/import-decoded.ts` — **the import stage**, the one place a record is
+  made the device's own, a source file is minted and `meta.source` is
+  stamped. **`importDecoded(importer, decoded)`** takes one format's
+  `FormatDecode.Decoded` and the **`ImportingFormat`** it reads off the
+  format's importer (`sourceFileFormat`, `linkSourceFile`,
+  `linkToSourceFiles`), and returns its `FormatDecode.Result`, never failing.
+  Per file set it mints a source file for **every** picked file
+  (`Schema.encode(PickedFile.FromDocumentReference)`), its `masterIdentifier`
+  what the picked file identified itself as; adopts each `FromSource`
+  section's records with `fhir-r4-adoption`'s `adoptUnderKey` (their
+  references keyed in the section's system family) and keeps each `Adopted`
+  section's as they are; runs `linkSourceFile` over each source file with the
+  set's adopted records, then `linkToSourceFiles` over every record with each
+  picked file and its linked source file; stamps every record's `meta.source`
+  with the set's **representative** — the picked file whose source file id is
+  lexicographically smallest, and a source file id is a content hash, so the
+  stamp is independent of the order the files were picked in
+  (`MetaSource.stampDecoded`) — and prepends the source files as the set's
+  **"Source file"** / **"Source files"** section. Nothing is de-duplicated
+  across sets or files: each set's records are kept and keyed as they are. A
+  set whose source file cannot be minted, or whose `linkToSourceFiles` fails
+  with `FileImporter.SourceFileNotFound`, becomes one `unreadableFiles` row per
+  picked file, after the decode's own. It provides `PickedFile.Format`
+  internally, so what it returns requires nothing.
 - `src/read-batch.ts` — the read half as pure functions over a
   **`ReadRegistry<R>`** (`format`, `detect` and `decode` of each format's
-  `FileImporter`, its decodes requiring `R` — deliberately not the whole
+  `FileImporter`, its decodes requiring `R`, and the `sourceFileFormat`,
+  `linkSourceFile` and `linkToSourceFiles` the import stage reads — deliberately not the whole
   `BoundFormat`, so a test can stand up a fake registry with just those
   fields). `readBatch` and `redecodeFormat` require the `R` of the registry
   they are handed: `DecodeRequirements` for `formatRegistry`, `never` for a
@@ -48,7 +73,9 @@ package alone and a layer that provides those.
   `formats`, a **`FormatResults`** record of one `FormatDecode.Result<K>` per
   registered format (an `emptyResult` for a format that claimed nothing),
   and its `unrecognizedFiles`, the **`UnrecognizedFile`**s, plain data for the
-  picks no `detect` claimed. The format slots are a field of their own rather
+  picks no `detect` claimed. Every format's decode goes through
+  `importDecoded` in `decodeFormat`, so a batch read or re-decoded is always
+  imported. The format slots are a field of their own rather
   than spread beside `unrecognizedFiles`, so `batch.formats[kind]` under a
   generic `K` is that format's own `Result<K>`. A decoded batch holds no
   linked records and no link targets; **`claimedFormats`** takes the
@@ -65,7 +92,7 @@ package alone and a layer that provides those.
   Its three internal steps — `identifyPick` (the first claiming detector, via
   `FormatDetector.claiming`), `groupByFormat`, and `decodeFormat` (generic in
   `K` so `registry[kind]` and `settings[kind]` stay correlated with no
-  per-format `Match` branch) — are module-level exports for this package's own
+  per-format `Match` branch, then the import stage) — are module-level exports for this package's own
   tests and are **not** re-exported from `index.ts`: the shell drives the whole
   read, never a leg of it.
   **`collectFormats`** is the one place the registry is enumerated by name,
@@ -150,8 +177,8 @@ package alone and a layer that provides those.
   resource — its `ReviewGroup`, its `entry` as reviewed (the inline edit,
   resolved on the batch's plan, substituted), and its **`Disposition`** — in submit order: the linked
   records first, then each claimed format in registry order, rows in review
-  order. It adds no provenance and rewrites nothing: the format's `decode`
-  already minted the source file and stamped `meta.source`. The five
+  order. It adds no provenance and rewrites nothing: the import stage already
+  minted the source file and stamped `meta.source`. The five
   dispositions, in the order they are decided:
   - **`Excluded`** — a format row that is not included: the reviewer
     unticked it, or never ticked one `excludedByDefaultFor` leaves out.
@@ -183,18 +210,20 @@ package alone and a layer that provides those.
 
 Depends on `importer-fundamentals` (the contract, `PickedFile`, `StagedImport`,
 the identity map), the three `*-importer-core` bindings (the importers the
-registry lists), `fhir-r4` (the `FhirResource` type), and `effect`. Depended on by
-`importer-react`. Imports no `*-importer-react`, no `web-trace-core`, and
-nothing from `slices/http-extraction`.
+registry lists), `fhir-r4` (the `FhirResource` type), `fhir-r4-adoption`
+(`adoptUnderKey`, which the import stage alone calls), and `effect`. Depended on by
+`importer-react` and by `apps/synthetic-data`, which imports what it generates
+through the same stage. Imports no `*-importer-react` and no `web-trace-core`.
 
 ## Guardrails
 
-- **No source file knowledge here.** What a source file is, which resources point at
-  it, and what happens to those links when the reviewer excludes it
-  are each format's decisions, made inside its `decode` by
-  `importer-fundamentals`' `DecodeFunction.make`. `readBatch` and `planWrite`
-  treat the source file row as any other resource. Do not reintroduce a
-  shell-side mint, a side map of source files, or a "primary file".
+- **Source files are minted here, and decided by each format.** What a source
+  file is, which resources point at it, and what happens to those links when
+  the reviewer excludes it are each format's decisions, stated on its importer
+  (`sourceFileFormat`, `linkSourceFile`, `linkToSourceFiles`); the import stage only runs
+  them. `planWrite` treats the source file row as any other resource. Do not
+  reintroduce a shell-side mint, a side map of source files, or a "primary
+  file".
 - **Ids are deterministic via `FormatDecode.makeId`.** An id is derived from
   the format tag and the picked files' own ids — which `groupByFormat` mints
   from each file's position in the batch and its name, so two picks of the same

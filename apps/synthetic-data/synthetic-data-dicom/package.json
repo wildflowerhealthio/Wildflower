@@ -36,6 +36,8 @@
     "@wildflowerhealthio/dicom-importer-core": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
+    "@wildflowerhealthio/importer-core": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
     "dicom-parser": "catalog:",
@@ -50,6 +52,8 @@
     "@wildflowerhealthio/dicom": "workspace:*",
     "@wildflowerhealthio/dicom-importer-core": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/importer-core": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
     "effect": "catalog:"
   }

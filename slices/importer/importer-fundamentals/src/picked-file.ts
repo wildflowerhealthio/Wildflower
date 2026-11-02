@@ -13,8 +13,8 @@
  * The codec is written once here rather than per format, and the per-format
  * constants reach it as a {@link Format} service: {@link FromDocumentReference}
  * carries that requirement in its `R`, and the two places that discharge it are
- * `DecodeFunction.make` (for everything a decode mints) and the shell's read of
- * the server's source-file list.
+ * `importer-core`'s import stage (for every source file it mints) and the
+ * shell's read of the server's source-file list.
  *
  * @packageDocumentation
  */
@@ -80,8 +80,8 @@ interface FormatValue {
  * requires.
  *
  * @remarks
- * `DecodeFunction.make` provides it around everything one format's decode
- * mints, and the shell provides it at its read of a stored source file. No other
+ * `importer-core`'s import stage provides it around every source file it mints
+ * for one format, and the shell provides it at its read of a stored source file. No other
  * production code does — which is what keeps the constants an importer lists
  * and the constants its source files are written under the same copy.
  */

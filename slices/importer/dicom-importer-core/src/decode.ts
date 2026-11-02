@@ -10,8 +10,8 @@ import { adoptResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoptio
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type DecodeFunction,
   DecodedFile,
+  type DecodeFunction,
   type PickedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
@@ -35,10 +35,23 @@ const labelAdopted = (resource: FhirResource, key: string, title: string): Decod
   return { key, title, resource: adopted }
 }
 
-/** One file of a study, as the synthesis sees it: its header, its source file, its pick. */
+/** One file of a study, as the synthesis sees it: its header and its name. */
 interface StudyFile extends StudyInstance {
   readonly fileName: string
 }
+
+/** The `Identifier.system` FHIR spells a URI-valued identifier in, an OID as `urn:oid:<oid>`. */
+const URI_IDENTIFIER_SYSTEM = 'urn:ietf:rfc:3986'
+
+const decodeIdentifier = Schema.decodeSync(IdentifierAndReference.IdentifierSchema)
+
+/**
+ * A DICOM instance's SOP Instance UID as a FHIR `Identifier`, in FHIR's OID
+ * convention: what a `.dcm` file identifies itself as, and what an
+ * `ImagingStudy` instance's `uid` names.
+ */
+const sopInstanceIdentifier = (sopInstanceUid: string): IdentifierAndReference.IdentifierType =>
+  decodeIdentifier({ system: URI_IDENTIFIER_SYSTEM, value: `urn:oid:${sopInstanceUid}` })
 
 const asParseError = (reason: string): ParseResult.ParseError =>
   new ParseResult.ParseError({
@@ -76,7 +89,7 @@ const studyKey = (header: DicomHeader.Type): string =>
  * @returns The study's key, or the reason the file states none
  *
  * @remarks
- * Headers only, which is cheap enough to run over a whole pick before any
+ * Headers only, which is cheap enough to run over every picked file before any
  * synthesis. A file `dicom-parser` rejects is a `Left`: it states no
  * `StudyInstanceUID`, so there is no study to put it in, and folding it into a
  * neighbour's set would hide which file failed. The decode constructor turns
@@ -144,12 +157,12 @@ const referenceValue = (reference: string): typeof IdentifierAndReference.Refere
 const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
 
 /**
- * Finish a study's source file off the study's own decode: file it under the
+ * Link a study's source file to the study's own import: file it under the
  * `Patient` the decode synthesized, and relate it to the `ImagingStudy` it was
  * read into.
  *
- * @param minted - The source file as `PickedFile.FromDocumentReference` minted it
- * @param decoded - The whole study's decode
+ * @param sourceFile - The source file as `PickedFile.FromDocumentReference` minted it
+ * @param decoded - The whole study's records, adopted
  * @returns The source file to store and list, with the same id it was minted under
  *
  * @remarks
@@ -165,21 +178,21 @@ const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
  * are both read back off this result.
  */
 const linkToPatientAndStudy = (
-  minted: PickedFile.SourceFile,
+  sourceFile: PickedFile.SourceFile,
   decoded: DecodedFile.DecodedFile
 ): PickedFile.SourceFile => {
   const subject = referenceTo(decoded, 'Patient')
   const study = referenceTo(decoded, 'ImagingStudy')
   return {
-    ...minted,
+    ...sourceFile,
     subject: Option.match(subject, {
-      onNone: () => minted.subject,
+      onNone: () => sourceFile.subject,
       onSome: (reference) => referenceValue(reference),
     }),
     context: Option.match(study, {
-      onNone: () => minted.context,
+      onNone: () => sourceFile.context,
       onSome: (reference) => ({
-        ...(minted.context ?? emptyContext),
+        ...(sourceFile.context ?? emptyContext),
         related: [referenceValue(reference)],
       }),
     }),
@@ -190,52 +203,59 @@ const linkToPatientAndStudy = (
  * Decode one study's picked files into a section of adopted, labeled FHIR
  * resources.
  *
- * @param members - Every picked `.dcm` of one study, in pick order, each with
- *   the source file storing it (whose id is the instance's `gridfsFileId`)
+ * @param pickedFiles - Every picked `.dcm` of one study, in the order they were
+ *   picked
  * @param settings - The import's settings; its `timeZone` is what
  *   `ImagingStudy.started` is resolved against
  * @returns One section when the study carries a patient, plus notes for what
- *   could not be extracted and what each file contributed; fails with a
+ *   could not be extracted and what each file contributed, and each picked
+ *   file identified as its SOP Instance UID ({@link sopInstanceIdentifier});
+ *   fails with a
  *   `ParseError` when a header does not parse, when the time zone is not one
  *   the runtime resolves, or when a synthesized resource does not satisfy its
  *   schema
  *
  * @remarks
- * Each member's header is parsed here, having already been parsed once in
+ * Each picked file's header is parsed here, having already been parsed once in
  * `groupBy` for the study key. A header that parsed there parses again; a
  * `Left` here is a `ParseError` for the whole set, which the decode constructor
- * folds into one `unreadableFiles` row per member.
+ * folds into one `unreadableFiles` row per picked file.
  *
  * The resource keys are fixed — `patient`, `service-request`,
  * `imaging-study` — and are unique only *within* one study; the decode
- * function namespaces them by the set's first pick.
+ * function namespaces them by the set's first picked file.
  *
  * The time zone is rejected rather than substituted — a guess would write
  * `started` instants hours from what the equipment recorded — and it is one
- * setting for the whole pick, so an unresolvable zone fails every set.
+ * setting for the whole batch, so an unresolvable zone fails every set.
  */
 const decodeStudy = (
-  members: Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile>,
+  pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: DicomSettings
-): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
+): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)
 
-    const files: readonly StudyFile[] = yield* Effect.forEach(members, (member) =>
-      Effect.map(headerOf(member), (header) => ({
-        fileName: member.fileName,
-        header,
-        sourceFileId: member.sourceFile.id,
-      }))
+    const pickedFilesWithHeaders = yield* Effect.forEach(pickedFiles, (pickedFile) =>
+      Effect.map(headerOf(pickedFile), (header) => ({ pickedFile, header }))
     )
+    const files: readonly StudyFile[] = pickedFilesWithHeaders.map(({ pickedFile, header }) => ({
+      fileName: pickedFile.fileName,
+      header,
+    }))
+    const identifiedPickedFiles = Arr.map(pickedFilesWithHeaders, ({ pickedFile, header }) => ({
+      pickedFile,
+      identifiedAs: Option.some(sopInstanceIdentifier(header.sopInstanceUid)),
+    }))
     const ordered = orderedInstances(files)
     const head = ordered[0]
-    if (head === undefined) return { sections: [], notes: [] }
+    if (head === undefined) return { sections: [], notes: [], pickedFiles: identifiedPickedFiles }
 
     if (patientOriginalId(head.header) === undefined) {
       return {
         sections: [],
         notes: ['No patient identity in the DICOM header (no PatientID or PatientName).'],
+        pickedFiles: identifiedPickedFiles,
       }
     }
 
@@ -262,8 +282,15 @@ const decodeStudy = (
     const sections: DecodedFile.Section[] =
       labeled.length > 0 ? [{ title: sectionTitle(head.header), resources: labeled }] : []
 
-    return { sections, notes }
+    return { sections, notes, pickedFiles: identifiedPickedFiles }
   })
 
-export { linkToPatientAndStudy, decodeStudy, sectionTitle, studyGroupKey, studyKey }
+export {
+  decodeStudy,
+  linkToPatientAndStudy,
+  sectionTitle,
+  sopInstanceIdentifier,
+  studyGroupKey,
+  studyKey,
+}
 export type { StudyFile }

@@ -1,12 +1,15 @@
-import { DicomHeader } from '@wildflowerhealthio/dicom'
-import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
-import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
-import { PickedFile, type FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
-import { DateTime, Effect, Either, Option, Schema } from 'effect'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  type FhirResourceWithId,
+  ImagingStudy,
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { FileImporter, PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { DateTime, Effect, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { dicomImporter } from './dicom-importer.ts'
-import { patientOriginalId } from './fhir/to-fhir.ts'
+import { sopInstanceIdentifier } from './decode.ts'
+import { addGridfsFileIds, dicomImporter, GRIDFS_FILE_ID_EXTENSION_URL } from './dicom-importer.ts'
 import { defaultDicomSettings } from './settings.ts'
 import {
   DICOM_SOURCE_FILE_CODE,
@@ -15,9 +18,9 @@ import {
 } from './source-system.ts'
 
 /**
- * The source file this format's importer mints for a picked file — the schema
- * driven under `dicomImporter`'s own format constants, which is the same
- * context its batch `decode` mints under.
+ * The source file the import stage mints for a picked file of this format —
+ * the schema driven under `dicomImporter`'s own format constants, which is
+ * what `importDecoded` provides it under.
  */
 const mint = (bytes: Uint8Array, fileName = 'scan.dcm'): Promise<PickedFile.SourceFile> =>
   Effect.runPromise(
@@ -62,17 +65,6 @@ describe('DICOM source file coding', () => {
   })
 })
 
-const sampleDicomBytes = (): Uint8Array =>
-  writeDicom({
-    StudyInstanceUID: '1.2.3.4.5',
-    SeriesInstanceUID: '1.2.3.4.5.1',
-    SOPInstanceUID: '1.2.3.4.5.1.1',
-    SOPClassUID: '1.2.840.10008.5.1.4.1.1.2',
-    PatientName: { family: 'Doe', given: 'John', text: 'Doe John' },
-    PatientID: 'P001',
-    Modality: 'CT',
-  })
-
 describe('dicomImporter', () => {
   it('has the dicom format tag', () => {
     expect(dicomImporter.format).toBe('dicom')
@@ -101,80 +93,6 @@ describe('dicomImporter', () => {
   })
 
   describe('decode', () => {
-    /** The `Patient/<id>` reference the header's patient identity derives. */
-    const headerPatientReference = (bytes: Uint8Array): string => {
-      const parsed = DicomHeader.tryFromDicomFile(bytes)
-      if (Either.isLeft(parsed)) throw new Error(parsed.left.reason)
-      const originalId = patientOriginalId(parsed.right)
-      if (originalId === undefined) throw new Error('expected a patient identity in the header')
-      return `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', originalId)}`
-    }
-
-    const readStudy = async (file: PickedFile.Type): Promise<FormatDecode.Result<string>> => {
-      const result = await Effect.runPromise(dicomImporter.decode([file], defaultDicomSettings))
-      if (result.unreadableFiles.length > 0) throw new Error('expected a readable result')
-      return result
-    }
-
-    /** The one id every resource of a result must agree on: its source file's. */
-    const sourceFileIdOfStudy = (result: FormatDecode.Result<string>): string => {
-      const [section] = result.decoded.sections
-      expect(section.title).toBe('Source file')
-      expect(section.resources).toHaveLength(1)
-      const [row] = section.resources
-      expect(row.key).toBe('0:sample.dcm/source-file/sample.dcm')
-      expect(row.resource.resourceType).toBe('DocumentReference')
-      const { id } = row.resource
-      if (id === null) throw new Error('expected a minted source file id')
-      return id
-    }
-
-    const imagingStudyInstanceId = (result: FormatDecode.Result<string>): string | undefined => {
-      for (const section of result.decoded.sections) {
-        for (const { resource } of section.resources) {
-          if (resource.resourceType !== 'ImagingStudy') continue
-          const [extension] = resource.series[0].instance[0].extension
-          expect(extension.url).toBe('gridfsFileId')
-          return extension.valueString ?? undefined
-        }
-      }
-      return undefined
-    }
-
-    it('mints a source file subject to the header-derived Patient', async () => {
-      const bytes = sampleDicomBytes()
-      const study = await readStudy({ id: '0:sample.dcm', fileName: 'sample.dcm', bytes })
-      const [section] = study.decoded.sections
-      expect(section.title).toBe('Source file')
-      const [row] = section.resources
-      expect(row.key).toBe('0:sample.dcm/source-file/sample.dcm')
-      if (row.resource.resourceType !== 'DocumentReference')
-        throw new Error('expected a source file')
-      expect(row.resource.subject?.reference).toBe(headerPatientReference(bytes))
-    })
-
-    it('stamps every extracted resource, and the ImagingStudy instance, with that one id', async () => {
-      const study = await readStudy({
-        id: '0:sample.dcm',
-        fileName: 'sample.dcm',
-        bytes: sampleDicomBytes(),
-      })
-      const id = sourceFileIdOfStudy(study)
-      const extracted = study.decoded.sections.slice(1).flatMap((section) => section.resources)
-      expect(extracted.length).toBeGreaterThan(0)
-      for (const { resource } of extracted) {
-        expect(resource.meta?.source).toBe(`DocumentReference/${id}`)
-      }
-      expect(imagingStudyInstanceId(study)).toBe(id)
-    })
-
-    it('mints the same source file id for the same file on every decode', async () => {
-      const bytes = sampleDicomBytes()
-      const first = await readStudy({ id: '0:sample.dcm', fileName: 'sample.dcm', bytes })
-      const second = await readStudy({ id: '0:sample.dcm', fileName: 'sample.dcm', bytes })
-      expect(sourceFileIdOfStudy(second)).toBe(sourceFileIdOfStudy(first))
-    })
-
     it('collects an unreadable file for bytes that are not DICOM', async () => {
       const result = await Effect.runPromise(
         dicomImporter.decode(
@@ -188,8 +106,120 @@ describe('dicomImporter', () => {
           defaultDicomSettings
         )
       )
-      expect(result.decoded.sections).toHaveLength(0)
+      expect(result.fileSets).toHaveLength(0)
       expect(result.unreadableFiles).toHaveLength(1)
     })
+  })
+})
+
+/** An `ImagingStudy` of one series whose instances carry `instances`' uids and extensions. */
+const studyOf = (
+  instances: readonly { readonly uid: string; readonly extension?: readonly object[] }[]
+): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(ImagingStudy.Schema))({
+    resourceType: 'ImagingStudy',
+    id: 'study',
+    status: 'available',
+    subject: { reference: 'Patient/p' },
+    series: [
+      {
+        uid: 'S1',
+        modality: { system: 'http://dicom.nema.org/resources/ontology/DCM', code: 'CT' },
+        instance: instances.map(({ uid, extension = [] }) => ({
+          uid,
+          sopClass: { system: 'urn:dicom:uid', code: '1.2.840.10008.5.1.4.1.1.2' },
+          extension,
+        })),
+      },
+    ],
+  })
+
+/** A picked file and its source file, stored under `id`, identifying itself as the instance `uid`. */
+const pickedSourceFile = async (
+  id: string,
+  uid: string
+): Promise<FileImporter.PickedSourceFile> => {
+  const pickedFile = { id: `0:${id}.dcm`, fileName: `${id}.dcm`, bytes: new Uint8Array([1]) }
+  const sourceFile = await mint(pickedFile.bytes, pickedFile.fileName)
+  return {
+    pickedFile,
+    sourceFile: { ...sourceFile, id, masterIdentifier: sopInstanceIdentifier(uid) },
+  }
+}
+
+/** Each instance's uid beside its `gridfsFileId`. */
+const gridfsFileIdsOf = (resource: FhirResourceWithId): readonly (readonly unknown[])[] =>
+  resource.resourceType === 'ImagingStudy'
+    ? resource.series.flatMap((series) =>
+        series.instance.map((instance) => [
+          instance.uid,
+          instance.extension
+            .filter((extension) => extension.url === GRIDFS_FILE_ID_EXTENSION_URL)
+            .map((extension) => extension.valueString),
+        ])
+      )
+    : []
+
+describe('addGridfsFileIds', () => {
+  it('names on each instance the source file that identifies itself as its uid', async () => {
+    const sourceFiles = [
+      await pickedSourceFile('doc-b', 'I2'),
+      await pickedSourceFile('doc-a', 'I1'),
+    ]
+    const linked = await Effect.runPromise(
+      addGridfsFileIds(studyOf([{ uid: 'I1' }, { uid: 'I2' }]), sourceFiles)
+    )
+    expect(gridfsFileIdsOf(linked)).toEqual([
+      ['I1', ['doc-a']],
+      ['I2', ['doc-b']],
+    ])
+  })
+
+  it('replaces a gridfsFileId already there and keeps every other extension', async () => {
+    const other = { url: 'https://example.test/other', valueString: 'kept' }
+    const linked = await Effect.runPromise(
+      addGridfsFileIds(
+        studyOf([
+          {
+            uid: 'I1',
+            extension: [other, { url: GRIDFS_FILE_ID_EXTENSION_URL, valueString: 'stale' }],
+          },
+        ]),
+        [await pickedSourceFile('doc-a', 'I1')]
+      )
+    )
+    expect(gridfsFileIdsOf(linked)).toEqual([['I1', ['doc-a']]])
+    expect(
+      linked.resourceType === 'ImagingStudy' &&
+        linked.series[0]?.instance[0]?.extension.map((extension) => extension.url)
+    ).toEqual([other.url, GRIDFS_FILE_ID_EXTENSION_URL])
+  })
+
+  it('names the smallest source file id when two files carry the same uid', async () => {
+    const sourceFiles = [
+      await pickedSourceFile('doc-b', 'I1'),
+      await pickedSourceFile('doc-a', 'I1'),
+    ]
+    const linked = await Effect.runPromise(addGridfsFileIds(studyOf([{ uid: 'I1' }]), sourceFiles))
+    expect(gridfsFileIdsOf(linked)).toEqual([['I1', ['doc-a']]])
+  })
+
+  it('fails with SourceFileNotFound on an instance no source file identifies itself as', async () => {
+    const error = await Effect.runPromise(
+      Effect.flip(
+        addGridfsFileIds(studyOf([{ uid: 'I9' }]), [await pickedSourceFile('doc-a', 'I1')])
+      )
+    )
+    expect(error).toEqual(
+      new FileImporter.SourceFileNotFound({ identifier: sopInstanceIdentifier('I9') })
+    )
+  })
+
+  it('keeps any other resource as it is', async () => {
+    const patient = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+      resourceType: 'Patient',
+      id: 'p',
+    })
+    expect(await Effect.runPromise(addGridfsFileIds(patient, []))).toBe(patient)
   })
 })

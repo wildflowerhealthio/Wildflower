@@ -53,43 +53,40 @@ carrying the one `ImagingStudy` its files make up.
   modality the distinct set across the study's series, basedOn when
   ServiceRequest exists; `started` reads the earliest header through an
   `Order` that sorts a missing `StudyDate` **last**, so a file stating none
-  never claims the study's instant). It takes a **whole file set** — a `StudyInstance` per
-  file, each a parsed header plus the id of the source file storing it — so the
-  study's
-  `series` are its distinct `SeriesInstanceUID`s ordered by `SeriesNumber`,
-  its `instance`s are its files ordered by `InstanceNumber`,
-  `numberOfSeries`/`numberOfInstances` are the real counts, and `started` is
-  the earliest StudyDate+Time any file states. Each instance carries its own
-  file's source file id as a `gridfsFileId` extension
-  (`{ url: 'gridfsFileId', valueString: sourceFileId }`) — per instance, so a
-  study spanning files keeps per-file provenance that one `meta.source` could
-  not. Ids are deterministic via `sourceId` (FNV-1a 64-bit of length-prefixed
+  never claims the study's instant). It takes a **whole file set** — a
+  `StudyInstance`, a parsed header, per file — so the study's `series` are its
+  distinct `SeriesInstanceUID`s ordered by `SeriesNumber`, its `instance`s are
+  its files ordered by `InstanceNumber`, `numberOfSeries`/`numberOfInstances`
+  are the real counts, and `started` is the earliest StudyDate+Time any file
+  states. The synthesis names no file: which source file stores an instance is
+  the import's to say (`addGridfsFileIds`). Ids are deterministic via `sourceId` (FNV-1a 64-bit of length-prefixed
   components); the `ImagingStudy` and `ServiceRequest` ids hash the patient
   identity (`patientOriginalId`) together with the `StudyInstanceUID` /
   `AccessionNumber` — the identity `studyKey` splits on — so two patients'
   files sharing a UID or accession store two studies and two requests rather
-  than one overwriting the other. **Every ordering is a function of the files
-  alone** (`compareInstances`), so the same study picked in any order synthesizes
-  identical resources. Files that disagree on `AccessionNumber` are not
+  than one overwriting the other. **Every ordering is a function of the
+  headers** (`compareInstances`: `InstanceNumber`, `SOPInstanceUID`, then
+  `SOPClassUID`; two instances it leaves tied are alike in every field), so
+  the same study picked in any order imports to identical resources. Files that disagree on `AccessionNumber` are not
   merged: the first in study order builds the one `ServiceRequest` and
   `accessionNumbers` is what the decode reports the disagreement from.
-- `src/decode.ts` — what makes a set of picks one import, and how that set
+- `src/decode.ts` — what makes a set of picked files one import, and how that set
   decodes. **`studyKey(header)`** is `StudyInstanceUID` **plus** the patient
   identity `patientOriginalId` derives: a `PatientID` the files disagree on
   splits the set rather than filing one patient's images in another's record.
-  **`studyGroupKey`** is the `groupBy` the importer states: it parses the pick's
+  **`studyGroupKey`** is the `groupBy` the importer states: it parses the picked file's
   header (headers only, cheap) and returns `studyKey(header)`, or a `Left` —
   a file `dicom-parser` rejects states no study to belong to, and folding it
   into a neighbour would hide which file failed, so the decode constructor
-  reports it as its own `unreadableFiles` row. Nothing here depends on the
-  order the files were picked in: the source file whose id stamps `meta.source` is
-  the smallest of the set's, and a source file id is a content hash.
-  **`decodeStudy`** takes one study's members — each a picked file plus the
-  `sourceFile` minted for it, whose `id` is the instance's `gridfsFileId` — and
-  **parses each header itself**. A header that parsed in `studyGroupKey` parses
+  reports it as its own `unreadableFiles` row.
+  **`decodeStudy`** takes one study's picked files and **parses each header
+  itself**. A header that parsed in `studyGroupKey` parses
   again; that double parse is the deliberate price of a decode constructor with
   no parsed-value passthrough. It yields one section of adopted, labeled FHIR
-  resources. Titled
+  resources, and pairs each picked file with its SOP Instance UID
+  (**`sopInstanceIdentifier`**: `{ system: 'urn:ietf:rfc:3986', value:
+  'urn:oid:<SOPInstanceUID>' }`, FHIR's OID convention), which the import
+  stage writes as its source file's `masterIdentifier`. Titled
   `<Modality> <StudyDescription> · <StudyDate>` off the study's representative
   header, with stable keys `patient`, `service-request`, `imaging-study`, fixed
   _within one study_ and namespaced outside it. Notes for missing patient
@@ -99,17 +96,18 @@ carrying the one `ImagingStudy` its files make up.
   (`checkTimeZone` from `kitchen-sink`, a `ParseError`) rather than
   substituting one — every `started` it emits is resolved against that zone,
   so a guess would write instants hours away from what the equipment
-  recorded; one setting for the whole pick, so an unresolvable zone fails
+  recorded; one setting for the whole batch, so an unresolvable zone fails
   every set, and with it every file. A study that fails to decode becomes one
   `unreadableFiles` row per file of it, leaving the other studies reviewable.
-  **`linkToPatientAndStudy`** finishes each minted source file off the decode's own resources:
+  **`linkToPatientAndStudy`**, the importer's `linkSourceFile`, links each
+  source file to the study's own records:
   `subject` = the synthesized `Patient`, `context.related` = the study's
   `ImagingStudy` — `subject` alone cannot separate two studies of one patient,
   and `related` is what tells a reader of the server list which study a source file
   was read into. It changes no `id`: the row listed for review and the reference
   `meta.source` names are both read back off what it returns. The study-level
   resources' `meta.source` names the set's smallest source file id; per-file
-  provenance is the per-instance `gridfsFileId`.
+  provenance is the per-instance `gridfsFileId` (`dicom-importer.ts`).
 - `src/source-file.ts` — the `/source-file` subpath: a narrowing of
   `source-system.ts` to just the coding constants (`DICOM_SYSTEM`,
   `DICOM_SOURCE_FILE_CODE`, `DICOM_SOURCE_FILE_CONTENT_TYPE`), so a reader
@@ -119,13 +117,25 @@ carrying the one `ImagingStudy` its files make up.
 - `src/dicom-importer.ts` — **`dicomImporter`**, the `FileImporter.Type`
   literal for format `'dicom'`: the DICOM coding
   (`DICOM_SYSTEM|dicom-source-file`), content type `application/dicom`,
-  `detectDicom`, the default settings, and a `DecodeFunction.make` over
-  `studyGroupKey`, `decodeStudy` and `linkToPatientAndStudy`. The one format so far
+  `detectDicom`, the default settings, a `DecodeFunction.make` over
+  `studyGroupKey` and `decodeStudy`, and `linkToPatientAndStudy` and
+  `addGridfsFileIds` as its `linkSourceFile` and `linkToSourceFiles`.
+  **`addGridfsFileIds`** sets each `ImagingStudy` instance's `gridfsFileId`
+  extension (**`GRIDFS_FILE_ID_EXTENSION_URL`**, a `valueString` because the
+  OHIF viewer's FHIR extension reads it to fetch the file) to the id of the
+  source file whose `masterIdentifier` is the instance's `uid` as
+  `sopInstanceIdentifier` spells it — the smallest id when two files share a
+  UID, looked up in a map of the set's source files built once per study —
+  replacing any `gridfsFileId` already there and keeping other extensions; an
+  instance no source file matches fails with `FileImporter.SourceFileNotFound`,
+  which the import stage reports as the study's files being unreadable. It
+  reads only FHIR, no header. Per instance, so a study spanning files keeps
+  per-file provenance that one `meta.source` could not. The one format so far
   that states a `groupBy`: decoding a study's files independently would yield
   N one-instance `ImagingStudy`s sharing an id, each overwriting the last —
   D3's known limit, which this binding closes. `sourceFileFormat` is spelled
-  once and handed to the constructor, so the constants a reader of the server
-  list recognizes a source file by are the ones its source files are minted under.
+  once, so the constants a reader of the server list recognizes a source file
+  by are the ones the import stage mints its source files under.
 - `src/index.ts` — public API barrel.
 
 ## Layering

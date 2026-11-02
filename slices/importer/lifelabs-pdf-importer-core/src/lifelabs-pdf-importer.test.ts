@@ -1,7 +1,7 @@
-import { PickedFile, DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
+import { PickedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
-import { Effect, Layer, ParseResult, Schema } from 'effect'
+import { Effect, Layer, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -54,19 +54,8 @@ const extractorRefusing: Layer.Layer<PositionedTextExtractor> = Layer.succeed(
   { extract: () => Effect.fail(new UnreadablePdf({ cause: new Error('Invalid PDF structure.') })) }
 )
 
-const readDecoded = (
-  result: FormatDecode.Result<string>
-): FormatDecode.Result<string>['decoded'] => {
-  if (result.unreadableFiles.length > 0) {
-    throw new Error(
-      `expected a readable result, got ${result.unreadableFiles.length} unreadable files`
-    )
-  }
-  return result.decoded
-}
-
 describe('lifeLabsPdfImporter decode', () => {
-  it('property: a pick is reviewed with its minted source file, and every resource points at it', async () => {
+  it('property: a picked file is one file set of adopted records, keyed under the picked file', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
@@ -77,24 +66,24 @@ describe('lifeLabsPdfImporter decode', () => {
             bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
           }
 
-          const decoded = readDecoded(
-            await Effect.runPromise(
-              lifeLabsPdfImporter
-                .decode([file], SETTINGS)
-                .pipe(Effect.provide(extractorPrinting(reports)))
-            )
+          const decoded = await Effect.runPromise(
+            lifeLabsPdfImporter
+              .decode([file], SETTINGS)
+              .pipe(Effect.provide(extractorPrinting(reports)))
           )
 
-          const [sourceSection] = decoded.sections
-          expect(sourceSection?.title).toBe('Source file')
-          const sourceRow = sourceSection?.resources[0]
-          expect(sourceSection?.resources).toHaveLength(1)
-          expect(sourceRow?.key).toBe(`${FormatDecode.keyPrefix(file)}source-file/${file.fileName}`)
-          expect(sourceRow?.resource.resourceType).toBe('DocumentReference')
-          const sourceId = sourceRow?.resource.id
-          expect(sourceId).toEqual(expect.any(String))
-          for (const item of DecodedFile.resources(decoded).slice(1)) {
-            expect(item.resource.meta?.source).toBe(`DocumentReference/${sourceId}`)
+          expect(decoded.unreadableFiles).toEqual([])
+          expect(decoded.fileSets.map((fileSet) => fileSet.pickedFiles)).toEqual([
+            [{ pickedFile: file, identifiedAs: Option.none() }],
+          ])
+          const sections = decoded.fileSets.flatMap((fileSet) => fileSet.sections)
+          expect(sections.map((section) => section._tag)).toEqual(sections.map(() => 'Adopted'))
+          const keys = sections.flatMap((section) =>
+            section.entries.map((entry: { readonly key: string }) => entry.key)
+          )
+          expect(keys.length).toBeGreaterThan(0)
+          for (const key of keys) {
+            expect(key.startsWith(FormatDecode.keyPrefix(file))).toBe(true)
           }
         }
       ),
@@ -115,7 +104,7 @@ describe('lifeLabsPdfImporter decode', () => {
         .pipe(Effect.provide(extractorRefusing))
     )
 
-    expect(result.decoded.sections).toHaveLength(0)
+    expect(result.fileSets).toHaveLength(0)
     expect(result.unreadableFiles).toHaveLength(1)
     const [unreadable] = result.unreadableFiles
     expect(unreadable?.title).toBe(file.fileName)
@@ -125,9 +114,9 @@ describe('lifeLabsPdfImporter decode', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The source file this format's importer mints — the schema driven under
-// `lifeLabsPdfImporter`'s own format constants, which is the same context its
-// batch `decode` mints under.
+// The source file the import stage mints for this format — the schema driven
+// under `lifeLabsPdfImporter`'s own format constants, which is what
+// `importDecoded` provides it under.
 // ---------------------------------------------------------------------------
 
 const mintSourceFile = (

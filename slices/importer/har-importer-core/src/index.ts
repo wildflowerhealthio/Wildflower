@@ -6,10 +6,10 @@
  * @remarks
  * This is where the resource-agnostic `importer-fundamentals` contract is bound
  * to a concrete format (HAR) and resource type (FHIR). No DOM, no `fs`, no
- * React: HAR bytes in, FHIR resources out — the extracted resources plus the
- * source-file `DocumentReference` {@link harImporter}'s `decode` mints for a
- * local pick. The write is the shell's, gated on a confirmed
- * review.
+ * React: HAR bytes in, FHIR resources out. `importer-core`'s import stage
+ * adds the source-file `DocumentReference` for each local pick, under
+ * {@link harImporter}'s `sourceFileFormat`. The write is the shell's, gated on
+ * a confirmed review.
  *
  * @packageDocumentation
  */

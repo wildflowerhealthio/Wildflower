@@ -31,8 +31,9 @@ The root entry exports `DicomImage`:
 
   Pixel Data and every other element are copied byte for byte.
   `DicomImage.importWithSubject(file, fileName, subject)` runs
-  `dicomImporter.decode` (the equipment clock read in `EQUIPMENT_TIME_ZONE`),
-  drops its `Patient` and files the `ImagingStudy`, `ServiceRequest` and
+  `dicomImporter.decode` (the equipment clock read in `EQUIPMENT_TIME_ZONE`)
+  and `importer-core`'s import stage (`importDecoded`) over it, as an import
+  of the file does, drops its `Patient` and files the `ImagingStudy`, `ServiceRequest` and
   source-file `DocumentReference` on `subject` (`fhir-r4/resources`'
   `withSubject`).
 
@@ -44,7 +45,8 @@ elements spliced in (`dicom/test-helpers`' `withElementsSpliced`).
 
 Depends on `synthetic-data-fundamentals` (`Person` and `StoryDay` from
 `/story`, `Seeding` from `/seeding`), `dicom` (`Part10`, `DataElement`),
-`dicom-importer-core` (`dicomImporter`) and `fhir-r4` (`withSubject`, the
+`dicom-importer-core` (`dicomImporter`), `importer-core` (`importDecoded`) and
+`fhir-r4` (`withSubject`, the
 resource and `Reference` types). The tests also use `dicom-parser` and
 `dicom/test-helpers`, as dev dependencies only. Never imports a `-react`,
 `-node` or `-tauri` package.

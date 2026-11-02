@@ -683,4 +683,4 @@ const adoptedReferenceOf = (
       })
     : { ...IdentifierAndReference.emptyReference, reference: `${resourceType}/${originalId}` }
 
-export { adoptResource, adoptedReferenceOf, originalIdOf }
+export { adoptResource, adoptedReferenceOf, adoptUnderKey, originalIdOf }

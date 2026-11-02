@@ -2766,6 +2766,12 @@ importers:
       '@wildflowerhealthio/fhir-r4-adoption':
         specifier: workspace:*
         version: link:../../../slices/http-extraction/fhir-r4-adoption
+      '@wildflowerhealthio/importer-core':
+        specifier: workspace:*
+        version: link:../../../slices/importer/importer-core
+      '@wildflowerhealthio/importer-fundamentals':
+        specifier: workspace:*
+        version: link:../../../slices/importer/importer-fundamentals
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -2877,6 +2883,9 @@ importers:
       '@wildflowerhealthio/har-importer-core':
         specifier: workspace:*
         version: link:../../../slices/importer/har-importer-core
+      '@wildflowerhealthio/importer-core':
+        specifier: workspace:*
+        version: link:../../../slices/importer/importer-core
       '@wildflowerhealthio/importer-fundamentals':
         specifier: workspace:*
         version: link:../../../slices/importer/importer-fundamentals
@@ -3012,6 +3021,9 @@ importers:
       '@wildflowerhealthio/http-extraction-fundamentals':
         specifier: workspace:*
         version: link:../../../slices/http-extraction/http-extraction-fundamentals
+      '@wildflowerhealthio/importer-core':
+        specifier: workspace:*
+        version: link:../../../slices/importer/importer-core
       '@wildflowerhealthio/importer-fundamentals':
         specifier: workspace:*
         version: link:../../../slices/importer/importer-fundamentals
@@ -3063,6 +3075,9 @@ importers:
       '@wildflowerhealthio/http-archive':
         specifier: workspace:*
         version: link:../../../slices/file-formats/http-archive
+      '@wildflowerhealthio/importer-core':
+        specifier: workspace:*
+        version: link:../../../slices/importer/importer-core
       '@wildflowerhealthio/importer-fundamentals':
         specifier: workspace:*
         version: link:../../../slices/importer/importer-fundamentals
@@ -5082,6 +5097,9 @@ importers:
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../fhir/fhir-r4
+      '@wildflowerhealthio/fhir-r4-adoption':
+        specifier: workspace:*
+        version: link:../../http-extraction/fhir-r4-adoption
       '@wildflowerhealthio/har-importer-core':
         specifier: workspace:*
         version: link:../har-importer-core
@@ -5130,6 +5148,9 @@ importers:
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../fhir/fhir-r4
+      '@wildflowerhealthio/http-extraction-fundamentals':
+        specifier: workspace:*
+        version: link:../../http-extraction/http-extraction-fundamentals
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -14079,7 +14100,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.1.3)
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(jsdom@30.1.3)
 
   '@vitest/utils@5.0.5':
     dependencies:

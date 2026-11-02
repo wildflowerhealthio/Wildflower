@@ -25,15 +25,14 @@ shell's shared `persistTransactionBundle`.
   itself is not written here — `har-importer.ts` passes that coding,
   `application/json`, and the web-trace raw `securityLabel` as its one
   `sourceFileFormat`, which `PickedFile.categoryToken` / `PickedFile.isSourceFile`
-  / `PickedFile.FromDocumentReference` are read with and which the batch
-  `decode` mints the
-  source file inside itself, back.
+  / `PickedFile.FromDocumentReference` are read with and which
+  `importer-core`'s import stage mints the source file under.
   A whole source file lives as one attachment under the `har-archive`
   category, disjoint from a trace on the same axis (this format's
   `isSourceFile` and `isWebTrace` never both hold).
-- **The source file is minted inside `decode`.** The batch decode
-  `DecodeFunction.make` built mints every pick's source file `DocumentReference`
-  — a deterministic id from the file's SHA-256 and name, no instant of any
+- **The source file is minted by the import stage.** `importer-core`'s import
+  stage mints every pick's source file `DocumentReference` under this
+  importer's `sourceFileFormat` — a deterministic id from the file's SHA-256 and name, no instant of any
   kind, **no PUT** — prepends it as its own "Source file" section, and
   stamps every extracted resource's `meta.source` with
   `DocumentReference/<id>`. A file re-picked off the server mints exactly the
@@ -43,17 +42,19 @@ shell's shared `persistTransactionBundle`.
   upserts rather than duplicating.
 - `src/har-importer.ts` — **`harImporter`**, the one value the shell's
   registry lists — a `FileImporter.Type` literal whose `decode` is a
-  `DecodeFunction.make` with no `groupBy` (a HAR stands alone) and no
-  `linkSourceFile` (a captured session is an engineering artifact, kept out of
-  `Patient/$everything`). Its `decodeFileSet` runs the whole read half for one
+  `DecodeFunction.make` with no `groupBy` (a HAR stands alone), and which
+  states no `linkSourceFile` (a captured session is an engineering artifact,
+  kept out of `Patient/$everything`). Its `decodeFileSet` runs the whole read half for one
   archive:
   `decodeHar`, then `review.ts`'s `preview` over the pool filtered by the
-  settings' enabled kinds, then `mergeSharedResources`, folded into the
-  `DecodedFile` the shell reviews —
+  settings' enabled kinds, then `mergeSharedResources`, folded into a
+  `DecodedFile` whose already adopted resources reach the import stage in
+  `Adopted` sections —
   one section per URL (first-seen order, only responses that parsed to at
   least one resource) plus one diagnostic note per response that yielded
   nothing (no kind matched, every matching kind disabled, parse failure, body
-  absent, duplicate) — under the source-file section described above. Never
+  absent, duplicate) — which the import stage puts under the source-file
+  section described above. Never
   fails: a malformed source file comes back as that file's `unreadableFiles` entry,
   leaving the batch's other files reviewable. Resource keys are
   `responseId:index` — independent of the kind toggles, so a settings change

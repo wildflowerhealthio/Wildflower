@@ -14,23 +14,42 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 - `src/file-importer.ts` — **`FileImporter.Type<TSettings, TFormat>`**, "a
   file-format importer" as one first-class value a closed registry lists:
-  `format`, `display`, `detect`, `defaultSettings`, the batch `decode`, and
+  `format`, `display`, `detect`, `defaultSettings`, the batch `decode`,
   `sourceFileFormat` (the format's `PickedFile.FormatValue` — its `coding` /
   `contentType` / `securityLabel` / `descriptionPrefix`, the last spelled by
-  the binding, conventionally `` `${display.title}: ` ``). **An interface and
-  nothing else**: a binding writes the value as a **literal**, because every
+  the binding, conventionally `` `${display.title}: ` ``), and the optional
+  `linkSourceFile` and `linkToSourceFiles` hooks. **An interface and nothing
+  else**: a binding writes the value as a **literal**, because every
   field is either a constant it states or a function it already has, and
   `decode` comes from `DecodeFunction.make`. A `FileImporter` is a **plain
   record, not a class instance**: an adapter layer extends one by spreading it
   (which is how `importer-react`'s registry attaches each format's
   `SettingsPicker`), and a spread is only total when there is no prototype to
-  lose. The **write direction is not a member**: minting the source file a pick is
-  stored as is something only the batch `decode` does, through `PickedFile`'s
-  own codec. What a reader of the server's source-file list needs —
-  `PickedFile.categoryToken`, `PickedFile.isSourceFile`,
-  `PickedFile.FromDocumentReference` — it gets by applying those to the
-  importer's `sourceFileFormat`, which is why that value is spelled **once**
-  per binding and handed to `DecodeFunction.make` from the same constant.
+  lose. The **write direction is not a field**: minting the source file a
+  picked file is stored as is something only `importer-core`'s import stage does, through
+  `PickedFile`'s own codec, under the importer's `sourceFileFormat`. What a
+  reader of the server's source-file list needs — `PickedFile.categoryToken`,
+  `PickedFile.isSourceFile`, `PickedFile.FromDocumentReference` — it gets by
+  applying those to the same `sourceFileFormat`, which is why that value is
+  spelled **once** per binding. Two optional hooks sit beside it, both run by
+  the import stage, one each way between a set's source files and its
+  records. **`linkSourceFile(sourceFile, decoded)`** makes a source file name
+  the records read out of it: it runs once per picked file of a set, with that
+  file's source file, as minted, and the set's records, adopted, and returns
+  the source file to list and stamp with (its `id` must not change; left out,
+  the source file is stored exactly as minted). **`linkToSourceFiles(resource,
+  sourceFiles)`** makes a record name the source files it was read from: an
+  effect run over every adopted record of the set once its source files are
+  linked, with each **`PickedSourceFile`** (`{ pickedFile, sourceFile }`) of
+  the set, and returning the record to write (left out, every record is kept
+  as it is). A record matches a source file by the source file's
+  `masterIdentifier`, what its picked file identified itself as
+  (`DecodedFileSet.PickedFileIdentity`), since the decode that built the
+  record never saw a source file; DICOM sets each `ImagingStudy` instance's
+  `gridfsFileId` there. A record naming a file no source file of the set
+  identifies as fails with **`SourceFileNotFound`**, which the import stage
+  reports as an unreadable row per picked file of the set. An
+  `UnreadableFile`'s `error` is that or a decode's `ParseError`.
 
 - `src/format-detector.ts` — the **`FormatDetector`** namespace: **`Type`**
   (`{ format, detect }`, the two fields it takes to claim a picked file) and
@@ -46,9 +65,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   against, below every format's React package. Its own module rather than a
   member of `file-importer.ts`: it describes a _component_, not the importer
   value.
-- `src/format-decode.ts` — the **`FormatDecode`** namespace: **`Result<K>`**
-  (one format's whole decode — its id, title, files, merged `DecodedFile` and
-  **`UnreadableFile`** rows), **`emptyResult`** for a format that claimed
+- `src/format-decode.ts` — the **`FormatDecode`** namespace: **`Decoded<K>`**
+  (what a format's `decode` returns: its files, its **`DecodedFileSet`**s
+  apart, and its **`UnreadableFile`** rows), **`Result<K>`** (one format's
+  imported decode, as `importer-core`'s import stage makes it: its id, title,
+  files, merged `DecodedFile` and unreadable rows), **`makeUnreadableFile`** (the
+  row one pick is reported as), **`emptyResult`** for a format that claimed
   nothing, and the identity derivations every id and review key is built from.
   All three read a picked file's **`id`** — minted once, over the whole batch in
   pick order, by `importer-core`'s `readBatch`, so two picks of the same name
@@ -58,39 +80,51 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   out of one file set carries — which is what keeps a fixed key like DICOM's
   `patient`, or HAR's per-archive `har-entry-<index>`, from colliding across the
   files one format claimed.
+- `src/decoded-file-set.ts` — the **`DecodedFileSet`** namespace: one file
+  set as its format decoded it. **`Type`** is its `pickedFiles` (read
+  together, in the order they were picked), its `sections` and its `notes`.
+  Each picked file is a **`PickedFileIdentity`**: the file beside
+  `identifiedAs`, the FHIR `Identifier` its own content names it by (DICOM's
+  SOP Instance UID as `urn:oid:`), or `None` for a format whose files do not
+  name themselves; the import stage writes it onto the file's source file as
+  `masterIdentifier`. A **`Section`** is a titled group of records from one
+  source batch, each entry a review key, a title and its record, in one of two
+  cases: **`Adopted`**, every record already the device's own and kept as it
+  is (what every format's `decodeFileSet` still returns, transitional while
+  decoders adopt what they read), or **`FromSource`**, each record as its
+  source gave it beside its key less its type (`system`, `sourceId`), with the
+  **`systemFamily`** the batch keys each type in (one per batch, not per
+  record), which the import stage adopts it under. The "Source file(s)"
+  section is the import stage's own, never decoded.
+  **`ofAdopted(pickedFiles, decoded)`** lifts a set's decode of already
+  adopted resources, beside its `PickedFileIdentity`s, into one;
+  **`unidentified(pickedFile)`** is a picked file identifying as nothing.
 - `src/decode-function.ts` — the **`DecodeFunction`** namespace: the batch
   decode's signature **and the one constructor that builds it**. **`Type`** is
   the signature a `FileImporter` exposes (files and settings in, one
-  `FormatDecode.Result` out, never failing, requiring `R`: `never` for a
+  `FormatDecode.Decoded` out, never failing, requiring `R`: `never` for a
   format that reads its bytes itself, a platform service such as
   `positioned-text`'s `PositionedTextExtractor` for one that cannot).
   `FileImporter.Type` carries the same `R`, and `make` takes it from the
   `Config`'s `decodeFileSet`.
-  **`make(config)`** takes one **`Config`**: the `format`, the
-  `sourceFileFormat`, a `decodeFileSet`, and — optionally — a `groupBy` and an
-  `linkSourceFile`. **`WithSourceFile`** is what a `decodeFileSet` reads: a
-  `PickedFile.Type` plus the `PickedFile.SourceFile` minted for it. **`groupBy`** is
-  called per file and returns the key it shares with its set-mates, or a `Left`
-  that reports it as its own `unreadableFiles` row (pick order, ahead of any
-  failing set); left out, every file is its own set, keyed by its own id. A
-  format that needs a parse to state that key **parses twice** — once here, once
-  in `decodeFileSet` — which is the deliberate price of a constructor with no
-  parsed-value passthrough in it. **`linkSourceFile`** runs after the decode, once per
-  member, with that member's minted source file and the set's whole decode, and
-  returns the source file to list and stamp with; its `id` must not change. Left
-  out, the source file is stored exactly as minted.
-  Per set, concurrently across sets, `make` mints a source file for **every** pick
-  (`Schema.encode(PickedFile.FromDocumentReference)`), runs `decodeFileSet`,
-  finishes each source file through `linkSourceFile`, **namespaces the decode's review
-  keys** by the set's first picked file (`FormatDecode.keyPrefix`), stamps every
-  resource's `meta.source` with the set's **representative** — the member whose
-  source file id is lexicographically smallest, and a source file id is a content hash,
-  so the stamp is independent of pick order (`MetaSource.stampDecoded`) —
-  prepends the source files as the set's **"Source file"** / **"Source files"**
-  section, and folds a `ParseError` into one `unreadableFiles` row per pick of
-  the failing set. It provides the `PickedFile.Format` service from
-  `config.sourceFileFormat` internally, so nothing it returns carries a
-  requirement.
+  **`make(config)`** takes one **`Config`**: the `format`, a `decodeFileSet`
+  (the picked files of one set in, a **`FileSetDecode`** out: a `DecodedFile`
+  of adopted resources, each section of which reaches the import stage as an
+  `Adopted` one, and optionally `pickedFiles`, each picked file of the set
+  paired with the `Identifier` it identifies as; left out, each identifies as
+  nothing), and — optionally — a `groupBy`. **`groupBy`** is called per
+  file and returns the key it shares with its set-mates, or a `Left` that
+  reports it as its own `unreadableFiles` row (in the order the files were
+  picked, ahead of any failing set); left out, every file is its own set, keyed
+  by its own id. A format that needs a parse to state that key **parses
+  twice** — once here, once in `decodeFileSet` — which is the
+  deliberate price of a constructor with no parsed-value passthrough in it.
+  Per set, concurrently across sets, `make` runs `decodeFileSet`,
+  **namespaces the decode's review keys** by the set's first picked file
+  (`FormatDecode.keyPrefix`), and folds a `ParseError` into one
+  `unreadableFiles` row per picked file of the failing set. It returns each
+  set apart, with its picked files, because `importer-core`'s import stage
+  builds each set's source files and sets its records' `meta.source` from them.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two
@@ -404,8 +438,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 ## Layering
 
-Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for the
-`DocumentReference` schema, `fhir-r4/resources` for
+Depends on `effect` (and `kitchen-sink` in tests), `http-extraction-fundamentals`
+for `SystemFamily` alone (the systems a `DecodedFileSet.Section`'s source
+batch keys each type in), plus `fhir-r4` for the
+`DocumentReference` schema and the `Identifier` a picked file identifies itself
+as, `fhir-r4/resources` for
 `FhirResourceWithId` (`decoded-file.ts` and `staged-import.ts` are concrete over
 it, not generic — every format binds it, so there is no `TParsed` left to
 abstract over; a reviewed resource always has the id it is written under) and for the identity map's `Patient`, `Practitioner` and
@@ -425,7 +462,8 @@ web-trace direction. A HAR binding passes web-trace's coding constants in as
 data. Names no source file _format_ (each binding supplies its `decodeFileSet` and
 its coding), no HTTP vocabulary (the HAR binding's recognition machinery lives in
 `har-importer-core`), and no UI framework. Never imports a `*-importer-core`,
-an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
+an `importer-core`, a `*-importer-react`, or anything of `slices/http-extraction`
+but `SystemFamily`.
 
 ## Guardrails
 
@@ -438,10 +476,10 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   decisions (HAR's kind toggles) expresses them as _settings_, and its decode
   folds everything that yielded no resources into notes — there is no
   per-format review state and no format review UI. Don't reintroduce either.
-- **`DecodeFunction.make` provides `PickedFile.Format`; the shell provides it
-  at its one read; no other production code does.** The codec is parameterized
-  by that tag, the constructor discharges it once from the `sourceFileFormat` it
-  was handed, and `importer-react`'s read of a stored source file
+- **`importer-core`'s import stage provides `PickedFile.Format`; the shell
+  provides it at its one read; no other production code does.** The codec is
+  parameterized by that tag, the import stage discharges it once per format
+  from the importer's `sourceFileFormat`, and `importer-react`'s read of a stored source file
   (`fetchSourceFile`) provides it from the registry entry's own
   `sourceFileFormat`. See "Bake an internal context requirement to reshape the
   public type" in the
@@ -449,7 +487,7 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   A new source file operation belongs in `picked-file.ts` requiring the tag,
   not in a wrapper closing over `coding`.
   This is also what keeps **`sourceFileFormat` spelled once** per binding: a
-  second copy could hand the decode constants that disagree with the ones a
+  second copy could hand the import constants that disagree with the ones a
   reader of the server list searches and recognizes by, and nothing would catch
   it.
 - **`decode` never fails.** Malformed input is an `unreadableFiles` entry, not
@@ -461,12 +499,13 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   exposes each module as its namespace, and a flat re-export beside it would
   give the same symbol a second spelling. Only modules that are _not_
   namespaces (`sha256.ts`, `settings-picker-props.ts`) export flat.
-- **The source file is the format's, minted inside `decode`.** What a source file is,
-  which resources point at it, and what happens to those links are each format's
-  decisions, expressed through `decode-function.ts`'s constructor over the
-  `picked-file.ts` vocabulary and codec. The shell has no source file knowledge at
-  all — it reviews the minted row like any other resource. Do not put the mint
-  back in the shell.
+- **The source file is the format's, minted by the import stage.** What a
+  source file is, which resources point at it, and what happens to those links
+  are each format's decisions, expressed through its importer's
+  `sourceFileFormat`, `linkSourceFile` and `linkToSourceFiles` over the `picked-file.ts`
+  vocabulary and codec; `importer-core`'s import stage runs them. The shell has
+  no source file knowledge at all — it reviews the minted row like any other
+  resource. Do not put the mint in the shell or in a decode.
 - **Review keys are namespaced per file set, here and nowhere else.** A
   `decodeFileSet` keys within _one_ set, because that is all it can see; the
   batch merges every claimed file's sections into one format-wide review,

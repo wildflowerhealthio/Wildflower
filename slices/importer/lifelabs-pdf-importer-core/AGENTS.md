@@ -85,7 +85,7 @@ that hands back a hand-written positioned-text document.
   Both extraction failure (`UnreadablePdf`) and an unrecognized LifeLabs
   document surface as `ParseError` — the one error channel the batch decode folds into that file's
   `unreadableFiles` entry. It reads only the picked file's name and bytes: this
-  format derives no id from its source file, and the batch decode does the
+  format derives no id from its source file, and the import stage does the
   `meta.source` stamping.
 - `src/synthesis.ts` — **the FHIR synthesis without the PDF decoder**,
   exported as the `/synthesis` subpath: the `Report` model's types,
@@ -109,24 +109,23 @@ that hands back a hand-written positioned-text document.
   here — `lifelabs-pdf-importer.ts` states those constants as its
   `sourceFileFormat` (PDF content type, LifeLabs coding under
   `LIFELABS_SYSTEM|lifelabs-pdf-source file`, no web-trace security label) and
-  gets the read-back, and a `decode` that mints, derived from them. Nothing parses the PDF on
+  gets the read-back, and the import stage's mint, derived from them. Nothing parses the PDF on
   that path; the bytes are carried, hashed, and handed back exactly as they
   arrived. The mint derives a deterministic id from the file's SHA-256 and
-  name, stamps the upload instant, and encodes to a `DocumentReference` —
+  name, and encodes to a `DocumentReference` —
   **no PUT**; the shell writes it in the same `persistBatchBundle` as the
   synthesized resources. Same shape as HAR's.
 - `src/lifelabs-pdf-importer.ts` — **`lifeLabsPdfImporter`**, the
   `FileImporter.Type` literal for format `'lifelabs-pdf'`, its `decode` a
   `DecodeFunction.make` with `decodeLifeLabsPdf` as its `decodeFileSet` — no
-  `groupBy` (a report stands alone) and no `linkSourceFile`. Its `R` is
-  `PositionedTextExtractor`. The
-  batch decode it returns mints every pick's source file
-  `DocumentReference` and reviews it as its own "Source file" section, stamps
-  every synthesized resource's `meta.source` with it, and folds a file whose
-  bytes yield no report into that file's `unreadableFiles` entry. What `decode`
-  returns is what the user reviews — this format has no routing decisions to
-  interpose, and the write is the shell's one `persistBatchBundle`, not an
-  importer field.
+  `groupBy` (a report stands alone), and it states no `linkSourceFile`. Its
+  `R` is `PositionedTextExtractor`. The batch decode it returns folds a file
+  whose bytes yield no report into that file's `unreadableFiles` entry; the
+  import stage mints every pick's source file `DocumentReference`, reviews it
+  as its own "Source file" section, and stamps every synthesized resource's
+  `meta.source` with it. What the import returns is what the user reviews —
+  this format has no routing decisions to interpose, and the write is the
+  shell's one `persistBatchBundle`, not an importer field.
 - `src/settings.ts` — **`LifeLabsPdfSettings`** `{ timeZone }`, default
   `America/Toronto`: the report prints local clock times with no zone, and
   FHIR's `dateTime`-with-time / `instant` need one. The zone is passed to
