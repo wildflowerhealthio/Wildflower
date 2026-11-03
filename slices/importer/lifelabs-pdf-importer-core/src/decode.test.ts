@@ -57,18 +57,21 @@ describe('decodeLifeLabsPdfDocument', () => {
     )
   })
 
-  it('property: key and title follow the {resourceType}/{source id} format', () => {
+  it('property: each row is keyed {resourceType}/{source id} and titled by the reference it is written under', () => {
     fc.assert(
       fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
-        for (const entry of entriesOf(decoded)) {
-          const expected = `${entry.resource.resourceType}/${entry.sourceId}`
-          expect(entry.key).toBe(expected)
-          expect(entry.title).toBe(expected)
-        }
+        const entries = entriesOf(decoded)
+        expect(entries.map(({ key }) => key)).toEqual(
+          entries.map(({ resource, sourceId }) => `${resource.resourceType}/${sourceId}`)
+        )
+        const written = DecodedFile.resources(DecodedFileSet.adopt(decoded))
+        expect(written.map(({ title }) => title)).toEqual(
+          written.map(({ resource }) => `${resource.resourceType}/${resource.id}`)
+        )
       }),
       { numRuns: numRunsFor({ base: 30 }) }
     )
