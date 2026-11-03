@@ -5,11 +5,13 @@
  *
  * @packageDocumentation
  */
+import { adoptUnderKey } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { type Array as Arr, Data, Option } from 'effect'
 
+import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
 
 /**
@@ -119,5 +121,35 @@ const namespaceKeys = (sections: readonly Section[], prefix: string): readonly S
   )
 }
 
-export { namespaceKeys, Section, unidentified }
+/**
+ * One section's records, adopted: a `FromSource` section's each under its
+ * key, its references keyed in the section's system family; an `Adopted`
+ * section's as they are.
+ */
+const adoptSection = Section.$match({
+  Adopted: ({ title, entries }): DecodedFile.Section => ({ title, resources: entries }),
+  FromSource: ({ title, systemFamily, entries }): DecodedFile.Section => {
+    const adopt = adoptUnderKey(systemFamily)
+    return {
+      title,
+      resources: entries.map((entry) => ({
+        key: entry.key,
+        title: entry.title,
+        resource: adopt(entry),
+      })),
+    }
+  },
+})
+
+/**
+ * A decode's sections adopted, each by {@link adoptSection}, beside its notes:
+ * how the import stage makes a file set's records the device's own, before it
+ * mints source files, links and stamps.
+ */
+const adopt = (decoded: Pick<Type, 'sections' | 'notes'>): DecodedFile.DecodedFile => ({
+  sections: decoded.sections.map(adoptSection),
+  notes: decoded.notes,
+})
+
+export { adopt, namespaceKeys, Section, unidentified }
 export type { FromSourceEntry, PickedFileIdentity, Type }
