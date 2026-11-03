@@ -14,9 +14,9 @@ import { RunPolicyPicker } from './run-policy-picker.tsx'
 import { HostWalkthroughAnchor } from './server-list-walkthrough.ts'
 import {
   lastStopText,
-  orderingWithoutCertificateNote,
   statusNote,
   statusSummary,
+  unreachableWhileOrderingNote,
 } from './server-status-text.ts'
 import styles from './server-card.module.css'
 
@@ -97,7 +97,7 @@ const ServerCard = ({
         )),
         Option.getOrNull
       )}
-      {orderingWithoutCertificateNote(server.status).pipe(
+      {unreachableWhileOrderingNote(server.status).pipe(
         Option.map((note) => (
           <p key="unreachable" className={`text-body-3 ${styles['server-card__note']}`}>
             {note}

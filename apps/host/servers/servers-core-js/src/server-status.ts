@@ -168,11 +168,11 @@ const lastStopOf = (status: Type): Option.Option<RunStop> =>
   status.runState === 'stopped' ? status.lastStop : Option.none()
 
 /**
- * Whether the server is running while it orders a certificate with none to
- * serve, as before its first certificate or after "Order a new certificate":
- * visitors' TLS handshakes fail until one is deployed.
+ * Whether the server can't be reached while it orders a certificate: it is
+ * running with none to serve, as before its first certificate or after a
+ * forced order, so visitors' TLS handshakes fail until one is deployed.
  */
-const isOrderingWithoutCertificate = (status: Type): boolean =>
+const isUnreachableWhileOrdering = (status: Type): boolean =>
   status.runState === 'running' &&
   status.certificate.status === 'ordering' &&
   Option.isNone(status.certificate.held)
@@ -182,7 +182,7 @@ export {
   EVENT,
   HealthSchema,
   healthOf,
-  isOrderingWithoutCertificate,
+  isUnreachableWhileOrdering,
   lastStopOf,
   pendingConsentOf,
   PlatformStopReasonSchema,

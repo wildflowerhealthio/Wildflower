@@ -5,7 +5,8 @@ use wildflowerhealthio_authorization_server::{OwnerPrompt, SameDeviceSignInCode}
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::{RunContext, Unit};
 use wildflowerhealthio_wildflower_server::{
-    CertificateActions, CertificateState, ServerHealth, ServerObservers, WildflowerServerConfig,
+    CertificateState, RunningCertificateControl, ServerHealth, ServerObservers,
+    WildflowerServerConfig,
 };
 
 use crate::domain::ServerDetail;
@@ -54,7 +55,7 @@ impl Unit for ServerUnit {
     /// certificate's state, its newest pending consent, the
     /// [`ServerLaunchMinter`], [`ServerSignInCodeMinter`] and
     /// [`ServerConsentWatcher`] over its authorization server, and its
-    /// [`CertificateActions`] go out as the run's [`ServerDetail`].
+    /// [`RunningCertificateControl`] go out as the run's [`ServerDetail`].
     ///
     /// The run's authorization server publishes its newest pending consent on
     /// a channel of the run's own, so each server's is its own.
@@ -81,7 +82,7 @@ impl Unit for ServerUnit {
                     server.same_device_sign_in_code_minter(),
                 ),
                 consent_watcher: ServerConsentWatcher::new(server.pending_consent_watcher()),
-                certificate_actions: server.certificate_actions(),
+                certificate_control: server.certificate_control(),
                 channels: DetailChannels::new(
                     server_health_rx,
                     tunnel_state_rx,
@@ -104,8 +105,8 @@ struct DetailSources {
     sign_in_code_minter: ServerSignInCodeMinter,
     /// The run's consent watcher, the same in every detail the run sets.
     consent_watcher: ServerConsentWatcher,
-    /// The run's certificate actions, the same in every detail the run sets.
-    certificate_actions: CertificateActions,
+    /// The run's certificate control, the same in every detail the run sets.
+    certificate_control: RunningCertificateControl,
     /// The channels the rest of the detail is read from.
     channels: DetailChannels,
 }
@@ -173,7 +174,7 @@ impl DetailChannels {
 /// The task each run spawns to report its [`ServerDetail`]: it merges the
 /// run's health, its tunnel's state, its certificate's state, its
 /// authorization server's newest pending consent, its launch minter, its
-/// sign-in code minter, its consent watcher and its certificate actions into the detail, now and each time the health, the
+/// sign-in code minter, its consent watcher and its certificate control into the detail, now and each time the health, the
 /// tunnel state, the certificate state or the pending consent changes. The task dies with the run's runtime, and `UnitRunner` clears the
 /// detail when the run ends.
 async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>) {
@@ -187,7 +188,7 @@ async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>
             launch_minter: Some(sources.launch_minter.clone()),
             sign_in_code_minter: Some(sources.sign_in_code_minter.clone()),
             consent_watcher: Some(sources.consent_watcher.clone()),
-            certificate_actions: Some(sources.certificate_actions.clone()),
+            certificate_control: Some(sources.certificate_control.clone()),
         });
         if !channels.changed().await {
             return;

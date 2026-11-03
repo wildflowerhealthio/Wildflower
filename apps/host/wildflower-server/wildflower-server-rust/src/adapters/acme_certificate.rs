@@ -5,7 +5,7 @@
 //! rustls-acme does the work. [`acme_config`] configures it: the server's
 //! domain as the certificate's one name, the CA's directory, no contact, the
 //! install's ACME account (one per CA, shared by every server) and the
-//! server's own certificate cache. [`DeviceCertificate::start`] creates the
+//! server's own certificate cache. [`RunningCertificate::start`] creates the
 //! cache folders and orders and renews the certificate for as long as the
 //! server runs:
 //!
@@ -41,12 +41,13 @@
 //!
 //! rustls-acme has no "order now": an [`AcmeState`] orders only when its
 //! cache holds no certificate, an expired one, or one due for renewal. So the
-//! host's [`CertificateActions`] restart the run's ordering: the run drops
-//! its `AcmeState`, ending any order or backoff it was waiting on, removes
-//! the server's cached certificate for "order a new certificate" (the
+//! host's [`RunningCertificateControl`] restarts the run's ordering, as one
+//! of two [`CertificateOrderKind`]s: order if needed, or forced. The run
+//! drops its `AcmeState`, ending any order or backoff it was waiting on,
+//! removes the server's cached certificate when the order is forced (the
 //! install's account stays), and starts a fresh `AcmeState` from the same
 //! configuration, publishing on the same channel. The tunnel listener serves
-//! from [`CurrentAcmeResolver`], which each restart points at the new
+//! from [`SwappableAcmeResolver`], which each restart swaps to the new
 //! state's resolver. Until the new state deploys a certificate, it has none
 //! to serve, and visitors' handshakes fail. rustls-acme 0.15 can't revoke, so
 //! a replaced certificate stays valid until it expires.
@@ -322,106 +323,88 @@ pub async fn cached_certificate_state(
 /// The resolver the tunnel listener serves certificates from: the resolver
 /// of the run's current [`AcmeState`], which serves the certificate it has
 /// deployed, and the CA's validation certificate while an order's challenge
-/// is pending. Each restart of the run's ordering points it at the new
+/// is pending. Each restart of the run's ordering swaps it to the new
 /// state's resolver, which holds no certificate until the state deploys one.
 #[derive(Debug)]
-pub(crate) struct CurrentAcmeResolver(RwLock<Arc<ResolvesServerCertAcme>>);
+pub(crate) struct SwappableAcmeResolver(RwLock<Arc<ResolvesServerCertAcme>>);
 
-impl CurrentAcmeResolver {
+impl SwappableAcmeResolver {
     fn new(acme_resolver: Arc<ResolvesServerCertAcme>) -> Self {
         Self(RwLock::new(acme_resolver))
     }
 
     /// Serve from `acme_resolver`, a new [`AcmeState`]'s, from now on.
-    fn replace(&self, acme_resolver: Arc<ResolvesServerCertAcme>) {
+    fn swap(&self, acme_resolver: Arc<ResolvesServerCertAcme>) {
         *self.0.write().unwrap_or_else(PoisonError::into_inner) = acme_resolver;
     }
 }
 
-impl ResolvesServerCert for CurrentAcmeResolver {
+impl ResolvesServerCert for SwappableAcmeResolver {
     fn resolve(&self, client_hello: ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
         let acme_resolver = Arc::clone(&self.0.read().unwrap_or_else(PoisonError::into_inner));
         acme_resolver.resolve(client_hello)
     }
 }
 
-/// What a restart of a run's ordering does with the server's cached
-/// certificate before it starts the new [`AcmeState`].
+/// What the host asks a running certificate to do. Either restarts the
+/// run's ordering: the run drops its `AcmeState`, ending any order or
+/// backoff it waited on, and starts a fresh one from the same config.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CachedCertificate {
-    /// Kept: the new state deploys it if it is valid, and orders at once
-    /// otherwise.
-    Kept,
-    /// Removed, so the new state orders a new certificate at once.
-    Removed,
+pub enum CertificateOrderKind {
+    /// Restart ordering from the cached certificate: order only if it can't
+    /// serve the domain. Skips any backoff a failed order was waiting out.
+    /// A valid certificate cached meanwhile is deployed again instead.
+    IfNeeded,
+    /// Discard the cached certificate and its key first, so a new one is
+    /// ordered regardless. The server serves nothing until it arrives.
+    Forced,
 }
 
 /// A request to restart a run's ordering, and where the run answers once
 /// the new [`AcmeState`] is in place: with the error removing the cached
 /// certificate failed with, if it did.
-struct RestartRequest {
-    cached_certificate: CachedCertificate,
-    restarted_tx: oneshot::Sender<io::Result<()>>,
+struct ControlRequest {
+    kind: CertificateOrderKind,
+    done_tx: oneshot::Sender<io::Result<()>>,
 }
 
-/// The host's actions on a run's certificate: get one now, or order a new
-/// one in place of the one held. Each restarts the run's ordering (see the
+/// The host's control of a running certificate: restarting its ordering,
+/// [if needed or forced](CertificateOrderKind) (see the
 /// [module docs](self)). Clones reach the same run, and two are equal when
 /// they do.
 #[derive(Debug, Clone)]
-pub struct CertificateActions {
-    restart_tx: mpsc::Sender<RestartRequest>,
+pub struct RunningCertificateControl {
+    request_tx: mpsc::Sender<ControlRequest>,
 }
 
-impl CertificateActions {
-    /// Order a certificate now, even while a failed order backs off: the run
-    /// starts its ordering again, deploying the cached certificate if it is
-    /// valid. Answers once the new ordering has started.
+impl RunningCertificateControl {
+    /// Restart the run's ordering as `kind` asks. Answers once the new
+    /// ordering has started.
     ///
     /// # Errors
     ///
-    /// [`CertificateRestartError::RunStopped`] if the run has stopped.
-    pub async fn get_certificate(&self) -> Result<(), CertificateRestartError> {
-        self.restart(CachedCertificate::Kept).await
-    }
-
-    /// Drop the cached certificate and its key and order a new one now: the
-    /// server has no certificate to serve until the new one is deployed.
-    /// The install's ACME account stays. Answers once the new ordering has
-    /// started.
-    ///
-    /// # Errors
-    ///
-    /// [`CertificateRestartError::RunStopped`] if the run has stopped, or
-    /// [`CertificateRestartError::CachedCertificateNotRemoved`] if the cached
+    /// [`CertificateControlError::RunStopped`] if the run has stopped, or,
+    /// for [`CertificateOrderKind::Forced`],
+    /// [`CertificateControlError::CachedCertificateNotRemoved`] if the cached
     /// certificate couldn't be removed, in which case the run has started
-    /// again from it, as [`get_certificate`](Self::get_certificate) does.
-    pub async fn order_new_certificate(&self) -> Result<(), CertificateRestartError> {
-        self.restart(CachedCertificate::Removed).await
-    }
-
-    async fn restart(
-        &self,
-        cached_certificate: CachedCertificate,
-    ) -> Result<(), CertificateRestartError> {
-        let (restarted_tx, restarted_rx) = oneshot::channel();
-        self.restart_tx
-            .send(RestartRequest {
-                cached_certificate,
-                restarted_tx,
-            })
+    /// again from it, as [`CertificateOrderKind::IfNeeded`] does.
+    pub async fn restart(&self, kind: CertificateOrderKind) -> Result<(), CertificateControlError> {
+        let (done_tx, done_rx) = oneshot::channel();
+        self.request_tx
+            .send(ControlRequest { kind, done_tx })
             .await
-            .map_err(|_| CertificateRestartError::RunStopped)?;
-        restarted_rx
+            .map_err(|_| CertificateControlError::RunStopped)?;
+        done_rx
             .await
-            .map_err(|_| CertificateRestartError::RunStopped)?
-            .map_err(CertificateRestartError::CachedCertificateNotRemoved)
+            .map_err(|_| CertificateControlError::RunStopped)?
+            .map_err(CertificateControlError::CachedCertificateNotRemoved)
     }
 }
 
-/// Why [`CertificateActions`] couldn't restart a run's ordering as asked.
+/// Why [`RunningCertificateControl`] couldn't restart a run's ordering as
+/// asked.
 #[derive(Debug, thiserror::Error)]
-pub enum CertificateRestartError {
+pub enum CertificateControlError {
     /// The run has stopped, so nothing orders the server's certificate.
     #[error("the server's run has stopped")]
     RunStopped,
@@ -431,33 +414,33 @@ pub enum CertificateRestartError {
     CachedCertificateNotRemoved(#[source] io::Error),
 }
 
-impl PartialEq for CertificateActions {
+impl PartialEq for RunningCertificateControl {
     fn eq(&self, other: &Self) -> bool {
-        self.restart_tx.same_channel(&other.restart_tx)
+        self.request_tx.same_channel(&other.request_tx)
     }
 }
 
-impl Eq for CertificateActions {}
+impl Eq for RunningCertificateControl {}
 
 /// The running certificate: the resolver serving whatever it has deployed,
-/// the host's actions on it, and the token that stops ordering and renewing
+/// the host's control of it, and the token that stops ordering and renewing
 /// when it's dropped.
-pub(crate) struct DeviceCertificate {
+pub(crate) struct RunningCertificate {
     /// Serves the deployed certificate, and the CA's validation certificate
     /// while an order's challenge is pending.
-    resolver: Arc<CurrentAcmeResolver>,
+    resolver: Arc<SwappableAcmeResolver>,
     /// Restarts the run's ordering.
-    actions: CertificateActions,
+    control: RunningCertificateControl,
     /// Stops the task ordering and renewing the certificate.
     cancel: CancellationToken,
 }
 
-impl DeviceCertificate {
+impl RunningCertificate {
     /// Start the certificate for `domain` that `config` describes:
     /// create its key folders, readable by this user only, then deploy a
     /// cached certificate, order one when it is missing or expired, and renew
     /// it, publishing its state on `certificate_tx`. Spawns onto the ambient
-    /// tokio runtime, and runs until the `DeviceCertificate` is dropped.
+    /// tokio runtime, and runs until the `RunningCertificate` is dropped.
     ///
     /// # Errors
     ///
@@ -474,52 +457,52 @@ impl DeviceCertificate {
             })?;
         }
         let cancel = CancellationToken::new();
-        let (resolver, actions, task) =
+        let (resolver, control, task) =
             certificate_task(domain, config, certificate_tx, cancel.clone());
         tokio::spawn(task);
         Ok(Self {
             resolver,
-            actions,
+            control,
             cancel,
         })
     }
 
     /// The resolver the tunnel listener's TLS serves certificates from.
-    pub(crate) fn resolver(&self) -> Arc<CurrentAcmeResolver> {
+    pub(crate) fn resolver(&self) -> Arc<SwappableAcmeResolver> {
         Arc::clone(&self.resolver)
     }
 
-    /// The host's actions on the certificate, for as long as the run lasts.
-    pub(crate) fn actions(&self) -> CertificateActions {
-        self.actions.clone()
+    /// The host's control of the certificate, for as long as the run lasts.
+    pub(crate) fn control(&self) -> RunningCertificateControl {
+        self.control.clone()
     }
 }
 
-impl Drop for DeviceCertificate {
+impl Drop for RunningCertificate {
     fn drop(&mut self) {
         self.cancel.cancel();
     }
 }
 
 /// The resolver serving the certificate for `domain` that `config`
-/// describes, the host's actions on it, and the task that deploys, orders
+/// describes, the host's control of it, and the task that deploys, orders
 /// and renews it until `cancel`, publishing its state on `certificate_tx`:
 /// it reads the cached certificate first, then polls rustls-acme
-/// ([`order_and_renew`]), starting again from the cache on each of the
-/// actions' restarts.
+/// ([`order_and_renew`]), starting again from the cache on each restart the
+/// control asks for.
 fn certificate_task(
     domain: &str,
     config: &DeviceCertificateConfig,
     certificate_tx: watch::Sender<Option<CertificateState>>,
     cancel: CancellationToken,
 ) -> (
-    Arc<CurrentAcmeResolver>,
-    CertificateActions,
+    Arc<SwappableAcmeResolver>,
+    RunningCertificateControl,
     impl std::future::Future<Output = ()> + Send + 'static,
 ) {
     let (mut acme_state, last_entry_certificate) = new_acme_state(domain, config);
-    let resolver = Arc::new(CurrentAcmeResolver::new(acme_state.resolver()));
-    let (restart_tx, mut restart_rx) = mpsc::channel(1);
+    let resolver = Arc::new(SwappableAcmeResolver::new(acme_state.resolver()));
+    let (request_tx, mut request_rx) = mpsc::channel(1);
     let mut reporter = CertificateReporter {
         issuer: config.certificate_authority,
         certificate_dir: config.certificate_dir.clone(),
@@ -528,28 +511,28 @@ fn certificate_task(
     };
     let domain = domain.to_owned();
     let config = config.clone();
-    let current_resolver = Arc::clone(&resolver);
+    let swappable_resolver = Arc::clone(&resolver);
     let task = async move {
         loop {
             let observed = observed_at_start(&domain, &config).await;
             let Some(request) =
-                order_and_renew(acme_state, &reporter, observed, &cancel, &mut restart_rx).await
+                order_and_renew(acme_state, &reporter, observed, &cancel, &mut request_rx).await
             else {
                 return;
             };
-            let removed = match request.cached_certificate {
-                CachedCertificate::Kept => Ok(()),
-                CachedCertificate::Removed => remove_cached_certificate(&domain, &config).await,
+            let removed = match request.kind {
+                CertificateOrderKind::IfNeeded => Ok(()),
+                CertificateOrderKind::Forced => remove_cached_certificate(&domain, &config).await,
             };
             if let Err(error) = &removed {
                 tracing::warn!("certificate: removing the cached certificate failed: {error}");
             }
             (acme_state, reporter.last_entry_certificate) = new_acme_state(&domain, &config);
-            current_resolver.replace(acme_state.resolver());
-            let _ = request.restarted_tx.send(removed);
+            swappable_resolver.swap(acme_state.resolver());
+            let _ = request.done_tx.send(removed);
         }
     };
-    (resolver, CertificateActions { restart_tx }, task)
+    (resolver, RunningCertificateControl { request_tx }, task)
 }
 
 /// A fresh [`AcmeState`] for the certificate for `domain` that `config`
@@ -639,12 +622,12 @@ impl CertificateReporter {
     }
 }
 
-/// Poll `acme_state` until `cancel` or a request on `restart_rx`, logging
+/// Poll `acme_state` until `cancel` or a request on `request_rx`, logging
 /// each event and reporting the certificate through `reporter`, from what
 /// the run `observed` of its cache at start: polling is what makes
 /// rustls-acme deploy, order and renew the certificate. It retries a failed
 /// order itself, with backoff; until a certificate is deployed, the tunnel
-/// listener's handshakes fail. Answers with the restart request that ended
+/// listener's handshakes fail. Answers with the control request that ended
 /// it, dropping `acme_state` and any order or backoff it was waiting on;
 /// `None` once cancelled.
 async fn order_and_renew(
@@ -652,8 +635,8 @@ async fn order_and_renew(
     reporter: &CertificateReporter,
     mut observed: ObservedCertificate,
     cancel: &CancellationToken,
-    restart_rx: &mut mpsc::Receiver<RestartRequest>,
-) -> Option<RestartRequest> {
+    request_rx: &mut mpsc::Receiver<ControlRequest>,
+) -> Option<ControlRequest> {
     reporter.publish(&observed);
     loop {
         let next_status_change = observed.next_status_change(Utc::now());
@@ -664,7 +647,7 @@ async fn order_and_renew(
                 reporter.publish(&observed);
                 continue;
             }
-            Some(request) = restart_rx.recv() => return Some(request),
+            Some(request) = request_rx.recv() => return Some(request),
             () = cancel.cancelled() => return None,
         };
         let Some(event) = event else {
@@ -1109,7 +1092,7 @@ mod tests {
         )
         .unwrap();
 
-        let _device_certificate = DeviceCertificate::start(
+        let _running_certificate = RunningCertificate::start(
             DOMAIN,
             &data_root.config(&data_root.certificate_dir, TEST_CA),
             watch::channel(None).0,
@@ -1123,7 +1106,7 @@ mod tests {
     }
 
     /// Cancelling stops the task ordering and renewing, even while it waits
-    /// for a renewal years away; dropping a [`DeviceCertificate`] cancels it.
+    /// for a renewal years away; dropping a [`RunningCertificate`] cancels it.
     #[tokio::test]
     async fn cancelling_stops_ordering_and_renewal() {
         let data_root = data_root();
@@ -1156,14 +1139,14 @@ mod tests {
             .await
             .expect("the task stops in time")
             .expect("the task doesn't panic");
-        let device_certificate = DeviceCertificate::start(
+        let running_certificate = RunningCertificate::start(
             DOMAIN,
             &data_root.config(&data_root.certificate_dir, certificate_authority),
             watch::channel(None).0,
         )
         .expect("start the certificate");
-        let dropped_certificate_cancel = device_certificate.cancel.clone();
-        drop(device_certificate);
+        let dropped_certificate_cancel = running_certificate.cancel.clone();
+        drop(running_certificate);
         assert!(dropped_certificate_cancel.is_cancelled());
     }
 
@@ -1931,16 +1914,16 @@ mod tests {
         )
     }
 
-    /// Getting a certificate orders one at once, even while a failed order
-    /// backs off: here the third failure's 4 s backoff.
+    /// Ordering if needed orders at once, even while a failed order backs
+    /// off: here the third failure's 4 s backoff.
     #[tokio::test]
-    async fn getting_a_certificate_orders_at_once_while_a_failed_order_backs_off() {
+    async fn ordering_if_needed_orders_at_once_while_a_failed_order_backs_off() {
         // Arrange: the CA fails the first orders, 0, 1 and 3 s in.
         let data_root = data_root();
         let fake_ca = FakeCa::start(FakeCaAnswer::Failure).await;
         let (certificate_tx, mut certificate_rx) = watch::channel(None);
         let cancel = CancellationToken::new();
-        let (_, actions, task) = certificate_task(
+        let (_, control, task) = certificate_task(
             DOMAIN,
             &fake_ca.config(&data_root),
             certificate_tx,
@@ -1956,7 +1939,10 @@ mod tests {
 
         // Act
         let asked_at = std::time::Instant::now();
-        actions.get_certificate().await.expect("ordering restarted");
+        control
+            .restart(CertificateOrderKind::IfNeeded)
+            .await
+            .expect("ordering restarted");
 
         // Assert
         let state = published(&mut certificate_rx, |state| {
@@ -1972,18 +1958,18 @@ mod tests {
         assert_eq!(state.last_error, None);
     }
 
-    /// Ordering a new certificate replaces the cached one with a new one,
+    /// A forced order replaces the cached certificate with a new one,
     /// from the server's CA, recorded in the history, and leaves the
     /// install's account as it was.
     #[tokio::test]
-    async fn ordering_a_new_certificate_replaces_the_cached_one_and_keeps_the_account() {
+    async fn a_forced_order_replaces_the_cached_one_and_keeps_the_account() {
         // Arrange: the run orders its first certificate, creating the account.
         let data_root = data_root();
         let fake_ca = FakeCa::start(FakeCaAnswer::Issuing).await;
         let config = fake_ca.config(&data_root);
         let (certificate_tx, mut certificate_rx) = watch::channel(None);
         let cancel = CancellationToken::new();
-        let (_, actions, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
+        let (_, control, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
         let _task = tokio::spawn(task);
         let first = published(&mut certificate_rx, |state| state.held.is_some())
             .await
@@ -2004,8 +1990,8 @@ mod tests {
         assert_eq!(account_before.len(), 1);
 
         // Act
-        actions
-            .order_new_certificate()
+        control
+            .restart(CertificateOrderKind::Forced)
             .await
             .expect("ordering restarted");
 
@@ -2040,10 +2026,10 @@ mod tests {
         assert_eq!(account_files(), account_before);
     }
 
-    /// Ordering a new certificate drops the held one at once: the run holds
+    /// A forced order drops the held certificate at once: the run holds
     /// none, and is `Ordering`, until the new one is deployed.
     #[tokio::test]
-    async fn ordering_a_new_certificate_holds_none_until_the_new_one_arrives() {
+    async fn a_forced_order_holds_none_until_the_new_one_arrives() {
         // Arrange: a valid cached certificate, and a CA that fails.
         let data_root = data_root();
         let fake_ca = FakeCa::start(FakeCaAnswer::Failure).await;
@@ -2058,7 +2044,7 @@ mod tests {
         .await;
         let (certificate_tx, mut certificate_rx) = watch::channel(None);
         let cancel = CancellationToken::new();
-        let (_, actions, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
+        let (_, control, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
         let _task = tokio::spawn(task);
         published(&mut certificate_rx, |state| {
             state.status == CertificateStatus::NoRenewalNeeded
@@ -2066,8 +2052,8 @@ mod tests {
         .await;
 
         // Act
-        actions
-            .order_new_certificate()
+        control
+            .restart(CertificateOrderKind::Forced)
             .await
             .expect("ordering restarted");
 
@@ -2084,12 +2070,12 @@ mod tests {
         assert_eq!(cached_certificate(DOMAIN, &config).await.unwrap(), None);
     }
 
-    /// A run that has stopped refuses both actions.
+    /// A run that has stopped refuses both kinds of order.
     #[tokio::test]
-    async fn a_stopped_run_refuses_the_actions() {
+    async fn a_stopped_run_refuses_both_kinds_of_order() {
         let data_root = data_root();
         let cancel = CancellationToken::new();
-        let (_, actions, task) = certificate_task(
+        let (_, control, task) = certificate_task(
             DOMAIN,
             &data_root.config(&data_root.certificate_dir, TEST_CA),
             watch::channel(None).0,
@@ -2099,8 +2085,15 @@ mod tests {
         cancel.cancel();
         task.await.expect("the task doesn't panic");
 
-        assert!(actions.get_certificate().await.is_err());
-        assert!(actions.order_new_certificate().await.is_err());
+        for kind in [CertificateOrderKind::IfNeeded, CertificateOrderKind::Forced] {
+            assert!(
+                matches!(
+                    control.restart(kind).await,
+                    Err(CertificateControlError::RunStopped)
+                ),
+                "{kind:?}"
+            );
+        }
     }
 
     /// A CA that can't be reached at all, with no problem document, is

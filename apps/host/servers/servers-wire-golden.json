@@ -633,7 +633,7 @@
     "letsEncrypt": true,
     "letsEncryptStaging": false
   },
-  "certificateActionErrors": [
+  "certificateOrderRequestErrors": [
     {
       "kind": "serverNotRunning",
       "message": "the server ruth.relay.example.com isn't running"
@@ -643,8 +643,8 @@
       "message": "the server ruth.relay.example.com's cached certificate couldn't be removed: permission denied"
     },
     {
-      "kind": "duplicateLimitReached",
-      "message": "the certificate authority has issued 5 certificates for ruth.relay.example.com in the last 7 days, its limit; it issues another after 2026-10-20T17:00:00Z"
+      "kind": "limitUsedUp",
+      "message": "the certificate authority has issued all 5 certificates it allows ruth.relay.example.com in 7 days; it issues another after 2026-10-20T17:00:00Z"
     },
     {
       "kind": "historyUnreadable",
@@ -655,19 +655,19 @@
       "message": "no server with the domain ruth.relay.example.com is registered"
     }
   ],
-  "duplicateCertificates": {
+  "duplicateCertificateLimit": {
     "noneInTheWindow": {
-      "limit": 5,
-      "count": 0
+      "allowed": 5,
+      "used": 0
     },
     "oneBelowTheLimit": {
-      "limit": 5,
-      "count": 4,
+      "allowed": 5,
+      "used": 4,
       "oldestLeavesWindowAt": "2026-10-20T17:00:00Z"
     },
     "atTheLimit": {
-      "limit": 5,
-      "count": 5,
+      "allowed": 5,
+      "used": 5,
       "oldestLeavesWindowAt": "2026-10-20T17:00:00Z"
     }
   }

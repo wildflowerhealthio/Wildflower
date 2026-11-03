@@ -82,18 +82,18 @@
 //!   notification it is once the server can open it, answering at once, and
 //!   nothing for any other notification. The tap wins over the arrival in the
 //!   foreground it brings: it ends every other consent open still waiting.
-//! - [`server_duplicate_certificates`], invoked as
-//!   `invoke('server_duplicate_certificates', { domain })`, answers with how
-//!   many certificates the server's history records from its CA in the CA's
-//!   duplicate-certificate window, against its limit, or `null` for a CA
-//!   with no limit to reach, as staging.
-//! - [`server_get_certificate`] and [`server_order_new_certificate`], invoked
-//!   as `invoke('server_get_certificate', { domain })` and
-//!   `invoke('server_order_new_certificate', { domain })`, restart a running
-//!   server's ordering, the latter first dropping its cached certificate, so
-//!   it orders now even while a failed order backs off; each is refused for
-//!   a server that isn't running, and once the CA's duplicate-certificate
-//!   limit is reached.
+//! - [`server_duplicate_certificate_limit`], invoked as
+//!   `invoke('server_duplicate_certificate_limit', { domain })`, answers with
+//!   how much of its CA's duplicate-certificate limit the server has used, as
+//!   this device's certificate history records it, or `null` for a CA with
+//!   no limit to reach, as staging.
+//! - [`server_order_certificate`] and [`server_force_new_certificate`],
+//!   invoked as `invoke('server_order_certificate', { domain })` and
+//!   `invoke('server_force_new_certificate', { domain })`, restart a running
+//!   server's ordering, ordering if needed or forced, the latter first
+//!   dropping its cached certificate, so it orders now even while a failed
+//!   order backs off; each is refused for a server that isn't running, and
+//!   once the CA's duplicate-certificate limit looks used up.
 //!
 //! Parameters are top-level and camelCase in the invoke payload, which Tauri
 //! maps onto the commands' snake_case parameters; answers are camelCase. The
@@ -140,7 +140,7 @@ use wildflowerhealthio_tauri_unit_runner::TauriUnitRunner;
 use wildflowerhealthio_wildflower_server::WildflowerServerConfig;
 
 pub use certificate_commands::{
-    server_duplicate_certificates, server_get_certificate, server_order_new_certificate,
+    server_duplicate_certificate_limit, server_force_new_certificate, server_order_certificate,
 };
 pub use commands::{
     server_add, server_remove, server_set_credentials, server_set_run_policy, server_update,

@@ -1,6 +1,6 @@
 //! [`CertificateHistoryEntry`]: one certificate a server deployed, as its
-//! certificate history records it; and [`DuplicateCertificates`], how many
-//! of them count toward its CA's duplicate-certificate limit.
+//! certificate history records it; and [`DuplicateCertificateLimit`], how
+//! much of its CA's duplicate-certificate limit they use.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -56,59 +56,65 @@ impl CertificateHistoryEntry {
     }
 }
 
-/// How many certificates a server's history records from a CA within its
-/// duplicate-certificate window, against the CA's limit. Every certificate a
-/// server holds is for its one domain, so each counts toward the limit on
-/// that exact name. Written camelCase:
-/// `{limit, count, oldestLeavesWindowAt?}`.
+/// How much of a CA's duplicate-certificate limit a server has used: how
+/// many certificates its history records from the CA within the limit's
+/// window. Every certificate a server holds is for its one domain, so each
+/// counts toward the limit on that exact name. Written camelCase:
+/// `{allowed, used, oldestLeavesWindowAt?}`.
 ///
 /// # Remarks
 ///
-/// A certificate counts from when the run first deployed it, never earlier
-/// than the CA issued it, so the count never misses one the CA still counts.
+/// Counted from this device's certificate history, so it estimates the CA's
+/// count. A certificate this install deployed is counted from its first
+/// deployment, never earlier than the CA issued it, so this count keeps a
+/// certificate longer than the CA does. A certificate issued for the domain
+/// to another install, or one whose history write failed, isn't counted at
+/// all. The CA's refusal is the authority; this count exists so the base can
+/// warn before the CA refuses.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DuplicateCertificates {
+pub struct DuplicateCertificateLimit {
     /// How many certificates for the same name the CA issues in its window.
-    pub limit: usize,
+    pub allowed: usize,
     /// How many certificates the history records from the CA in the window.
-    pub count: usize,
+    pub used: usize,
     /// When the oldest of those leaves the window; `None` when there are none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oldest_leaves_window_at: Option<DateTime<Utc>>,
 }
 
-impl DuplicateCertificates {
-    /// The certificates `history` records from `issuer` within the window
-    /// ending at `now`; `None` when `issuer` has no duplicate-certificate
-    /// limit.
+impl DuplicateCertificateLimit {
+    /// The limit `issuer` sets, used by the certificates `history` records
+    /// from it within the window ending at `now`; `None` when `issuer` has no
+    /// duplicate-certificate limit.
     #[must_use]
-    pub fn in_history(
+    pub fn from_deployments_in_window(
         history: &[CertificateHistoryEntry],
         issuer: CertificateAuthority,
         now: DateTime<Utc>,
     ) -> Option<Self> {
-        let limit = issuer.duplicate_certificate_limit()?;
+        let allowed = issuer.duplicate_certificate_limit()?;
         let window_start = now - DUPLICATE_CERTIFICATE_WINDOW;
-        let in_window = || {
-            history
-                .iter()
-                .filter(move |entry| entry.issuer == issuer && entry.deployed_at > window_start)
-        };
+        let deployed_in_window: Vec<DateTime<Utc>> = history
+            .iter()
+            .filter(|entry| entry.issuer == issuer && entry.deployed_at > window_start)
+            .map(|entry| entry.deployed_at)
+            .collect();
         Some(Self {
-            limit,
-            count: in_window().count(),
-            oldest_leaves_window_at: in_window()
-                .map(|entry| entry.deployed_at + DUPLICATE_CERTIFICATE_WINDOW)
-                .min(),
+            allowed,
+            used: deployed_in_window.len(),
+            oldest_leaves_window_at: deployed_in_window
+                .iter()
+                .min()
+                .map(|deployed_at| *deployed_at + DUPLICATE_CERTIFICATE_WINDOW),
         })
     }
 
-    /// Whether the CA would refuse another certificate for the name now:
-    /// the window holds as many as its limit.
+    /// Whether the CA would refuse another certificate for the name now, by
+    /// this estimate: the window holds as many as it allows.
     #[must_use]
-    pub fn is_at_limit(&self) -> bool {
-        self.count >= self.limit
+    pub fn is_used_up(&self) -> bool {
+        self.used >= self.allowed
     }
 }
 
@@ -147,15 +153,18 @@ mod tests {
         ];
 
         // Act
-        let duplicates =
-            DuplicateCertificates::in_history(&history, CertificateAuthority::LetsEncrypt, now());
+        let limit = DuplicateCertificateLimit::from_deployments_in_window(
+            &history,
+            CertificateAuthority::LetsEncrypt,
+            now(),
+        );
 
         // Assert: 8 and exactly 7 days ago are out, as is staging's.
         assert_eq!(
-            duplicates,
-            Some(DuplicateCertificates {
-                limit: 5,
-                count: 2,
+            limit,
+            Some(DuplicateCertificateLimit {
+                allowed: 5,
+                used: 2,
                 oldest_leaves_window_at: Some(now() + TimeDelta::days(1)),
             })
         );
@@ -168,23 +177,27 @@ mod tests {
             CertificateAuthority::LetsEncrypt,
         )];
         assert_eq!(
-            DuplicateCertificates::in_history(&history, CertificateAuthority::LetsEncrypt, now()),
-            Some(DuplicateCertificates {
-                limit: 5,
-                count: 0,
+            DuplicateCertificateLimit::from_deployments_in_window(
+                &history,
+                CertificateAuthority::LetsEncrypt,
+                now()
+            ),
+            Some(DuplicateCertificateLimit {
+                allowed: 5,
+                used: 0,
                 oldest_leaves_window_at: None,
             })
         );
     }
 
     #[test]
-    fn a_ca_without_a_duplicate_limit_has_no_count() {
+    fn a_ca_without_a_duplicate_limit_has_no_limit() {
         let history = [deployed_ago(
             TimeDelta::hours(1),
             CertificateAuthority::LetsEncryptStaging,
         )];
         assert_eq!(
-            DuplicateCertificates::in_history(
+            DuplicateCertificateLimit::from_deployments_in_window(
                 &history,
                 CertificateAuthority::LetsEncryptStaging,
                 now()
@@ -194,28 +207,28 @@ mod tests {
     }
 
     #[test]
-    fn the_limit_is_reached_at_its_count() {
-        let duplicates_of = |count| DuplicateCertificates {
-            limit: 5,
-            count,
+    fn the_limit_is_used_up_once_used_reaches_allowed() {
+        let limit_used = |used| DuplicateCertificateLimit {
+            allowed: 5,
+            used,
             oldest_leaves_window_at: Some(now()),
         };
-        assert!(!duplicates_of(4).is_at_limit());
-        assert!(duplicates_of(5).is_at_limit());
+        assert!(!limit_used(4).is_used_up());
+        assert!(limit_used(5).is_used_up());
     }
 
     #[test]
-    fn the_count_is_written_camel_case() {
-        let duplicates = DuplicateCertificates {
-            limit: 5,
-            count: 4,
+    fn the_limit_is_written_camel_case() {
+        let limit = DuplicateCertificateLimit {
+            allowed: 5,
+            used: 4,
             oldest_leaves_window_at: Some(now()),
         };
         assert_eq!(
-            serde_json::to_value(&duplicates).unwrap(),
+            serde_json::to_value(&limit).unwrap(),
             serde_json::json!({
-                "limit": 5,
-                "count": 4,
+                "allowed": 5,
+                "used": 4,
                 "oldestLeavesWindowAt": "2026-10-16T12:00:00Z",
             })
         );

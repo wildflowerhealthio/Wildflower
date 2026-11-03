@@ -1,13 +1,14 @@
-//! The certificate commands: the base gets a running server a certificate
-//! now, or orders a new one in place of the one it holds, through the
-//! [`CertificateActions`](wildflowerhealthio_wildflower_server::CertificateActions)
-//! in its run's detail, and reads how many certificates its CA has issued
-//! for the server's domain in the CA's duplicate-certificate window, from the
-//! server's certificate history. Each order counts that window first and is
-//! refused at the CA's limit
-//! ([`ensure_below_duplicate_limit`](wildflowerhealthio_servers::ensure_below_duplicate_limit)),
+//! The certificate commands: the base orders a running server a
+//! certificate, if needed or forced (see
+//! [`CertificateOrderKind`]), through the
+//! [`RunningCertificateControl`](wildflowerhealthio_wildflower_server::RunningCertificateControl)
+//! in its run's detail, and reads how much of its CA's duplicate-certificate
+//! limit the server's domain has used, as the server's certificate history
+//! records it. Each order checks that limit first and is refused once it
+//! looks used up
+//! ([`ensure_limit_not_used_up`](wildflowerhealthio_servers::ensure_limit_not_used_up)),
 //! since the CA would refuse it. Every failure answers as `{kind, message}`, a
-//! [`CertificateActionError`], and is logged by domain.
+//! [`CertificateOrderRequestError`], and is logged by domain.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -15,143 +16,132 @@ use std::sync::Arc;
 use chrono::Utc;
 use tauri_plugin_log::log;
 use wildflowerhealthio_servers::{
-    CertificateActionError, RegistryError, ServerDetail, ServerRecord, ServerRegistry,
+    CertificateOrderRequestError, RegistryError, ServerDetail, ServerRecord, ServerRegistry,
 };
 use wildflowerhealthio_tauri_unit_runner::{UnitId, UnitStatuses};
-use wildflowerhealthio_wildflower_server::DuplicateCertificates;
+use wildflowerhealthio_wildflower_server::{CertificateOrderKind, DuplicateCertificateLimit};
 
 use crate::ServersState;
 
-/// How many certificates the server `domain`'s CA has issued for its domain
-/// in the CA's duplicate-certificate window, as its certificate history
-/// records them, against the CA's limit; `null` for a CA with no limit a
-/// server reaches, as Let's Encrypt's staging CA. Invoked as
-/// `invoke('server_duplicate_certificates', { domain })`.
+/// How much of the server `domain`'s CA's duplicate-certificate limit its
+/// domain has used, as this device's certificate history records it; `null`
+/// for a CA with no limit a server reaches, as Let's Encrypt's staging CA.
+/// Invoked as `invoke('server_duplicate_certificate_limit', { domain })`.
 ///
 /// # Errors
 ///
-/// The [`CertificateActionError`] reading it failed with: the server isn't
+/// The [`CertificateOrderRequestError`] reading it failed with: the server isn't
 /// registered, or its history couldn't be read.
 #[tauri::command]
-pub async fn server_duplicate_certificates(
+pub async fn server_duplicate_certificate_limit(
     servers: tauri::State<'_, ServersState>,
     domain: String,
-) -> Result<Option<DuplicateCertificates>, CertificateActionError> {
-    duplicate_certificates(Arc::clone(&servers.registry), &servers.data_root, &domain)
+) -> Result<Option<DuplicateCertificateLimit>, CertificateOrderRequestError> {
+    duplicate_certificate_limit(Arc::clone(&servers.registry), &servers.data_root, &domain)
         .await
         .inspect_err(|error| {
-            log::warn!("[servers] counting the certificates of {domain} failed: {error}");
+            log::warn!(
+                "[servers] reading the duplicate-certificate limit of {domain} failed: {error}"
+            );
         })
 }
 
-/// Have the running server `domain` order a certificate now, even while a
-/// failed order backs off: its run starts its ordering again, deploying the
-/// cached certificate if it is valid. Invoked as
-/// `invoke('server_get_certificate', { domain })`; answers with nothing once
-/// the new ordering has started.
+/// Have the running server `domain` order a certificate if needed, even
+/// while a failed order backs off: its run starts its ordering again,
+/// deploying the cached certificate if it is valid
+/// ([`CertificateOrderKind::IfNeeded`]). Invoked as
+/// `invoke('server_order_certificate', { domain })`; answers with nothing
+/// once the new ordering has started.
 ///
 /// # Errors
 ///
-/// The [`CertificateActionError`] that stopped it: the server isn't
+/// The [`CertificateOrderRequestError`] that stopped it: the server isn't
 /// registered or running, its history couldn't be read, or its CA's
-/// duplicate-certificate limit is reached.
+/// duplicate-certificate limit is used up.
 #[tauri::command]
-pub async fn server_get_certificate(
+pub async fn server_order_certificate(
     servers: tauri::State<'_, ServersState>,
     domain: String,
-) -> Result<(), CertificateActionError> {
-    order(
+) -> Result<(), CertificateOrderRequestError> {
+    restart_certificate_ordering(
         Arc::clone(&servers.registry),
         &servers.data_root,
         &servers.server_units.statuses(),
         domain,
-        CertificateOrder::Now,
+        CertificateOrderKind::IfNeeded,
     )
     .await
 }
 
 /// Have the running server `domain` drop its cached certificate and key and
-/// order a new one now; the install's ACME account stays. Until the new one
-/// is deployed, the server has no certificate to serve and can't be reached.
-/// Invoked as `invoke('server_order_new_certificate', { domain })`; answers
-/// with nothing once the new ordering has started.
+/// order a new one now ([`CertificateOrderKind::Forced`]); the install's ACME
+/// account stays. Until the new one is deployed, the server has no
+/// certificate to serve and can't be reached. Invoked as
+/// `invoke('server_force_new_certificate', { domain })`; answers with
+/// nothing once the new ordering has started.
 ///
 /// # Errors
 ///
-/// The [`CertificateActionError`] that stopped it, as for
-/// [`server_get_certificate`], or `cachedCertificateNotRemoved`, after which
-/// the run has started its ordering again from the cached certificate.
+/// The [`CertificateOrderRequestError`] that stopped it, as for
+/// [`server_order_certificate`], or `cachedCertificateNotRemoved`, after
+/// which the run has started its ordering again from the cached certificate.
 #[tauri::command]
-pub async fn server_order_new_certificate(
+pub async fn server_force_new_certificate(
     servers: tauri::State<'_, ServersState>,
     domain: String,
-) -> Result<(), CertificateActionError> {
-    order(
+) -> Result<(), CertificateOrderRequestError> {
+    restart_certificate_ordering(
         Arc::clone(&servers.registry),
         &servers.data_root,
         &servers.server_units.statuses(),
         domain,
-        CertificateOrder::New,
+        CertificateOrderKind::Forced,
     )
     .await
 }
 
-/// Which order a certificate command asks the server's run for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CertificateOrder {
-    /// Order now, keeping the cached certificate: "Get certificate".
-    Now,
-    /// Drop the cached certificate and order a new one: "Order a new
-    /// certificate".
-    New,
-}
-
 /// Restart the ordering of the server `domain`, registered in `registry`
-/// with its folder in `data_root`, through its run in `statuses`, as `order`
-/// asks, once its CA's duplicate-certificate limit allows another.
-async fn order(
+/// with its folder in `data_root`, through its run in `statuses`, as `kind`
+/// asks, unless its CA's duplicate-certificate limit looks used up.
+async fn restart_certificate_ordering(
     registry: Arc<dyn ServerRegistry>,
     data_root: &Path,
     statuses: &UnitStatuses<ServerDetail>,
     domain: String,
-    order: CertificateOrder,
-) -> Result<(), CertificateActionError> {
+    kind: CertificateOrderKind,
+) -> Result<(), CertificateOrderRequestError> {
     let result = async {
-        let duplicates = duplicate_certificates(registry, data_root, &domain).await?;
-        wildflowerhealthio_servers::ensure_below_duplicate_limit(&domain, duplicates.as_ref())?;
-        let actions = wildflowerhealthio_servers::running_certificate_actions(
+        let limit = duplicate_certificate_limit(registry, data_root, &domain).await?;
+        wildflowerhealthio_servers::ensure_limit_not_used_up(&domain, limit.as_ref())?;
+        wildflowerhealthio_servers::running_certificate_control(
             &domain,
             statuses.get(&UnitId::new(&domain)),
-        )?;
-        match order {
-            CertificateOrder::Now => actions.get_certificate().await,
-            CertificateOrder::New => actions.order_new_certificate().await,
-        }
-        .map_err(|restart_error| CertificateActionError::of_restart(&domain, &restart_error))
+        )?
+        .restart(kind)
+        .await
+        .map_err(|control_error| CertificateOrderRequestError::of_control(&domain, &control_error))
     }
     .await;
     match &result {
-        Ok(()) => log::info!("[servers] {domain} is ordering its certificate ({order:?})"),
+        Ok(()) => log::info!("[servers] {domain} is ordering its certificate ({kind:?})"),
         Err(error) => {
-            log::warn!(
-                "[servers] ordering the certificate of {domain} ({order:?}) failed: {error}"
-            );
+            log::warn!("[servers] ordering the certificate of {domain} ({kind:?}) failed: {error}");
         }
     }
     result
 }
 
-/// The certificates the server `domain`, registered in `registry` with its
-/// folder in `data_root`, has deployed from its CA in the CA's
-/// duplicate-certificate window, as of now; `None` for a CA with no limit.
-async fn duplicate_certificates(
+/// How much of its CA's duplicate-certificate limit the server `domain`,
+/// registered in `registry` with its folder in `data_root`, has used by its
+/// certificate history, as of now; `None` for a CA with no limit.
+async fn duplicate_certificate_limit(
     registry: Arc<dyn ServerRegistry>,
     data_root: &Path,
     domain: &str,
-) -> Result<Option<DuplicateCertificates>, CertificateActionError> {
-    let record = registered_record(registry, domain.to_owned()).await?;
+) -> Result<Option<DuplicateCertificateLimit>, CertificateOrderRequestError> {
+    let record = read_registered_record(registry, domain.to_owned()).await?;
     let config = record.device_certificate_config(data_root);
-    let history_unreadable = |message: String| CertificateActionError::HistoryUnreadable {
+    let history_unreadable = |message: String| CertificateOrderRequestError::HistoryUnreadable {
         domain: domain.to_owned(),
         message,
     };
@@ -161,7 +151,7 @@ async fn duplicate_certificates(
     .await
     .map_err(|error| history_unreadable(error.to_string()))?
     .map_err(|error| history_unreadable(error.to_string()))?;
-    Ok(DuplicateCertificates::in_history(
+    Ok(DuplicateCertificateLimit::from_deployments_in_window(
         &history,
         record.certificate_authority,
         Utc::now(),
@@ -170,14 +160,14 @@ async fn duplicate_certificates(
 
 /// The record of the server `domain` in `registry`, read on a blocking
 /// thread.
-async fn registered_record(
+async fn read_registered_record(
     registry: Arc<dyn ServerRegistry>,
     domain: String,
-) -> Result<ServerRecord, CertificateActionError> {
+) -> Result<ServerRecord, CertificateOrderRequestError> {
     tokio::task::spawn_blocking(move || registry.read(&domain))
         .await
         .map_err(|error| RegistryError::storage("reading a server's record", error))?
-        .map_err(CertificateActionError::from)
+        .map_err(CertificateOrderRequestError::from)
 }
 
 #[cfg(test)]
@@ -265,7 +255,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_count_is_the_history_s_certificates_in_the_ca_s_window() {
+    async fn the_limit_used_is_the_history_s_certificates_in_the_ca_s_window() {
         // Arrange: one from 8 days ago, outside the window.
         let (data_root, registry) = registry_with_history(
             CertificateAuthority::LetsEncrypt,
@@ -273,23 +263,23 @@ mod tests {
         );
 
         // Act
-        let duplicates = duplicate_certificates(registry, data_root.path(), DOMAIN)
+        let limit = duplicate_certificate_limit(registry, data_root.path(), DOMAIN)
             .await
             .unwrap()
             .expect("Let's Encrypt has a limit");
 
         // Assert
-        assert_eq!((duplicates.limit, duplicates.count), (5, 2));
+        assert_eq!((limit.allowed, limit.used), (5, 2));
     }
 
     #[tokio::test]
-    async fn staging_has_no_count() {
+    async fn staging_has_no_limit() {
         let (data_root, registry) = registry_with_history(
             CertificateAuthority::LetsEncryptStaging,
             &five_days_of_certificates(),
         );
         assert_eq!(
-            duplicate_certificates(registry, data_root.path(), DOMAIN)
+            duplicate_certificate_limit(registry, data_root.path(), DOMAIN)
                 .await
                 .unwrap(),
             None
@@ -299,49 +289,49 @@ mod tests {
     #[tokio::test]
     async fn each_order_is_refused_for_a_server_that_is_not_running() {
         for statuses in [UnitStatuses::new(), statuses_in(RunState::Starting)] {
-            for certificate_order in [CertificateOrder::Now, CertificateOrder::New] {
+            for kind in [CertificateOrderKind::IfNeeded, CertificateOrderKind::Forced] {
                 let (data_root, registry) =
                     registry_with_history(CertificateAuthority::LetsEncrypt, &[]);
-                let refused = order(
+                let refused = restart_certificate_ordering(
                     registry,
                     data_root.path(),
                     &statuses,
                     DOMAIN.to_owned(),
-                    certificate_order,
+                    kind,
                 )
                 .await;
                 assert!(
                     matches!(
                         refused,
-                        Err(CertificateActionError::ServerNotRunning { .. })
+                        Err(CertificateOrderRequestError::ServerNotRunning { .. })
                     ),
-                    "{certificate_order:?}: {refused:?}"
+                    "{kind:?}: {refused:?}"
                 );
             }
         }
     }
 
     #[tokio::test]
-    async fn each_order_is_refused_at_the_production_ca_s_limit() {
-        for certificate_order in [CertificateOrder::Now, CertificateOrder::New] {
+    async fn each_order_is_refused_once_the_production_ca_s_limit_is_used_up() {
+        for kind in [CertificateOrderKind::IfNeeded, CertificateOrderKind::Forced] {
             let (data_root, registry) = registry_with_history(
                 CertificateAuthority::LetsEncrypt,
                 &five_days_of_certificates(),
             );
-            let refused = order(
+            let refused = restart_certificate_ordering(
                 registry,
                 data_root.path(),
                 &UnitStatuses::new(),
                 DOMAIN.to_owned(),
-                certificate_order,
+                kind,
             )
             .await;
             assert!(
                 matches!(
                     refused,
-                    Err(CertificateActionError::DuplicateLimitReached { limit: 5, .. })
+                    Err(CertificateOrderRequestError::LimitUsedUp { allowed: 5, .. })
                 ),
-                "{certificate_order:?}: {refused:?}"
+                "{kind:?}: {refused:?}"
             );
         }
     }
@@ -354,18 +344,18 @@ mod tests {
             CertificateAuthority::LetsEncryptStaging,
             &five_days_of_certificates(),
         );
-        let refused = order(
+        let refused = restart_certificate_ordering(
             registry,
             data_root.path(),
             &UnitStatuses::new(),
             DOMAIN.to_owned(),
-            CertificateOrder::New,
+            CertificateOrderKind::Forced,
         )
         .await;
         assert!(
             matches!(
                 refused,
-                Err(CertificateActionError::ServerNotRunning { .. })
+                Err(CertificateOrderRequestError::ServerNotRunning { .. })
             ),
             "{refused:?}"
         );
@@ -374,18 +364,18 @@ mod tests {
     #[tokio::test]
     async fn an_order_for_a_server_that_is_not_registered_is_refused() {
         let (data_root, registry) = registry_with_history(CertificateAuthority::LetsEncrypt, &[]);
-        let refused = order(
+        let refused = restart_certificate_ordering(
             registry,
             data_root.path(),
             &UnitStatuses::new(),
             "someone-else.relay.example.com".to_owned(),
-            CertificateOrder::Now,
+            CertificateOrderKind::IfNeeded,
         )
         .await;
         assert!(
             matches!(
                 refused,
-                Err(CertificateActionError::Registry(
+                Err(CertificateOrderRequestError::Registry(
                     RegistryError::NotRegistered { .. }
                 ))
             ),

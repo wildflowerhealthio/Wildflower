@@ -22,7 +22,7 @@ use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorke
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
 
 use crate::adapters::access_token_verifier::AuthorizationServerAccessTokenVerifier;
-use crate::adapters::acme_certificate::{CertificateActions, DeviceCertificate};
+use crate::adapters::acme_certificate::{RunningCertificate, RunningCertificateControl};
 use crate::adapters::authorization_start_limit::AuthorizationStartLimit;
 use crate::adapters::health_probe::ReqwestHealthProbe;
 use crate::adapters::launch_context_minter::AuthorizationServerLaunchContextMinter;
@@ -83,7 +83,7 @@ pub struct WildflowerServer {
     pending_consent_watcher: PendingConsentWatcher,
     /// The tunnel listener's certificate, ordered and renewed until it's
     /// dropped. Held for the same reason.
-    device_certificate: DeviceCertificate,
+    running_certificate: RunningCertificate,
     /// Runs the FHIR API's bulk `$export` jobs and deletes expired ones, for
     /// as long as the server serves.
     bulk_export_worker: BulkExportWorker,
@@ -120,13 +120,13 @@ impl WildflowerServer {
         self.pending_consent_watcher.clone()
     }
 
-    /// A handle to the host's actions on the server's certificate: get one
-    /// now, or order a new one in place of the one held (see
-    /// [`CertificateActions`]). Clone it before [`serve`](Self::serve); it
-    /// acts for as long as this run serves.
+    /// A handle to the host's control of the server's certificate: restart
+    /// its ordering, ordering if needed or forced (see
+    /// [`RunningCertificateControl`]). Clone it before [`serve`](Self::serve);
+    /// it controls the certificate for as long as this run serves.
     #[must_use]
-    pub fn certificate_actions(&self) -> CertificateActions {
-        self.device_certificate.actions()
+    pub fn certificate_control(&self) -> RunningCertificateControl {
+        self.running_certificate.control()
     }
 
     /// A sender onto the tunnel listener, as the tunnel holds: each stream
@@ -154,12 +154,12 @@ impl WildflowerServer {
             tunnel_router,
             tunnel_daemon,
             reachability_monitor,
-            device_certificate,
+            running_certificate,
             bulk_export_worker,
             // The launch context and sign-in code minters, the pending consent
             // watcher, and the `test-support` feature's `tunnel_stream_tx`.
-            // The certificate actions handed out stop acting once
-            // `device_certificate` drops.
+            // The certificate control handed out stops working once
+            // `running_certificate` drops.
             ..
         } = self;
         let tunnel = axum::serve(
@@ -174,7 +174,7 @@ impl WildflowerServer {
         tokio::try_join!(tunnel.into_future(), bulk_export)?;
         drop(reachability_monitor);
         drop(tunnel_daemon);
-        drop(device_certificate);
+        drop(running_certificate);
         Ok(())
     }
 }
@@ -388,9 +388,9 @@ pub async fn set_up(
     // first; one that can't be fails the setup. It publishes its state on the
     // host's channel, and records each new certificate in the server's
     // certificate history.
-    let device_certificate =
-        DeviceCertificate::start(&domain, &device_certificate, observers.certificate_tx)?;
-    let tunnel_tls_acceptor = TunnelTlsAcceptor::new(&domain, device_certificate.resolver());
+    let running_certificate =
+        RunningCertificate::start(&domain, &device_certificate, observers.certificate_tx)?;
+    let tunnel_tls_acceptor = TunnelTlsAcceptor::new(&domain, running_certificate.resolver());
     #[cfg(feature = "test-support")]
     let tunnel_stream_tx = tunnel_config.tunnel_stream_tx;
     // Whether a remote app can reach the server: once the tunnel is
@@ -566,7 +566,7 @@ pub async fn set_up(
         launch_context_minter: authorization_server.launch_context_minter,
         same_device_sign_in_code_minter: authorization_server.same_device_sign_in_code_minter,
         pending_consent_watcher: authorization_server.pending_consent_watcher,
-        device_certificate,
+        running_certificate,
         bulk_export_worker: fhir_routers.bulk_export_worker,
     })
 }

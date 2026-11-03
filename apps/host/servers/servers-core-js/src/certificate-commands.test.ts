@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
 import {
-  getServerCertificate,
-  orderNewServerCertificate,
-  readDuplicateCertificates,
+  forceNewServerCertificate,
+  orderServerCertificate,
+  readDuplicateCertificateLimit,
 } from './certificate-commands.ts'
-import * as DuplicateCertificates from './duplicate-certificates.ts'
+import * as DuplicateCertificateLimit from './duplicate-certificate-limit.ts'
 import { HostCommandFailed, TauriInvoke } from './host-commands.ts'
 
 const DOMAIN = 'ruth.relay.example.com'
@@ -36,69 +36,66 @@ const runAgainstHostAnswering = async <A, E>(
   return { exit, seen }
 }
 
-describe('readDuplicateCertificates', () => {
-  it("should decode the host's count with when the oldest leaves the window", async () => {
+describe('readDuplicateCertificateLimit', () => {
+  it("should decode the host's limit with when the oldest leaves the window", async () => {
     // Act
     const { exit, seen } = await runAgainstHostAnswering(
-      readDuplicateCertificates({ domain: DOMAIN }),
-      () => Promise.resolve(golden.duplicateCertificates.oneBelowTheLimit)
+      readDuplicateCertificateLimit({ domain: DOMAIN }),
+      () => Promise.resolve(golden.duplicateCertificateLimit.oneBelowTheLimit)
     )
 
     // Assert
-    expect(seen).toEqual([{ command: 'server_duplicate_certificates', args: { domain: DOMAIN } }])
+    expect(seen).toEqual([
+      { command: 'server_duplicate_certificate_limit', args: { domain: DOMAIN } },
+    ])
     expect(exit).toEqual(
       Exit.succeed(
         Option.some({
-          limit: 5,
-          count: 4,
+          allowed: 5,
+          used: 4,
           oldestLeavesWindowAt: Option.some(DateTime.unsafeMake('2026-10-20T17:00:00Z')),
         })
       )
     )
   })
 
-  it('should decode a count with none in the window as leaving none', async () => {
+  it('should decode a limit with none used as leaving none', async () => {
     const { exit } = await runAgainstHostAnswering(
-      readDuplicateCertificates({ domain: DOMAIN }),
-      () => Promise.resolve(golden.duplicateCertificates.noneInTheWindow)
+      readDuplicateCertificateLimit({ domain: DOMAIN }),
+      () => Promise.resolve(golden.duplicateCertificateLimit.noneInTheWindow)
     )
     expect(exit).toEqual(
-      Exit.succeed(Option.some({ limit: 5, count: 0, oldestLeavesWindowAt: Option.none() }))
+      Exit.succeed(Option.some({ allowed: 5, used: 0, oldestLeavesWindowAt: Option.none() }))
     )
   })
 
-  it('should decode a CA with no limit as no count', async () => {
+  it('should decode a CA with no limit as none', async () => {
     const { exit } = await runAgainstHostAnswering(
-      readDuplicateCertificates({ domain: DOMAIN }),
+      readDuplicateCertificateLimit({ domain: DOMAIN }),
       () => Promise.resolve(null)
     )
     expect(exit).toEqual(Exit.succeed(Option.none()))
   })
 })
 
-describe('DuplicateCertificates', () => {
-  const counted = (count: number): DuplicateCertificates.Type => ({
-    limit: 5,
-    count,
+describe('DuplicateCertificateLimit', () => {
+  const limitUsed = (used: number): DuplicateCertificateLimit.Type => ({
+    allowed: 5,
+    used,
     oldestLeavesWindowAt: Option.none(),
   })
 
   it.each([
-    [3, false, false],
-    [4, true, false],
-    [5, true, true],
-  ])(
-    'with %i of 5, should say the next reaches the limit: %s, at the limit: %s',
-    (count, nextReaches, atLimit) => {
-      expect(DuplicateCertificates.nextReachesLimit(counted(count))).toBe(nextReaches)
-      expect(DuplicateCertificates.isAtLimit(counted(count))).toBe(atLimit)
-    }
-  )
+    [4, false],
+    [5, true],
+  ])('with %i of 5 used, should say it is used up: %s', (used, usedUp) => {
+    expect(DuplicateCertificateLimit.isUsedUp(limitUsed(used))).toBe(usedUp)
+  })
 })
 
 describe.each([
-  ['server_get_certificate', getServerCertificate],
-  ['server_order_new_certificate', orderNewServerCertificate],
+  ['server_order_certificate', orderServerCertificate],
+  ['server_force_new_certificate', forceNewServerCertificate],
 ] as const)('%s', (command, order) => {
   it('should invoke the command with the domain and answer once the host has', async () => {
     const { exit, seen } = await runAgainstHostAnswering(order({ domain: DOMAIN }), () =>
@@ -108,7 +105,7 @@ describe.each([
     expect(exit).toEqual(Exit.succeed(null))
   })
 
-  it.each(golden.certificateActionErrors)(
+  it.each(golden.certificateOrderRequestErrors)(
     "should fail with the host's $kind refusal",
     async (error) => {
       // Act

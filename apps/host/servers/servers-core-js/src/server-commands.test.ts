@@ -98,9 +98,9 @@ describe('ServerStatus', () => {
   })
 
   it.each(Object.entries(golden.serverStatuses))(
-    'should say whether %s is running while it orders a certificate with none held',
+    'should say whether %s is unreachable while it orders a certificate',
     (name, status) => {
-      expect(ServerStatus.isOrderingWithoutCertificate(decode(status))).toBe(
+      expect(ServerStatus.isUnreachableWhileOrdering(decode(status))).toBe(
         name === 'runningCacheFailed'
       )
     }

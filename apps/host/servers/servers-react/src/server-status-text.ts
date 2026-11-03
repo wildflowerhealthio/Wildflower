@@ -126,12 +126,12 @@ const statusNote = (server: ListedServer.Type): Option.Option<string> => {
 }
 
 /**
- * What a running server that orders a certificate with none to serve says:
+ * What a server that can't be reached while it orders a certificate says:
  * it can't be reached until one arrives. None otherwise.
  */
-const orderingWithoutCertificateNote = (status: ServerStatus.Type): Option.Option<string> =>
+const unreachableWhileOrderingNote = (status: ServerStatus.Type): Option.Option<string> =>
   Option.liftPredicate("This server can't be reached until its certificate arrives.", () =>
-    ServerStatus.isOrderingWithoutCertificate(status)
+    ServerStatus.isUnreachableWhileOrdering(status)
   )
 
 /** Why a run stopped, as a sentence, for every reason but a failure. */
@@ -174,12 +174,12 @@ export {
   formatInstant,
   INSTANT_FORMAT,
   lastStopText,
-  orderingWithoutCertificateNote,
   PLATFORM_STOP_REASON_TEXT,
   REACHABLE_STATUS,
   runningStatus,
   STOP_REASON_TEXT,
   statusNote,
   statusSummary,
+  unreachableWhileOrderingNote,
 }
 export type { StatusSummary }

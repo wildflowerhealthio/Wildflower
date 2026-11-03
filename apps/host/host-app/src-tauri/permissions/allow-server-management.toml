@@ -6,16 +6,16 @@ description = """
 Grants the webview the right to invoke the app-defined `servers_list`,
 `server_set_run_policy`, `server_update`, `server_remove`, `server_launch`,
 `server_open_authorization_app`, `server_open_pending_consent`,
-`server_open_notified_consent`, `server_duplicate_certificates`,
-`server_get_certificate` and `server_order_new_certificate` commands
+`server_open_notified_consent`, `server_duplicate_certificate_limit`,
+`server_order_certificate` and `server_force_new_certificate` commands
 (`servers-tauri`): listing the install's servers with their status on the
 unit runner and the consent waiting first on each, setting when each runs, setting its launcher,
 Authorization app and certificate source, deleting a server with its folder,
 databases and certificates, opening a server's launcher with a launch its
 authorization server minted, opening its Authorization app, and opening the
 consent waiting on it at its page, each in a browser signed in as the Owner,
-and counting a server's recent certificates and having it order one now or
-order a new one in place of the one it holds.
+and reading how much of a server's duplicate-certificate limit it has used
+and having it order a certificate if needed or force a new one.
 
 SECURITY: granted to the `main` webview only (capabilities/default.json),
 which runs the base. A webview holding this grant can start and stop the
@@ -32,7 +32,7 @@ commands.allow = [
   "server_open_authorization_app",
   "server_open_pending_consent",
   "server_open_notified_consent",
-  "server_duplicate_certificates",
-  "server_get_certificate",
-  "server_order_new_certificate",
+  "server_duplicate_certificate_limit",
+  "server_order_certificate",
+  "server_force_new_certificate",
 ]
