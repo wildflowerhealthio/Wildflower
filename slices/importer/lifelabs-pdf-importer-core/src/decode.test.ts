@@ -1,4 +1,3 @@
-import { adoptUnderKey } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   DecodedFile,
   DecodedFileSet,
@@ -39,30 +38,6 @@ const entriesOf = (
       FromSource: ({ entries }) => entries,
     })
   )
-
-/**
- * A decode's records adopted as the import stage adopts them: each
- * `FromSource` section's under its key, its references keyed in its family.
- */
-const adoptedOf = (decoded: DecodeFunction.FileSetDecode): DecodedFile.DecodedFile => ({
-  sections: decoded.sections.map(
-    DecodedFileSet.Section.$match({
-      Adopted: () => expect.fail('the LifeLabs decode keeps its records as their source gave them'),
-      FromSource: ({ title, systemFamily, entries }) => {
-        const adopt = adoptUnderKey(systemFamily)
-        return {
-          title,
-          resources: entries.map((entry) => ({
-            key: entry.key,
-            title: entry.title,
-            resource: adopt(entry),
-          })),
-        }
-      },
-    })
-  ),
-  notes: decoded.notes,
-})
 
 describe('decodeLifeLabsPdfDocument', () => {
   it('property: a document with LifeLabs reports decodes to one titled section per report', () => {
@@ -125,7 +100,7 @@ describe('decodeLifeLabsPdfDocument', () => {
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
-        for (const { resource } of DecodedFile.resources(adoptedOf(decoded))) {
+        for (const { resource } of DecodedFile.resources(DecodedFileSet.adopt(decoded))) {
           expect(resource.id).toMatch(/^wf-[0-9a-f]{32}$/)
           if (resource.resourceType !== 'Binary') {
             expect(String(resource.identifier[0]?.system)).toBe(LIFELABS_SYSTEM)
@@ -150,7 +125,7 @@ describe('decodeLifeLabsPdfDocument', () => {
         ]
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
-        const referents = Effect.runSync(Referent.discover([adoptedOf(decoded)]))
+        const referents = Effect.runSync(Referent.discover([DecodedFileSet.adopt(decoded)]))
 
         for (const referent of referents) {
           expect(referent._tag).toBe('AsResource')

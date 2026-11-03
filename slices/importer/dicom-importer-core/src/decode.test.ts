@@ -29,7 +29,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { DicomHeader } from '@wildflowerhealthio/dicom'
-import { adoptUnderKey, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   decodeStudy,
   linkToPatientAndStudy,
@@ -93,31 +93,17 @@ const sample = (overrides: DicomTagMap = {}): Arr.NonEmptyReadonlyArray<PickedFi
 ]
 
 /**
- * A decode's records adopted as the import stage adopts them: each
- * `FromSource` section's under its key, its references keyed in its family.
+ * A decode's records adopted as the import stage adopts them, failing on a
+ * section that is not `FromSource`.
  */
-const adoptedOf = (decoded: {
-  readonly sections: readonly DecodedFileSet.Section[]
-  readonly notes: readonly string[]
-}): DecodedFile.DecodedFile => ({
-  sections: decoded.sections.map(
-    DecodedFileSet.Section.$match({
-      Adopted: () => expect.fail('the DICOM decode keeps its records as their source gave them'),
-      FromSource: ({ title, systemFamily, entries }) => {
-        const adopt = adoptUnderKey(systemFamily)
-        return {
-          title,
-          resources: entries.map((entry) => ({
-            key: entry.key,
-            title: entry.title,
-            resource: adopt(entry),
-          })),
-        }
-      },
-    })
-  ),
-  notes: decoded.notes,
-})
+const adoptedOf = (
+  decoded: Pick<DecodedFileSet.Type, 'sections' | 'notes'>
+): DecodedFile.DecodedFile => {
+  if (!decoded.sections.every(DecodedFileSet.Section.$is('FromSource'))) {
+    expect.fail('the DICOM decode keeps its records as their source gave them')
+  }
+  return DecodedFileSet.adopt(decoded)
+}
 
 describe('decodeStudy', () => {
   it('resolves ImagingStudy.started against the settings time zone', async () => {
