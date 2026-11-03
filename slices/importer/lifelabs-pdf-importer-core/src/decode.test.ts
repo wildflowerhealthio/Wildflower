@@ -4,6 +4,7 @@ import {
   type DecodeFunction,
   Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
+import { fromSourceSectionsOf } from '@wildflowerhealthio/importer-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
 import { Effect, Either, Layer, ParseResult } from 'effect'
@@ -28,16 +29,11 @@ import { layoutDocument } from './test-helpers.ts'
 
 const SETTINGS = { timeZone: 'America/Vancouver' }
 
-/** Every record of a decode, failing on a section that is not `FromSource`. */
+/** Every record of a decode, each section `FromSource`. */
 const entriesOf = (
   decoded: DecodeFunction.FileSetDecode
 ): readonly DecodedFileSet.FromSourceEntry[] =>
-  decoded.sections.flatMap(
-    DecodedFileSet.Section.$match({
-      Adopted: () => expect.fail('the LifeLabs decode keeps its records as their source gave them'),
-      FromSource: ({ entries }) => entries,
-    })
-  )
+  fromSourceSectionsOf(decoded).flatMap(({ entries }) => entries)
 
 describe('decodeLifeLabsPdfDocument', () => {
   it('property: a document with LifeLabs reports decodes to one titled section per report', () => {

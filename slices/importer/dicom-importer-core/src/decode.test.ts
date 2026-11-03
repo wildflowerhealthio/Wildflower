@@ -22,6 +22,7 @@ import {
   type PickedFile,
   Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
+import { fromSourceSectionsOf } from '@wildflowerhealthio/importer-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import type { Array as Arr } from 'effect'
 import { Effect, Either, Option, Schema } from 'effect'
@@ -92,18 +93,11 @@ const sample = (overrides: DicomTagMap = {}): Arr.NonEmptyReadonlyArray<PickedFi
   studyFile({ ...SAMPLE_TAGS, ...overrides }),
 ]
 
-/**
- * A decode's records adopted as the import stage adopts them, failing on a
- * section that is not `FromSource`.
- */
+/** A decode's records adopted as the import stage adopts them, each section `FromSource`. */
 const adoptedOf = (
   decoded: Pick<DecodedFileSet.Type, 'sections' | 'notes'>
-): DecodedFile.DecodedFile => {
-  if (!decoded.sections.every(DecodedFileSet.Section.$is('FromSource'))) {
-    expect.fail('the DICOM decode keeps its records as their source gave them')
-  }
-  return DecodedFileSet.adopt(decoded)
-}
+): DecodedFile.DecodedFile =>
+  DecodedFileSet.adopt({ sections: fromSourceSectionsOf(decoded), notes: decoded.notes })
 
 describe('decodeStudy', () => {
   it('resolves ImagingStudy.started against the settings time zone', async () => {
@@ -157,8 +151,8 @@ describe('decodeStudy', () => {
 
   it('keys each record by its own id in the DICOM system, for the import stage to adopt', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-    const [section] = result.sections
-    if (section?._tag !== 'FromSource') throw expect.fail('expected a FromSource section')
+    const [section] = fromSourceSectionsOf(result)
+    if (section === undefined) throw expect.fail('expected a section')
     expect(section.systemFamily).toEqual(
       SystemFamily.FixedAcrossResourceTypes({ system: DICOM_SYSTEM })
     )
