@@ -79,9 +79,9 @@ const reportSectionTitle = (report: Report.Type): string => {
  *
  * @remarks
  * The decode's own last leg, after the PDF's text is read into reports. A
- * caller that builds reports itself, such as `synthetic-data-lifelabs`, hands
- * this to `DecodeFunction.make` and the import stage to get what an import of
- * their print makes.
+ * caller that builds reports itself, such as `synthetic-data-lifelabs`' render,
+ * adopts this with `DecodedFileSet.adopt` to get the records an import of their
+ * print writes.
  */
 const decodedReportsOf = (
   reports: readonly Report.Type[],
