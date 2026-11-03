@@ -6,13 +6,7 @@
  *
  * @packageDocumentation
  */
-export {
-  adoptResource,
-  adoptedReferenceOf,
-  adoptUnderKey,
-  originalIdOf,
-  withSourceId,
-} from './adopt-resource.ts'
+export { adoptedReferenceOf, adoptUnderKey, originalIdOf, withSourceId } from './adopt-resource.ts'
 export type { ResourceWithSourceId } from './adopt-resource.ts'
 export { adoptUnderRecognizedRoot } from './adopt-under-recognized-root.ts'
 export * as DecodedId from './decoded-id.ts'
