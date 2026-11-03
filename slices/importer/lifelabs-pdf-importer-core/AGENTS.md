@@ -92,7 +92,8 @@ that hands back a hand-written positioned-text document.
   its source id in that family, one `FromSource` section per
   report titled by **`reportSectionTitle`** (the report's `Lab No` and date
   of service, `'LifeLabs report'` when both are masked), each review row
-  keyed and titled `<Type>/<source id>`, and no notes; each section built with
+  keyed `<Type>/<source id>` and titled by the reference it is written under,
+  `<Type>/<local id>`, and no notes; each section built with
   `DecodedFileSet.fromSourceSection`) and the
   `ReportResources` / `SynthesisOptions` types, none of which requires an
   extractor. For callers that build reports themselves
