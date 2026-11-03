@@ -10,11 +10,11 @@ import { Effect, Either, Layer, ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { decodeLifeLabsPdf, decodeLifeLabsPdfDocument, reportSectionTitle } from './decode.ts'
+import { decodeLifeLabsPdf, decodeLifeLabsPdfDocument } from './decode.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
 import { patientOriginalId, practitionerOriginalId } from './fhir/to-fhir.ts'
 import { LIFELABS_SYSTEM } from './source-system.ts'
-import { LIFELABS_SYSTEM_FAMILY } from './synthesis.ts'
+import { LIFELABS_SYSTEM_FAMILY, reportSectionTitle } from './synthesis.ts'
 import { layoutDocument } from './test-helpers.ts'
 
 /**

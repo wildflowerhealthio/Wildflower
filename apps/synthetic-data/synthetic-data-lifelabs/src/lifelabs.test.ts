@@ -1,4 +1,4 @@
-import { adoptedReferenceOf, adoptUnderKey } from '@wildflowerhealthio/fhir-r4-adoption'
+import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Quantity } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   DiagnosticReport,
@@ -7,7 +7,7 @@ import {
   Observation,
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFile, DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { decodeLifeLabsPdfDocument, Report } from '@wildflowerhealthio/lifelabs-pdf-importer-core'
 import { layoutDocument } from '@wildflowerhealthio/lifelabs-pdf-importer-core/test-helpers'
@@ -281,11 +281,8 @@ describe('LifeLabs.reportsOf', () => {
           decodeLifeLabsPdfDocument(printed, { timeZone: laboratory.timeZone })
         )
         // Adopted as the import stage adopts them, without its source file.
-        const imported = decoded.sections.flatMap(
-          DecodedFileSet.Section.$match({
-            Adopted: ({ entries }) => entries.map((entry) => entry.resource),
-            FromSource: ({ systemFamily, entries }) => entries.map(adoptUnderKey(systemFamily)),
-          })
+        const imported = DecodedFile.resources(DecodedFileSet.adopt(decoded)).map(
+          (entry) => entry.resource
         )
         const withoutSubject = (resource: FhirResource): FhirResource =>
           resource.resourceType === 'Observation' || resource.resourceType === 'DiagnosticReport'
