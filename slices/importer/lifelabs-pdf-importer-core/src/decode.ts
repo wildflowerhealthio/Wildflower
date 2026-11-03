@@ -1,9 +1,4 @@
-import type { ResourceWithSourceId } from '@wildflowerhealthio/fhir-r4-adoption'
-import {
-  DecodedFileSet,
-  type DecodeFunction,
-  type PickedFile,
-} from '@wildflowerhealthio/importer-fundamentals'
+import type { DecodeFunction, PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import {
   type Document,
@@ -14,7 +9,7 @@ import { Effect, ParseResult, Schema } from 'effect'
 
 import * as Report from './entities/report.ts'
 import type { LifeLabsPdfSettings } from './settings.ts'
-import { LIFELABS_SYSTEM_FAMILY, resourcesWithSourceIdsOf } from './synthesis.ts'
+import { decodedReportsOf } from './synthesis.ts'
 
 /**
  * Wrap a refusal as a `ParseError` so `decodeLifeLabsPdf` keeps a single,
@@ -31,24 +26,6 @@ const asParseError = (
     issue: new ParseResult.Forbidden(Schema.Unknown.ast, undefined, e.message),
   })
 
-/** A record as its review row, keyed and titled by its type and source id. */
-const labelWithSourceId = (record: ResourceWithSourceId): DecodedFileSet.FromSourceEntry => {
-  const typeAndSourceId = `${record.resource.resourceType}/${record.sourceId}`
-  return { key: typeAndSourceId, title: typeAndSourceId, ...record }
-}
-
-/**
- * The section title one report's resources are reviewed under: the report's
- * own printed identity — its `Lab No` and date of service — with a generic
- * fallback when the report masks both.
- */
-const reportSectionTitle = (report: Report.Type): string => {
-  const labNo = report.labNo.trim()
-  const dateOfService = report.dateOfService.trim()
-  const parts = [labNo === '' ? '' : `Lab No ${labNo}`, dateOfService].filter((part) => part !== '')
-  return parts.length === 0 ? 'LifeLabs report' : parts.join(' — ')
-}
-
 /**
  * Decode a positioned-text document into per-report sections of labeled FHIR
  * resources, each beside its source id — the pure "document → sections" leg
@@ -57,9 +34,9 @@ const reportSectionTitle = (report: Report.Type): string => {
  * @param document - The positioned-text document the
  *   {@link PositionedTextExtractor} produced from the PDF's bytes
  * @param settings - The import's settings (time zone for date interpretation)
- * @returns One `FromSource` section per report the document carries (titled
- *   by the report's `Lab No` and date of service), under
- *   {@link LIFELABS_SYSTEM_FAMILY}, no notes; fails only with a
+ * @returns The document's reports as {@link decodedReportsOf} yields them:
+ *   one `FromSource` section per report, titled by its `Lab No` and date of
+ *   service, under `LIFELABS_SYSTEM_FAMILY`, no notes; fails only with a
  *   `ParseError` when the document is not a recognized LifeLabs report;
  *   requires nothing
  *
@@ -77,15 +54,7 @@ const decodeLifeLabsPdfDocument = (
   Effect.gen(function* () {
     const timeZone = yield* checkTimeZone(settings.timeZone)
     const reports = yield* Report.tryFromDocument(document).pipe(Effect.mapError(asParseError))
-    const groups = yield* resourcesWithSourceIdsOf(reports, { timeZone })
-    const sections = groups.map((group) =>
-      DecodedFileSet.Section.FromSource({
-        title: reportSectionTitle(group.report),
-        systemFamily: LIFELABS_SYSTEM_FAMILY,
-        entries: group.resources.map(labelWithSourceId),
-      })
-    )
-    return { sections, notes: [] }
+    return yield* decodedReportsOf(reports, { timeZone })
   })
 
 /**
@@ -120,4 +89,4 @@ const decodeLifeLabsPdf = (
     return yield* decodeLifeLabsPdfDocument(document, settings)
   })
 
-export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument, reportSectionTitle }
+export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument }
