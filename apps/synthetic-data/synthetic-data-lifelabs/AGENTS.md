@@ -4,8 +4,8 @@ The **LifeLabs generator**: a `synthetic-data-fundamentals/story` `Story`'s lab
 draws as the reports a LifeLabs laboratory prints, and as the FHIR R4
 resources the LifeLabs PDF import makes of them, filed on the Patient the
 person's pharmacy import made. The reports are `lifelabs-pdf-importer-core`'s
-`Report` model and the resources its own synthesis and adoption; nothing here
-restates either. No PDF is written. No DOM, no `fs`, no React.
+`Report` model and the resources its own synthesis makes, adopted as the
+import stage adopts them; nothing here restates either. No PDF is written. No DOM, no `fs`, no React.
 
 ## Shape
 
@@ -34,9 +34,10 @@ module as in `synthetic-data-fundamentals/story`:
   collected in the morning and reported the same evening at seeded minutes;
   fails with `UncataloguedLabTest` for a draw the laboratory does not print.
   `LifeLabs.render(…, pharmacyPatient)`: those reports through the importer's
-  `adoptedResourcesOf`, without the report's `Patient`, every `Observation`
-  and `DiagnosticReport` filed on `pharmacyPatient` (`fhir-r4/resources`'
-  `withSubject`).
+  `decodedReportsOf`, adopted with `importer-fundamentals`'
+  `DecodedFileSet.adopt` (the adoption the import stage runs), without the
+  report's `Patient`, every `Observation` and `DiagnosticReport` filed on
+  `pharmacyPatient` (`fhir-r4/resources`' `withSubject`).
 
 `synthetic-data-lifelabs/test-helpers` (`src/test-helpers.ts`) holds
 `laboratoryArbitrary`, `labDrawsArbitrary`, `labStoryArbitrary` and
@@ -47,11 +48,12 @@ and read back is the same report.
 
 Depends on `synthetic-data-fundamentals` (the story model and `StoryDay` from
 `/story`, `Seeding` from `/seeding`), `lifelabs-pdf-importer-core/synthesis`
-(the `Report` types, `adoptedResourcesOf`) and
+(the `Report` types, `decodedReportsOf`), `importer-fundamentals`
+(`DecodedFileSet.adopt`, `DecodedFile`) and
 `fhir-r4` (`AdministrativeGender`, the resource and `Reference` types). The
 `/synthesis` subpath is the synthesis alone, without the importer's decode. The tests also use
 `lifelabs-pdf-importer-core`'s main entry and `/test-helpers` (to print a
-report and read it back), `har-importer-core`, `importer-fundamentals`, and
+report and read it back), `har-importer-core`, `importer-core`, and
 the Rexall and Shoppers generators, as dev dependencies only. Never imports a
 `-react`, `-node` or `-tauri` package.
 
