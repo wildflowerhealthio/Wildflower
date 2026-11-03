@@ -100,6 +100,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   theirs with `fhir-r4-adoption`'s `withSourceId`).
   **`namespaceKeys(sections, prefix)`** prefixes every entry's review key;
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
+  **`adopt({ sections, notes })`** is how the import stage makes a decode's
+  records the device's own, as a `DecodedFile`: each `FromSource` section's
+  record under its key with `fhir-r4-adoption`'s `adoptUnderKey`, its
+  references keyed in the section's system family, and each `Adopted`
+  section's as they are. The format decode tests adopt through it too.
 - `src/decode-function.ts` — the **`DecodeFunction`** namespace: the batch
   decode's signature **and the one constructor that builds it**. **`Type`** is
   the signature a `FileImporter` exposes (files and settings in, one
@@ -444,7 +449,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 Depends on `effect` (and `kitchen-sink` in tests), `http-extraction-fundamentals`
 for `SystemFamily` alone (the systems a `DecodedFileSet.Section`'s source
-batch keys each type in), plus `fhir-r4` for the
+batch keys each type in), `fhir-r4-adoption` for `adoptUnderKey` alone
+(`DecodedFileSet.adopt`; it depends on no importer package), plus `fhir-r4` for the
 `DocumentReference` schema and the `Identifier` a picked file identifies itself
 as, `fhir-r4/resources` for
 `FhirResourceWithId` (`decoded-file.ts` and `staged-import.ts` are concrete over

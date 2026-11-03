@@ -44,10 +44,10 @@ package alone and a layer that provides those.
   `linkToSourceFiles`), and returns its `FormatDecode.Result`, never failing.
   Per file set it mints a source file for **every** picked file
   (`Schema.encode(PickedFile.FromDocumentReference)`), its `masterIdentifier`
-  what the picked file identified itself as; adopts each `FromSource`
-  section's records with `fhir-r4-adoption`'s `adoptUnderKey` (their
-  references keyed in the section's system family) and keeps each `Adopted`
-  section's as they are; runs `linkSourceFile` over each source file with the
+  what the picked file identified itself as; adopts its records with
+  `DecodedFileSet.adopt` (each `FromSource` section's under its key, their
+  references keyed in the section's system family, each `Adopted` section's
+  as they are); runs `linkSourceFile` over each source file with the
   set's adopted records, then `linkToSourceFiles` over every record with each
   picked file and its linked source file; stamps every record's `meta.source`
   with the set's **representative** — the picked file whose source file id is
@@ -210,8 +210,7 @@ package alone and a layer that provides those.
 
 Depends on `importer-fundamentals` (the contract, `PickedFile`, `StagedImport`,
 the identity map), the three `*-importer-core` bindings (the importers the
-registry lists), `fhir-r4` (the `FhirResource` type), `fhir-r4-adoption`
-(`adoptUnderKey`, for each record of a `FromSource` section), and `effect`. Depended on by
+registry lists), `fhir-r4` (the `FhirResource` type), and `effect`. Depended on by
 `importer-react` and by `apps/synthetic-data`, which imports what it generates
 through the same stage. Imports no `*-importer-react` and no `web-trace-core`.
 
