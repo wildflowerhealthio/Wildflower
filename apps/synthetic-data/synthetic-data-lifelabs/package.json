@@ -55,6 +55,7 @@
   },
   "peerDependencies": {
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/lifelabs-pdf-importer-core": "workspace:*",
     "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
     "effect": "catalog:"
