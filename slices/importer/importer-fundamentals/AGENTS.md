@@ -448,6 +448,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   copy of `web-trace-core`'s helper (the standard digest, no project-specific
   behaviour), kept here so the codec above needs no `web-trace-core` dependency
   — a copy, because moving it would invert the importer → web-trace direction.
+- `src/test-helpers.ts` — the **`./test-helpers`** entry, for the format
+  bindings' tests: **`fromSourceSectionsOf(decoded)`**, a decode's sections
+  each narrowed to `FromSource`, throwing on an `Adopted` one.
 
 ## Layering
 
