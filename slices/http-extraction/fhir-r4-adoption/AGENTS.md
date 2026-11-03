@@ -20,8 +20,9 @@ FHIR-free.
   in.
 - `src/adopt-resource.ts` — `withSourceId(family)` pairs a decoded record
   with its key (`{ system, sourceId, resource }`, the id from `DecodedId.of`
-  in `systemFor(family, Type)`); the LifeLabs and DICOM decoders call it for
-  each record of their `FromSource` sections. `adoptUnderKey(family)` adopts
+  in `systemFor(family, Type)`); `importer-fundamentals`'
+  `DecodedFileSet.fromSourceSection` calls it for each record of the LifeLabs
+  and DICOM decoders' `FromSource` sections. `adoptUnderKey(family)` adopts
   a record under the key it is handed, its references keyed in `family`;
   `importer-core`'s import stage calls it for each record of a decoded
   `FromSource` section. `adoptResource(family)` is the two together, which

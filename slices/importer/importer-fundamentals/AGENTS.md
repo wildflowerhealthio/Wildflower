@@ -96,8 +96,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   **`systemFamily`** the batch keys each type in (one per batch, not per
   record), which the import stage adopts it under. The "Source file(s)"
   section is the import stage's own, never decoded.
-  A `FromSource` record is a **`FromSourceEntry`** (LifeLabs and DICOM build
-  theirs with `fhir-r4-adoption`'s `withSourceId`).
+  A `FromSource` record is a **`FromSourceEntry`**.
+  **`fromSourceSection({ systemFamily, title, resources, labelOf })`** is how
+  a decoder builds one, the batch's family given once: it pairs each record
+  with its key (`fhir-r4-adoption`'s `withSourceId`), and `labelOf` gives
+  each its **`ReviewLabel`** (review key and title) with that key in hand.
+  LifeLabs and DICOM build theirs with it.
   **`namespaceKeys(sections, prefix)`** prefixes every entry's review key;
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
   **`adopt({ sections, notes })`** is how the import stage makes a decode's

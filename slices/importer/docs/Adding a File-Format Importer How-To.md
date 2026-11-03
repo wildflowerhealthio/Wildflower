@@ -62,26 +62,28 @@ labeled resources as the source gave them, plus diagnostic notes.
 
 ```ts
 const MY_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: MY_SYSTEM })
-const withMySourceId = withSourceId(MY_SYSTEM_FAMILY)
 
 const decodeMyFormat = (
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: MySettings
 ): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> => …
 // each section:
-//   DecodedFileSet.Section.FromSource({
-//     title,
+//   DecodedFileSet.fromSourceSection({
 //     systemFamily: MY_SYSTEM_FAMILY,
-//     entries: resources.map((resource) => ({ key, title, ...withMySourceId(resource) })),
+//     title,
+//     resources,
+//     labelOf: ({ system, sourceId, resource }) => ({ key, title }),
 //   })
 ```
 
 A section's `systemFamily` is the systems your source keys each resource type
 in (`SystemFamily`, from `fhir-r4-adoption`): a document format's own
 Wildflower-minted `sid` URI for every type, as LifeLabs and DICOM state.
-`withSourceId(family)` pairs each resource with its key: its own id in that
-system, or a digest of its content when it has none. The decode never makes a
-`wf-` id; the import stage does.
+`DecodedFileSet.fromSourceSection` pairs each resource with its key
+(`fhir-r4-adoption`'s `withSourceId`): its own id in that system, or a digest
+of its content when it has none. `labelOf` gives each record's review key and
+title, with that key in hand. The decode never makes a `wf-` id; the import
+stage does.
 
 A format whose files stand alone reads `pickedFiles[0]` and says nothing more:
 each picked file is its own set by default, in the order the files were picked.

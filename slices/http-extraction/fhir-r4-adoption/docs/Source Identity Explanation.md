@@ -261,8 +261,9 @@ beside the system that id is in, as `{ system, sourceId, resource }`.
 references keyed in `family`, and `adoptResource(family)` is the two together.
 
 The file importers' decoders (`lifelabs-pdf-importer-core`,
-`dicom-importer-core`) call `withSourceId` under their
-`FixedAcrossResourceTypes` family and return `FromSource` sections.
+`dicom-importer-core`) build their `FromSource` sections with
+`importer-fundamentals`' `DecodedFileSet.fromSourceSection`, which calls
+`withSourceId` under their `FixedAcrossResourceTypes` family.
 `importer-core`'s import stage (`importDecoded`) calls `adoptUnderKey` for each
 record of a `FromSource` section, the family being the section's: one per
 source batch, never per record. The source kinds below adopt at decode
