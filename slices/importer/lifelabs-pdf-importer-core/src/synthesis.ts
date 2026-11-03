@@ -23,30 +23,11 @@ import { DecodedFileSet, type DecodeFunction } from '@wildflowerhealthio/importe
 import { Effect, type ParseResult } from 'effect'
 
 import type * as Report from './entities/report.ts'
-import { type ReportResources, type SynthesisOptions, toFhirResources } from './fhir/to-fhir.ts'
+import { type SynthesisOptions, toFhirResources } from './fhir/to-fhir.ts'
 import { LIFELABS_SYSTEM } from './source-system.ts'
 
 /** The systems LifeLabs keys its records in: `LIFELABS_SYSTEM`, whatever the type. */
 const LIFELABS_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: LIFELABS_SYSTEM })
-
-/** One report's resources, each beside the source id it is adopted under. */
-interface ReportResourcesWithSourceIds extends Omit<ReportResources, 'resources'> {
-  readonly resources: readonly ResourceWithSourceId[]
-}
-
-/**
- * Each report's resources synthesized ({@link toFhirResources}), each beside
- * its source id in {@link LIFELABS_SYSTEM_FAMILY} (`withSourceId`).
- */
-const resourcesWithSourceIdsOf = (
-  reports: readonly Report.Type[],
-  options: SynthesisOptions
-): Effect.Effect<readonly ReportResourcesWithSourceIds[], ParseResult.ParseError> => {
-  const keyed = withSourceId(LIFELABS_SYSTEM_FAMILY)
-  return Effect.map(toFhirResources(reports, options), (groups) =>
-    groups.map((group) => ({ ...group, resources: group.resources.map(keyed) }))
-  )
-}
 
 /** A record as its review row, keyed and titled by its type and source id. */
 const labelWithSourceId = (record: ResourceWithSourceId): DecodedFileSet.FromSourceEntry => {
@@ -86,17 +67,19 @@ const reportSectionTitle = (report: Report.Type): string => {
 const decodedReportsOf = (
   reports: readonly Report.Type[],
   options: SynthesisOptions
-): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
-  Effect.map(resourcesWithSourceIdsOf(reports, options), (groups) => ({
+): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> => {
+  const keyed = withSourceId(LIFELABS_SYSTEM_FAMILY)
+  return Effect.map(toFhirResources(reports, options), (groups) => ({
     sections: groups.map((group) =>
       DecodedFileSet.Section.FromSource({
         title: reportSectionTitle(group.report),
         systemFamily: LIFELABS_SYSTEM_FAMILY,
-        entries: group.resources.map(labelWithSourceId),
+        entries: group.resources.map((resource) => labelWithSourceId(keyed(resource))),
       })
     ),
     notes: [],
   }))
+}
 
 export { decodedReportsOf, LIFELABS_SYSTEM_FAMILY, reportSectionTitle }
 export type { Type as ReportGroup } from './entities/group.ts'
