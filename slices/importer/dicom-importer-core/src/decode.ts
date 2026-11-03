@@ -6,9 +6,9 @@
  * @packageDocumentation
  */
 import { DicomHeader } from '@wildflowerhealthio/dicom'
-import { SystemFamily, withSourceId } from '@wildflowerhealthio/fhir-r4-adoption'
+import { SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { DocumentReferenceContext, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { DocumentReferenceContext } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodedFile,
   DecodedFileSet,
@@ -32,17 +32,24 @@ import { DICOM_SYSTEM } from './source-system.ts'
 /** The systems DICOM keys its records in: `DICOM_SYSTEM`, whatever the type. */
 const DICOM_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: DICOM_SYSTEM })
 
-const withDicomSourceId = withSourceId(DICOM_SYSTEM_FAMILY)
+/** One record a study synthesizes. */
+type StudyResource = Effect.Effect.Success<ReturnType<typeof toFhirResources>>[number]
 
-/** A record as its review row, beside the source id it is adopted under. */
-const labelWithSourceId = (
-  resource: FhirResource,
-  key: string,
-  title: string
-): DecodedFileSet.FromSourceEntry => ({
-  key,
-  title,
-  ...withDicomSourceId(resource),
+/** Each study record's review key, fixed and unique only within one study. */
+const STUDY_REVIEW_KEYS = {
+  Patient: 'patient',
+  ServiceRequest: 'service-request',
+  ImagingStudy: 'imaging-study',
+} as const satisfies Record<StudyResource['resourceType'], string>
+
+/** A study record's review row: its fixed key, and its type and id as its title. */
+const studyReviewLabel = ({
+  resource,
+}: {
+  readonly resource: StudyResource
+}): DecodedFileSet.ReviewLabel => ({
+  key: STUDY_REVIEW_KEYS[resource.resourceType],
+  title: `${resource.resourceType}/${resource.id}`,
 })
 
 /** One file of a study, as the synthesis sees it: its header and its name. */
@@ -271,33 +278,14 @@ const decodeStudy = (
 
     const notes = studyNotes(files)
     const resources = yield* toFhirResources(files, settings)
-    const labeled: DecodedFileSet.FromSourceEntry[] = []
-
-    for (const resource of resources) {
-      switch (resource.resourceType) {
-        case 'Patient':
-          labeled.push(labelWithSourceId(resource, 'patient', `Patient/${resource.id}`))
-          break
-        case 'ServiceRequest':
-          labeled.push(
-            labelWithSourceId(resource, 'service-request', `ServiceRequest/${resource.id}`)
-          )
-          break
-        case 'ImagingStudy':
-          labeled.push(labelWithSourceId(resource, 'imaging-study', `ImagingStudy/${resource.id}`))
-          break
-        default:
-          break
-      }
-    }
-
     const sections =
-      labeled.length > 0
+      resources.length > 0
         ? [
-            DecodedFileSet.Section.FromSource({
-              title: sectionTitle(head.header),
+            DecodedFileSet.fromSourceSection({
               systemFamily: DICOM_SYSTEM_FAMILY,
-              entries: labeled,
+              title: sectionTitle(head.header),
+              resources,
+              labelOf: studyReviewLabel,
             }),
           ]
         : []

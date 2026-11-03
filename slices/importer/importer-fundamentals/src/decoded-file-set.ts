@@ -5,7 +5,11 @@
  *
  * @packageDocumentation
  */
-import { adoptUnderKey } from '@wildflowerhealthio/fhir-r4-adoption'
+import {
+  adoptUnderKey,
+  type ResourceWithSourceId,
+  withSourceId,
+} from '@wildflowerhealthio/fhir-r4-adoption'
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
@@ -67,6 +71,45 @@ type Section = Data.TaggedEnum<{
 }>
 
 const Section = Data.taggedEnum<Section>()
+
+/** A record's review row: the key it is selected and edited under, and its title. */
+interface ReviewLabel {
+  readonly key: string
+  readonly title: string
+}
+
+/**
+ * One source batch's records as a `FromSource` section, the batch's system
+ * family given once: each record beside its source id in that family
+ * (`fhir-r4-adoption`'s `withSourceId`), labelled by `labelOf`.
+ *
+ * @param section.systemFamily - The systems the batch keys each type in
+ * @param section.title - The section's title
+ * @param section.resources - The batch's records, as its source gave them
+ * @param section.labelOf - Each record's review key and title, given it
+ *   beside the `system` and `sourceId` it is adopted under
+ */
+const fromSourceSection = <TResource extends FhirResource>({
+  systemFamily,
+  title,
+  resources,
+  labelOf,
+}: {
+  readonly systemFamily: SystemFamily.Type
+  readonly title: string
+  readonly resources: readonly TResource[]
+  readonly labelOf: (record: ResourceWithSourceId & { readonly resource: TResource }) => ReviewLabel
+}): Section => {
+  const keyed = withSourceId(systemFamily)
+  return Section.FromSource({
+    title,
+    systemFamily,
+    entries: resources.map((resource): FromSourceEntry => {
+      const record = { ...keyed(resource), resource }
+      return { ...labelOf(record), ...record }
+    }),
+  })
+}
 
 /**
  * One picked file of a set, beside what its own content identifies it as.
@@ -170,5 +213,5 @@ const adopt = (decoded: Pick<Type, 'sections' | 'notes'>): DecodedFile.DecodedFi
   notes: decoded.notes,
 })
 
-export { adopt, namespaceKeys, Section, unidentified }
-export type { FromSourceEntry, PickedFileIdentity, Type }
+export { adopt, fromSourceSection, namespaceKeys, Section, unidentified }
+export type { FromSourceEntry, PickedFileIdentity, ReviewLabel, Type }

@@ -14,11 +14,7 @@
  *
  * @packageDocumentation
  */
-import {
-  type ResourceWithSourceId,
-  SystemFamily,
-  withSourceId,
-} from '@wildflowerhealthio/fhir-r4-adoption'
+import { type ResourceWithSourceId, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import { DecodedFileSet, type DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, type ParseResult } from 'effect'
 
@@ -30,9 +26,9 @@ import { LIFELABS_SYSTEM } from './source-system.ts'
 const LIFELABS_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: LIFELABS_SYSTEM })
 
 /** A record as its review row, keyed and titled by its type and source id. */
-const labelWithSourceId = (record: ResourceWithSourceId): DecodedFileSet.FromSourceEntry => {
+const labelWithSourceId = (record: ResourceWithSourceId): DecodedFileSet.ReviewLabel => {
   const typeAndSourceId = `${record.resource.resourceType}/${record.sourceId}`
-  return { key: typeAndSourceId, title: typeAndSourceId, ...record }
+  return { key: typeAndSourceId, title: typeAndSourceId }
 }
 
 /**
@@ -67,19 +63,18 @@ const reportSectionTitle = (report: Report.Type): string => {
 const decodedReportsOf = (
   reports: readonly Report.Type[],
   options: SynthesisOptions
-): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> => {
-  const keyed = withSourceId(LIFELABS_SYSTEM_FAMILY)
-  return Effect.map(toFhirResources(reports, options), (groups) => ({
+): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
+  Effect.map(toFhirResources(reports, options), (groups) => ({
     sections: groups.map((group) =>
-      DecodedFileSet.Section.FromSource({
-        title: reportSectionTitle(group.report),
+      DecodedFileSet.fromSourceSection({
         systemFamily: LIFELABS_SYSTEM_FAMILY,
-        entries: group.resources.map((resource) => labelWithSourceId(keyed(resource))),
+        title: reportSectionTitle(group.report),
+        resources: group.resources,
+        labelOf: labelWithSourceId,
       })
     ),
     notes: [],
   }))
-}
 
 export { decodedReportsOf, LIFELABS_SYSTEM_FAMILY, reportSectionTitle }
 export type { Type as ReportGroup } from './entities/group.ts'
