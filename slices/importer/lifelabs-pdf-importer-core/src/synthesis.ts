@@ -15,6 +15,7 @@
  * @packageDocumentation
  */
 import { type ResourceWithSourceId, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import { DecodedFileSet, type DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, type ParseResult } from 'effect'
 
@@ -25,11 +26,19 @@ import { LIFELABS_SYSTEM } from './source-system.ts'
 /** The systems LifeLabs keys its records in: `LIFELABS_SYSTEM`, whatever the type. */
 const LIFELABS_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: LIFELABS_SYSTEM })
 
-/** A record as its review row, keyed and titled by its type and source id. */
-const labelWithSourceId = (record: ResourceWithSourceId): DecodedFileSet.ReviewLabel => {
-  const typeAndSourceId = `${record.resource.resourceType}/${record.sourceId}`
-  return { key: typeAndSourceId, title: typeAndSourceId }
-}
+/**
+ * A record as its review row: keyed by its type and source id, which a
+ * settings re-decode keeps, and titled by the reference it is written under,
+ * `<Type>/<local id>`.
+ */
+const reportRecordLabel = ({
+  system,
+  sourceId,
+  resource,
+}: ResourceWithSourceId): DecodedFileSet.ReviewLabel => ({
+  key: `${resource.resourceType}/${sourceId}`,
+  title: `${resource.resourceType}/${localResourceId(system, resource.resourceType, sourceId)}`,
+})
 
 /**
  * The section title one report's resources are reviewed under: the report's
@@ -45,8 +54,9 @@ const reportSectionTitle = (report: Report.Type): string => {
 
 /**
  * The reports as the LifeLabs decode yields them: one `FromSource` section per
- * report, under {@link LIFELABS_SYSTEM_FAMILY}, each record keyed and titled
- * `<Type>/<source id>`, no notes.
+ * report, under {@link LIFELABS_SYSTEM_FAMILY}, each record keyed
+ * `<Type>/<source id>` and titled by the reference it is written under, no
+ * notes.
  *
  * @param reports - The parsed reports, in print order
  * @param options - The zone the reports' printed clock is in
@@ -70,7 +80,7 @@ const decodedReportsOf = (
         systemFamily: LIFELABS_SYSTEM_FAMILY,
         title: reportSectionTitle(group.report),
         resources: group.resources,
-        labelOf: labelWithSourceId,
+        labelOf: reportRecordLabel,
       })
     ),
     notes: [],
