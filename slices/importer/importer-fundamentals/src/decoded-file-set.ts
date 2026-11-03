@@ -9,7 +9,7 @@ import { adoptUnderKey } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { type Array as Arr, Data, Option } from 'effect'
+import { type Array as Arr, Data, MutableHashMap, Option } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
@@ -121,33 +121,52 @@ const namespaceKeys = (sections: readonly Section[], prefix: string): readonly S
   )
 }
 
+/** The one adopter of each system family, built the first time a section asks for it. */
+type AdopterOf = (systemFamily: SystemFamily.Type) => ReturnType<typeof adoptUnderKey>
+
+/** {@link AdopterOf}, each family's `adoptUnderKey` built once and reused. */
+const memoisedAdopterOf = (): AdopterOf => {
+  const adopters = MutableHashMap.empty<SystemFamily.Type, ReturnType<typeof adoptUnderKey>>()
+  return (systemFamily) =>
+    Option.getOrElse(MutableHashMap.get(adopters, systemFamily), () => {
+      const adopter = adoptUnderKey(systemFamily)
+      MutableHashMap.set(adopters, systemFamily, adopter)
+      return adopter
+    })
+}
+
 /**
  * One section's records, adopted: a `FromSource` section's each under its
  * key, its references keyed in the section's system family; an `Adopted`
  * section's as they are.
  */
-const adoptSection = Section.$match({
-  Adopted: ({ title, entries }): DecodedFile.Section => ({ title, resources: entries }),
-  FromSource: ({ title, systemFamily, entries }): DecodedFile.Section => {
-    const adopt = adoptUnderKey(systemFamily)
-    return {
-      title,
-      resources: entries.map((entry) => ({
-        key: entry.key,
-        title: entry.title,
-        resource: adopt(entry),
-      })),
-    }
-  },
-})
+const adoptSection = (adopterOf: AdopterOf): ((section: Section) => DecodedFile.Section) =>
+  Section.$match({
+    Adopted: ({ title, entries }): DecodedFile.Section => ({ title, resources: entries }),
+    FromSource: ({ title, systemFamily, entries }): DecodedFile.Section => {
+      const adoptEntry = adopterOf(systemFamily)
+      return {
+        title,
+        resources: entries.map((entry) => ({
+          key: entry.key,
+          title: entry.title,
+          resource: adoptEntry(entry),
+        })),
+      }
+    },
+  })
 
 /**
  * A decode's sections adopted, each by {@link adoptSection}, beside its notes:
  * how the import stage makes a file set's records the device's own, before it
  * mints source files, links and stamps.
+ *
+ * @remarks
+ * Sections that share a system family share one `adoptUnderKey`, so its parsed
+ * systems are cached across them.
  */
 const adopt = (decoded: Pick<Type, 'sections' | 'notes'>): DecodedFile.DecodedFile => ({
-  sections: decoded.sections.map(adoptSection),
+  sections: decoded.sections.map(adoptSection(memoisedAdopterOf())),
   notes: decoded.notes,
 })
 
