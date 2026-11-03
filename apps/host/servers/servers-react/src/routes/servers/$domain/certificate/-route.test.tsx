@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DateTime } from 'effect'
 import { describe, expect, it, vi } from 'vite-plus/test'
@@ -11,9 +11,16 @@ import {
 } from '../-server-page-test-utils.ts'
 import golden from '../../../../../../servers-wire-golden.json' with { type: 'json' }
 import { formatInstant } from '../../../../server-status-text.ts'
-import { fakeEvents, hostWith } from '../../../../test-utils/host-fakes.ts'
+import {
+  type FakeEvents,
+  type FakeHost,
+  fakeEvents,
+  hostWith,
+} from '../../../../test-utils/host-fakes.ts'
 import {
   DEFAULT_AUTHORIZATION_URL,
+  openDialog,
+  openDialogOrThrow,
   renderBase,
   storageAnswered,
   setUpEachBaseTest,
@@ -21,10 +28,10 @@ import {
 
 setUpEachBaseTest()
 
-describe("the server page's Certificate tab", () => {
-  /** `instant`, an RFC 3339 string, as the page shows its dates. */
-  const shownInstant = (instant: string): string => formatInstant(DateTime.unsafeMake(instant))
+/** `instant`, an RFC 3339 string, as the page shows its dates. */
+const shownInstant = (instant: string): string => formatInstant(DateTime.unsafeMake(instant))
 
+describe("the server page's Certificate tab", () => {
   /** The row of the Certificate section titled `title`. */
   const certificateRow = (title: string): HTMLElement => {
     const row = within(sectionTitled('Certificate')).getByText(title).closest('li')
@@ -225,5 +232,191 @@ describe("the server page's Certificate tab", () => {
       'reading the certificate cache failed: Permission denied (os error 13)'
     )
     expect(within(sectionTitled('Certificate')).queryByText('SHA-256 fingerprint')).toBeNull()
+  })
+})
+
+describe("the Certificate tab's certificate order", () => {
+  const DOMAIN = 'ruth.relay.example.com'
+  const UNREACHABLE = "This server can't be reached until its certificate arrives."
+
+  /** The Certificate tab of a host listing ruth with `status`, whose duplicate-certificate limit is `limit`. */
+  const renderCertificateTab = ({
+    status,
+    limit = null,
+    answers = {},
+    events = fakeEvents(),
+  }: {
+    readonly status: { readonly certificate: unknown }
+    readonly limit?: unknown
+    readonly answers?: Readonly<Record<string, () => Promise<unknown>>>
+    readonly events?: FakeEvents
+  }): FakeHost =>
+    renderServerPage({
+      domain: DOMAIN,
+      tab: 'certificate',
+      events,
+      servers: listedWithRuthStatus(status),
+      answers: {
+        server_duplicate_certificate_limit: () => Promise.resolve(limit),
+        ...answers,
+      },
+    })
+
+  /** Press the button named `name`, once it can be pressed, and answer the dialog it opens. */
+  const pressOrder = async (name: string): Promise<HTMLDialogElement> => {
+    const button = await screen.findByRole('button', { name })
+    await waitFor(() => {
+      expect(button).toHaveProperty('disabled', false)
+    })
+    await userEvent.click(button)
+    return openDialogOrThrow()
+  }
+
+  it("should offer Order certificate, under the warning that it can't be reached, to a running server ordering with none held", async () => {
+    // Arrange
+    const host = renderCertificateTab({
+      status: golden.serverStatuses.runningCacheFailed,
+      answers: { server_order_certificate: () => Promise.resolve(null) },
+    })
+
+    // Act
+    const dialog = await pressOrder('Order certificate')
+
+    // Assert
+    expect(within(dialog).getByRole('heading', { name: 'Order a certificate now?' })).toBeDefined()
+    expect(dialog.textContent).toContain(
+      'The server orders one now, without waiting for its next try.'
+    )
+
+    // Act
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Order' }))
+
+    // Assert
+    const warning = screen.getByText(UNREACHABLE)
+    const button = screen.getByRole('button', { name: 'Order certificate' })
+    expect(warning.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Replace certificate' })).toBeNull()
+    await waitFor(() => {
+      expect(openDialog()).toBeNull()
+    })
+    expect(host.seen).toContainEqual({
+      command: 'server_order_certificate',
+      args: { domain: DOMAIN },
+    })
+  })
+
+  it('should order the kind its confirm asked for, even once a certificate has arrived meanwhile', async () => {
+    // Arrange
+    const events = fakeEvents()
+    const host = renderCertificateTab({
+      status: golden.serverStatuses.runningCacheFailed,
+      events,
+      answers: { server_order_certificate: () => Promise.resolve(null) },
+    })
+    const dialog = await pressOrder('Order certificate')
+    act(() => {
+      events.emit('server-status', golden.serverStatuses.runningAndReachable)
+    })
+    await screen.findByRole('button', { name: 'Replace certificate' })
+
+    // Act
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Order' }))
+
+    // Assert
+    await waitFor(() => {
+      expect(host.seen).toContainEqual({
+        command: 'server_order_certificate',
+        args: { domain: DOMAIN },
+      })
+    })
+    expect(host.seen.map(({ command }) => command)).not.toContain('server_force_new_certificate')
+  })
+
+  it("should offer Replace certificate to a running server holding one, its confirm saying it can't be reached meanwhile", async () => {
+    // Arrange
+    const host = renderCertificateTab({
+      status: golden.serverStatuses.runningAndReachable,
+      limit: golden.duplicateCertificateLimit.oneBelowTheLimit,
+      answers: { server_force_new_certificate: () => Promise.resolve(null) },
+    })
+
+    // Act
+    const dialog = await pressOrder('Replace certificate')
+
+    // Assert
+    expect(screen.queryByRole('button', { name: 'Order certificate' })).toBeNull()
+    expect(screen.queryByText(UNREACHABLE)).toBeNull()
+    expect(within(dialog).getByRole('heading', { name: 'Replace the certificate?' })).toBeDefined()
+    expect(dialog.textContent).toContain(
+      "It can't be reached until the new one arrives, usually within a minute or two."
+    )
+    expect(dialog.textContent).not.toContain("Let's Encrypt")
+
+    // Act
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Replace' }))
+
+    // Assert
+    expect(host.seen).toContainEqual({
+      command: 'server_force_new_certificate',
+      args: { domain: DOMAIN },
+    })
+  })
+
+  it.each(['neverRun', 'startingUnchecked', 'stoppedWithAnError'] as const)(
+    'should offer no order to a server that is %s',
+    async (statusName) => {
+      // Act
+      const host = renderCertificateTab({ status: golden.serverStatuses[statusName] })
+
+      // Assert
+      expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
+      expect(screen.queryByRole('button', { name: 'Order certificate' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Replace certificate' })).toBeNull()
+      expect(screen.queryByText(UNREACHABLE)).toBeNull()
+      expect(host.seen.map(({ command }) => command)).not.toContain(
+        'server_duplicate_certificate_limit'
+      )
+    }
+  )
+
+  it("should disable the order once Let's Encrypt's limit is used up, saying when it issues another", async () => {
+    // Arrange
+    const { oldestLeavesWindowAt } = golden.duplicateCertificateLimit.atTheLimit
+
+    // Act
+    renderCertificateTab({
+      status: golden.serverStatuses.runningAndReachable,
+      limit: golden.duplicateCertificateLimit.atTheLimit,
+    })
+
+    // Assert
+    const note = await screen.findByText(
+      `Let's Encrypt has issued all 5 certificates it allows this domain in 7 days. It can issue another after ${shownInstant(oldestLeavesWindowAt)}.`
+    )
+    const button = screen.getByRole('button', { name: 'Replace certificate' })
+    expect(button).toHaveProperty('disabled', true)
+    expect(note.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("should show the host's limitUsedUp refusal above the button", async () => {
+    // Arrange
+    const refusal = golden.certificateOrderRequestErrors.find(({ kind }) => kind === 'limitUsedUp')
+    if (refusal === undefined) throw new Error('no limitUsedUp refusal in the golden file')
+    renderCertificateTab({
+      status: golden.serverStatuses.runningAndReachable,
+      answers: { server_force_new_certificate: () => Promise.reject(refusal) },
+    })
+
+    // Act
+    const dialog = await pressOrder('Replace certificate')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Replace' }))
+
+    // Assert
+    const shown = await screen.findByText(refusal.message)
+    const button = screen.getByRole('button', { name: 'Replace certificate' })
+    expect(shown.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await waitFor(() => {
+      expect(openDialog()).toBeNull()
+    })
   })
 })

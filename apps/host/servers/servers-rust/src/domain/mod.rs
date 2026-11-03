@@ -8,7 +8,9 @@
 //! the registry, and [`EnrolmentError`]; and changing a registered server:
 //! [`set_run_policy`] with its [`RunPolicyChoice`], [`update_server`] and
 //! [`remove_server`], with [`ServerChangeError`] and [`ServerUpdate`];
-//! [`ServerDetail`], what a server's run reports to `UnitRunner`; launching a
+//! [`ServerDetail`], what a server's run reports to `UnitRunner`; ordering a
+//! running server's certificate, through [`running_certificate_control`] and
+//! [`ensure_limit_not_used_up`], with [`CertificateOrderRequestError`]; launching a
 //! server's launcher and its Authorization app: [`ensure_launchable`],
 //! [`launch_url`], [`authorization_app_url`], [`sign_in_url`] and
 //! [`LaunchError`], and opening the consent waiting on a server at its page,
@@ -20,6 +22,7 @@
 //! servers. Nothing here touches the network, and only [`remove_server`] the
 //! filesystem, to delete the server's folder.
 
+mod certificate_control;
 mod certificate_state_wire;
 mod enrolment;
 mod enrolment_error;
@@ -38,6 +41,9 @@ mod server_status;
 
 pub mod notifications;
 
+pub use certificate_control::{
+    ensure_limit_not_used_up, running_certificate_control, CertificateOrderRequestError,
+};
 pub use enrolment::{
     add_server, set_server_credentials, EnteredClaimDetails, EnteredCredentials, EnteredRelay,
     RelayIdentity,

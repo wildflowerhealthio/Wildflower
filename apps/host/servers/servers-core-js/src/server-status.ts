@@ -167,11 +167,22 @@ const pendingConsentOf = (status: Type): Option.Option<PendingConsent.Type> =>
 const lastStopOf = (status: Type): Option.Option<RunStop> =>
   status.runState === 'stopped' ? status.lastStop : Option.none()
 
+/**
+ * Whether the server can't be reached while it orders a certificate: it is
+ * running with none to serve, as before its first certificate or after a
+ * forced order, so visitors' TLS handshakes fail until one is deployed.
+ */
+const isUnreachableWhileOrdering = (status: Type): boolean =>
+  status.runState === 'running' &&
+  status.certificate.status === 'ordering' &&
+  Option.isNone(status.certificate.held)
+
 export {
   decodeEvent,
   EVENT,
   HealthSchema,
   healthOf,
+  isUnreachableWhileOrdering,
   lastStopOf,
   pendingConsentOf,
   PlatformStopReasonSchema,

@@ -1,5 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { ItemList, type ItemListItem } from '@wildflowerhealthio/react-tundraish'
+import {
+  ConfirmDialog,
+  ErrorBanner,
+  ItemList,
+  type ItemListItem,
+} from '@wildflowerhealthio/react-tundraish'
 import {
   type CertificateAuthority,
   CertificateState,
@@ -9,8 +14,14 @@ import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 
 import { useListedServer } from '../-listed-server.ts'
-import { formatInstant } from '../../../../server-status-text.ts'
+import { formatInstant, unreachableWhileOrderingNote } from '../../../../server-status-text.ts'
 import { useHasPassed } from '../../../../use-has-passed.ts'
+import {
+  type CertificateOrder,
+  type CertificateOrderKind,
+  useCertificateOrder,
+} from './-certificate-order.ts'
+import styles from './-certificate.module.css'
 
 /** What the Certificate authority row says of each CA. */
 const CERTIFICATE_AUTHORITY_TEXT: Readonly<Record<CertificateAuthority.Type, string>> = {
@@ -128,21 +139,115 @@ const certificateItems = (
   })),
 ]
 
+/** Each kind of order's button and confirm. */
+const CERTIFICATE_ORDER_TEXT: Readonly<
+  Record<
+    CertificateOrderKind,
+    {
+      readonly label: string
+      readonly title: string
+      readonly confirmLabel: string
+      readonly question: string
+      readonly destructive: boolean
+    }
+  >
+> = {
+  ifNeeded: {
+    label: 'Order certificate',
+    title: 'Order a certificate now?',
+    confirmLabel: 'Order',
+    question: 'The server orders one now, without waiting for its next try.',
+    destructive: false,
+  },
+  forced: {
+    label: 'Replace certificate',
+    title: 'Replace the certificate?',
+    confirmLabel: 'Replace',
+    question:
+      "The server drops its certificate and orders a new one. It can't be reached until the new one arrives, usually within a minute or two.",
+    destructive: true,
+  },
+}
+
+/**
+ * The tab's order for a running server, `order.kind` (see
+ * `useCertificateOrder`): the CA's duplicate-certificate limit while it is
+ * used up, and the latest failure, above the button, which opens its
+ * confirm.
+ */
+const CertificateOrderSection = ({
+  order,
+}: {
+  readonly order: CertificateOrder
+}): JSX.Element | null =>
+  order.kind.pipe(
+    Option.map((kind) => {
+      const confirmText = CERTIFICATE_ORDER_TEXT[Option.getOrElse(order.confirming, () => kind)]
+      return (
+        <div key="certificate-order" className={styles['certificate__actions']}>
+          {Option.all([order.limit, order.limitUsedUpUntil]).pipe(
+            Option.map(([{ allowed }, at]) => (
+              <p key="limit-used-up" className={`text-body-3 ${styles['certificate__note']}`}>
+                {`Let's Encrypt has issued all ${allowed} certificates it allows this domain in 7 days. It can issue another after ${formatInstant(at)}.`}
+              </p>
+            )),
+            Option.getOrNull
+          )}
+          <ErrorBanner error={Option.getOrNull(order.failure)} />
+          <button
+            type="button"
+            className={`button-2 outline ${styles['certificate__action']}`}
+            disabled={order.disabled}
+            onClick={order.ask}
+          >
+            {CERTIFICATE_ORDER_TEXT[kind].label}
+          </button>
+          <ConfirmDialog
+            open={Option.isSome(order.confirming)}
+            title={confirmText.title}
+            confirmLabel={confirmText.confirmLabel}
+            destructive={confirmText.destructive}
+            pending={order.isOrdering}
+            onConfirm={order.confirm}
+            onCancel={order.cancel}
+          >
+            {confirmText.question}
+          </ConfirmDialog>
+        </div>
+      )
+    }),
+    Option.getOrNull
+  )
+
 /**
  * The server page's Certificate tab, `/servers/$domain/certificate`: the
  * server's certificate, rendering again when a rate limit's retry time
- * passes. It shows each row in full (`maxLines={null}`): the fingerprint is
- * compared by hand and a CA's error detail can run long.
+ * passes; while the server runs ordering one with none to serve, that it
+ * can't be reached until one arrives; and its certificate order. It shows
+ * each row in full (`maxLines={null}`): the fingerprint is compared by hand
+ * and a CA's error detail can run long.
  */
 const ServerCertificateTab = (): JSX.Element => {
   const server = useListedServer()
   const retryHasPassed = useHasPassed(CertificateState.retryAfterOf(server.certificate))
+  const order = useCertificateOrder(server)
   return (
-    <ItemList
-      title="Certificate"
-      maxLines={null}
-      items={certificateItems(server, retryHasPassed)}
-    />
+    <div className={styles['certificate']}>
+      <ItemList
+        title="Certificate"
+        maxLines={null}
+        items={certificateItems(server, retryHasPassed)}
+      />
+      {unreachableWhileOrderingNote(server.status).pipe(
+        Option.map((note) => (
+          <p key="unreachable" className={`text-body-3 ${styles['certificate__note']}`}>
+            {note}
+          </p>
+        )),
+        Option.getOrNull
+      )}
+      <CertificateOrderSection order={order} />
+    </div>
   )
 }
 

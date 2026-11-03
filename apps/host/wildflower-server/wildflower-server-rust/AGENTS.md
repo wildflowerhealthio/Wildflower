@@ -69,8 +69,30 @@ only it composes. Rust-only, no `-core`.
     CA's certificates are browser-trusted
     (`CertificateAuthority::is_browser_trusted`). Tests order from
     `CertificateAuthority::UnreachableForTests`, which only the
-    `test-support` feature has: nothing answers at its directory. The order
-    has no contact.
+    `test-support` feature has: nothing answers at its directory, and
+    `CertificateAuthority::LocalForTests`, a fake CA the tests run on
+    loopback over plain HTTP. The order has no contact.
+    The host's `RunningCertificateControl`
+    (`WildflowerServer::certificate_control`) restarts a run's ordering, as
+    rustls-acme has no "order now": `restart` takes a `CertificateOrderKind`,
+    and the run drops its `AcmeState`, ending any order or backoff it waited
+    on, and starts a fresh one from the same config, publishing on the same
+    channel. `IfNeeded` (order if needed) keeps the cache, so a valid cached
+    certificate is deployed again and anything else ordered at once; `Forced`
+    first removes the server's cached certificate for its CA, its key with
+    it, leaving the install's account. The tunnel listener serves from
+    `SwappableAcmeResolver`, which each restart swaps to the new state's
+    resolver, so after a forced order the server serves no certificate, and
+    its run is `Ordering` with none held, until the new state deploys one.
+    rustls-acme 0.15 can't revoke, so a replaced certificate stays valid
+    until it expires. Either kind fails with
+    `CertificateControlError::RunStopped` once the run has stopped. The CA's
+    duplicate-certificate limit is
+    `CertificateAuthority::duplicate_certificate_limit` (Let's Encrypt
+    production: 5 per exact name per 7 days; none for staging), and
+    `DuplicateCertificateLimit::from_deployments_in_window` estimates how
+    much of it is used from the history's certificates from that CA in the
+    window; the CA's own refusal is the authority.
     Keys are files: the certificate and its key in `certificate_dir`, the
     server's own, and the account key, one per CA, in `acme_account_dir`,
     shared by the install's servers. Starting the certificate makes both

@@ -3,7 +3,9 @@
 
 use wildflowerhealthio_authorization_server::OwnerPrompt;
 use wildflowerhealthio_tunnel::TunnelState;
-use wildflowerhealthio_wildflower_server::{CertificateState, ServerHealth};
+use wildflowerhealthio_wildflower_server::{
+    CertificateState, RunningCertificateControl, ServerHealth,
+};
 
 use crate::live_bindings::server_consent_watcher::ServerConsentWatcher;
 use crate::live_bindings::server_launch_minter::ServerLaunchMinter;
@@ -44,4 +46,9 @@ pub struct ServerDetail {
     /// sets it; it is `None` only in a detail built without a server, as the
     /// domain's tests build theirs.
     pub consent_watcher: Option<ServerConsentWatcher>,
+    /// How the host orders this server a certificate, if needed or forced,
+    /// restarting the run's ordering. A run always sets it; it is `None` only
+    /// in a detail built without a server, as the domain's tests build
+    /// theirs.
+    pub certificate_control: Option<RunningCertificateControl>,
 }

@@ -49,7 +49,11 @@
 //! first, at its [`sign_in_url`]; the server's Authorization app opens the
 //! same way, at its [`authorization_app_url`], and the consent waiting on it
 //! at its page, through [`consent_sign_in_url`], which the
-//! [`ServerConsentWatcher`] says when to close. What the host notifies about
+//! [`ServerConsentWatcher`] says when to close. A running server's detail
+//! also carries its run's certificate control, which
+//! [`running_certificate_control`] finds, to order it a certificate if
+//! needed, or force a new one once [`ensure_limit_not_used_up`] says its CA
+//! would issue one. What the host notifies about
 //! its servers is decided here too: the notifications for each stop of a
 //! server's run ([`StopNotificationCoalescer`]) and those for each new
 //! consent waiting on a server ([`ConsentNotificationCoalescer`]).
@@ -61,7 +65,10 @@
 //!    registered server with [`RunPolicyChoice`] and [`ServerChangeError`];
 //!    [`ServerDetail`]; launching, with [`ensure_launchable`], [`launch_url`],
 //!    [`authorization_app_url`], [`sign_in_url`], [`consent_sign_in_url`]
-//!    and [`LaunchError`]; [`PendingConsent`] with its [`ConsentKey`]; and
+//!    and [`LaunchError`]; ordering certificates, with
+//!    [`running_certificate_control`], [`ensure_limit_not_used_up`] and
+//!    [`CertificateOrderRequestError`];
+//!    [`PendingConsent`] with its [`ConsentKey`]; and
 //!    the [`notifications`](domain::notifications) the host posts:
 //!    [`LocalNotification`], the request coalescer, the stop notifications
 //!    and the consent notifications. The token is a secret: its `Debug` and `Serialize`
@@ -97,12 +104,13 @@ pub use domain::notifications::stop_notifications::{
     ServerStop, StopCause, StopNotificationCoalescer,
 };
 pub use domain::{
-    add_server, authorization_app_url, consent_sign_in_url, ensure_launchable, launch_url,
-    remove_server, set_run_policy, set_server_credentials, sign_in_url, update_server,
-    CertificateAuthority, ConsentKey, EnrolmentError, EnteredClaimDetails, EnteredCredentials,
-    EnteredRelay, LaunchError, LaunchViewSignIns, ListedServer, PendingConsent, RegistryError,
-    RelayIdentity, RelayKind, RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord,
-    ServerStatus, ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
+    add_server, authorization_app_url, consent_sign_in_url, ensure_launchable,
+    ensure_limit_not_used_up, launch_url, remove_server, running_certificate_control,
+    set_run_policy, set_server_credentials, sign_in_url, update_server, CertificateAuthority,
+    CertificateOrderRequestError, ConsentKey, EnrolmentError, EnteredClaimDetails,
+    EnteredCredentials, EnteredRelay, LaunchError, LaunchViewSignIns, ListedServer, PendingConsent,
+    RegistryError, RelayIdentity, RelayKind, RunPolicyChoice, ServerChangeError, ServerDetail,
+    ServerRecord, ServerStatus, ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
 };
 pub use live_bindings::server_consent_watcher::ServerConsentWatcher;
 pub use live_bindings::server_launch_minter::ServerLaunchMinter;

@@ -97,6 +97,15 @@ describe('ServerStatus', () => {
     )
   })
 
+  it.each(Object.entries(golden.serverStatuses))(
+    'should say whether %s is unreachable while it orders a certificate',
+    (name, status) => {
+      expect(ServerStatus.isUnreachableWhileOrdering(decode(status))).toBe(
+        name === 'runningCacheFailed'
+      )
+    }
+  )
+
   it('should decode a server that never ran as stopped with no last stop', () => {
     const status = decode(golden.serverStatuses.neverRun)
     expect(status.runState).toBe('stopped')

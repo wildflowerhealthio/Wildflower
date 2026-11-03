@@ -246,6 +246,9 @@ pub fn run() {
             wildflowerhealthio_servers_tauri::server_open_authorization_app,
             wildflowerhealthio_servers_tauri::server_open_pending_consent,
             wildflowerhealthio_servers_tauri::server_open_notified_consent,
+            wildflowerhealthio_servers_tauri::server_duplicate_certificate_limit,
+            wildflowerhealthio_servers_tauri::server_order_certificate,
+            wildflowerhealthio_servers_tauri::server_force_new_certificate,
             // The Recorder page's save folder and bookmarks, granted to the
             // `main` webview only (`allow-recorder`).
             wildflowerhealthio_recorder_tauri::recorder_save_folder,

@@ -125,6 +125,15 @@ const statusNote = (server: ListedServer.Type): Option.Option<string> => {
   return Option.some(health?.kind === 'unreachable' ? `${label}: ${health.error}` : label)
 }
 
+/**
+ * What a server that can't be reached while it orders a certificate says:
+ * it can't be reached until one arrives. None otherwise.
+ */
+const unreachableWhileOrderingNote = (status: ServerStatus.Type): Option.Option<string> =>
+  Option.liftPredicate("This server can't be reached until its certificate arrives.", () =>
+    ServerStatus.isUnreachableWhileOrdering(status)
+  )
+
 /** Why a run stopped, as a sentence, for every reason but a failure. */
 const STOP_REASON_TEXT: Readonly<
   Record<Exclude<ServerStatus.RunStop['reason'], 'endedOnItsOwn'>, string>
@@ -171,5 +180,6 @@ export {
   STOP_REASON_TEXT,
   statusNote,
   statusSummary,
+  unreachableWhileOrderingNote,
 }
 export type { StatusSummary }
