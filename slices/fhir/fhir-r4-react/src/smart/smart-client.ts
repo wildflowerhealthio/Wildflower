@@ -1,18 +1,66 @@
+import { HttpClient, HttpClientResponse } from '@effect/platform'
 import type { Session } from '@wildflowerhealthio/authorization-core/smart-client'
 import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
-import { Data, Effect, Option } from 'effect'
+import type { Layer } from 'effect'
+import { Array as Arr, Data, Effect, Option, Schema } from 'effect'
+
+import { smartHttpClientLayer } from './smart-runtime.ts'
+
+/**
+ * The parts of an OperationOutcome a person can read: each issue's
+ * `diagnostics` and `details.text`.
+ */
+const OperationOutcomeText = Schema.Struct({
+  resourceType: Schema.Literal('OperationOutcome'),
+  issue: Schema.Array(
+    Schema.Struct({
+      diagnostics: Schema.optional(Schema.String),
+      details: Schema.optional(Schema.Struct({ text: Schema.optional(Schema.String) })),
+    })
+  ),
+})
+
+const decodeOperationOutcomeText = Schema.decodeUnknownOption(OperationOutcomeText)
+
+/**
+ * What the OperationOutcome `body` says, its issues' texts joined, or `None`
+ * when `body` is not an OperationOutcome or says nothing.
+ */
+const operationOutcomeTextOf = (body: unknown): Option.Option<string> =>
+  decodeOperationOutcomeText(body).pipe(
+    Option.map(({ issue }) =>
+      issue.flatMap((each) =>
+        [each.details?.text, each.diagnostics].filter(
+          (text): text is string => text !== undefined && text !== ''
+        )
+      )
+    ),
+    Option.filter(Arr.isNonEmptyReadonlyArray),
+    Option.map(Arr.join('; '))
+  )
 
 /** The FHIR server answered a request with an error status (4xx or 5xx). */
 class FhirHttpError extends Data.TaggedError('FhirHttpError')<{
   /** The URL the request went to. */
   readonly url: string
   readonly status: number
-}> {}
+  /** What the OperationOutcome the server answered with says, when it sent one. */
+  readonly outcomeText: Option.Option<string>
+}> {
+  /** `{status} from {url}`, then the OperationOutcome's text when there is one. */
+  override get message(): string {
+    const answered = `${String(this.status)} from ${this.url}`
+    return Option.match(this.outcomeText, {
+      onNone: () => answered,
+      onSome: (text) => `${answered}: ${text}`,
+    })
+  }
+}
 
 /**
- * No HTTP response arrived at all: `fetch` rejected, as it does when a
- * browser's CORS or Local Network Access check blocks the request, the
- * connection drops, or the server is down. The page cannot tell these apart.
+ * No HTTP response arrived at all: the request was refused before it left, as
+ * a browser refuses one its CORS or Local Network Access check blocks, the
+ * connection dropped, or the server is down. The page cannot tell these apart.
  */
 class FhirRequestDropped extends Data.TaggedError('FhirRequestDropped')<{
   /** The URL the request went to. */
@@ -50,11 +98,12 @@ interface SmartClient {
    * GET `url` and read the answer as JSON.
    *
    * @remarks
-   * A relative `url` (`Patient?_count=200`) is resolved against `serverUrl`; an
-   * absolute one (a search bundle's `next` link) is requested as it is. The
-   * bearer token rides only a request to `serverUrl` or a path under it: an
-   * absolute URL anywhere else goes out with no credential, because the token
-   * is for this FHIR server alone.
+   * The request goes out through `smartHttpClientLayer`, the rule every read
+   * of the session follows: a relative `url` (`Patient?_count=200`) is resolved
+   * against `serverUrl`, and an absolute one (a search bundle's `next` link) is
+   * requested as it is. The bearer token rides only a request to `serverUrl` or
+   * a path under it: an absolute URL anywhere else goes out with no
+   * credential, because the token is for this FHIR server alone.
    */
   readonly request: (url: string) => Effect.Effect<unknown, FhirRequestError>
 }
@@ -67,56 +116,55 @@ type SmartConnection = Pick<Session, 'serverUrl' | 'patient'> & {
   readonly accessToken: string | undefined
 }
 
-/** True when `url` leads with a scheme, per RFC 3986's `scheme` production. */
-const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test(url)
-
-/** `url` resolved against the FHIR base `fhirBaseUrl` (no trailing slash) when it is relative. */
-const requestUrlFor = (fhirBaseUrl: string, url: string): string =>
-  hasAbsoluteScheme(url) ? url : `${fhirBaseUrl}/${url.replace(/^\/+/u, '')}`
-
-/** Whether `requestUrl` is the FHIR base `fhirBaseUrl` or a path under it, on its origin. */
-const isUnderFhirBase = (requestUrl: string, fhirBaseUrl: string): boolean => {
-  const request = URL.parse(requestUrl)
-  const base = URL.parse(fhirBaseUrl)
-  if (request === null || base === null) return false
-  const basePath = trimTrailingSlashes(base.pathname)
-  return (
-    request.origin === base.origin &&
-    (request.pathname === basePath || request.pathname.startsWith(`${basePath}/`))
+/** The {@link FhirHttpError} for the error-status `response`, read from its body. */
+const fhirHttpErrorFrom = (
+  response: HttpClientResponse.HttpClientResponse
+): Effect.Effect<FhirHttpError> =>
+  response.json.pipe(
+    Effect.option,
+    Effect.map(
+      (body) =>
+        new FhirHttpError({
+          url: response.request.url,
+          status: response.status,
+          outcomeText: Option.flatMap(body, operationOutcomeTextOf),
+        })
+    )
   )
-}
 
 /**
- * The {@link SmartClient} for `connection`, making its requests with `fetch`.
+ * The {@link SmartClient} for `connection`, making its requests through
+ * `smartHttpClientLayer` over `transport`.
  *
  * @param connection - The redeemed session, or an open server with no token
- * @param fetch - The transport; the page passes its own `fetch`, a test a stub
+ * @param transport - The `HttpClient` the requests go out over; the app passes
+ *   `FetchHttpClient.layer`, a test a stub
  */
 const smartClientFor = (
   connection: SmartConnection,
-  fetch: typeof globalThis.fetch
+  transport: Layer.Layer<HttpClient.HttpClient>
 ): SmartClient => {
   const serverUrl = trimTrailingSlashes(connection.serverUrl)
   const { accessToken } = connection
-  const headersFor = (requestUrl: string): Record<string, string> =>
-    accessToken !== undefined && isUnderFhirBase(requestUrl, serverUrl)
-      ? { Accept: 'application/json', Authorization: `Bearer ${accessToken}` }
-      : { Accept: 'application/json' }
+  const httpLayer = smartHttpClientLayer({ serverUrl, accessToken }, transport)
   const request = (url: string): Effect.Effect<unknown, FhirRequestError> =>
-    Effect.gen(function* () {
-      const requestUrl = requestUrlFor(serverUrl, url)
-      const response = yield* Effect.tryPromise({
-        try: (signal) => fetch(requestUrl, { headers: headersFor(requestUrl), signal }),
-        catch: (cause) => new FhirRequestDropped({ url: requestUrl, cause }),
-      })
-      if (!response.ok) {
-        return yield* new FhirHttpError({ url: requestUrl, status: response.status })
-      }
-      return yield* Effect.tryPromise({
-        try: (): Promise<unknown> => response.json(),
-        catch: (cause) => new FhirResponseNotJson({ url: requestUrl, cause }),
-      })
-    })
+    HttpClient.get(url, { acceptJson: true }).pipe(
+      Effect.flatMap(
+        HttpClientResponse.matchStatus({
+          '2xx': (response) => response.json,
+          orElse: (response) => Effect.flatMap(fhirHttpErrorFrom(response), Effect.fail),
+        })
+      ),
+      Effect.catchTags({
+        // No response arrived: refused before it left, or the connection dropped.
+        RequestError: (failure) =>
+          Effect.fail(new FhirRequestDropped({ url: failure.request.url, cause: failure })),
+        // A success status whose body did not read as JSON.
+        ResponseError: (failure) =>
+          Effect.fail(new FhirResponseNotJson({ url: failure.request.url, cause: failure })),
+      }),
+      Effect.provide(httpLayer)
+    )
   return {
     serverUrl,
     accessToken,
@@ -131,7 +179,6 @@ export {
   FhirHttpError,
   FhirRequestDropped,
   FhirResponseNotJson,
-  hasAbsoluteScheme,
   smartClientFor,
   type FhirRequestError,
   type SmartClient,

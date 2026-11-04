@@ -9,7 +9,6 @@ import {
   type RunAuthed,
   type RuntimeLayer,
 } from '../router-context.ts'
-import { hasAbsoluteScheme } from './smart-client.ts'
 
 /**
  * The SMART handshake resolved to the two facts a SMART app's HTTP layer
@@ -31,9 +30,24 @@ interface SmartSession {
   readonly accessToken: string | undefined
 }
 
+/** True when `url` leads with a scheme, per RFC 3986's `scheme` production. */
+const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test(url)
+
+/** Whether `requestUrl` is the FHIR base `fhirBaseUrl` or a path under it, on its origin. */
+const isUnderFhirBase = (requestUrl: string, fhirBaseUrl: string): boolean => {
+  const request = URL.parse(requestUrl)
+  const base = URL.parse(fhirBaseUrl)
+  if (request === null || base === null) return false
+  const basePath = trimTrailingSlashes(base.pathname)
+  return (
+    request.origin === base.origin &&
+    (request.pathname === basePath || request.pathname.startsWith(`${basePath}/`))
+  )
+}
+
 /**
- * Wrap an `HttpClient` layer so every relative request is addressed to the FHIR
- * server and carries the SMART bearer token.
+ * Wrap an `HttpClient` layer so every request for the FHIR server is addressed
+ * to it and carries the SMART bearer token, and no other request does.
  *
  * @remarks
  * Both halves are needed because a SMART app is served from its **own** origin
@@ -43,23 +57,22 @@ interface SmartSession {
  * the app cross-origin. So this app authenticates the way any third-party SMART
  * app does: with the token it was granted.
  *
- * The base is `session.serverUrl` verbatim — the typed client emits
- * base-relative paths, so whatever server the handshake named is the base,
- * prepended as-is (trailing slashes trimmed). The typed client emits
- * base-relative paths like `/Patient`, which become `{serverUrl}/Patient`.
+ * One rule decides every request, whichever client made it (the typed
+ * client's base-relative paths, or a `SmartClient.request` following a search
+ * bundle's absolute `next` link):
  *
- * The prefix is applied to *relative* URLs only. Prepending it to an
- * already-absolute URL yields `http://host…http://…`, which `fetch` then
- * resolves against the page origin — silent corruption rather than a failure.
+ * - A **relative** URL is resolved under `session.serverUrl` verbatim (trailing
+ *   slashes trimmed) and carries the token: `/Patient` and `Patient` both
+ *   become `{serverUrl}/Patient`.
+ * - An **absolute** URL is left as it is. It carries the token only when it is
+ *   the FHIR base or a path under it, on its origin; anywhere else it goes out
+ *   bare, because the token was granted for this FHIR server alone and must
+ *   never leave for a host that did not issue it. Prefixing an absolute URL
+ *   would yield `http://host…http://…`, which `fetch` then resolves against the
+ *   page origin — silent corruption rather than a failure.
  *
  * A session with no `accessToken` sets no header at all, rather than an empty
  * `Bearer `: an absent credential must read as absent.
- *
- * The token rides only the requests this layer *addressed* — i.e. the relative
- * paths the typed client emits, which the prefix sends to the FHIR server. An
- * already-absolute URL names an origin the session never granted anything for,
- * so it goes out bare: a credential must never leave for a host that did not
- * issue it.
  *
  * The transport is a parameter rather than baked in — the same shape as
  * `apps/launcher/launcher-web`'s `prependApiBaseUrl` — so what goes on the wire can
@@ -75,16 +88,24 @@ const smartHttpClientLayer = (
 ): Layer.Layer<HttpClient.HttpClient> => {
   const { accessToken } = session
   const baseUrl = trimTrailingSlashes(session.serverUrl)
+  const withToken = (
+    request: HttpClientRequest.HttpClientRequest
+  ): HttpClientRequest.HttpClientRequest =>
+    accessToken === undefined ? request : HttpClientRequest.bearerToken(request, accessToken)
   return Layer.effect(
     HttpClient.HttpClient,
     Effect.map(HttpClient.HttpClient, (client) =>
       client.pipe(
         HttpClient.mapRequest((request) => {
-          if (hasAbsoluteScheme(request.url)) return request
-          const addressed = HttpClientRequest.prependUrl(baseUrl)(request)
-          return accessToken === undefined
-            ? addressed
-            : HttpClientRequest.bearerToken(accessToken)(addressed)
+          if (!hasAbsoluteScheme(request.url)) {
+            return withToken(
+              HttpClientRequest.updateUrl(
+                request,
+                (path) => `${baseUrl}/${path.replace(/^\/+/u, '')}`
+              )
+            )
+          }
+          return isUnderFhirBase(request.url, baseUrl) ? withToken(request) : request
         })
       )
     )
