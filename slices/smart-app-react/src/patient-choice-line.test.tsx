@@ -3,10 +3,15 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import {
+  answerJson,
+  answerStatus,
+  type StubAnswers,
+  stubSmartClient,
+} from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { PatientChoiceLine } from './patient-choice-line.tsx'
 import type { PatientChoiceLineProps } from './patient-choice-line.tsx'
 import type { PatientChoice } from './patient-choice.ts'
-import { answer, type FhirResponses, stubSmartClient } from './smart-client.test-helpers.ts'
 import styles from './patient-choice-line.module.css'
 
 /**
@@ -15,7 +20,7 @@ import styles from './patient-choice-line.module.css'
  */
 const renderLine = (
   patientChoice: PatientChoice,
-  responses: FhirResponses,
+  responses: StubAnswers,
   rootProps: Omit<PatientChoiceLineProps, 'client' | 'patientChoice' | 'onPatientChange'> &
     Record<`data-${string}`, string> = {}
 ): {
@@ -23,7 +28,7 @@ const renderLine = (
   readonly requests: readonly string[]
 } => {
   const onPatientChange = vi.fn<() => void>()
-  const { client, requests } = stubSmartClient(responses)
+  const { client, urls: requests } = stubSmartClient(responses)
   render(
     <StrictMode>
       <QueryClientProvider
@@ -51,7 +56,7 @@ describe('PatientChoiceLine', () => {
     renderLine(
       { kind: 'patient', patientId: 'p1' },
       {
-        'Patient/p1': answer({
+        'Patient/p1': answerJson({
           resourceType: 'Patient',
           id: 'p1',
           name: [{ given: ['Ada'], family: 'Lovelace' }],
@@ -88,7 +93,7 @@ describe('PatientChoiceLine', () => {
     // Act
     renderLine(
       { kind: 'patient', patientId: 'p1' },
-      { 'Patient/p1': answer({ resourceType: 'Bundle' }) }
+      { 'Patient/p1': answerJson({ resourceType: 'Bundle' }) }
     )
 
     // Assert
@@ -98,10 +103,7 @@ describe('PatientChoiceLine', () => {
 
   it('should say the server has no such patient on a 404', async () => {
     // Act
-    renderLine(
-      { kind: 'patient', patientId: 'p1' },
-      { 'Patient/p1': () => Promise.reject(Object.assign(new Error('gone'), { status: 404 })) }
-    )
+    renderLine({ kind: 'patient', patientId: 'p1' }, { 'Patient/p1': answerStatus(404) })
 
     // Assert
     expect(

@@ -6,7 +6,7 @@ import { usePatientChoice } from './use-patient-choice.ts'
 
 /** The hook's one input, as `renderHook` props. */
 interface LaunchPatient {
-  readonly launchPatientId: string | null
+  readonly launchPatientId: Option.Option<string>
 }
 
 const patientParamInUrl = (): string | null =>
@@ -22,7 +22,7 @@ describe('usePatientChoice', () => {
     window.history.replaceState(null, '', '/app/?code=abc&state=xyz')
 
     // Act
-    const { result } = renderHook(() => usePatientChoice('p-launch'))
+    const { result } = renderHook(() => usePatientChoice(Option.some('p-launch')))
 
     // Assert
     expect(result.current.patientChoice).toEqual(
@@ -36,7 +36,7 @@ describe('usePatientChoice', () => {
     window.history.replaceState(null, '', '/app/?patient=*')
 
     // Act
-    const { result } = renderHook(() => usePatientChoice('p-launch'))
+    const { result } = renderHook(() => usePatientChoice(Option.some('p-launch')))
 
     // Assert
     expect(result.current.patientChoice).toEqual(Option.some({ kind: 'all-patients' }))
@@ -44,7 +44,7 @@ describe('usePatientChoice', () => {
 
   it('has no choice with neither a URL choice nor a launch patient', () => {
     // Act
-    const { result } = renderHook(() => usePatientChoice(null))
+    const { result } = renderHook(() => usePatientChoice(Option.none()))
 
     // Assert
     expect(result.current.patientChoice).toEqual(Option.none())
@@ -52,14 +52,14 @@ describe('usePatientChoice', () => {
 
   it("takes up the launch's patient once the handshake hands it over", () => {
     // Arrange — no patient while the handshake is still connecting
-    const connecting: LaunchPatient = { launchPatientId: null }
+    const connecting: LaunchPatient = { launchPatientId: Option.none() }
     const { result, rerender } = renderHook(
       ({ launchPatientId }: LaunchPatient) => usePatientChoice(launchPatientId),
       { initialProps: connecting }
     )
 
     // Act
-    rerender({ launchPatientId: 'p-launch' })
+    rerender({ launchPatientId: Option.some('p-launch') })
 
     // Assert
     expect(result.current.patientChoice).toEqual(
@@ -70,7 +70,7 @@ describe('usePatientChoice', () => {
   it('writes a choice to the URL beside the query keys already there', () => {
     // Arrange
     window.history.replaceState(null, '', '/app/?r=1y&s=o:x')
-    const { result } = renderHook(() => usePatientChoice(null))
+    const { result } = renderHook(() => usePatientChoice(Option.none()))
 
     // Act
     act(() => {
@@ -84,7 +84,7 @@ describe('usePatientChoice', () => {
 
   it('reopens the picker on a change, keeping the last choice in the URL until another is made', () => {
     // Arrange
-    const { result } = renderHook(() => usePatientChoice('p-launch'))
+    const { result } = renderHook(() => usePatientChoice(Option.some('p-launch')))
 
     // Act — change, then choose every patient
     act(() => {

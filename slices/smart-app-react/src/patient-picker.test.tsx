@@ -3,14 +3,16 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import {
+  answerJson,
+  bundleOf,
+  type StubAnswers,
+  answerStatus,
+  neverAnswer,
+  stubSmartClient,
+} from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import type { PatientChoice } from './patient-choice.ts'
 import { PatientPicker } from './patient-picker.tsx'
-import {
-  answer,
-  bundleOf,
-  type FhirResponses,
-  stubSmartClient,
-} from './smart-client.test-helpers.ts'
 
 const adaWire = {
   resourceType: 'Patient',
@@ -28,7 +30,7 @@ const NEXT_PATIENTS = 'https://fhir.example/next/patients'
 
 /** Render the picker over `responses`, under StrictMode, on a retry-free client. */
 const renderPicker = (
-  responses: FhirResponses
+  responses: StubAnswers
 ): { readonly onPatientChoice: ReturnType<typeof vi.fn<(choice: PatientChoice) => void>> } => {
   const onPatientChoice = vi.fn<(choice: PatientChoice) => void>()
   const { client } = stubSmartClient(responses)
@@ -51,7 +53,7 @@ afterEach(() => {
 describe('PatientPicker', () => {
   it('should say Loading… until the first page lands', () => {
     // Act
-    renderPicker({ 'Patient?': () => new Promise(() => {}) })
+    renderPicker({ 'Patient?': neverAnswer })
 
     // Assert
     expect(screen.getByText('Loading…')).toBeDefined()
@@ -60,7 +62,7 @@ describe('PatientPicker', () => {
   it('should list each patient by name and birth date, and hand back the one chosen', async () => {
     // Arrange
     const { onPatientChoice } = renderPicker({
-      'Patient?': answer(bundleOf([adaWire, graceWire])),
+      'Patient?': answerJson(bundleOf([adaWire, graceWire])),
     })
 
     // Act
@@ -74,7 +76,7 @@ describe('PatientPicker', () => {
 
   it('should offer every patient first, and hand back that choice', async () => {
     // Arrange
-    const { onPatientChoice } = renderPicker({ 'Patient?': answer(bundleOf([adaWire])) })
+    const { onPatientChoice } = renderPicker({ 'Patient?': answerJson(bundleOf([adaWire])) })
     const [firstRow] = await screen.findAllByRole('button')
 
     // Act
@@ -87,7 +89,7 @@ describe('PatientPicker', () => {
 
   it('should still offer every patient on a server with none, saying so', async () => {
     // Act
-    renderPicker({ 'Patient?': answer(bundleOf([])) })
+    renderPicker({ 'Patient?': answerJson(bundleOf([])) })
 
     // Assert
     expect(await screen.findByText('No patients on this server.')).toBeDefined()
@@ -97,7 +99,7 @@ describe('PatientPicker', () => {
   it('should give a patient without an id no row', async () => {
     // Act
     renderPicker({
-      'Patient?': answer(bundleOf([{ ...graceWire, id: undefined }, adaWire])),
+      'Patient?': answerJson(bundleOf([{ ...graceWire, id: undefined }, adaWire])),
     })
 
     // Assert
@@ -108,8 +110,8 @@ describe('PatientPicker', () => {
   it('should read the next page on More patients, and offer no more after the last', async () => {
     // Arrange
     renderPicker({
-      'Patient?': answer(bundleOf([adaWire], NEXT_PATIENTS)),
-      [NEXT_PATIENTS]: answer(bundleOf([graceWire])),
+      'Patient?': answerJson(bundleOf([adaWire], NEXT_PATIENTS)),
+      [NEXT_PATIENTS]: answerJson(bundleOf([graceWire])),
     })
 
     // Act
@@ -124,8 +126,8 @@ describe('PatientPicker', () => {
   it('should keep the rows and More patients as the retry when a later page fails', async () => {
     // Arrange
     renderPicker({
-      'Patient?': answer(bundleOf([adaWire], NEXT_PATIENTS)),
-      [NEXT_PATIENTS]: () => Promise.reject(new Error('page two failed')),
+      'Patient?': answerJson(bundleOf([adaWire], NEXT_PATIENTS)),
+      [NEXT_PATIENTS]: answerStatus(500),
     })
 
     // Act
@@ -139,7 +141,7 @@ describe('PatientPicker', () => {
 
   it('should say the read failed when the first page does', async () => {
     // Act
-    renderPicker({ 'Patient?': () => Promise.reject(new Error('search failed')) })
+    renderPicker({ 'Patient?': answerStatus(500) })
 
     // Assert
     expect(await screen.findByText(/^Could not load patients:/)).toBeDefined()

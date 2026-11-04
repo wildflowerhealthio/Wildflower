@@ -14,18 +14,23 @@ import { Option } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
+import {
+  answerJson,
+  answerStatus,
+  stubSmartClient,
+} from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { patientChoiceKeyOf } from './patient-choice.ts'
 import { launchStartRoute, requirePatient, usePathPatientChoice } from './patient-route.ts'
-import { answer, stubSmartClient } from './smart-client.test-helpers.ts'
 
 afterEach(() => {
   cleanup()
 })
 
-/** A client whose launch put `patientId` in context; only `patient.id` is read. */
-const launchedWith = (patientId: string | null): SmartClient =>
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub: only `patient.id` is read
-  ({ patient: { id: patientId } }) as unknown as SmartClient
+/** A client whose launch put `patientId` in context, or none for `null`. */
+const launchedWith = (patientId: string | null): SmartClient => ({
+  ...stubSmartClient({}).client,
+  launchPatientId: Option.fromNullable(patientId),
+})
 
 describe('launchStartRoute', () => {
   it('should open the launch’s patient', () => {
@@ -91,7 +96,7 @@ describe('requirePatient', () => {
     // Arrange
     const queryClient = testQueryClient()
     const { client } = stubSmartClient({
-      'Patient/p1': answer({ resourceType: 'Patient', id: 'p1' }),
+      'Patient/p1': answerJson({ resourceType: 'Patient', id: 'p1' }),
     })
 
     // Act
@@ -104,7 +109,7 @@ describe('requirePatient', () => {
   it.each([404, 410])('should throw not-found on a %i', async (status) => {
     // Arrange
     const { client } = stubSmartClient({
-      'Patient/bogus': () => Promise.reject(Object.assign(new Error('gone'), { status })),
+      'Patient/bogus': answerStatus(status),
     })
 
     // Act
@@ -120,7 +125,7 @@ describe('requirePatient', () => {
   it('should let the route render on any other failure', async () => {
     // Arrange
     const { client } = stubSmartClient({
-      'Patient/p1': () => Promise.reject(Object.assign(new Error('down'), { status: 503 })),
+      'Patient/p1': answerStatus(503),
     })
 
     // Act / Assert

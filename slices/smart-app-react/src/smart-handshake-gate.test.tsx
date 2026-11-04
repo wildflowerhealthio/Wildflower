@@ -1,15 +1,21 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import type * as FhirSmart from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
-import type Client from 'fhirclient/Client'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { stubSmartClient } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { SmartHandshakeGate } from './smart-handshake-gate.tsx'
 
 // The handshake is the gate's one input: each test hands it a state, and reads
 // back what the gate renders and what it carries to the app root.
 const { handshakeMock, launchFailureRedirectMock } = vi.hoisted(() => ({
-  handshakeMock: vi.fn<() => SmartHandshake>(),
+  handshakeMock:
+    vi.fn<
+      (
+        registration: { readonly clientId: string; readonly scope: string },
+        servedDirectory?: string
+      ) => SmartHandshake
+    >(),
   launchFailureRedirectMock: vi.fn<(handshake: SmartHandshake) => void>(),
 }))
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
@@ -25,14 +31,20 @@ afterEach(() => {
 })
 
 /** A client the gate only forwards to its children. */
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, forwarded to the children
-const client = { state: { serverUrl: 'https://fhir.example/r4' } } as unknown as Client
+const client = { ...stubSmartClient({}).client, serverUrl: 'https://fhir.example/r4' }
+
+/** The app's registration, which the gate runs the handshake as. */
+const REGISTRATION = { clientId: 'medication-app', scope: 'launch openid' }
 
 /** The gate, its children naming the server of the client they were handed. */
 const renderGate = (): void => {
   render(
-    <SmartHandshakeGate connecting={<p>Connecting…</p>}>
-      {(ready) => <p>App over {ready.state.serverUrl}</p>}
+    <SmartHandshakeGate
+      registration={REGISTRATION}
+      servedDirectory="/app/"
+      connecting={<p>Connecting…</p>}
+    >
+      {(ready) => <p>App over {ready.serverUrl}</p>}
     </SmartHandshakeGate>
   )
 }
@@ -53,6 +65,14 @@ describe('SmartHandshakeGate', () => {
     renderGate()
 
     expect(screen.getByText('App over https://fhir.example/r4')).toBeDefined()
+  })
+
+  it('should run the handshake as the registration and served directory it was handed', () => {
+    handshakeMock.mockReturnValue({ kind: 'connecting' })
+
+    renderGate()
+
+    expect(handshakeMock).toHaveBeenCalledWith(REGISTRATION, '/app/')
   })
 
   it('should show a failed exchange and carry it to the app root, without the app', () => {

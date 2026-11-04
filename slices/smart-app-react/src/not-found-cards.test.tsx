@@ -10,9 +10,13 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
+import {
+  answerJson,
+  answerStatus,
+  stubSmartClient,
+} from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { NoPageCard, NoPatientCard } from './not-found-cards.tsx'
 import { requirePatient } from './patient-route.ts'
-import { answer, stubSmartClient } from './smart-client.test-helpers.ts'
 
 afterEach(() => {
   cleanup()
@@ -27,8 +31,8 @@ afterEach(() => {
 const renderAt = (url: string): void => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const { client } = stubSmartClient({
-    'Patient/p1': answer({ resourceType: 'Patient', id: 'p1' }),
-    'Patient/': () => Promise.reject(Object.assign(new Error('Not Found'), { status: 404 })),
+    'Patient/p1': answerJson({ resourceType: 'Patient', id: 'p1' }),
+    'Patient/': answerStatus(404),
   })
   const rootRoute = createRootRoute({ notFoundComponent: NoPageCard })
   const patientRoute = createRoute({
