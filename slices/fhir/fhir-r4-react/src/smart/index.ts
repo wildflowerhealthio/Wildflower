@@ -3,6 +3,8 @@ export {
   arrivingSmartLaunchFrom,
   authorizeOpenServer,
   authorizeSmartLaunch,
+  authorizeSmartLaunchAt,
+  discardPendingConnection,
   readySmartClient,
   shouldCompleteSmartLaunch,
   SMART_LAUNCH_PARAMS,
@@ -17,7 +19,6 @@ export {
   normalizeServerUrl,
   startStandaloneLaunch,
   type SmartSupport,
-  type StandaloneLaunchConfig,
 } from './standalone-launch.ts'
 
 export { withLocalNetworkAccessHint } from './local-network-hint.ts'
@@ -111,11 +112,21 @@ export {
 export {
   isSmartHandshakeQuery,
   useLaunchFailureRedirect,
+  useSmartClient,
   useSmartHandshake,
   whenSmartHandshakeReady,
-  type SmartClient,
   type SmartHandshake,
 } from './use-smart-handshake.ts'
+
+export {
+  FhirHttpError,
+  FhirRequestDropped,
+  FhirResponseNotJson,
+  smartClientFor,
+  type FhirRequestError,
+  type SmartClient,
+  type SmartConnection,
+} from './smart-client.ts'
 
 export {
   FALLBACK_LAUNCH_MESSAGE,

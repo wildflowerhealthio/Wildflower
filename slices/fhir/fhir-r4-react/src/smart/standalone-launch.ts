@@ -2,11 +2,16 @@ import {
   insecureTargetReason,
   normalizeServerUrl,
   smartIssuerFrom,
+  type SmartIssuer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
 import { Either, Schema } from 'effect'
 
-import { authorizeOpenServer, authorizeSmartLaunch } from './smart-launch.ts'
+import {
+  authorizeOpenServer,
+  authorizeSmartLaunchAt,
+  type SmartLaunchConfig,
+} from './smart-launch.ts'
 
 /**
  * What probing a FHIR server's `.well-known/smart-configuration` told us about
@@ -19,25 +24,17 @@ import { authorizeOpenServer, authorizeSmartLaunch } from './smart-launch.ts'
  * Treating it as open would fire unauthenticated resource reads at a server
  * that may well require auth, producing misleading 401s. A real HTTP answer
  * (even a 404, or non-JSON) is `open`: the server responded, it just has no
- * SMART config. A config that names an `authorization_endpoint` is `smart`
- * when `authorization-core`'s `smartIssuerFrom` accepts it for this page, and
+ * SMART config. A config that names an `authorization_endpoint` is `smart`,
+ * carrying the issuer `authorization-core`'s `smartIssuerFrom` reads from it,
+ * when `smartIssuerFrom` accepts it for this page, and
  * `unusable`, with its `DiscoveryFailed` reason, when it does not (an endpoint
  * that is not https or loopback, a missing `token_endpoint`, no S256).
  */
 type SmartSupport =
-  | { readonly kind: 'smart' } // config found, its endpoints usable from this page
+  | { readonly kind: 'smart'; readonly issuer: SmartIssuer } // config found, its endpoints usable from this page
   | { readonly kind: 'open' } // HTTP non-ok, or JSON without authorization_endpoint
   | { readonly kind: 'unreachable'; readonly message: string } // fetch rejected (network/CORS — indistinguishable)
   | { readonly kind: 'unusable'; readonly reason: string } // config names endpoints this page will not use
-
-/** The inputs a standalone launch needs: the server, and the app's own client. */
-interface StandaloneLaunchConfig {
-  /** The FHIR server base the user picked — used verbatim as the base URL. */
-  readonly iss: string
-  readonly clientId: string
-  readonly scope: string
-  readonly redirectUri: string
-}
 
 /**
  * A configuration that names an `authorization_endpoint` — the one field that
@@ -93,7 +90,7 @@ const detectSmartSupport = async (
   if (!namesAuthorizationEndpoint(config)) return { kind: 'open' }
   return Either.match(smartIssuerFrom(base, config, { pageIsSecure }), {
     onLeft: (failed): SmartSupport => ({ kind: 'unusable', reason: failed.reason }),
-    onRight: (): SmartSupport => ({ kind: 'smart' }),
+    onRight: (issuer): SmartSupport => ({ kind: 'smart', issuer }),
   })
 }
 
@@ -102,11 +99,12 @@ const detectSmartSupport = async (
  * SMART OAuth path, the open (no-auth) path, or neither.
  *
  * @remarks
- * On `smart`/`open` the browser redirects away (`authorizeSmartLaunch` sends
+ * On `smart`/`open` the browser redirects away (`authorizeSmartLaunchAt` sends
  * it to the provider, `authorizeOpenServer` straight to the redirect target),
- * so the page usually leaves. `authorizeSmartLaunch` rejects, without
- * navigating, when the authorize URL fhirclient builds is not usable from this
- * page; the rejection propagates. On `unreachable` or `unusable` there is no
+ * so the page usually leaves. The sign-in starts at the issuer the probe
+ * found, so the server's SMART configuration is fetched once. A rejection of
+ * either (a storage that will not keep the pending record) propagates. On
+ * `unreachable` or `unusable` there is no
  * redirect — the `SmartSupport` is returned so the caller can render the
  * error and offer a retry.
  *
@@ -118,17 +116,12 @@ const detectSmartSupport = async (
  *   `unusable` always are.
  */
 const startStandaloneLaunch = async (
-  config: StandaloneLaunchConfig,
+  config: SmartLaunchConfig,
   fetchFn: typeof fetch = globalThis.fetch
 ): Promise<SmartSupport> => {
   const support = await detectSmartSupport(config.iss, fetchFn)
   if (support.kind === 'smart') {
-    await authorizeSmartLaunch({
-      clientId: config.clientId,
-      scope: config.scope,
-      redirectUri: config.redirectUri,
-      iss: config.iss,
-    })
+    await authorizeSmartLaunchAt(support.issuer, config)
   } else if (support.kind === 'open') {
     await authorizeOpenServer({ fhirServiceUrl: config.iss, redirectUri: config.redirectUri })
   }
@@ -156,5 +149,4 @@ export {
   normalizeServerUrl,
   startStandaloneLaunch,
   type SmartSupport,
-  type StandaloneLaunchConfig,
 }
