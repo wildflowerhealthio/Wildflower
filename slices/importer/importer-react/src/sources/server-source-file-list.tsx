@@ -11,7 +11,7 @@ import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
 import {
   type SourceFileRow,
   fetchSourceFile,
-  useSmartSourceFilesQuery,
+  useSourceFilesQuery,
 } from '../queries/source-files.ts'
 import { formatRegistry } from '../registry.ts'
 import { ImporterWalkthroughAnchor } from '../walkthrough-anchors.ts'
@@ -205,7 +205,7 @@ const SourceFileListContent = ({
  */
 const ServerSourceFileList = ({ onPick, maxPicks }: ServerSourceFileListProps): JSX.Element => {
   const runAuthed = useRunAuthed()
-  const sourceFiles = useSmartSourceFilesQuery()
+  const sourceFiles = useSourceFilesQuery()
   const [error, setError] = useState<string | null>(null)
   const [previewing, setPreviewing] = useState<SourceFileRow | null>(null)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
