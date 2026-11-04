@@ -221,8 +221,8 @@ describe('App', () => {
     // Assert: nothing routes while the exchange reads the URL.
     expect(`${window.location.pathname}${window.location.search}`).toBe(callback)
 
-    // Act: the exchange completes, fhirclient having taken code and state out
-    // of the address bar, as it does.
+    // Act: the exchange completes, having taken code and state out of the
+    // address bar, as it does.
     window.history.replaceState(window.history.state, '', BASEPATH)
     handshakeMock.mockReturnValue(readyHandshake)
     rerenderApp()
