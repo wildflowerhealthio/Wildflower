@@ -3,40 +3,42 @@ import {
   type IdentifierType,
   type ReferenceType,
 } from '@wildflowerhealthio/fhir-r4/data-types'
-import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
-import type {
-  Binary,
-  CarePlan,
-  DiagnosticReport,
-  DocumentReference,
-  FhirResource,
-  FhirResourceWithId,
-  Goal,
-  ImagingStudy,
-  MedicationDispense,
-  MedicationRequest,
-  Observation,
-  Patient,
-  PlanDefinition,
-  PlanDefinitionAction,
-  Practitioner,
-  Procedure,
-  ServiceRequest,
+import {
+  type Binary,
+  type CarePlan,
+  type DiagnosticReport,
+  type DocumentReference,
+  type FhirResource,
+  type FhirResourceWithId,
+  type Goal,
+  type ImagingStudy,
+  type MedicationDispense,
+  type MedicationRequest,
+  type Observation,
+  type Patient,
+  type PlanDefinition,
+  type PlanDefinitionAction,
+  type Practitioner,
+  type Procedure,
+  ResourceType,
+  type ServiceRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { Match } from 'effect'
+import { Match, Option } from 'effect'
 
-import * as DecodedId from './decoded-id.ts'
+import * as DetachedResource from './detached-resource.ts'
 
 /**
  * FHIR R4's relative-reference grammar: a resource-type token, `/`, and a
  * logical id.
  *
  * @remarks
- * The only shape a rewrite accepts. Everything else is left verbatim — a
- * `#fragment` contained reference, a `urn:uuid:`, a foreign absolute URL, a
- * versioned `Type/id/_history/v`, and any id carrying a character outside the
- * spec's set (a space, a slash) all fail this and pass through untouched.
+ * The only literal {@link detach} reads a target's id from, and only when the
+ * token is an R4 resource type (`ResourceType.is`). Everything else is left
+ * verbatim — a `#fragment` contained reference, a `urn:uuid:`, a foreign
+ * absolute URL, a versioned `Type/id/_history/v`, any id carrying a character
+ * outside the spec's set (a space, a slash), and a token R4 does not define
+ * (carebook's `PrescriptionOrder`) all pass through untouched.
  */
 const RELATIVE_REFERENCE = /^([A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})$/
 
@@ -362,10 +364,11 @@ const mapProcedureReferences = (
  * else changed.
  *
  * @remarks
- * The per-type reference table. `Match.exhaustive` over the closed union rather
- * than a `switch`: a resource type added to `FhirResource` without a row here
- * is a compile error, not a resource whose references silently keep the
- * source's ids.
+ * The per-type reference table, the one place a resource's references are
+ * walked: {@link detach} and {@link adopt} both rewrite through it.
+ * `Match.exhaustive` over the closed union rather than a `switch`: a resource
+ * type added to `FhirResource` without a row here is a compile error, not a
+ * resource whose references silently keep the source's ids.
  *
  * **Every branch maps a variant to itself, by construction and not by the type
  * system.** TypeScript cannot correlate the discriminant matched here with the
@@ -419,7 +422,7 @@ const mapReferences =
       Match.exhaustive
     )
 
-/** The `Identifier` naming a record by its key: `{ system, value: <source id> }`. */
+/** The `Identifier` `{ system, value }`, every other element empty. */
 const identifierOf = (systemUrl: URL, value: string): IdentifierType => ({
   id: null,
   extension: [],
@@ -432,68 +435,7 @@ const identifierOf = (systemUrl: URL, value: string): IdentifierType => ({
 })
 
 /**
- * `reference` rewritten to name its target's local id, keyed in `system` with
- * the target's source id beside it as `Reference.identifier`.
- *
- * @remarks
- * The one spelling of an adopted reference. A pre-existing
- * `Reference.identifier` is kept: the slot is 0..1 and some sources already
- * fill it with their own vendor identifier; the original `Type/id` stays
- * recoverable by resolving the rewritten reference and reading the target's
- * `identifier[0]`.
- */
-const adoptedReference = (
-  system: string,
-  systemUrl: URL,
-  resourceType: string,
-  sourceId: string,
-  reference: ReferenceType
-): ReferenceType => ({
-  ...reference,
-  reference: `${resourceType}/${localResourceId(system, resourceType, sourceId)}`,
-  identifier: reference.identifier ?? identifierOf(systemUrl, sourceId),
-})
-
-/**
- * A reference whose literal, relativised for `family`, is a relative
- * `Type/id`, rewritten to name its target's local id, keyed in the system
- * `family` gives the target's type, with the target's source id beside it as
- * `Reference.identifier`; every other reference exactly as it is.
- *
- * @remarks
- * The one reference rewrite {@link adoptResource} runs; it spells each
- * match with {@link adoptedReference}, as {@link adoptedReferenceOf} does.
- *
- * The literal is read through {@link SystemFamily.relativise}, so a FHIR
- * server's absolute `<baseUrl>/Type/id` lands where its `Type/id` does. A
- * literal that is still not a relative `Type/id` once relativised — a
- * versioned `<baseUrl>/Type/id/_history/v`, a search URL, an id past 64
- * characters, a base that is only a prefix of the server's — is kept in its
- * original spelling, absolute or not.
- *
- * Rewrites apply to **any** resource-type token, not only the types this
- * package stores. The derivation is deterministic, so a `Practitioner/x` link
- * resolves retroactively if that type is ever imported from the same source, and
- * dangles exactly as it did before if it never is — with the original id still
- * readable from the `Reference.identifier` this writes.
- */
-const rewriteReference = (family: SystemFamily.Type, urlOf: (url: string) => URL) => {
-  const relativise = SystemFamily.relativise(family)
-  return (reference: ReferenceType): ReferenceType => {
-    const match =
-      reference.reference === null ? null : RELATIVE_REFERENCE.exec(relativise(reference.reference))
-    const resourceType = match?.[1]
-    const sourceId = match?.[2]
-    if (resourceType === undefined || sourceId === undefined) {
-      return reference
-    }
-    const system = SystemFamily.systemFor(family, resourceType)
-    return adoptedReference(system, urlOf(system), resourceType, sourceId, reference)
-  }
-}
-
-/**
- * `new URL`, memoised for one adoption.
+ * `new URL`, memoised for one detach.
  *
  * @remarks
  * `new URL` is the most expensive thing in this file, and a page of 250
@@ -502,9 +444,8 @@ const rewriteReference = (family: SystemFamily.Type, urlOf: (url: string) => URL
  * system, so they alias: **treat it as immutable**, and clone before mutating.
  *
  * A system that is not an absolute URI throws a `TypeError` here. That
- * reaches the caller as a defect rather than the typed `ParseError` a wrapped
- * `parse` advertises, deliberately: it means the source is misconfigured, not
- * that a response was bad.
+ * reaches the caller as a defect rather than as a failed parse, deliberately:
+ * it means the source is misconfigured, not that a response was bad.
  */
 const memoisedUrlOf = (): ((url: string) => URL) => {
   const urls = new Map<string, URL>()
@@ -520,159 +461,195 @@ const memoisedUrlOf = (): ((url: string) => URL) => {
 }
 
 /**
- * Whether FHIR R4 gives `resource`'s type an `identifier` element.
+ * A reference whose literal, relativised for `family`, is a relative
+ * `Type/id`, as the logical reference to its target: no literal, `type` the
+ * target's type, and `identifier` the target's key, the system `family` gives
+ * that type and the id as its value. Every other reference exactly as it is.
  *
  * @remarks
- * `Binary` is the one type in the union without one, so its source id
- * survives only in the provenance trace. A type added to the union without
- * `identifier` is added here, and nowhere else.
+ * The literal is read through {@link SystemFamily.relativise}, so a FHIR
+ * server's absolute `<baseUrl>/Type/id` detaches exactly as its `Type/id`. A
+ * literal that is still not a relative `Type/id` of an R4 resource type once
+ * relativised — a `#fragment`, a `urn:uuid:`, a foreign absolute URL, a
+ * versioned `Type/id/_history/v`, a search URL, an id past 64 characters, a
+ * base that is only a prefix of the server's, a type R4 does not define — is
+ * kept in its original spelling, absolute or not, its `identifier` included.
+ * A reference with no literal (an identifier-only or display-only one) is kept
+ * as the source wrote it.
+ *
+ * An `identifier` the source had also put on a reference it is turned
+ * logical is **replaced** by the target's key: the slot is 0..1, and the key
+ * is what names the target now that the literal is gone. The target carries
+ * its own identifiers, so the source's are not lost when it was decoded too.
+ * `display` and `extension` are kept.
  */
-const hasIdentifier = (
-  resource: FhirResource
-): resource is Exclude<FhirResource, { readonly resourceType: 'Binary' }> =>
-  resource.resourceType !== 'Binary'
-
-/** A decoded record and its key, less its type: the system and source id it is adopted under. */
-interface ResourceWithSourceId {
-  /** The system `sourceId` belongs to: an absolute URI. */
-  readonly system: string
-  /** The record's id in `system`: the source's, or a digest when it gave none. */
-  readonly sourceId: string
-  /** The resource as decoded; its own `id` is not read. */
-  readonly resource: FhirResource
+const detachReference = (family: SystemFamily.Type, urlOf: (url: string) => URL) => {
+  const relativise = SystemFamily.relativise(family)
+  return (reference: ReferenceType): ReferenceType => {
+    const match =
+      reference.reference === null ? null : RELATIVE_REFERENCE.exec(relativise(reference.reference))
+    const resourceType = match?.[1]
+    const id = match?.[2]
+    if (resourceType === undefined || id === undefined || !ResourceType.is(resourceType)) {
+      return reference
+    }
+    return {
+      ...reference,
+      reference: null,
+      type: resourceType,
+      identifier: identifierOf(urlOf(SystemFamily.systemFor(family, resourceType)), id),
+    }
+  }
 }
 
 /**
- * Re-key a decoded record under its key (system, type, source id): derive its
- * local id from the key, record `{ system, value: sourceId }` as
- * `identifier[0]`, and rewrite its references ({@link rewriteReference}) so
- * they still point at their targets.
+ * Detach a resource a source decoded with its own ids and literal references:
+ * drop its `id`, key it by that id, and turn each reference to another record
+ * into a logical one.
  *
- * @param family - The systems the record's source keys each type in: where
- *   each reference's target is keyed. The record's own system comes with the
- *   record
- * @returns A function from one decoded record and its key to its adopted form
+ * @param family - The systems the source's ids belong to, per type: the one
+ *   its kind's `tryRecognize` minted, or a file format's fixed one
+ * @returns A function from one decoded resource to its detached form
  *
  * @remarks
- * A reference's target is keyed in the system `family` gives its own type,
- * not the referring record's: a FHIR server's `Observation` points at
- * `<baseUrl>/Patient`.
+ * - `id` becomes `null`. When it was set and the type has an `identifier`
+ *   element, `{ system: SystemFamily.systemFor(family, Type), value: id }` is
+ *   prepended as `identifier[0]`, the record's key; every identifier the
+ *   source wrote is kept behind it. A `Binary` (no `identifier` element) and
+ *   a record with no `id` keep only what they had, so they are keyless unless
+ *   the source's own first identifier names them.
+ * - Every reference the per-type table ({@link mapReferences}) reaches is run
+ *   through {@link detachReference}.
  *
- * `Binary` is adopted but gets **no** identifier — FHIR R4 gives `Binary` no
- * `identifier` element — so its original id survives only in the provenance
- * trace. It is still adopted rather than passed through, because a reference to
- * a Binary from a sibling resource has to land on the same derived id.
- *
- * The per-type rewrite table, the fields deliberately left alone, and why there
- * is no "already adopted?" guard are all in
- * this package's `docs/Source Identity Explanation.md`.
+ * There is deliberately no "already keyed?" guard: a source that publishes
+ * its own id as an identifier in the same system yields a benign duplicate.
+ * Say what a source's ids are in its family rather than writing them twice.
  */
-const adoptUnderKey = (family: SystemFamily.Type) => {
+const detach = (family: SystemFamily.Type) => {
   const urlOf = memoisedUrlOf()
-  const rewriteReferences = mapReferences(rewriteReference(family, urlOf))
-  return ({ system, sourceId, resource }: ResourceWithSourceId): FhirResourceWithId => {
-    const rewritten = rewriteReferences(resource)
-    const id = localResourceId(system, rewritten.resourceType, sourceId)
-    return hasIdentifier(rewritten)
+  const detachReferences = mapReferences(detachReference(family, urlOf))
+  return (resource: FhirResource): DetachedResource.Type => {
+    const detached = detachReferences(resource)
+    const { id } = resource
+    return id !== null && DetachedResource.hasIdentifier(detached)
       ? {
-          ...rewritten,
-          id,
-          identifier: [identifierOf(urlOf(system), sourceId), ...rewritten.identifier],
+          ...detached,
+          id: null,
+          identifier: [
+            identifierOf(urlOf(SystemFamily.systemFor(family, detached.resourceType)), id),
+            ...detached.identifier,
+          ],
         }
-      : { ...rewritten, id }
+      : { ...detached, id: null }
   }
 }
 
+/** A fresh random id for a keyless record: a v4 UUID, a legal FHIR id. */
+const randomResourceId = (): string => crypto.randomUUID()
+
+/** What one batch's adoption needs beyond each record. */
+interface Adoption {
+  /**
+   * The literal reference every keyed record of the batch is stored under
+   * ({@link DetachedResource.storedReferencesOf}): what a logical reference
+   * resolves against.
+   */
+  readonly storedReferences: ReadonlySet<string>
+  /** Mints the id of a keyless record; {@link randomResourceId} outside tests. */
+  readonly mintId: () => string
+}
+
 /**
- * A decoded resource beside the key it is adopted under, less its type: its
- * own id, in the system `family` gives its type, or, when its `id` is `null`,
- * a digest of its content as decoded, in {@link DecodedId.CONTENT_DIGEST_SYSTEM}.
- *
- * @param family - The systems the resource's source keys each type in
- * @returns A function from one decoded resource to it and its source id
+ * A logical reference to a record of the batch, as the literal reference to
+ * the id that record is stored under, `type` and `identifier` kept; every
+ * other reference exactly as it is.
  *
  * @remarks
- * What a decoder hands the import stage for each record of a `FromSource`
- * section. The digest is scoped to the system `family` gives the record's
- * type, so the same content from two sources keys apart.
+ * As a FHIR server resolves a conditional reference against the transaction
+ * bundle it processes: a reference with no literal, an R4 resource type as
+ * its `type`, and an `identifier` with a `system` and `value` resolves when
+ * the record of that type keyed by that identifier is in the batch, its
+ * stored reference among `storedReferences`. One that matches no record of
+ * the batch — a target the source never served, an account number, a
+ * provider's printed name — stays logical, for the importer's identity map
+ * (and, later, a match against what the device already holds). A reference
+ * whose target is keyless cannot name it, so it stays logical too.
  */
-const withSourceId =
-  (family: SystemFamily.Type) =>
-  (resource: FhirResource): ResourceWithSourceId => {
-    const ownSystem = SystemFamily.systemFor(family, resource.resourceType)
-    return DecodedId.$match(DecodedId.of(ownSystem, resource), {
-      FoundInSource: ({ value }) => ({ system: ownSystem, sourceId: value, resource }),
-      GeneratedFromContent: ({ value }) => ({
-        system: DecodedId.CONTENT_DIGEST_SYSTEM,
-        sourceId: value,
-        resource,
-      }),
+const adoptReference =
+  (storedReferences: ReadonlySet<string>) =>
+  (reference: ReferenceType): ReferenceType => {
+    const { identifier, type } = reference
+    if (
+      reference.reference !== null ||
+      type === null ||
+      !ResourceType.is(type) ||
+      identifier === null ||
+      !IdentifierAndReference.isQualifiedIdentifier(identifier)
+    ) {
+      return reference
+    }
+    const stored = DetachedResource.storedReferenceOf(type, {
+      system: identifier.system.href,
+      value: identifier.value,
     })
+    return storedReferences.has(stored) ? { ...reference, reference: stored } : reference
   }
 
 /**
- * Re-key a resource under its source's systems: {@link adoptUnderKey} under
- * the key {@link withSourceId} reads off it.
+ * Adopt a detached record into the store: give it the id it is stored under,
+ * and resolve each of its logical references to a record of the batch to a
+ * literal one.
  *
- * @param family - The systems the resource's source keys each type in
- * @returns A function from one decoded resource to its adopted form
+ * @param adoption - The batch's stored references and its keyless-id minter
+ * @returns A function from one detached record to its stored form
  *
  * @remarks
- * So every adopted resource has an id, and a re-import of the same capture
- * lands on the same id rather than beside it. Its references are keyed in
- * `family` whichever system the resource itself is keyed in. A reference
- * whose literal relativises ({@link SystemFamily.relativise}) to a relative
- * `Type/id` is rewritten; any other keeps its original spelling
- * ({@link rewriteReference}).
+ * A keyed record's id is `localResourceId(key.system, Type, key.value)`
+ * ({@link DetachedResource.keyedIdOf}), so a re-import of the same record
+ * lands on the same id; a keyless one gets `adoption.mintId()`, so a
+ * re-import of it is a second record. References resolve through
+ * {@link adoptReference}. Nothing else changes: the record's identifiers,
+ * its key first, are written as they are.
+ *
+ * Takes no system family: everything it needs is on the records.
  */
-const adoptResource = (family: SystemFamily.Type) => {
-  const adopt = adoptUnderKey(family)
-  const keyed = withSourceId(family)
-  return (resource: FhirResource): FhirResourceWithId => adopt(keyed(resource))
+const adopt = ({ storedReferences, mintId }: Adoption) => {
+  const adoptReferences = mapReferences(adoptReference(storedReferences))
+  return (record: DetachedResource.Type): FhirResourceWithId => ({
+    ...adoptReferences(record),
+    id: Option.getOrElse(DetachedResource.keyedIdOf(record), mintId),
+  })
 }
 
 /**
- * Read the source's own id back off a resource {@link adoptResource} adopted.
+ * The id a source gave an adopted resource: the value of its identifier in
+ * `system`.
  *
- * @param system - The system adoption keys the resource's type in: for a
+ * @param system - The system the source's ids for the type belong to: for a
  *   FHIR-style source `<baseUrl>/<Type>`, not the base itself
  *   ({@link SystemFamily.systemFor})
  * @param resource - The adopted resource
- * @returns The id the source used, or `null` when there is none to read
+ * @returns The first identifier value in `system`, or `null` when it has none
+ *   there (and always for a `Binary`, which has no identifiers)
  *
  * @remarks
- * `null` for a `Binary` (which carries no `identifier`), for a resource that was
- * never adopted, for one adopted under a different system, and for one its
- * source gave no id — including when `system` is
- * {@link DecodedId.CONTENT_DIGEST_SYSTEM}, since a digest is Wildflower's, not
- * the source's. Otherwise the check is a round-trip: `identifier[0]` only
- * counts as the source id if re-deriving from it in `system` reproduces the
- * resource's own id.
- *
- * This is what a caller reads when it needs the source's id to build a
- * source-server URL: an adopted resource's `resource.id` is the local id, not
- * the remote one.
+ * What a caller reads when it needs the source's id to build a source-server
+ * URL: an adopted resource's `resource.id` is the local id, not the remote
+ * one.
  */
-const originalIdOf = (system: string, resource: FhirResource): string | null => {
-  if (system === DecodedId.CONTENT_DIGEST_SYSTEM || !hasIdentifier(resource)) {
-    return null
-  }
-  const candidate = resource.identifier[0]
-  if (candidate === undefined || candidate.value === null) {
-    return null
-  }
-  return localResourceId(system, resource.resourceType, candidate.value) === resource.id
-    ? candidate.value
+const originalIdOf = (system: string, resource: FhirResource): string | null =>
+  DetachedResource.hasIdentifier(resource)
+    ? (resource.identifier.find((identifier) => identifier.system?.href === system)?.value ?? null)
     : null
-}
 
 /**
- * A reference to a resource an import adopts in `system`, spelled as adoption
- * rewrites the source's own `resourceType/originalId`: the local id, with the
- * source's id beside it as `Reference.identifier`.
+ * The literal reference a source's import stores the record keyed
+ * `{ system, value: originalId }` under, beside the logical reference to it:
+ * `reference` its stored reference ({@link DetachedResource.storedReferenceOf}),
+ * `type` and `identifier` the key.
  *
- * @param system - The system adoption keys the target's type in: for a
- *   FHIR-style source `<baseUrl>/<Type>`, not the base itself
+ * @param system - The system the source's ids for the target's type belong
+ *   to: for a FHIR-style source `<baseUrl>/<Type>`, not the base itself
  *   ({@link SystemFamily.systemFor})
  * @param resourceType - The target's type (`Patient`)
  * @param originalId - The id the source gave the target
@@ -680,23 +657,19 @@ const originalIdOf = (system: string, resource: FhirResource): string | null => 
  * @remarks
  * For a resource written outside that source that has to point at what its
  * import stores — a lab result filed on the Patient a pharmacy import made.
- * It is {@link adoptResource}'s own spelling ({@link adoptedReference}), so
- * given the system adoption uses for the type, the two agree. An `originalId` outside FHIR's id grammar is left
- * unrewritten, as adoption leaves it. `system` is parsed per call: this runs
- * a handful of times per synthetic account, not thousands per page, so the
- * memo adoption pays for is not worth the aliasing here.
+ * It is the spelling {@link adopt} gives a resolved reference, with nothing
+ * to resolve against: the caller states that the record is stored.
  */
 const adoptedReferenceOf = (
   system: string,
   resourceType: string,
   originalId: string
-): ReferenceType =>
-  RELATIVE_REFERENCE.test(`${resourceType}/${originalId}`)
-    ? adoptedReference(system, new URL(system), resourceType, originalId, {
-        ...IdentifierAndReference.emptyReference,
-        reference: `${resourceType}/${originalId}`,
-      })
-    : { ...IdentifierAndReference.emptyReference, reference: `${resourceType}/${originalId}` }
+): ReferenceType => ({
+  ...IdentifierAndReference.emptyReference,
+  reference: DetachedResource.storedReferenceOf(resourceType, { system, value: originalId }),
+  type: resourceType,
+  identifier: identifierOf(new URL(system), originalId),
+})
 
-export { adoptResource, adoptedReferenceOf, adoptUnderKey, originalIdOf, withSourceId }
-export type { ResourceWithSourceId }
+export { adopt, adoptedReferenceOf, detach, originalIdOf, randomResourceId }
+export type { Adoption }

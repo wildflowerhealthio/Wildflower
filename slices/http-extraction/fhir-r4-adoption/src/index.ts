@@ -1,13 +1,18 @@
 /**
- * The FHIR R4 side of extraction: how a resource decoded from a source becomes
- * the device's own, keyed under a local id derived from the system its source
- * id belongs to, its type and that id, with an id whether or not the source
- * gave it one.
+ * The FHIR R4 side of extraction: a resource a source decoded, detached from
+ * that source (no id, keyed by its first identifier, its references logical),
+ * and a detached resource adopted into the device's store under an id derived
+ * from its key.
  *
  * @packageDocumentation
  */
-export { adoptedReferenceOf, adoptUnderKey, originalIdOf, withSourceId } from './adopt-resource.ts'
-export type { ResourceWithSourceId } from './adopt-resource.ts'
-export { adoptUnderRecognizedRoot } from './adopt-under-recognized-root.ts'
-export * as DecodedId from './decoded-id.ts'
+export {
+  adopt,
+  adoptedReferenceOf,
+  detach,
+  originalIdOf,
+  randomResourceId,
+} from './adopt-resource.ts'
+export type { Adoption } from './adopt-resource.ts'
+export * as DetachedResource from './detached-resource.ts'
 export { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
