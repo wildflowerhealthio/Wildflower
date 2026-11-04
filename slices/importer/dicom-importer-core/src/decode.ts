@@ -6,12 +6,12 @@
  * @packageDocumentation
  */
 import { DicomHeader } from '@wildflowerhealthio/dicom'
-import { SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { detach, DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext } from '@wildflowerhealthio/fhir-r4/resources'
 import {
+  type DecodedFileSet,
   DecodedFile,
-  DecodedFileSet,
   type DecodeFunction,
   type PickedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -42,15 +42,25 @@ const STUDY_REVIEW_KEYS = {
   ImagingStudy: 'imaging-study',
 } as const satisfies Record<StudyResource['resourceType'], string>
 
-/** A study record's review row: its fixed key, and its type and id as its title. */
-const studyReviewLabel = ({
-  resource,
-}: {
-  readonly resource: StudyResource
-}): DecodedFileSet.ReviewLabel => ({
-  key: STUDY_REVIEW_KEYS[resource.resourceType],
-  title: `${resource.resourceType}/${resource.id}`,
-})
+const detachDicom = detach(DICOM_SYSTEM_FAMILY)
+
+/**
+ * A study record as its review row: its fixed key, and its type and the source
+ * id the synthesis gave it (its key's value) as its title. The synthesis gives
+ * every record an id; a keyless one would be titled `<Type> (<key>)`.
+ */
+const studyEntryOf = (resource: StudyResource): DecodedFileSet.Entry => {
+  const key = STUDY_REVIEW_KEYS[resource.resourceType]
+  const detached = detachDicom(resource)
+  return {
+    key,
+    title: Option.match(DetachedResource.keyOf(detached), {
+      onSome: ({ value }) => `${resource.resourceType}/${value}`,
+      onNone: () => `${resource.resourceType} (${key})`,
+    }),
+    resource: detached,
+  }
+}
 
 /** One file of a study, as the synthesis sees it: its header and its name. */
 interface StudyFile extends StudyInstance {
@@ -217,8 +227,8 @@ const linkToPatientAndStudy = (
 }
 
 /**
- * Decode one study's picked files into a `FromSource` section of labeled FHIR
- * resources, each beside its source id under `DICOM_SYSTEM`.
+ * Decode one study's picked files into a section of labeled FHIR resources,
+ * each detached under `DICOM_SYSTEM`.
  *
  * @param pickedFiles - Every picked `.dcm` of one study, in the order they were
  *   picked
@@ -280,14 +290,7 @@ const decodeStudy = (
     const resources = yield* toFhirResources(files, settings)
     const sections =
       resources.length > 0
-        ? [
-            DecodedFileSet.fromSourceSection({
-              systemFamily: DICOM_SYSTEM_FAMILY,
-              title: sectionTitle(head.header),
-              resources,
-              labelOf: studyReviewLabel,
-            }),
-          ]
+        ? [{ title: sectionTitle(head.header), entries: resources.map(studyEntryOf) }]
         : []
 
     return { sections, notes, pickedFiles: identifiedPickedFiles }

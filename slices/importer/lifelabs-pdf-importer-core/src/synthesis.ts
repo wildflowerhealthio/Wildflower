@@ -1,10 +1,9 @@
 /**
  * The FHIR synthesis on its own: the parsed `Report` model's types,
  * `toFhirResources`, and {@link decodedReportsOf} — the reports as the
- * LifeLabs decode yields them, one `FromSource` section per report, each
- * synthesized resource beside its source id under
- * {@link LIFELABS_SYSTEM_FAMILY} — without the PDF extraction the main entry's
- * decode requires.
+ * LifeLabs decode yields them, one section per report, each synthesized
+ * resource detached under {@link LIFELABS_SYSTEM_FAMILY} — without the PDF
+ * extraction the main entry's decode requires.
  *
  * @remarks
  * For callers that build `Report` values themselves rather than reading them
@@ -14,10 +13,9 @@
  *
  * @packageDocumentation
  */
-import { type ResourceWithSourceId, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
-import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
+import { detach, DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import { DecodedFileSet, type DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, type ParseResult } from 'effect'
+import { Effect, Option, type ParseResult } from 'effect'
 
 import type * as Report from './entities/report.ts'
 import { type SynthesisOptions, toFhirResources } from './fhir/to-fhir.ts'
@@ -26,19 +24,25 @@ import { LIFELABS_SYSTEM } from './source-system.ts'
 /** The systems LifeLabs keys its records in: `LIFELABS_SYSTEM`, whatever the type. */
 const LIFELABS_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: LIFELABS_SYSTEM })
 
+const detachLifeLabs = detach(LIFELABS_SYSTEM_FAMILY)
+
 /**
- * A record as its review row: keyed by its type and source id, which a
- * settings re-decode keeps, and titled by the reference it is written under,
- * `<Type>/<local id>`.
+ * A detached record as its review row: keyed by its type and its key's value
+ * (the source id the synthesis gave it), which a settings re-decode keeps, and
+ * titled by the reference it is written under, `<Type>/<local id>`.
+ *
+ * @remarks
+ * The synthesis gives every record an id, so every record is keyed. A keyless
+ * one would be reviewed under its type and its position in the report,
+ * `<Type>#<index>`, which a re-decode of the same print also keeps.
  */
-const reportRecordLabel = ({
-  system,
-  sourceId,
-  resource,
-}: ResourceWithSourceId): DecodedFileSet.ReviewLabel => ({
-  key: `${resource.resourceType}/${sourceId}`,
-  title: `${resource.resourceType}/${localResourceId(system, resource.resourceType, sourceId)}`,
-})
+const reportEntryOf = (resource: DetachedResource.Type, index: number): DecodedFileSet.Entry => {
+  const key = Option.match(DetachedResource.keyOf(resource), {
+    onSome: ({ value }) => `${resource.resourceType}/${value}`,
+    onNone: () => `${resource.resourceType}#${index}`,
+  })
+  return { key, title: DecodedFileSet.writtenReferenceTitle(resource, key), resource }
+}
 
 /**
  * The section title one report's resources are reviewed under: the report's
@@ -53,8 +57,8 @@ const reportSectionTitle = (report: Report.Type): string => {
 }
 
 /**
- * The reports as the LifeLabs decode yields them: one `FromSource` section per
- * report, under {@link LIFELABS_SYSTEM_FAMILY}, each record keyed
+ * The reports as the LifeLabs decode yields them: one section per report, its
+ * records detached under {@link LIFELABS_SYSTEM_FAMILY}, each keyed
  * `<Type>/<source id>` and titled by the reference it is written under, no
  * notes.
  *
@@ -75,14 +79,10 @@ const decodedReportsOf = (
   options: SynthesisOptions
 ): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
   Effect.map(toFhirResources(reports, options), (groups) => ({
-    sections: groups.map((group) =>
-      DecodedFileSet.fromSourceSection({
-        systemFamily: LIFELABS_SYSTEM_FAMILY,
-        title: reportSectionTitle(group.report),
-        resources: group.resources,
-        labelOf: reportRecordLabel,
-      })
-    ),
+    sections: groups.map((group) => ({
+      title: reportSectionTitle(group.report),
+      entries: group.resources.map(detachLifeLabs).map(reportEntryOf),
+    })),
     notes: [],
   }))
 
