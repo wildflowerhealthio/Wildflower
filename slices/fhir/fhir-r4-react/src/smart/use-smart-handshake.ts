@@ -8,7 +8,7 @@ import {
   completeSignInAfterRedirectHere,
   type SignInAfterRedirectError,
   type SignInLanding,
-} from './smart-launch.ts'
+} from './sign-in-after-redirect.ts'
 
 /**
  * The state of completing the SMART handshake on the redirect page: still

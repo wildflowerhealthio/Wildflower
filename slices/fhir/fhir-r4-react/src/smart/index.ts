@@ -1,21 +1,27 @@
+export { appRootRedirectUri } from './app-root-redirect-uri.ts'
+
 export {
-  appRootRedirectUri,
-  arrivingSmartLaunchFrom,
+  RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
+  RETAINED_SIGN_IN_REQUEST_KEY,
+  type SmartRegistration,
+} from './retained-sign-in-requests.ts'
+
+export {
+  redirectToSelfAddressedSignInReturn,
+  redirectToSignIn,
+  redirectToSignInAt,
+  type SelfAddressedSignInConfig,
+  type SmartLaunchConfig,
+} from './sign-in-redirect.ts'
+
+export {
   CallbackStateMismatch,
   completeSignInAfterRedirectHere,
   discardRefusedSignInAfterRedirectHere,
   NoSignInInProgress,
-  redirectToSelfAddressedSignInReturn,
-  redirectToSignIn,
-  redirectToSignInAt,
-  SMART_LAUNCH_PARAMS,
-  type ArrivingSmartLaunch,
-  type SelfAddressedSignInConfig,
   type SignInAfterRedirectError,
   type SignInLanding,
-  type SmartLaunchConfig,
-  type SmartRegistration,
-} from './smart-launch.ts'
+} from './sign-in-after-redirect.ts'
 
 export {
   detectSmartSupport,
@@ -23,9 +29,16 @@ export {
   normalizeServerUrl,
   redirectToPickedServerSignIn,
   SmartSupport,
-} from './standalone-launch.ts'
+} from './picked-server-sign-in.ts'
 
-export { RootArrival, rootArrivalFrom, type SignInArrival } from './root-arrival.ts'
+export {
+  arrivingSmartLaunchFrom,
+  RootArrival,
+  rootArrivalFrom,
+  SMART_LAUNCH_PARAMS,
+  type ArrivingSmartLaunch,
+  type SignInArrival,
+} from './root-arrival.ts'
 
 export { withLocalNetworkAccessHint } from './local-network-hint.ts'
 

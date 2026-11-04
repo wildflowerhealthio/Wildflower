@@ -13,7 +13,7 @@ import {
   redirectToSelfAddressedSignInReturn,
   redirectToSignInAt,
   type SmartLaunchConfig,
-} from './smart-launch.ts'
+} from './sign-in-redirect.ts'
 import type { FhirBaseUrl } from './smart-connection.ts'
 
 /**

@@ -1,5 +1,6 @@
 import {
   arrivingSmartLaunchFrom,
+  SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Data, identity, Option, Schema } from 'effect'
@@ -126,4 +127,19 @@ const rootArrivalFrom = (search: string): RootArrival => {
   )
 }
 
-export { RootArrival, rootArrivalFrom, type SignInArrival }
+export {
+  /**
+   * Re-exported from `authorization-core/smart-client`, like `normalizeServerUrl`:
+   * the launch a page's URL asks it to start, which {@link rootArrivalFrom}
+   * reads as a `LaunchRequest`. The pages that sign in with
+   * `authorization-core` read launches the same way without depending on this
+   * package.
+   */
+  arrivingSmartLaunchFrom,
+  RootArrival,
+  rootArrivalFrom,
+  /** Re-exported with `arrivingSmartLaunchFrom`: the parameters it reads a launch from. */
+  SMART_LAUNCH_PARAMS,
+  type ArrivingSmartLaunch,
+  type SignInArrival,
+}
