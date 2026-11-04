@@ -54,7 +54,7 @@ const SmartSupport = Data.taggedEnum<SmartSupport>()
  */
 const NamesAuthorizationEndpoint = Schema.Struct({ authorization_endpoint: Schema.String })
 
-/** Whether a configuration is one a SMART server serves: JSON that names an `authorization_endpoint`. */
+/** Whether a configuration names an `authorization_endpoint`, as a SMART server's does. */
 const decodeSmartConfiguration = Schema.decodeUnknown(NamesAuthorizationEndpoint)
 
 /**
@@ -152,10 +152,7 @@ export {
   insecureTargetReason,
   /**
    * Re-exported from `authorization-core/smart-client`, which owns the one
-   * implementation. This module used to carry a byte-identical copy, because the
-   * original lived in `apps/server-docs-web` and a slice cannot import
-   * from an app. Moving it into `authorization-core` removed that obstacle, so the
-   * copy is gone and `connect-menu.tsx` and the apps now canonicalise a picked
+   * implementation, so `connect-menu.tsx` and the apps canonicalise a picked
    * FHIR server base exactly as the docs console canonicalises `?server=`.
    */
   normalizeServerUrl,

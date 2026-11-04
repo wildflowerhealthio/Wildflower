@@ -35,17 +35,17 @@ interface FhirR4ConnectMenuProps {
   /** The scopes the app requests on the SMART path. */
   readonly scope: string
   /**
-   * The OAuth redirect target — the app root that serves `index.html` and runs
-   * `completeSignInAfterRedirectHere()` (`appRootRedirectUri`). Shared with the EHR launch's
-   * callback.
+   * The OAuth redirect target — the app root that serves `index.html` and
+   * completes the sign-in (`appRootRedirectUri`). Shared with the EHR
+   * launch's callback.
    */
   readonly redirectUri: string
   /** The one-click choices, grouped by server; defaults to {@link DEFAULT_SERVER_PRESET_GROUPS}. */
   readonly presetGroups?: readonly ServerPresetGroup[]
   /**
-   * Why the last launch failed, when the page was reached by failing one — the
-   * app root's latched `launchErrorFrom()`. Shown at the top of the menu until
-   * the reader starts another connect.
+   * Why the last launch failed, when the page was reached by failing one —
+   * the failure the app root's `RootArrival` carries. Shown at the top of the
+   * menu until the reader starts another connect.
    */
   readonly arrivalProblem?: string | Error
 }

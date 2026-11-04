@@ -8,7 +8,7 @@ import { routeTree } from './routeTree.gen.ts'
 type MedicationsRouter = Router<typeof routeTree, 'never', false>
 
 /**
- * The app's router over `page` (its history, under the served directory: one
+ * The app's router over `page` (its history, under its basepath: one
  * build serves its origin's root and a PR preview's `/pr-<n>/`), giving every
  * route `context`. A path no route names goes to the root's no-page card
  * wherever it sits (`notFoundMode: 'root'`), so a patient route's

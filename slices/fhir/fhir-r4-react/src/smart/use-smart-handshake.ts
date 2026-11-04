@@ -65,13 +65,13 @@ const smartHandshakeQueryBase = queryOptions<
  *   redeems as, and the redirect URI the token request names
  *
  * @remarks
- * This is the one hook that runs the exchange. The authorization code in the redirect
- * URL is single-use: the token exchange (`completeSignInAfterRedirectHere` →
+ * This is the one hook that runs the exchange. The authorization code in the
+ * redirect URL is single-use: the token exchange (`completeSignInAfterRedirectHere` →
  * `authorization-core`'s `completeSignIn`, the POST to the token endpoint)
  * may run **once, ever**. Routing it through a keyed query is what makes that
  * hold under `React.StrictMode`, whose dev-only mount → unmount → mount would
  * fire a bare `useEffect` twice — the second run finding the single-use
- * pending record already taken and failing the handshake. Query-level dedup
+ * retained sign-in request already taken and failing the handshake. Query-level dedup
  * means both mounts attach to the one in-flight exchange instead.
  *
  * Requires a `QueryClientProvider` above it; {@link buildSmartQueryClient}
@@ -103,8 +103,10 @@ const useSmartHandshake = (
  * @remarks
  * For a client-wide query callback (`buildSmartQueryClient`'s `onQueryError`)
  * that treats the handshake apart from the app's reads. A failed handshake is
- * sent back to the app root by {@link useRedirectToRootOnFailure}, and lands
- * there as the launch failure the page arrived with.
+ * the query's data, sent back to the app root by
+ * {@link useRedirectToRootOnFailure}, where it lands as the launch failure the
+ * page arrived with; what fails the query itself is a defect, thrown to the
+ * error boundary that reports it.
  */
 const isSmartHandshakeQuery = (query: Pick<Query, 'queryKey'>): boolean =>
   hashKey(query.queryKey) === hashKey(smartHandshakeQueryBase.queryKey)

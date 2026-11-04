@@ -12,8 +12,8 @@ import { smartAppTelemetry, smartRegistration } from './config.ts'
  * Its telemetry goes to the app's own Sentry project (`smartAppTelemetry`),
  * and only once the visitor consents to it.
  *
- * @param page - The page the app's router runs over, whose served directory
- *   is also the OAuth redirect target.
+ * @param page - The page the app's router runs over, whose basepath is also
+ *   the OAuth redirect target.
  * @param search - The query string the page arrived with; see `SmartAppRoot`.
  *   Defaults to the live URL's; tests pass one.
  */

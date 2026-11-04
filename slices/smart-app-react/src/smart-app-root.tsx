@@ -85,10 +85,10 @@ interface SmartAppRootProps {
    */
   readonly app: AppSectionId
   /**
-   * The app's SMART registration: what a launch the page arrives with and the
-   * standalone `ConnectMenu` both authorize with. The redirect URI is this
-   * page's root and the FHIR server is the launch's `iss` or the user's pick,
-   * so neither is part of it.
+   * The app's SMART registration: what a launch the page arrives with, the
+   * standalone `ConnectMenu` and the sign-in's return all sign in as. The
+   * redirect URI is this page's root and the FHIR server is the launch's `iss`
+   * or the user's pick, so neither is part of it.
    */
   readonly registration: SmartRegistration
   /** Where the app's telemetry goes once the visitor consents to it. */
@@ -128,8 +128,8 @@ function ConsentStatusControl(): JSX.Element {
 }
 
 /**
- * The launch page, and the authorize of the launch the page arrived with,
- * once: mounted only under the consent gate, so the authorize starts once the
+ * The launch page, and the sign-in for the launch the page arrived with,
+ * once: mounted only under the consent gate, so the sign-in starts once the
  * visitor has answered. The ref holds under StrictMode's second effect run,
  * and the launch works only once. A launch that fails before it leaves
  * replaces the page with the app root carrying `?launchError`.
@@ -216,21 +216,24 @@ const replaceWindowLocation = (url: string): void => {
 
 /**
  * The top-level root every first-party SMART app mounts: the telemetry consent
- * gate, then the launch page for a launch the URL carries, or one
- * `QueryClientProvider` around two branches in shared Wildflower chrome.
+ * gate, then, by the page's `RootArrival`, the launch page, or one
+ * `QueryClientProvider` around the app or the connect menu in shared
+ * Wildflower chrome.
  *
- * - **Launch** (the URL carries `iss`, with or without an EHR's `launch`, and
- *   no callback): {@link LaunchPage} while the root authorizes the launch with
+ * - **LaunchRequest** (the URL carries `iss`, with or without an EHR's
+ *   `launch`): {@link LaunchPage} while the root signs in for the launch with
  *   `registration`, once, in an error boundary that reports what it catches. A
  *   launch that fails before it leaves comes back to this root as
  *   `?launchError`.
- * - **Launched** (the URL carries an OAuth callback): `BrandBar`, with the
- *   telemetry status control at its end, over `children` in an error
- *   boundary that reports what it catches. The children complete the
- *   handshake as a query on the shared client (under `SmartHandshakeGate`).
- * - **Standalone** (a bare visit): `branding-react`'s `AppLandingPage`, the
- *   app's introduction beside the `ConnectMenu` (in the same kind of error
- *   boundary), which shows a launch that failed and landed back here as its
+ * - **SignInReturn** or **SelfAddressedSignInReturn** (a sign-in came back):
+ *   `BrandBar`, with the telemetry status control at its end, over `children`
+ *   in an error boundary that reports what it catches, under the
+ *   `SignInLanding` their `SmartHandshakeGate` completes as a query on the
+ *   shared client.
+ * - **SignInRefused** or **Visit** (the authorization server's refusal, or a
+ *   bare visit): `branding-react`'s `AppLandingPage`, the app's introduction
+ *   beside the `ConnectMenu` (in the same kind of error boundary), which shows
+ *   the refusal, or a launch that failed and landed back here, as its
  *   `arrivalProblem`, and the telemetry status control above the footer.
  *
  * @remarks
@@ -246,17 +249,18 @@ const replaceWindowLocation = (url: string): void => {
  * leaving for the authorization server does not re-run the authorize: it
  * replaces itself with the bare app root, a plain visit. The answer goes to
  * `telemetry-react`'s `useConsentedTelemetryStart` with `telemetry`'s DSN and
- * the tags `app` and `launch` (`launching`, `launched` or `standalone`), and the SDK starts only if a switch is on. Once
- * it runs, the root tags events with the FHIR server's host when the handshake
- * completes, reports every failed read on its client,
- * and reports the launch failure the page arrived with (a failed handshake
- * among them), once.
+ * the tags `app` and `launch` (`launching`, `launched` or `standalone`), and
+ * the SDK starts only if a switch is on. Once it runs, the root tags events
+ * with the FHIR server's host once the gate tells it the app signed in
+ * (`onSignedIn`), reports every failed read on its client, and reports the
+ * launch failure the page arrived with (a failed handshake among them), once.
  *
- * The case is latched on mount: every arrival carrying a callback has its
- * pending records taken and `code`/`state`/`error` scrubbed from the URL
- * (`completeSignInAfterRedirectHere` on a callback, `discardRefusedSignInAfterRedirectHere` on an OAuth
- * error return), so re-reading the URL later would flip a launch back to the
- * connect menu. See the guardrails in `slices/smart-app-react/AGENTS.md`.
+ * The arrival is parsed once, on mount: every sign-in arrival has its retained
+ * sign-in requests taken and `code`/`state`/`error` scrubbed from the URL
+ * (`completeSignInAfterRedirectHere` on a return,
+ * `discardRefusedSignInAfterRedirectHere` on a refusal), so re-reading the URL
+ * later would flip a sign-in back to the connect menu. See the guardrails in
+ * `slices/smart-app-react/AGENTS.md`.
  */
 function SmartAppRoot({
   app,

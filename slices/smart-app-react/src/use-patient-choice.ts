@@ -28,7 +28,7 @@ const writePatientChoiceToUrl = (patientChoice: PatientChoice): void => {
  * `?patient=` when it carries one, else the launch's patient, else none yet.
  *
  * @param launchPatientId - The patient the launch's token carries
- *   (`client.launchPatientId`, e.g. an EHR launch from a patient's record), or
+ *   (`connection.launchPatientId`, e.g. an EHR launch from a patient's record), or
  *   `None` — with no patient in context, or before the handshake completes.
  *
  * @remarks

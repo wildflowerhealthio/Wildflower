@@ -2,7 +2,7 @@ import { createBrowserHistory, type RouterHistory } from '@tanstack/react-router
 
 /**
  * What a routed SMART app's router runs over for the page's life: the
- * window's history and the served directory. Opened once, in the app's
+ * window's history and its basepath. Opened once, in the app's
  * `main.tsx`, by {@link openSmartAppPage}.
  */
 interface SmartAppPage {
