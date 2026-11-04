@@ -47,8 +47,8 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `persistTransactionBundle`.
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
   `harImporter` for format `'har'`: HAR decode through the
-  pre-adopted FHIR response-kind pool into per-URL sections (with a note per
-  response that yielded nothing), under the HAR source-file coding the import
+  FHIR response-kind pool into per-URL sections of detached records (with a
+  note per response that yielded nothing), under the HAR source-file coding the import
   stage mints its source files with. The kind toggles are a _setting_
   (`HarSettings.disabledKinds`), applied inside `decode` too.
 - **[`har-importer-react`](./har-importer-react/AGENTS.md)** (the HAR UI) —
@@ -84,7 +84,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   registry) and the batch machinery over it: `groupByFormat` splits a pick by
   the first claiming `detect`, `decodeFormat` runs one format's `decode` under
   its own settings and imports it through `importDecoded` — the import stage,
-  the one place a decoded record is adopted, a source file is minted and
+  the one place a detached record is adopted, a source file is minted and
   `meta.source` is stamped — `readBatch` yields a `DecodedBatch` — one
   `FormatDecode.Result` per registered format plus the `UnrecognizedFile`s —
   `claimedFormats` names the formats that actually took part, `redecodeFormat`
@@ -123,7 +123,7 @@ assembly belongs to none of them:
   `HttpResponseKind`, `Specificity`) but names no source file format and no resource
   type.
 - **`fhir-r4-source`** (same slice) owns the FHIR R4 source descriptor
-  (`fhirR4Source`, its `responseKinds` pre-adopted) but knows nothing about HAR
+  (`fhirR4Source` and its `responseKinds`) but knows nothing about HAR
   or about a registry of formats.
 - **`web-trace-core`** owns the HAR codec but is
   deliberately consumer-agnostic.
@@ -214,7 +214,8 @@ sits above `http-extraction` and below every binding.
   `web-trace-core` for the HAR codec and the source-file coding constants only —
   the `meta.source` stamping and the source-file mint are `importer-core`'s
   import stage — plus `http-extraction-fundamentals`
-  (extraction + recognition), `fhir-r4-source` (the pre-adopted pool),
+  (extraction + recognition), `fhir-r4-source` (the pool), `fhir-r4-adoption`
+  (`detach`),
   `importer-fundamentals` (the contract), and `fhir-r4` (resources). It
   re-derives none of them.
 - **A future file format gets its own binding, not a widened HAR one.** A CSV

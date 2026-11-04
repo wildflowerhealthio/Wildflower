@@ -16,24 +16,25 @@ persistence, HAR, files, or apps.
   `Extraction` (`routeTo` / `recognize` / `parseWith` over
   archived responses), `SourceDescriptor` ("a source package" as one value —
   name, display strings, kinds, and an optional merge for resources its kinds
-  emit under one id), and `Specificity` (the cross-source tier constants
+  emit under one key), `SystemFamily` (which namespace a response's ids
+  belong to, per type), and `Specificity` (the cross-source tier constants
   routing ranks a claim by). A response kind carries its own recognition +
   identity on `tryRecognize(url)`; there is no separate recognition-carrying
   `Source` value (a `SourceDescriptor` recognizes nothing).
   Imports from no slice. See its
   [AGENTS.md](./http-extraction-fundamentals/AGENTS.md).
 - **`fhir-r4-adoption`** — the FHIR R4 side of extraction, above `fhir-r4`
-  and `http-extraction-fundamentals`, which stays FHIR-free: how a resource
-  decoded from a source becomes the device's own, adopted under the source's
-  identity with an id whether or not the source gave it one (`DecodedId`).
-  `adoptUnderRecognizedRoot` adopts every resource a response kind parses under
-  the identity its `tryRecognize` mints; each per-source package maps its kinds
-  through it. See its [AGENTS.md](./fhir-r4-adoption/AGENTS.md).
+  and `http-extraction-fundamentals`, which stays FHIR-free: `detach(family)`
+  takes a resource a source decoded (its ids and literal references as the
+  source spelled them) to a detached one — no id, keyed by its first
+  identifier, its references logical — and `adopt` stores a detached record
+  under the id its key derives, or a minted one when it has no key. See its
+  [AGENTS.md](./fhir-r4-adoption/AGENTS.md).
 - **`fhir-r4-source`** — the first per-source package: `fhirR4Source`, a
-  `SourceDescriptor` whose `responseKinds` are the FHIR R4 kinds pre-adopted so
-  each resource keys in `<root>/<Type>` of the URL it arrived on — the single
-  definition an archive import consumes. See its
-  [AGENTS.md](./fhir-r4-source/AGENTS.md).
+  `SourceDescriptor` whose `responseKinds` parse FHIR R4 resources as the
+  server spelled them, each kind's `tryRecognize` minting the
+  `FhirStyleBaseUrl` family of the URL it claims — the single definition an
+  archive import consumes. See its [AGENTS.md](./fhir-r4-source/AGENTS.md).
 - **`rexall-be-well-source`** — the Rexall Be Well source: three response kinds
   (Patient, MedicationRequest, MedicationDispense) that decode Rexall's carebook
   STU3 dialect into FHIR R4 resources, plus that dialect's catalogue, wire
@@ -70,8 +71,8 @@ which is exactly what keeps the dependency graph acyclic.
 - **This slice imports from no slice but the resource and dialect packages it
   decodes with.** `http-extraction-fundamentals` depends only on `effect` and
   `kitchen-sink`; `fhir-r4-adoption` adds `fhir-r4`, and a source package adds
-  `fhir-r4-adoption` and the resource/dialect packages it decodes with
-  (`fhir-r4-source` → `fhir-r4`). Never `importer-*`.
+  the resource/dialect packages it decodes with (`fhir-r4-source` →
+  `fhir-r4`). Never `importer-*`.
 
 ## References
 
@@ -82,5 +83,6 @@ which is exactly what keeps the dependency graph acyclic.
 - [slices/importer/AGENTS.md](../importer/AGENTS.md) — the archive-driven
   consumer.
 - [Source Identity Explanation](./fhir-r4-adoption/docs/Source%20Identity%20Explanation.md)
-  — the identity each source package's response kinds key resources under.
+  — the system family each source package's response kinds mint, and what
+  detaching and adopting under it do.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

@@ -2,8 +2,8 @@
 
 The **Rexall Be Well source**: the single definition of how the Rexall Be Well
 portal's carebook STU3 dialect decodes into FHIR R4 resources, exported as one
-`SourceDescriptor` value — `rexallBeWellSource`, whose pre-adopted
-`responseKinds` an archive import (`har-importer-core`) extracts with.
+`SourceDescriptor` value — `rexallBeWellSource`, whose `responseKinds` an
+archive import (`har-importer-core`) extracts with.
 
 It also exports the dialect itself — the carebook catalogue, the wire schemas
 and the tunnel URLs — so a producer of carebook traffic
@@ -43,9 +43,14 @@ rather than a copy, and what it writes is what the response kinds read.
   and `MedicationResource` are exported, for a producer to type its searchset as
   `typeof MedicationBundle.Encoded`.
 - `src/source-system.ts` — `REXALL_CAREBOOK_SYSTEM`, the Wildflower-minted
-  `sid` URI each kind's `tryRecognize` mints and adoption keys under.
-- `src/response-kinds.ts` — `rexallBeWellResponseKinds` (internal): the kinds
-  mapped through `adoptUnderRecognizedRoot`, stable by identity at module scope.
+  `sid` URI every carebook id belongs to, whatever the type, and
+  `REXALL_CAREBOOK_SYSTEM_FAMILY`, the `FixedAcrossResourceTypes` family each
+  kind's `tryRecognize` mints over it. Carebook writes no identifier of its own
+  for a resource's id (its `medicationrequest-external-id` is another number),
+  so a record's key is its carebook id in this system.
+- `src/response-kinds.ts` — `rexallBeWellResponseKinds` (internal): the kinds,
+  parsing carebook's own ids and references, stable by identity at module
+  scope.
 - `src/source.ts` — `rexallBeWellSource`, the package's primary export.
 - `src/fixtures/` — anonymized `web-trace` capture fixtures the bundle,
   promotion, and response-kind suites decode against (`prescriptions-searchset.json`,
@@ -54,7 +59,7 @@ rather than a copy, and what it writes is what the response kinds read.
 ## Layering
 
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
-`http-extraction-fundamentals`, `fhir-r4`, `fhir-r4-adoption`,
+`http-extraction-fundamentals`, `fhir-r4`,
 `fhir-stu3-as-r4` (the STU3⇄R4 schemas the bundles decode with), `effect`, and
 `kitchen-sink`. Never imports from
 `slices/importer` or `apps/synthetic-data` — those consume this package, never
@@ -232,7 +237,8 @@ Three things ride along, none of them moving an extension:
   page, the convention the Shoppers source shares. It **replaces** the
   processor's own `reference` (`rexall-pharmacy-location/<id>`), which resolves
   to nothing and repeats the id `identifier` already holds. An absolute URL is
-  also left untouched by adoption's reference rewrite. The reference's
+  also left as it is when the importer detaches the record, so the vendor
+  identifier stays. The reference's
   `display` names the store, `Rexall (store <id>)`, unless the processor
   reference already carried one.
 - **The store pair is all-or-nothing.** `external-system-source` must read
@@ -315,19 +321,26 @@ Observed, not acted on — worth knowing before trusting a field:
 
 - A `MedicationRequest` and its `MedicationDispense` **share the same `id`** and
   the same identifier pair. Anything keying on id alone rather than
-  (resourceType, id) collapses the two — which is why the kinds are adopted with
-  `adoptUnderRecognizedRoot`, whose derivation takes the resource type as an
-  input.
+  (resourceType, id) collapses the two — which is why a record's stored id
+  derives from its type as well as its key.
 - `authorizingPrescription[].reference` does **not** resolve to any bundle
-  entry; the working link is `identifier.value`. The two entries are the same
+  entry (it names a `PrescriptionOrder` carebook does not serve); the working
+  link is `identifier.value`, the request's id. The two entries are the same
   reference twice, differing only in `identifier.system` (`…-type-order` /
-  `…-type-refill`).
+  `…-type-refill`). `PrescriptionOrder` is no R4 resource type, so detaching
+  leaves these links exactly as carebook spelled them, identifier included, and
+  the import stage leaves them too: they pass through as the source wrote
+  them, not as references to the request.
 - `whenPrepared` / `whenHandedOver` are byte-equal to the `when-requested` /
   `estimated-pick-up` extensions — so for a `completed` dispense,
   `whenHandedOver` may be an _estimate_, not an actual hand-over.
 - `note[0].text` is the **sig** (`"TAKE 1 TABLET (=20MG) BY MOUTH ONCE DAILY"`),
   not an annotation. Its conventional home is `dosageInstruction[0].text`; it is
   left in `note` for now.
+- A request's `requester` can be a literal `Practitioner/<id>` to a
+  practitioner carebook does not serve. It detaches to the logical reference by
+  that id's key, and since no record of the import holds that key it stays
+  logical: the importer's identity map offers it as a provider to link.
 - `requester.agent.reference` and `subject.display` arrive as empty strings
   where the field should simply be absent.
 

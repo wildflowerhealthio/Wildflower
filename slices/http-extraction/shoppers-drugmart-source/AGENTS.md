@@ -2,7 +2,7 @@
 
 The **Shoppers Drug Mart source**: the single definition of how the Shoppers
 "mypharmacy" portal's bespoke JSON decodes into FHIR R4 resources, exported as
-one `SourceDescriptor` value — `shoppersDrugMartSource`, whose pre-adopted
+one `SourceDescriptor` value — `shoppersDrugMartSource`, whose
 `responseKinds` an archive import (`har-importer-core`) extracts with. Unlike
 `fhir-r4-source` (which
 decodes native FHIR JSON) and `rexall-be-well-source` (which decodes a carebook
@@ -65,27 +65,34 @@ rather than a copy, and what it writes is what the response kinds read.
 - `src/shoppers.ts` — the identifier/coding-system URL catalogue
   (`ShoppersIdentifierSystem`, `PRESCRIPTION_STATUS_TYPE_SYSTEM`). There is no
   Shoppers DIN system — DINs use the canonical `CanadianCodingSystem.Din`.
-- `src/source-system.ts` — `SHOPPERS_DRUGMART_SYSTEM`, the Wildflower-minted
-  `sid` URI each kind's `tryRecognize` mints and adoption keys under.
+- `src/source-system.ts` — `SHOPPERS_DRUGMART_SYSTEM_FAMILY`, the
+  `SystemPerResourceType` family each kind's `tryRecognize` mints: the
+  portal's own namespace for each type's ids, `Patient` →
+  `ShoppersIdentifierSystem.PatientId`, `MedicationRequest` → `PrescriptionId`,
+  `MedicationDispense` → `DispenseId`. Detaching under it keys each record by
+  the portal's identifier for it, so the kinds write no key identifier of their
+  own: a `Patient` has no identifier but its key, a dispense none but its
+  key, and a `MedicationRequest` its key and then its `PrescriptionNumber`.
 - `src/dates.ts` — `decodesAsDateTime` / `firstDateTime` date-validation helpers
   shared across entities.
 - `src/response-kinds.ts` — `shoppersDrugMartResponseKinds` (internal, the
-  descriptor's `responseKinds`): the three kinds widened to
-  `HttpResponseKind<FhirResource>` and mapped through `adoptUnderRecognizedRoot`.
-  A module-level constant, stable by identity.
+  descriptor's `responseKinds`): the three kinds as
+  `HttpResponseKind<FhirResource>`, each writing the portal's ids as `id` and
+  linking its resources by literal `Type/<id>` references. A module-level
+  constant, stable by identity.
 - `src/merge-resources.ts` — `mergeShoppersResources`, the source's
   `mergeResources`: a fill seen in both prescription feeds, as one
   `MedicationDispense` (see [Traps](#traps)).
 - `src/source.ts` — `shoppersDrugMartSource`, the package's primary export: the
   `SourceDescriptor` (`name: 'shoppers-drugmart'`, display strings, the
-  pre-adopted `responseKinds`, and `mergeShoppersResources`).
+  `responseKinds`, and `mergeShoppersResources`).
 
 ## Layering
 
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
 `http-extraction-fundamentals` (`HttpResponseKind`, `UrlMatch`, `Specificity`,
-`RecognizedUrlData`), `fhir-r4` (resources), `fhir-r4-adoption`
-(`adoptUnderRecognizedRoot`), `effect`, and `kitchen-sink` — nothing else. In
+`RecognizedUrlData`, `SystemFamily`), `fhir-r4` (resources), `effect`, and
+`kitchen-sink` — nothing else (its tests detach with `fhir-r4-adoption`). In
 particular it must **never** import anything from `slices/importer` (whose
 `har-importer-core` consumes this package's
 `shoppersDrugMartSource.responseKinds`).
@@ -101,8 +108,8 @@ and `rexall-be-well-source` alike:
   the URL's `customerId` under `ShoppersIdentifierSystem.CustomerId`, with no
   literal `reference`: the history payload does not say which managed person
   a fill was for, and no Patient stands for the account. The identifier is
-  there for the importer's identity map to resolve to a person; adoption
-  leaves it as it is.
+  there for the importer's identity map to resolve to a person; detaching and
+  adopting leave it as it is, since no record of the import is keyed by it.
 - **Prescriber** — a status-feed `MedicationRequest.requester` is
   `fhir-r4`'s `Practitioner.tryReferenceWireFromName` of `prescriberName`,
   since the portal knows the prescriber only by that name: a logical
@@ -140,14 +147,22 @@ and `rexall-be-well-source` alike:
 ## Traps
 
 - **A prescription's latest fill is in both feeds under one `dispenseId`,**
-  so under one adopted id, and each copy knows something the other does not.
+  so under one key, and each copy knows something the other does not.
   `mergeShoppersResources` makes them one: the status copy's `subject`,
   `status`, `authorizingPrescription` and `location.reference`, with the
   history copy's store name as `location.display`, and its DIN coding when the
   status copy has none. It tells the copies apart by the history copy's
-  `subject`, which has no literal `reference`, so the result is the same in
-  either arrival order. Only a consumer that holds both copies applies it (the HAR
-  import).
+  `subject`, which names the account by `ShoppersIdentifierSystem.CustomerId`,
+  so the result is the same in either arrival order, detached or not. Only a
+  consumer that holds both copies applies it (the HAR import, over detached
+  records).
+- **A history fill's link to its prescription is by the prescription's key.**
+  `authorizingPrescription` is written as `MedicationRequest/<prescriptionId>`
+  with the `prescriptionNumber` as its identifier; detaching replaces that
+  identifier with the prescription's key, so the number survives only on the
+  `MedicationRequest` itself, and only where the status feed was captured. A
+  fill with no `prescriptionId` keeps the number, as an identifier-only
+  reference.
 - **`responseKinds` order is not load-bearing, and should stay that way.** The
   three recognizers are disjoint by construction (different path segments:
   `customers/pcid/<uuid>`, `prescriptions/<uuid>/prescription-status`,
@@ -169,4 +184,4 @@ and `rexall-be-well-source` alike:
 - [har-importer-core AGENTS.md](../../importer/har-importer-core/AGENTS.md)
   — the archive importer that runs these kinds.
 - [Source Identity Explanation](../fhir-r4-adoption/docs/Source%20Identity%20Explanation.md)
-  — why a resource is re-keyed under a derived local id.
+  — why a resource is detached, keyed, and stored under a derived local id.

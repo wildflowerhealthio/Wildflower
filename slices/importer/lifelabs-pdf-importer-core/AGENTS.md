@@ -88,13 +88,13 @@ that hands back a hand-written positioned-text document.
 - `src/synthesis.ts` — **the FHIR synthesis without the PDF decoder**,
   exported as the `/synthesis` subpath: the `Report` model's types,
   `toFhirResources`, **`LIFELABS_SYSTEM_FAMILY`**, **`decodedReportsOf`**
-  (the reports as the decode yields them: the synthesis, each resource beside
-  its source id in that family, one `FromSource` section per
+  (the reports as the decode yields them: the synthesis, each resource
+  detached under that family (`fhir-r4-adoption`'s `detach`), one section per
   report titled by **`reportSectionTitle`** (the report's `Lab No` and date
   of service, `'LifeLabs report'` when both are masked), each review row
   keyed `<Type>/<source id>` and titled by the reference it is written under,
-  `<Type>/<local id>`, and no notes; each section built with
-  `DecodedFileSet.fromSourceSection`) and the
+  `<Type>/<local id>` (`DecodedFileSet.writtenReferenceTitle`), and no notes)
+  and the
   `ReportResources` / `SynthesisOptions` types, none of which requires an
   extractor. For callers that build reports themselves
   (`synthetic-data-lifelabs`, which adopts `decodedReportsOf`'s decode with
@@ -149,7 +149,7 @@ dependencies, directly or through other packages. Depends on
 `positioned-text` (the positioned-text schema, the neutral seam between
 extraction and the dialect, and the `PositionedTextExtractor` service the
 decode requires), `fhir-r4` (resource schemas, `joinIdComponents`,
-`localResourceId`), `fhir-r4-adoption` (`SystemFamily`),
+`localResourceId`), `fhir-r4-adoption` (`SystemFamily`, `detach`),
 `importer-fundamentals` (`DecodeFunction.make`, `DecodedFileSet`, `PickedFile`),
 `kitchen-sink`
 (`fnv1a64` for deterministic id hashing, `numRunsFor` in tests), and `effect`

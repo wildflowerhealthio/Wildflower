@@ -19,8 +19,9 @@ The root entry exports `ShoppersHar`, the account types and
   `Story`), the account holder first. The address is typed from
   `SourcePatient`'s. `shoppersPatientReferenceOf` is the reference to the
   Patient the Shoppers import makes of one managed person (`fhir-r4-adoption`'s
-  `adoptedReferenceOf` under `SHOPPERS_DRUGMART_SYSTEM`, keyed by their
-  `patientId`), for a result from another source to be filed on.
+  `adoptedReferenceOf` of their key, their `patientId` in
+  `ShoppersIdentifierSystem.PatientId`), for a result from another source to be
+  filed on.
 - `src/shoppers-prescription.ts` — `shoppersPrescriptionsOf`: every
   prescription on the account with the ids the portal keys it by (its uuid,
   its seven-digit `prescriptionNumber`, each fill's `dispenseId`), the number
@@ -57,7 +58,7 @@ Depends on `synthetic-data-fundamentals` (the story model and `StoryDay` from
 and `SHOPPERS_PORTAL_ORIGIN`, and the `CustomerPayload` / `SourcePatient` /
 `SourcePrescription` / `SourceDispense` / `HistoryPayload` /
 `SourceHistoryDispense` schemas whose encoded types the bodies are written
-as, and `SHOPPERS_DRUGMART_SYSTEM`). The round-trip test also uses
+as, and `ShoppersIdentifierSystem`). The round-trip test also uses
 `har-importer-core`, `importer-fundamentals` and `medication-core`, as dev
 dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
 

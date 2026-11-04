@@ -17,24 +17,27 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
 - **`HttpResponseKind`** (`src/http-response-kind.ts`) — the recipe for
   recognizing and decoding one response shape: `name` / `tryRecognize` /
   `parse`. `tryRecognize(url)` returns `Option<RecognizedUrlData>` — `None` when
-  the kind does not claim the URL, `Some { specificity, source? }` when it does,
-  where each kind constructs its **own** identity: recognition, root, and
-  confidence are one read. `systemFamily` (a `SystemFamily`) is the
-  identifier systems this response's resources key under, per resource type,
-  and is **absent** for a kind that recognizes but mints no identity (a
+  the kind does not claim the URL, `Some { specificity, systemFamily? }` when
+  it does, where each kind constructs its **own** identity: recognition, root,
+  and confidence are one read. `systemFamily` (a `SystemFamily`) is the
+  namespace the ids this response's resources carry belong to, per resource
+  type, and is **absent** for a kind that recognizes but mints no identity (a
   recorder records, it does not import). `parse` takes an `HttpResponse` and
   returns `Effect<readonly TParsed[], ParseError>` — a pure decode, never
   navigation. `make` shallow-clones and deep-freezes.
-- **`SystemFamily`** (`src/system-family.ts`) — how the `Identifier.system` of
-  a source id is chosen per resource type in one context, two kinds:
-  `FixedAcrossResourceTypes { system }`, the one system whatever the type (a
-  portal, a file format), or `FhirStyleBaseUrl { baseUrl }`, the type appended
-  to a base URL. `systemFor(family, Type)` is the system `family` gives
-  `Type`; `relativise(family)` reads a FHIR server's absolute spelling of its
-  own record, `<baseUrl>/Type/id`, back to the relative `Type/id` and leaves
-  every literal alone under a fixed system. Data, not a closure, so a kind's
-  `tryRecognize` can mint one and a test can compare it. `fhir-r4-adoption`
-  keys what a kind decodes by it.
+- **`SystemFamily`** (`src/system-family.ts`) — how the `Identifier.system` a
+  source's id for a record belongs to is chosen per resource type in one
+  context, three kinds: `FixedAcrossResourceTypes { system }`, the one system
+  whatever the type (a portal, a file format); `FhirStyleBaseUrl { baseUrl }`,
+  the type appended to a base URL; and `SystemPerResourceType { systems }`, the
+  system a source publishes for each type it names. `systemFor(family, Type)`
+  is the system `family` gives `Type`, and throws for a type a per-type family
+  does not list (a misconfigured source); `relativise(family)` reads a FHIR
+  server's absolute spelling of its own record, `<baseUrl>/Type/id`, back to
+  the relative `Type/id` and leaves every literal alone under the other
+  families. Data, not a closure, so a kind's `tryRecognize` can mint one and a
+  test can compare it. `fhir-r4-adoption`'s `detach` reads it once, as a
+  decoder detaches what a kind parsed; nothing downstream carries it.
 - **`UrlMatch`** (`src/url-match.ts`) — the declarative URL-recognition regex
   builder a kind's `tryRecognize` is made from (`make` / `literal` / `id`,
   `pathEnd` vs `mustHaveQuery` boundaries). A `make` call returns the
@@ -67,9 +70,12 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   stay on each kind's `tryRecognize`; this must never grow back the deleted
   recognition-carrying `Source`'s role. `make` shallow-clones and deep-freezes.
 - **`SourceDescriptor.ResourceMerge`** — the `mergeResources` hook,
-  `(earlier, later) => TParsed`: how a source combines two resources its kinds
-  emitted in one extraction under one identity (for FHIR, one `resourceType`
-  and `id`), for a source whose feeds each know part of one record. It spans
+  `<TResource extends TParsed>(earlier, later) => TResource`: how a source
+  combines two resources its kinds emitted in one extraction under one
+  identity (for FHIR, one `resourceType` and key), for a source whose feeds
+  each know part of one record. Generic in what the consumer holds, so a
+  consumer that has narrowed its records (`har-importer-core` merges them
+  detached) gets the narrowed type back. It spans
   kinds, which is why it sits on the source and not on a kind. Only a consumer
   that holds a whole extraction before writing applies it: `har-importer-core`
   does, over the whole preview. A source without one keeps every copy.

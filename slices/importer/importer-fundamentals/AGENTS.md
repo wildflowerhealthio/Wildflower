@@ -88,27 +88,30 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   SOP Instance UID as `urn:oid:`), or `None` for a format whose files do not
   name themselves; the import stage writes it onto the file's source file as
   `masterIdentifier`. A **`Section`** is a titled group of records from one
-  source batch, each entry a review key, a title and its record, in one of two
-  cases: **`Adopted`**, every record already the device's own and kept as it
-  is (what the HAR decoder still returns, deleted once it returns
-  `FromSource` sections), or **`FromSource`**, each record as its
-  source gave it beside its key less its type (`system`, `sourceId`), with the
-  **`systemFamily`** the batch keys each type in (one per batch, not per
-  record), which the import stage adopts it under. The "Source file(s)"
-  section is the import stage's own, never decoded.
-  A `FromSource` record is a **`FromSourceEntry`**.
-  **`fromSourceSection({ systemFamily, title, resources, labelOf })`** is how
-  a decoder builds one, the batch's family given once: it pairs each record
-  with its key (`fhir-r4-adoption`'s `withSourceId`), and `labelOf` gives
-  each its **`ReviewLabel`** (review key and title) with that key in hand.
-  LifeLabs and DICOM build theirs with it.
+  source batch, `{ title, entries }`, each **`Entry`** a review key, a title
+  and its record **detached** (`fhir-r4-adoption`'s `DetachedResource`: no
+  id, keyed by its first identifier, naming every other decoded record by a
+  logical reference). A decoder detaches its own records, under the system
+  family its source's ids belong to, so a section carries no family. It is a
+  separate type from `DecodedFile.Section`, the same records adopted: the two
+  hold different records, and every reader of a decoded file reads
+  `resources` off it. The "Source file(s)" section is the import stage's own,
+  never decoded. **`writtenReferenceTitle(resource, reviewKey)`** is a
+  record's review title, the reference the import stage writes it under,
+  `<Type>/<id>` (the id its key derives), or `<Type> (<review key>)` for a
+  keyless record, whose id is only minted at import; the HAR and LifeLabs
+  decoders title their rows with it.
   **`namespaceKeys(sections, prefix)`** prefixes every entry's review key;
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
-  **`adopt({ sections, notes })`** is how the import stage makes a decode's
-  records the device's own, as a `DecodedFile`: each `FromSource` section's
-  record under its key with `fhir-r4-adoption`'s `adoptUnderKey`, its
-  references keyed in the section's system family, and each `Adopted`
-  section's as they are. The format decode tests adopt through it too.
+  **`adopt({ sections, notes }, mintId?)`** is how the import stage makes a
+  decode's records the device's own, as a `DecodedFile`: one
+  `fhir-r4-adoption` `adopt` over every section of the set, so a keyed record
+  lands on the id its key derives, a keyless one on an id `mintId` mints (a
+  random UUID unless a test injects one), and a logical reference resolves when
+  the set holds the record it names by key, whichever section holds it, as a
+  FHIR server resolves a conditional reference against a transaction bundle;
+  one naming a record the set does not hold stays logical, for the identity
+  map. The format decode tests adopt through it too.
 - `src/decode-function.ts` — the **`DecodeFunction`** namespace: the batch
   decode's signature **and the one constructor that builds it**. **`Type`** is
   the signature a `FileImporter` exposes (files and settings in, one
@@ -135,9 +138,6 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `unreadableFiles` row per picked file of the failing set. It returns each
   set apart, with its picked files, because `importer-core`'s import stage
   builds each set's source files and sets its records' `meta.source` from them.
-  **`fromAdopted(decodedFile)`** wraps a `DecodedFile` of already adopted
-  resources as `Adopted` sections, for the HAR decoder; it goes with the
-  `Adopted` case.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two
@@ -448,16 +448,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   copy of `web-trace-core`'s helper (the standard digest, no project-specific
   behaviour), kept here so the codec above needs no `web-trace-core` dependency
   — a copy, because moving it would invert the importer → web-trace direction.
-- `src/test-helpers.ts` — the **`./test-helpers`** entry, for the format
-  bindings' tests: **`fromSourceSectionsOf(decoded)`**, a decode's sections
-  each narrowed to `FromSource`, throwing on an `Adopted` one.
 
 ## Layering
 
-Depends on `effect` (and `kitchen-sink` in tests), `http-extraction-fundamentals`
-for `SystemFamily` alone (the systems a `DecodedFileSet.Section`'s source
-batch keys each type in), `fhir-r4-adoption` for `adoptUnderKey` alone
-(`DecodedFileSet.adopt`; it depends on no importer package), plus `fhir-r4` for the
+Depends on `effect` (and `kitchen-sink` in tests), `fhir-r4-adoption` for
+`DetachedResource` and `adopt` alone (a `DecodedFileSet.Section`'s records and
+`DecodedFileSet.adopt`; it depends on no importer package), plus `fhir-r4` for the
 `DocumentReference` schema and the `Identifier` a picked file identifies itself
 as, `fhir-r4/resources` for
 `FhirResourceWithId` (`decoded-file.ts` and `staged-import.ts` are concrete over

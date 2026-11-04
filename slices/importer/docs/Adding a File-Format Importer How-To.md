@@ -57,33 +57,40 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 You write **one file set at a time**. `decodeFileSet(pickedFiles, settings)` takes
 the picked files that are decoded together — each a `PickedFile.Type`
 (`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) —
-and yields a `DecodeFunction.FileSetDecode`: titled `FromSource` sections of
-labeled resources as the source gave them, plus diagnostic notes.
+and yields a `DecodeFunction.FileSetDecode`: titled sections of labeled,
+**detached** resources, plus diagnostic notes.
 
 ```ts
 const MY_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: MY_SYSTEM })
+const detachMine = detach(MY_SYSTEM_FAMILY)
 
 const decodeMyFormat = (
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: MySettings
 ): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> => …
 // each section:
-//   DecodedFileSet.fromSourceSection({
-//     systemFamily: MY_SYSTEM_FAMILY,
+//   {
 //     title,
-//     resources,
-//     labelOf: ({ system, sourceId, resource }) => ({ key, title }),
-//   })
+//     entries: resources.map(detachMine).map((resource) => ({
+//       key,
+//       title: DecodedFileSet.writtenReferenceTitle(resource, key),
+//       resource,
+//     })),
+//   }
 ```
 
-A section's `systemFamily` is the systems your source keys each resource type
-in (`SystemFamily`, from `fhir-r4-adoption`): a document format's own
-Wildflower-minted `sid` URI for every type, as LifeLabs and DICOM state.
-`DecodedFileSet.fromSourceSection` pairs each resource with its key
-(`fhir-r4-adoption`'s `withSourceId`): its own id in that system, or a digest
-of its content when it has none. `labelOf` gives each record's review key and
-title, with that key in hand. The decode never makes a `wf-` id; the import
-stage does.
+Synthesize each resource with an id made from what the file says about it, and
+link your resources to each other with literal `Type/<id>` references; then
+detach them (`fhir-r4-adoption`'s `detach`) under the system family your
+source's ids belong to (`SystemFamily`, re-exported there): a document format's
+own Wildflower-minted `sid` URI for every type, as LifeLabs and DICOM state.
+Detaching drops each `id`, keys the resource by it as `identifier[0]` in that
+system, and turns each literal reference into the logical reference to its
+target by the target's key. A section carries no family: everything the import
+stage needs is on the records. A review key must be stable across a settings
+re-decode; `DecodedFileSet.writtenReferenceTitle` titles a row by the reference
+it will be written under. The decode never makes a `wf-` id; the import stage
+does.
 
 A format whose files stand alone reads `pickedFiles[0]` and says nothing more:
 each picked file is its own set by default, in the order the files were picked.
@@ -105,9 +112,11 @@ every format's `decode`) then, per set:
 
 - mints a source file for **every** picked file, its `masterIdentifier` what
   the picked file identified itself as (§1);
-- adopts each `FromSource` section's records under their keys
-  (`fhir-r4-adoption`'s `adoptUnderKey`, references keyed in the section's
-  family), so every record has its `wf-` id before the hooks below run;
+- adopts the set's records (`DecodedFileSet.adopt`): a keyed record under the
+  `wf-` id its key derives, a keyless one under a random id, and each logical
+  reference to a record of the set resolved to a literal one (a reference to
+  anything else stays logical, for the identity map), so every record has its id
+  before the hooks below run;
 - lets the format link each source file to what the set decoded to
   (`linkSourceFile`, §4) and each record to the source files it was read from
   (`linkToSourceFiles`, §4), and prepends the source files as their own
