@@ -25,7 +25,7 @@ import type { ParseResult } from 'effect'
 import { Array as Arr, Effect, Either } from 'effect'
 
 import * as DecodedFileSet from './decoded-file-set.ts'
-import * as DecodedFile from './decoded-file.ts'
+import type * as DecodedFile from './decoded-file.ts'
 import * as FormatDecode from './format-decode.ts'
 import type * as PickedFile from './picked-file.ts'
 
@@ -44,8 +44,9 @@ type Type<in TSettings, TFormat extends string, out R = never> = (
 ) => Effect.Effect<FormatDecode.Decoded<TFormat>, never, R>
 
 /**
- * One set's decode as a format's `decodeFileSet` returns it: its records,
- * every one already adopted, and what its picked files identify themselves as.
+ * One set's decode as a format's `decodeFileSet` returns it: its sections,
+ * each stating whether its records are already adopted or beside their source
+ * ids, its notes, and what its picked files identify themselves as.
  *
  * @remarks
  * `pickedFiles` is the set's picked files, in the order they were picked, each
@@ -54,9 +55,23 @@ type Type<in TSettings, TFormat extends string, out R = never> = (
  * themselves; DICOM pairs each file with its SOP Instance UID. Left out, as by
  * every other format, each picked file identifies as nothing.
  */
-interface FileSetDecode extends DecodedFile.DecodedFile {
+interface FileSetDecode {
+  readonly sections: readonly DecodedFileSet.Section[]
+  readonly notes: readonly string[]
   readonly pickedFiles?: Arr.NonEmptyReadonlyArray<DecodedFileSet.PickedFileIdentity> | undefined
 }
+
+/**
+ * A decode whose records are already adopted, as `Adopted` sections: what the
+ * HAR decoders return. Deleted with the `Adopted` case once they return
+ * `FromSource` sections.
+ */
+const fromAdopted = (decoded: DecodedFile.DecodedFile): FileSetDecode => ({
+  sections: decoded.sections.map((section) =>
+    DecodedFileSet.Section.Adopted({ title: section.title, entries: section.resources })
+  ),
+  notes: decoded.notes,
+})
 
 /** What {@link make} needs of a format, `R` being what its `decodeFileSet` requires. */
 interface Config<TFormat extends string, TSettings, R = never> {
@@ -73,10 +88,7 @@ interface Config<TFormat extends string, TSettings, R = never> {
   readonly groupBy?:
     | ((file: PickedFile.Type) => Either.Either<string, ParseResult.ParseError>)
     | undefined
-  /**
-   * One set's decode, every resource in it already adopted: each section
-   * reaches the import stage as an `Adopted` one.
-   */
+  /** One set's decode, its sections as the import stage receives them. */
   readonly decodeFileSet: (
     pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
     settings: TSettings
@@ -89,12 +101,14 @@ const decodeSet = <TSettings, R>(
   settings: TSettings,
   config: Config<string, TSettings, R>
 ): Effect.Effect<DecodedFileSet.Type, ParseResult.ParseError, R> =>
-  Effect.map(config.decodeFileSet(pickedFiles, settings), (decoded) =>
-    DecodedFileSet.ofAdopted(
-      decoded.pickedFiles ?? Arr.map(pickedFiles, DecodedFileSet.unidentified),
-      DecodedFile.namespaceKeys(decoded, FormatDecode.keyPrefix(pickedFiles[0]))
-    )
-  )
+  Effect.map(config.decodeFileSet(pickedFiles, settings), (decoded) => ({
+    pickedFiles: decoded.pickedFiles ?? Arr.map(pickedFiles, DecodedFileSet.unidentified),
+    sections: DecodedFileSet.namespaceKeys(
+      decoded.sections,
+      FormatDecode.keyPrefix(pickedFiles[0])
+    ),
+    notes: decoded.notes,
+  }))
 
 /** What the sets a batch groups into, and the picked files that reached none of them. */
 interface Grouped {
@@ -182,5 +196,5 @@ const make = <TFormat extends string, TSettings, R = never>(
   }
 }
 
-export { make }
+export { fromAdopted, make }
 export type { Config, FileSetDecode, Type }

@@ -18,11 +18,16 @@ FHIR-free.
   `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(system,
   resource)` picks one; `CONTENT_DIGEST_SYSTEM` is the system a digest id is
   in.
-- `src/adopt-resource.ts` — `adoptUnderKey(family)` adopts a record under
-  the key it is handed (`{ system, sourceId, resource }`), its references
-  keyed in `family`; `importer-core`'s import stage calls it for each record
-  of a decoded `FromSource` section. `adoptResource(family)`: the derived id, the
-  source id as `identifier[0]` (taken from `DecodedId.of`), and each
+- `src/adopt-resource.ts` — `withSourceId(family)` pairs a decoded record
+  with its key (`{ system, sourceId, resource }`, the id from `DecodedId.of`
+  in `systemFor(family, Type)`); `importer-fundamentals`'
+  `DecodedFileSet.fromSourceSection` calls it for each record of the LifeLabs
+  and DICOM decoders' `FromSource` sections. `adoptUnderKey(family)` adopts
+  a record under the key it is handed, its references keyed in `family`;
+  `importer-core`'s import stage calls it for each record of a decoded
+  `FromSource` section. `adoptResource(family)` is the two together, which
+  `adoptUnderRecognizedRoot` runs: the derived id, the
+  source id as `identifier[0]`, and each
   reference whose literal relativises (`SystemFamily.relativise`) to a
   `Type/id` rewritten into `systemFor(family, Type)` through the per-type
   reference table (`mapReferences`); any other reference keeps its original

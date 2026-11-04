@@ -78,10 +78,8 @@ that hands back a hand-written positioned-text document.
   runs its `extract` on the picked file's bytes
   and hands the extracted `Document.Type` to `decodeLifeLabsPdfDocument`,
   which runs the
-  dialect, then the FHIR synthesis and adoption (`synthesis.ts`'s
-  `adoptedResourcesOf`), yielding a `DecodedFile`: one
-  section per report, titled by **`reportSectionTitle`** (the report's `Lab No`
-  and date of service, `'LifeLabs report'` when both are masked), and no notes.
+  dialect, then `synthesis.ts`'s `decodedReportsOf`. The import stage
+  adopts the records.
   Both extraction failure (`UnreadablePdf`) and an unrecognized LifeLabs
   document surface as `ParseError` — the one error channel the batch decode folds into that file's
   `unreadableFiles` entry. It reads only the picked file's name and bytes: this
@@ -89,13 +87,21 @@ that hands back a hand-written positioned-text document.
   `meta.source` stamping.
 - `src/synthesis.ts` — **the FHIR synthesis without the PDF decoder**,
   exported as the `/synthesis` subpath: the `Report` model's types,
-  `toFhirResources`, **`adoptedResourcesOf`** (synthesis then adoption under
-  `LIFELABS_SYSTEM`, the resources a decode yields) and the
+  `toFhirResources`, **`LIFELABS_SYSTEM_FAMILY`**, **`decodedReportsOf`**
+  (the reports as the decode yields them: the synthesis, each resource beside
+  its source id in that family, one `FromSource` section per
+  report titled by **`reportSectionTitle`** (the report's `Lab No` and date
+  of service, `'LifeLabs report'` when both are masked), each review row
+  keyed `<Type>/<source id>` and titled by the reference it is written under,
+  `<Type>/<local id>`, and no notes; each section built with
+  `DecodedFileSet.fromSourceSection`) and the
   `ReportResources` / `SynthesisOptions` types, none of which requires an
   extractor. For callers that build reports themselves
-  (`synthetic-data-lifelabs`). The main entry does not re-export it: it
-  carries the importer's own surface (decode, detect, the importer, `Report`,
-  the settings and the source-system constants).
+  (`synthetic-data-lifelabs`, which adopts `decodedReportsOf`'s decode with
+  `DecodedFileSet.adopt`, as the import stage does). The main entry re-exports only
+  `reportSectionTitle`: it carries the importer's own surface (decode,
+  detect, the importer, `Report`, the settings and the source-system
+  constants).
 - `src/detect.ts` — **`detectLifeLabsPdf`**, the importer's `detect`:
   `%PDF-` magic bytes or a `.pdf` extension. Kept syntactic so the picker can
   call every registered format's `detect` on every drop; the real recognition
@@ -142,9 +148,9 @@ A `-core`: pure, `lib: ["es2024"]` with no DOM, and no adapter among its
 dependencies, directly or through other packages. Depends on
 `positioned-text` (the positioned-text schema, the neutral seam between
 extraction and the dialect, and the `PositionedTextExtractor` service the
-decode requires), `fhir-r4` (resource schemas, `joinIdComponents`), `fhir-r4-adoption`
-(`adoptResource`),
-`importer-fundamentals` (`DecodeFunction.make`, `DecodedFile`, `PickedFile`),
+decode requires), `fhir-r4` (resource schemas, `joinIdComponents`,
+`localResourceId`), `fhir-r4-adoption` (`SystemFamily`),
+`importer-fundamentals` (`DecodeFunction.make`, `DecodedFileSet`, `PickedFile`),
 `kitchen-sink`
 (`fnv1a64` for deterministic id hashing, `numRunsFor` in tests), and `effect`
 (peer; `Report.tryFromDocument` returns an `Effect`). `fast-check` is a

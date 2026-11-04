@@ -7,6 +7,7 @@ import {
   Observation,
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
+import { DecodedFile, DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { decodeLifeLabsPdfDocument, Report } from '@wildflowerhealthio/lifelabs-pdf-importer-core'
 import { layoutDocument } from '@wildflowerhealthio/lifelabs-pdf-importer-core/test-helpers'
@@ -279,8 +280,9 @@ describe('LifeLabs.reportsOf', () => {
         const decoded = Effect.runSync(
           decodeLifeLabsPdfDocument(printed, { timeZone: laboratory.timeZone })
         )
-        const imported = decoded.sections.flatMap((section) =>
-          section.resources.map((entry) => entry.resource)
+        // Adopted as the import stage adopts them, without its source file.
+        const imported = DecodedFile.resources(DecodedFileSet.adopt(decoded)).map(
+          (entry) => entry.resource
         )
         const withoutSubject = (resource: FhirResource): FhirResource =>
           resource.resourceType === 'Observation' || resource.resourceType === 'DiagnosticReport'

@@ -13,7 +13,8 @@
  *
  * @packageDocumentation
  */
-export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument, reportSectionTitle } from './decode.ts'
+export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument } from './decode.ts'
+export { reportSectionTitle } from './synthesis.ts'
 export { detectLifeLabsPdf } from './detect.ts'
 export { lifeLabsPdfImporter } from './lifelabs-pdf-importer.ts'
 export * as Report from './entities/report.ts'

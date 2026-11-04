@@ -22,6 +22,7 @@ import {
   type PickedFile,
   Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
+import { fromSourceSectionsOf } from '@wildflowerhealthio/importer-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import type { Array as Arr } from 'effect'
 import { Effect, Either, Option, Schema } from 'effect'
@@ -29,6 +30,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { DicomHeader } from '@wildflowerhealthio/dicom'
+import { SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   decodeStudy,
   linkToPatientAndStudy,
@@ -91,10 +93,18 @@ const sample = (overrides: DicomTagMap = {}): Arr.NonEmptyReadonlyArray<PickedFi
   studyFile({ ...SAMPLE_TAGS, ...overrides }),
 ]
 
+/** A decode's records adopted as the import stage adopts them, each section `FromSource`. */
+const adoptedOf = (
+  decoded: Pick<DecodedFileSet.Type, 'sections' | 'notes'>
+): DecodedFile.DecodedFile =>
+  DecodedFileSet.adopt({ sections: fromSourceSectionsOf(decoded), notes: decoded.notes })
+
 describe('decodeStudy', () => {
   it('resolves ImagingStudy.started against the settings time zone', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-    const study = result.sections[0].resources.find((r) => r.key === 'imaging-study')?.resource
+    const study = adoptedOf(result).sections[0].resources.find(
+      (r) => r.key === 'imaging-study'
+    )?.resource
     expect(study?.resourceType).toBe('ImagingStudy')
     if (study?.resourceType !== 'ImagingStudy') return
     // StudyTime 14:30:22 in Toronto on Mar 15 is EDT (UTC-4).
@@ -104,7 +114,9 @@ describe('decodeStudy', () => {
   it('reads the same file as a different instant under a different zone', async () => {
     const startedIn = async (timeZone: string): Promise<string | null | undefined> => {
       const result = await Effect.runPromise(decodeStudy(sample(), { timeZone }))
-      const study = result.sections[0].resources.find((r) => r.key === 'imaging-study')?.resource
+      const study = adoptedOf(result).sections[0].resources.find(
+        (r) => r.key === 'imaging-study'
+      )?.resource
       return study?.resourceType === 'ImagingStudy' ? study.started : undefined
     }
     expect(await startedIn('America/Toronto')).not.toBe(await startedIn('America/Vancouver'))
@@ -113,7 +125,7 @@ describe('decodeStudy', () => {
   it('yields one section with Patient, ServiceRequest, ImagingStudy', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
     expect(result.sections).toHaveLength(1)
-    const keys = result.sections[0].resources.map((r) => r.key)
+    const keys = adoptedOf(result).sections[0].resources.map((r) => r.key)
     expect(keys).toEqual(['patient', 'service-request', 'imaging-study'])
   })
 
@@ -130,9 +142,23 @@ describe('decodeStudy', () => {
 
   it('names no file on an ImagingStudy instance', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-    const study = result.sections[0].resources.find((r) => r.key === 'imaging-study')?.resource
+    const study = adoptedOf(result).sections[0].resources.find(
+      (r) => r.key === 'imaging-study'
+    )?.resource
     if (study?.resourceType !== 'ImagingStudy') throw new Error('expected ImagingStudy')
     expect(study.series[0].instance[0].extension).toEqual([])
+  })
+
+  it('keys each record by its own id in the DICOM system, for the import stage to adopt', async () => {
+    const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
+    const [section] = fromSourceSectionsOf(result)
+    if (section === undefined) throw expect.fail('expected a section')
+    expect(section.systemFamily).toEqual(
+      SystemFamily.FixedAcrossResourceTypes({ system: DICOM_SYSTEM })
+    )
+    expect(section.entries.map(({ system, sourceId }) => [system, sourceId])).toEqual(
+      section.entries.map(({ resource }) => [DICOM_SYSTEM, resource.id])
+    )
   })
 
   it('section title includes modality, description, and date', async () => {
@@ -145,7 +171,7 @@ describe('decodeStudy', () => {
       decodeStudy(sample({ AccessionNumber: undefined }), defaultDicomSettings)
     )
     expect(result.notes.some((n) => n.includes('AccessionNumber'))).toBe(true)
-    const keys = result.sections[0].resources.map((r) => r.key)
+    const keys = adoptedOf(result).sections[0].resources.map((r) => r.key)
     expect(keys).not.toContain('service-request')
   })
 
@@ -178,7 +204,7 @@ describe('decodeStudy', () => {
   it('resource keys are stable across the empty settings', async () => {
     const keysOf = async (): Promise<readonly string[]> => {
       const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-      return result.sections.flatMap((s) => s.resources.map((r) => r.key))
+      return adoptedOf(result).sections.flatMap((s) => s.resources.map((r) => r.key))
     }
     expect(await keysOf()).toEqual(await keysOf())
   })
@@ -191,7 +217,7 @@ describe('decodeStudy', () => {
       )
     )
 
-    const referents = Effect.runSync(Referent.discover([result]))
+    const referents = Effect.runSync(Referent.discover([adoptedOf(result)]))
 
     expect(
       referents.map((referent) => [
@@ -229,7 +255,7 @@ describe('decodeStudy', () => {
     it('is still one section with the same three keys', async () => {
       const result = await Effect.runPromise(decodeStudy(twoFiles, defaultDicomSettings))
       expect(result.sections).toHaveLength(1)
-      expect(result.sections[0].resources.map((r) => r.key)).toEqual([
+      expect(adoptedOf(result).sections[0].resources.map((r) => r.key)).toEqual([
         'patient',
         'service-request',
         'imaging-study',
@@ -260,7 +286,7 @@ describe('decodeStudy', () => {
       ]
       const result = await Effect.runPromise(decodeStudy(conflicting, defaultDicomSettings))
       expect(result.notes[0]).toContain('disagree on AccessionNumber')
-      const request = result.sections[0].resources.find(
+      const request = adoptedOf(result).sections[0].resources.find(
         (r) => r.key === 'service-request'
       )?.resource
       if (request?.resourceType !== 'ServiceRequest') throw new Error('expected a ServiceRequest')
@@ -336,17 +362,6 @@ const asBatch = (files: readonly PickedFile.NamedBytes[]): readonly PickedFile.T
 
 const run = (files: readonly PickedFile.NamedBytes[]): Promise<FormatDecode.Decoded<string>> =>
   Effect.runPromise(decode(asBatch(files), SETTINGS))
-
-/** One file set's records, every one of them adopted at decode. */
-const adoptedOf = (fileSet: DecodedFileSet.Type): DecodedFile.DecodedFile => ({
-  sections: fileSet.sections.map(
-    DecodedFileSet.Section.$match({
-      Adopted: ({ title, entries }) => ({ title, resources: entries }),
-      FromSource: () => expect.fail('the DICOM decode adopts its records'),
-    })
-  ),
-  notes: fileSet.notes,
-})
 
 const resourcesOf = (result: FormatDecode.Decoded<string>): readonly DecodedFile.Resource[] =>
   result.fileSets.flatMap((fileSet) => DecodedFile.resources(adoptedOf(fileSet)))

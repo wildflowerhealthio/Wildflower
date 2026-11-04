@@ -584,36 +584,51 @@ const adoptUnderKey = (family: SystemFamily.Type) => {
 }
 
 /**
- * Re-key a resource under its source's systems ({@link adoptUnderKey}): its
- * local id derived from its key, the key recorded as `identifier[0]`, and its
- * references rewritten to land on their targets' local ids.
+ * A decoded resource beside the key it is adopted under, less its type: its
+ * own id, in the system `family` gives its type, or, when its `id` is `null`,
+ * a digest of its content as decoded, in {@link DecodedId.CONTENT_DIGEST_SYSTEM}.
+ *
+ * @param family - The systems the resource's source keys each type in
+ * @returns A function from one decoded resource to it and its source id
+ *
+ * @remarks
+ * What a decoder hands the import stage for each record of a `FromSource`
+ * section. The digest is scoped to the system `family` gives the record's
+ * type, so the same content from two sources keys apart.
+ */
+const withSourceId =
+  (family: SystemFamily.Type) =>
+  (resource: FhirResource): ResourceWithSourceId => {
+    const ownSystem = SystemFamily.systemFor(family, resource.resourceType)
+    return DecodedId.$match(DecodedId.of(ownSystem, resource), {
+      FoundInSource: ({ value }) => ({ system: ownSystem, sourceId: value, resource }),
+      GeneratedFromContent: ({ value }) => ({
+        system: DecodedId.CONTENT_DIGEST_SYSTEM,
+        sourceId: value,
+        resource,
+      }),
+    })
+  }
+
+/**
+ * Re-key a resource under its source's systems: {@link adoptUnderKey} under
+ * the key {@link withSourceId} reads off it.
  *
  * @param family - The systems the resource's source keys each type in
  * @returns A function from one decoded resource to its adopted form
  *
  * @remarks
- * The resource is adopted under its `DecodedId`: its own id, in the system
- * `family` gives its type, or, when its `id` is `null`, a digest of its
- * content as decoded, in {@link DecodedId.CONTENT_DIGEST_SYSTEM}. So every
- * adopted resource has an id, and a re-import of the same capture lands on
- * the same id rather than beside it. The digest is scoped to the system
- * `family` gives the record's type.
- *
- * Its references are keyed in `family` whichever system the resource itself
- * is keyed in. A reference whose literal relativises
- * ({@link SystemFamily.relativise}) to a relative `Type/id` is rewritten;
- * any other keeps its original spelling ({@link rewriteReference}).
+ * So every adopted resource has an id, and a re-import of the same capture
+ * lands on the same id rather than beside it. Its references are keyed in
+ * `family` whichever system the resource itself is keyed in. A reference
+ * whose literal relativises ({@link SystemFamily.relativise}) to a relative
+ * `Type/id` is rewritten; any other keeps its original spelling
+ * ({@link rewriteReference}).
  */
 const adoptResource = (family: SystemFamily.Type) => {
   const adopt = adoptUnderKey(family)
-  return (resource: FhirResource): FhirResourceWithId => {
-    const ownSystem = SystemFamily.systemFor(family, resource.resourceType)
-    return DecodedId.$match(DecodedId.of(ownSystem, resource), {
-      FoundInSource: ({ value }) => adopt({ system: ownSystem, sourceId: value, resource }),
-      GeneratedFromContent: ({ value }) =>
-        adopt({ system: DecodedId.CONTENT_DIGEST_SYSTEM, sourceId: value, resource }),
-    })
-  }
+  const keyed = withSourceId(family)
+  return (resource: FhirResource): FhirResourceWithId => adopt(keyed(resource))
 }
 
 /**
@@ -683,4 +698,5 @@ const adoptedReferenceOf = (
       })
     : { ...IdentifierAndReference.emptyReference, reference: `${resourceType}/${originalId}` }
 
-export { adoptResource, adoptedReferenceOf, adoptUnderKey, originalIdOf }
+export { adoptResource, adoptedReferenceOf, adoptUnderKey, originalIdOf, withSourceId }
+export type { ResourceWithSourceId }

@@ -1,7 +1,8 @@
 import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResource, withSubject } from '@wildflowerhealthio/fhir-r4/resources'
+import { DecodedFile, DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
 import {
-  adoptedResourcesOf,
+  decodedReportsOf,
   type LifeLabsReport,
   type ReportPatient,
   type ReportRow,
@@ -30,16 +31,17 @@ import { type LabRequisition, Laboratory, PrintedRange } from './story/index.ts'
  * result, `HI`/`LO` flag, reference range, unit, lab licence and comments, as
  * the {@link Laboratory.Laboratory} prints them. Nothing here names a person or
  * a value: the story, laboratory and requisition carry them.
- * {@link render} runs those reports through the importer's own synthesis and
- * adoption (`adoptedResourcesOf`, what its decode yields), then:
+ * {@link render} runs those reports through the importer's own synthesis
+ * (`decodedReportsOf`, what its decode yields of their print) and adopts them
+ * with `DecodedFileSet.adopt`, the adoption the import stage runs, then:
  *
  * - drops the `Patient` the report's patient block makes — the person already
  *   has one, from their pharmacy — and points every `Observation` and
  *   `DiagnosticReport` `subject` at that pharmacy Patient instead;
  * - keeps the `Practitioner`s the requisition names.
  *
- * Nothing is PDF-shaped: the synthesis writes no source-file
- * `DocumentReference` and no `meta.source`, and none is added.
+ * Nothing is PDF-shaped: no PDF is printed, so there is no source-file
+ * `DocumentReference` and no `meta.source`.
  *
  * Specimens are collected in the morning (fasting) and reported the same
  * evening, at minutes hashed from the person and day; the report's printed
@@ -293,9 +295,9 @@ const render = (
 ): Effect.Effect<readonly FhirResource[], UncataloguedLabTest | ParseResult.ParseError> =>
   Effect.gen(function* () {
     const reports = yield* reportsOf(asOf, story, laboratory, requisition)
-    const groups = yield* adoptedResourcesOf(reports, { timeZone: laboratory.timeZone })
-    return groups
-      .flatMap((group) => group.resources)
+    const decoded = yield* decodedReportsOf(reports, { timeZone: laboratory.timeZone })
+    return DecodedFile.resources(DecodedFileSet.adopt(decoded))
+      .map((entry) => entry.resource)
       .filter((resource) => resource.resourceType !== 'Patient')
       .map(withSubject(pharmacyPatient))
   })

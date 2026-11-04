@@ -53,22 +53,24 @@ const emptyFileError = (fileName: string): ParseResult.ParseError =>
 /** One file's bytes as one resource each — the per-file decode every set of one runs. */
 const decodeBytes = (
   file: PickedFile.Type
-): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
+): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
   file.bytes.length === 0
     ? Effect.fail(emptyFileError(file.fileName))
-    : Effect.succeed({
-        sections: [
-          {
-            title: file.fileName,
-            resources: [...file.bytes].map((byte, index) => ({
-              key: `${file.fileName}:${index}`,
-              title: `Patient/${byte}`,
-              resource: fakeResource(`${byte}`),
-            })),
-          },
-        ],
-        notes: [],
-      })
+    : Effect.succeed(
+        DecodeFunction.fromAdopted({
+          sections: [
+            {
+              title: file.fileName,
+              resources: [...file.bytes].map((byte, index) => ({
+                key: `${file.fileName}:${index}`,
+                title: `Patient/${byte}`,
+                resource: fakeResource(`${byte}`),
+              })),
+            },
+          ],
+          notes: [],
+        })
+      )
 
 const testFormat = 'test'
 const sourceFileFormat: PickedFile.FormatValue = {
@@ -440,22 +442,24 @@ const groupByName = (file: PickedFile.Type): Either.Either<string, ParseResult.P
 /** One section per set, one resource per file; a set with an empty file rejects whole. */
 const decodeGroup = (
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>
-): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
+): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
   pickedFiles.some((file) => file.bytes.length === 0)
     ? Effect.fail(emptyFileError(pickedFiles[0].fileName))
-    : Effect.succeed({
-        sections: [
-          {
-            title: groupOf(pickedFiles[0].fileName) ?? pickedFiles[0].fileName,
-            resources: pickedFiles.map((file) => ({
-              key: `file/${file.id}`,
-              title: file.fileName,
-              resource: fakeResource(`${file.bytes[0] ?? 0}`),
-            })),
-          },
-        ],
-        notes: [`${groupOf(pickedFiles[0].fileName) ?? '?'}: ${pickedFiles.length} files`],
-      })
+    : Effect.succeed(
+        DecodeFunction.fromAdopted({
+          sections: [
+            {
+              title: groupOf(pickedFiles[0].fileName) ?? pickedFiles[0].fileName,
+              resources: pickedFiles.map((file) => ({
+                key: `file/${file.id}`,
+                title: file.fileName,
+                resource: fakeResource(`${file.bytes[0] ?? 0}`),
+              })),
+            },
+          ],
+          notes: [`${groupOf(pickedFiles[0].fileName) ?? '?'}: ${pickedFiles.length} files`],
+        })
+      )
 
 const groupedDecode = decodeAndImport(
   { sourceFileFormat },

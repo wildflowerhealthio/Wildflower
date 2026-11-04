@@ -5148,6 +5148,9 @@ importers:
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../fhir/fhir-r4
+      '@wildflowerhealthio/fhir-r4-adoption':
+        specifier: workspace:*
+        version: link:../../http-extraction/fhir-r4-adoption
       '@wildflowerhealthio/http-extraction-fundamentals':
         specifier: workspace:*
         version: link:../../http-extraction/http-extraction-fundamentals

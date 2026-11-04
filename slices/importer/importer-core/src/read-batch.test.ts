@@ -73,21 +73,23 @@ const fakeDecode = <K extends FormatKind>(kind: K): DecodeFunction.Type<unknown,
               issue: new ParseResult.Type(Schema.Unknown.ast, file.fileName, 'zero'),
             })
           )
-        : Effect.succeed({
-            sections: [
-              {
-                title: `${kind}:${JSON.stringify(settings)}`,
-                resources: [
-                  {
-                    key: `r:${file.fileName}`,
-                    title: `Patient/${kind}-${file.fileName}`,
-                    resource: fakeResource(`${kind}-${file.fileName}`),
-                  },
-                ],
-              },
-            ],
-            notes: [],
-          }),
+        : Effect.succeed(
+            DecodeFunction.fromAdopted({
+              sections: [
+                {
+                  title: `${kind}:${JSON.stringify(settings)}`,
+                  resources: [
+                    {
+                      key: `r:${file.fileName}`,
+                      title: `Patient/${kind}-${file.fileName}`,
+                      resource: fakeResource(`${kind}-${file.fileName}`),
+                    },
+                  ],
+                },
+              ],
+              notes: [],
+            })
+          ),
   })
 
 /** Source-file constants for a fake format. */

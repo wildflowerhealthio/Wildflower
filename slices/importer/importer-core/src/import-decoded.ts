@@ -1,4 +1,3 @@
-import { adoptUnderKey } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   type DecodedFile,
   DecodedFileSet,
@@ -17,9 +16,9 @@ import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema
  * @remarks
  * Per set, {@link importFileSet} mints a source file for every picked file
  * (`PickedFile.FromDocumentReference`'s encode, its `masterIdentifier` what the
- * picked file identified itself as), adopts each `FromSource` section's records
- * (`adoptUnderKey`, their references keyed in the section's system family) and
- * keeps each `Adopted` section's, runs the format's `linkSourceFile` over every
+ * picked file identified itself as), adopts its records (`DecodedFileSet.adopt`:
+ * each `FromSource` section's under its key, their references keyed in the
+ * section's system family, each `Adopted` section's as they are), runs the format's `linkSourceFile` over every
  * source file and its `linkToSourceFiles` over every record, stamps every
  * record's `meta.source` with the set's representative source file, and leads
  * with the source files as the set's own section. Each set's records are keyed
@@ -46,26 +45,6 @@ const sourceFileKey = (file: PickedFile.Type): string =>
 
 /** A picked file's source file, as `PickedFile.FromDocumentReference` stores it. */
 const sourceFileOf = Schema.encode(PickedFile.FromDocumentReference)
-
-/**
- * One section's records, adopted: a `FromSource` section's each under its
- * key, its references keyed in the section's system family; an `Adopted`
- * section's as they are.
- */
-const adoptSection = DecodedFileSet.Section.$match({
-  Adopted: ({ title, entries }): DecodedFile.Section => ({ title, resources: entries }),
-  FromSource: ({ title, systemFamily, entries }): DecodedFile.Section => {
-    const adopt = adoptUnderKey(systemFamily)
-    return {
-      title,
-      resources: entries.map((entry) => ({
-        key: entry.key,
-        title: entry.title,
-        resource: adopt(entry),
-      })),
-    }
-  },
-})
 
 /**
  * Import one file set: mint its picked files' source files, adopt its records,
@@ -102,10 +81,7 @@ const importFileSet = (
       ),
       { concurrency: 'unbounded' }
     )
-    const adopted: DecodedFile.DecodedFile = {
-      sections: fileSet.sections.map(adoptSection),
-      notes: fileSet.notes,
-    }
+    const adopted = DecodedFileSet.adopt(fileSet)
 
     const linkSourceFile = importer.linkSourceFile ?? Function.identity
     const linked = Arr.map(sourceFiles, ({ pickedFile, sourceFile }) => ({
