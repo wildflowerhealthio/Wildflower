@@ -169,6 +169,6 @@ jsdom.
 - [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md) — the shell this
   app boots through
 - [slices/fhir/AGENTS.md](../../../slices/fhir/AGENTS.md) — the SMART primitives
-  (`useSmartHandshake`, `buildSmartRouterContext`)
+  (`useSmartHandshake`, which `SmartHandshakeGate` runs, and `buildSmartRouterContext`)
 - [apps/wildflower-site AGENTS.md](../../wildflower-site/AGENTS.md) — how the sites are
   published

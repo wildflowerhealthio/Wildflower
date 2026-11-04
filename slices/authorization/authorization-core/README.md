@@ -161,9 +161,9 @@ It stays inside the `-core` layering rule by taking every impure edge — `fetch
 Web Crypto, `sessionStorage` — as an injected `SignInEnvironment`. That
 environment also carries everything app-specific: the `client_id`, the requested
 `scope`, the redirect URI and the `sessionStorage` key the pending record lives
-at. The key in particular is the app's to choose and should be namespaced with
-the app's name, because these pages share an origin and an unqualified key would
-let one page's return leg consume another's pending request.
+at. The key is the app's to choose. `sessionStorage` is per origin and per tab,
+and each Wildflower app is served from its own origin, so the key only has to
+tell apart the sign-in flows one app runs in a tab: one key per flow.
 
 What each page supplies, it supplies once. `browserSignInEnvironment(page,
 registration)` does the wiring every browser caller would otherwise repeat —
@@ -184,11 +184,24 @@ its `capabilities`. Any failure — unreachable, blocked by CORS, a 404 or anoth
 status — is reported as it is. It returns the `SmartServer` the document
 describes — `WildflowerServer` or `PlainSmartServer`, each carrying its
 `fhirBaseUrl` — with the endpoints, and `beginSignIn` names that base as the
-`aud`. The discovered token endpoint, `serverUrl` and the
+`aud`. `beginSignIn` is `discoverSmartEndpoints` followed by `beginSignInAt`,
+which starts a sign-in at an issuer the caller has already discovered, so a
+page that probed the configuration itself fetches it once. The discovered
+token endpoint, the server URL and the
 `SmartServer` ride the pending record, so the return leg is the same either way
 and the redeemed `Session` says which kind of server it signed in to. The
 `Session` also carries the token response's `patient`, the launch context a
 plain SMART server names once the reader picks a patient.
+
+Any authorization-response parameter (`code`, `state`, `error`, …) makes a page
+load a return leg, and `completeSignIn` takes the pending record on every
+return leg — reads it and drops it — before it redeems anything. A storage that
+refuses fails the sign-in with `PendingRequestUnusable`, and a record that does
+not decode (one a different version of the page wrote) with
+`PendingRequestUnrecognised`; only an absent record means there is no sign-in to
+complete. A load that is no return leg leaves storage alone. A page that
+completes some other flow on its return leg drops this one's record with
+`forgetPendingSignIn`.
 
 `internal/pkce.ts`'s `computeCodeChallenge` is a thin wrapper that binds
 `codeChallengeS256`'s digest argument to the ambient Web Crypto; there is one
@@ -265,14 +278,11 @@ page drive a desktop host.
 
 The React SMART apps sign in through this client too, by way of
 `slices/fhir/fhir-r4-react/src/smart/*`. Its `authorizeSmartLaunch` runs
-`beginSignIn` for an EHR launch and a standalone launch alike, and its
-`readySmartClient` runs `completeSignIn` on the redirect target, under the
-app's own `client_id`. What it adds is what the apps need beyond a token:
+`beginSignIn` for an EHR launch, its standalone launch runs `beginSignInAt` at
+the issuer its probe found, and its `readySmartClient` runs `completeSignIn` on
+the redirect target, under the app's own registration, which
+`smart-app-react`'s `SmartHandshakeGate` hands it. What it adds is what the apps need beyond a token:
 
-- **The registration across the redirect.** A SMART app's redirect target
-  completes the sign-in without knowing which app registration started it, so
-  `fhir-r4-react` keeps the `client_id`, scope and redirect URI beside this
-  package's pending record, under its own `sessionStorage` key.
 - **Open servers.** A FHIR server whose SMART configuration names no
   authorization endpoint is connected with no sign-in at all: the page goes
   straight to its redirect target with a `state`, and the app reads the server
