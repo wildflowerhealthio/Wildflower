@@ -1,43 +1,102 @@
 import { arrivingSmartLaunchFrom as sharedArrivingSmartLaunchFrom } from '@wildflowerhealthio/authorization-core/smart-client'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { Option } from 'effect'
 import * as fc from 'fast-check'
-import type Client from 'fhirclient/Client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
   appRootRedirectUri,
   arrivingSmartLaunchFrom,
+  authorizeOpenServer,
   authorizeSmartLaunch,
+  authorizeSmartLaunchAt,
+  discardPendingConnection,
+  PENDING_AUTHORIZATION_KEY,
+  PENDING_CONNECTION_KEY,
   readySmartClient,
   shouldCompleteSmartLaunch,
 } from './smart-launch.ts'
 
-// `smart-launch.ts` loads fhirclient lazily (`(await import('fhirclient/browser')).default`)
-// and drives `.oauth2`, so the module boundary is where we stub. Only `authorize`
-// and `ready` are exercised. `vi.hoisted` builds the spies before the import is
-// wired so the factory can reference them, and typing `authorize`'s parameter as a
-// record lets the tests inspect exactly which keys were passed. Asked with
-// `noRedirect`, fhirclient's `authorize` resolves to the URL it would have
-// navigated to; the stub answers a well-formed one unless a test says otherwise.
-const { authorizeMock, readyMock, assignMock } = vi.hoisted(() => ({
-  authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<string | void>>(),
-  readyMock: vi.fn<() => Promise<Client>>(),
-  assignMock: vi.fn<(url: string) => void>(),
-}))
+const { assignMock } = vi.hoisted(() => ({ assignMock: vi.fn<(url: string) => void>() }))
 
-vi.mock('fhirclient/browser', () => ({
-  default: { oauth2: { authorize: authorizeMock, ready: readyMock } },
-}))
+/** The FHIR server the launches below sign in to, and its SMART configuration. */
+const FHIR_BASE_URL = 'https://ehr.example/fhir'
+const SMART_CONFIGURATION = {
+  authorization_endpoint: 'https://ehr.example/oauth/authorize',
+  token_endpoint: 'https://ehr.example/oauth/token',
+  code_challenge_methods_supported: ['S256'],
+}
 
-/** An authorize URL as fhirclient builds it from a well-formed endpoint. */
-const AUTHORIZE_URL =
-  'https://ehr.example/oauth/authorize?response_type=code&client_id=medication-app&state=xyz'
+/** The app's registration. */
+const REGISTRATION = { clientId: 'medication-app', scope: 'launch openid fhirUser' }
+
+/**
+ * The app root the redirect target is served at: the test page's own root, so
+ * the return leg derives the same redirect URI the launch sent.
+ */
+const APP_ROOT = new URL('/', window.location.href).href
+
+/** The app's registration and the server it launches against. */
+const LAUNCH_CONFIG = { ...REGISTRATION, redirectUri: APP_ROOT, iss: FHIR_BASE_URL }
+
+/** An open server's connection, sent back to the app root. */
+const OPEN_SERVER_CONFIG = { fhirServiceUrl: 'https://open.example/fhir/', redirectUri: APP_ROOT }
+
+/** A JSON response carrying `body`. */
+const jsonResponse = (body: unknown, init?: ResponseInit): Response =>
+  new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+    ...init,
+  })
+
+/**
+ * The FHIR server's side of the wire: its SMART configuration (`configuration`
+ * overriding fields of {@link SMART_CONFIGURATION}) and a token endpoint that
+ * answers `tokenResponse`, recording every request made of it.
+ */
+const stubServer = (
+  configuration: Record<string, unknown> = {},
+  tokenResponse: unknown = { access_token: 'token-1', token_type: 'Bearer', patient: 'pat-1' }
+): { readonly requests: Request[] } => {
+  const requests: Request[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>((input, init) => {
+      const request = new Request(input, init)
+      requests.push(request)
+      return Promise.resolve(
+        request.url.endsWith('/.well-known/smart-configuration')
+          ? jsonResponse({ ...SMART_CONFIGURATION, ...configuration })
+          : jsonResponse(tokenResponse)
+      )
+    })
+  )
+  return { requests }
+}
+
+/** Stub the page's `location` as one served over `protocol`, recording `assign`. */
+const stubPageLocation = (protocol: 'http:' | 'https:'): void => {
+  vi.stubGlobal('location', { protocol, href: `${protocol}//app.example/`, assign: assignMock })
+}
+
+/** The URL the page was last sent to. */
+const assignedUrl = (): URL => {
+  const url = assignMock.mock.lastCall?.[0]
+  if (url === undefined) throw new Error('the page was not sent anywhere')
+  return new URL(url)
+}
+
+/** Put the page back at `search` on the redirect target, with its real `location`. */
+const returnToRedirectTarget = (search: string): void => {
+  vi.unstubAllGlobals()
+  window.history.replaceState(null, '', `/${search}`)
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
-  authorizeMock.mockResolvedValue(AUTHORIZE_URL)
-  // The navigation is the subject, so the page's `location` is the stub: an
-  // https page, whose `assign` records where it was sent.
+  window.sessionStorage.clear()
+  window.history.replaceState(null, '', '/')
   stubPageLocation('https:')
 })
 
@@ -46,176 +105,381 @@ afterEach(() => {
 })
 
 describe('authorizeSmartLaunch', () => {
-  it('should forward the clientId and scope to fhirclient', async () => {
+  it('should send the page to the discovered authorize endpoint with the app’s registration', async () => {
+    // Arrange
+    const { requests } = stubServer()
+
     // Act
-    await authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch openid fhirUser' })
+    await authorizeSmartLaunch(LAUNCH_CONFIG, 'launch-1')
 
     // Assert
-    expect(authorizeMock).toHaveBeenCalledTimes(1)
-    expect(authorizeArg()).toMatchObject({
-      clientId: 'medication-app',
-      scope: 'launch openid fhirUser',
-    })
-  })
-
-  it('should omit redirectUri and iss entirely when they are not configured', async () => {
-    // Act — an EHR launch reads iss/launch from the URL, so neither is passed.
-    await authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
-
-    // Assert — the keys must be absent, not present-with-`undefined`: fhirclient
-    // distinguishes an omitted option from one explicitly set to `undefined`.
-    expect(authorizeArg()).not.toHaveProperty('redirectUri')
-    expect(authorizeArg()).not.toHaveProperty('iss')
-  })
-
-  it('should include redirectUri and iss when both are configured', async () => {
-    // Act — a standalone launch names its own redirect target and FHIR server.
-    await authorizeSmartLaunch({
-      clientId: 'medication-app',
-      scope: 'launch/patient',
-      redirectUri: '/index.html',
-      iss: 'https://example.org/fhir-r4',
-    })
-
-    // Assert
-    expect(authorizeArg()).toMatchObject({
-      redirectUri: '/index.html',
-      iss: 'https://example.org/fhir-r4',
-    })
-  })
-
-  it('should include each optional field iff it is defined, never present-with-undefined', async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.string(),
-        fc.string(),
-        fc.option(fc.string(), { nil: undefined }),
-        fc.option(fc.string(), { nil: undefined }),
-        async (clientId, scope, redirectUri, iss) => {
-          // Arrange
-          authorizeMock.mockClear()
-
-          // Act — an omitted field is modeled as `undefined`, which the code must
-          // treat the same as absent (the `... ? {} : {...}` spreads).
-          await authorizeSmartLaunch({ clientId, scope, redirectUri, iss })
-
-          // Assert
-          const arg = authorizeArg()
-          expect(arg).toMatchObject({ clientId, scope })
-          assertOptionalKey(arg, 'redirectUri', redirectUri)
-          assertOptionalKey(arg, 'iss', iss)
-        }
-      ),
-      { numRuns: numRunsFor({ base: 100 }) }
+    expect(requests.map((request) => request.url)).toEqual([
+      'https://ehr.example/fhir/.well-known/smart-configuration',
+    ])
+    const authorizeUrl = assignedUrl()
+    expect(`${authorizeUrl.origin}${authorizeUrl.pathname}`).toBe(
+      SMART_CONFIGURATION.authorization_endpoint
     )
+    expect(Object.fromEntries(authorizeUrl.searchParams)).toMatchObject({
+      response_type: 'code',
+      client_id: 'medication-app',
+      scope: 'launch openid fhirUser',
+      redirect_uri: APP_ROOT,
+      aud: FHIR_BASE_URL,
+      launch: 'launch-1',
+      code_challenge_method: 'S256',
+    })
   })
-})
 
-describe('authorizeSmartLaunch navigation', () => {
-  it('should ask fhirclient for the authorize URL rather than let it navigate', async () => {
+  it('should send no launch for a standalone launch', async () => {
+    // Arrange
+    stubServer()
+
     // Act
-    await authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
+    await authorizeSmartLaunch(LAUNCH_CONFIG, undefined)
 
     // Assert
-    expect(authorizeArg()).toHaveProperty('noRedirect', true)
+    expect(assignedUrl().searchParams.has('launch')).toBe(false)
   })
 
-  it('should send the page to a well-formed authorize URL', async () => {
+  it('should discover under the FHIR base with its trailing slashes trimmed', async () => {
+    // Arrange
+    const { requests } = stubServer()
+
     // Act
-    await authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
+    await authorizeSmartLaunch({ ...LAUNCH_CONFIG, iss: `${FHIR_BASE_URL}//` }, undefined)
 
     // Assert
-    expect(assignMock).toHaveBeenCalledTimes(1)
-    expect(assignMock).toHaveBeenCalledWith(AUTHORIZE_URL)
+    expect(requests[0]?.url).toBe('https://ehr.example/fhir/.well-known/smart-configuration')
+    expect(assignedUrl().searchParams.get('aud')).toBe(FHIR_BASE_URL)
   })
 
-  it('should send the page to a loopback http authorize URL from an https page', async () => {
+  it('should send the page to a loopback http authorize endpoint from an https page', async () => {
     // Arrange — a desktop host's authorization server on this computer
-    const loopbackUrl = 'http://127.0.0.1:8080/oauth/authorize?state=xyz'
-    authorizeMock.mockResolvedValue(loopbackUrl)
+    stubServer({
+      authorization_endpoint: 'http://127.0.0.1:8080/oauth/authorize',
+      token_endpoint: 'http://127.0.0.1:8080/oauth/token',
+    })
 
     // Act
-    await authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
+    await authorizeSmartLaunch(LAUNCH_CONFIG, undefined)
 
     // Assert
-    expect(assignMock).toHaveBeenCalledWith(loopbackUrl)
+    expect(assignedUrl().origin).toBe('http://127.0.0.1:8080')
   })
 
   it.each([
-    {
-      case: 'a javascript: endpoint',
-      authorizeUrl: 'javascript:alert(document.domain)//?response_type=code',
-      reason: 'It is a javascript: URL, not an http or https one.',
-    },
+    { case: 'a javascript: endpoint', authorizationEndpoint: 'javascript:alert(document.domain)' },
     {
       case: 'an endpoint with userinfo',
-      authorizeUrl: 'https://user:pw@ehr.example/oauth/authorize?state=xyz',
-      reason: 'It carries a user name or password.',
+      authorizationEndpoint: 'https://user:pw@ehr.example/oauth/authorize',
     },
     {
       case: 'an endpoint with a fragment',
-      authorizeUrl: 'https://ehr.example/oauth/authorize#here?state=xyz',
-      reason: 'It carries a fragment',
+      authorizationEndpoint: 'https://ehr.example/oauth/authorize#here',
     },
     {
       case: 'a plain-http endpoint off loopback from an https page',
-      authorizeUrl: 'http://ehr.example/oauth/authorize?state=xyz',
-      reason: 'It is plain http to a host off this computer',
+      authorizationEndpoint: 'http://ehr.example/oauth/authorize',
     },
   ])(
     'should reject naming the reason, and not navigate, for $case',
-    async ({ authorizeUrl, reason }) => {
+    async ({ authorizationEndpoint }) => {
       // Arrange
-      authorizeMock.mockResolvedValue(authorizeUrl)
+      stubServer({ authorization_endpoint: authorizationEndpoint })
 
       // Act
-      const launch = authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
+      const launch = authorizeSmartLaunch(LAUNCH_CONFIG, undefined)
 
       // Assert
-      await expect(launch).rejects.toThrow(reason)
+      await expect(launch).rejects.toThrow('does not advertise a usable authorization_endpoint')
       expect(assignMock).not.toHaveBeenCalled()
+      expect(window.sessionStorage.getItem(PENDING_CONNECTION_KEY)).toBeNull()
     }
   )
 
-  it('should send the page to a plain-http authorize URL when the page is itself http', async () => {
+  it('should send the page to a plain-http authorize endpoint when the page is itself http', async () => {
     // Arrange — a LAN dev server, where the browser blocks nothing
     stubPageLocation('http:')
-    const plainUrl = 'http://ehr.example/oauth/authorize?state=xyz'
-    authorizeMock.mockResolvedValue(plainUrl)
+    stubServer({
+      authorization_endpoint: 'http://ehr.example/oauth/authorize',
+      token_endpoint: 'http://ehr.example/oauth/token',
+    })
 
     // Act
-    await authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
+    await authorizeSmartLaunch(LAUNCH_CONFIG, undefined)
 
     // Assert
-    expect(assignMock).toHaveBeenCalledWith(plainUrl)
-  })
-
-  it('should reject, and not navigate, when fhirclient hands back no URL', async () => {
-    // Arrange
-    authorizeMock.mockResolvedValue(undefined)
-
-    // Act
-    const launch = authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
-
-    // Assert
-    await expect(launch).rejects.toThrow('no authorize URL')
-    expect(assignMock).not.toHaveBeenCalled()
+    expect(assignedUrl().origin).toBe('http://ehr.example')
   })
 })
 
-describe('readySmartClient', () => {
-  it('should resolve to the client fhirclient hands back after the exchange', async () => {
+describe('authorizeSmartLaunchAt', () => {
+  it('should send the page to the issuer’s authorize endpoint without discovering it again', async () => {
     // Arrange
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only sentinel; the value is only checked for identity
-    const readyClient = { id: 'ready' } as unknown as Client
-    readyMock.mockResolvedValue(readyClient)
+    const { requests } = stubServer()
 
     // Act
-    const client = await readySmartClient()
+    await authorizeSmartLaunchAt(
+      {
+        smartServer: { _tag: 'PlainSmartServer', fhirBaseUrl: FHIR_BASE_URL },
+        endpoints: {
+          authorizationEndpoint: SMART_CONFIGURATION.authorization_endpoint,
+          tokenEndpoint: SMART_CONFIGURATION.token_endpoint,
+        },
+        managementEndpoint: Option.none(),
+        wildflowerAuthorizationApi: Option.none(),
+      },
+      { ...REGISTRATION, redirectUri: APP_ROOT }
+    )
 
     // Assert
-    expect(readyMock).toHaveBeenCalledTimes(1)
-    expect(client).toBe(readyClient)
+    expect(requests).toEqual([])
+    const authorizeUrl = assignedUrl()
+    expect(`${authorizeUrl.origin}${authorizeUrl.pathname}`).toBe(
+      SMART_CONFIGURATION.authorization_endpoint
+    )
+    expect(authorizeUrl.searchParams.get('aud')).toBe(FHIR_BASE_URL)
+    expect(authorizeUrl.searchParams.has('launch')).toBe(false)
+    expect(window.sessionStorage.getItem(PENDING_AUTHORIZATION_KEY)).not.toBeNull()
+  })
+})
+
+describe('authorizeOpenServer', () => {
+  it('should send the page straight to the redirect target, carrying a state', async () => {
+    // Act
+    await authorizeOpenServer({
+      fhirServiceUrl: 'https://open.example/fhir/',
+      redirectUri: 'https://app.example/',
+    })
+
+    // Assert
+    const target = assignedUrl()
+    expect(`${target.origin}${target.pathname}`).toBe('https://app.example/')
+    expect(target.searchParams.get('state')).not.toBeNull()
+  })
+})
+
+/** Start a SMART sign-in out of the page, returning the `state` it sent. */
+const signInOut = async (): Promise<string> => {
+  stubServer()
+  await authorizeSmartLaunch(LAUNCH_CONFIG, 'launch-1')
+  return assignedUrl().searchParams.get('state') ?? ''
+}
+
+/** Start an open-server connection out of the page, returning the `state` it sent. */
+const openServerOut = async (): Promise<string> => {
+  await authorizeOpenServer(OPEN_SERVER_CONFIG)
+  return assignedUrl().searchParams.get('state') ?? ''
+}
+
+/** The pending records the page still holds, by key. */
+const pendingRecords = (): Record<string, string | null> => ({
+  signIn: window.sessionStorage.getItem(PENDING_AUTHORIZATION_KEY),
+  openServer: window.sessionStorage.getItem(PENDING_CONNECTION_KEY),
+})
+
+const NO_PENDING_RECORDS = { signIn: null, openServer: null }
+
+/** A `sessionStorage` whose every call throws, as a blocked one does. */
+const stubBlockedStorage = (): void => {
+  const blocked = (): never => {
+    throw new DOMException('The operation is insecure.', 'SecurityError')
+  }
+  vi.stubGlobal('sessionStorage', { getItem: blocked, setItem: blocked, removeItem: blocked })
+}
+
+describe('readySmartClient', () => {
+  it('should redeem a SMART return into a client for the server, with its token and patient', async () => {
+    // Arrange — a launch out, then the authorization server's return
+    const state = await signInOut()
+    returnToRedirectTarget(`?code=code-1&state=${state}&utm=kept`)
+    const { requests } = stubServer()
+
+    // Act
+    const client = await readySmartClient(REGISTRATION)
+
+    // Assert
+    expect({
+      serverUrl: client.serverUrl,
+      accessToken: client.accessToken,
+      launchPatientId: client.launchPatientId,
+    }).toEqual({
+      serverUrl: FHIR_BASE_URL,
+      accessToken: 'token-1',
+      launchPatientId: Option.some('pat-1'),
+    })
+    const [tokenRequest] = requests
+    expect(tokenRequest?.url).toBe(SMART_CONFIGURATION.token_endpoint)
+    const tokenRequestBody = new URLSearchParams(await tokenRequest?.text())
+    expect(tokenRequestBody.get('code')).toBe('code-1')
+    expect(tokenRequestBody.get('client_id')).toBe('medication-app')
+    expect(tokenRequestBody.get('redirect_uri')).toBe(APP_ROOT)
+    expect(window.location.search).toBe('?utm=kept')
+  })
+
+  it('should redeem as the redirect URI the served directory names', async () => {
+    // Arrange — a routed app served under `/pr-7/`, its callback at that root
+    stubServer()
+    const servedRoot = new URL('/pr-7/', APP_ROOT).href
+    await authorizeSmartLaunch({ ...LAUNCH_CONFIG, redirectUri: servedRoot }, undefined)
+    const state = assignedUrl().searchParams.get('state') ?? ''
+    vi.unstubAllGlobals()
+    window.history.replaceState(null, '', `/pr-7/?code=code-1&state=${state}`)
+    const { requests } = stubServer()
+
+    // Act
+    await readySmartClient(REGISTRATION, '/pr-7/')
+
+    // Assert
+    const tokenRequestBody = new URLSearchParams(await requests[0]?.text())
+    expect(tokenRequestBody.get('redirect_uri')).toBe(servedRoot)
+  })
+
+  it('should connect an open server with no token', async () => {
+    // Arrange
+    returnToRedirectTarget(`?state=${await openServerOut()}`)
+
+    // Act
+    const client = await readySmartClient(REGISTRATION)
+
+    // Assert
+    expect({ serverUrl: client.serverUrl, accessToken: client.accessToken }).toEqual({
+      serverUrl: 'https://open.example/fhir',
+      accessToken: undefined,
+    })
+    expect(window.location.search).toBe('')
+  })
+
+  it('should refuse an open server’s return with the wrong state', async () => {
+    // Arrange
+    await openServerOut()
+    returnToRedirectTarget('?state=forged')
+
+    // Act / Assert
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow('wrong state parameter')
+  })
+
+  it('should refuse an open-server return with no connection in progress', async () => {
+    // Arrange
+    returnToRedirectTarget('?state=xyz')
+
+    // Act / Assert
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow('no connection in progress')
+  })
+
+  it('should refuse a code with no sign-in in progress', async () => {
+    // Arrange
+    returnToRedirectTarget('?code=code-1&state=xyz')
+
+    // Act / Assert
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow('did not ask for')
+  })
+
+  it('should complete a connection once: a second completion finds nothing to complete', async () => {
+    // Arrange
+    const search = `?state=${await openServerOut()}`
+    returnToRedirectTarget(search)
+    await readySmartClient(REGISTRATION)
+    window.history.replaceState(null, '', `/${search}`)
+
+    // Act / Assert
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow('no connection in progress')
+  })
+
+  it('should take the open-server record on a SMART return', async () => {
+    // Arrange — an open-server connection abandoned, then a sign-in that came back
+    await openServerOut()
+    const state = await signInOut()
+    returnToRedirectTarget(`?code=code-1&state=${state}`)
+    stubServer()
+
+    // Act
+    await readySmartClient(REGISTRATION)
+
+    // Assert
+    expect(pendingRecords()).toEqual(NO_PENDING_RECORDS)
+  })
+
+  it('should take the sign-in record on an open server’s return', async () => {
+    // Arrange — a sign-in abandoned, then an open server that came back
+    await signInOut()
+    const state = await openServerOut()
+    returnToRedirectTarget(`?state=${state}`)
+
+    // Act
+    await readySmartClient(REGISTRATION)
+
+    // Assert
+    expect(pendingRecords()).toEqual(NO_PENDING_RECORDS)
+  })
+
+  it('should reject with the token endpoint’s refusal', async () => {
+    // Arrange
+    const state = await signInOut()
+    returnToRedirectTarget(`?code=code-1&state=${state}`)
+    stubServer({}, { error: 'invalid_grant' })
+
+    // Act / Assert
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow('invalid_grant')
+  })
+
+  it('should reject with the storage’s reason, keeping the failure as the cause, when storage is blocked', async () => {
+    // Arrange
+    returnToRedirectTarget('?state=xyz')
+    stubBlockedStorage()
+
+    // Act
+    const failure = await readySmartClient(REGISTRATION).then(
+      () => null,
+      (rejection: unknown) => rejection
+    )
+
+    // Assert
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure instanceof Error ? failure.message : '').toContain('session storage is blocked')
+    expect(failure instanceof Error ? failure.cause : null).toMatchObject({
+      _tag: 'PendingRequestUnusable',
+    })
+  })
+
+  it('should reject an open-server record a different version of the page wrote', async () => {
+    // Arrange
+    window.sessionStorage.setItem(PENDING_CONNECTION_KEY, '{"_tag":"PendingOpenServer"}')
+    returnToRedirectTarget('?state=xyz')
+
+    // Act / Assert
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow(
+      'started by a different version of this page'
+    )
+    expect(pendingRecords()).toEqual(NO_PENDING_RECORDS)
+  })
+})
+
+describe('discardPendingConnection', () => {
+  it('should take every pending record and scrub an OAuth error return', async () => {
+    // Arrange — both kinds of connection out, then the server's refusal
+    await openServerOut()
+    const state = await signInOut()
+    returnToRedirectTarget(`?error=access_denied&error_description=No&state=${state}&utm=kept`)
+
+    // Act
+    await discardPendingConnection(REGISTRATION)
+
+    // Assert
+    expect(pendingRecords()).toEqual(NO_PENDING_RECORDS)
+    expect(window.location.search).toBe('?utm=kept')
+  })
+
+  it('should reject with the storage’s reason when storage is blocked', async () => {
+    // Arrange
+    returnToRedirectTarget('?error=access_denied&state=xyz')
+    stubBlockedStorage()
+
+    // Act / Assert
+    await expect(discardPendingConnection(REGISTRATION)).rejects.toThrow(
+      'session storage is blocked'
+    )
   })
 })
 
@@ -374,30 +638,3 @@ const nonCallbackParams = (): fc.Arbitrary<Record<string, string>> =>
     for (const key of CALLBACK_PARAMS) delete copy[key]
     return copy
   })
-
-/** The options object `authorize` was called with on its first (only) invocation. */
-const authorizeArg = (): Record<string, unknown> => {
-  const call = authorizeMock.mock.calls[0]
-  if (call === undefined) {
-    throw new Error('authorize was not called')
-  }
-  return call[0]
-}
-
-/** Stub the page's `location` as a page served over `protocol`, recording `assign`. */
-const stubPageLocation = (protocol: 'http:' | 'https:'): void => {
-  vi.stubGlobal('location', { protocol, assign: assignMock })
-}
-
-/** Assert `key` is present with `value` when defined, and absent otherwise. */
-const assertOptionalKey = (
-  arg: Record<string, unknown>,
-  key: 'redirectUri' | 'iss',
-  value: string | undefined
-): void => {
-  if (value === undefined) {
-    expect(arg).not.toHaveProperty(key)
-  } else {
-    expect(arg).toHaveProperty(key, value)
-  }
-}

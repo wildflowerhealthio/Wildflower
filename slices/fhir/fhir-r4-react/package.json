@@ -13,6 +13,10 @@
       "source": "./src/smart/index.ts",
       "default": "./dist/smart/index.js"
     },
+    "./smart/test-helpers": {
+      "source": "./src/smart/test-helpers.ts",
+      "default": "./dist/smart/test-helpers.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

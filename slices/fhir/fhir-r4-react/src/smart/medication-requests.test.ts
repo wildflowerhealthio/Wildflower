@@ -1,10 +1,10 @@
 import { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, Schema } from 'effect'
-import type Client from 'fhirclient/Client'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchMedicationRequestPage } from './medication-requests.ts'
 import { BundleDecodeError } from './resource-page.ts'
+import { smartClientAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
 
 // A minimal, fully-specified MedicationRequest (mirrors the shell in the
 // fhir-r4 resource test), encoded to valid FHIR wire so the fetch can decode
@@ -75,53 +75,39 @@ const bundle = (resources: readonly unknown[], nextUrl?: string): unknown => ({
   ],
 })
 
-// A stub fhirclient `Client` that records the query it was asked for and
-// returns a fixed bundle. Only `request` is exercised, so the rest of the large
-// `Client` surface is elided with a test-only cast.
-const stubClient = (response: unknown): { readonly client: Client; readonly queries: string[] } => {
-  const queries: string[] = []
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
-  const client = {
-    request: (query: string): Promise<unknown> => {
-      queries.push(query)
-      return Promise.resolve(response)
-    },
-  } as unknown as Client
-
-  return { client, queries }
-}
-
 describe('fetchMedicationRequestPage', () => {
   test('scopes the first-page query to the patient, newest-authored first', async () => {
-    const { client, queries } = stubClient(bundle([]))
+    const { client, urls } = smartClientAnswering(bundle([]))
 
     await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: 'pat/1' }))
 
     // The patientId is URL-encoded into the `patient=` search parameter, and the
     // page is sorted server-side so scroll paging can append without reordering.
-    expect(queries).toEqual(['MedicationRequest?patient=pat%2F1&_count=200&_sort=-authoredon'])
+    expect(urls).toEqual([
+      `${STUB_FHIR_BASE}/MedicationRequest?patient=pat%2F1&_count=200&_sort=-authoredon`,
+    ])
   })
 
   test('reads every MedicationRequest when no patient is in context (system launch)', async () => {
-    const { client, queries } = stubClient(bundle([]))
+    const { client, urls } = smartClientAnswering(bundle([]))
 
     await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
 
-    expect(queries).toEqual(['MedicationRequest?_count=200&_sort=-authoredon'])
+    expect(urls).toEqual([`${STUB_FHIR_BASE}/MedicationRequest?_count=200&_sort=-authoredon`])
   })
 
   test('requests a later page by its cursor URL verbatim', async () => {
-    const { client, queries } = stubClient(bundle([]))
+    const { client, urls } = smartClientAnswering(bundle([]))
     const pageUrl = 'https://fhir.example/MedicationRequest?_getpages=abc&_getpagesoffset=20'
 
     await Effect.runPromise(fetchMedicationRequestPage(client, { pageUrl }))
 
     // The server's own `next` link is used as-is — no re-derivation of scope/sort.
-    expect(queries).toEqual([pageUrl])
+    expect(urls).toEqual([pageUrl])
   })
 
   test('decodes returned resources and drops undecodable entries', async () => {
-    const { client } = stubClient(bundle([sampleWire, { malformed: true }]))
+    const { client } = smartClientAnswering(bundle([sampleWire, { malformed: true }]))
 
     const page = await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
 
@@ -135,7 +121,7 @@ describe('fetchMedicationRequestPage', () => {
       ...sampleMedicationRequest,
       id: null,
     })
-    const { client } = stubClient(bundle([sampleWire, withoutId]))
+    const { client } = smartClientAnswering(bundle([sampleWire, withoutId]))
 
     const page = await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
 
@@ -145,7 +131,7 @@ describe('fetchMedicationRequestPage', () => {
 
   test('reports the next-page cursor from the bundle `next` link', async () => {
     const nextUrl = 'https://fhir.example/MedicationRequest?_getpages=abc&_getpagesoffset=20'
-    const { client } = stubClient(bundle([sampleWire], nextUrl))
+    const { client } = smartClientAnswering(bundle([sampleWire], nextUrl))
 
     const page = await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
 
@@ -153,7 +139,7 @@ describe('fetchMedicationRequestPage', () => {
   })
 
   test('reports no cursor on the last page (no `next` link)', async () => {
-    const { client } = stubClient(bundle([sampleWire]))
+    const { client } = smartClientAnswering(bundle([sampleWire]))
 
     const page = await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
 
@@ -161,7 +147,7 @@ describe('fetchMedicationRequestPage', () => {
   })
 
   test('fails with BundleDecodeError when the response is not a bundle', async () => {
-    const { client } = stubClient('not a bundle')
+    const { client } = smartClientAnswering('not a bundle')
 
     const exit = await Effect.runPromiseExit(
       fetchMedicationRequestPage(client, { patientId: null })

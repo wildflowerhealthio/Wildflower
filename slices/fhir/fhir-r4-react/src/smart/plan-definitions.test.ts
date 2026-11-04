@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchPlanDefinitionPage } from './plan-definitions.ts'
-import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
+import { smartClientAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
 const bundle = (resources: readonly unknown[]): unknown => ({
@@ -22,23 +22,25 @@ const TOPIC_TOKEN = 'https://wildflower.example/feature|strength-training'
 
 describe('fetchPlanDefinitionPage', () => {
   test('searches by topic, 200 to a page', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { client, urls } = smartClientAnswering(bundle([]))
 
     await Effect.runPromise(fetchPlanDefinitionPage(client, { first: { topicToken: TOPIC_TOKEN } }))
 
-    expect(queries).toEqual([`PlanDefinition?topic=${encodeURIComponent(TOPIC_TOKEN)}&_count=200`])
+    expect(urls).toEqual([
+      `${STUB_FHIR_BASE}/PlanDefinition?topic=${encodeURIComponent(TOPIC_TOKEN)}&_count=200`,
+    ])
   })
 
   test('property: any topic token survives the query as itself', async () => {
     await fc.assert(
       fc.asyncProperty(fc.string(), async (topicToken) => {
-        const { client, queries } = stubSmartClient(bundle([]))
+        const { client, urls } = smartClientAnswering(bundle([]))
 
         await Effect.runPromise(fetchPlanDefinitionPage(client, { first: { topicToken } }))
 
         // Parsed back rather than string-compared: a token carrying `&`, `=` or
         // a space must arrive at the server as one parameter value.
-        const params = searchParamsOf(queries[0] ?? '')
+        const params = searchParamsOf(urls[0] ?? '')
         expect(params.get('topic')).toBe(topicToken)
         expect(params.get('_count')).toBe('200')
       }),
@@ -47,16 +49,16 @@ describe('fetchPlanDefinitionPage', () => {
   })
 
   test('requests a later page by its cursor URL verbatim', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { client, urls } = smartClientAnswering(bundle([]))
     const pageUrl = 'https://fhir.example/PlanDefinition?_getpages=abc&_getpagesoffset=200'
 
     await Effect.runPromise(fetchPlanDefinitionPage(client, { pageUrl }))
 
-    expect(queries).toEqual([pageUrl])
+    expect(urls).toEqual([pageUrl])
   })
 
   test('drops an entry without an id, counting it', async () => {
-    const { client } = stubSmartClient(
+    const { client } = smartClientAnswering(
       bundle([
         { resourceType: 'PlanDefinition', id: 'pd-1', status: 'active' },
         { resourceType: 'PlanDefinition', status: 'active' },
