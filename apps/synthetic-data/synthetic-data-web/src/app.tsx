@@ -8,16 +8,13 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { type FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
-import {
-  buildSmartRouterContext,
-  useLaunchFailureRedirect,
-  useSmartHandshake,
-} from '@wildflowerhealthio/fhir-r4-react/smart'
-import { ErrorBanner, PageLoading } from '@wildflowerhealthio/react-tundraish'
+import { buildSmartRouterContext, type SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { PageLoading } from '@wildflowerhealthio/react-tundraish'
+import { SmartHandshakeGate } from '@wildflowerhealthio/smart-app-react'
 import { SyntheticDataScreen } from '@wildflowerhealthio/synthetic-data-react'
 import { type JSX, useMemo } from 'react'
 
-import { PUBLISHED_SNAPSHOT_ADDRESS } from './config.ts'
+import { PUBLISHED_SNAPSHOT_ADDRESS, smartRegistration } from './config.ts'
 import styles from './app.module.css'
 
 /**
@@ -100,36 +97,25 @@ const SyntheticDataApp = ({ context, serverUrl }: SyntheticDataAppProps): JSX.El
  * `SmartAppRoot`'s dialog, Sentry — nothing starts telemetry from the build's
  * env without asking.
  */
-const App = (): JSX.Element => {
-  const queryClient = useQueryClient()
-  const handshake = useSmartHandshake()
-  useLaunchFailureRedirect(handshake)
+const App = (): JSX.Element => (
+  <main className={styles.app}>
+    <SmartHandshakeGate
+      registration={smartRegistration}
+      connecting={<PageLoading message="Connecting…" />}
+    >
+      {(client) => <ConnectedSyntheticDataApp client={client} />}
+    </SmartHandshakeGate>
+  </main>
+)
 
-  const client = handshake.kind === 'ready' ? handshake.client : undefined
-  const context = useMemo<RouterContext | undefined>(
-    () =>
-      client === undefined
-        ? undefined
-        : buildSmartRouterContext(
-            {
-              serverUrl: client.state.serverUrl,
-              accessToken: client.state.tokenResponse?.access_token,
-            },
-            FetchHttpClient.layer,
-            queryClient
-          ),
+/** {@link SyntheticDataApp} over a completed handshake's `client`, on the page's one `QueryClient`. */
+const ConnectedSyntheticDataApp = ({ client }: { readonly client: SmartClient }): JSX.Element => {
+  const queryClient = useQueryClient()
+  const context = useMemo<RouterContext>(
+    () => buildSmartRouterContext(client, FetchHttpClient.layer, queryClient),
     [client, queryClient]
   )
-
-  return (
-    <main className={styles.app}>
-      {handshake.kind === 'connecting' && <PageLoading message="Connecting…" />}
-      {handshake.kind === 'error' && <ErrorBanner error={handshake.error} />}
-      {context !== undefined && client !== undefined && (
-        <SyntheticDataApp context={context} serverUrl={client.state.serverUrl} />
-      )}
-    </main>
-  )
+  return <SyntheticDataApp context={context} serverUrl={client.serverUrl} />
 }
 
 export { App, SyntheticDataApp, type SyntheticDataAppProps }
