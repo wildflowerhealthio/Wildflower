@@ -1,4 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
+import { isAuthorizationResponse } from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   APP_DESCRIPTIONS,
   TELEMETRY_CONSENT_COPY,
@@ -13,17 +14,19 @@ import {
   useTelemetryConsentControls,
 } from '@wildflowerhealthio/telemetry-react'
 import { redactServerHost, Sentry, setFhirServerHost } from '@wildflowerhealthio/telemetry-web'
-import { Option } from 'effect'
+import { Data, Match, Option } from 'effect'
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 
 import {
   appRootRedirectUri,
   arrivingSmartLaunchFrom,
   buildSmartQueryClient,
+  discardPendingConnection,
   isSmartHandshakeQuery,
   launchErrorFrom,
   shouldCompleteSmartLaunch,
   whenSmartHandshakeReady,
+  type ArrivingSmartLaunch,
   type SmartLaunchConfig,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 
@@ -51,17 +54,37 @@ interface SmartAppTelemetry {
 }
 
 /**
- * Why the app root was opened, latched on mount: to start a SMART launch its
- * URL carries, to complete the callback of one, or a plain visit.
+ * Why the app root was opened, latched on mount: to complete the callback of
+ * a SMART launch, to start the launch its URL carries, or a plain visit.
  */
-type RootArrival = 'launch' | 'callback' | 'visit'
+type RootArrival = Data.TaggedEnum<{
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
+  readonly Callback: Record<never, never>
+  readonly Launch: { readonly launch: ArrivingSmartLaunch }
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
+  readonly Visit: Record<never, never>
+}>
+const RootArrival = Data.taggedEnum<RootArrival>()
 
 /** The `launch` tag telemetry carries for each {@link RootArrival}. */
 const LAUNCH_TAGS = {
-  launch: 'launching',
-  callback: 'launched',
-  visit: 'standalone',
-} as const satisfies Record<RootArrival, string>
+  Launch: 'launching',
+  Callback: 'launched',
+  Visit: 'standalone',
+} as const satisfies Record<RootArrival['_tag'], string>
+
+/**
+ * The {@link RootArrival} the page's URL is, or the one `launched` names: a
+ * test's `true` is a callback and `false` a visit, with no launch read.
+ */
+const rootArrivalFrom = (launched: boolean | undefined): RootArrival => {
+  if (launched !== undefined) return launched ? RootArrival.Callback() : RootArrival.Visit()
+  if (shouldCompleteSmartLaunch()) return RootArrival.Callback()
+  return Option.match(arrivingSmartLaunchFrom(window.location.search), {
+    onNone: () => RootArrival.Visit(),
+    onSome: (launch) => RootArrival.Launch({ launch }),
+  })
+}
 
 /** Props for {@link SmartAppRoot}. */
 interface SmartAppRootProps {
@@ -128,21 +151,23 @@ function ConsentStatusControl(): JSX.Element {
 function LaunchingApp({
   app,
   registration,
+  launch,
   servedDirectory,
   replaceLocation,
 }: Pick<SmartAppRootProps, 'app' | 'registration' | 'servedDirectory'> & {
+  readonly launch: ArrivingSmartLaunch
   readonly replaceLocation: (url: string) => void
 }): JSX.Element {
   const launchAuthorized = useRef(false)
   useEffect(() => {
     if (launchAuthorized.current) return
     launchAuthorized.current = true
-    void authorizeFromLaunchPage(registration, window.location.href, servedDirectory).then(
+    void authorizeFromLaunchPage(registration, launch, window.location.href, servedDirectory).then(
       (failure) => {
         if (failure !== null) replaceLocation(failure)
       }
     )
-  }, [registration, servedDirectory, replaceLocation])
+  }, [registration, launch, servedDirectory, replaceLocation])
 
   useEffect(() => {
     const onPageShow = (event: PageTransitionEvent): void => {
@@ -177,7 +202,7 @@ const replaceWindowLocation = (url: string): void => {
  * - **Launched** (the URL carries an OAuth callback): `BrandBar`, with the
  *   telemetry status control at its end, over `children` in an error
  *   boundary that reports what it catches. The children complete the
- *   handshake as a query on the shared client (via `useSmartHandshake`).
+ *   handshake as a query on the shared client (under `SmartHandshakeGate`).
  * - **Standalone** (a bare visit): `branding-react`'s `AppLandingPage`, the
  *   app's introduction beside the `ConnectMenu` (in the same kind of error
  *   boundary), which shows a launch that failed and landed back here as its
@@ -202,10 +227,11 @@ const replaceWindowLocation = (url: string): void => {
  * and reports the launch failure the page arrived with (a failed handshake
  * among them), once.
  *
- * The case is latched on mount: completing the handshake strips
- * `code`/`state` from the URL, so re-reading the URL later
- * would flip a finished launch back to the connect menu. See the
- * guardrails in `slices/smart-app-react/AGENTS.md`.
+ * The case is latched on mount: every arrival carrying a callback has its
+ * pending records taken and `code`/`state`/`error` scrubbed from the URL
+ * (`readySmartClient` on a callback, `discardPendingConnection` on an OAuth
+ * error return), so re-reading the URL later would flip a launch back to the
+ * connect menu. See the guardrails in `slices/smart-app-react/AGENTS.md`.
  */
 function SmartAppRoot({
   app,
@@ -216,18 +242,22 @@ function SmartAppRoot({
   replaceLocation = replaceWindowLocation,
   children,
 }: SmartAppRootProps): JSX.Element {
-  const [arrival] = useState((): RootArrival => {
-    if (launched !== undefined) return launched ? 'callback' : 'visit'
-    if (shouldCompleteSmartLaunch()) return 'callback'
-    return Option.isSome(arrivingSmartLaunchFrom(window.location.search)) ? 'launch' : 'visit'
-  })
+  const [arrival] = useState(() => rootArrivalFrom(launched))
 
   // A plain visit (a fresh one, a failed launch sent back here, a page back
   // from the back-forward cache) completes no launch, so the route a launch
-  // saved to return to is cleared: it must not hijack a later callback.
+  // saved to return to is cleared: it must not hijack a later callback. A
+  // visit that is the authorization server's `?error=` return also takes the
+  // connection in progress, as every callback arrival does; the menu shows
+  // the refusal, and a storage that will not give the records up is reported.
   useEffect(() => {
-    if (arrival === 'visit') clearReturnRoute(window.sessionStorage)
-  }, [arrival])
+    if (!RootArrival.$is('Visit')(arrival)) return
+    clearReturnRoute(window.sessionStorage)
+    if (!isAuthorizationResponse(window.location.search)) return
+    discardPendingConnection(registration, servedDirectory).catch((discardError: unknown) => {
+      Sentry.captureException(discardError, { tags: { source: 'pending-connection' } })
+    })
+  }, [arrival, registration, servedDirectory])
 
   // A failed launch lands back here carrying its reason — our own `?launchError`
   // from the launch page or the token exchange, or the authorization server's
@@ -258,7 +288,7 @@ function SmartAppRoot({
   // answer starts Sentry.
   const { telemetryStarted, startTelemetry } = useConsentedTelemetryStart({
     dsn: telemetry.dsn,
-    tags: { app: telemetry.app, launch: LAUNCH_TAGS[arrival] },
+    tags: { app: telemetry.app, launch: LAUNCH_TAGS[arrival._tag] },
     onFirstStart: () => {
       if (launchFailure === null) return
       Sentry.captureException(launchFailure, { tags: { source: 'launch-error' } })
@@ -290,40 +320,49 @@ function SmartAppRoot({
   // module load, so importing this module never reads `window`.
   const redirectUri = appRootRedirectUri(window.location.href, servedDirectory)
 
+  const launchedApp = (
+    <>
+      <BrandBar trailing={<ConsentStatusControl />} />
+      <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
+        {children}
+      </CrashReportingBoundary>
+    </>
+  )
+  const connectMenu = (
+    <AppLandingPage app={app} aboveFooter={<ConsentStatusControl />}>
+      <CrashReportingBoundary extraContext={{ app: telemetry.app }} headingLevel={2}>
+        <ConnectMenu
+          target="fhir-r4"
+          clientId={registration.clientId}
+          scope={registration.scope}
+          redirectUri={redirectUri}
+          arrivalProblem={launchFailure ?? undefined}
+        />
+      </CrashReportingBoundary>
+    </AppLandingPage>
+  )
+
   return (
     <TelemetryConsentGate copy={TELEMETRY_CONSENT_COPY} onDecided={startTelemetry}>
-      {arrival === 'launch' ? (
-        <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
-          <LaunchingApp
-            app={app}
-            registration={registration}
-            servedDirectory={servedDirectory}
-            replaceLocation={replaceLocation}
-          />
-        </CrashReportingBoundary>
-      ) : (
-        <QueryClientProvider client={queryClient}>
-          {arrival === 'callback' ? (
-            <>
-              <BrandBar trailing={<ConsentStatusControl />} />
-              <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
-                {children}
-              </CrashReportingBoundary>
-            </>
-          ) : (
-            <AppLandingPage app={app} aboveFooter={<ConsentStatusControl />}>
-              <CrashReportingBoundary extraContext={{ app: telemetry.app }} headingLevel={2}>
-                <ConnectMenu
-                  target="fhir-r4"
-                  clientId={registration.clientId}
-                  scope={registration.scope}
-                  redirectUri={redirectUri}
-                  arrivalProblem={launchFailure ?? undefined}
-                />
-              </CrashReportingBoundary>
-            </AppLandingPage>
-          )}
-        </QueryClientProvider>
+      {Match.value(arrival).pipe(
+        Match.tag('Launch', ({ launch }) => (
+          <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
+            <LaunchingApp
+              app={app}
+              registration={registration}
+              launch={launch}
+              servedDirectory={servedDirectory}
+              replaceLocation={replaceLocation}
+            />
+          </CrashReportingBoundary>
+        )),
+        Match.tag('Callback', () => (
+          <QueryClientProvider client={queryClient}>{launchedApp}</QueryClientProvider>
+        )),
+        Match.tag('Visit', () => (
+          <QueryClientProvider client={queryClient}>{connectMenu}</QueryClientProvider>
+        )),
+        Match.exhaustive
       )}
     </TelemetryConsentGate>
   )

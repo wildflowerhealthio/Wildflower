@@ -1,30 +1,33 @@
 import {
   appRootRedirectUri,
-  arrivingSmartLaunchFrom,
   authorizeSmartLaunch,
   launchErrorBodyFor,
   launchErrorRedirect,
+  type ArrivingSmartLaunch,
   type SmartLaunchConfig,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
-import { Option } from 'effect'
 
 import { saveReturnRoute } from './return-route.ts'
 
 /**
- * Authorize the SMART launch the page at `launchPageHref` was opened to
- * start, resolving to where the page must go if the launch fails before it
- * leaves.
+ * Authorize `arrivingLaunch`, the SMART launch the page at `launchPageHref`
+ * was opened to start, resolving to where the page must go if the launch
+ * fails before it leaves.
  *
+ * @param registration - The app's SMART registration
+ * @param arrivingLaunch - The launch the page's URL carries, as the app root
+ *   read it on arrival
+ * @param launchPageHref - The launch page's URL
  * @param servedDirectory - The directory the app is served from (a routed
  *   app's basepath), as `appRootRedirectUri` takes it; omitted, the page's
  *   own directory.
  * @returns `null` once the page has been sent to the authorization server,
- *   or the app-root URL carrying the failure as `?launchError` when the page
- *   carries no launch or `authorizeSmartLaunch` rejects.
+ *   or the app-root URL carrying the failure as `?launchError` when
+ *   `authorizeSmartLaunch` rejects.
  *
  * @remarks
  * The launch is the page URL's `iss`, with the EHR's `launch` for an EHR
- * launch (`arrivingSmartLaunchFrom`). The OAuth
+ * launch. The OAuth
  * redirect target is the app's root (`appRootRedirectUri`), derived from
  * `launchPageHref` and `servedDirectory`, whichever route of the app the launch
  * opened. A launch that never reaches the authorization server fails
@@ -42,6 +45,7 @@ import { saveReturnRoute } from './return-route.ts'
  */
 const authorizeFromLaunchPage = async (
   registration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'>,
+  arrivingLaunch: ArrivingSmartLaunch,
   launchPageHref: string,
   servedDirectory?: string
 ): Promise<string | null> => {
@@ -49,10 +53,6 @@ const authorizeFromLaunchPage = async (
   const search = new URL(launchPageHref).search
   saveReturnRoute(window.sessionStorage, launchPageHref, servedDirectory)
   try {
-    const arrivingLaunch = Option.getOrThrowWith(
-      arrivingSmartLaunchFrom(search),
-      () => new Error('The page carries no SMART launch to start.')
-    )
     await authorizeSmartLaunch(
       { ...registration, redirectUri, iss: arrivingLaunch.iss },
       arrivingLaunch.launch
