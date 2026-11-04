@@ -9,6 +9,9 @@ import {
   arrivingSmartLaunchFrom,
   authorizeOpenServer,
   authorizeSmartLaunch,
+  authorizeSmartLaunchAt,
+  discardPendingConnection,
+  PENDING_AUTHORIZATION_KEY,
   PENDING_CONNECTION_KEY,
   readySmartClient,
   shouldCompleteSmartLaunch,
@@ -24,13 +27,20 @@ const SMART_CONFIGURATION = {
   code_challenge_methods_supported: ['S256'],
 }
 
+/** The app's registration. */
+const REGISTRATION = { clientId: 'medication-app', scope: 'launch openid fhirUser' }
+
+/**
+ * The app root the redirect target is served at: the test page's own root, so
+ * the return leg derives the same redirect URI the launch sent.
+ */
+const APP_ROOT = new URL('/', window.location.href).href
+
 /** The app's registration and the server it launches against. */
-const LAUNCH_CONFIG = {
-  clientId: 'medication-app',
-  scope: 'launch openid fhirUser',
-  redirectUri: 'https://app.example/',
-  iss: FHIR_BASE_URL,
-}
+const LAUNCH_CONFIG = { ...REGISTRATION, redirectUri: APP_ROOT, iss: FHIR_BASE_URL }
+
+/** An open server's connection, sent back to the app root. */
+const OPEN_SERVER_CONFIG = { fhirServiceUrl: 'https://open.example/fhir/', redirectUri: APP_ROOT }
 
 /** A JSON response carrying `body`. */
 const jsonResponse = (body: unknown, init?: ResponseInit): Response =>
@@ -114,7 +124,7 @@ describe('authorizeSmartLaunch', () => {
       response_type: 'code',
       client_id: 'medication-app',
       scope: 'launch openid fhirUser',
-      redirect_uri: 'https://app.example/',
+      redirect_uri: APP_ROOT,
       aud: FHIR_BASE_URL,
       launch: 'launch-1',
       code_challenge_method: 'S256',
@@ -204,6 +214,37 @@ describe('authorizeSmartLaunch', () => {
   })
 })
 
+describe('authorizeSmartLaunchAt', () => {
+  it('should send the page to the issuer’s authorize endpoint without discovering it again', async () => {
+    // Arrange
+    const { requests } = stubServer()
+
+    // Act
+    await authorizeSmartLaunchAt(
+      {
+        smartServer: { _tag: 'PlainSmartServer', fhirBaseUrl: FHIR_BASE_URL },
+        endpoints: {
+          authorizationEndpoint: SMART_CONFIGURATION.authorization_endpoint,
+          tokenEndpoint: SMART_CONFIGURATION.token_endpoint,
+        },
+        managementEndpoint: Option.none(),
+        wildflowerAuthorizationApi: Option.none(),
+      },
+      { ...REGISTRATION, redirectUri: APP_ROOT }
+    )
+
+    // Assert
+    expect(requests).toEqual([])
+    const authorizeUrl = assignedUrl()
+    expect(`${authorizeUrl.origin}${authorizeUrl.pathname}`).toBe(
+      SMART_CONFIGURATION.authorization_endpoint
+    )
+    expect(authorizeUrl.searchParams.get('aud')).toBe(FHIR_BASE_URL)
+    expect(authorizeUrl.searchParams.has('launch')).toBe(false)
+    expect(window.sessionStorage.getItem(PENDING_AUTHORIZATION_KEY)).not.toBeNull()
+  })
+})
+
 describe('authorizeOpenServer', () => {
   it('should send the page straight to the redirect target, carrying a state', async () => {
     // Act
@@ -219,17 +260,44 @@ describe('authorizeOpenServer', () => {
   })
 })
 
+/** Start a SMART sign-in out of the page, returning the `state` it sent. */
+const signInOut = async (): Promise<string> => {
+  stubServer()
+  await authorizeSmartLaunch(LAUNCH_CONFIG, 'launch-1')
+  return assignedUrl().searchParams.get('state') ?? ''
+}
+
+/** Start an open-server connection out of the page, returning the `state` it sent. */
+const openServerOut = async (): Promise<string> => {
+  await authorizeOpenServer(OPEN_SERVER_CONFIG)
+  return assignedUrl().searchParams.get('state') ?? ''
+}
+
+/** The pending records the page still holds, by key. */
+const pendingRecords = (): Record<string, string | null> => ({
+  signIn: window.sessionStorage.getItem(PENDING_AUTHORIZATION_KEY),
+  openServer: window.sessionStorage.getItem(PENDING_CONNECTION_KEY),
+})
+
+const NO_PENDING_RECORDS = { signIn: null, openServer: null }
+
+/** A `sessionStorage` whose every call throws, as a blocked one does. */
+const stubBlockedStorage = (): void => {
+  const blocked = (): never => {
+    throw new DOMException('The operation is insecure.', 'SecurityError')
+  }
+  vi.stubGlobal('sessionStorage', { getItem: blocked, setItem: blocked, removeItem: blocked })
+}
+
 describe('readySmartClient', () => {
   it('should redeem a SMART return into a client for the server, with its token and patient', async () => {
     // Arrange — a launch out, then the authorization server's return
-    stubServer()
-    await authorizeSmartLaunch(LAUNCH_CONFIG, 'launch-1')
-    const state = assignedUrl().searchParams.get('state') ?? ''
+    const state = await signInOut()
     returnToRedirectTarget(`?code=code-1&state=${state}&utm=kept`)
     const { requests } = stubServer()
 
     // Act
-    const client = await readySmartClient()
+    const client = await readySmartClient(REGISTRATION)
 
     // Assert
     expect({
@@ -246,20 +314,34 @@ describe('readySmartClient', () => {
     const tokenRequestBody = new URLSearchParams(await tokenRequest?.text())
     expect(tokenRequestBody.get('code')).toBe('code-1')
     expect(tokenRequestBody.get('client_id')).toBe('medication-app')
-    expect(tokenRequestBody.get('redirect_uri')).toBe('https://app.example/')
+    expect(tokenRequestBody.get('redirect_uri')).toBe(APP_ROOT)
     expect(window.location.search).toBe('?utm=kept')
+  })
+
+  it('should redeem as the redirect URI the served directory names', async () => {
+    // Arrange — a routed app served under `/pr-7/`, its callback at that root
+    stubServer()
+    const servedRoot = new URL('/pr-7/', APP_ROOT).href
+    await authorizeSmartLaunch({ ...LAUNCH_CONFIG, redirectUri: servedRoot }, undefined)
+    const state = assignedUrl().searchParams.get('state') ?? ''
+    vi.unstubAllGlobals()
+    window.history.replaceState(null, '', `/pr-7/?code=code-1&state=${state}`)
+    const { requests } = stubServer()
+
+    // Act
+    await readySmartClient(REGISTRATION, '/pr-7/')
+
+    // Assert
+    const tokenRequestBody = new URLSearchParams(await requests[0]?.text())
+    expect(tokenRequestBody.get('redirect_uri')).toBe(servedRoot)
   })
 
   it('should connect an open server with no token', async () => {
     // Arrange
-    await authorizeOpenServer({
-      fhirServiceUrl: 'https://open.example/fhir/',
-      redirectUri: 'https://app.example/',
-    })
-    returnToRedirectTarget(`?state=${assignedUrl().searchParams.get('state') ?? ''}`)
+    returnToRedirectTarget(`?state=${await openServerOut()}`)
 
     // Act
-    const client = await readySmartClient()
+    const client = await readySmartClient(REGISTRATION)
 
     // Assert
     expect({ serverUrl: client.serverUrl, accessToken: client.accessToken }).toEqual({
@@ -271,49 +353,133 @@ describe('readySmartClient', () => {
 
   it('should refuse an open server’s return with the wrong state', async () => {
     // Arrange
-    await authorizeOpenServer({
-      fhirServiceUrl: 'https://open.example/fhir',
-      redirectUri: 'https://app.example/',
-    })
+    await openServerOut()
     returnToRedirectTarget('?state=forged')
 
     // Act / Assert
-    await expect(readySmartClient()).rejects.toThrow('wrong state parameter')
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow('wrong state parameter')
   })
 
-  it('should refuse a page with no connection in progress', async () => {
+  it('should refuse an open-server return with no connection in progress', async () => {
+    // Arrange
+    returnToRedirectTarget('?state=xyz')
+
+    // Act / Assert
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow('no connection in progress')
+  })
+
+  it('should refuse a code with no sign-in in progress', async () => {
     // Arrange
     returnToRedirectTarget('?code=code-1&state=xyz')
 
     // Act / Assert
-    await expect(readySmartClient()).rejects.toThrow('no connection in progress')
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow('did not ask for')
   })
 
   it('should complete a connection once: a second completion finds nothing to complete', async () => {
     // Arrange
-    await authorizeOpenServer({
-      fhirServiceUrl: 'https://open.example/fhir',
-      redirectUri: 'https://app.example/',
-    })
-    const search = `?state=${assignedUrl().searchParams.get('state') ?? ''}`
+    const search = `?state=${await openServerOut()}`
     returnToRedirectTarget(search)
-    await readySmartClient()
+    await readySmartClient(REGISTRATION)
     window.history.replaceState(null, '', `/${search}`)
 
     // Act / Assert
-    await expect(readySmartClient()).rejects.toThrow('no connection in progress')
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow('no connection in progress')
+  })
+
+  it('should take the open-server record on a SMART return', async () => {
+    // Arrange — an open-server connection abandoned, then a sign-in that came back
+    await openServerOut()
+    const state = await signInOut()
+    returnToRedirectTarget(`?code=code-1&state=${state}`)
+    stubServer()
+
+    // Act
+    await readySmartClient(REGISTRATION)
+
+    // Assert
+    expect(pendingRecords()).toEqual(NO_PENDING_RECORDS)
+  })
+
+  it('should take the sign-in record on an open server’s return', async () => {
+    // Arrange — a sign-in abandoned, then an open server that came back
+    await signInOut()
+    const state = await openServerOut()
+    returnToRedirectTarget(`?state=${state}`)
+
+    // Act
+    await readySmartClient(REGISTRATION)
+
+    // Assert
+    expect(pendingRecords()).toEqual(NO_PENDING_RECORDS)
   })
 
   it('should reject with the token endpoint’s refusal', async () => {
     // Arrange
-    stubServer()
-    await authorizeSmartLaunch(LAUNCH_CONFIG, undefined)
-    const state = assignedUrl().searchParams.get('state') ?? ''
+    const state = await signInOut()
     returnToRedirectTarget(`?code=code-1&state=${state}`)
     stubServer({}, { error: 'invalid_grant' })
 
     // Act / Assert
-    await expect(readySmartClient()).rejects.toThrow('invalid_grant')
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow('invalid_grant')
+  })
+
+  it('should reject with the storage’s reason, keeping the failure as the cause, when storage is blocked', async () => {
+    // Arrange
+    returnToRedirectTarget('?state=xyz')
+    stubBlockedStorage()
+
+    // Act
+    const failure = await readySmartClient(REGISTRATION).then(
+      () => null,
+      (rejection: unknown) => rejection
+    )
+
+    // Assert
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure instanceof Error ? failure.message : '').toContain('session storage is blocked')
+    expect(failure instanceof Error ? failure.cause : null).toMatchObject({
+      _tag: 'PendingRequestUnusable',
+    })
+  })
+
+  it('should reject an open-server record a different version of the page wrote', async () => {
+    // Arrange
+    window.sessionStorage.setItem(PENDING_CONNECTION_KEY, '{"_tag":"PendingOpenServer"}')
+    returnToRedirectTarget('?state=xyz')
+
+    // Act / Assert
+    await expect(readySmartClient(REGISTRATION)).rejects.toThrow(
+      'started by a different version of this page'
+    )
+    expect(pendingRecords()).toEqual(NO_PENDING_RECORDS)
+  })
+})
+
+describe('discardPendingConnection', () => {
+  it('should take every pending record and scrub an OAuth error return', async () => {
+    // Arrange — both kinds of connection out, then the server's refusal
+    await openServerOut()
+    const state = await signInOut()
+    returnToRedirectTarget(`?error=access_denied&error_description=No&state=${state}&utm=kept`)
+
+    // Act
+    await discardPendingConnection(REGISTRATION)
+
+    // Assert
+    expect(pendingRecords()).toEqual(NO_PENDING_RECORDS)
+    expect(window.location.search).toBe('?utm=kept')
+  })
+
+  it('should reject with the storage’s reason when storage is blocked', async () => {
+    // Arrange
+    returnToRedirectTarget('?error=access_denied&state=xyz')
+    stubBlockedStorage()
+
+    // Act / Assert
+    await expect(discardPendingConnection(REGISTRATION)).rejects.toThrow(
+      'session storage is blocked'
+    )
   })
 })
 

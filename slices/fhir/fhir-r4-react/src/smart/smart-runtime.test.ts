@@ -94,6 +94,34 @@ describe('smartHttpClientLayer', () => {
     expect(sent.authorization).toBeUndefined()
   })
 
+  test('addresses a path with no leading slash under the FHIR server too', async () => {
+    const sent = await sendThrough(
+      { serverUrl: 'https://launch.smarthealthit.org/v/r4/fhir/', accessToken: undefined },
+      HttpClientRequest.get('Patient?_count=200')
+    )
+    expect(sent.url).toBe('https://launch.smarthealthit.org/v/r4/fhir/Patient?_count=200')
+  })
+
+  // A search bundle's `next` link is absolute and names the FHIR server, so it
+  // is the same session's read and must carry the same credential.
+  test('attaches the token to an absolute URL under the FHIR base', async () => {
+    const nextLink = 'http://127.0.0.1:8080/Patient?_getpages=abc&_getpagesoffset=200'
+    const sent = await sendThrough(session, HttpClientRequest.get(nextLink))
+    expect(sent).toEqual({ url: nextLink, authorization: 'Bearer tok-123' })
+  })
+
+  test.each([
+    { case: 'another origin', url: 'https://elsewhere.example/r4/Patient' },
+    { case: 'another path on the same origin', url: 'https://fhir.example/r4-admin/Patient' },
+    { case: 'plain http to the same host', url: 'http://fhir.example/r4/Patient' },
+  ])('sends no token to $case', async ({ url }) => {
+    const sent = await sendThrough(
+      { serverUrl: 'https://fhir.example/r4', accessToken: 'tok-123' },
+      HttpClientRequest.get(url)
+    )
+    expect(sent).toEqual({ url, authorization: undefined })
+  })
+
   test('a token is never sent to an origin the session did not name', async () => {
     const sent = await sendThrough(session, HttpClientRequest.get('https://elsewhere.test/thing'))
     // Two halves of the same claim: an absolute URL is neither silently

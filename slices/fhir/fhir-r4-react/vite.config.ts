@@ -11,6 +11,7 @@ export default defineConfig({
     entry: {
       index: 'src/index.ts',
       'smart/index': 'src/smart/index.ts',
+      'smart/test-helpers': 'src/smart/test-helpers.ts',
     },
   },
   test: {

@@ -13,6 +13,7 @@ import { StrictMode, type JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
+  arrivingSmartLaunchFrom,
   authorizeSmartLaunch,
   decodeLaunchError,
   encodeLaunchError,
@@ -357,6 +358,43 @@ describe('SmartAppRoot', () => {
     expect(arrivalProblem()).toContain('The user declined')
   })
 
+  it('should take every connection in progress on an OAuth error return, and scrub it', async () => {
+    // Arrange — a sign-in and an open-server connection both left records
+    await arriveFromSignIn(FHIR_SERVER_URL)
+    window.sessionStorage.setItem(
+      'fhir-r4-react.pending-connection',
+      '{"state":"o","serverUrl":"x"}'
+    )
+    setUrl('/?error=access_denied&error_description=The+user+declined&state=xyz&utm=kept')
+
+    // Act
+    renderShell({})
+
+    // Assert — the menu keeps the refusal, the records and the callback are gone
+    expect(arrivalProblem()).toContain('The user declined')
+    await waitFor(() => {
+      expect(window.location.search).toBe('?utm=kept')
+    })
+    expect(window.sessionStorage.getItem('fhir-r4-react.pending-authorization')).toBeNull()
+    expect(window.sessionStorage.getItem('fhir-r4-react.pending-connection')).toBeNull()
+    expect(tokenRequests()).toHaveLength(0)
+  })
+
+  it('should leave the connections in progress alone on a plain visit', () => {
+    // Arrange
+    window.sessionStorage.setItem(
+      'fhir-r4-react.pending-connection',
+      '{"state":"o","serverUrl":"x"}'
+    )
+    setUrl('/?utm=kept')
+
+    // Act
+    renderShell({})
+
+    // Assert
+    expect(window.sessionStorage.getItem('fhir-r4-react.pending-connection')).not.toBeNull()
+  })
+
   it.each([
     { case: 'a plain visit', search: '', expectKept: false },
     {
@@ -424,6 +462,7 @@ describe('SmartAppRoot on a launch', () => {
       })
       expect(authorizeFromLaunchPageSpy).toHaveBeenCalledExactlyOnceWith(
         REGISTRATION,
+        Option.getOrThrow(arrivingSmartLaunchFrom(search)),
         `${window.location.origin}/importer/${search}`,
         undefined
       )
@@ -442,6 +481,7 @@ describe('SmartAppRoot on a launch', () => {
       })
       expect(authorizeFromLaunchPageSpy).toHaveBeenCalledExactlyOnceWith(
         REGISTRATION,
+        Option.getOrThrow(arrivingSmartLaunchFrom(EHR_LAUNCH)),
         `${window.location.origin}/strength/patients/123/today${EHR_LAUNCH}`,
         '/strength/'
       )
@@ -1104,6 +1144,6 @@ async function arriveFromSignIn(serverUrl: string): Promise<void> {
 /** Starts the SMART handshake and records the client it was provided. */
 function HandshakeProbe({ seen }: { readonly seen: QueryClient[] }): null {
   seen.push(useQueryClient())
-  useSmartHandshake()
+  useSmartHandshake(REGISTRATION)
   return null
 }

@@ -1,25 +1,42 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { Option } from 'effect'
 import { StrictMode, type JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import type { SmartClient } from './smart-client.ts'
-import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
+import { smartClientAnswering } from './test-helpers.ts'
 
 // The exchange is the one thing worth stubbing: it is the single-use POST this
 // hook exists to fire exactly once. `vi.hoisted` so the spy exists before the
 // module mock that closes over it is applied.
-const { readyMock } = vi.hoisted(() => ({ readyMock: vi.fn<() => Promise<SmartClient>>() }))
+const { readyMock } = vi.hoisted(() => ({
+  readyMock:
+    vi.fn<
+      (
+        registration: { readonly clientId: string; readonly scope: string },
+        servedDirectory?: string
+      ) => Promise<SmartClient>
+    >(),
+}))
 vi.mock('./smart-launch.ts', () => ({ readySmartClient: readyMock }))
 
-const { isSmartHandshakeQuery, useSmartHandshake, whenSmartHandshakeReady } =
+const { isSmartHandshakeQuery, useSmartClient, useSmartHandshake, whenSmartHandshakeReady } =
   await import('./use-smart-handshake.ts')
 
 // The hook only ever hands the client back, so any client will do.
-const fakeClient = stubSmartClient(null).client
+const fakeClient = smartClientAnswering(null).client
 
-/** Renders the handshake's `kind`, so the test asserts on visible text. */
-const Probe = (): JSX.Element => <span>{useSmartHandshake().kind}</span>
+/** The app's registration the handshake redeems the code as. */
+const REGISTRATION = { clientId: 'medication-app', scope: 'launch openid' }
+
+/** Runs the handshake as the app served from `/app/`, rendering its `kind`. */
+const Probe = (): JSX.Element => <span>{useSmartHandshake(REGISTRATION, '/app/').kind}</span>
+
+/** Only reads the handshake's client, rendering whether there is one. */
+const Reader = (): JSX.Element => (
+  <span>{Option.isSome(useSmartClient()) ? 'client' : 'no client'}</span>
+)
 
 /**
  * Mount `Probe` under `StrictMode` — whose dev double-mount is exactly what
@@ -56,6 +73,20 @@ describe('useSmartHandshake', () => {
     expect(readyMock).toHaveBeenCalledTimes(1)
   })
 
+  it('should redeem as the registration and served directory it was handed', async () => {
+    // Arrange
+    readyMock.mockResolvedValue(fakeClient)
+
+    // Act
+    mountUnderStrictMode()
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByText('ready')).toBeDefined()
+    })
+    expect(readyMock).toHaveBeenCalledExactlyOnceWith(REGISTRATION, '/app/')
+  })
+
   it('should surface a failed exchange without re-POSTing the consumed code', async () => {
     // Arrange
     readyMock.mockRejectedValue(new Error('authorization code already redeemed'))
@@ -69,6 +100,46 @@ describe('useSmartHandshake', () => {
     })
     // `retry: false` holds even though the QueryClient's default retry is 3 —
     // re-sending a single-use code cannot succeed.
+    expect(readyMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useSmartClient', () => {
+  it('should never start the exchange, however many readers mount', async () => {
+    // Act — readers alone, under StrictMode
+    render(
+      <StrictMode>
+        <QueryClientProvider client={new QueryClient()}>
+          <Reader />
+          <Reader />
+        </QueryClientProvider>
+      </StrictMode>
+    )
+
+    // Assert
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(readyMock).not.toHaveBeenCalled()
+    expect(screen.getAllByText('no client')).toHaveLength(2)
+  })
+
+  it('should hand over the client once the handshake beside it completes', async () => {
+    // Arrange
+    readyMock.mockResolvedValue(fakeClient)
+
+    // Act
+    render(
+      <StrictMode>
+        <QueryClientProvider client={new QueryClient()}>
+          <Reader />
+          <Probe />
+        </QueryClientProvider>
+      </StrictMode>
+    )
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByText('client')).toBeDefined()
+    })
     expect(readyMock).toHaveBeenCalledTimes(1)
   })
 })

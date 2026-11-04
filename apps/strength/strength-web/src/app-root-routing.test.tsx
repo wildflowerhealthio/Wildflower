@@ -136,7 +136,7 @@ describe('AppRoot over the address bar', () => {
     expect(addressBar()).toBe(launchUrl)
   })
 
-  it('should leave the callback URL alone through the exchange, then open the launch’s patient', async () => {
+  it('should take the callback out of the URL, route nothing through the exchange, then open the launch’s patient', async () => {
     // Arrange: a sign-in out, and an exchange the test completes
     await startSignIn()
     let completeExchange: () => void = () => {}
@@ -156,7 +156,9 @@ describe('AppRoot over the address bar', () => {
     await waitFor(() => {
       expect(completeSignInMock).toHaveBeenCalledTimes(1)
     })
-    expect(addressBar()).toBe(callbackUrl)
+    // The connection in progress is taken, and its callback with it, before
+    // the code is redeemed; nothing else moves the address bar meanwhile.
+    expect(addressBar()).toBe(callbackUrl.replace('?code=abc&state=xyz', ''))
 
     // Act
     completeExchange()

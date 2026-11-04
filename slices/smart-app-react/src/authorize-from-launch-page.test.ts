@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { launchErrorFrom, type SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  arrivingSmartLaunchFrom,
+  launchErrorFrom,
+  type ArrivingSmartLaunch,
+  type SmartLaunchConfig,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 import type * as Smart from '@wildflowerhealthio/fhir-r4-react/smart'
+import { Option } from 'effect'
 import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
 import { RETURN_ROUTE_STORAGE_KEY } from './return-route.ts'
 
@@ -27,6 +33,10 @@ const LAUNCH_PAGE =
 const DEEP_LAUNCH_PAGE =
   'https://importer.wildflowerhealth.io/anonymize?source=pharmacy&iss=https%3A%2F%2Fehr.example%2Ffhir&launch=xyz'
 
+/** The launch the page at `launchPageHref` carries, as the app root reads it on arrival. */
+const launchOf = (launchPageHref: string): ArrivingSmartLaunch =>
+  Option.getOrThrow(arrivingSmartLaunchFrom(new URL(launchPageHref).search))
+
 beforeEach(() => {
   authorizeSmartLaunchMock.mockReset()
   window.sessionStorage.clear()
@@ -38,7 +48,7 @@ describe('authorizeFromLaunchPage', () => {
     authorizeSmartLaunchMock.mockResolvedValue(undefined)
 
     // Act
-    const failure = await authorizeFromLaunchPage(LAUNCH, LAUNCH_PAGE)
+    const failure = await authorizeFromLaunchPage(LAUNCH, launchOf(LAUNCH_PAGE), LAUNCH_PAGE)
 
     // Assert — the registration, the root the launch page sits in, and the launch
     expect(authorizeSmartLaunchMock).toHaveBeenCalledWith(
@@ -57,10 +67,8 @@ describe('authorizeFromLaunchPage', () => {
     authorizeSmartLaunchMock.mockResolvedValue(undefined)
 
     // Act
-    await authorizeFromLaunchPage(
-      LAUNCH,
-      'https://importer.wildflowerhealth.io/?iss=https%3A%2F%2Fehr.example%2Ffhir'
-    )
+    const lonePage = 'https://importer.wildflowerhealth.io/?iss=https%3A%2F%2Fehr.example%2Ffhir'
+    await authorizeFromLaunchPage(LAUNCH, launchOf(lonePage), lonePage)
 
     // Assert
     expect(authorizeSmartLaunchMock).toHaveBeenCalledWith(
@@ -78,7 +86,7 @@ describe('authorizeFromLaunchPage', () => {
     authorizeSmartLaunchMock.mockRejectedValue(new TypeError('Failed to fetch'))
 
     // Act
-    const failure = await authorizeFromLaunchPage(LAUNCH, LAUNCH_PAGE)
+    const failure = await authorizeFromLaunchPage(LAUNCH, launchOf(LAUNCH_PAGE), LAUNCH_PAGE)
 
     // Assert — the target is the app root, and the root's banner can decode it
     expect(failure).not.toBeNull()
@@ -98,7 +106,7 @@ describe('authorizeFromLaunchPage', () => {
     })
 
     // Act
-    await authorizeFromLaunchPage(LAUNCH, DEEP_LAUNCH_PAGE)
+    await authorizeFromLaunchPage(LAUNCH, launchOf(DEEP_LAUNCH_PAGE), DEEP_LAUNCH_PAGE)
 
     // Assert — still the app root as the redirect target
     expect(savedAtAuthorize).toBe('/anonymize?source=pharmacy')
@@ -117,11 +125,9 @@ describe('authorizeFromLaunchPage', () => {
     authorizeSmartLaunchMock.mockResolvedValue(undefined)
 
     // Act — a route two directories deep, which is no registered redirect URI
-    await authorizeFromLaunchPage(
-      LAUNCH,
-      'https://strength.wildflowerhealth.io/pr-7/patients/123/today?iss=https%3A%2F%2Fehr.example%2Ffhir&launch=xyz',
-      '/pr-7/'
-    )
+    const nestedPage =
+      'https://strength.wildflowerhealth.io/pr-7/patients/123/today?iss=https%3A%2F%2Fehr.example%2Ffhir&launch=xyz'
+    await authorizeFromLaunchPage(LAUNCH, launchOf(nestedPage), nestedPage, '/pr-7/')
 
     // Assert
     expect(authorizeSmartLaunchMock).toHaveBeenCalledWith(

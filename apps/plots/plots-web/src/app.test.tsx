@@ -1,7 +1,18 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type * as SmartReads from '@wildflowerhealthio/fhir-r4-react/smart'
-import { FhirHttpError, type SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartClient, SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  answerJson,
+  answerStatus,
+  bundleOf,
+  neverAnswer,
+  STUB_FHIR_BASE,
+  stubSmartClient,
+  type StubAnswer,
+  type StubAnswers,
+  type StubFhirServer,
+} from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest, Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import { SERIES_PARAM, decodeSelection, readRecord } from '@wildflowerhealthio/plots-core-js'
@@ -11,7 +22,7 @@ import {
   WALKTHROUGH_ANCHOR_ATTRIBUTE,
   writeSeenWalkthrough,
 } from '@wildflowerhealthio/walkthrough-core'
-import { DateTime, Effect, Option, Schema } from 'effect'
+import { DateTime, Effect, Schema } from 'effect'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -21,7 +32,6 @@ import {
   PLOTS_WALKTHROUGH_VERSION,
   PlotsPageWalkthroughAnchor,
 } from './plots-walkthrough.ts'
-import type { SmartClient } from './smart-client.ts'
 
 // Only the handshake is stubbed: the page reads are the real `fhir-r4-react/smart`
 // ones, issued through a stub client whose `request` answers from a table of
@@ -44,67 +54,36 @@ vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
 
 const { App } = await import('./app.tsx')
 
-/** The FHIR server behind the stub client: response by request-URL prefix. */
-type FhirResponses = Readonly<Record<string, () => Promise<unknown>>>
-
-/** Every URL the stub clients were asked for, in order. */
-const requestedUrls: string[] = []
+/** The stub servers the test's clients read from, each recording what it was sent. */
+const stubServers: StubFhirServer[] = []
 
 /**
  * A SMART client whose reads answer from `responses`, launched with
- * `patientId` in context. A response that rejects is the server answering
- * 500; a request no entry answers dies, as a test that forgot a response.
+ * `patientId` in context. A request no entry answers dies, as a test that
+ * forgot a response.
  */
-const stubClient = (patientId: string | null, responses: FhirResponses): SmartClient => {
-  const request = (url: string): Effect.Effect<unknown, FhirHttpError> =>
-    Effect.suspend(() => {
-      requestedUrls.push(url)
-      const prefix = Object.keys(responses)
-        .filter((candidate) => url.startsWith(candidate))
-        .toSorted((left, right) => right.length - left.length)[0]
-      const respond = prefix === undefined ? undefined : responses[prefix]
-      return respond === undefined
-        ? Effect.dieMessage(`unexpected request ${url}`)
-        : Effect.tryPromise({
-            try: respond,
-            catch: () => new FhirHttpError({ url, status: 500 }),
-          })
-    })
-  return {
-    serverUrl: 'https://fhir.example',
-    accessToken: undefined,
-    launchPatientId: Option.fromNullable(patientId),
-    request,
-  }
+const stubClient = (patientId: string | null, responses: StubAnswers): SmartClient => {
+  const stub = stubSmartClient(responses, { patient: patientId ?? undefined })
+  stubServers.push(stub)
+  return stub.client
 }
-
-/** A search-result bundle holding `resources`, pointing on to `nextUrl` when given. */
-const bundleOf = (resources: readonly unknown[], nextUrl?: string): unknown => ({
-  resourceType: 'Bundle',
-  type: 'searchset',
-  entry: resources.map((resource) => ({ resource })),
-  link: nextUrl === undefined ? [] : [{ relation: 'next', url: nextUrl }],
-})
-
-const answer =
-  (body: unknown): (() => Promise<unknown>) =>
-  () =>
-    Promise.resolve(body)
-
-/** A response that never arrives — a page still in flight. */
-const pending = (): Promise<unknown> => new Promise(() => {})
 
 /** A response that arrives when the test says, for asserting what holds before it does. */
 const deferredAnswer = (
   body: unknown
-): { readonly respond: () => Promise<unknown>; readonly release: () => void } => {
+): { readonly respond: StubAnswer; readonly release: () => void } => {
   let release = (): void => undefined
-  const arrived = new Promise<unknown>((resolve) => {
-    release = () => {
-      resolve(body)
-    }
+  const arrived = new Promise<void>((resolve) => {
+    release = resolve
   })
-  return { respond: () => arrived, release: () => release() }
+  return {
+    respond: (request) =>
+      Effect.flatMap(
+        Effect.promise(() => arrived),
+        () => answerJson(body)(request)
+      ),
+    release: () => release(),
+  }
 }
 
 const patientWire = {
@@ -189,10 +168,10 @@ const NEXT_OBSERVATIONS = 'https://fhir.example/next/observations'
 const NEXT_MEDICATION_REQUESTS = 'https://fhir.example/next/medication-requests'
 
 /** A launch with `p1` in context whose record holds glucose and metformin, one page each. */
-const recordResponses = (overrides: FhirResponses = {}): FhirResponses => ({
-  'Patient/p1': answer(patientWire),
-  'Observation?': answer(bundleOf([glucoseWire])),
-  'MedicationRequest?': answer(bundleOf([metforminWire])),
+const recordResponses = (overrides: StubAnswers = {}): StubAnswers => ({
+  'Patient/p1': answerJson(patientWire),
+  'Observation?': answerJson(bundleOf([glucoseWire])),
+  'MedicationRequest?': answerJson(bundleOf([metforminWire])),
   ...overrides,
 })
 
@@ -226,13 +205,14 @@ const selectionInUrl = (): ReturnType<typeof decodeSelection> =>
 
 /** The query of each record read the app issued for `resourceType`, in order. */
 const recordReadQueries = (resourceType: string): readonly URLSearchParams[] =>
-  requestedUrls
-    .filter((url) => url.startsWith(`${resourceType}?`))
+  stubServers
+    .flatMap((server) => server.urls)
+    .filter((url) => url.startsWith(`${STUB_FHIR_BASE}/${resourceType}?`))
     .map((url) => new URLSearchParams(url.slice(url.indexOf('?') + 1)))
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/health-viewer/')
-  requestedUrls.length = 0
+  stubServers.length = 0
 })
 
 afterEach(() => {
@@ -282,7 +262,7 @@ describe('App', () => {
     launchWith(
       stubClient(null, {
         ...recordResponses(),
-        'Patient?': answer(bundleOf([patientWire])),
+        'Patient?': answerJson(bundleOf([patientWire])),
       })
     )
     renderApp()
@@ -302,7 +282,7 @@ describe('App', () => {
     launchWith(
       stubClient(null, {
         ...recordResponses(),
-        'Patient?': answer(bundleOf([patientWire, otherPatientWire])),
+        'Patient?': answerJson(bundleOf([patientWire, otherPatientWire])),
       })
     )
     renderApp()
@@ -327,8 +307,8 @@ describe('App', () => {
     launchWith(
       stubClient('p1', {
         ...recordResponses(),
-        'Patient/p2': answer(otherPatientWire),
-        'Patient?': answer(bundleOf([patientWire, otherPatientWire])),
+        'Patient/p2': answerJson(otherPatientWire),
+        'Patient?': answerJson(bundleOf([patientWire, otherPatientWire])),
       })
     )
     renderApp()
@@ -354,7 +334,7 @@ describe('App', () => {
     launchWith(
       stubClient('p1', {
         ...recordResponses(),
-        'Patient/p2': answer(otherPatientWire),
+        'Patient/p2': answerJson(otherPatientWire),
       })
     )
 
@@ -389,8 +369,8 @@ describe('App', () => {
       stubClient(
         'p1',
         recordResponses({
-          'Observation?': answer(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
-          [NEXT_OBSERVATIONS]: pending,
+          'Observation?': answerJson(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
+          [NEXT_OBSERVATIONS]: neverAnswer,
         })
       )
     )
@@ -410,7 +390,7 @@ describe('App', () => {
       stubClient(
         'p1',
         recordResponses({
-          'MedicationRequest?': answer(
+          'MedicationRequest?': answerJson(
             bundleOf([metforminWire, medicationRequestWire(undefined, 'Lisinopril 10 mg tablet')])
           ),
         })
@@ -432,8 +412,8 @@ describe('App', () => {
       stubClient(
         'p1',
         recordResponses({
-          'MedicationRequest?': answer(bundleOf([metforminWire], NEXT_MEDICATION_REQUESTS)),
-          [NEXT_MEDICATION_REQUESTS]: () => Promise.reject(new Error('page two failed')),
+          'MedicationRequest?': answerJson(bundleOf([metforminWire], NEXT_MEDICATION_REQUESTS)),
+          [NEXT_MEDICATION_REQUESTS]: answerStatus(500),
         })
       )
     )
@@ -450,12 +430,7 @@ describe('App', () => {
 
   it('should replace the body when the first page of either read fails', async () => {
     // Arrange
-    launchWith(
-      stubClient(
-        'p1',
-        recordResponses({ 'Observation?': () => Promise.reject(new Error('search failed')) })
-      )
-    )
+    launchWith(stubClient('p1', recordResponses({ 'Observation?': answerStatus(500) })))
 
     // Act
     renderApp()
@@ -543,7 +518,7 @@ describe('App', () => {
       stubClient(
         'p1',
         recordResponses({
-          'Observation?': answer(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
+          'Observation?': answerJson(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
           [NEXT_OBSERVATIONS]: secondObservationPage.respond,
         })
       )
@@ -582,7 +557,7 @@ describe('App', () => {
     launchWith(
       stubClient(
         'p1',
-        recordResponses({ 'Observation?': answer(bundleOf([potassiumWire, glucoseWire])) })
+        recordResponses({ 'Observation?': answerJson(bundleOf([potassiumWire, glucoseWire])) })
       )
     )
     renderApp()
@@ -617,7 +592,7 @@ describe('App', () => {
       stubClient(
         'p1',
         recordResponses({
-          'Observation?': answer(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
+          'Observation?': answerJson(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
           [NEXT_OBSERVATIONS]: secondObservationPage.respond,
         })
       )
@@ -643,7 +618,7 @@ describe('App', () => {
     launchWith(
       stubClient(
         'p1',
-        recordResponses({ 'Observation?': answer(bundleOf([glucoseWire, undatedWire])) })
+        recordResponses({ 'Observation?': answerJson(bundleOf([glucoseWire, undatedWire])) })
       )
     )
 
@@ -707,8 +682,8 @@ describe('the Plots walkthrough', () => {
       stubClient(
         'p1',
         recordResponses({
-          'Observation?': answer(bundleOf([])),
-          'MedicationRequest?': answer(bundleOf([])),
+          'Observation?': answerJson(bundleOf([])),
+          'MedicationRequest?': answerJson(bundleOf([])),
         })
       )
     )

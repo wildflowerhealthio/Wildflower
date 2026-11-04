@@ -1,14 +1,12 @@
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/platform'
 import { Array as Arr, Effect, Layer, Option, Order, Schema } from 'effect'
 
-import { FhirHttpError } from '@wildflowerhealthio/fhir-r4-react/smart'
-
-import type { SmartClient } from './smart-client.ts'
+import { smartClientFor, type SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 
 /**
- * An in-memory FHIR server for driving the app end to end: searches and reads
- * answered from its store through a stub SMART client, and batch
- * `Bundle`s applied to the same store through a stub transport the real
+ * An in-memory FHIR server for driving the app end to end: one stub transport
+ * that answers searches and reads from its store and applies batch `Bundle`s
+ * to it, which the real `smartClientFor` reads over and the real
  * `buildSmartRouterContext` writes over.
  */
 
@@ -87,11 +85,11 @@ interface RecordedRequest {
 }
 
 interface FakeFhirServer {
-  /** Every search query the readers issued, in order. */
+  /** Every search the readers issued, its URL under the server's base, in order. */
   readonly searches: string[]
   /** Every read (`Type/id`) the readers issued, in order. */
   readonly reads: string[]
-  /** Every request that reached the transport (the batch writes), in order. */
+  /** Every batch write that reached the transport, in order. */
   readonly requests: RecordedRequest[]
   /** Every batch `Bundle`'s resources, one array per batch, in order. */
   readonly writes: (readonly unknown[])[]
@@ -148,6 +146,20 @@ const matches = (fields: StoredResourceFields, params: URLSearchParams): boolean
   )
 }
 
+/** The JSON answer `status` the server gives `request`. */
+const answer = (
+  request: HttpClientRequest.HttpClientRequest,
+  body: unknown,
+  status = 200
+): HttpClientResponse.HttpClientResponse =>
+  HttpClientResponse.fromWeb(
+    request,
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/fhir+json' },
+    })
+  )
+
 /**
  * An in-memory FHIR server: searches answered from its store, paged at
  * {@link PAGE_SIZE} with a `next` link; batch `Bundle`s applied to it entry by
@@ -189,58 +201,57 @@ const fakeFhirServer = (): FakeFhirServer => {
     }
   }
 
-  /** A read of one resource, `Type/id`: what the store holds under it, or a 404. */
-  const read = (reference: string): Effect.Effect<unknown, FhirHttpError> =>
-    Effect.suspend(() => {
-      reads.push(reference)
-      return Option.match(Option.fromNullable(store.get(reference)), {
-        onNone: () =>
-          Effect.fail(new FhirHttpError({ url: `${SERVER_URL}/${reference}`, status: 404 })),
-        onSome: (wire) => Effect.succeed<unknown>(wire),
-      })
+  /** A search (`Type?…`) or a read (`Type/id`) of the store. */
+  const get = (
+    request: HttpClientRequest.HttpClientRequest
+  ): HttpClientResponse.HttpClientResponse => {
+    const path = request.url.slice(SERVER_URL.length + 1)
+    if (path.includes('?')) {
+      return searchesFail ? answer(request, null, 403) : answer(request, searchset(path))
+    }
+    reads.push(path)
+    return Option.match(Option.fromNullable(store.get(path)), {
+      onNone: () => answer(request, null, 404),
+      onSome: (wire) => answer(request, wire),
     })
+  }
 
-  const clientFor = (patientId: string | null): SmartClient => ({
-    serverUrl: SERVER_URL,
-    accessToken: ACCESS_TOKEN,
-    launchPatientId: Option.fromNullable(patientId),
-    request: (query) => {
-      if (!query.includes('?')) return read(query)
-      return searchesFail
-        ? Effect.fail(new FhirHttpError({ url: `${SERVER_URL}/${query}`, status: 403 }))
-        : Effect.sync(() => searchset(query))
-    },
-  })
+  /** A batch `Bundle` applied entry by entry, answered once any held writes are released. */
+  const batch = (
+    request: HttpClientRequest.HttpClientRequest
+  ): Effect.Effect<HttpClientResponse.HttpClientResponse> => {
+    requests.push({ url: request.url, authorization: request.headers['authorization'] })
+    const bundle = Schema.decodeUnknownSync(BatchBundle)(decodeBody(request.body))
+    writes.push(bundle.entry.map((entry) => entry.resource))
+    const responses = bundle.entry.map((entry) => {
+      const entryType = entry.request.url.split('/')[0] ?? ''
+      if (rejectOnceType === entryType) {
+        rejectOnceType = null
+        return { response: { status: '422 Unprocessable Entity' } }
+      }
+      seedWire(entry.resource)
+      return { response: { status: '201 Created' } }
+    })
+    const gate = held
+    return Effect.promise(() => gate).pipe(
+      Effect.as(
+        answer(request, { resourceType: 'Bundle', type: 'batch-response', entry: responses })
+      )
+    )
+  }
 
   const transport = Layer.succeed(
     HttpClient.HttpClient,
-    HttpClient.make((request) => {
-      requests.push({ url: request.url, authorization: request.headers['authorization'] })
-      const bundle = Schema.decodeUnknownSync(BatchBundle)(decodeBody(request.body))
-      writes.push(bundle.entry.map((entry) => entry.resource))
-      const responses = bundle.entry.map((entry) => {
-        const entryType = entry.request.url.split('/')[0] ?? ''
-        if (rejectOnceType === entryType) {
-          rejectOnceType = null
-          return { response: { status: '422 Unprocessable Entity' } }
-        }
-        seedWire(entry.resource)
-        return { response: { status: '201 Created' } }
-      })
-      const gate = held
-      return Effect.promise(() => gate).pipe(
-        Effect.as(
-          HttpClientResponse.fromWeb(
-            request,
-            new Response(
-              JSON.stringify({ resourceType: 'Bundle', type: 'batch-response', entry: responses }),
-              { status: 200, headers: { 'content-type': 'application/fhir+json' } }
-            )
-          )
-        )
-      )
-    })
+    HttpClient.make((request) =>
+      request.method === 'GET' ? Effect.sync(() => get(request)) : batch(request)
+    )
   )
+
+  const clientFor = (patientId: string | null): SmartClient =>
+    smartClientFor(
+      { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN, patient: patientId ?? undefined },
+      transport
+    )
 
   return {
     searches,

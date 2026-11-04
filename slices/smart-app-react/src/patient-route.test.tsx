@@ -14,9 +14,13 @@ import { Option } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
+import {
+  answerJson,
+  answerStatus,
+  stubSmartClient,
+} from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { patientChoiceKeyOf } from './patient-choice.ts'
 import { launchStartRoute, requirePatient, usePathPatientChoice } from './patient-route.ts'
-import { answer, failWithStatus, stubSmartClient } from './smart-client.test-helpers.ts'
 
 afterEach(() => {
   cleanup()
@@ -92,7 +96,7 @@ describe('requirePatient', () => {
     // Arrange
     const queryClient = testQueryClient()
     const { client } = stubSmartClient({
-      'Patient/p1': answer({ resourceType: 'Patient', id: 'p1' }),
+      'Patient/p1': answerJson({ resourceType: 'Patient', id: 'p1' }),
     })
 
     // Act
@@ -105,7 +109,7 @@ describe('requirePatient', () => {
   it.each([404, 410])('should throw not-found on a %i', async (status) => {
     // Arrange
     const { client } = stubSmartClient({
-      'Patient/bogus': failWithStatus(status),
+      'Patient/bogus': answerStatus(status),
     })
 
     // Act
@@ -121,7 +125,7 @@ describe('requirePatient', () => {
   it('should let the route render on any other failure', async () => {
     // Arrange
     const { client } = stubSmartClient({
-      'Patient/p1': failWithStatus(503),
+      'Patient/p1': answerStatus(503),
     })
 
     // Act / Assert
