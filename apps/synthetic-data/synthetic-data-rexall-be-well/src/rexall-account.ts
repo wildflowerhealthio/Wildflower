@@ -35,8 +35,9 @@ interface RexallAccount extends Pick<ProfileIdentifiers, 'uid' | 'reportingGuid'
 
 /**
  * A reference to the Patient the Rexall import makes of `account`'s profile,
- * as that import spells its own: keyed by the profile's `uid` under the
- * carebook source system. What a result from another source is filed on.
+ * as that import spells its own: the logical reference by the Patient's key,
+ * the profile's `uid` in the carebook source system, resolved to the id that
+ * key derives. What a result from another source is filed on.
  */
 const rexallPatientReferenceOf = (account: RexallAccount): ReferenceType =>
   adoptedReferenceOf(REXALL_CAREBOOK_SYSTEM, 'Patient', account.uid)

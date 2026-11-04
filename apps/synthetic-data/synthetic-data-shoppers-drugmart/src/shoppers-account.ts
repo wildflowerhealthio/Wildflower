@@ -1,7 +1,7 @@
 import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
-  SHOPPERS_DRUGMART_SYSTEM,
+  ShoppersIdentifierSystem,
   type SourcePatient,
 } from '@wildflowerhealthio/shoppers-drugmart-source'
 import type { Story } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
@@ -61,12 +61,13 @@ interface ShoppersAccount {
 
 /**
  * A reference to the Patient the Shoppers import makes of one person the
- * account manages, as that import spells its own: keyed by their `patientId`
- * under the Shoppers source system. What a result from another source is
- * filed on.
+ * account manages, as that import spells its own: the logical reference by
+ * the Patient's key, their `patientId` in the portal's
+ * `ShoppersIdentifierSystem.PatientId`, resolved to the id that key derives.
+ * What a result from another source is filed on.
  */
 const shoppersPatientReferenceOf = (patient: ShoppersPatient): ReferenceType =>
-  adoptedReferenceOf(SHOPPERS_DRUGMART_SYSTEM, 'Patient', patient.patientId)
+  adoptedReferenceOf(ShoppersIdentifierSystem.PatientId, 'Patient', patient.patientId)
 
 export { shoppersPatientReferenceOf }
 export type { ShoppersAccount, ShoppersAddress, ShoppersPatient, ShoppersStore }
