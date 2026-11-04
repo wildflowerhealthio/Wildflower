@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/fhir-r4-adoption",
   "version": "0.0.0",
   "private": true,
-  "description": "The FHIR R4 side of extraction: a resource a source decoded, detached from that source, and a detached resource adopted into the device's store. detach(family) drops a resource's id, keys it by that id as identifier[0] in the system its SystemFamily gives its type, and turns each literal reference to another record into a logical reference by the target's key; DetachedResource is that shape (id null, keyed by its first identifier) and reads its key; adopt stores a keyed record under the id its key derives and a keyless one under a minted id, and resolves each logical reference by key to a literal one; adoptedReferenceOf spells one such reference from outside its source, and originalIdOf reads the source's id back off one. No DOM, no fs, no React.",
+  "description": "The FHIR R4 side of extraction: a detached resource (id null, keyed by its first identifier, naming other records by logical reference), how a decoder writes one or detaches a server's record into one, and how one is adopted into the device's store. DetachedResource is that shape, reads its key and decodes a decoder's wire as one; detach(family) drops a server record's id, keys it by that id as identifier[0] in the system its SystemFamily gives its type, and turns each literal reference to another record into a logical reference by the target's key; adopt stores a keyed record under the id its key derives and a keyless one under a minted id, and resolves each logical reference by key to a literal one; adoptedReferenceOf spells one such reference from outside its source, and originalIdOf reads the source's id back off one. No DOM, no fs, no React.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -29,7 +29,6 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
-    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "typescript": "catalog:",
@@ -39,7 +38,6 @@
   },
   "peerDependencies": {
     "@wildflowerhealthio/fhir-r4": "workspace:*",
-    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
     "effect": "catalog:"
   }
 }

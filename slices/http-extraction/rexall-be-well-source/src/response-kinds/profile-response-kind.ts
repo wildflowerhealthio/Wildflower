@@ -1,3 +1,4 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   HttpResponseKind,
@@ -6,10 +7,8 @@ import {
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Effect, Option, RegExp as EffectRegExp, pipe, Schema, String as Str } from 'effect'
 import { CarebookProfile } from '../carebook-profile.ts'
-import { REXALL_CAREBOOK_SYSTEM_FAMILY } from '../source-system.ts'
+import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 import { REXALL_PROFILE_URL, tunnelGetMatcher } from '../tunnel-url.ts'
-
-type PatientType = typeof Patient.Schema.Type
 
 /**
  * The part of {@link CarebookProfile} the `Patient` is built from. Decoding
@@ -27,7 +26,7 @@ const PatientProfile = Schema.Struct({
 type Profile = typeof PatientProfile.Type
 
 const decodeProfile = Schema.decode(Schema.parseJson(PatientProfile))
-const decodePatient = Schema.decodeUnknown(Patient.Schema)
+const decodePatient = DetachedResource.decodeUnknown(Patient.Schema)
 
 /** A profile name's part, when the profile carries a non-blank one. */
 const namePartOf = (
@@ -41,14 +40,20 @@ const namePartOf = (
   )
 
 /**
- * Build the FHIR R4 `Patient` **wire** from the decoded profile, emitting a
- * field only when the source carries it. A blank string counts as absent — the
+ * Build the detached FHIR R4 `Patient` **wire** from the decoded profile: keyed
+ * by the profile's `uid` in {@link REXALL_CAREBOOK_SYSTEM}, emitting every
+ * other field only when the source carries it. A blank string counts as absent — the
  * profile sends `""` for a name it holds no value for.
  */
 const patientWire = (profile: Profile): Record<string, unknown> => {
   const wire: Record<string, unknown> = {
     resourceType: 'Patient',
-    id: profile.data.identifiers.uid,
+    identifier: [
+      DetachedResource.keyIdentifierWire({
+        system: REXALL_CAREBOOK_SYSTEM,
+        value: profile.data.identifiers.uid,
+      }),
+    ],
   }
   const family = namePartOf(profile.data.names, 'lastName')
   const given = namePartOf(profile.data.names, 'firstName')
@@ -77,12 +82,14 @@ const profileUrl = new RegExp(`^${EffectRegExp.escape(REXALL_PROFILE_URL)}(?:\\?
 
 /**
  * Response kind for the carebook profile response: decodes the bespoke JSON and
- * synthesizes an R4 `Patient` (`id = identifiers.uid`, plus name/DOB/address/email
- * when present).
+ * synthesizes a detached R4 `Patient` (keyed by `identifiers.uid`, plus
+ * name/DOB/address/email when present).
  */
-const ProfileResponseKind: HttpResponseKind.HttpResponseKind<PatientType> = HttpResponseKind.make({
+const ProfileResponseKind: HttpResponseKind.HttpResponseKind<
+  DetachedResource.Detached<typeof Patient.Schema.Type>
+> = HttpResponseKind.make({
   name: 'ProfileResponseKind',
-  tryRecognize: recognizePortal(tunnelGetMatcher(profileUrl), REXALL_CAREBOOK_SYSTEM_FAMILY),
+  tryRecognize: recognizePortal(tunnelGetMatcher(profileUrl)),
   parse: (response) =>
     Effect.gen(function* () {
       const profile = yield* decodeProfile(extractJson(response.text()))

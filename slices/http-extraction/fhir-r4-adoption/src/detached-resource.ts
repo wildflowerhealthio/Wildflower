@@ -1,13 +1,22 @@
 /**
  * A detached resource: a FHIR resource as it stands outside any server, which
- * is how every decoder hands a record to the import stage.
+ * is how every decoder hands a record to the import stage, and how a decoder
+ * writes one.
  *
  * @packageDocumentation
  */
 import { IdentifierAndReference, type IdentifierType } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Option, pipe, Predicate } from 'effect'
+import {
+  Array as Arr,
+  Option,
+  type ParseResult,
+  pipe,
+  Predicate,
+  Schema,
+  type Effect,
+} from 'effect'
 
 /**
  * `TResource` with no logical id, distributed over a union so each variant
@@ -52,14 +61,66 @@ const hasIdentifier = <TResource extends FhirResource>(
 ): resource is Extract<TResource, { readonly identifier: readonly IdentifierType[] }> =>
   Predicate.hasProperty(resource, 'identifier')
 
+/** Whether `resource` is detached: its `id` is `null`. */
+const isDetached = <TResource extends FhirResource>(
+  resource: TResource
+): resource is Detached<TResource> => resource.id === null
+
+/**
+ * Decode an unknown value as a detached record of `resourceSchema`'s type:
+ * the resource as the schema decodes it, failing unless it has no `id`.
+ *
+ * @remarks
+ * How a decoder that writes its records detached, as wire with no `id`
+ * (keyed by {@link keyIdentifierWire}, naming other records by
+ * {@link logicalReferenceWire}), gets them typed as such: a wire that does
+ * carry an `id` is a decoder that wrote a server-shaped record by mistake, and
+ * fails the decode rather than being stored under a server's id.
+ */
+const decodeUnknown = <TResource extends FhirResource, TEncoded>(
+  resourceSchema: Schema.Schema<TResource, TEncoded>
+): ((wire: unknown) => Effect.Effect<Detached<TResource>, ParseResult.ParseError>) =>
+  Schema.decodeUnknown(
+    resourceSchema.pipe(
+      Schema.filter(isDetached, { message: () => 'a detached record carries no id' })
+    )
+  )
+
+/**
+ * The `Identifier` wire a detached record is keyed by, `{ system, value }`:
+ * its `identifier[0]`.
+ */
+const keyIdentifierWire = ({
+  system,
+  value,
+}: Key): typeof IdentifierAndReference.IdentifierSchema.Encoded => ({ system, value })
+
+/**
+ * The logical `Reference` wire to the record of `resourceType` keyed by `key`:
+ * `type` and the key as `identifier`, no literal.
+ *
+ * @remarks
+ * How a decoder writing its records detached names another record it decodes:
+ * `adopt` resolves it to the literal reference that record is stored under
+ * when the record is in the batch.
+ */
+const logicalReferenceWire = (
+  resourceType: FhirResource['resourceType'],
+  key: Key
+): typeof IdentifierAndReference.ReferenceSchema.Encoded => ({
+  type: resourceType,
+  identifier: keyIdentifierWire(key),
+})
+
 /**
  * `record`'s key: its first identifier, when that identifier has both a
  * `system` and a `value`; `None` for a keyless record.
  *
  * @remarks
- * Only `identifier[0]` is read: a decoder that knows a record's own id puts
- * it there (`detach`), and a record whose source gave it no id is keyed by
- * whatever identifier the source wrote first. A record with no identifier, an
+ * Only `identifier[0]` is read: a decoder that knows a record's own id
+ * writes it there ({@link keyIdentifierWire}, or `detach` for a server's
+ * record), and a record whose source gave it no id is keyed by whatever
+ * identifier the source wrote first. A record with no identifier, an
  * unqualified first one, or no `identifier` element at all (`Binary`) is
  * keyless, and is stored under an id minted for it.
  */
@@ -106,5 +167,15 @@ const storedReferencesOf = (records: Iterable<Type>): ReadonlySet<string> =>
     )
   )
 
-export { hasIdentifier, keyedIdOf, keyOf, storedReferenceOf, storedReferencesOf }
+export {
+  decodeUnknown,
+  hasIdentifier,
+  isDetached,
+  keyedIdOf,
+  keyIdentifierWire,
+  keyOf,
+  logicalReferenceWire,
+  storedReferenceOf,
+  storedReferencesOf,
+}
 export type { Detached, Key, Type }

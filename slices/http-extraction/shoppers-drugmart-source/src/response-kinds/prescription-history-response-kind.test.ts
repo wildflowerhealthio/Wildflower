@@ -1,3 +1,4 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   CanadianCodingSystem,
   IdentifierAndReference,
@@ -12,7 +13,6 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
-import { SHOPPERS_DRUGMART_SYSTEM_FAMILY } from '../source-system.ts'
 import { PrescriptionHistoryResponseKind } from './prescription-history-response-kind.ts'
 
 const BASE = 'https://mypharmacy.shoppersdrugmart.ca'
@@ -99,18 +99,13 @@ describe('PrescriptionHistoryResponseKind', () => {
       )
     })
 
-    it("mints the portal's system per type at portal specificity", () => {
+    it('claims at portal specificity', () => {
       expect(
         PrescriptionHistoryResponseKind.tryRecognize(
           `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`,
           Option.none()
         )
-      ).toStrictEqual(
-        Option.some({
-          specificity: Specificity.PORTAL,
-          systemFamily: SHOPPERS_DRUGMART_SYSTEM_FAMILY,
-        })
-      )
+      ).toStrictEqual(Option.some({ specificity: Specificity.PORTAL }))
     })
   })
 
@@ -123,7 +118,7 @@ describe('PrescriptionHistoryResponseKind', () => {
       expect(result).toStrictEqual([
         decodeDispense({
           resourceType: 'MedicationDispense',
-          id: 'disp-1',
+          identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-1' }],
           status: 'completed',
           subject: accountSubject(),
           medicationCodeableConcept: {
@@ -134,8 +129,8 @@ describe('PrescriptionHistoryResponseKind', () => {
           },
           authorizingPrescription: [
             {
-              reference: 'MedicationRequest/rx-uuid-1',
-              identifier: { system: ShoppersIdentifierSystem.PrescriptionNumber, value: '9534360' },
+              type: 'MedicationRequest',
+              identifier: { system: ShoppersIdentifierSystem.PrescriptionId, value: 'rx-uuid-1' },
             },
           ],
           quantity: { value: 30 },
@@ -144,7 +139,7 @@ describe('PrescriptionHistoryResponseKind', () => {
         }),
         decodeDispense({
           resourceType: 'MedicationDispense',
-          id: 'disp-2',
+          identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-2' }],
           status: 'completed',
           subject: accountSubject(),
           medicationCodeableConcept: {
@@ -155,8 +150,8 @@ describe('PrescriptionHistoryResponseKind', () => {
           },
           authorizingPrescription: [
             {
-              reference: 'MedicationRequest/rx-uuid-1',
-              identifier: { system: ShoppersIdentifierSystem.PrescriptionNumber, value: '9534360' },
+              type: 'MedicationRequest',
+              identifier: { system: ShoppersIdentifierSystem.PrescriptionId, value: 'rx-uuid-1' },
             },
           ],
           quantity: { value: 30 },
@@ -234,13 +229,18 @@ describe('PrescriptionHistoryResponseKind', () => {
       expect(result).toStrictEqual([
         decodeDispense({
           resourceType: 'MedicationDispense',
-          id: 'disp-9',
+          identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-9' }],
           status: 'completed',
           subject: accountSubject(),
           medicationCodeableConcept: {
             coding: [{ system: CanadianCodingSystem.Din, code: '51480840' }],
           },
-          authorizingPrescription: [{ reference: 'MedicationRequest/rx-uuid-1' }],
+          authorizingPrescription: [
+            {
+              type: 'MedicationRequest',
+              identifier: { system: ShoppersIdentifierSystem.PrescriptionId, value: 'rx-uuid-1' },
+            },
+          ],
         }),
       ])
     })
@@ -272,7 +272,11 @@ describe('PrescriptionHistoryResponseKind', () => {
 
       // Assert — only the decodable entry with a dispenseId survives, and the
       // four others are counted.
-      expect(result.map((resource) => resource.id)).toStrictEqual(['disp-9'])
+      expect(
+        result.map((resource) =>
+          Option.getOrNull(Option.map(DetachedResource.keyOf(resource), ({ value }) => value))
+        )
+      ).toStrictEqual(['disp-9'])
       expect(logged).toStrictEqual([
         [
           'PrescriptionHistoryResponseKind: dropped 4 of 5 dispense entries (3 undecodable, 1 with no dispenseId)',

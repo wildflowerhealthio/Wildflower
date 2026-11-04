@@ -1,6 +1,6 @@
-import { detach, DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { FhirResource, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
+import type { MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { Effect, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
@@ -11,9 +11,8 @@ import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from './shoppers.ts
 import { shoppersDrugMartSource } from './source.ts'
 
 /**
- * The merge over what the source's kinds really emit, detached under the
- * family their `tryRecognize` mints, as the HAR importer holds them when it
- * merges: one account managing one person, whose one fill is in both
+ * The merge over what the source's kinds really emit, as the HAR importer
+ * holds them when it merges: one account managing one person, whose one fill is in both
  * prescription feeds.
  */
 
@@ -26,8 +25,8 @@ const STORE_NAME = 'SDM Pharmacy #9000'
 
 const decodeReference = Schema.decodeUnknownSync(IdentifierAndReference.ReferenceSchema)
 
-/** What the source's kinds make of `payload` served at `url`, as parsed. */
-const parsed = (url: string, payload: unknown): readonly FhirResource[] => {
+/** What the source's kinds make of `payload` served at `url`. */
+const extract = (url: string, payload: unknown): readonly DetachedResource.Type[] => {
   const kind = shoppersDrugMartSource.responseKinds.find((candidate) =>
     Option.isSome(candidate.tryRecognize(url, Option.some('GET')))
   )
@@ -35,30 +34,20 @@ const parsed = (url: string, payload: unknown): readonly FhirResource[] => {
   return Effect.runSync(kind.parse(makeHttpResponse({ url, body: JSON.stringify(payload) })))
 }
 
-/** {@link parsed}, each resource detached under the family its kind minted for `url`. */
-const extract = (url: string, payload: unknown): readonly DetachedResource.Type[] => {
-  const recognized = shoppersDrugMartSource.responseKinds.flatMap((candidate) =>
-    Option.toArray(candidate.tryRecognize(url, Option.some('GET')))
-  )
-  const family = recognized[0]?.systemFamily
-  if (family === undefined) throw new Error(`no Shoppers kind mints a family at ${url}`)
-  return parsed(url, payload).map(detach(family))
-}
-
 /** A dispense the source's kinds made, detached. */
 type DetachedDispense = MedicationDispense.Type & { readonly id: null }
 
 /** Whether `resource` is a dispense, keeping whatever else its type says of it. */
-const isDispense = <TResource extends FhirResource>(
+const isDispense = <TResource extends DetachedResource.Type>(
   resource: TResource
 ): resource is TResource & MedicationDispense.Type => resource.resourceType === 'MedicationDispense'
 
-const dispensesOf = <TResource extends FhirResource>(
+const dispensesOf = <TResource extends DetachedResource.Type>(
   resources: readonly TResource[]
 ): readonly (TResource & MedicationDispense.Type)[] => resources.filter(isDispense)
 
 /** The one dispense `resources` holds. */
-const onlyDispenseOf = <TResource extends FhirResource>(
+const onlyDispenseOf = <TResource extends DetachedResource.Type>(
   resources: readonly TResource[]
 ): TResource & MedicationDispense.Type => {
   const [dispense, ...rest] = dispensesOf(resources)
@@ -233,17 +222,6 @@ describe('mergeShoppersResources', () => {
     const later = statusCopy('51480840')
 
     expect(mergeShoppersResources(earlier, later)).toBe(later)
-  })
-
-  it('should tell the copies apart as the kinds parse them too, before they are detached', () => {
-    const status = onlyDispenseOf(parsed(prescriptionStatusUrlOf(PRESCRIPTION_ID), statusPayload()))
-    const history = onlyDispenseOf(parsed(prescriptionHistoryUrlOf(ACCOUNT_ID), HISTORY_PAYLOAD))
-
-    const merged = mergeShoppersResources(history, status)
-
-    if (merged.resourceType !== 'MedicationDispense') throw new Error('expected a dispense')
-    expect(merged.subject).toStrictEqual(status.subject)
-    expect(merged.location?.display).toBe(STORE_NAME)
   })
 
   it('should keep the later copy of anything but a dispense', () => {

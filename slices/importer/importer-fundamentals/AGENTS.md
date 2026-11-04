@@ -91,8 +91,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   source batch, `{ title, entries }`, each **`Entry`** a review key, a title
   and its record **detached** (`fhir-r4-adoption`'s `DetachedResource`: no
   id, keyed by its first identifier, naming every other decoded record by a
-  logical reference). A decoder detaches its own records, under the system
-  family its source's ids belong to, so a section carries no family. It is a
+  logical reference). A decoder writes or detaches its own records, so a
+  section carries no system family. It is a
   separate type from `DecodedFile.Section`, the same records adopted: the two
   hold different records, and every reader of a decoded file reads
   `resources` off it. The "Source file(s)" section is the import stage's own,
@@ -476,7 +476,7 @@ data. Names no source file _format_ (each binding supplies its `decodeFileSet` a
 its coding), no HTTP vocabulary (the HAR binding's recognition machinery lives in
 `har-importer-core`), and no UI framework. Never imports a `*-importer-core`,
 an `importer-core`, a `*-importer-react`, or anything of `slices/http-extraction`
-but `SystemFamily`.
+but `fhir-r4-adoption`.
 
 ## Guardrails
 

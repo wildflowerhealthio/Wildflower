@@ -1,4 +1,4 @@
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { CustomerResponseKind } from './response-kinds/customer-response-kind.ts'
@@ -7,17 +7,14 @@ import { PrescriptionResponseKind } from './response-kinds/prescription-response
 
 /**
  * The three Shoppers Drug Mart response kinds — Customer, Prescription,
- * PrescriptionHistory — each synthesizing resources with the portal's own ids
- * and references; their `tryRecognize` mints `SHOPPERS_DRUGMART_SYSTEM_FAMILY`,
- * the namespace of each type's ids. A module-level constant (stable by
+ * PrescriptionHistory — each synthesizing detached resources keyed in the
+ * portal's own identifier systems (`ShoppersIdentifierSystem`), naming one
+ * another by logical reference. A module-level constant (stable by
  * identity) the archive importer consumes by reference; the three recognizers
  * are disjoint by construction (different path segments), so order is not
  * load-bearing.
  */
-const shoppersDrugMartResponseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = [
-  CustomerResponseKind,
-  PrescriptionResponseKind,
-  PrescriptionHistoryResponseKind,
-]
+const shoppersDrugMartResponseKinds: readonly HttpResponseKind.HttpResponseKind<DetachedResource.Type>[] =
+  [CustomerResponseKind, PrescriptionResponseKind, PrescriptionHistoryResponseKind]
 
 export { shoppersDrugMartResponseKinds }

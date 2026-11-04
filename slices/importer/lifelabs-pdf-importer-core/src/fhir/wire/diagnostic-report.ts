@@ -1,6 +1,14 @@
 import type * as Report from '../../entities/report.ts'
 import { LifeLabsIdentifierSystem } from '../../source-system.ts'
-import { performerWire, reportStatus, sourceId, timingWire, type Wire } from './shared.ts'
+import {
+  keyWire,
+  performerWire,
+  referenceWire,
+  reportStatus,
+  sourceId,
+  timingWire,
+  type Wire,
+} from './shared.ts'
 
 const REPORT_CATEGORY_SYSTEM = 'http://terminology.hl7.org/CodeSystem/v2-0074'
 const LOINC_SYSTEM = 'http://loinc.org'
@@ -44,7 +52,13 @@ const diagnosticReportWire = (
   const sections = report.sections.map((section) => section.name).filter((name) => name !== '')
   const wire: Wire = {
     resourceType: 'DiagnosticReport',
-    id,
+    // A report whose pages print no `Lab No` carries its key alone.
+    identifier: [
+      keyWire(id),
+      ...(report.labNo === ''
+        ? []
+        : [{ system: LifeLabsIdentifierSystem.LabNumber, value: report.labNo }]),
+    ],
     status: reportStatus(report),
     category: [
       { coding: [{ system: REPORT_CATEGORY_SYSTEM, code: 'LAB', display: 'Laboratory' }] },
@@ -53,18 +67,14 @@ const diagnosticReportWire = (
       coding: [{ system: LOINC_SYSTEM, ...LABORATORY_REPORT_LOINC }],
       text: sections.length === 0 ? LABORATORY_REPORT_LOINC.display : sections.join(', '),
     },
-    subject: { reference: `Patient/${patientId}` },
+    subject: referenceWire('Patient', patientId),
     ...timingWire(report, timeZone),
-    result: observationIds.map((observationId) => ({ reference: `Observation/${observationId}` })),
-  }
-  // A report whose pages print no `Lab No` has no identifier, not an empty one.
-  if (report.labNo !== '') {
-    wire['identifier'] = [{ system: LifeLabsIdentifierSystem.LabNumber, value: report.labNo }]
+    result: observationIds.map((observationId) => referenceWire('Observation', observationId)),
   }
   if (resultsInterpreterIds.length > 0) {
-    wire['resultsInterpreter'] = resultsInterpreterIds.map((practitionerId) => ({
-      reference: `Practitioner/${practitionerId}`,
-    }))
+    wire['resultsInterpreter'] = resultsInterpreterIds.map((practitionerId) =>
+      referenceWire('Practitioner', practitionerId)
+    )
   }
   const licences = new Set(
     report.sections.flatMap((section) =>

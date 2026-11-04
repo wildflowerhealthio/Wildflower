@@ -61,9 +61,6 @@ and yields a `DecodeFunction.FileSetDecode`: titled sections of labeled,
 **detached** resources, plus diagnostic notes.
 
 ```ts
-const MY_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: MY_SYSTEM })
-const detachMine = detach(MY_SYSTEM_FAMILY)
-
 const decodeMyFormat = (
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: MySettings
@@ -71,7 +68,7 @@ const decodeMyFormat = (
 // each section:
 //   {
 //     title,
-//     entries: resources.map(detachMine).map((resource) => ({
+//     entries: resources.map((resource) => ({
 //       key,
 //       title: DecodedFileSet.writtenReferenceTitle(resource, key),
 //       resource,
@@ -79,14 +76,14 @@ const decodeMyFormat = (
 //   }
 ```
 
-Synthesize each resource with an id made from what the file says about it, and
-link your resources to each other with literal `Type/<id>` references; then
-detach them (`fhir-r4-adoption`'s `detach`) under the system family your
-source's ids belong to (`SystemFamily`, re-exported there): a document format's
-own Wildflower-minted `sid` URI for every type, as LifeLabs and DICOM state.
-Detaching drops each `id`, keys the resource by it as `identifier[0]` in that
-system, and turns each literal reference into the logical reference to its
-target by the target's key. A section carries no family: everything the import
+Write each resource detached (`fhir-r4-adoption`'s `DetachedResource`): no
+`id`, keyed by a source id made from what the file says about it as its
+`identifier[0]` (`DetachedResource.keyIdentifierWire`) in your format's own
+Wildflower-minted `sid` URI, as LifeLabs and DICOM do, and linked to your other
+resources by logical reference by their key
+(`DetachedResource.logicalReferenceWire`). Decode each wire with
+`DetachedResource.decodeUnknown(<Type>.Schema)`, which fails a wire that
+carries an `id`. A section carries no system family: everything the import
 stage needs is on the records. A review key must be stable across a settings
 re-decode; `DecodedFileSet.writtenReferenceTitle` titles a row by the reference
 it will be written under. The decode never makes a `wf-` id; the import stage

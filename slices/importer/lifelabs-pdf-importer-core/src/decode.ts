@@ -36,7 +36,7 @@ const asParseError = (
  * @param settings - The import's settings (time zone for date interpretation)
  * @returns The document's reports as {@link decodedReportsOf} yields them:
  *   one section per report, titled by its `Lab No` and date of service, its
- *   records detached under `LIFELABS_SYSTEM_FAMILY`, no notes; fails only with a
+ *   records detached and keyed in `LIFELABS_SYSTEM`, no notes; fails only with a
  *   `ParseError` when the document is not a recognized LifeLabs report;
  *   requires nothing
  *

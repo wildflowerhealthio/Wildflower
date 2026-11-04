@@ -541,7 +541,7 @@ describe('toFhirResources over a study of several files', () => {
     const resources = await Effect.runPromise(toFhirResources(instances, SETTINGS))
     const requests = resources.filter((r) => r.resourceType === 'ServiceRequest')
     expect(requests).toHaveLength(1)
-    expect(requests[0].identifier.map((one) => one.value)).toEqual(['ACC-A'])
+    expect(requests[0].identifier.slice(1).map((one) => one.value)).toEqual(['ACC-A'])
   })
 
   it('emits a ServiceRequest when only a later file states the accession', async () => {

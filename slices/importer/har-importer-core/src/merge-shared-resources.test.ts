@@ -1,5 +1,5 @@
 import { detach, type DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   HttpResponseKind,
   SourceDescriptor,
@@ -30,7 +30,7 @@ const patientNamed = (id: string | null, given: string): DetachedResource.Type =
   )
 
 /** A kind that only its name matters for: the fold matches a pick to its source by it. */
-const kindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource> =>
+const kindNamed = (name: string): HttpResponseKind.HttpResponseKind<DetachedResource.Type> =>
   HttpResponseKind.make({
     name,
     tryRecognize: () => Option.none(),
@@ -38,26 +38,26 @@ const kindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource
   })
 
 /** Whether `resource` is a Patient, keeping whatever else its type says of it. */
-const isPatient = <TResource extends FhirResource>(
-  resource: TResource
-): resource is TResource & Patient.Type => resource.resourceType === 'Patient'
+const isPatient = (
+  resource: DetachedResource.Type
+): resource is DetachedResource.Detached<Patient.Type> => resource.resourceType === 'Patient'
 
 /** Joins the two copies' names, earlier first, so the result shows what merged. */
-const joinNames: SourceDescriptor.ResourceMerge<FhirResource> = (earlier, later) =>
+const joinNames: SourceDescriptor.ResourceMerge<DetachedResource.Type> = (earlier, later) =>
   isPatient(earlier) && isPatient(later)
     ? { ...later, name: [...earlier.name, ...later.name] }
     : later
 
 const display = { title: 'Sample', description: 'A sample source.' }
 
-const mergingSource = SourceDescriptor.make<FhirResource>({
+const mergingSource = SourceDescriptor.make<DetachedResource.Type>({
   name: 'merging',
   display,
   responseKinds: [kindNamed('MergingKind')],
   mergeResources: joinNames,
 })
 
-const plainSource = SourceDescriptor.make<FhirResource>({
+const plainSource = SourceDescriptor.make<DetachedResource.Type>({
   name: 'plain',
   display,
   responseKinds: [kindNamed('PlainKind')],

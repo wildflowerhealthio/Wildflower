@@ -25,12 +25,12 @@ import {
   ServiceRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Arbitrary, FastCheck as fc, Option, Schema, SchemaAST } from 'effect'
+import { Arbitrary, Effect, FastCheck as fc, Option, Schema, SchemaAST } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { adopt, adoptedReferenceOf, detach, originalIdOf } from './adopt-resource.ts'
 import * as DetachedResource from './detached-resource.ts'
+import * as SystemFamily from './system-family.ts'
 
 /**
  * Covers detaching a single resource from its source (no id, keyed by its
@@ -62,17 +62,8 @@ const fhirSystem = (resourceType: string): string => `${BASE}/${resourceType}`
 
 const SYSTEM = 'https://wildflowerhealth.io/fhir/sid/example-portal'
 
-/** A portal's systems: the one system whatever the type, and references always relative. */
+/** A fixed system: the one system whatever the type, and references always relative. */
 const RELATIVE_SOURCE = SystemFamily.FixedAcrossResourceTypes({ system: SYSTEM })
-
-/** A portal publishing a system per type, as Shoppers does. */
-const PER_TYPE_SOURCE = SystemFamily.SystemPerResourceType({
-  systems: {
-    Patient: 'https://portal.example/fhir/identifier/patient-id',
-    Practitioner: 'https://portal.example/fhir/identifier/practitioner-id',
-    Observation: 'https://portal.example/fhir/identifier/observation-id',
-  },
-})
 
 /** {@link SOURCE}'s detach. */
 const detachFhir = detach(SOURCE)
@@ -730,35 +721,6 @@ describe('detach', () => {
     })
     expect(DetachedResource.keyOf(detached)).toEqual(Option.none())
   })
-
-  test('keys each type in the system a per-type family lists for it', () => {
-    const detached = asPatient(
-      detach(PER_TYPE_SOURCE)({
-        ...sample(Patient.Schema, 12),
-        id: 'pat-7',
-        identifier: [],
-        generalPractitioner: [reference({ reference: 'Practitioner/prac-3' })],
-      })
-    )
-    expect(detached.identifier).toEqual([
-      identifier({
-        value: 'pat-7',
-        system: new URL('https://portal.example/fhir/identifier/patient-id'),
-      }),
-    ])
-    expect(detached.generalPractitioner[0]?.identifier).toEqual(
-      identifier({
-        value: 'prac-3',
-        system: new URL('https://portal.example/fhir/identifier/practitioner-id'),
-      })
-    )
-  })
-
-  test('a per-type family that lists no system for a type is a defect, not a keyless record', () => {
-    expect(() =>
-      detach(PER_TYPE_SOURCE)({ ...sample(MedicationRequest.Schema, 14), id: 'rx-1' })
-    ).toThrow(/MedicationRequest/)
-  })
 })
 
 describe('detaching references', () => {
@@ -1335,6 +1297,89 @@ describe('detaching nested references', () => {
   })
 })
 
+describe('writing a record detached', () => {
+  const encodeObservation = Schema.encodeSync(Observation.Schema)
+  const decodeObservation = Schema.decodeUnknownSync(Observation.Schema)
+  const decodeDetachedObservation = DetachedResource.decodeUnknown(Observation.Schema)
+
+  /** `observation`'s wire, with `id` and `subject` as given and its own identifiers kept. */
+  const observationWire = (
+    observation: typeof Observation.Schema.Type,
+    fields: Record<string, unknown>
+  ): Record<string, unknown> => {
+    const { id: _id, subject: _subject, ...rest } = encodeObservation(observation)
+    return { ...rest, ...fields }
+  }
+
+  // The parity a decoder that writes its records detached relies on: what it
+  // writes is what `detach` makes of the server-shaped record it stands for,
+  // so the records it hands the import stage are stored exactly as before.
+  // The wire is minimal on purpose: a sampled Observation carries literal
+  // references of its own, which `detach` rewrites and a direct write would
+  // have to spell too.
+  test('property: a key identifier and a logical reference read as detach writes them', () => {
+    fc.assert(
+      fc.property(
+        fc.stringMatching(/^[A-Za-z0-9\-.]{1,64}$/),
+        fc.stringMatching(/^[A-Za-z0-9\-.]{1,64}$/),
+        (observationId, patientId) => {
+          const base = { resourceType: 'Observation', status: 'final', code: { text: 'Weight' } }
+          const serverShaped = decodeObservation({
+            ...base,
+            id: observationId,
+            subject: { reference: `Patient/${patientId}`, display: 'Avery' },
+          })
+          const writtenDetached = Effect.runSync(
+            decodeDetachedObservation({
+              ...base,
+              identifier: [
+                DetachedResource.keyIdentifierWire({ system: SYSTEM, value: observationId }),
+              ],
+              subject: {
+                ...DetachedResource.logicalReferenceWire('Patient', {
+                  system: SYSTEM,
+                  value: patientId,
+                }),
+                display: 'Avery',
+              },
+            })
+          )
+          expect(writtenDetached).toEqual(detach(RELATIVE_SOURCE)(serverShaped))
+        }
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  test('a wire that carries an id is not a detached record', () => {
+    const wire = observationWire(sample(Observation.Schema, 13), { id: 'obs-1' })
+    expect(Effect.runSync(Effect.either(decodeDetachedObservation(wire)))).toMatchObject({
+      _tag: 'Left',
+    })
+  })
+
+  test('a logical reference to a record of the batch adopts to its stored reference', () => {
+    const decodePatient = DetachedResource.decodeUnknown(Patient.Schema)
+    const key = { system: SYSTEM, value: 'pat-7' }
+    const patient = Effect.runSync(
+      decodePatient({
+        resourceType: 'Patient',
+        identifier: [DetachedResource.keyIdentifierWire(key)],
+      })
+    )
+    const observation = Effect.runSync(
+      decodeDetachedObservation(
+        observationWire(sample(Observation.Schema, 13), {
+          subject: DetachedResource.logicalReferenceWire('Patient', key),
+        })
+      )
+    )
+    expect(
+      asObservation(adoptionOver([patient, observation])(observation)).subject?.reference
+    ).toBe(DetachedResource.storedReferenceOf('Patient', key))
+  })
+})
+
 describe('adoptedReferenceOf', () => {
   /** A record of `resourceType` its source calls `id`. */
   const targetOf = (resourceType: 'Patient' | 'Practitioner', id: string): FhirResource =>
@@ -1345,7 +1390,7 @@ describe('adoptedReferenceOf', () => {
   test('property: spells a reference as adopt resolves one to a record of the batch', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom(SOURCE, RELATIVE_SOURCE, PER_TYPE_SOURCE),
+        fc.constantFrom(SOURCE, RELATIVE_SOURCE),
         fc.constantFrom<'Patient' | 'Practitioner'>('Patient', 'Practitioner'),
         fc.stringMatching(/^[A-Za-z0-9\-.]{1,64}$/),
         (family, resourceType, originalId) => {

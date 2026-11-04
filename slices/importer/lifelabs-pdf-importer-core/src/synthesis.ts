@@ -2,8 +2,8 @@
  * The FHIR synthesis on its own: the parsed `Report` model's types,
  * `toFhirResources`, and {@link decodedReportsOf} — the reports as the
  * LifeLabs decode yields them, one section per report, each synthesized
- * resource detached under {@link LIFELABS_SYSTEM_FAMILY} — without the PDF
- * extraction the main entry's decode requires.
+ * resource detached, keyed in `LIFELABS_SYSTEM` — without the PDF extraction
+ * the main entry's decode requires.
  *
  * @remarks
  * For callers that build `Report` values themselves rather than reading them
@@ -13,18 +13,12 @@
  *
  * @packageDocumentation
  */
-import { detach, DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { DecodedFileSet, type DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Option, type ParseResult } from 'effect'
 
 import type * as Report from './entities/report.ts'
 import { type SynthesisOptions, toFhirResources } from './fhir/to-fhir.ts'
-import { LIFELABS_SYSTEM } from './source-system.ts'
-
-/** The systems LifeLabs keys its records in: `LIFELABS_SYSTEM`, whatever the type. */
-const LIFELABS_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: LIFELABS_SYSTEM })
-
-const detachLifeLabs = detach(LIFELABS_SYSTEM_FAMILY)
 
 /**
  * A detached record as its review row: keyed by its type and its key's value
@@ -58,7 +52,7 @@ const reportSectionTitle = (report: Report.Type): string => {
 
 /**
  * The reports as the LifeLabs decode yields them: one section per report, its
- * records detached under {@link LIFELABS_SYSTEM_FAMILY}, each keyed
+ * records detached and keyed in `LIFELABS_SYSTEM`, each reviewed as
  * `<Type>/<source id>` and titled by the reference it is written under, no
  * notes.
  *
@@ -81,12 +75,12 @@ const decodedReportsOf = (
   Effect.map(toFhirResources(reports, options), (groups) => ({
     sections: groups.map((group) => ({
       title: reportSectionTitle(group.report),
-      entries: group.resources.map(detachLifeLabs).map(reportEntryOf),
+      entries: group.resources.map(reportEntryOf),
     })),
     notes: [],
   }))
 
-export { decodedReportsOf, LIFELABS_SYSTEM_FAMILY, reportSectionTitle }
+export { decodedReportsOf, reportSectionTitle }
 export type { Type as ReportGroup } from './entities/group.ts'
 export type { Type as ReportLab } from './entities/lab.ts'
 export type { Type as ReportPatient } from './entities/patient.ts'

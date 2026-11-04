@@ -1,11 +1,11 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   DiagnosticReport,
-  type FhirResource,
   Observation,
   Patient,
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, type ParseResult, Schema } from 'effect'
+import { Effect, type ParseResult } from 'effect'
 
 import type * as Report from '../entities/report.ts'
 import { diagnosticReportWire, reportOriginalId } from './wire/diagnostic-report.ts'
@@ -33,13 +33,13 @@ interface SynthesisOptions {
  */
 interface ReportResources {
   readonly report: Report.Type
-  readonly resources: readonly FhirResource[]
+  readonly resources: readonly DetachedResource.Type[]
 }
 
-const decodePatient = Schema.decodeUnknown(Patient.Schema)
-const decodePractitioner = Schema.decodeUnknown(Practitioner.Schema)
-const decodeDiagnosticReport = Schema.decodeUnknown(DiagnosticReport.Schema)
-const decodeObservation = Schema.decodeUnknown(Observation.Schema)
+const decodePatient = DetachedResource.decodeUnknown(Patient.Schema)
+const decodePractitioner = DetachedResource.decodeUnknown(Practitioner.Schema)
+const decodeDiagnosticReport = DetachedResource.decodeUnknown(DiagnosticReport.Schema)
+const decodeObservation = DetachedResource.decodeUnknown(Observation.Schema)
 
 /**
  * Synthesize the FHIR resources for a set of parsed LifeLabs reports, grouped
@@ -72,7 +72,7 @@ const toFhirResources = (
     const keyRepeats = new Map<string, number>()
     const groups: ReportResources[] = []
     for (const report of reports) {
-      const resources: FhirResource[] = []
+      const resources: DetachedResource.Type[] = []
       // Every provider the report names — the ordering provider and each CC'd
       // provider — becomes a `resultsInterpreter` reference on this report's
       // DiagnosticReport. The ids are collected per report (deduped within it),

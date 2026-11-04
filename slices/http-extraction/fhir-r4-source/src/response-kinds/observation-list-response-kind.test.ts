@@ -1,14 +1,13 @@
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type HttpMethod,
   type HttpResponse,
   Specificity,
-  SystemFamily,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 
@@ -55,7 +54,7 @@ const bundle = (...resources: readonly unknown[]): Record<string, unknown> => ({
 
 const runParse = (
   r: HttpResponse.HttpResponse
-): Either.Either<readonly (typeof Observation.Schema.Type)[], ParseResult.ParseError> =>
+): Either.Either<readonly DetachedResource.Type[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(ObservationListResponseKind.parse(r)))
 
 describe('ObservationListResponseKind', () => {
@@ -82,12 +81,9 @@ describe('ObservationListResponseKind', () => {
         url: 'https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4/Observation?patient=1',
         root: 'https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4',
       },
-    ])('recognizes "$url" under root "$root"', ({ url, root }) => {
+    ])('recognizes "$url" under root "$root"', ({ url }) => {
       expect(ObservationListResponseKind.tryRecognize(url, GET)).toStrictEqual(
-        Option.some({
-          specificity: Specificity.PROTOCOL,
-          systemFamily: SystemFamily.FhirStyleBaseUrl({ baseUrl: root }),
-        })
+        Option.some({ specificity: Specificity.PROTOCOL })
       )
     })
 
@@ -122,7 +118,16 @@ describe('ObservationListResponseKind', () => {
     it('parses a Bundle of Observations into an array of resources', () => {
       expectRightToEqual(
         runParse(makeResponse(JSON.stringify(bundle(observation('1'), observation('2'))))),
-        [expect.objectContaining({ id: '1' }), expect.objectContaining({ id: '2' })]
+        [
+          expect.objectContaining({
+            id: null,
+            identifier: [expect.objectContaining({ value: '1' })],
+          }),
+          expect.objectContaining({
+            id: null,
+            identifier: [expect.objectContaining({ value: '2' })],
+          }),
+        ]
       )
     })
 
@@ -153,7 +158,12 @@ describe('ObservationListResponseKind', () => {
             })
           )
         ),
-        [expect.objectContaining({ id: '1' })]
+        [
+          expect.objectContaining({
+            id: null,
+            identifier: [expect.objectContaining({ value: '1' })],
+          }),
+        ]
       )
     })
 
@@ -165,8 +175,16 @@ describe('ObservationListResponseKind', () => {
       expectRightToEqual(
         runParse(makeResponse(JSON.stringify(bundle(observation('1'), noStatus)))),
         [
-          expect.objectContaining({ id: '1', status: 'final' }),
-          expect.objectContaining({ id: 'bad', status: 'unknown' }),
+          expect.objectContaining({
+            id: null,
+            identifier: [expect.objectContaining({ value: '1' })],
+            status: 'final',
+          }),
+          expect.objectContaining({
+            id: null,
+            identifier: [expect.objectContaining({ value: 'bad' })],
+            status: 'unknown',
+          }),
         ]
       )
     })
@@ -183,7 +201,10 @@ describe('ObservationListResponseKind', () => {
     it('parses a Bundle wrapped in the WebView JSON-viewer HTML envelope', () => {
       const raw = JSON.stringify(bundle(observation('99')))
       expectRightToEqual(runParse(makeResponse(wrappedHtml(raw))), [
-        expect.objectContaining({ id: '99' }),
+        expect.objectContaining({
+          id: null,
+          identifier: [expect.objectContaining({ value: '99' })],
+        }),
       ])
     })
 

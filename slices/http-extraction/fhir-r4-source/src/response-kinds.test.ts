@@ -1,22 +1,18 @@
-import { detach, DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  type HttpResponseKind,
-  SystemFamily,
-} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { fhirR4ResponseKinds } from './response-kinds.ts'
 
-const kindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource> => {
+const kindNamed = (name: string): HttpResponseKind.HttpResponseKind<DetachedResource.Type> => {
   const found = fhirR4ResponseKinds.find((kind) => kind.name === name)
   if (found === undefined) throw new Error(`no kind named ${name}`)
   return found
 }
 
-const parse = (name: string, url: string, body: unknown): readonly FhirResource[] =>
+const detachedFrom = (name: string, url: string, body: unknown): readonly DetachedResource.Type[] =>
   Effect.runSync(
     kindNamed(name).parse(
       makeHttpResponse({
@@ -27,24 +23,6 @@ const parse = (name: string, url: string, body: unknown): readonly FhirResource[
     )
   )
 
-/** The family `name`'s `tryRecognize` mints for a GET of `url`. */
-const familyOf = (name: string, url: string): Option.Option<SystemFamily.Type | undefined> =>
-  Option.map(
-    kindNamed(name).tryRecognize(url, Option.some('GET')),
-    ({ systemFamily }) => systemFamily
-  )
-
-/** `name`'s parse of `body` at `url`, each resource detached under the family it mints there. */
-const detachedFrom = (
-  name: string,
-  url: string,
-  body: unknown
-): readonly DetachedResource.Type[] => {
-  const family = Option.getOrThrow(familyOf(name, url))
-  if (family === undefined) throw new Error(`${name} mints no family at ${url}`)
-  return parse(name, url, body).map(detach(family))
-}
-
 describe('fhirR4ResponseKinds', () => {
   it('contains the three kinds in plan order', () => {
     expect(fhirR4ResponseKinds.map((kind) => kind.name)).toEqual([
@@ -52,13 +30,6 @@ describe('fhirR4ResponseKinds', () => {
       'ObservationResponseKind',
       'ObservationListResponseKind',
     ])
-  })
-
-  it("mints the FHIR style under its own URL's root", () => {
-    const root = 'https://r4.example.org/baseR4'
-    expect(familyOf('PatientResponseKind', `${root}/Patient/pat-7`)).toEqual(
-      Option.some(SystemFamily.FhirStyleBaseUrl({ baseUrl: root }))
-    )
   })
 
   it("keys a detached resource in its type's system under its own URL's root", () => {
@@ -93,9 +64,9 @@ describe('fhirR4ResponseKinds', () => {
     )
   })
 
-  it('parses every id and reference as the server spelled it', () => {
+  it("detaches every reference to the server's own records, relative or absolute", () => {
     const root = 'https://r4.example.org/baseR4'
-    const [observation] = parse('ObservationResponseKind', `${root}/Observation/obs-1`, {
+    const [observation] = detachedFrom('ObservationResponseKind', `${root}/Observation/obs-1`, {
       resourceType: 'Observation',
       id: 'obs-1',
       status: 'final',
@@ -104,14 +75,32 @@ describe('fhirR4ResponseKinds', () => {
       performer: [{ reference: 'https://elsewhere.example/fhir/Practitioner/pr-1' }],
     })
     if (observation?.resourceType !== 'Observation') throw new Error('expected an Observation')
-    expect(observation.id).toBe('obs-1')
-    expect(observation.subject?.reference).toBe(`${root}/Patient/pat-7`)
+    expect(observation.id).toBeNull()
+    expect(observation.subject).toMatchObject({
+      reference: null,
+      type: 'Patient',
+      identifier: { system: new URL(`${root}/Patient`), value: 'pat-7' },
+    })
     expect(observation.performer[0]?.reference).toBe(
       'https://elsewhere.example/fhir/Practitioner/pr-1'
     )
   })
 
-  it('a record the server sent with no id parses with none, and detaches keyless', () => {
+  it('fails a response whose URL the kind does not claim', () => {
+    const result = Effect.runSync(
+      Effect.either(
+        kindNamed('PatientResponseKind').parse(
+          makeHttpResponse({
+            url: 'https://r4.example.org/Observation/1',
+            body: JSON.stringify({ resourceType: 'Patient', id: '1' }),
+          })
+        )
+      )
+    )
+    expect(result).toMatchObject({ _tag: 'Left', left: { _tag: 'ParseError' } })
+  })
+
+  it('a record the server sent with no id detaches keyless', () => {
     const root = 'https://r4.example.org/baseR4'
     const [observation] = detachedFrom(
       'ObservationListResponseKind',

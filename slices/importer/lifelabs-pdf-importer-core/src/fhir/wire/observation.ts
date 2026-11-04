@@ -3,8 +3,10 @@ import type * as TestTableRow from '../../entities/test-table-row.ts'
 import { parseReferenceRange } from '../reference-range.ts'
 import { parseResultValue } from '../result-value.ts'
 import {
+  keyWire,
   performerWire,
   quantityWire,
+  referenceWire,
   reportStatus,
   sourceId,
   timingWire,
@@ -69,7 +71,7 @@ const observationWire = (
   const categoryText = [section, group].filter((part) => part.length > 0).join(' · ')
   const wire: Wire = {
     resourceType: 'Observation',
-    id,
+    identifier: [keyWire(id)],
     status: reportStatus(report),
     category: [
       {
@@ -80,7 +82,7 @@ const observationWire = (
       },
     ],
     code: { text: row.name },
-    subject: { reference: `Patient/${patientId}` },
+    subject: referenceWire('Patient', patientId),
     ...timingWire(report, timeZone),
     ...valueWire(row),
   }

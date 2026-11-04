@@ -1,5 +1,4 @@
-import { detach, DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { HarFromJson, emitHar } from '@wildflowerhealthio/http-archive'
 import { type Extraction, SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
@@ -14,7 +13,7 @@ import {
   jsonBody,
   traceExchange,
 } from '@wildflowerhealthio/web-trace-core/test-helpers'
-import { Array as Arr, Effect, Option, type ParseResult, Schema } from 'effect'
+import { Array as Arr, Effect, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it, test } from 'vite-plus/test'
 
@@ -88,7 +87,7 @@ const harBytesOf = (exchanges: readonly TraceExchange[]): Uint8Array =>
 const fhirPool = SourceDescriptor.poolOf(fhirSources)
 
 /** The five-way extraction of running the FHIR pool over a decoded HAR. */
-const extract = (harBytes: Uint8Array): ExtractionResult<FhirResource> =>
+const extract = (harBytes: Uint8Array): ExtractionResult<DetachedResource.Type> =>
   Effect.runSync(
     decodeHar(harBytes, defaultHarSettings).pipe(
       Effect.flatMap((inputs) => runExtraction(fhirPool, inputs))
@@ -97,38 +96,19 @@ const extract = (harBytes: Uint8Array): ExtractionResult<FhirResource> =>
 
 /** Every decoded resource of one `resourceType`, in batch order. */
 const ofType = (
-  extraction: ExtractionResult<FhirResource>,
+  extraction: ExtractionResult<DetachedResource.Type>,
   resourceType: string
-): readonly FhirResource[] =>
+): readonly DetachedResource.Type[] =>
   extraction.batches
     .flatMap((batch) => batch.resources)
     .filter((resource) => resource.resourceType === resourceType)
 
-/**
- * The key of every decoded resource of one `resourceType`, in batch order:
- * each batch's resources detached under the family its kind recognized the
- * batch's URL with, as the importer's preview detaches them.
- */
+/** The key of every decoded resource of one `resourceType`, in batch order. */
 const keysOfType = (
-  extraction: ExtractionResult<FhirResource>,
+  extraction: ExtractionResult<DetachedResource.Type>,
   resourceType: string
 ): readonly DetachedResource.Key[] =>
-  extraction.batches.flatMap((batch) => {
-    const kind = fhirPool.find((candidate) => candidate.name === batch.responseKindName)
-    const family = Option.flatMap(Option.fromNullable(kind), (claiming) =>
-      Option.flatMapNullable(
-        claiming.tryRecognize(batch.url, Option.some('GET')),
-        ({ systemFamily }) => systemFamily
-      )
-    )
-    if (Option.isNone(family)) throw new Error(`${batch.responseKindName} mints no family`)
-    return Arr.filterMap(
-      batch.resources
-        .filter((resource) => resource.resourceType === resourceType)
-        .map(detach(family.value)),
-      DetachedResource.keyOf
-    )
-  })
+  Arr.filterMap(ofType(extraction, resourceType), DetachedResource.keyOf)
 
 describe('decodeHar + runExtraction', () => {
   describe('a Patient read + Observation searchset', () => {
@@ -156,7 +136,6 @@ describe('decodeHar + runExtraction', () => {
       expect(extraction.unmatched).toHaveLength(0)
       expect(extraction.bodyAbsent).toHaveLength(0)
       expect(extraction.parseFailures).toEqual([])
-      expect(ofType(extraction, 'Patient').map((resource) => resource.id)).toEqual(['pat-7'])
       expect(keysOfType(extraction, 'Patient')).toEqual([
         { system: `${root}/Patient`, value: 'pat-7' },
       ])

@@ -1,5 +1,5 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   HttpResponseKind,
   extractJson,
@@ -9,7 +9,7 @@ import { Array as Arr, Effect, type ParseResult, RegExp as EffectRegExp, Schema 
 
 import { DecodableEntries, MalformedAsAbsent } from '../lenient-schemas.ts'
 import { portalGetMatcher, SHOPPERS_API_BASE_URL } from '../portal-url.ts'
-import { SHOPPERS_DRUGMART_SYSTEM_FAMILY } from '../source-system.ts'
+import { ShoppersIdentifierSystem } from '../shoppers.ts'
 
 /**
  * A postal address as the customers payload carries it: every part optional,
@@ -65,7 +65,7 @@ const CustomerPayload = Schema.Struct({
 type CustomerPayload = typeof CustomerPayload.Type
 
 const decodeCustomer = Schema.decode(Schema.parseJson(CustomerPayload))
-const decodePatient = Schema.decodeUnknown(Patient.Schema)
+const decodePatient = DetachedResource.decodeUnknown(Patient.Schema)
 
 /**
  * The R4 `HumanName[]` wire for a person's family/given pair (or a `text`-only
@@ -131,17 +131,24 @@ const telecomWire = (
 }
 
 /**
- * The demographic `Patient` **wire** for one managed person, its `id` the
- * person's `patientId` (the id `subject` references name, in the
- * `ShoppersIdentifierSystem.PatientId` system the source's family gives
- * Patient), and reached at their own phone and then at each of
- * `alsoReachedAt`.
+ * The detached demographic `Patient` **wire** for one managed person, keyed
+ * by the person's `patientId` in `ShoppersIdentifierSystem.PatientId` (the
+ * key `subject` references name), and reached at their own phone and then at
+ * each of `alsoReachedAt`.
  */
 const patientWire = (
   patient: SourcePatient,
   alsoReachedAt: readonly SourceContact[]
 ): Record<string, unknown> => {
-  const wire: Record<string, unknown> = { resourceType: 'Patient', id: patient.id }
+  const wire: Record<string, unknown> = {
+    resourceType: 'Patient',
+    identifier: [
+      DetachedResource.keyIdentifierWire({
+        system: ShoppersIdentifierSystem.PatientId,
+        value: patient.id,
+      }),
+    ],
+  }
   const name = nameWire(patient)
   if (name != null) wire['name'] = name
   const telecom = telecomWire([{ phoneNumber: patient.phoneNumber }, ...alsoReachedAt])
@@ -155,7 +162,7 @@ const patientWire = (
 const demographicPatientOf = (
   patient: SourcePatient,
   alsoReachedAt: readonly SourceContact[]
-): Effect.Effect<typeof Patient.Schema.Type, ParseResult.ParseError> =>
+): Effect.Effect<DetachedResource.Detached<typeof Patient.Schema.Type>, ParseResult.ParseError> =>
   decodePatient(patientWire(patient, alsoReachedAt))
 
 /**
@@ -182,10 +189,10 @@ const customerUrl = new RegExp(
  * drops-and-counts via `Effect.logInfo`; a malformed optional field only drops
  * that field.
  */
-const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = HttpResponseKind.make(
-  {
+const CustomerResponseKind: HttpResponseKind.HttpResponseKind<DetachedResource.Type> =
+  HttpResponseKind.make({
     name: 'CustomerResponseKind',
-    tryRecognize: recognizePortal(portalGetMatcher(customerUrl), SHOPPERS_DRUGMART_SYSTEM_FAMILY),
+    tryRecognize: recognizePortal(portalGetMatcher(customerUrl)),
     parse: (response) =>
       Effect.gen(function* () {
         const { customer } = yield* decodeCustomer(extractJson(response.text()))
@@ -207,7 +214,6 @@ const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = Ht
         }
         return patients
       }),
-  }
-)
+  })
 
 export { CustomerResponseKind, CustomerPayload, SourcePatient }

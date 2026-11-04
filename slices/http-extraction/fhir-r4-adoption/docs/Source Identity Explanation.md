@@ -107,32 +107,35 @@ they stand outside any server (`DetachedResource` in this package).
 import stage stores a keyed record under, so a review row can be titled by
 the reference it will be written under before anything is adopted.
 
-## Detaching a resource
+## Writing a record detached
 
-A source whose resources carry their own ids and literal references (a FHIR
-server, a portal, a file format's synthesis) is detached with
-`detach(family)`, where the family says which namespace the source's ids
-belong to for each type. Which system a type gets in one context is a
-**system family** (`http-extraction-fundamentals`' `SystemFamily`, which this
-package re-exports), three kinds:
+A decoder that builds its records itself (a portal's synthesis, a file
+format's) writes them detached directly, keyed in its own system:
+`DetachedResource.keyIdentifierWire(key)` is a record's `identifier[0]`,
+`logicalReferenceWire(Type, key)` a reference to another record it decodes,
+and `DetachedResource.decodeUnknown(schema)` decodes the wire as a detached
+record, failing one that carries an `id`. Shoppers keys each type in the
+portal's own namespace for it (`patient-id`, `prescription-id`,
+`dispense-id`); Rexall's profile, LifeLabs and DICOM key every type in one
+Wildflower-minted system (`REXALL_CAREBOOK_SYSTEM`, `LIFELABS_SYSTEM`,
+`DICOM_SYSTEM`).
+
+## Detaching a server's record
+
+Only a record that really was a server's, with that server's ids and literal
+references, is detached, with `detach(family)`, where the **system family**
+(`SystemFamily`) says which namespace the server's ids belong to for each
+type, two kinds:
 
 - **Fixed across resource types** (`FixedAcrossResourceTypes { system }`):
-  the one system whatever the type. A portal's Wildflower-minted
-  `…/fhir/sid/<source>` URI (Rexall's `REXALL_CAREBOOK_SYSTEM`), or a file
-  format's (`LIFELABS_SYSTEM`, `DICOM_SYSTEM`).
+  the one system whatever the type. Carebook's searchset, under
+  `REXALL_CAREBOOK_SYSTEM`: carebook publishes no namespace of its own for
+  its ids.
 - **FHIR style** (`FhirStyleBaseUrl { baseUrl }`): the type appended to a
   base URL, `<baseUrl>/<Type>` (`https://example.com/fhir/Patient`), since a
   FHIR server's ids are unique per type. The server may also spell a
   reference to its own record absolutely, `<baseUrl>/Type/id`, which
   `SystemFamily.relativise` reads as the relative `Type/id`.
-- **One system per resource type** (`SystemPerResourceType { systems }`):
-  the system a source publishes for each type it names, listed by type.
-  Shoppers' family gives `Patient` the portal's `patient-id` system,
-  `MedicationRequest` its `prescription-id` and `MedicationDispense` its
-  `dispense-id`, so a Shoppers record's key is the portal's own identifier
-  for it. A type the list leaves out has no system: `SystemFamily.systemFor`
-  throws, because a kind naming such a type is a misconfigured source, not a
-  bad response.
 
 `SystemFamily.systemFor(family, Type)` is the system a family gives `Type`.
 `detach(family)` turns one resource into a detached one:
@@ -143,8 +146,7 @@ package re-exports), three kinds:
    prepended as `identifier[0]`. Every identifier the source already wrote is
    kept behind it. There is deliberately no "already keyed?" guard: a source
    that publishes its own ids as identifiers in the same system yields a
-   benign duplicate, which is why a source says what its ids are in its family
-   rather than writing them twice (Shoppers writes none of its keys itself).
+   benign duplicate.
    A `Binary`, and a record with no `id`, keep only what they had, so they are
    keyless unless the source's own first identifier names them.
 3. **Turns each literal reference logical**, through the per-type field table
@@ -302,33 +304,26 @@ different variant would compile. That is stated on the function.
 (`importer-core`'s `importDecoded`) sets it to a reference to the source-file
 `DocumentReference` after adopting, whatever the source wrote there.
 
-## Where a record is detached
+## Where a record becomes detached
 
-The system family is consumed **once**, by `detach`, where a decoder knows it,
-and is never stored on a record or a section:
+Every response kind yields detached records, so a record is detached inside
+the decoder that read it, and nothing downstream carries a system family:
 
-- **HAR sources.** Each response kind's `tryRecognize` mints the family its
-  response's ids belong to (`RecognizedUrlData.systemFamily`), so recognition
-  and the namespace a record keys under are the one decision. The source kinds
-  (`fhir-r4-source`, `rexall-be-well-source`, `shoppers-drugmart-source`)
-  parse plain `FhirResource`s, ids and literal references as the source
-  spelled them. `har-importer-core`'s preview reads the family off the
-  recognition its pick already holds and detaches every resource the kind
-  parsed under it. A response whose picked kind mints no family yields no
-  records, as its own outcome and note.
-  - **FHIR** — `FhirStyleBaseUrl { baseUrl }`, the root captured by the
-    kind's own `UrlMatch`, so a record keys in `<baseUrl>/<Type>` of the URL
-    it arrived on.
-  - **Rexall** — `FixedAcrossResourceTypes { system: REXALL_CAREBOOK_SYSTEM }`
-    through `http-extraction-fundamentals`' `recognizePortal`: carebook
-    publishes no namespace of its own for its ids.
-  - **Shoppers** — `SystemPerResourceType`, the portal's own systems
-    (`shoppers-drugmart-source`'s `source-system.ts`).
+- **HAR sources.** The source packages' kinds are
+  `HttpResponseKind<DetachedResource.Type>`; `har-importer-core`'s preview
+  routes and parses, and holds what the kind yields.
+  - **FHIR** — `fhir-r4-source`'s kinds detach in `parse`
+    (`detachUnderFhirRoot`), under `FhirStyleBaseUrl` of the root the kind's
+    own `UrlMatch` captures off the response's URL, so a record keys in
+    `<baseUrl>/<Type>` of the URL it arrived on.
+  - **Rexall** — the medication-list kind detaches carebook's searchset under
+    `FixedAcrossResourceTypes { system: REXALL_CAREBOOK_SYSTEM }`; the profile
+    kind writes its Patient detached.
+  - **Shoppers** — every kind writes its records detached, in the portal's
+    own systems (`ShoppersIdentifierSystem`).
 - **File formats.** `lifelabs-pdf-importer-core` and `dicom-importer-core`
-  synthesize resources with ids made from what the file prints and literal
-  references between them, and detach them under their fixed families
-  (`LIFELABS_SYSTEM_FAMILY`, `DICOM_SYSTEM_FAMILY`) as they build their
-  sections.
+  synthesize their records detached, keyed by ids made from what the file
+  prints and naming one another by logical reference.
 
 `importer-core`'s import stage then adopts every record of a file set
 (`DecodedFileSet.adopt`), knowing nothing of any source.

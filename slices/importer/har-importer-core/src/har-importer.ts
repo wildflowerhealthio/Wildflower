@@ -1,7 +1,6 @@
 import { Effect } from 'effect'
 
-import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   type HttpResponseKind,
   SourceDescriptor,
@@ -27,7 +26,7 @@ import { mergeSharedResources } from './merge-shared-resources.ts'
 import { preview, type PreviewedResponse } from './review.ts'
 
 type FhirPreview = PreviewedResponse<
-  HttpResponseKind.HttpResponseKind<FhirResource>,
+  HttpResponseKind.HttpResponseKind<DetachedResource.Type>,
   DetachedResource.Type
 >
 
@@ -67,9 +66,6 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
     if (tag === 'duplicate') return [`Duplicate of an earlier response — not imported: ${url}`]
     if (tag === 'parseError') return [`Could not be parsed and will not import: ${url}`]
     if (tag === 'bodyAbsent') return [`The archive captured no response body: ${url}`]
-    if (tag === 'noSystemFamily') {
-      return [`Recognized, but its kind keys no records, so it will not import: ${url}`]
-    }
     return entry.recognized.candidates.length === 0
       ? [`Matched no importer: ${url}`]
       : [`Excluded — every matching kind is turned off in the settings: ${url}`]
@@ -90,7 +86,7 @@ const sourceFileFormat = {
 
 /**
  * The HAR importer: one source file per pick, its recognized responses
- * detached and folded into per-URL sections.
+ * folded into per-URL sections.
  *
  * @remarks
  * No `groupBy` — a HAR stands alone, so every pick is its own set — and no
@@ -108,9 +104,7 @@ const harImporter: FileImporter.Type<HarSettings, typeof format> = {
     format,
     decodeFileSet: (pickedFiles, settings) =>
       decodeHar(pickedFiles[0].bytes, settings).pipe(
-        Effect.flatMap((responses) =>
-          preview(fhirPool, responses, enabledKindNames(settings), detach)
-        ),
+        Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
         Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
         Effect.map((previews) => ({
           sections: sectionsByUrl(previews),

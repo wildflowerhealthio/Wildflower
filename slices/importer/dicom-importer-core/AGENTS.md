@@ -83,8 +83,8 @@ carrying the one `ImagingStudy` its files make up.
   itself**. A header that parsed in `studyGroupKey` parses
   again; that double parse is the deliberate price of a decode constructor with
   no parsed-value passthrough. It yields one section of labeled FHIR
-  resources, each detached under `DICOM_SYSTEM` (`fhir-r4-adoption`'s
-  `detach`) and titled `<Type>/<source id>`, for the import stage to adopt
+  resources, each written detached and keyed in `DICOM_SYSTEM`
+  (`fhir-r4-adoption`'s `DetachedResource`) and titled `<Type>/<source id>`, for the import stage to adopt
   before it runs
   `linkToPatientAndStudy` and `addGridfsFileIds`, and pairs each picked file with its SOP Instance UID
   (**`sopInstanceIdentifier`**: `{ system: 'urn:ietf:rfc:3986', value:
@@ -146,7 +146,7 @@ carrying the one `ImagingStudy` its files make up.
 - **Depends on**: `dicom` (DICOM tag parsing), `importer-fundamentals`
   (`DecodeFunction.make`, the `FileImporter` contract, the `PickedFile`
   vocabulary, `DecodedFileSet`), `fhir-r4` (resource types
-  and identity), `fhir-r4-adoption` (`SystemFamily`, `detach`), `kitchen-sink`
+  and identity), `fhir-r4-adoption` (`DetachedResource`), `kitchen-sink`
   (`fnv1a64`, `checkTimeZone`), `effect`.
 - **Depended on by**: `dicom-importer-react` (settings picker),
   `importer-react` (registry entry).

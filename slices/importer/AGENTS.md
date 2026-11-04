@@ -215,7 +215,7 @@ sits above `http-extraction` and below every binding.
   the `meta.source` stamping and the source-file mint are `importer-core`'s
   import stage — plus `http-extraction-fundamentals`
   (extraction + recognition), `fhir-r4-source` (the pool), `fhir-r4-adoption`
-  (`detach`),
+  (`DetachedResource`),
   `importer-fundamentals` (the contract), and `fhir-r4` (resources). It
   re-derives none of them.
 - **A future file format gets its own binding, not a widened HAR one.** A CSV

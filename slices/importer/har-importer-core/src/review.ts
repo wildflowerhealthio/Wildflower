@@ -1,16 +1,11 @@
 import { Array as Arr, Effect, Match, Option, type ParseResult } from 'effect'
 
-import {
-  Extraction,
-  type HttpResponseKind,
-  type SystemFamily,
-} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { Extraction, type HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 /**
  * The HAR-specific preview pipeline: given decoded responses and the enabled
  * kind names, recognize each response against the kind pool and parse the
- * chosen ones into previewed records, each detached under the system family
- * its kind recognized the response with. The importer's decode folds these
+ * chosen ones into previewed records. The importer's decode folds these
  * previews into the sections and notes the shell reviews; the per-resource
  * selection (exclude/edit) lives in `importer-fundamentals`' `StagedImport`
  * namespace.
@@ -26,35 +21,28 @@ import {
 const resourceKey = (responseId: string, index: number): string => `${responseId}:${index}`
 
 /** One previewed record: the record plus its stable key. */
-interface PreviewedResource<TRecord> {
+interface PreviewedResource<TParsed> {
   readonly key: string
-  readonly resource: TRecord
+  readonly resource: TParsed
 }
 
 /**
  * One response's preview outcome — every non-resource outcome folded to data so
  * `preview` is total and one bad response cannot abort the batch.
- *
- * @remarks
- * `noSystemFamily` is a response whose picked kind recognized it without
- * minting a system family: nothing says which namespace the ids it would
- * parse belong to, so it is not parsed, and yields no records rather than
- * keyless ones.
  */
-type PreviewedOutcome<TRecord> =
-  | { readonly _tag: 'resources'; readonly resources: readonly PreviewedResource<TRecord>[] }
+type PreviewedOutcome<TParsed> =
+  | { readonly _tag: 'resources'; readonly resources: readonly PreviewedResource<TParsed>[] }
   | { readonly _tag: 'parseError'; readonly error: ParseResult.ParseError }
   | { readonly _tag: 'bodyAbsent' }
   | { readonly _tag: 'noPick' }
-  | { readonly _tag: 'noSystemFamily' }
   | { readonly _tag: 'duplicate'; readonly of: Extraction.ResponseRef }
 
 /** One response's preview: recognition, resolved pick, and parse outcome. */
-interface PreviewedResponse<K, TRecord> {
+interface PreviewedResponse<K, TParsed> {
   readonly ref: Extraction.ResponseRef
   readonly recognized: Extraction.RecognizedResponse<K>
   readonly pickKindName: Option.Option<string>
-  readonly outcome: PreviewedOutcome<TRecord>
+  readonly outcome: PreviewedOutcome<TParsed>
 }
 
 /**
@@ -71,27 +59,21 @@ const pickFor = <K extends Pick<HttpResponseKind.HttpResponseKind<unknown>, 'nam
 
 /**
  * Parse every response the enabled kinds choose through its top-specificity
- * kind, each parsed resource detached under the system family that kind's
- * recognition minted, producing one {@link PreviewedResponse} per input
- * response, in input order.
+ * kind, producing one {@link PreviewedResponse} per input response, in input
+ * order.
  *
  * @param pool - The kinds to route through
  * @param responses - The archive's responses
  * @param enabledKinds - The names of the kinds the settings leave on
- * @param detachUnder - How a resource of one response is detached, given the
- *   family its kind recognized the response with (`fhir-r4-adoption`'s
- *   `detach`); the family is read off the pick, so `tryRecognize` runs once
- *   per response
  */
-const preview = <TParsed, TRecord>(
+const preview = <TParsed>(
   pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   responses: readonly Extraction.Input[],
-  enabledKinds: ReadonlySet<string>,
-  detachUnder: (systemFamily: SystemFamily.Type) => (parsed: TParsed) => TRecord
+  enabledKinds: ReadonlySet<string>
 ): Effect.Effect<
-  readonly PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TRecord>[]
+  readonly PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>[]
 > => {
-  type Previewed = PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TRecord>
+  type Previewed = PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>
   const duplicates = Extraction.findDuplicates(responses)
   return Effect.forEach(
     Arr.zip(responses, Extraction.recognize(pool, responses)),
@@ -116,31 +98,21 @@ const preview = <TParsed, TRecord>(
       }
       const candidate = pick.value
       const pickKindName = Option.some(candidate.kind.name)
-      const { systemFamily } = candidate.recognized
-      if (systemFamily === undefined) {
-        return Effect.succeed<Previewed>({
-          ref: recognized.ref,
-          recognized,
-          pickKindName,
-          outcome: { _tag: 'noSystemFamily' },
-        })
-      }
-      const detach = detachUnder(systemFamily)
       return Extraction.parseWith(candidate.kind, response).pipe(
         Effect.map((outcome): Previewed => {
           const previewed = Match.value(outcome).pipe(
-            Match.tag('resources', ({ resources }): PreviewedOutcome<TRecord> => ({
+            Match.tag('resources', ({ resources }): PreviewedOutcome<TParsed> => ({
               _tag: 'resources',
-              resources: resources.map((resource, index): PreviewedResource<TRecord> => ({
+              resources: resources.map((resource, index): PreviewedResource<TParsed> => ({
                 key: resourceKey(recognized.ref.id, index),
-                resource: detach(resource),
+                resource,
               })),
             })),
-            Match.tag('parseError', ({ error }): PreviewedOutcome<TRecord> => ({
+            Match.tag('parseError', ({ error }): PreviewedOutcome<TParsed> => ({
               _tag: 'parseError',
               error,
             })),
-            Match.tag('bodyAbsent', (): PreviewedOutcome<TRecord> => ({ _tag: 'bodyAbsent' })),
+            Match.tag('bodyAbsent', (): PreviewedOutcome<TParsed> => ({ _tag: 'bodyAbsent' })),
             Match.exhaustive
           )
           return { ref: recognized.ref, recognized, pickKindName, outcome: previewed }

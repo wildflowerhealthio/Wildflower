@@ -1,5 +1,3 @@
-import { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
-
 /**
  * The system every carebook id this source reads belongs to, whatever the
  * resource type: the namespace of each record's key.
@@ -14,15 +12,10 @@ import { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
  * `identifier[0]`, and so the hash domain of every id a Rexall import stores
  * under; changing it orphans everything already imported from Rexall.
  *
- * Its own leaf module (not `source.ts`) so the response kinds can read it for
- * the family their `tryRecognize` mints without importing `source.ts`, which
- * imports *them* — the split breaks that cycle.
+ * Its own leaf module (not `source.ts`) so the response kinds can read it
+ * without importing `source.ts`, which imports *them* — the split breaks that
+ * cycle.
  */
 const REXALL_CAREBOOK_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/rexall-carebook'
 
-/** The family every Rexall kind's `tryRecognize` mints: {@link REXALL_CAREBOOK_SYSTEM} for every type. */
-const REXALL_CAREBOOK_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({
-  system: REXALL_CAREBOOK_SYSTEM,
-})
-
-export { REXALL_CAREBOOK_SYSTEM, REXALL_CAREBOOK_SYSTEM_FAMILY }
+export { REXALL_CAREBOOK_SYSTEM }

@@ -23,10 +23,10 @@ import {
   ResourceType,
   type ServiceRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Match, Option } from 'effect'
 
 import * as DetachedResource from './detached-resource.ts'
+import * as SystemFamily from './system-family.ts'
 
 /**
  * FHIR R4's relative-reference grammar: a resource-type token, `/`, and a
@@ -477,10 +477,12 @@ const memoisedUrlOf = (): ((url: string) => URL) => {
  * A reference with no literal (an identifier-only or display-only one) is kept
  * as the source wrote it.
  *
- * An `identifier` the source had also put on a reference it is turned
+ * An `identifier` the server had also put on a reference it is turned
  * logical is **replaced** by the target's key: the slot is 0..1, and the key
- * is what names the target now that the literal is gone. The target carries
- * its own identifiers, so the source's are not lost when it was decoded too.
+ * is what names the target now that the literal is gone. A FHIR server may
+ * send both on one reference, so this is not a rule only one source needs.
+ * The target carries its own identifiers, so the server's are not lost when it
+ * was decoded too.
  * `display` and `extension` are kept.
  */
 const detachReference = (family: SystemFamily.Type, urlOf: (url: string) => URL) => {
@@ -503,27 +505,30 @@ const detachReference = (family: SystemFamily.Type, urlOf: (url: string) => URL)
 }
 
 /**
- * Detach a resource a source decoded with its own ids and literal references:
+ * Detach a resource a server served, with its ids and literal references:
  * drop its `id`, key it by that id, and turn each reference to another record
  * into a logical one.
  *
- * @param family - The systems the source's ids belong to, per type: the one
- *   its kind's `tryRecognize` minted, or a file format's fixed one
- * @returns A function from one decoded resource to its detached form
+ * @param family - The systems the server's ids belong to, per type
+ * @returns A function from one served resource to its detached form
  *
  * @remarks
+ * For a response kind whose records really were a server's (a FHIR server's
+ * reads, carebook's searchset), as a private step of its `parse`. A decoder
+ * that synthesizes its records writes them detached instead
+ * (`DetachedResource.keyIdentifierWire`, `logicalReferenceWire`).
+ *
  * - `id` becomes `null`. When it was set and the type has an `identifier`
  *   element, `{ system: SystemFamily.systemFor(family, Type), value: id }` is
  *   prepended as `identifier[0]`, the record's key; every identifier the
- *   source wrote is kept behind it. A `Binary` (no `identifier` element) and
+ *   server wrote is kept behind it. A `Binary` (no `identifier` element) and
  *   a record with no `id` keep only what they had, so they are keyless unless
- *   the source's own first identifier names them.
+ *   the server's own first identifier names them.
  * - Every reference the per-type table ({@link mapReferences}) reaches is run
  *   through {@link detachReference}.
  *
- * There is deliberately no "already keyed?" guard: a source that publishes
+ * There is deliberately no "already keyed?" guard: a server that publishes
  * its own id as an identifier in the same system yields a benign duplicate.
- * Say what a source's ids are in its family rather than writing them twice.
  */
 const detach = (family: SystemFamily.Type) => {
   const urlOf = memoisedUrlOf()

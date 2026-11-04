@@ -33,6 +33,17 @@ const ofType = <T extends FhirResource['resourceType']>(
       resource.resourceType === resourceType
   )
 
+/** The id the synthesis gave `resource`: the value of its key, `identifier[0]`. */
+const idOf = (resource: FhirResource | undefined): string | null =>
+  resource !== undefined && 'identifier' in resource
+    ? (resource.identifier[0]?.value ?? null)
+    : null
+
+/** The id of the record `reference` names: its logical reference's identifier value. */
+const targetOf = (
+  reference: { readonly identifier: { readonly value: string | null } | null } | null | undefined
+): string | null => reference?.identifier?.value ?? null
+
 const hemoglobinRow: TestTableRow.Type = {
   name: 'Hemoglobin',
   flag: 'LO',
@@ -140,7 +151,7 @@ describe('toFhirResources', () => {
       fc.property(reportsArbitrary, (reports) => {
         const resources = synthesize(reports)
 
-        const ids = resources.map((resource) => `${resource.resourceType}/${resource.id}`)
+        const ids = resources.map((resource) => `${resource.resourceType}/${idOf(resource)}`)
         expect(new Set(ids).size).toBe(ids.length)
 
         const observations = ofType(resources, 'Observation')
@@ -158,30 +169,26 @@ describe('toFhirResources', () => {
         const diagnosticReports = ofType(resources, 'DiagnosticReport')
         expect(diagnosticReports).toHaveLength(reports.length)
         const listed = diagnosticReports.flatMap((report) =>
-          report.result.map((reference) => reference.reference)
+          report.result.map((reference) => `Observation/${targetOf(reference)}`)
         )
         const byText = (a: string | null, b: string | null): number =>
           (a ?? '').localeCompare(b ?? '')
         expect(listed.toSorted(byText)).toEqual(
-          observations.map((observation) => `Observation/${observation.id}`).toSorted(byText)
+          observations.map((observation) => `Observation/${idOf(observation)}`).toSorted(byText)
         )
 
-        const patientIds = new Set(ofType(resources, 'Patient').map((patient) => patient.id))
+        const patientIds = new Set(ofType(resources, 'Patient').map(idOf))
         for (const observation of [...observations, ...diagnosticReports]) {
-          const subject = observation.subject?.reference ?? ''
-          expect(patientIds.has(subject.replace(/^Patient\//, ''))).toBe(true)
+          expect(patientIds.has(targetOf(observation.subject))).toBe(true)
         }
 
         // Every resultsInterpreter reference resolves to a Practitioner minted
         // somewhere in the batch — a provider deduped into an earlier report's
         // group is still present once the groups are flattened.
-        const practitionerIds = new Set(
-          ofType(resources, 'Practitioner').map((practitioner) => practitioner.id)
-        )
+        const practitionerIds = new Set(ofType(resources, 'Practitioner').map(idOf))
         for (const report of diagnosticReports) {
           for (const interpreter of report.resultsInterpreter) {
-            const reference = interpreter.reference ?? ''
-            expect(practitionerIds.has(reference.replace(/^Practitioner\//, ''))).toBe(true)
+            expect(practitionerIds.has(targetOf(interpreter))).toBe(true)
           }
         }
       }),
@@ -192,8 +199,8 @@ describe('toFhirResources', () => {
   it('property: a re-synthesis mints the same ids — the report determines them', () => {
     fc.assert(
       fc.property(reportArbitrary, (report) => {
-        const first = synthesize([report]).map((r) => `${r.resourceType}/${r.id}`)
-        const again = synthesize([report]).map((r) => `${r.resourceType}/${r.id}`)
+        const first = synthesize([report]).map((r) => `${r.resourceType}/${idOf(r)}`)
+        const again = synthesize([report]).map((r) => `${r.resourceType}/${idOf(r)}`)
         expect(again).toEqual(first)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -206,14 +213,11 @@ describe('toFhirResources', () => {
     const resources = synthesize([masked, masked])
 
     const reports = ofType(resources, 'DiagnosticReport')
-    expect(reports.map((report) => report.id)).toEqual([
-      reportOriginalId(masked, 0),
-      reportOriginalId(masked, 1),
-    ])
-    const observationIds = ofType(resources, 'Observation').map((observation) => observation.id)
+    expect(reports.map(idOf)).toEqual([reportOriginalId(masked, 0), reportOriginalId(masked, 1)])
+    const observationIds = ofType(resources, 'Observation').map(idOf)
     expect(new Set(observationIds).size).toBe(observationIds.length)
     // A document with no repeat keeps the plain key.
-    expect(ofType(synthesize([masked]), 'DiagnosticReport')[0]?.id).toBe(
+    expect(idOf(ofType(synthesize([masked]), 'DiagnosticReport')[0])).toBe(
       reportOriginalId(masked, 0)
     )
   })
@@ -232,7 +236,8 @@ describe('toFhirResources', () => {
   it('builds the Patient from the header: name parts, gender, birth date, health card, phone', () => {
     const [patient] = ofType(synthesize([sample]), 'Patient')
 
-    expect(patient?.id).toBe(patientOriginalId(sample.patient))
+    expect(patient?.id).toBeNull()
+    expect(idOf(patient)).toBe(patientOriginalId(sample.patient))
     expect(patient?.name[0]).toMatchObject({
       family: 'OKAFOR',
       given: ['DANA', 'MARIE'],
@@ -240,10 +245,12 @@ describe('toFhirResources', () => {
     })
     expect(patient?.gender).toBe('female')
     expect(patient?.birthDate).toBe('1981-08-13')
-    expect(patient?.identifier[0]).toMatchObject({
-      system: new URL(LifeLabsIdentifierSystem.OntarioHealthCardNumber),
-      value: '1234567890 AB',
-    })
+    expect(patient?.identifier).toContainEqual(
+      expect.objectContaining({
+        system: new URL(LifeLabsIdentifierSystem.OntarioHealthCardNumber),
+        value: '1234567890 AB',
+      })
+    )
     expect(patient?.telecom[0]).toMatchObject({ system: 'phone', value: '(416) 555-0100' })
     // The report's providers are the DiagnosticReport's resultsInterpreter, not
     // the patient's GP — a lab report names who to send results to, not who the
@@ -269,26 +276,17 @@ describe('toFhirResources', () => {
     expect(new Set([byPatientId, byHealthCard, byName]).size).toBe(3)
   })
 
-  it('property: every minted id is a FHIR id, so adoption can rewrite the references that carry it', () => {
-    fc.assert(
-      fc.property(reportArbitrary, (report) => {
-        for (const resource of synthesize([report])) {
-          expect(resource.id).toMatch(/^[A-Za-z0-9\-.]{1,64}$/)
-        }
-      }),
-      { numRuns: numRunsFor({ base: 40 }) }
-    )
-  })
-
   it('builds the DiagnosticReport: lab number, LOINC code, sections as text, timing in the zone, results, performer, resultsInterpreter', () => {
     const [report] = ofType(synthesize([sample]), 'DiagnosticReport')
 
-    expect(report?.id).toBe(reportOriginalId(sample, 0))
+    expect(idOf(report)).toBe(reportOriginalId(sample, 0))
     expect(report?.status).toBe('final')
-    expect(report?.identifier[0]).toMatchObject({
-      system: new URL(LifeLabsIdentifierSystem.LabNumber),
-      value: '2024-JJ6330780',
-    })
+    expect(report?.identifier).toContainEqual(
+      expect.objectContaining({
+        system: new URL(LifeLabsIdentifierSystem.LabNumber),
+        value: '2024-JJ6330780',
+      })
+    )
     expect(report?.code.coding[0]).toMatchObject({ code: '11502-2', display: 'Laboratory report' })
     expect(report?.code.text).toBe('Hematology, Molecular Biology')
     expect(report?.effectiveDateTime).toEqual(
@@ -303,9 +301,9 @@ describe('toFhirResources', () => {
     ])
     // Every provider named on the report — the ordering provider and each CC'd
     // provider — is a resultsInterpreter reference, in that order.
-    expect(report?.resultsInterpreter.map((interpreter) => interpreter.reference)).toEqual([
-      `Practitioner/${practitionerOriginalId(sample.orderedBy)}`,
-      `Practitioner/${practitionerOriginalId(sample.copyTo[0] ?? '')}`,
+    expect(report?.resultsInterpreter.map(targetOf)).toEqual([
+      practitionerOriginalId(sample.orderedBy),
+      practitionerOriginalId(sample.copyTo[0] ?? ''),
     ])
   })
 
@@ -432,7 +430,8 @@ describe('toFhirResources', () => {
     expect(patient?.birthDate).toBeNull()
     expect(patient?.gender).toBeNull()
     expect(patient?.telecom).toEqual([])
-    expect(patient?.identifier).toEqual([])
+    // Only the key the synthesis gave it: no identifier the header masked.
+    expect(patient?.identifier.slice(1)).toEqual([])
     expect(patient?.generalPractitioner).toEqual([])
     expect(report?.resultsInterpreter).toEqual([])
     expect(report?.effectiveDateTime).toBeNull()
@@ -450,7 +449,8 @@ describe('toFhirResources', () => {
     const [report] = ofType(resources, 'DiagnosticReport')
     const [observation] = ofType(resources, 'Observation')
 
-    expect(report?.identifier).toEqual([])
+    // Only the key the synthesis gave it: no lab number.
+    expect(report?.identifier.slice(1)).toEqual([])
     expect(observation?.category[0]?.coding[0]?.code).toBe('laboratory')
     expect(observation?.category[0]?.text).toBeNull()
   })

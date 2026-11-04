@@ -1,4 +1,4 @@
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { fhirR4ResponseKinds } from './response-kinds.ts'
@@ -11,13 +11,14 @@ import { fhirR4ResponseKinds } from './response-kinds.ts'
  * reference — the archive importer's pool (`har-importer-core`) flattens it.
  * See `response-kinds.ts` for the tuple's ordering.
  */
-const fhirR4Source: SourceDescriptor.SourceDescriptor<FhirResource> = SourceDescriptor.make({
-  name: 'fhir-r4',
-  display: {
-    title: 'FHIR R4 server',
-    description: 'Patient and Observation reads from any server speaking FHIR R4 JSON.',
-  },
-  responseKinds: fhirR4ResponseKinds,
-})
+const fhirR4Source: SourceDescriptor.SourceDescriptor<DetachedResource.Type> =
+  SourceDescriptor.make({
+    name: 'fhir-r4',
+    display: {
+      title: 'FHIR R4 server',
+      description: 'Patient and Observation reads from any server speaking FHIR R4 JSON.',
+    },
+    responseKinds: fhirR4ResponseKinds,
+  })
 
 export { fhirR4Source }

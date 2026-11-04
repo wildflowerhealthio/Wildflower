@@ -47,9 +47,8 @@ shell's shared `persistTransactionBundle`.
   kept out of `Patient/$everything`). Its `decodeFileSet` runs the whole read half for one
   archive:
   `decodeHar`, then `review.ts`'s `preview` over the pool filtered by the
-  settings' enabled kinds, each parsed resource detached (`fhir-r4-adoption`'s
-  `detach`), then `mergeSharedResources`, folded into `DecodedFileSet`
-  sections of detached records —
+  settings' enabled kinds (each kind yields detached records), then
+  `mergeSharedResources`, folded into `DecodedFileSet` sections —
   one section per URL, a plain insertion-ordered map (first-seen order, only
   responses that parsed to at least one resource), each record titled by the
   reference it is written under (`DecodedFileSet.writtenReferenceTitle`) —
@@ -65,13 +64,9 @@ shell's shared `persistTransactionBundle`.
   in the batch, so two source files in one pick cannot collide on
   `responseId:index`.
 - `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses,
-  enabledKinds, detachUnder)` recognizes each response
-  (`Extraction.recognize`), takes its top-specificity enabled candidate
-  (`pickFor` — there are no per-response overrides), and parses the chosen
-  ones (`Extraction.parseWith`), detaching each parsed resource under the
-  system family the pick's own recognition minted, so `tryRecognize` runs once
-  per response. A pick that minted no family is a `noSystemFamily` outcome,
-  never parsed: nothing says which namespace its ids belong to. Every
+  enabledKinds)` recognizes each response (`Extraction.recognize`), takes its
+  top-specificity enabled candidate (`pickFor` — there are no per-response
+  overrides), and parses the chosen ones (`Extraction.parseWith`). Every
   non-resource outcome is folded to data so one bad response cannot abort the
   batch. Consumed by the importer's `decodeFileSet`; the per-resource selection
   (exclude/edit) lives in `importer-fundamentals`' `StagedImport`.
@@ -98,8 +93,8 @@ shell's shared `persistTransactionBundle`.
   `har-importer-react`'s settings picker groups its include toggles by these;
   the flat pool responses are recognized and decoded through is
   `SourceDescriptor.poolOf(fhirSources)` — derived from the same list, so the
-  toggles and the recognizer route can never disagree. The kinds parse each
-  source's resources as it spelled them; the preview detaches them. Registering
+  toggles and the recognizer route can never disagree. Every kind yields
+  detached records (`SourceDescriptor<DetachedResource.Type>`). Registering
   another source is one static append to `fhirSources`.
 - `src/anonymizer/` — **the shape-preserving pseudonymizer** behind the
   anonymized `.har` export. `shapes.ts` is `detectShape` / `generateFake`: the
@@ -122,8 +117,8 @@ shell's shared `persistTransactionBundle`.
 
 Depends on `http-archive` (the HAR format + `HttpArchive` projection it decodes
 through), `importer-fundamentals` (the contract), `http-extraction-fundamentals`
-(`Extraction.Input`, `SystemFamily`), `fhir-r4-source` and the portal sources
-(the pool), `fhir-r4-adoption` (`detach`, `DetachedResource`), `web-trace-core`
+(`Extraction.Input`), `fhir-r4-source` and the portal sources
+(the pool), `fhir-r4-adoption` (`DetachedResource`), `web-trace-core`
 (`sha256Base64` from `capture`, and the trace-side codec constants the source file
 codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
 (resources), and `effect`. Never imports `importer-react` or
@@ -135,9 +130,9 @@ codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
   client is unreachable from a decode by construction. Writing is the shell's
   shared `persistBatchBundle`, gated on a confirmed review; no importer field
   takes a write client.
-- **A record's system family is read once, here.** The preview detaches each
-  parsed resource under the family its pick minted; nothing after it, the
-  sections and the import stage included, carries a family.
+- **Records arrive detached.** Each kind detaches or writes its own records,
+  so nothing here, the sections and the import stage included, carries a
+  system family.
 - **Per-URL, not per-archive.** Recognition against `fhirPool` is per response
   (highest specificity wins), so a mixed source file extracts every recognized
   URL, and every record from one URL lands in that URL's one section.

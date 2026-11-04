@@ -6,7 +6,7 @@
  * @packageDocumentation
  */
 import { DicomHeader } from '@wildflowerhealthio/dicom'
-import { detach, DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext } from '@wildflowerhealthio/fhir-r4/resources'
 import {
@@ -27,10 +27,6 @@ import {
 } from './fhir/to-fhir.ts'
 import type { StudyInstance } from './fhir/to-fhir.ts'
 import type { DicomSettings } from './settings.ts'
-import { DICOM_SYSTEM } from './source-system.ts'
-
-/** The systems DICOM keys its records in: `DICOM_SYSTEM`, whatever the type. */
-const DICOM_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: DICOM_SYSTEM })
 
 /** One record a study synthesizes. */
 type StudyResource = Effect.Effect.Success<ReturnType<typeof toFhirResources>>[number]
@@ -42,8 +38,6 @@ const STUDY_REVIEW_KEYS = {
   ImagingStudy: 'imaging-study',
 } as const satisfies Record<StudyResource['resourceType'], string>
 
-const detachDicom = detach(DICOM_SYSTEM_FAMILY)
-
 /**
  * A study record as its review row: its fixed key, and its type and the source
  * id the synthesis gave it (its key's value) as its title. The synthesis gives
@@ -51,14 +45,13 @@ const detachDicom = detach(DICOM_SYSTEM_FAMILY)
  */
 const studyEntryOf = (resource: StudyResource): DecodedFileSet.Entry => {
   const key = STUDY_REVIEW_KEYS[resource.resourceType]
-  const detached = detachDicom(resource)
   return {
     key,
-    title: Option.match(DetachedResource.keyOf(detached), {
+    title: Option.match(DetachedResource.keyOf(resource), {
       onSome: ({ value }) => `${resource.resourceType}/${value}`,
       onNone: () => `${resource.resourceType} (${key})`,
     }),
-    resource: detached,
+    resource,
   }
 }
 
@@ -228,7 +221,7 @@ const linkToPatientAndStudy = (
 
 /**
  * Decode one study's picked files into a section of labeled FHIR resources,
- * each detached under `DICOM_SYSTEM`.
+ * each written detached, keyed in `DICOM_SYSTEM`.
  *
  * @param pickedFiles - Every picked `.dcm` of one study, in the order they were
  *   picked

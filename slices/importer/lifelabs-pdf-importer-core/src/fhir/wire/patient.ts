@@ -3,7 +3,7 @@ import { Option } from 'effect'
 import type * as Report from '../../entities/report.ts'
 import { LifeLabsIdentifierSystem } from '../../source-system.ts'
 import { parsePrintedDate } from '../dates.ts'
-import { sourceId, type Wire } from './shared.ts'
+import { keyWire, sourceId, type Wire } from './shared.ts'
 
 const digitsOf = (text: string): string => text.replaceAll(/\D/g, '')
 
@@ -51,8 +51,10 @@ const patientWire = (report: Report.Type): Wire => {
       value: patient.healthCardNumber,
     })
   }
-  const wire: Wire = { resourceType: 'Patient', id: patientOriginalId(patient) }
-  if (identifier.length > 0) wire['identifier'] = identifier
+  const wire: Wire = {
+    resourceType: 'Patient',
+    identifier: [keyWire(patientOriginalId(patient)), ...identifier],
+  }
   if (patient.name !== '') wire['name'] = [humanNameWire(patient.name)]
   const gender = genderOf(patient.sex)
   if (gender !== undefined) wire['gender'] = gender

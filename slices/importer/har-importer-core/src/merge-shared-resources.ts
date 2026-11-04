@@ -1,7 +1,6 @@
 import { Option } from 'effect'
 
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import type { PreviewedResource, PreviewedResponse } from './review.ts'
@@ -27,11 +26,11 @@ const identityOf = (sourceName: string, record: DetachedResource.Type): Option.O
   )
 
 /** A source that gives a `mergeResources`. */
-type MergingSource = SourceDescriptor.SourceDescriptor<FhirResource> &
-  Required<Pick<SourceDescriptor.SourceDescriptor<FhirResource>, 'mergeResources'>>
+type MergingSource = SourceDescriptor.SourceDescriptor<DetachedResource.Type> &
+  Required<Pick<SourceDescriptor.SourceDescriptor<DetachedResource.Type>, 'mergeResources'>>
 
 const givesMerge = (
-  source: SourceDescriptor.SourceDescriptor<FhirResource>
+  source: SourceDescriptor.SourceDescriptor<DetachedResource.Type>
 ): source is MergingSource => source.mergeResources !== undefined
 
 /** One identity's records merged so far, and the review key of the first to arrive. */
@@ -53,7 +52,7 @@ interface MergedIdentity {
  *   does every keyless record.
  */
 const mergeSharedResources = <K>(
-  sources: readonly SourceDescriptor.SourceDescriptor<FhirResource>[],
+  sources: readonly SourceDescriptor.SourceDescriptor<DetachedResource.Type>[],
   previews: readonly PreviewedResponse<K, DetachedResource.Type>[]
 ): readonly PreviewedResponse<K, DetachedResource.Type>[] => {
   const mergingSourceByKindName = new Map(

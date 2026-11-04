@@ -8,10 +8,9 @@ server that assigned it), is keyed by its first identifier — FHIR's
 logical reference. Adopting one stores it under a local id derived from its
 key and resolves each logical reference to a record of its batch to a literal
 one, as a FHIR server resolves a conditional reference against a transaction
-bundle. It sits above
-`fhir-r4` (the resource schemas and `localResourceId`) and
-`http-extraction-fundamentals` (the response-kind vocabulary and
-`SystemFamily`), which stays FHIR-free.
+bundle. It sits above `fhir-r4` (the resource schemas and
+`localResourceId`); `http-extraction-fundamentals` (the response-kind
+vocabulary) stays FHIR-free and below it.
 
 ## Shape
 
@@ -23,10 +22,22 @@ bundle. It sits above
   `storedReferencesOf` (the stored reference of every keyed record of a
   batch), and `hasIdentifier` (whether the record's type has an `identifier`
   element: every `fhir-r4` schema with one defaults it to `[]`, so the
-  decoded record carries the property exactly then).
+  decoded record carries the property exactly then). How a decoder writes a
+  record detached: `keyIdentifierWire(key)` for its `identifier[0]`,
+  `logicalReferenceWire(Type, key)` for a reference to another record, and
+  `decodeUnknown(schema)` to decode that wire as a detached record, failing
+  one that carries an `id`.
+- `src/system-family.ts` — `SystemFamily`, the identifier systems a server's
+  ids belong to, for `detach`: `FixedAcrossResourceTypes { system }` (one
+  system whatever the type, carebook's) or `FhirStyleBaseUrl { baseUrl }`
+  (the type appended to a FHIR server's root, `<baseUrl>/Patient`).
+  `systemFor(family, Type)` is the system it gives `Type`; `relativise(family)`
+  reads a FHIR server's absolute spelling of its own record, `<baseUrl>/Type/id`,
+  back to the relative `Type/id`.
 - `src/adopt-resource.ts` — the per-type reference table (`mapReferences`,
   the one place a resource's references are walked) and the two directions
-  through it. `detach(family)` drops a resource's `id`, prepends
+  through it. `detach(family)`, for a kind whose response is a server's
+  records, drops a resource's `id`, prepends
   `{ system: SystemFamily.systemFor(family, Type), value: id }` as
   `identifier[0]` when it had one and the type has an `identifier` element,
   and turns each reference whose literal relativises
@@ -47,15 +58,15 @@ bundle. It sits above
 
 ## Layering
 
-Pure: no DOM, no `fs`, no React. Depends on `fhir-r4`,
-`http-extraction-fundamentals` and `effect`. The file importers
-(`dicom-importer-core`, `lifelabs-pdf-importer-core`) and `har-importer-core`
-detach with it, `importer-fundamentals`' `DecodedFileSet.adopt` adopts with it,
-and the synthetic-data generators spell references with it. It must never
-import from `slices/importer`, and `http-extraction-fundamentals` must never
-import it: `SystemFamily` is defined there, and this package re-exports it for
-the file importers. Nothing on the import side takes a `SystemFamily`: `adopt`
-reads everything off the records.
+Pure: no DOM, no `fs`, no React. Depends on `fhir-r4` and `effect`. Every
+decoder writes its records with it: the source packages' response kinds
+(`fhir-r4-source` and Rexall's medication list detaching a server's records,
+the rest writing them detached) and the file importers
+(`dicom-importer-core`, `lifelabs-pdf-importer-core`).
+`importer-fundamentals`' `DecodedFileSet.adopt` adopts with it, and the
+synthetic-data generators spell references with it. It must never import from
+`slices/importer` or `http-extraction-fundamentals`. Nothing on the import side
+takes a `SystemFamily`: `adopt` reads everything off the records.
 
 ## Traps
 

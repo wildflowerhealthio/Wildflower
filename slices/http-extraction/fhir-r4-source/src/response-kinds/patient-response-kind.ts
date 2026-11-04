@@ -1,11 +1,10 @@
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { HttpResponseKind, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Effect, Schema } from 'effect'
 
 import { extractJson } from '../extract-json.ts'
-import { recognizeFhirRoot } from '../recognize-fhir-root.ts'
-
-type PatientType = typeof Patient.Schema.Type
+import { detachUnderFhirRoot, recognizeFhirRoot } from '../recognize-fhir-root.ts'
 
 const decode = Schema.decode(Schema.parseJson(Patient.Schema))
 
@@ -20,18 +19,19 @@ const patientUrl = UrlMatch.make({
  * `…/Patient/:id?…`. The response body the handler captures is either
  * the raw JSON (XHR intercept) or the mobile WebView's HTML JSON-viewer
  * wrapper around it; {@link extractJson} normalizes both. On a successful
- * decode it emits the resource as a single-element array; `parse` never
- * navigates.
+ * decode it emits the resource, detached under the server's root, as a
+ * single-element array, and none for a Patient the server sent with no id;
+ * `parse` never navigates.
  */
-const PatientResponseKind: HttpResponseKind.HttpResponseKind<PatientType> = HttpResponseKind.make({
-  name: 'PatientResponseKind',
-  tryRecognize: recognizeFhirRoot(patientUrl),
-  parse: (response) =>
-    Effect.map(decode(extractJson(response.text())), (patient) => {
-      if (patient.id === null) return []
-      const withId: PatientType = { ...patient, id: patient.id }
-      return [withId]
-    }),
-})
+const PatientResponseKind: HttpResponseKind.HttpResponseKind<DetachedResource.Type> =
+  HttpResponseKind.make({
+    name: 'PatientResponseKind',
+    tryRecognize: recognizeFhirRoot(patientUrl),
+    parse: detachUnderFhirRoot(patientUrl)((response) =>
+      Effect.map(decode(extractJson(response.text())), (patient) =>
+        patient.id === null ? [] : [patient]
+      )
+    ),
+  })
 
 export { PatientResponseKind }

@@ -14,7 +14,7 @@
  * captured from a canonical registry. `PatientId`, `PrescriptionId` and
  * `DispenseId` are the namespaces of the portal's own ids for the three types
  * this source writes, so they are what its records are keyed in
- * (`source-system.ts`): **persisted wire format**, the hash domain of every id
+ * (`identifier[0]`): **persisted wire format**, the hash domain of every id
  * a Shoppers import stores under. In particular:
  *
  * - `PatientId` names a person the account manages (a
@@ -31,7 +31,15 @@
 /** Base URL every Shoppers identifier/coding system is built from. */
 const SYSTEM_BASE = 'https://mypharmacy.shoppersdrugmart.ca/fhir'
 
-/** Shoppers identifier systems for the ids the portal JSON carries. */
+/**
+ * Shoppers identifier systems for the ids the portal JSON carries.
+ *
+ * @remarks
+ * **Persisted wire format.** `PatientId`, `PrescriptionId` and `DispenseId`
+ * are the systems the kinds key a person, prescription and dispense in
+ * (`identifier[0]`), and so the hash domain of every id a Shoppers import
+ * stores under; changing one orphans everything already imported.
+ */
 const ShoppersIdentifierSystem = {
   /**
    * A managed person's `patientId` (a `customer.patients[].id`, the id a

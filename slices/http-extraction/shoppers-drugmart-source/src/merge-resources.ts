@@ -1,8 +1,9 @@
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type {
   CodeableConcept,
   IdentifierAndReference,
 } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { FhirResource, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
+import type { MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { ShoppersIdentifierSystem } from './shoppers.ts'
@@ -25,12 +26,10 @@ type Concept = typeof CodeableConcept.Schema.Type
  * @remarks
  * The two copies are told apart by this marker because it is the difference
  * the merge is about: the history feed knows only the account, and the status
- * feed knows the person, whom it names by `patientId` (a literal
- * `Patient/<patientId>` as the kind writes it, the logical reference by the
- * person's key once detached). Reading it off the resource, rather than
- * asking which kind emitted it, keeps the merge a function of the two
- * resources alone, with the same answer in either arrival order and on either
- * side of detaching.
+ * feed knows the person, whom it names by the logical reference to their
+ * `patientId` key. Reading it off the resource, rather than asking which kind
+ * emitted it, keeps the merge a function of the two resources alone, with the
+ * same answer in either arrival order.
  */
 const isHistoryCopy = (dispense: MedicationDispense.Type): boolean =>
   dispense.subject?.identifier?.system?.href === ShoppersIdentifierSystem.CustomerId
@@ -83,9 +82,10 @@ const mergeDispenseCopies = <TDispense extends MedicationDispense.Type>(
 })
 
 /** Whether `resource` is a `MedicationDispense`, keeping whatever else its type says of it. */
-const isDispense = <TResource extends FhirResource>(
-  resource: TResource
-): resource is TResource & MedicationDispense.Type => resource.resourceType === 'MedicationDispense'
+const isDispense = (
+  resource: DetachedResource.Type
+): resource is DetachedResource.Detached<MedicationDispense.Type> =>
+  resource.resourceType === 'MedicationDispense'
 
 /**
  * Two Shoppers resources under one key, as the one to keep. A dispense with
@@ -93,7 +93,10 @@ const isDispense = <TResource extends FhirResource>(
  * either order. Anything else keeps the later copy, as the store would: two
  * copies from one feed, and every other resource type.
  */
-const mergeShoppersResources: SourceDescriptor.ResourceMerge<FhirResource> = (earlier, later) => {
+const mergeShoppersResources: SourceDescriptor.ResourceMerge<DetachedResource.Type> = (
+  earlier,
+  later
+) => {
   if (!isDispense(earlier) || !isDispense(later)) {
     return later
   }

@@ -43,14 +43,16 @@ rather than a copy, and what it writes is what the response kinds read.
   and `MedicationResource` are exported, for a producer to type its searchset as
   `typeof MedicationBundle.Encoded`.
 - `src/source-system.ts` — `REXALL_CAREBOOK_SYSTEM`, the Wildflower-minted
-  `sid` URI every carebook id belongs to, whatever the type, and
-  `REXALL_CAREBOOK_SYSTEM_FAMILY`, the `FixedAcrossResourceTypes` family each
-  kind's `tryRecognize` mints over it. Carebook writes no identifier of its own
+  `sid` URI every carebook id belongs to, whatever the type. Carebook writes no identifier of its own
   for a resource's id (its `medicationrequest-external-id` is another number),
   so a record's key is its carebook id in this system.
 - `src/response-kinds.ts` — `rexallBeWellResponseKinds` (internal): the kinds,
-  parsing carebook's own ids and references, stable by identity at module
-  scope.
+  as `HttpResponseKind<DetachedResource.Type>`, stable by identity at module
+  scope. The profile kind writes its Patient detached, keyed by its `uid` in
+  `REXALL_CAREBOOK_SYSTEM`; the medication-list kind's searchset is carebook's
+  own server response, so it detaches each promoted medication
+  (`fhir-r4-adoption`'s `detach`, `FixedAcrossResourceTypes` over
+  `REXALL_CAREBOOK_SYSTEM`).
 - `src/source.ts` — `rexallBeWellSource`, the package's primary export.
 - `src/fixtures/` — anonymized `web-trace` capture fixtures the bundle,
   promotion, and response-kind suites decode against (`prescriptions-searchset.json`,
@@ -59,7 +61,7 @@ rather than a copy, and what it writes is what the response kinds read.
 ## Layering
 
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
-`http-extraction-fundamentals`, `fhir-r4`,
+`http-extraction-fundamentals`, `fhir-r4`, `fhir-r4-adoption`,
 `fhir-stu3-as-r4` (the STU3⇄R4 schemas the bundles decode with), `effect`, and
 `kitchen-sink`. Never imports from
 `slices/importer` or `apps/synthetic-data` — those consume this package, never
@@ -237,7 +239,7 @@ Three things ride along, none of them moving an extension:
   page, the convention the Shoppers source shares. It **replaces** the
   processor's own `reference` (`rexall-pharmacy-location/<id>`), which resolves
   to nothing and repeats the id `identifier` already holds. An absolute URL is
-  also left as it is when the importer detaches the record, so the vendor
+  also left as it is when the kind detaches the record, so the vendor
   identifier stays. The reference's
   `display` names the store, `Rexall (store <id>)`, unless the processor
   reference already carried one.

@@ -14,23 +14,22 @@ whose `responseKinds` an archive import (`har-importer-core`) extracts with. It 
   `Observation`s of a searchset `Bundle`, dropping-and-counting entries that
   carry no resource.
 - `src/recognize-fhir-root.ts` — `recognizeFhirRoot(matcher)`, which turns a
-  fused `UrlMatch.UrlMatcher` into the kind's `tryRecognize`: `Some` a
-  `PROTOCOL`-tier `RecognizedUrlData` whose `systemFamily` is the FHIR style
-  under the matcher's own captured root, `FhirStyleBaseUrl { baseUrl }` (so
-  there is no second hand-written root regex to keep in step), `None` when the
-  matcher does not claim the URL. Detaching under it keys each type in
-  `<baseUrl>/<Type>` and reads the server's absolute spelling of its own
-  references as the relative one.
+  fused `UrlMatch.UrlMatcher` into the kind's `tryRecognize` (`Some` a
+  `PROTOCOL`-tier claim, `None` when the matcher does not claim the URL), and
+  `detachUnderFhirRoot(matcher)`, which turns a parse of the server's records
+  into the kind's `parse`: each record detached (`fhir-r4-adoption`'s
+  `detach`) under `FhirStyleBaseUrl` of the root the same matcher captures off
+  the response's URL, so there is no second hand-written root regex to keep
+  in step. Detaching under it keys each type in `<baseUrl>/<Type>` and reads
+  the server's absolute spelling of its own references as the relative one.
 - `src/source.ts` — `fhirR4Source`, the package's one exported surface: the
   `SourceDescriptor` (`name: 'fhir-r4'`, display strings, and the
   `responseKinds`). Consumers reach the tuple through
   `fhirR4Source.responseKinds`, sharing it by reference.
 - `src/response-kinds.ts` — `fhirR4ResponseKinds` (internal, the descriptor's
   `responseKinds`): the tuple (Patient, Observation, Observation-list, in that
-  order), as `HttpResponseKind<FhirResource>`. Each parses the server's
-  resources as it spelled them, ids and literal references included; the
-  importer detaches them under the family the kind's `tryRecognize` minted for
-  the response's URL. A module-level constant, so the array is stable by
+  order), as `HttpResponseKind<DetachedResource.Type>`. Each parses the
+  server's resources and detaches them under the response URL's root. A module-level constant, so the array is stable by
   identity and every consumer shares the same kinds. Kinds only — no
   navigation, no provenance.
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer the entities decode
@@ -40,8 +39,8 @@ whose `responseKinds` an archive import (`har-importer-core`) extracts with. It 
 
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
 `http-extraction-fundamentals` (`HttpResponseKind`, `UrlMatch`, `Specificity`,
-`RecognizedUrlData`, `SystemFamily`), `fhir-r4` (resources), `effect`, and
-`kitchen-sink` — nothing else (its tests detach with `fhir-r4-adoption`). In
+`RecognizedUrlData`), `fhir-r4` (resources), `fhir-r4-adoption` (`detach`,
+`SystemFamily`), `effect`, and `kitchen-sink` — nothing else. In
 particular it must **never** import anything from `slices/importer` (whose
 `har-importer-core` consumes this package's `fhirR4Source.responseKinds`).
 This package's response-kind suites and `response-kinds.test.ts` pin only its
