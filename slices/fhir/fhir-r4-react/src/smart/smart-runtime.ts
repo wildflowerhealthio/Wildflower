@@ -1,7 +1,6 @@
-import { HttpClient, HttpClientRequest } from '@effect/platform'
+import { HttpClient } from '@effect/platform'
 import { QueryCache, QueryClient, type Query } from '@tanstack/react-query'
-import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
-import { Duration, Effect, Layer, Option, pipe } from 'effect'
+import { Duration, Effect, Layer, pipe } from 'effect'
 
 import {
   sliceRuntimeLayer,
@@ -9,54 +8,16 @@ import {
   type RunAuthed,
   type RuntimeLayer,
 } from '../router-context.ts'
+import { addressedTo } from './smart-client.ts'
 import type { SmartConnection } from './smart-connection.ts'
-
-/** The part of a {@link SmartConnection} that decides how a request is sent. */
-type SmartRequestTarget = Pick<SmartConnection, 'fhirBaseUrl' | 'accessToken'>
-
-/** True when `url` leads with a scheme, per RFC 3986's `scheme` production. */
-const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test(url)
-
-/** Whether `requestUrl` is the FHIR base `fhirBaseUrl` or a path under it, on its origin. */
-const isUnderFhirBase = (requestUrl: string, fhirBaseUrl: string): boolean => {
-  const request = URL.parse(requestUrl)
-  const base = URL.parse(fhirBaseUrl)
-  if (request === null || base === null) return false
-  const basePath = trimTrailingSlashes(base.pathname)
-  return (
-    request.origin === base.origin &&
-    (request.pathname === basePath || request.pathname.startsWith(`${basePath}/`))
-  )
-}
 
 /**
  * Wrap an `HttpClient` layer so every request for the FHIR server is addressed
- * to it and carries the SMART bearer token, and no other request does.
+ * to it and carries the SMART bearer token, and no other request does: the
+ * rule `SmartClient` follows ({@link addressedTo}), for a client that is not a
+ * `SmartClient`, such as the typed `FhirR4ResourcesHttpApiClient`.
  *
  * @remarks
- * Both halves are needed because a SMART app is served from its **own** origin
- * (its published site, or `http://localhost:{port}/` under its dev server), not
- * the FHIR server's. Left alone, the typed client's relative `/Patient…`
- * paths would resolve against the app's origin, and nothing else authenticates
- * the app cross-origin. So this app authenticates the way any third-party SMART
- * app does: with the token it was granted.
- *
- * One rule decides every request, whichever client made it (the typed
- * client's base-relative paths, or a `SmartClient.request` following a search
- * bundle's absolute `next` link):
- *
- * - A **relative** URL is resolved under `target.fhirBaseUrl` and carries the
- *   token: `/Patient` and `Patient` both become `{fhirBaseUrl}/Patient`.
- * - An **absolute** URL is left as it is. It carries the token only when it is
- *   the FHIR base or a path under it, on its origin; anywhere else it goes out
- *   bare, because the token was granted for this FHIR server alone and must
- *   never leave for a host that did not issue it. Prefixing an absolute URL
- *   would yield `http://host…http://…`, which `fetch` then resolves against the
- *   page origin — silent corruption rather than a failure.
- *
- * A target with no `accessToken` sets no header at all, rather than an empty
- * `Bearer `: an absent credential must read as absent.
- *
  * The transport is a parameter rather than baked in — the same shape as
  * `apps/launcher/launcher-web`'s `prependApiBaseUrl` — so what goes on the wire can
  * be asserted against a stub instead of a real `fetch`.
@@ -66,36 +27,12 @@ const isUnderFhirBase = (requestUrl: string, fhirBaseUrl: string): boolean => {
  * @returns The wrapped layer
  */
 const smartHttpClientLayer = (
-  target: SmartRequestTarget,
+  target: Pick<SmartConnection, 'fhirBaseUrl' | 'accessToken'>,
   transport: Layer.Layer<HttpClient.HttpClient>
-): Layer.Layer<HttpClient.HttpClient> => {
-  const { accessToken, fhirBaseUrl: baseUrl } = target
-  const withToken = (
-    request: HttpClientRequest.HttpClientRequest
-  ): HttpClientRequest.HttpClientRequest =>
-    Option.match(accessToken, {
-      onNone: () => request,
-      onSome: (token) => HttpClientRequest.bearerToken(request, token),
-    })
-  return Layer.effect(
-    HttpClient.HttpClient,
-    Effect.map(HttpClient.HttpClient, (client) =>
-      client.pipe(
-        HttpClient.mapRequest((request) => {
-          if (!hasAbsoluteScheme(request.url)) {
-            return withToken(
-              HttpClientRequest.updateUrl(
-                request,
-                (path) => `${baseUrl}/${path.replace(/^\/+/u, '')}`
-              )
-            )
-          }
-          return isUnderFhirBase(request.url, baseUrl) ? withToken(request) : request
-        })
-      )
-    )
-  ).pipe(Layer.provide(transport))
-}
+): Layer.Layer<HttpClient.HttpClient> =>
+  Layer.effect(HttpClient.HttpClient, Effect.map(HttpClient.HttpClient, addressedTo(target))).pipe(
+    Layer.provide(transport)
+  )
 
 /** Options for {@link buildSmartQueryClient}. */
 interface BuildSmartQueryClientOptions {
@@ -194,5 +131,4 @@ export {
   buildSmartRouterContext,
   smartHttpClientLayer,
   type BuildSmartQueryClientOptions,
-  type SmartRequestTarget,
 }

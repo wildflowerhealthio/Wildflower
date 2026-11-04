@@ -1,7 +1,7 @@
 import { Data, Effect, Either, Array as Arr, Schema, Schedule } from 'effect'
 import type { ParseError } from 'effect/ParseResult'
 
-import type { FhirRequestError, SmartClient } from './smart-client.ts'
+import { SmartClient, type FhirRequestError } from './smart-client.ts'
 
 /**
  * The page size a reader pins with `_count`, instead of a server's default
@@ -117,13 +117,13 @@ interface PagedResourceRead<A, I, First> {
  * @typeParam A - The decoded resource type
  * @typeParam I - The resource's FHIR wire (encoded) type
  * @typeParam First - The first-page input `read.firstPageQuery` consumes
- * @param client - The SMART client the search is issued through
  * @param read - What makes this read resource-specific: see {@link PagedResourceRead}
  * @param cursor - Where to read from: `{ first }` for the first page, `{ pageUrl }` for a later one
  * @returns An effect yielding the page's decoded resources and the next page's cursor
  *
  * @remarks
- * A `{ pageUrl }` cursor is passed to the client verbatim — the server's own
+ * The search is issued through the context's `SmartClient`. A `{ pageUrl }`
+ * cursor is passed to it verbatim — the server's own
  * `next` link already carries scope, sort and paging state — and each call
  * reads exactly one bundle page.
  *
@@ -142,11 +142,11 @@ interface PagedResourceRead<A, I, First> {
  * partial results without losing the page.
  */
 const fetchResourcePage = <A, I, First>(
-  client: SmartClient,
   read: PagedResourceRead<A, I, First>,
   cursor: ResourcePageCursor<First>
-): Effect.Effect<ResourcePage<A>, ResourcePageRequestError | BundleDecodeError> =>
+): Effect.Effect<ResourcePage<A>, ResourcePageRequestError | BundleDecodeError, SmartClient> =>
   Effect.gen(function* () {
+    const client = yield* SmartClient
     const query =
       'pageUrl' in cursor
         ? cursor.pageUrl
@@ -191,8 +191,8 @@ const fetchResourcePage = <A, I, First>(
  * @typeParam A - The decoded resource type
  * @typeParam First - The first-page input the page reader takes
  * @typeParam E - The page reader's error
- * @param fetchPage - One of this module's page readers, bound to its client —
- *   e.g. `(cursor) => fetchProcedurePage(client, cursor)`
+ * @typeParam R - What the page reader requires, e.g. `SmartClient`
+ * @param fetchPage - One of this module's page readers, e.g. `fetchProcedurePage`
  * @param first - The first page's input
  * @returns An effect yielding every page's decoded resources in server order
  *   and the total count of entries that failed to decode
@@ -205,10 +205,10 @@ const fetchResourcePage = <A, I, First>(
  * that fails with {@link ResourcePageCycleError} instead. A failed page fails
  * the whole read: a partial history is not the whole history.
  */
-const fetchAllResourcePages = <A, First, E>(
-  fetchPage: (cursor: ResourcePageCursor<First>) => Effect.Effect<ResourcePage<A>, E>,
+const fetchAllResourcePages = <A, First, E, R>(
+  fetchPage: (cursor: ResourcePageCursor<First>) => Effect.Effect<ResourcePage<A>, E, R>,
   first: First
-): Effect.Effect<Omit<ResourcePage<A>, 'nextPageUrl'>, E | ResourcePageCycleError> =>
+): Effect.Effect<Omit<ResourcePage<A>, 'nextPageUrl'>, E | ResourcePageCycleError, R> =>
   Effect.gen(function* () {
     const items: A[] = []
     let droppedEntryCount = 0

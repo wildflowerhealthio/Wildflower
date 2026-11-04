@@ -60,7 +60,6 @@ const planDefinitionRead: PagedResourceRead<
  * Fetch a single page of the `PlanDefinition`s on one topic from the SMART FHIR
  * server and report the cursor to the next page.
  *
- * @param client - The SMART client the search is issued through
  * @param cursor - The topic for the first page, or a previous page's `nextPageUrl`
  * @returns An effect yielding the page's decoded `PlanDefinition`s and the next page's cursor
  *
@@ -72,10 +71,9 @@ const planDefinitionRead: PagedResourceRead<
  * definitions whole and decides which it follows.
  */
 const fetchPlanDefinitionPage = (
-  client: SmartClient,
   cursor: PlanDefinitionPageCursor
-): Effect.Effect<PlanDefinitionPage, ResourcePageRequestError | BundleDecodeError> =>
-  fetchResourcePage(client, planDefinitionRead, cursor)
+): Effect.Effect<PlanDefinitionPage, ResourcePageRequestError | BundleDecodeError, SmartClient> =>
+  fetchResourcePage(planDefinitionRead, cursor)
 
 export {
   fetchPlanDefinitionPage,

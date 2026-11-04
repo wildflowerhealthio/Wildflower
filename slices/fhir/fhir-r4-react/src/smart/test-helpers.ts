@@ -12,12 +12,13 @@ import {
   HttpClientResponse,
   type HttpClientRequest,
 } from '@effect/platform'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Match } from 'effect'
 
-import { smartClientFor, type SmartClient, type SmartConnection } from './smart-client.ts'
+import { requestTargetOf, smartClientFor, type SmartClient } from './smart-client.ts'
+import { decodeFhirBaseUrl, type SmartConnection } from './smart-connection.ts'
 
 /** The FHIR base a {@link stubSmartClient} is connected to, and relative keys resolve under. */
-const STUB_FHIR_BASE = 'https://fhir.example'
+const STUB_FHIR_BASE = decodeFhirBaseUrl('https://fhir.example')
 
 /** How the stub server answers one request it was sent. */
 type StubAnswer = (
@@ -41,12 +42,12 @@ interface StubFhirServer {
   readonly urls: readonly string[]
 }
 
-/** True when `url` leads with a scheme. */
-const isAbsolute = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test(url)
-
 /** The absolute URL prefix the answer key `key` matches. */
 const prefixOf = (key: string): string =>
-  isAbsolute(key) ? key : `${STUB_FHIR_BASE}/${key.replace(/^\/+/u, '')}`
+  Match.value(requestTargetOf(key, STUB_FHIR_BASE)).pipe(
+    Match.tag('Relative', ({ path }) => `${STUB_FHIR_BASE}/${path}`),
+    Match.orElse(() => key)
+  )
 
 /**
  * A stub FHIR server answering from `answers`, the longest matching prefix

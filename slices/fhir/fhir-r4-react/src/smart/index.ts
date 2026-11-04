@@ -106,7 +106,6 @@ export {
   buildSmartRouterContext,
   smartHttpClientLayer,
   type BuildSmartQueryClientOptions,
-  type SmartRequestTarget,
 } from './smart-runtime.ts'
 
 export { decodeFhirBaseUrl, FhirBaseUrl, SmartConnection } from './smart-connection.ts'
@@ -124,9 +123,8 @@ export {
   FhirHttpError,
   FhirRequestDropped,
   FhirResponseNotJson,
-  smartClientFor,
+  SmartClient,
   type FhirRequestError,
-  type SmartClient,
 } from './smart-client.ts'
 
 export {

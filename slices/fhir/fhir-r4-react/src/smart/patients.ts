@@ -11,7 +11,7 @@ import {
   type ResourcePage,
   type ResourcePageCursor,
 } from './resource-page.ts'
-import type { FhirRequestError, SmartClient } from './smart-client.ts'
+import { SmartClient, type FhirRequestError } from './smart-client.ts'
 
 /** The decoded FHIR R4 `Patient` resource. */
 type PatientResource = Schema.Schema.Type<typeof Patient.Schema>
@@ -49,7 +49,6 @@ const patientRead: PagedResourceRead<
  * Fetch a single page of `Patient`s from the SMART FHIR server and report the
  * cursor to the next page.
  *
- * @param client - The SMART client the search is issued through
  * @param cursor - `{ first: null }` for the first page, or a previous page's `nextPageUrl`
  * @returns An effect yielding the page's decoded `Patient`s and the next page's cursor
  *
@@ -59,13 +58,12 @@ const patientRead: PagedResourceRead<
  * app reads. The one chosen is read directly with {@link fetchPatient}.
  */
 const fetchPatientPage = (
-  client: SmartClient,
   cursor: PatientPageCursor
-): Effect.Effect<PatientPage, ResourcePageRequestError | BundleDecodeError> =>
-  fetchResourcePage(client, patientRead, cursor)
+): Effect.Effect<PatientPage, ResourcePageRequestError | BundleDecodeError, SmartClient> =>
+  fetchResourcePage(patientRead, cursor)
 
 /**
- * Whether a failed `client.request` is the server answering that it holds no
+ * Whether a failed `SmartClient` request is the server answering that it holds no
  * such resource: 404 Not Found or 410 Gone.
  */
 const isNoSuchResource = (cause: FhirRequestError): boolean =>
@@ -80,8 +78,7 @@ const decodePatient = (resource: unknown): Effect.Effect<PatientResource, Bundle
 /**
  * Read one `Patient` by id.
  *
- * @param client - The SMART client the read is issued through
- * @param id - The patient's logical id, e.g. the `client.launchPatientId` a launch put in context
+ * @param id - The patient's logical id, e.g. the `launchPatientId` a launch put in context
  * @returns An effect yielding the decoded `Patient`, or `None` when the
  *          server answers 404 or 410
  *
@@ -93,10 +90,14 @@ const decodePatient = (resource: unknown): Effect.Effect<PatientResource, Bundle
  * patient" is the one answer a caller acts on rather than reports.
  */
 const fetchPatient = (
-  client: SmartClient,
   id: string
-): Effect.Effect<Option.Option<PatientResource>, ResourcePageRequestError | BundleDecodeError> =>
-  client.request(`Patient/${encodeURIComponent(id)}`).pipe(
+): Effect.Effect<
+  Option.Option<PatientResource>,
+  ResourcePageRequestError | BundleDecodeError,
+  SmartClient
+> =>
+  SmartClient.pipe(
+    Effect.flatMap((client) => client.request(`Patient/${encodeURIComponent(id)}`)),
     Effect.mapError((cause) => new ResourcePageRequestError({ cause })),
     Effect.flatMap(decodePatient),
     Effect.asSome,

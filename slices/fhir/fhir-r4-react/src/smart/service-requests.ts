@@ -107,7 +107,6 @@ const serviceRequestRead: PagedResourceRead<
  * Fetch a single page of the `active` `ServiceRequest`s of one category that
  * carry out one definition, and report the cursor to the next page.
  *
- * @param client - The SMART client the search is issued through
  * @param cursor - Patient scope, category and definition for the first page,
  *   or a previous page's `nextPageUrl`
  * @returns An effect yielding the page's decoded `ServiceRequest`s and the next page's cursor
@@ -115,7 +114,7 @@ const serviceRequestRead: PagedResourceRead<
  * @remarks
  * Only `active` requests are read: a `revoked` or `completed` request is no
  * longer one to act on. The patient id is a parameter rather than something
- * this reader lifts off `client.launchPatientId`, so the caller decides what "no
+ * this reader lifts off `SmartConnection.launchPatientId`, so the caller decides what "no
  * patient in context" means for its launch; `null` drops the `patient=`
  * filter entirely. A `null` definition drops `instantiates-canonical=`, so a
  * caller can find which definitions a patient's requests carry out before it
@@ -123,16 +122,14 @@ const serviceRequestRead: PagedResourceRead<
  * other that fails to decode.
  */
 const fetchActiveServiceRequestPage = (
-  client: SmartClient,
   cursor: ServiceRequestPageCursor
-): Effect.Effect<ServiceRequestPage, ResourcePageRequestError | BundleDecodeError> =>
-  fetchResourcePage(client, activeServiceRequestRead, cursor)
+): Effect.Effect<ServiceRequestPage, ResourcePageRequestError | BundleDecodeError, SmartClient> =>
+  fetchResourcePage(activeServiceRequestRead, cursor)
 
 /**
  * Fetch a single page of the `ServiceRequest`s of one category that carry out
  * one definition, in every `status`, and report the cursor to the next page.
  *
- * @param client - The SMART client the search is issued through
  * @param cursor - Patient scope, category and definition for the first page,
  *   or a previous page's `nextPageUrl`
  * @returns An effect yielding the page's decoded `ServiceRequest`s and the next page's cursor
@@ -143,10 +140,9 @@ const fetchActiveServiceRequestPage = (
  * request each event carried out. Which statuses it uses is its own decision.
  */
 const fetchServiceRequestPage = (
-  client: SmartClient,
   cursor: ServiceRequestPageCursor
-): Effect.Effect<ServiceRequestPage, ResourcePageRequestError | BundleDecodeError> =>
-  fetchResourcePage(client, serviceRequestRead, cursor)
+): Effect.Effect<ServiceRequestPage, ResourcePageRequestError | BundleDecodeError, SmartClient> =>
+  fetchResourcePage(serviceRequestRead, cursor)
 
 export {
   fetchActiveServiceRequestPage,
