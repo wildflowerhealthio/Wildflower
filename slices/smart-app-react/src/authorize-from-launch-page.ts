@@ -1,6 +1,7 @@
 import {
   appRootRedirectUri,
   authorizeSmartLaunch,
+  decodeFhirBaseUrl,
   launchErrorBodyFor,
   launchErrorRedirect,
   type ArrivingSmartLaunch,
@@ -54,7 +55,7 @@ const authorizeFromLaunchPage = async (
   saveReturnRoute(window.sessionStorage, launchPageHref, servedDirectory)
   try {
     await authorizeSmartLaunch(
-      { ...registration, redirectUri, iss: arrivingLaunch.iss },
+      { ...registration, redirectUri, iss: decodeFhirBaseUrl(arrivingLaunch.iss) },
       arrivingLaunch.launch
     )
     return null

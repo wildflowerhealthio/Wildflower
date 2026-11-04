@@ -1,9 +1,8 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
-import type { Session } from '@wildflowerhealthio/authorization-core/smart-client'
-import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
 import type { Layer } from 'effect'
 import { Array as Arr, Data, Effect, Option, Schema } from 'effect'
 
+import type { SmartConnection } from './smart-connection.ts'
 import { smartHttpClientLayer } from './smart-runtime.ts'
 
 /**
@@ -81,39 +80,22 @@ type FhirRequestError = FhirHttpError | FhirRequestDropped | FhirResponseNotJson
 /**
  * The FHIR server a completed SMART handshake connected the app to, and the
  * one read the app makes against it.
- *
- * @remarks
- * Its `serverUrl` and `accessToken` are a `SmartSession`, so the client itself
- * is what `buildSmartRouterContext` takes. The token lives in this object
- * only, in page memory, and dies with the tab.
  */
 interface SmartClient {
-  /** The FHIR base the handshake connected to, with no trailing slash. */
-  readonly serverUrl: string
-  /** The bearer token the sign-in redeemed, or `undefined` for an open server. */
-  readonly accessToken: string | undefined
-  /** The patient the launch put in context, when the token response named one. */
-  readonly launchPatientId: Option.Option<string>
+  /** The server the handshake connected to, and the token it holds for it. */
+  readonly connection: SmartConnection
   /**
    * GET `url` and read the answer as JSON.
    *
    * @remarks
    * The request goes out through `smartHttpClientLayer`, the rule every read
    * of the session follows: a relative `url` (`Patient?_count=200`) is resolved
-   * against `serverUrl`, and an absolute one (a search bundle's `next` link) is
-   * requested as it is. The bearer token rides only a request to `serverUrl` or
+   * against `connection.fhirBaseUrl`, and an absolute one (a search bundle's `next` link) is
+   * requested as it is. The bearer token rides only a request to the FHIR base or
    * a path under it: an absolute URL anywhere else goes out with no
    * credential, because the token is for this FHIR server alone.
    */
   readonly request: (url: string) => Effect.Effect<unknown, FhirRequestError>
-}
-
-/**
- * What a {@link SmartClient} is made from: a redeemed sign-in `Session`, or an
- * open server's address with no token.
- */
-type SmartConnection = Pick<Session, 'serverUrl' | 'patient'> & {
-  readonly accessToken: string | undefined
 }
 
 /** The {@link FhirHttpError} for the error-status `response`, read from its body. */
@@ -136,7 +118,7 @@ const fhirHttpErrorFrom = (
  * The {@link SmartClient} for `connection`, making its requests through
  * `smartHttpClientLayer` over `transport`.
  *
- * @param connection - The redeemed session, or an open server with no token
+ * @param connection - The server the sign-in connected to, with its token
  * @param transport - The `HttpClient` the requests go out over; the app passes
  *   `FetchHttpClient.layer`, a test a stub
  */
@@ -144,9 +126,7 @@ const smartClientFor = (
   connection: SmartConnection,
   transport: Layer.Layer<HttpClient.HttpClient>
 ): SmartClient => {
-  const serverUrl = trimTrailingSlashes(connection.serverUrl)
-  const { accessToken } = connection
-  const httpLayer = smartHttpClientLayer({ serverUrl, accessToken }, transport)
+  const httpLayer = smartHttpClientLayer(connection, transport)
   const request = (url: string): Effect.Effect<unknown, FhirRequestError> =>
     HttpClient.get(url, { acceptJson: true }).pipe(
       Effect.flatMap(
@@ -165,14 +145,7 @@ const smartClientFor = (
       }),
       Effect.provide(httpLayer)
     )
-  return {
-    serverUrl,
-    accessToken,
-    launchPatientId: Option.fromNullable(connection.patient).pipe(
-      Option.filter((patientId) => patientId !== '')
-    ),
-    request,
-  }
+  return { connection, request }
 }
 
 export {
@@ -182,5 +155,4 @@ export {
   smartClientFor,
   type FhirRequestError,
   type SmartClient,
-  type SmartConnection,
 }

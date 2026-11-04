@@ -106,8 +106,10 @@ export {
   buildSmartRouterContext,
   smartHttpClientLayer,
   type BuildSmartQueryClientOptions,
-  type SmartSession,
+  type SmartRequestTarget,
 } from './smart-runtime.ts'
+
+export { decodeFhirBaseUrl, FhirBaseUrl, SmartConnection } from './smart-connection.ts'
 
 export {
   isSmartHandshakeQuery,
@@ -125,7 +127,6 @@ export {
   smartClientFor,
   type FhirRequestError,
   type SmartClient,
-  type SmartConnection,
 } from './smart-client.ts'
 
 export {

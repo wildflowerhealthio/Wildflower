@@ -4,7 +4,6 @@ import {
   smartIssuerFrom,
   type SmartIssuer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
 import { Either, Schema } from 'effect'
 
 import {
@@ -12,6 +11,7 @@ import {
   authorizeSmartLaunchAt,
   type SmartLaunchConfig,
 } from './smart-launch.ts'
+import type { FhirBaseUrl } from './smart-connection.ts'
 
 /**
  * What probing a FHIR server's `.well-known/smart-configuration` told us about
@@ -56,20 +56,18 @@ const namesAuthorizationEndpoint = Schema.is(NamesAuthorizationEndpoint)
  * from `window.location`) is what decides whether a plain-http endpoint off
  * loopback is `unusable`.
  *
- * @param iss - The FHIR server base (trailing slashes are trimmed before the
- *   well-known path is appended)
+ * @param iss - The FHIR server base the well-known path is appended to
  * @param fetchFn - The `fetch` to probe with; defaults to `globalThis.fetch`
  * @param pageIsSecure - Whether this page is served over https
  */
 const detectSmartSupport = async (
-  iss: string,
+  iss: FhirBaseUrl,
   fetchFn: typeof fetch = globalThis.fetch,
   pageIsSecure: boolean = window.location.protocol === 'https:'
 ): Promise<SmartSupport> => {
-  const base = trimTrailingSlashes(iss)
   let response: Response
   try {
-    response = await fetchFn(`${base}/.well-known/smart-configuration`, {
+    response = await fetchFn(`${iss}/.well-known/smart-configuration`, {
       headers: { Accept: 'application/json' },
     })
   } catch (error) {
@@ -88,7 +86,7 @@ const detectSmartSupport = async (
     return { kind: 'open' }
   }
   if (!namesAuthorizationEndpoint(config)) return { kind: 'open' }
-  return Either.match(smartIssuerFrom(base, config, { pageIsSecure }), {
+  return Either.match(smartIssuerFrom(iss, config, { pageIsSecure }), {
     onLeft: (failed): SmartSupport => ({ kind: 'unusable', reason: failed.reason }),
     onRight: (issuer): SmartSupport => ({ kind: 'smart', issuer }),
   })

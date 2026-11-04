@@ -3,6 +3,7 @@ import { Either, Match } from 'effect'
 import { useEffect, useRef, useState, type JSX, type SubmitEvent } from 'react'
 
 import {
+  decodeFhirBaseUrl,
   insecureTargetReason,
   startStandaloneLaunch,
   withLocalNetworkAccessHint,
@@ -222,7 +223,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
   const startConnecting = (serverUrl: string): Promise<string | undefined> =>
     props.target === 'fhir-r4'
       ? startStandaloneLaunch({
-          iss: serverUrl,
+          iss: decodeFhirBaseUrl(serverUrl),
           clientId: props.clientId,
           scope: props.scope,
           redirectUri: props.redirectUri,

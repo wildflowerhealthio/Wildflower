@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { QueryCache, QueryClient, type Query } from '@tanstack/react-query'
 import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
-import { Duration, Effect, Layer, pipe } from 'effect'
+import { Duration, Effect, Layer, Option, pipe } from 'effect'
 
 import {
   sliceRuntimeLayer,
@@ -9,26 +9,10 @@ import {
   type RunAuthed,
   type RuntimeLayer,
 } from '../router-context.ts'
+import type { SmartConnection } from './smart-connection.ts'
 
-/**
- * The SMART handshake resolved to the two facts a SMART app's HTTP layer
- * needs. A `SmartClient` is one.
- *
- * @remarks
- * Kept to primitives rather than the whole client, so the runtime below is
- * testable without a SMART handshake.
- */
-interface SmartSession {
-  /**
-   * The FHIR server base the handshake named — an EHR launch's `iss`, or the
-   * server a standalone launch was pointed at (e.g.
-   * `https://launch.smarthealthit.org/v/r4/fhir`). Used verbatim as the base for
-   * the typed client's relative paths; only trailing slashes are trimmed.
-   */
-  readonly serverUrl: string
-  /** The bearer token from the token exchange, or `undefined` for an open server. */
-  readonly accessToken: string | undefined
-}
+/** The part of a {@link SmartConnection} that decides how a request is sent. */
+type SmartRequestTarget = Pick<SmartConnection, 'fhirBaseUrl' | 'accessToken'>
 
 /** True when `url` leads with a scheme, per RFC 3986's `scheme` production. */
 const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test(url)
@@ -61,9 +45,8 @@ const isUnderFhirBase = (requestUrl: string, fhirBaseUrl: string): boolean => {
  * client's base-relative paths, or a `SmartClient.request` following a search
  * bundle's absolute `next` link):
  *
- * - A **relative** URL is resolved under `session.serverUrl` verbatim (trailing
- *   slashes trimmed) and carries the token: `/Patient` and `Patient` both
- *   become `{serverUrl}/Patient`.
+ * - A **relative** URL is resolved under `target.fhirBaseUrl` and carries the
+ *   token: `/Patient` and `Patient` both become `{fhirBaseUrl}/Patient`.
  * - An **absolute** URL is left as it is. It carries the token only when it is
  *   the FHIR base or a path under it, on its origin; anywhere else it goes out
  *   bare, because the token was granted for this FHIR server alone and must
@@ -71,27 +54,29 @@ const isUnderFhirBase = (requestUrl: string, fhirBaseUrl: string): boolean => {
  *   would yield `http://host…http://…`, which `fetch` then resolves against the
  *   page origin — silent corruption rather than a failure.
  *
- * A session with no `accessToken` sets no header at all, rather than an empty
+ * A target with no `accessToken` sets no header at all, rather than an empty
  * `Bearer `: an absent credential must read as absent.
  *
  * The transport is a parameter rather than baked in — the same shape as
  * `apps/launcher/launcher-web`'s `prependApiBaseUrl` — so what goes on the wire can
  * be asserted against a stub instead of a real `fetch`.
  *
- * @param session - The FHIR base and bearer token from the SMART handshake
+ * @param target - The FHIR base and bearer token from the SMART handshake
  * @param transport - The underlying `HttpClient` this wraps
  * @returns The wrapped layer
  */
 const smartHttpClientLayer = (
-  session: SmartSession,
+  target: SmartRequestTarget,
   transport: Layer.Layer<HttpClient.HttpClient>
 ): Layer.Layer<HttpClient.HttpClient> => {
-  const { accessToken } = session
-  const baseUrl = trimTrailingSlashes(session.serverUrl)
+  const { accessToken, fhirBaseUrl: baseUrl } = target
   const withToken = (
     request: HttpClientRequest.HttpClientRequest
   ): HttpClientRequest.HttpClientRequest =>
-    accessToken === undefined ? request : HttpClientRequest.bearerToken(request, accessToken)
+    Option.match(accessToken, {
+      onNone: () => request,
+      onSome: (token) => HttpClientRequest.bearerToken(request, token),
+    })
   return Layer.effect(
     HttpClient.HttpClient,
     Effect.map(HttpClient.HttpClient, (client) =>
@@ -181,18 +166,18 @@ const buildSmartQueryClient = (options: BuildSmartQueryClientOptions = {}): Quer
  * Nothing is re-sent on a 401: a bearer token is in hand before this is built,
  * so a 401 here is a real 401.
  *
- * @param session - The FHIR base and bearer token from the SMART handshake
+ * @param connection - The server the SMART handshake connected to
  * @param transport - The underlying `HttpClient` every read goes out over
  * @param queryClient - The `QueryClient` the context carries; defaults to a
  *   fresh {@link buildSmartQueryClient}
  * @returns A router context ready for `createRouter`'s `context`
  */
 const buildSmartRouterContext = (
-  session: SmartSession,
+  connection: SmartConnection,
   transport: Layer.Layer<HttpClient.HttpClient>,
   queryClient: QueryClient = buildSmartQueryClient()
 ): RouterContext => {
-  const httpLayer = smartHttpClientLayer(session, transport)
+  const httpLayer = smartHttpClientLayer(connection, transport)
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(sliceRuntimeLayer, httpLayer)
   const runAuthed: RunAuthed = (effect, options) =>
     Effect.runPromise(Effect.provide(effect, runtimeLayer), options)
@@ -209,5 +194,5 @@ export {
   buildSmartRouterContext,
   smartHttpClientLayer,
   type BuildSmartQueryClientOptions,
-  type SmartSession,
+  type SmartRequestTarget,
 }

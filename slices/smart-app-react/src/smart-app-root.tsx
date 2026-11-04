@@ -304,10 +304,10 @@ function SmartAppRoot({
   // such as a bare hostname.
   useEffect(() => {
     if (!telemetryStarted) return undefined
-    return whenSmartHandshakeReady(queryClient, (readyClient) => {
-      const fhirServerUrl = URL.parse(readyClient.serverUrl)
+    return whenSmartHandshakeReady(queryClient, (connection) => {
+      const fhirServerUrl = URL.parse(connection.fhirBaseUrl)
       if (fhirServerUrl === null) {
-        redactServerHost(readyClient.serverUrl)
+        redactServerHost(connection.fhirBaseUrl)
         Sentry.captureException(new Error("The SMART handshake's FHIR server is not a URL"), {
           tags: { source: 'fhir-server-host' },
         })

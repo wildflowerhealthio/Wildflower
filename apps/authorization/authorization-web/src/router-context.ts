@@ -3,9 +3,10 @@ import type { QueryClient } from '@tanstack/react-query'
 import { AuthorizationRouterContext } from '@wildflowerhealthio/authorization-react'
 import {
   buildSmartQueryClient,
+  decodeFhirBaseUrl,
   smartHttpClientLayer,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 
 import type { ServerSession } from './sign-in.ts'
 
@@ -50,8 +51,8 @@ const buildRouterContext = (
 ): RouterContext => {
   const httpLayer = smartHttpClientLayer(
     {
-      serverUrl: apiRequestBaseUrl(session.authorizationApiUrl),
-      accessToken: session.accessToken,
+      fhirBaseUrl: decodeFhirBaseUrl(apiRequestBaseUrl(session.authorizationApiUrl)),
+      accessToken: Option.some(session.accessToken),
     },
     transport
   )

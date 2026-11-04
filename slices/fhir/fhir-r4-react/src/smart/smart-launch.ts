@@ -1,4 +1,3 @@
-import { FetchHttpClient } from '@effect/platform'
 import {
   arrivingSmartLaunchFrom,
   AuthorizationRejected,
@@ -13,14 +12,14 @@ import {
   searchWithoutAuthorizationResponse,
   SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
+  type Session,
   type SignInEnvironment,
   type SignInError,
   type SmartIssuer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
 import { Effect, Either, Option, Schema } from 'effect'
 
-import { smartClientFor, type SmartClient } from './smart-client.ts'
+import { decodeFhirBaseUrl, FhirBaseUrl, SmartConnection } from './smart-connection.ts'
 
 /**
  * Configuration for a SMART App Launch: the app's registered client, where the
@@ -32,7 +31,7 @@ interface SmartLaunchConfig {
   readonly scope: string
   readonly redirectUri: string
   /** The FHIR server base to sign in to: an EHR launch's `iss`, or a picked server. */
-  readonly iss: string
+  readonly iss: FhirBaseUrl
 }
 
 /**
@@ -55,7 +54,7 @@ const PENDING_CONNECTION_KEY = 'fhir-r4-react.pending-connection'
  */
 const PendingOpenServer = Schema.Struct({
   state: Schema.String,
-  serverUrl: Schema.String,
+  serverUrl: FhirBaseUrl,
 })
 type PendingOpenServer = Schema.Schema.Type<typeof PendingOpenServer>
 
@@ -172,7 +171,7 @@ const authorizeSmartLaunch = (
   launch: string | undefined
 ): Promise<void> =>
   leaveForAuthorization(
-    beginSignIn(trimTrailingSlashes(config.iss), undefined, signInEnvironmentFor(config), {
+    beginSignIn(config.iss, undefined, signInEnvironmentFor(config), {
       launch,
     })
   )
@@ -192,12 +191,12 @@ const authorizeSmartLaunchAt = (
  * Configuration for connecting to an **open** FHIR server — one whose
  * `.well-known/smart-configuration` names no authorization endpoint (or serves
  * no config at all). There is no OAuth handshake: the page goes straight to
- * the redirect target, which `readySmartClient` completes into a client with
- * no access token.
+ * the redirect target, which `readySmartClient` completes into a connection
+ * with no access token.
  */
 interface OpenServerConfig {
   /** The FHIR server base to connect to, used with no `Authorization` header. */
-  readonly fhirServiceUrl: string
+  readonly fhirServiceUrl: FhirBaseUrl
   readonly redirectUri: string
 }
 
@@ -213,7 +212,7 @@ const authorizeOpenServer = (config: OpenServerConfig): Promise<void> =>
       const state = createState(window.crypto)
       yield* rememberPendingOpenServer({
         state,
-        serverUrl: trimTrailingSlashes(config.fhirServiceUrl),
+        serverUrl: config.fhirServiceUrl,
       })
       const redirectTarget = new URL(config.redirectUri)
       redirectTarget.searchParams.set('state', state)
@@ -221,11 +220,24 @@ const authorizeOpenServer = (config: OpenServerConfig): Promise<void> =>
     })
   )
 
+/**
+ * The connection a redeemed sign-in `session` is: its server, its token, and
+ * the patient its token response named, if it named one.
+ */
+const connectionOf = (session: Session): SmartConnection =>
+  new SmartConnection({
+    fhirBaseUrl: decodeFhirBaseUrl(session.serverUrl),
+    accessToken: Option.some(session.accessToken),
+    launchPatientId: Option.fromNullable(session.patient).pipe(
+      Option.filter((patientId) => patientId !== '')
+    ),
+  })
+
 /** Redeem the code `search` carries for the sign-in `environment` started. */
 const redeemSignIn = (
   search: string,
   environment: SignInEnvironment
-): Effect.Effect<SmartClient, SignInError> =>
+): Effect.Effect<SmartConnection, SignInError> =>
   completeSignIn(search, environment).pipe(
     Effect.flatMap(
       Option.match({
@@ -237,7 +249,7 @@ const redeemSignIn = (
                 'Connect again.',
             })
           ),
-        onSome: (session) => Effect.succeed(smartClientFor(session, FetchHttpClient.layer)),
+        onSome: (session) => Effect.succeed(connectionOf(session)),
       })
     )
   )
@@ -249,7 +261,7 @@ const redeemSignIn = (
 const connectOpenServer = (
   search: string,
   storedOpenServer: Option.Option<string>
-): Effect.Effect<SmartClient, AuthorizationRejected | PendingRequestUnrecognised> =>
+): Effect.Effect<SmartConnection, AuthorizationRejected | PendingRequestUnrecognised> =>
   Effect.gen(function* () {
     if (Option.isNone(storedOpenServer)) {
       return yield* new AuthorizationRejected({
@@ -269,10 +281,11 @@ const connectOpenServer = (
         reason: 'The connection came back with the wrong state parameter, so it was discarded.',
       })
     }
-    return smartClientFor(
-      { serverUrl: pendingOpenServer.value.serverUrl, accessToken: undefined, patient: undefined },
-      FetchHttpClient.layer
-    )
+    return new SmartConnection({
+      fhirBaseUrl: pendingOpenServer.value.serverUrl,
+      accessToken: Option.none(),
+      launchPatientId: Option.none(),
+    })
   })
 
 /**
@@ -302,8 +315,8 @@ const callbackEnvironment = (
 
 /**
  * Complete the connection on the redirect target: redeem the code a SMART
- * sign-in came back with, or accept an open server's return, and resolve to a
- * ready {@link SmartClient}.
+ * sign-in came back with, or accept an open server's return, and resolve to
+ * the {@link SmartConnection} it made.
  *
  * @param registration - The app's SMART registration, which the code is
  *   redeemed as
@@ -320,7 +333,7 @@ const callbackEnvironment = (
 const readySmartClient = (
   registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
   servedDirectory?: string
-): Promise<SmartClient> =>
+): Promise<SmartConnection> =>
   runConnectionStep(
     Effect.gen(function* () {
       const { search, environment } = callbackEnvironment(registration, servedDirectory)

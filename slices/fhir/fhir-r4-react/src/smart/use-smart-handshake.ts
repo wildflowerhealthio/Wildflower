@@ -10,17 +10,17 @@ import { Option } from 'effect'
 import { useEffect } from 'react'
 
 import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'
-import type { SmartClient } from './smart-client.ts'
+import type { SmartConnection } from './smart-connection.ts'
 import { appRootRedirectUri, readySmartClient, type SmartLaunchConfig } from './smart-launch.ts'
 
 /**
  * The state of completing the SMART handshake on the redirect page: still
- * exchanging, failed, or resolved to a ready {@link SmartClient}.
+ * exchanging, failed, or resolved to the {@link SmartConnection} it made.
  */
 type SmartHandshake =
   | { readonly kind: 'connecting' }
   | { readonly kind: 'error'; readonly error: unknown }
-  | { readonly kind: 'ready'; readonly client: SmartClient }
+  | { readonly kind: 'ready'; readonly connection: SmartConnection }
 
 /**
  * The key the handshake query runs under. App-independent and constant so that
@@ -31,14 +31,14 @@ const SMART_HANDSHAKE_QUERY_KEY = ['fhir-r4-react', 'smart-handshake'] as const
 /**
  * The handshake query's settings, shared by the one hook that runs it and
  * the one that only reads it: the key, typed so a read of its data is a
- * {@link SmartClient}.
+ * {@link SmartConnection}.
  *
  * @remarks
  * `retry: false` because re-POSTing a consumed code cannot succeed. `staleTime`
  * and `gcTime` are `Infinity` because there is nothing to refetch — the
  * handshake is a one-shot whose result lives for the page.
  */
-const smartHandshakeQueryBase = queryOptions<SmartClient>({
+const smartHandshakeQueryBase = queryOptions<SmartConnection>({
   queryKey: SMART_HANDSHAKE_QUERY_KEY,
   retry: false,
   staleTime: Infinity,
@@ -78,7 +78,7 @@ const useSmartHandshake = (
     ...smartHandshakeQueryBase,
     queryFn: () => readySmartClient(registration, servedDirectory),
   })
-  if (query.isSuccess) return { kind: 'ready', client: query.data }
+  if (query.isSuccess) return { kind: 'ready', connection: query.data }
   if (query.isError) return { kind: 'error', error: query.error }
   return { kind: 'connecting' }
 }
@@ -93,7 +93,7 @@ const useSmartHandshake = (
  * single-use exchange, however it mounts. It re-renders when the handshake
  * settles.
  */
-const useSmartClient = (): Option.Option<SmartClient> => {
+const useSmartClient = (): Option.Option<SmartConnection> => {
   const query = useQuery({ ...smartHandshakeQueryBase, queryFn: skipToken })
   return Option.fromNullable(query.data)
 }
@@ -116,7 +116,7 @@ const useSmartClient = (): Option.Option<SmartClient> => {
  */
 const whenSmartHandshakeReady = (
   queryClient: QueryClient,
-  onReady: (client: SmartClient) => void
+  onReady: (connection: SmartConnection) => void
 ): (() => void) => {
   let notified = false
   const notifyIfReady = (): void => {
