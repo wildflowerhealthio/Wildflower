@@ -48,7 +48,7 @@ runs:
 
     - name: Install mdbook
       if: steps.book.outputs.needed == 'true'
-      uses: taiki-e/install-action@v2.87.32
+      uses: taiki-e/install-action@v2.88.1
       with:
         tool: mdbook@0.5.4
 
