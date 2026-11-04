@@ -1,13 +1,11 @@
-import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { useQueryClient } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import { buildSmartRouterContext, type SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { buildSmartRouterContext, type SmartRuntime } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   LoadingLine,
   type SmartAppPage,
   SmartHandshakeGate,
 } from '@wildflowerhealthio/smart-app-react'
-import type { Layer } from 'effect'
 import { type JSX, useState } from 'react'
 
 import { AppTitle } from './app-title.tsx'
@@ -24,10 +22,8 @@ interface AppProps {
 
 /** Props for {@link StrengthRouter}. */
 type StrengthRouterProps = AppProps & {
-  /** The client the completed SMART handshake handed the app. */
-  readonly client: SmartClient
-  /** What the writes are sent over: `FetchHttpClient.layer`, or a test's stub. */
-  readonly transport: Layer.Layer<HttpClient.HttpClient>
+  /** The runtime the completed SMART handshake built, which every read and write runs on. */
+  readonly runtime: SmartRuntime
 }
 
 /**
@@ -38,21 +34,17 @@ type StrengthRouterProps = AppProps & {
  * Mounted under `smart-app-react`'s `SmartHandshakeGate`, so never before the
  * handshake is done with the callback URL.
  *
- * Its context is fixed for the visit: the page's query cache, the one client
- * the handshake hands out (its code is single-use, so there is never a
- * second), the write runner `buildSmartRouterContext` builds over it and
- * `transport` (the one shared function that prefixes the FHIR base and sets
- * the bearer header, on the page's query cache), and the StrongLifts template
- * ids. Whose record the page shows is the path, so a patient change is a
+ * Its context is fixed for the visit: the page's query cache, the one runtime
+ * the handshake builds (its code is single-use, so there is never a second),
+ * which addresses every read and write to the FHIR base with the bearer
+ * token, and the StrongLifts template ids. Whose record the page shows is the path, so a patient change is a
  * navigation and the router lives as long as the page.
  */
-function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.Element {
+function StrengthRouter({ page, runtime }: StrengthRouterProps): JSX.Element {
   const queryClient = useQueryClient()
   const [router] = useState(() =>
     buildRouter(page, {
-      queryClient,
-      client,
-      runAuthed: buildSmartRouterContext(client, transport, queryClient).runAuthed,
+      ...buildSmartRouterContext(runtime, queryClient),
       strongLiftsPlanDefinitionIdFor: strongLiftsPlanDefinitionIdMinter(),
     })
   )
@@ -70,9 +62,7 @@ function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.E
  * The token exchange (`useSmartHandshake`) is a TanStack Query on the page's
  * shared client, keyed and deduped so StrictMode's double-mount exchanges the
  * single-use code once; the routes read the lifter's record on the same
- * client. Reads go through the client the handshake yields (its `request`
- * already carries the token and the server base); writes go through
- * `fetch`.
+ * client, and read and write through the runtime the handshake builds.
  */
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>
@@ -86,7 +76,7 @@ const App = ({ page }: AppProps): JSX.Element => (
         </>
       }
     >
-      {(client) => <StrengthRouter page={page} client={client} transport={FetchHttpClient.layer} />}
+      {(runtime) => <StrengthRouter page={page} runtime={runtime} />}
     </SmartHandshakeGate>
   </main>
 )

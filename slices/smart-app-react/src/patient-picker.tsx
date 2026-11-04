@@ -2,11 +2,11 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 import {
   fetchPatientPage,
   type PatientPageCursor,
-  type SmartClient,
+  useRunSmart,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { pagedQueryStatusOf } from '@wildflowerhealthio/react-kitchen-sink'
 import { ItemList, type ItemListItem } from '@wildflowerhealthio/react-tundraish'
-import { Effect, Match } from 'effect'
+import { Match } from 'effect'
 import type { JSX } from 'react'
 
 import { type PatientChoice, patientChoiceKeyOf } from './patient-choice.ts'
@@ -18,8 +18,6 @@ const FIRST_PATIENT_PAGE: PatientPageCursor = { first: null }
 
 /** Props for {@link PatientPicker}. */
 interface PatientPickerProps {
-  /** The SMART client the patient search is issued through. */
-  readonly client: SmartClient
   /** Called with what the reader chose: one patient, or every patient. */
   readonly onPatientChoice: (patientChoice: PatientChoice) => void
 }
@@ -34,11 +32,12 @@ interface PatientPickerProps {
  * A patient without an `id` has nothing to be chosen by, so it gets no row.
  * After a failed page the button stays, as the retry.
  */
-const PatientPicker = ({ client, onPatientChoice }: PatientPickerProps): JSX.Element => {
+const PatientPicker = ({ onPatientChoice }: PatientPickerProps): JSX.Element => {
+  const runSmart = useRunSmart()
   const patients = useInfiniteQuery({
     queryKey: ['patient-picker'],
     queryFn: ({ pageParam }: { readonly pageParam: PatientPageCursor }) =>
-      Effect.runPromise(fetchPatientPage(client, pageParam)),
+      runSmart(fetchPatientPage(pageParam)),
     initialPageParam: FIRST_PATIENT_PAGE,
     getNextPageParam: (lastPage): PatientPageCursor | undefined =>
       lastPage.nextPageUrl === null ? undefined : { pageUrl: lastPage.nextPageUrl },

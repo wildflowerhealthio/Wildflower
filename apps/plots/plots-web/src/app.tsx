@@ -1,4 +1,4 @@
-import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartConnection } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   LoadingLine,
   PatientChoiceLine,
@@ -26,7 +26,7 @@ import styles from './app.module.css'
  *
  * @remarks
  * Whose record is `smart-app-react`'s `usePatientChoice`: the URL's
- * `?patient=`, else the launch's patient (`client.launchPatientId`); with neither
+ * `?patient=`, else the launch's patient (`connection.launchPatientId`); with neither
  * the page is the `PatientPicker`. "All patients" reads every patient's
  * Observations and MedicationRequests unscoped, charted together. The
  * `PatientChoiceLine` under the title names the choice and goes back to the picker, and
@@ -43,40 +43,39 @@ export const App = (): JSX.Element => (
       <h1 className="text-heading-3">Plots</h1>
     </header>
     <SmartHandshakeGate registration={smartRegistration} connecting={<LoadingLine />}>
-      {(client) => <PlotsPage client={client} />}
+      {({ connection }) => <PlotsPage connection={connection} />}
     </SmartHandshakeGate>
   </main>
 )
 
 /**
- * The page over a completed handshake's `client`: the line naming whose
- * record it reads, under the title, then the picker or the chosen record.
+ * The page over a completed handshake's `connection`: the line naming whose
+ * record it reads, under the title, then the picker or the chosen record,
+ * each read over the handshake's runtime (`useRunSmart`).
  */
-const PlotsPage = ({ client }: { readonly client: SmartClient }): JSX.Element => {
+const PlotsPage = ({ connection }: { readonly connection: SmartConnection }): JSX.Element => {
   const { selection, updateSelection } = useUrlSelection()
   // The instant the page opened: the right edge of every bounded range, held
   // still so the chart's window does not move on each render.
   const [openedAt] = useState(() => DateTime.unsafeNow())
-  const { patientChoice, choosePatient, changePatient } = usePatientChoice(client.launchPatientId)
+  const { patientChoice, choosePatient, changePatient } = usePatientChoice(connection.launchPatientId)
 
   return (
     <>
       {Option.isSome(patientChoice) ? (
         <PatientChoiceLine
           className={styles['patient-line']}
-          client={client}
           patientChoice={patientChoice.value}
           onPatientChange={changePatient}
           {...walkthroughAnchor(PlotsPageWalkthroughAnchor.patientLine)}
         />
       ) : undefined}
       {Option.isNone(patientChoice) ? (
-        <PatientPicker client={client} onPatientChoice={choosePatient} />
+        <PatientPicker onPatientChoice={choosePatient} />
       ) : (
         <PatientRecord
           // Remounted per choice, so no read or reconciliation carries over.
           key={patientChoiceKeyOf(patientChoice.value)}
-          client={client}
           patientId={patientScopeOf(patientChoice.value)}
           selection={selection}
           onSelectionUpdate={updateSelection}

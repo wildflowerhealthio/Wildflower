@@ -1,4 +1,3 @@
-import { FetchHttpClient } from '@effect/platform'
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -8,7 +7,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { type FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
-import { buildSmartRouterContext, type SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { buildSmartRouterContext, type SmartRuntime } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { PageLoading } from '@wildflowerhealthio/react-tundraish'
 import { SmartHandshakeGate } from '@wildflowerhealthio/smart-app-react'
 import { SyntheticDataScreen } from '@wildflowerhealthio/synthetic-data-react'
@@ -103,19 +102,19 @@ const App = (): JSX.Element => (
       registration={smartRegistration}
       connecting={<PageLoading message="Connecting…" />}
     >
-      {(client) => <ConnectedSyntheticDataApp client={client} />}
+      {(runtime) => <ConnectedSyntheticDataApp runtime={runtime} />}
     </SmartHandshakeGate>
   </main>
 )
 
-/** {@link SyntheticDataApp} over a completed handshake's `client`, on the page's one `QueryClient`. */
-const ConnectedSyntheticDataApp = ({ client }: { readonly client: SmartClient }): JSX.Element => {
+/** {@link SyntheticDataApp} over a completed handshake's `runtime`, on the page's one `QueryClient`. */
+const ConnectedSyntheticDataApp = ({ runtime }: { readonly runtime: SmartRuntime }): JSX.Element => {
   const queryClient = useQueryClient()
   const context = useMemo<RouterContext>(
-    () => buildSmartRouterContext(client, FetchHttpClient.layer, queryClient),
-    [client, queryClient]
+    () => buildSmartRouterContext(runtime, queryClient),
+    [runtime, queryClient]
   )
-  return <SyntheticDataApp context={context} serverUrl={client.serverUrl} />
+  return <SyntheticDataApp context={context} serverUrl={runtime.connection.fhirBaseUrl} />
 }
 
 export { App, SyntheticDataApp, type SyntheticDataAppProps }

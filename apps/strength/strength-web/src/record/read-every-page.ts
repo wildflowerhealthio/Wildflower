@@ -59,12 +59,14 @@ const decodeExerciseSetObservations = (
     ),
   })
 
-/** Every page of the sets one first page names, over `client`. */
+/** Every page of the sets one first page names. */
 const fetchEveryObservation = (
-  client: SmartClient,
   first: ObservationBasedOnOrPartOfFirstPage
-): Effect.Effect<Omit<ResourcePage<ObservationResource>, 'nextPageUrl'>, ReadFailure> =>
-  fetchAllResourcePages((cursor) => fetchObservationBasedOnOrPartOfPage(client, cursor), first)
+): Effect.Effect<
+  Omit<ResourcePage<ObservationResource>, 'nextPageUrl'>,
+  ReadFailure,
+  SmartClient
+> => fetchAllResourcePages(fetchObservationBasedOnOrPartOfPage, first)
 
 /**
  * How many per-resource searches run at once: one per active

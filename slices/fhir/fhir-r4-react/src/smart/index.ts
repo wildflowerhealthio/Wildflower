@@ -105,15 +105,22 @@ export {
   buildSmartQueryClient,
   buildSmartRouterContext,
   smartHttpClientLayer,
+  smartRuntimeFor,
   type BuildSmartQueryClientOptions,
+  type RunSmart,
+  type SmartRouterContext,
+  type SmartRuntime,
+  type SmartRuntimeLayer,
+  type SmartServices,
 } from './smart-runtime.ts'
+
+export { SmartRuntimeContext, useRunSmart } from './use-run-smart.ts'
 
 export { decodeFhirBaseUrl, FhirBaseUrl, SmartConnection } from './smart-connection.ts'
 
 export {
   isSmartHandshakeQuery,
   useLaunchFailureRedirect,
-  useSmartClient,
   useSmartHandshake,
   whenSmartHandshakeReady,
   type SmartHandshake,

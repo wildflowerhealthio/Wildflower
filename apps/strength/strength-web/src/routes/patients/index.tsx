@@ -3,15 +3,12 @@ import { type PatientChoice, PatientPicker } from '@wildflowerhealthio/smart-app
 import { Match } from 'effect'
 import type { JSX } from 'react'
 
-import { useStrengthContext } from '../../router-context.ts'
-
 /**
  * The patient picker: a patient opens their page (Today), All patients
  * every patient's workouts. Each choice is a new history entry, so Back
  * returns to the picker.
  */
 function StrengthPatientPicker(): JSX.Element {
-  const { client } = useStrengthContext()
   const navigate = useNavigate()
   const choosePatient = (patientChoice: PatientChoice): void => {
     void Match.value(patientChoice).pipe(
@@ -22,7 +19,7 @@ function StrengthPatientPicker(): JSX.Element {
       Match.exhaustive
     )
   }
-  return <PatientPicker client={client} onPatientChoice={choosePatient} />
+  return <PatientPicker onPatientChoice={choosePatient} />
 }
 
 /** `/patients`, the patient picker, which "Change patient" pushes. */

@@ -1,12 +1,10 @@
 import {
   hashKey,
   queryOptions,
-  skipToken,
   useQuery,
   type Query,
   type QueryClient,
 } from '@tanstack/react-query'
-import { Option } from 'effect'
 import { useEffect } from 'react'
 
 import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'
@@ -29,8 +27,8 @@ type SmartHandshake =
 const SMART_HANDSHAKE_QUERY_KEY = ['fhir-r4-react', 'smart-handshake'] as const
 
 /**
- * The handshake query's settings, shared by the one hook that runs it and
- * the one that only reads it: the key, typed so a read of its data is a
+ * The handshake query's settings, shared by the hook that runs it and the
+ * root that waits on it: the key, typed so a read of its data is a
  * {@link SmartConnection}.
  *
  * @remarks
@@ -57,8 +55,7 @@ const smartHandshakeQueryBase = queryOptions<SmartConnection>({
  *   URI the launch sent
  *
  * @remarks
- * This is the one hook that runs the exchange; everything else reads its
- * result with {@link useSmartClient}. The authorization code in the redirect
+ * This is the one hook that runs the exchange. The authorization code in the redirect
  * URL is single-use: the token exchange (`readySmartClient` →
  * `authorization-core`'s `completeSignIn`, the POST to the token endpoint)
  * may run **once, ever**. Routing it through a keyed query is what makes that
@@ -84,27 +81,12 @@ const useSmartHandshake = (
 }
 
 /**
- * The {@link SmartClient} the page's SMART handshake resolved to, or `None`
- * while it has not (still exchanging, failed, or not started on this page).
- *
- * @remarks
- * Read-only: it observes the handshake query {@link useSmartHandshake} runs
- * and has no `queryFn` of its own (`skipToken`), so no reader can start the
- * single-use exchange, however it mounts. It re-renders when the handshake
- * settles.
- */
-const useSmartClient = (): Option.Option<SmartConnection> => {
-  const query = useQuery({ ...smartHandshakeQueryBase, queryFn: skipToken })
-  return Option.fromNullable(query.data)
-}
-
-/**
- * Call `onReady` once with the ready {@link SmartClient} when the SMART handshake on
+ * Call `onReady` once with the {@link SmartConnection} when the SMART handshake on
  * `queryClient` completes, or at once if it already has.
  *
  * @param queryClient - The page's one client, where {@link useSmartHandshake}
  *   runs the exchange
- * @param onReady - Called with the ready client, at most once
+ * @param onReady - Called with the connection, at most once
  * @returns A function that stops listening
  *
  * @remarks
@@ -176,7 +158,6 @@ export {
   isSmartHandshakeQuery,
   SMART_HANDSHAKE_QUERY_KEY,
   useLaunchFailureRedirect,
-  useSmartClient,
   useSmartHandshake,
   whenSmartHandshakeReady,
   type SmartHandshake,

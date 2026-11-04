@@ -1,4 +1,3 @@
-import { FetchHttpClient } from '@effect/platform'
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -9,11 +8,12 @@ import {
   useRouteContext,
 } from '@tanstack/react-router'
 import type { FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
-import { buildSmartRouterContext, type SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { buildSmartRouterContext, type SmartRuntime } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { PebbleSettings } from '@wildflowerhealthio/fhir-sync-pebble-core'
 import { ReturnTargetStore } from '@wildflowerhealthio/pebble-configuration'
 import { PageLoading } from '@wildflowerhealthio/react-tundraish'
 import { SmartHandshakeGate } from '@wildflowerhealthio/smart-app-react'
+import { Option } from 'effect'
 import { useMemo, useState, type JSX } from 'react'
 
 import { RETURN_TO_STORAGE_KEY, smartRegistration } from './config.ts'
@@ -95,18 +95,17 @@ const SettingsApp = ({
  * settings page against the FHIR server it was granted a token for.
  *
  * @remarks
- * Only `ConnectedSettingsApp` sees the SMART client: it turns the handshake
+ * Only `ConnectedSettingsApp` sees the SMART runtime: it turns the handshake
  * into a router context (reads) and the connection the watch will get (the
- * grant), and nothing below it holds the client.
+ * grant), and nothing below it holds the runtime.
  *
  * The exchange runs under `smart-app-react`'s `SmartHandshakeGate`, so it
  * fires exactly once — a bare effect double-POSTs the single-use
  * authorization code under `React.StrictMode`. A failed exchange is carried
  * back to the app root, which can offer the connect menu again.
  *
- * Plain `FetchHttpClient.layer`: the page's only outbound traffic is the FHIR
- * base the handshake named and, once the visitor consents in `SmartAppRoot`'s
- * dialog, Sentry.
+ * The page's only outbound traffic is the FHIR base the handshake named and,
+ * once the visitor consents in `SmartAppRoot`'s dialog, Sentry.
  */
 const App = (): JSX.Element => (
   <main className={styles['app']}>
@@ -114,27 +113,27 @@ const App = (): JSX.Element => (
       registration={smartRegistration}
       connecting={<PageLoading message="Connecting…" />}
     >
-      {(client) => <ConnectedSettingsApp client={client} />}
+      {(runtime) => <ConnectedSettingsApp runtime={runtime} />}
     </SmartHandshakeGate>
   </main>
 )
 
-/** {@link SettingsApp} over a completed handshake's `client`, on the page's one `QueryClient`. */
-const ConnectedSettingsApp = ({ client }: { readonly client: SmartClient }): JSX.Element => {
+/** {@link SettingsApp} over a completed handshake's `runtime`, on the page's one `QueryClient`. */
+const ConnectedSettingsApp = ({ runtime }: { readonly runtime: SmartRuntime }): JSX.Element => {
   const queryClient = useQueryClient()
   const [returnTargets] = useState(() =>
     ReturnTargetStore.fromWebStorage(window.sessionStorage, RETURN_TO_STORAGE_KEY)
   )
   const context = useMemo(
-    () => buildSmartRouterContext(client, FetchHttpClient.layer, queryClient),
-    [client, queryClient]
+    () => buildSmartRouterContext(runtime, queryClient),
+    [runtime, queryClient]
   )
   return (
     <SettingsApp
       context={context}
       connection={PebbleSettings.fromGrant({
-        accessToken: client.accessToken,
-        fhirBaseUrl: client.serverUrl,
+        accessToken: Option.getOrUndefined(runtime.connection.accessToken),
+        fhirBaseUrl: runtime.connection.fhirBaseUrl,
       })}
       returnTargets={returnTargets}
       navigate={assignLocation}

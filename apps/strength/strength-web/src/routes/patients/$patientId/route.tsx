@@ -47,8 +47,8 @@ function LifterPage(): JSX.Element {
  * next, by Back or Forward or a link.
  */
 const Route = createFileRoute('/patients/$patientId')({
-  loader: ({ context: { queryClient, client }, params: { patientId } }) =>
-    requirePatient(queryClient, client, patientId),
+  loader: ({ context: { queryClient, runAuthed }, params: { patientId } }) =>
+    requirePatient(queryClient, runAuthed, patientId),
   remountDeps: ({ params }) => params.patientId,
   pendingComponent: () => <LoadingLine subject="the patient" />,
   component: LifterPage,

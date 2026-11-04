@@ -1,14 +1,11 @@
-import { HttpClient } from '@effect/platform'
+import { FetchHttpClient, HttpClient } from '@effect/platform'
 import { QueryCache, QueryClient, type Query } from '@tanstack/react-query'
+import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
+import type { BaseRouterContext } from '@wildflowerhealthio/shared-structures-react'
 import { Duration, Effect, Layer, pipe } from 'effect'
 
-import {
-  sliceRuntimeLayer,
-  type RouterContext,
-  type RunAuthed,
-  type RuntimeLayer,
-} from '../router-context.ts'
-import { addressedTo } from './smart-client.ts'
+import { sliceRuntimeLayer } from '../router-context.ts'
+import { addressedTo, SmartClient } from './smart-client.ts'
 import type { SmartConnection } from './smart-connection.ts'
 
 /**
@@ -59,7 +56,7 @@ interface BuildSmartQueryClientOptions {
  * because a SMART viewer has nothing that goes stale on focus.
  *
  * Exported so the app can build the client **once**, provide it at the tree root
- * (where {@link useSmartHandshake} runs the token exchange, before any router
+ * (where `useSmartHandshake` runs the token exchange, before any router
  * context exists), and hand that same instance to {@link buildSmartRouterContext}
  * — one client for the handshake query and every app query alike.
  *
@@ -79,56 +76,104 @@ const buildSmartQueryClient = (options: BuildSmartQueryClientOptions = {}): Quer
   })
 
 /**
- * The router context the app threads into its router, built from a completed
- * SMART handshake.
- *
- * @remarks
- * The transport is a parameter for the same reason
- * {@link smartHttpClientLayer}'s is: the app's whole tree can then be mounted
- * over a stub in a test. The app passes `FetchHttpClient.layer`.
- *
- * `queryClient` is a parameter (default a fresh {@link buildSmartQueryClient})
- * so the app can hand in the same client it provided at the tree root — the one
- * {@link useSmartHandshake} completed the exchange on — rather than the context
- * carrying a second, disconnected client. The default keeps callers that only
- * read `runAuthed` (importer tests) unchanged.
- *
- * `awaitAuthReady` resolves immediately: the shared shape carries it for host
- * apps whose route guards wait on a token that arrives asynchronously, and by
- * the time this runs the handshake is already complete. A consumer typically
- * reads only `runAuthed`, but the context has to be a faithful
- * `RouterContextWith<FhirR4ResourcesHttpApiClient>` for its `useRouteContext`
- * select to type.
- *
- * Nothing is re-sent on a 401: a bearer token is in hand before this is built,
- * so a 401 here is a real 401.
+ * What every read and write over a completed SMART handshake is run with:
+ * the `SmartClient` the readers here use, the typed
+ * `FhirR4ResourcesHttpApiClient` the writers use, and the addressed
+ * `HttpClient` under both.
+ */
+type SmartServices = SmartClient | FhirR4ResourcesHttpApiClient
+
+/** The layer that provides {@link SmartServices} over the page's `HttpClient`. */
+type SmartRuntimeLayer = BaseRouterContext.RuntimeLayerWith<SmartServices>
+
+/** Run an Effect needing any of {@link SmartServices} at a Promise boundary. */
+type RunSmart = BaseRouterContext.RunAuthedWith<SmartServices>
+
+/**
+ * The one runtime a completed SMART handshake hands the app:
+ * `SmartHandshakeGate` builds it from the connection, provides it to the
+ * tree (`useRunSmart`), and hands it to the app, whose router context
+ * carries the same runtime ({@link buildSmartRouterContext}).
+ */
+interface SmartRuntime {
+  /** The server the handshake connected to. */
+  readonly connection: SmartConnection
+  /** Every SMART service, over one `HttpClient`. */
+  readonly runtimeLayer: SmartRuntimeLayer
+  /** Run an Effect over {@link SmartRuntime.runtimeLayer}. */
+  readonly runSmart: RunSmart
+}
+
+/**
+ * The {@link SmartRuntime} for `connection`: `SmartClient.layer` and the typed
+ * `FhirR4ResourcesHttpApiClient` over the same `transport`, each addressing
+ * its requests by the rule `SmartClient` follows.
  *
  * @param connection - The server the SMART handshake connected to
- * @param transport - The underlying `HttpClient` every read goes out over
- * @param queryClient - The `QueryClient` the context carries; defaults to a
- *   fresh {@link buildSmartQueryClient}
+ * @param transport - The `HttpClient` every request goes out over:
+ *   `FetchHttpClient.layer` in the app (the default), a stub in a test
+ *
+ * @remarks
+ * Nothing is re-sent on a 401: a bearer token is in hand before this is built,
+ * so a 401 here is a real 401.
+ */
+const smartRuntimeFor = (
+  connection: SmartConnection,
+  transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient.layer
+): SmartRuntime => {
+  const runtimeLayer: SmartRuntimeLayer = Layer.mergeAll(
+    SmartClient.layer(connection),
+    Layer.provideMerge(sliceRuntimeLayer, smartHttpClientLayer(connection, transport))
+  ).pipe(Layer.provide(transport))
+  const runSmart: RunSmart = (effect, options) =>
+    Effect.runPromise(Effect.provide(effect, runtimeLayer), options)
+  return { connection, runtimeLayer, runSmart }
+}
+
+/**
+ * The router context a routed SMART app threads into its router: the page's
+ * query cache, the server the handshake connected to, and the runtime the
+ * handshake built, as `runAuthed` and `runtimeLayer`.
+ */
+interface SmartRouterContext extends BaseRouterContext.RouterContextWith<SmartServices> {
+  /** The server the handshake connected to. */
+  readonly connection: SmartConnection
+}
+
+/**
+ * The router context over `runtime`, the one `SmartHandshakeGate` built.
+ *
+ * @param runtime - The runtime the completed SMART handshake handed the app
+ * @param queryClient - The `QueryClient` the context carries; the app passes
+ *   the one it provided at the tree root, where `useSmartHandshake` completed
+ *   the exchange, so the handshake and every app query share one cache
  * @returns A router context ready for `createRouter`'s `context`
+ *
+ * @remarks
+ * `awaitAuthReady` resolves immediately: the shared shape carries it for host
+ * apps whose route guards wait on a token that arrives asynchronously, and by
+ * the time this runs the handshake is already complete.
  */
 const buildSmartRouterContext = (
-  connection: SmartConnection,
-  transport: Layer.Layer<HttpClient.HttpClient>,
+  runtime: SmartRuntime,
   queryClient: QueryClient = buildSmartQueryClient()
-): RouterContext => {
-  const httpLayer = smartHttpClientLayer(connection, transport)
-  const runtimeLayer: RuntimeLayer = Layer.provideMerge(sliceRuntimeLayer, httpLayer)
-  const runAuthed: RunAuthed = (effect, options) =>
-    Effect.runPromise(Effect.provide(effect, runtimeLayer), options)
-  return {
-    queryClient,
-    runAuthed,
-    runtimeLayer,
-    awaitAuthReady: () => Promise.resolve(),
-  }
-}
+): SmartRouterContext => ({
+  queryClient,
+  connection: runtime.connection,
+  runAuthed: runtime.runSmart,
+  runtimeLayer: runtime.runtimeLayer,
+  awaitAuthReady: () => Promise.resolve(),
+})
 
 export {
   buildSmartQueryClient,
   buildSmartRouterContext,
   smartHttpClientLayer,
+  smartRuntimeFor,
   type BuildSmartQueryClientOptions,
+  type RunSmart,
+  type SmartRouterContext,
+  type SmartRuntime,
+  type SmartRuntimeLayer,
+  type SmartServices,
 }

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { useRunSmart } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { LinkButton } from '@wildflowerhealthio/react-tundraish'
 import { Match, Option } from 'effect'
@@ -17,8 +17,6 @@ import styles from './patient-choice-line.module.css'
  * to the root `<div>`.
  */
 interface PatientChoiceLineProps extends Omit<ComponentProps<'div'>, 'children'> {
-  /** The SMART client the patient is read through. */
-  readonly client: SmartClient
   /** Whose records the page reads. */
   readonly patientChoice: PatientChoice
   /** Called when the reader asks to choose again: back to the `PatientPicker`. */
@@ -26,14 +24,8 @@ interface PatientChoiceLineProps extends Omit<ComponentProps<'div'>, 'children'>
 }
 
 /** The patient's name and birth date, from one `Patient` read; nothing until it lands. */
-const PatientNameLine = ({
-  client,
-  patientId,
-}: {
-  readonly client: SmartClient
-  readonly patientId: string
-}): JSX.Element | null => {
-  const patientRead = useQuery(patientQuery(client, patientId))
+const PatientNameLine = ({ patientId }: { readonly patientId: string }): JSX.Element | null => {
+  const patientRead = useQuery(patientQuery(useRunSmart(), patientId))
   if (patientRead.isError) {
     return <ReadFailureLine subject="the patient" error={patientRead.error} />
   }
@@ -52,7 +44,6 @@ const PatientNameLine = ({
  * back to the picker.
  */
 const PatientChoiceLine = ({
-  client,
   patientChoice,
   onPatientChange,
   className,
@@ -61,7 +52,7 @@ const PatientChoiceLine = ({
   <div {...rootProps} className={cn(styles['patient-choice-line'], className)}>
     {Match.value(patientChoice).pipe(
       Match.when({ kind: 'patient' }, ({ patientId }) => (
-        <PatientNameLine client={client} patientId={patientId} />
+        <PatientNameLine patientId={patientId} />
       )),
       Match.when({ kind: 'all-patients' }, () => <span>All patients</span>),
       Match.exhaustive

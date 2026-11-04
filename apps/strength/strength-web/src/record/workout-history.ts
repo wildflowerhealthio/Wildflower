@@ -45,18 +45,17 @@ interface WorkoutHistory {
  * read.
  */
 const readWorkoutHistory = (
-  client: SmartClient,
   patientId: string | null
-): Effect.Effect<WorkoutHistory, ReadFailure> =>
+): Effect.Effect<WorkoutHistory, ReadFailure, SmartClient> =>
   Effect.gen(function* () {
     const [serviceRequests, procedures] = yield* Effect.all(
       [
-        fetchAllResourcePages((cursor) => fetchServiceRequestPage(client, cursor), {
+        fetchAllResourcePages(fetchServiceRequestPage, {
           patientId,
           categoryToken: StrengthFeature.TOKEN,
           instantiatesCanonicalUrl: null,
         }),
-        fetchAllResourcePages((cursor) => fetchProcedurePage(client, cursor), {
+        fetchAllResourcePages(fetchProcedurePage, {
           patientId,
           categoryToken: StrengthFeature.TOKEN,
           instantiatesCanonicalUrl: null,
@@ -69,7 +68,7 @@ const readWorkoutHistory = (
     const exerciseSetObservationReads = yield* Effect.forEach(
       workoutProcedures.resources.filter(WorkoutProcedure.isCompleted),
       (workoutProcedure) =>
-        fetchEveryObservation(client, {
+        fetchEveryObservation({
           patientId,
           basedOnReference: null,
           partOfReference: `Procedure/${workoutProcedure.id}`,

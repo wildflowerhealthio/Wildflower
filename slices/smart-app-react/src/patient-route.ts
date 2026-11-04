@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { notFound, useParams } from '@tanstack/react-router'
-import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { RunSmart, SmartConnection } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { Option } from 'effect'
 import { useMemo } from 'react'
 
@@ -19,8 +19,8 @@ const PATIENT_ID_PARAM = 'patientId'
  * else the patient picker (`/patients`). What the app's `/` redirects to
  * when the launch saved no route of its own (`appRootRedirect`).
  */
-const launchStartRoute = (client: SmartClient): string =>
-  Option.match(client.launchPatientId, {
+const launchStartRoute = (connection: SmartConnection): string =>
+  Option.match(connection.launchPatientId, {
     onNone: () => '/patients',
     onSome: (patientId) => `/patients/${encodeURIComponent(patientId)}`,
   })
@@ -69,13 +69,13 @@ const usePathPatientChoice = (): PatientChoice => {
  */
 const requirePatient = async (
   queryClient: QueryClient,
-  client: SmartClient,
+  runSmart: RunSmart,
   patientId: string
 ): Promise<void> => {
   // A read already in the cache is used as it stands, as the patient line
   // would show it.
   const missing = await queryClient
-    .query({ ...patientQuery(client, patientId), staleTime: 'static' })
+    .query({ ...patientQuery(runSmart, patientId), staleTime: 'static' })
     .then(Option.isNone, () => false)
   if (missing) throw notFound()
 }

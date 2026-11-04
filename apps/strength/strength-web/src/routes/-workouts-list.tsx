@@ -6,7 +6,6 @@ import {
   ReadFailureLine,
 } from '@wildflowerhealthio/smart-app-react'
 import { WorkoutHistoryView } from '@wildflowerhealthio/strength-react'
-import { Effect } from 'effect'
 import type { JSX } from 'react'
 
 import { UnreadableNotice } from '../record/unreadable-notice.tsx'
@@ -27,11 +26,11 @@ interface WorkoutHistoryRead {
  * for every patient, all of them, read unscoped.
  */
 const useWorkoutHistory = (patientChoice: PatientChoice): WorkoutHistoryRead => {
-  const { client } = useStrengthContext()
+  const { runAuthed } = useStrengthContext()
   const patientScope = patientScopeOf(patientChoice)
   const workoutHistory = useQuery({
     queryKey: [...strengthKeyOf(patientScope), 'history'],
-    queryFn: () => Effect.runPromise(readWorkoutHistory(client, patientScope)),
+    queryFn: () => runAuthed(readWorkoutHistory(patientScope)),
   })
   return {
     subject:

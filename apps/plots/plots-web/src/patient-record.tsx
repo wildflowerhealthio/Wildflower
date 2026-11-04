@@ -1,4 +1,3 @@
-import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   type PlotView,
   type RangePreset,
@@ -261,8 +260,6 @@ const RecordView = ({
 
 /** Props for {@link PatientRecord}. */
 interface PatientRecordProps extends SelectionProps {
-  /** The SMART client the record is read through. */
-  readonly client: SmartClient
   /** The patient whose record is read, or `null` for every patient's together. */
   readonly patientId: string | null
 }
@@ -273,12 +270,8 @@ interface PatientRecordProps extends SelectionProps {
  * if a first page fails, and {@link RecordView} from then on, re-rendering as
  * later pages land.
  */
-const PatientRecord = ({
-  client,
-  patientId,
-  ...selectionProps
-}: PatientRecordProps): JSX.Element => {
-  const recordRead = useRecordRead(client, patientId)
+const PatientRecord = ({ patientId, ...selectionProps }: PatientRecordProps): JSX.Element => {
+  const recordRead = useRecordRead(patientId)
   return Match.value(recordRead).pipe(
     Match.when({ kind: 'loading' }, () => <LoadingLine />),
     Match.when({ kind: 'failed' }, ({ failure }) => (
