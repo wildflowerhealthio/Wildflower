@@ -28,9 +28,10 @@ import styles from './app.module.css'
  * Whose record is `smart-app-react`'s `usePatientChoice`: the URL's
  * `?patient=`, else the launch's patient (`client.launchPatientId`); with neither
  * the page is the `PatientPicker`. "All patients" reads every patient's
- * Observations and MedicationRequests unscoped, charted together. The title's
- * `PatientChoiceLine` names the choice and goes back to the picker, and
- * carries the Plots walkthrough's anchor.
+ * Observations and MedicationRequests unscoped, charted together. The
+ * `PatientChoiceLine` under the title names the choice and goes back to the picker, and
+ * carries the Plots walkthrough's anchor. The title sits above the gate, so
+ * it shows while the handshake connects and when it fails.
  *
  * The selection lives only in the URL ({@link useUrlSelection}) beside the
  * patient; every change — a series or a range in the record — is an updater
@@ -38,29 +39,19 @@ import styles from './app.module.css'
  */
 export const App = (): JSX.Element => (
   <main className={styles.app}>
-    <SmartHandshakeGate
-      registration={smartRegistration}
-      connecting={
-        <>
-          <PlotsHeader />
-          <LoadingLine />
-        </>
-      }
-    >
+    <header className={styles.header}>
+      <h1 className="text-heading-3">Plots</h1>
+    </header>
+    <SmartHandshakeGate registration={smartRegistration} connecting={<LoadingLine />}>
       {(client) => <PlotsPage client={client} />}
     </SmartHandshakeGate>
   </main>
 )
 
-/** The page's title, and the line naming whose record it reads once there is one. */
-const PlotsHeader = ({ children }: { readonly children?: JSX.Element }): JSX.Element => (
-  <header className={styles.header}>
-    <h1 className="text-heading-3">Plots</h1>
-    {children}
-  </header>
-)
-
-/** The page over a completed handshake's `client`: the picker, or the chosen record. */
+/**
+ * The page over a completed handshake's `client`: the line naming whose
+ * record it reads, under the title, then the picker or the chosen record.
+ */
 const PlotsPage = ({ client }: { readonly client: SmartClient }): JSX.Element => {
   const { selection, updateSelection } = useUrlSelection()
   // The instant the page opened: the right edge of every bounded range, held
@@ -70,16 +61,15 @@ const PlotsPage = ({ client }: { readonly client: SmartClient }): JSX.Element =>
 
   return (
     <>
-      <PlotsHeader>
-        {Option.isSome(patientChoice) ? (
-          <PatientChoiceLine
-            client={client}
-            patientChoice={patientChoice.value}
-            onPatientChange={changePatient}
-            {...walkthroughAnchor(PlotsPageWalkthroughAnchor.patientLine)}
-          />
-        ) : undefined}
-      </PlotsHeader>
+      {Option.isSome(patientChoice) ? (
+        <PatientChoiceLine
+          className={styles['patient-line']}
+          client={client}
+          patientChoice={patientChoice.value}
+          onPatientChange={changePatient}
+          {...walkthroughAnchor(PlotsPageWalkthroughAnchor.patientLine)}
+        />
+      ) : undefined}
       {Option.isNone(patientChoice) ? (
         <PatientPicker client={client} onPatientChoice={choosePatient} />
       ) : (

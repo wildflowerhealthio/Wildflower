@@ -222,7 +222,7 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('should say Loading… while the handshake is still connecting', () => {
+  it('should say Loading… under the title while the handshake is still connecting', () => {
     // Arrange
     handshakeMock.mockReturnValue({ kind: 'connecting' })
 
@@ -230,10 +230,11 @@ describe('App', () => {
     renderApp()
 
     // Assert
+    expect(screen.getByRole('heading', { level: 1, name: 'Plots' })).toBeDefined()
     expect(screen.getByText('Loading…')).toBeDefined()
   })
 
-  it('should surface a failed token exchange and carry it to the app root', () => {
+  it('should surface a failed token exchange under the title and carry it to the app root', () => {
     // Arrange
     handshakeMock.mockReturnValue({ kind: 'error', error: new Error('token exchange failed') })
 
@@ -241,6 +242,7 @@ describe('App', () => {
     renderApp()
 
     // Assert
+    expect(screen.getByRole('heading', { level: 1, name: 'Plots' })).toBeDefined()
     expect(screen.getByRole('alert').textContent).toContain('token exchange failed')
     const [carried] = launchFailureRedirectMock.mock.calls[0] ?? []
     expect(carried?.kind).toBe('error')
