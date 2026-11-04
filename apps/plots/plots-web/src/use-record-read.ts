@@ -3,6 +3,7 @@ import {
   fetchMedicationRequestPage,
   fetchObservationPage,
   type ResourcePage,
+  type SmartClient,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   type RecordReading,
@@ -16,8 +17,6 @@ import {
 } from '@wildflowerhealthio/react-kitchen-sink'
 import { Effect } from 'effect'
 import { useMemo } from 'react'
-
-import type { SmartClient } from './smart-client.ts'
 
 /**
  * Where a record read's page comes from: the patient scope, for the first
