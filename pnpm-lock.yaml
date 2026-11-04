@@ -4827,9 +4827,6 @@ importers:
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../fhir/fhir-r4
-      '@wildflowerhealthio/fhir-r4-adoption':
-        specifier: workspace:*
-        version: link:../fhir-r4-adoption
       '@wildflowerhealthio/fhir-stu3-as-r4':
         specifier: workspace:*
         version: link:../../fhir/fhir-stu3-as-r4
@@ -4995,6 +4992,9 @@ importers:
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../fhir/fhir-r4
+      '@wildflowerhealthio/fhir-r4-adoption':
+        specifier: workspace:*
+        version: link:../../http-extraction/fhir-r4-adoption
       '@wildflowerhealthio/fhir-r4-source':
         specifier: workspace:*
         version: link:../../http-extraction/fhir-r4-source
@@ -5151,9 +5151,6 @@ importers:
       '@wildflowerhealthio/fhir-r4-adoption':
         specifier: workspace:*
         version: link:../../http-extraction/fhir-r4-adoption
-      '@wildflowerhealthio/http-extraction-fundamentals':
-        specifier: workspace:*
-        version: link:../../http-extraction/http-extraction-fundamentals
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
