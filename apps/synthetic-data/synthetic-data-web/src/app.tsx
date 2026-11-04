@@ -13,7 +13,7 @@ import { SmartHandshakeGate } from '@wildflowerhealthio/smart-app-react'
 import { SyntheticDataScreen } from '@wildflowerhealthio/synthetic-data-react'
 import { type JSX, useMemo } from 'react'
 
-import { PUBLISHED_SNAPSHOT_ADDRESS, smartRegistration } from './config.ts'
+import { PUBLISHED_SNAPSHOT_ADDRESS } from './config.ts'
 import styles from './app.module.css'
 
 /**
@@ -99,7 +99,6 @@ const SyntheticDataApp = ({ context, serverUrl }: SyntheticDataAppProps): JSX.El
 const App = (): JSX.Element => (
   <main className={styles.app}>
     <SmartHandshakeGate
-      registration={smartRegistration}
       connecting={<PageLoading message="Connecting…" />}
     >
       {(runtime) => <ConnectedSyntheticDataApp runtime={runtime} />}

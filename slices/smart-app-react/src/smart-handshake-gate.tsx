@@ -1,6 +1,5 @@
 import {
   type SmartConnection,
-  type SmartLaunchConfig,
   type SmartRuntime,
   SmartRuntimeContext,
   smartRuntimeFor,
@@ -9,20 +8,12 @@ import {
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { Match } from 'effect'
-import { type JSX, useMemo } from 'react'
+import { type JSX, useEffect, useMemo } from 'react'
+
+import { useSignInLanding } from './sign-in-landing.ts'
 
 /** Props for {@link SmartHandshakeGate}. */
 interface SmartHandshakeGateProps {
-  /**
-   * The app's SMART registration, which the callback's code is redeemed as:
-   * the same one the app hands `SmartAppRoot`.
-   */
-  readonly registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>
-  /**
-   * The directory the app is served from, as it hands `SmartAppRoot`, so the
-   * token request names the redirect URI the launch sent.
-   */
-  readonly servedDirectory?: string
   /** What the page shows while the token exchange runs. */
   readonly connecting: JSX.Element
   /**
@@ -64,14 +55,14 @@ function SignedIn({
  * offer the connect menu; the code is single-use, so there is nothing to
  * retry.
  */
-function SmartHandshakeGate({
-  registration,
-  servedDirectory,
-  connecting,
-  children,
-}: SmartHandshakeGateProps): JSX.Element {
-  const handshake = useSmartHandshake(registration, servedDirectory)
-  useLaunchFailureRedirect(handshake)
+function SmartHandshakeGate({ connecting, children }: SmartHandshakeGateProps): JSX.Element {
+  const landing = useSignInLanding()
+  const handshake = useSmartHandshake(landing)
+  useLaunchFailureRedirect(handshake, landing.appRootRedirectUri)
+  const { onSignedIn } = landing
+  useEffect(() => {
+    if (handshake.kind === 'ready') onSignedIn(handshake.connection)
+  }, [handshake, onSignedIn])
   return Match.value(handshake).pipe(
     Match.when({ kind: 'error' }, ({ error }) => <ErrorBanner error={error.reason} />),
     Match.when({ kind: 'connecting' }, () => connecting),

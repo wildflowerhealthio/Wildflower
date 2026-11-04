@@ -16,7 +16,7 @@ import { SmartHandshakeGate } from '@wildflowerhealthio/smart-app-react'
 import { Option } from 'effect'
 import { useMemo, useState, type JSX } from 'react'
 
-import { RETURN_TO_STORAGE_KEY, smartRegistration } from './config.ts'
+import { RETURN_TO_STORAGE_KEY } from './config.ts'
 import { SettingsPage, type SettingsPageProps } from './settings-page.tsx'
 import styles from './app.module.css'
 
@@ -110,7 +110,6 @@ const SettingsApp = ({
 const App = (): JSX.Element => (
   <main className={styles['app']}>
     <SmartHandshakeGate
-      registration={smartRegistration}
       connecting={<PageLoading message="Connecting…" />}
     >
       {(runtime) => <ConnectedSettingsApp runtime={runtime} />}

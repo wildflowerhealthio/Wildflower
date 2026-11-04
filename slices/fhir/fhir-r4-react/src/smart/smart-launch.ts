@@ -20,7 +20,7 @@ import {
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Data, Effect, Match, Option, Schema } from 'effect'
 
-import { RootArrival, rootArrivalFrom } from './root-arrival.ts'
+import type { RootArrival, SignInArrival } from './root-arrival.ts'
 import { decodeFhirBaseUrl, FhirBaseUrl, SmartConnection } from './smart-connection.ts'
 
 /**
@@ -121,7 +121,7 @@ const takePendingConnection = (
       },
       catch: blockedStorage,
     })
-    if (!RootArrival.$is('SignInReturn')(arrival)) yield* forgetPendingSignIn(environment)
+    if (arrival._tag !== 'SignInReturn') yield* forgetPendingSignIn(environment)
     return storedOpenServer
   }).pipe(Effect.ensuring(Effect.sync(scrubAuthorizationResponse)))
 
@@ -282,28 +282,38 @@ const scrubAuthorizationResponse = (): void => {
   )
 }
 
-/** The page's arrival and the sign-in environment of the app at `registration`. */
-const callbackEnvironment = (
-  registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
-  servedDirectory: string | undefined
-): { readonly arrival: RootArrival; readonly environment: SignInEnvironment } => ({
-  arrival: rootArrivalFrom(window.location.search),
-  environment: signInEnvironmentFor({
-    ...registration,
-    redirectUri: appRootRedirectUri(window.location.href, servedDirectory),
-  }),
-})
+/**
+ * The sign-in a page landed on after its redirect, and what the page needs
+ * to finish it: the app root hands it to `SmartHandshakeGate`.
+ */
+interface SignInLanding {
+  /** The sign-in the page's query string carries. */
+  readonly arrival: SignInArrival
+  /** The app's SMART registration, which the code is redeemed as. */
+  readonly registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>
+  /**
+   * The app root's redirect URI ({@link appRootRedirectUri}), derived the same
+   * way the outbound leg derived it, so the token request names the redirect
+   * URI the launch sent.
+   */
+  readonly appRootRedirectUri: string
+  /** Called once with the connection the completed sign-in made. */
+  readonly onSignedIn: (connection: SmartConnection) => void
+}
+
+/** The sign-in environment of the app at `landing`. */
+const landingEnvironment = (
+  landing: Pick<SignInLanding, 'registration' | 'appRootRedirectUri'>
+): SignInEnvironment =>
+  signInEnvironmentFor({ ...landing.registration, redirectUri: landing.appRootRedirectUri })
 
 /**
  * Complete the connection on the redirect target: redeem the code a SMART
  * sign-in came back with, or accept an open server's return, and resolve to
  * the {@link SmartConnection} it made.
  *
- * @param registration - The app's SMART registration, which the code is
- *   redeemed as
- * @param servedDirectory - The directory the app is served from, as
- *   {@link appRootRedirectUri} takes it: the redirect URI the token request
- *   names is derived the same way the outbound leg derived it
+ * @param landing - The sign-in the page landed on, the registration it
+ *   redeems as, and the redirect URI the token request names
  *
  * @remarks
  * Every pending record is taken first ({@link takePendingConnection}), so a
@@ -312,44 +322,36 @@ const callbackEnvironment = (
  * leaves the address bar whichever way the connection settles.
  */
 const readySmartClient = (
-  registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
-  servedDirectory?: string
+  landing: Pick<SignInLanding, 'arrival' | 'registration' | 'appRootRedirectUri'>
 ): Effect.Effect<SmartConnection, SignInError> =>
   Effect.gen(function* () {
-    const { arrival, environment } = callbackEnvironment(registration, servedDirectory)
-    const storedOpenServer = yield* takePendingConnection(arrival, environment)
-    return yield* Match.value(arrival).pipe(
-      Match.tag('SignInReturn', (signInReturn) => redeemSignIn(signInReturn, environment)),
-      Match.tag('SelfAddressedSignInReturn', (selfAddressedReturn) =>
-        connectOpenServer(selfAddressedReturn, storedOpenServer)
-      ),
-      Match.orElse(() =>
-        Effect.fail(
-          new AuthorizationRejected({
-            reason: 'This page has no connection in progress to complete. Connect again.',
-          })
-        )
-      )
+    const environment = landingEnvironment(landing)
+    const storedOpenServer = yield* takePendingConnection(landing.arrival, environment)
+    return yield* Match.value(landing.arrival).pipe(
+      Match.tagsExhaustive({
+        SignInReturn: (signInReturn) => redeemSignIn(signInReturn, environment),
+        SelfAddressedSignInReturn: (selfAddressedReturn) =>
+          connectOpenServer(selfAddressedReturn, storedOpenServer),
+      })
     )
   })
 
 /**
- * Drop every pending record and scrub the callback, for an arrival that
- * carries a callback the app root does not complete: an authorization
- * server's `?error=` return, which the root shows on the connect menu.
+ * Drop every pending record and scrub the callback, for the authorization
+ * server's refusal, which the root shows on the connect menu.
+ *
+ * @param refused - The refusal the page landed on
+ * @param landing - The registration and redirect URI of the app at the root
  *
  * @remarks
  * The same rule {@link readySmartClient} takes the records by
  * ({@link takePendingConnection}); it fails only when the storage throws.
  */
 const discardPendingConnection = (
-  registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
-  servedDirectory?: string
+  refused: Data.TaggedEnum.Value<RootArrival, 'SignInRefused'>,
+  landing: Pick<SignInLanding, 'registration' | 'appRootRedirectUri'>
 ): Effect.Effect<void, PendingRequestUnusable> =>
-  Effect.suspend(() => {
-    const { arrival, environment } = callbackEnvironment(registration, servedDirectory)
-    return Effect.asVoid(takePendingConnection(arrival, environment))
-  })
+  Effect.suspend(() => Effect.asVoid(takePendingConnection(refused, landingEnvironment(landing))))
 
 /**
  * The OAuth redirect URI for a SMART app, from the URL of any of its pages:
@@ -405,5 +407,6 @@ export {
   SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
   type OpenServerConfig,
+  type SignInLanding,
   type SmartLaunchConfig,
 }

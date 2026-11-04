@@ -14,7 +14,7 @@ import {
 } from '@wildflowerhealthio/telemetry-react'
 import { redactServerHost, Sentry, setFhirServerHost } from '@wildflowerhealthio/telemetry-web'
 import { Effect, Match, Option } from 'effect'
-import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
 
 import {
   appRootRedirectUri,
@@ -22,10 +22,12 @@ import {
   discardPendingConnection,
   isSmartHandshakeQuery,
   launchError,
-  RootArrival,
+  type RootArrival,
   rootArrivalFrom,
-  whenSmartHandshakeReady,
   type ArrivingSmartLaunch,
+  type SignInArrival,
+  type SignInLanding,
+  type SmartConnection,
   type SmartLaunchConfig,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 
@@ -33,6 +35,7 @@ import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
 import { ConnectMenu } from './connect-menu.tsx'
 import { LaunchPage } from './launch-page.tsx'
 import { clearReturnRoute } from './return-route.ts'
+import { SignInLandingContext } from './sign-in-landing.ts'
 
 /**
  * Where a SMART app's telemetry goes, once the visitor consents to it: the
@@ -170,6 +173,43 @@ function LaunchingApp({
   return <LaunchPage message={`Launching ${APP_DESCRIPTIONS[app].name}…`} />
 }
 
+/**
+ * `children`, under the {@link SignInLanding} for `arrival`, which their
+ * `SmartHandshakeGate` completes.
+ */
+function SignInLandingProvider({
+  arrival,
+  registration,
+  appRootRedirectUri: redirectUri,
+  onSignedIn,
+  children,
+}: SignInLanding & { readonly children: ReactNode }): JSX.Element {
+  // Memoised, so the gate's effects keyed on the landing run once.
+  const landing = useMemo(
+    (): SignInLanding => ({ arrival, registration, appRootRedirectUri: redirectUri, onSignedIn }),
+    [arrival, registration, redirectUri, onSignedIn]
+  )
+  return <SignInLandingContext value={landing}>{children}</SignInLandingContext>
+}
+
+/**
+ * Tag Sentry's events with the host of the FHIR server `connection` names. A
+ * server URL that does not parse is reported, and tagged as having no host.
+ * The report leaves the URL out, and the URL is redacted as written: it can
+ * name the server in a shape no URL scrubbing recognizes, such as a bare
+ * hostname.
+ */
+const tagFhirServerHost = (connection: SmartConnection): void => {
+  const fhirServerUrl = URL.parse(connection.fhirBaseUrl)
+  if (fhirServerUrl === null) {
+    redactServerHost(connection.fhirBaseUrl)
+    Sentry.captureException(new Error("The SMART handshake's FHIR server is not a URL"), {
+      tags: { source: 'fhir-server-host' },
+    })
+  }
+  setFhirServerHost(fhirServerUrl === null ? null : fhirServerUrl.host)
+}
+
 /** Replaces the page with `url` in the session history. */
 const replaceWindowLocation = (url: string): void => {
   window.location.replace(url)
@@ -229,6 +269,14 @@ function SmartAppRoot({
   children,
 }: SmartAppRootProps): JSX.Element {
   const [arrival] = useState(() => rootArrivalFrom(search ?? window.location.search))
+  // The app root is also the OAuth redirect target, the same URI whichever of
+  // the app's routes the page opened at. Derived on mount, not at module
+  // load, so importing this module never reads `window`.
+  const [redirectUri] = useState(() => appRootRedirectUri(window.location.href, servedDirectory))
+  const [connection, setConnection] = useState<Option.Option<SmartConnection>>(Option.none())
+  const onSignedIn = useCallback((signedIn: SmartConnection) => {
+    setConnection(Option.some(signedIn))
+  }, [])
 
   // A plain visit (a fresh one, a failed launch sent back here, a page back
   // from the back-forward cache) or a refused sign-in completes no launch, so
@@ -238,9 +286,9 @@ function SmartAppRoot({
   // that will not give the records up is reported.
   useEffect(() => {
     Match.value(arrival).pipe(
-      Match.tag('SignInRefused', () => {
+      Match.tag('SignInRefused', (refused) => {
         clearReturnRoute(window.sessionStorage)
-        discardPendingConnection(registration, servedDirectory).pipe(
+        discardPendingConnection(refused, { registration, appRootRedirectUri: redirectUri }).pipe(
           Effect.tapError((discardError) =>
             Effect.sync(() => {
               Sentry.captureException(discardError, { tags: { source: 'pending-connection' } })
@@ -254,7 +302,7 @@ function SmartAppRoot({
       }),
       Match.orElse(() => undefined)
     )
-  }, [arrival, registration, servedDirectory])
+  }, [arrival, registration, redirectUri])
 
   // A failed launch lands back here carrying its reason — our own `?launchError`
   // from the launch page or the token exchange, or the authorization server's
@@ -292,38 +340,26 @@ function SmartAppRoot({
     },
   })
 
-  // Once Sentry runs, tag its events with the FHIR server the app's handshake
-  // connected to, as soon as that handshake completes on the shared client.
-  // The callback runs inside the query cache's notification, so a server URL
-  // that does not parse is reported rather than thrown there, and tagged as
-  // having no host. The report leaves the URL out, and the URL is redacted as
-  // written: it can name the server in a shape no URL scrubbing recognizes,
-  // such as a bare hostname.
+  // Once Sentry runs and the app has signed in, tag its events with the FHIR
+  // server the sign-in connected to.
   useEffect(() => {
-    if (!telemetryStarted) return undefined
-    return whenSmartHandshakeReady(queryClient, (connection) => {
-      const fhirServerUrl = URL.parse(connection.fhirBaseUrl)
-      if (fhirServerUrl === null) {
-        redactServerHost(connection.fhirBaseUrl)
-        Sentry.captureException(new Error("The SMART handshake's FHIR server is not a URL"), {
-          tags: { source: 'fhir-server-host' },
-        })
-      }
-      setFhirServerHost(fhirServerUrl === null ? null : fhirServerUrl.host)
-    })
-  }, [telemetryStarted, queryClient])
+    if (telemetryStarted) Option.map(connection, tagFhirServerHost)
+  }, [telemetryStarted, connection])
 
-  // The app root is also the OAuth redirect target. Derived in render, not at
-  // module load, so importing this module never reads `window`.
-  const redirectUri = appRootRedirectUri(window.location.href, servedDirectory)
-
-  const launchedApp = (
-    <>
-      <BrandBar trailing={<ConsentStatusControl />} />
-      <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
-        {children}
-      </CrashReportingBoundary>
-    </>
+  const launchedApp = (signInArrival: SignInArrival): JSX.Element => (
+    <QueryClientProvider client={queryClient}>
+      <SignInLandingProvider
+        arrival={signInArrival}
+        registration={registration}
+        appRootRedirectUri={redirectUri}
+        onSignedIn={onSignedIn}
+      >
+        <BrandBar trailing={<ConsentStatusControl />} />
+        <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
+          {children}
+        </CrashReportingBoundary>
+      </SignInLandingProvider>
+    </QueryClientProvider>
   )
   const connectMenu = (
     <AppLandingPage app={app} aboveFooter={<ConsentStatusControl />}>
@@ -353,9 +389,7 @@ function SmartAppRoot({
             />
           </CrashReportingBoundary>
         )),
-        Match.tag('SignInReturn', 'SelfAddressedSignInReturn', () => (
-          <QueryClientProvider client={queryClient}>{launchedApp}</QueryClientProvider>
-        )),
+        Match.tag('SignInReturn', 'SelfAddressedSignInReturn', launchedApp),
         Match.tag('SignInRefused', 'Visit', () => (
           <QueryClientProvider client={queryClient}>{connectMenu}</QueryClientProvider>
         )),

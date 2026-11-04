@@ -9,6 +9,7 @@ export {
   SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
   type OpenServerConfig,
+  type SignInLanding,
   type SmartLaunchConfig,
 } from './smart-launch.ts'
 
@@ -123,7 +124,6 @@ export {
   isSmartHandshakeQuery,
   useLaunchFailureRedirect,
   useSmartHandshake,
-  whenSmartHandshakeReady,
   type SmartHandshake,
 } from './use-smart-handshake.ts'
 

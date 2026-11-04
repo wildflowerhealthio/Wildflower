@@ -9,7 +9,6 @@ import {
 import { type JSX, useState } from 'react'
 
 import { AppTitle } from './app-title.tsx'
-import { smartRegistration } from './config.ts'
 import { makePageStore } from './page-state.ts'
 import { buildRouter } from './router.ts'
 import styles from './app.module.css'
@@ -68,8 +67,6 @@ function MedicationsRouter({ page, runtime }: MedicationsRouterProps): JSX.Eleme
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>
     <SmartHandshakeGate
-      registration={smartRegistration}
-      servedDirectory={page.basepath}
       connecting={
         <>
           <AppTitle />

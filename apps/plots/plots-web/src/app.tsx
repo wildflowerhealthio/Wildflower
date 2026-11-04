@@ -13,7 +13,6 @@ import { DateTime, Option } from 'effect'
 import type { JSX } from 'react'
 import { useState } from 'react'
 
-import { smartRegistration } from './config.ts'
 import { PatientRecord } from './patient-record.tsx'
 import { PlotsPageWalkthroughAnchor } from './plots-walkthrough.ts'
 import { useUrlSelection } from './use-url-selection.ts'
@@ -42,7 +41,7 @@ export const App = (): JSX.Element => (
     <header className={styles.header}>
       <h1 className="text-heading-3">Plots</h1>
     </header>
-    <SmartHandshakeGate registration={smartRegistration} connecting={<LoadingLine />}>
+    <SmartHandshakeGate connecting={<LoadingLine />}>
       {({ connection }) => <PlotsPage connection={connection} />}
     </SmartHandshakeGate>
   </main>
