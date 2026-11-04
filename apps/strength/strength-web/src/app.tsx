@@ -1,7 +1,7 @@
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { useQueryClient } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { buildSmartRouterContext, type SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   LoadingLine,
   type SmartAppPage,
@@ -11,9 +11,9 @@ import type { Layer } from 'effect'
 import { type JSX, useState } from 'react'
 
 import { AppTitle } from './app-title.tsx'
+import { smartRegistration } from './config.ts'
 import { strongLiftsPlanDefinitionIdMinter } from './ids/strong-lifts-plan-definition-id-minter.ts'
 import { buildRouter } from './router.ts'
-import type { SmartClient } from './smart-client.ts'
 import styles from './app.module.css'
 
 /** Props for {@link App}. */
@@ -52,14 +52,7 @@ function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.E
     buildRouter(page, {
       queryClient,
       client,
-      runAuthed: buildSmartRouterContext(
-        {
-          serverUrl: client.state.serverUrl,
-          accessToken: client.state.tokenResponse?.access_token,
-        },
-        transport,
-        queryClient
-      ).runAuthed,
+      runAuthed: buildSmartRouterContext(client, transport, queryClient).runAuthed,
       strongLiftsPlanDefinitionIdFor: strongLiftsPlanDefinitionIdMinter(),
     })
   )
@@ -77,13 +70,15 @@ function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.E
  * The token exchange (`useSmartHandshake`) is a TanStack Query on the page's
  * shared client, keyed and deduped so StrictMode's double-mount exchanges the
  * single-use code once; the routes read the lifter's record on the same
- * client. Reads go through the fhirclient client the handshake yields (its
- * `request` already carries the token and the server base); writes go
- * through `fetch`.
+ * client. Reads go through the client the handshake yields (its `request`
+ * already carries the token and the server base); writes go through
+ * `fetch`.
  */
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>
     <SmartHandshakeGate
+      registration={smartRegistration}
+      servedDirectory={page.basepath}
       connecting={
         <>
           <AppTitle />

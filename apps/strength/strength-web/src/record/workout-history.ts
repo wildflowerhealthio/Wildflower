@@ -2,6 +2,7 @@ import {
   fetchAllResourcePages,
   fetchProcedurePage,
   fetchServiceRequestPage,
+  type SmartClient,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   ExerciseRequest,
@@ -11,7 +12,6 @@ import {
 } from '@wildflowerhealthio/strength-core-js'
 import { Array as Arr, Effect } from 'effect'
 
-import type { SmartClient } from '../smart-client.ts'
 import {
   decodeEvery,
   decodeExerciseSetObservations,
