@@ -1,20 +1,24 @@
+import { FetchHttpClient } from '@effect/platform'
 import {
   arrivingSmartLaunchFrom,
   AuthorizationRejected,
   beginSignIn,
+  beginSignInAt,
   browserSignInEnvironment,
   completeSignIn,
   createState,
+  forgetPendingSignIn,
+  PendingRequestUnrecognised,
   PendingRequestUnusable,
   searchWithoutAuthorizationResponse,
   SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
-  type PendingStore,
   type SignInEnvironment,
   type SignInError,
+  type SmartIssuer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
-import { Effect, Either, Match, Option, Schema } from 'effect'
+import { Effect, Either, Option, Schema } from 'effect'
 
 import { smartClientFor, type SmartClient } from './smart-client.ts'
 
@@ -39,85 +43,95 @@ interface SmartLaunchConfig {
 const PENDING_AUTHORIZATION_KEY = 'fhir-r4-react.pending-authorization'
 
 /**
- * The `sessionStorage` key the {@link PendingConnection} this tab started
+ * The `sessionStorage` key the {@link PendingOpenServer} this tab started
  * lives at until the redirect target completes it.
  */
 const PENDING_CONNECTION_KEY = 'fhir-r4-react.pending-connection'
 
 /**
- * A SMART sign-in in progress: the registration its return leg redeems the
- * code as. `authorization-core` keeps the rest (the PKCE verifier, the `state`,
- * the token endpoint) in its own pending record.
+ * A connection to an open server in progress, carried across the redirect in
+ * `sessionStorage`: the server, and the `state` the redirect target must come
+ * back with. It holds no credential.
  */
-const PendingSignIn = Schema.TaggedStruct('PendingSignIn', {
-  clientId: Schema.String,
-  scope: Schema.String,
-  redirectUri: Schema.String,
-})
-type PendingSignIn = Schema.Schema.Type<typeof PendingSignIn>
-
-/**
- * A connection to an open server in progress: the server, and the `state`
- * the redirect target must come back with.
- */
-const PendingOpenServer = Schema.TaggedStruct('PendingOpenServer', {
+const PendingOpenServer = Schema.Struct({
   state: Schema.String,
   serverUrl: Schema.String,
 })
 type PendingOpenServer = Schema.Schema.Type<typeof PendingOpenServer>
 
-/**
- * What the redirect target needs to finish the connection this tab started,
- * carried across the redirect in `sessionStorage`. It holds no credential.
- */
-const PendingConnection = Schema.Union(PendingSignIn, PendingOpenServer)
-type PendingConnection = Schema.Schema.Type<typeof PendingConnection>
+const PendingOpenServerJson = Schema.parseJson(PendingOpenServer)
+const encodePendingOpenServer = Schema.encodeSync(PendingOpenServerJson)
+const decodePendingOpenServer = Schema.decodeUnknownOption(PendingOpenServerJson)
 
-const PendingConnectionJson = Schema.parseJson(PendingConnection)
-const encodePendingConnection = Schema.encodeSync(PendingConnectionJson)
-const decodePendingConnection = Schema.decodeUnknownOption(PendingConnectionJson)
-
-/** The sign-in environment for `pendingSignIn`'s registration, wired to this page. */
-const signInEnvironmentFor = (pendingSignIn: PendingSignIn): SignInEnvironment =>
+/** The sign-in environment for `registration`, wired to this page. */
+const signInEnvironmentFor = (registration: Omit<SmartLaunchConfig, 'iss'>): SignInEnvironment =>
   browserSignInEnvironment(window, {
-    clientId: pendingSignIn.clientId,
+    clientId: registration.clientId,
     pendingKey: PENDING_AUTHORIZATION_KEY,
-    scope: pendingSignIn.scope,
-    redirectUri: pendingSignIn.redirectUri,
+    scope: registration.scope,
+    redirectUri: registration.redirectUri,
   })
 
-/** Keep `pendingConnection` for the redirect target, before the page leaves. */
-const rememberPendingConnection = (
-  pendingConnection: PendingConnection
+/** Why the page cannot use the record it keeps a connection in progress in. */
+const blockedStorage = (): PendingRequestUnusable =>
+  new PendingRequestUnusable({
+    reason:
+      'This browser would not let the page use the connection it kept ' +
+      '(session storage is blocked), so it cannot be completed.',
+  })
+
+/** Keep `pendingOpenServer` for the redirect target, before the page leaves. */
+const rememberPendingOpenServer = (
+  pendingOpenServer: PendingOpenServer
 ): Effect.Effect<void, PendingRequestUnusable> =>
   Effect.try({
     try: () =>
       window.sessionStorage.setItem(
         PENDING_CONNECTION_KEY,
-        encodePendingConnection(pendingConnection)
+        encodePendingOpenServer(pendingOpenServer)
       ),
-    catch: () =>
-      new PendingRequestUnusable({
-        reason:
-          'This browser would not let the page remember the connection ' +
-          '(session storage is blocked), so it cannot be completed.',
-      }),
+    catch: blockedStorage,
   })
 
 /**
- * Take the {@link PendingConnection} out of `store`: it is single-use, so it
- * is dropped as it is read. A storage that refuses to be read is treated as an
- * empty one, as `authorization-core`'s `completeSignIn` treats its own record:
- * either way there is no connection to complete.
+ * Take every pending record a callback arrival can complete out of
+ * `sessionStorage`, then scrub the callback from the address bar: the one rule
+ * every arrival at the app root carrying `code`, `state` or `error` follows,
+ * before it decides what to show.
+ *
+ * @returns The open-server record as stored, `None` when there is none.
+ *
+ * @remarks
+ * A sign-in's return (`code`) leaves `authorization-core`'s record to
+ * `completeSignIn`, which takes it before it redeems the code; any other
+ * arrival forgets it. The open-server record is taken either way, and decoded
+ * only by the arrival that completes it ({@link connectOpenServer}). A
+ * storage that throws fails with `PendingRequestUnusable`.
  */
-const takePendingConnection = (store: PendingStore): Option.Option<PendingConnection> => {
-  try {
-    const stored = store.getItem(PENDING_CONNECTION_KEY)
-    store.removeItem(PENDING_CONNECTION_KEY)
-    return stored === null ? Option.none() : decodePendingConnection(stored)
-  } catch {
-    return Option.none()
-  }
+const takePendingConnection = (
+  search: string,
+  environment: SignInEnvironment
+): Effect.Effect<Option.Option<string>, PendingRequestUnusable> =>
+  Effect.gen(function* () {
+    const storedOpenServer = yield* Effect.try({
+      try: () => {
+        const stored = window.sessionStorage.getItem(PENDING_CONNECTION_KEY)
+        window.sessionStorage.removeItem(PENDING_CONNECTION_KEY)
+        return Option.fromNullable(stored)
+      },
+      catch: blockedStorage,
+    })
+    if (!new URLSearchParams(search).has('code')) yield* forgetPendingSignIn(environment)
+    return storedOpenServer
+  }).pipe(Effect.ensuring(Effect.sync(scrubAuthorizationResponse)))
+
+/**
+ * Whether the callback `search` is a sign-in's return — a code, or the
+ * authorization server's refusal — for `completeSignIn` to finish.
+ */
+const redeemsSignIn = (search: string): boolean => {
+  const params = new URLSearchParams(search)
+  return params.has('code') || params.has('error')
 }
 
 /**
@@ -129,6 +143,14 @@ const runConnectionStep = async <A>(step: Effect.Effect<A, SignInError>): Promis
   Either.getOrThrowWith(
     await Effect.runPromise(Effect.either(step)),
     (failure) => new Error(failure.reason, { cause: failure })
+  )
+
+/** Run `beginning`, then send the browser to the authorization URL it yields. */
+const leaveForAuthorization = (beginning: Effect.Effect<string, SignInError>): Promise<void> =>
+  runConnectionStep(
+    Effect.map(beginning, (authorizeUrl) => {
+      window.location.assign(authorizeUrl)
+    })
   )
 
 /**
@@ -149,23 +171,22 @@ const authorizeSmartLaunch = (
   config: SmartLaunchConfig,
   launch: string | undefined
 ): Promise<void> =>
-  runConnectionStep(
-    Effect.gen(function* () {
-      const pendingSignIn = PendingSignIn.make({
-        clientId: config.clientId,
-        scope: config.scope,
-        redirectUri: config.redirectUri,
-      })
-      const authorizeUrl = yield* beginSignIn(
-        trimTrailingSlashes(config.iss),
-        undefined,
-        signInEnvironmentFor(pendingSignIn),
-        launch
-      )
-      yield* rememberPendingConnection(pendingSignIn)
-      window.location.assign(authorizeUrl)
+  leaveForAuthorization(
+    beginSignIn(trimTrailingSlashes(config.iss), undefined, signInEnvironmentFor(config), {
+      launch,
     })
   )
+
+/**
+ * Begin a standalone SMART App Launch at the already-discovered `issuer`, as
+ * {@link authorizeSmartLaunch} does once it has discovered one: the probe that
+ * found the issuer is the one fetch of its SMART configuration.
+ */
+const authorizeSmartLaunchAt = (
+  issuer: SmartIssuer,
+  config: Omit<SmartLaunchConfig, 'iss'>
+): Promise<void> =>
+  leaveForAuthorization(beginSignInAt(issuer, undefined, signInEnvironmentFor(config)))
 
 /**
  * Configuration for connecting to an **open** FHIR server — one whose
@@ -190,22 +211,22 @@ const authorizeOpenServer = (config: OpenServerConfig): Promise<void> =>
   runConnectionStep(
     Effect.gen(function* () {
       const state = createState(window.crypto)
-      yield* rememberPendingConnection(
-        PendingOpenServer.make({ state, serverUrl: trimTrailingSlashes(config.fhirServiceUrl) })
-      )
+      yield* rememberPendingOpenServer({
+        state,
+        serverUrl: trimTrailingSlashes(config.fhirServiceUrl),
+      })
       const redirectTarget = new URL(config.redirectUri)
       redirectTarget.searchParams.set('state', state)
       window.location.assign(redirectTarget.href)
     })
   )
 
-/** Redeem the code `search` carries for the sign-in `pendingSignIn` started. */
+/** Redeem the code `search` carries for the sign-in `environment` started. */
 const redeemSignIn = (
   search: string,
-  pendingSignIn: PendingSignIn
-): Effect.Effect<SmartClient, SignInError> => {
-  const environment = signInEnvironmentFor(pendingSignIn)
-  return completeSignIn(search, environment).pipe(
+  environment: SignInEnvironment
+): Effect.Effect<SmartClient, SignInError> =>
+  completeSignIn(search, environment).pipe(
     Effect.flatMap(
       Option.match({
         onNone: () =>
@@ -216,29 +237,43 @@ const redeemSignIn = (
                 'Connect again.',
             })
           ),
-        onSome: (session) => Effect.succeed(smartClientFor(session, environment.fetch)),
+        onSome: (session) => Effect.succeed(smartClientFor(session, FetchHttpClient.layer)),
       })
     )
   )
-}
 
-/** The open server `pendingOpenServer` names, once `search` comes back with its `state`. */
+/**
+ * The open server the stored record names, once `search` comes back with its
+ * `state`. Only an absent record means there is no connection to complete.
+ */
 const connectOpenServer = (
   search: string,
-  pendingOpenServer: PendingOpenServer
-): Effect.Effect<SmartClient, AuthorizationRejected> =>
-  new URLSearchParams(search).get('state') === pendingOpenServer.state
-    ? Effect.succeed(
-        smartClientFor(
-          { serverUrl: pendingOpenServer.serverUrl, accessToken: undefined, patient: undefined },
-          (...request) => window.fetch(...request)
-        )
-      )
-    : Effect.fail(
-        new AuthorizationRejected({
-          reason: 'The connection came back with the wrong state parameter, so it was discarded.',
-        })
-      )
+  storedOpenServer: Option.Option<string>
+): Effect.Effect<SmartClient, AuthorizationRejected | PendingRequestUnrecognised> =>
+  Effect.gen(function* () {
+    if (Option.isNone(storedOpenServer)) {
+      return yield* new AuthorizationRejected({
+        reason: 'This page has no connection in progress to complete. Connect again.',
+      })
+    }
+    const pendingOpenServer = decodePendingOpenServer(storedOpenServer.value)
+    if (Option.isNone(pendingOpenServer)) {
+      return yield* new PendingRequestUnrecognised({
+        reason:
+          'The connection in progress was started by a different version of this page. ' +
+          'Connect again.',
+      })
+    }
+    if (new URLSearchParams(search).get('state') !== pendingOpenServer.value.state) {
+      return yield* new AuthorizationRejected({
+        reason: 'The connection came back with the wrong state parameter, so it was discarded.',
+      })
+    }
+    return smartClientFor(
+      { serverUrl: pendingOpenServer.value.serverUrl, accessToken: undefined, patient: undefined },
+      FetchHttpClient.layer
+    )
+  })
 
 /**
  * Take the authorization response out of the address bar, keeping the rest of
@@ -253,36 +288,65 @@ const scrubAuthorizationResponse = (): void => {
   )
 }
 
+/** The callback search and the sign-in environment of the app at `registration`. */
+const callbackEnvironment = (
+  registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
+  servedDirectory: string | undefined
+): { readonly search: string; readonly environment: SignInEnvironment } => ({
+  search: window.location.search,
+  environment: signInEnvironmentFor({
+    ...registration,
+    redirectUri: appRootRedirectUri(window.location.href, servedDirectory),
+  }),
+})
+
 /**
  * Complete the connection on the redirect target: redeem the code a SMART
  * sign-in came back with, or accept an open server's return, and resolve to a
  * ready {@link SmartClient}.
  *
+ * @param registration - The app's SMART registration, which the code is
+ *   redeemed as
+ * @param servedDirectory - The directory the app is served from, as
+ *   {@link appRootRedirectUri} takes it: the redirect URI the token request
+ *   names is derived the same way the outbound leg derived it
+ *
  * @remarks
- * The pending connection is single-use: it is taken before the code is
- * redeemed, so a second completion (a reload, a remount) finds nothing to
- * complete and rejects, as a page with no connection in progress does. The
- * callback's `code` and `state` leave the address bar once the connection
- * settles, whichever way.
+ * Every pending record is taken first ({@link takePendingConnection}), so a
+ * second completion (a reload, a remount) finds nothing to complete and
+ * rejects, as a page with no connection in progress does, and the callback
+ * leaves the address bar whichever way the connection settles.
  */
-const readySmartClient = (): Promise<SmartClient> =>
+const readySmartClient = (
+  registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
+  servedDirectory?: string
+): Promise<SmartClient> =>
   runConnectionStep(
     Effect.gen(function* () {
-      const { search } = window.location
-      const pendingConnection = takePendingConnection(window.sessionStorage)
-      if (Option.isNone(pendingConnection)) {
-        return yield* new AuthorizationRejected({
-          reason: 'This page has no connection in progress to complete. Connect again.',
-        })
-      }
-      return yield* Match.value(pendingConnection.value).pipe(
-        Match.tagsExhaustive({
-          PendingSignIn: (pendingSignIn) => redeemSignIn(search, pendingSignIn),
-          PendingOpenServer: (pendingOpenServer) => connectOpenServer(search, pendingOpenServer),
-        })
-      )
-    }).pipe(Effect.ensuring(Effect.sync(scrubAuthorizationResponse)))
+      const { search, environment } = callbackEnvironment(registration, servedDirectory)
+      const storedOpenServer = yield* takePendingConnection(search, environment)
+      return yield* redeemsSignIn(search)
+        ? redeemSignIn(search, environment)
+        : connectOpenServer(search, storedOpenServer)
+    })
   )
+
+/**
+ * Drop every pending record and scrub the callback, for an arrival that
+ * carries a callback the app root does not complete: an authorization
+ * server's `?error=` return, which the root shows on the connect menu.
+ *
+ * @remarks
+ * The same rule {@link readySmartClient} takes the records by
+ * ({@link takePendingConnection}); it rejects only when the storage throws.
+ */
+const discardPendingConnection = (
+  registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
+  servedDirectory?: string
+): Promise<void> => {
+  const { search, environment } = callbackEnvironment(registration, servedDirectory)
+  return runConnectionStep(Effect.asVoid(takePendingConnection(search, environment)))
+}
 
 /**
  * Whether `search` is a SMART/OAuth redirect the app should complete with
@@ -297,8 +361,9 @@ const readySmartClient = (): Promise<SmartClient> =>
  *
  * An `error=…` return is excluded deliberately: an OAuth error still carries
  * `state`, so without this the app would try to complete a handshake that failed
- * (a denied or expired authorization). Excluding it routes those back to the
- * connect menu to retry instead.
+ * (a denied or expired authorization). Excluding it routes those to the
+ * connect menu to retry instead, which shows the refusal and takes the pending
+ * records with {@link discardPendingConnection}.
  *
  * `search` is a parameter (default `window.location.search`) so the decision can
  * be exercised without a window — the same transport-is-a-parameter style as the
@@ -355,6 +420,9 @@ export {
   arrivingSmartLaunchFrom,
   authorizeOpenServer,
   authorizeSmartLaunch,
+  authorizeSmartLaunchAt,
+  discardPendingConnection,
+  PENDING_AUTHORIZATION_KEY,
   PENDING_CONNECTION_KEY,
   readySmartClient,
   shouldCompleteSmartLaunch,

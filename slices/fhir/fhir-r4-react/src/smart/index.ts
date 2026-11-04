@@ -3,6 +3,8 @@ export {
   arrivingSmartLaunchFrom,
   authorizeOpenServer,
   authorizeSmartLaunch,
+  authorizeSmartLaunchAt,
+  discardPendingConnection,
   readySmartClient,
   shouldCompleteSmartLaunch,
   SMART_LAUNCH_PARAMS,
@@ -110,6 +112,7 @@ export {
 export {
   isSmartHandshakeQuery,
   useLaunchFailureRedirect,
+  useSmartClient,
   useSmartHandshake,
   whenSmartHandshakeReady,
   type SmartHandshake,

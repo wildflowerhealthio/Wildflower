@@ -1,15 +1,17 @@
 import {
   hashKey,
   queryOptions,
+  skipToken,
   useQuery,
   type Query,
   type QueryClient,
 } from '@tanstack/react-query'
+import { Option } from 'effect'
 import { useEffect } from 'react'
 
 import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'
 import type { SmartClient } from './smart-client.ts'
-import { appRootRedirectUri, readySmartClient } from './smart-launch.ts'
+import { appRootRedirectUri, readySmartClient, type SmartLaunchConfig } from './smart-launch.ts'
 
 /**
  * The state of completing the SMART handshake on the redirect page: still
@@ -27,9 +29,8 @@ type SmartHandshake =
 const SMART_HANDSHAKE_QUERY_KEY = ['fhir-r4-react', 'smart-handshake'] as const
 
 /**
- * The handshake query every {@link useSmartHandshake} mount runs, and what
- * {@link whenSmartHandshakeReady} reads back: the token exchange under
- * {@link SMART_HANDSHAKE_QUERY_KEY}, typed so a read of its data is a
+ * The handshake query's settings, shared by the one hook that runs it and
+ * the one that only reads it: the key, typed so a read of its data is a
  * {@link SmartClient}.
  *
  * @remarks
@@ -37,9 +38,8 @@ const SMART_HANDSHAKE_QUERY_KEY = ['fhir-r4-react', 'smart-handshake'] as const
  * and `gcTime` are `Infinity` because there is nothing to refetch — the
  * handshake is a one-shot whose result lives for the page.
  */
-const smartHandshakeQuery = queryOptions({
+const smartHandshakeQueryBase = queryOptions<SmartClient>({
   queryKey: SMART_HANDSHAKE_QUERY_KEY,
-  queryFn: () => readySmartClient(),
   retry: false,
   staleTime: Infinity,
   gcTime: Infinity,
@@ -50,24 +50,52 @@ const smartHandshakeQuery = queryOptions({
  * Complete the SMART handshake exactly once, as a TanStack Query, and report its
  * state.
  *
+ * @param registration - The app's SMART registration, which the code is
+ *   redeemed as
+ * @param servedDirectory - The directory the app is served from, as
+ *   `appRootRedirectUri` takes it, so the token request names the redirect
+ *   URI the launch sent
+ *
  * @remarks
- * The authorization code in the redirect URL is single-use: the token exchange
- * (`readySmartClient` → `authorization-core`'s `completeSignIn`, the POST to
- * the token endpoint) may run **once, ever**. Routing it through a keyed query
- * is what makes that hold under `React.StrictMode`, whose dev-only
- * mount → unmount → mount would fire a bare `useEffect` twice — the second run
- * finding the single-use pending record already taken and failing the
- * handshake. Query-level dedup means both mounts attach to the one in-flight
- * exchange instead. The query's options are {@link smartHandshakeQuery}'s.
+ * This is the one hook that runs the exchange; everything else reads its
+ * result with {@link useSmartClient}. The authorization code in the redirect
+ * URL is single-use: the token exchange (`readySmartClient` →
+ * `authorization-core`'s `completeSignIn`, the POST to the token endpoint)
+ * may run **once, ever**. Routing it through a keyed query is what makes that
+ * hold under `React.StrictMode`, whose dev-only mount → unmount → mount would
+ * fire a bare `useEffect` twice — the second run finding the single-use
+ * pending record already taken and failing the handshake. Query-level dedup
+ * means both mounts attach to the one in-flight exchange instead.
  *
  * Requires a `QueryClientProvider` above it; {@link buildSmartQueryClient}
  * builds the client the app provides.
  */
-const useSmartHandshake = (): SmartHandshake => {
-  const query = useQuery(smartHandshakeQuery)
+const useSmartHandshake = (
+  registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
+  servedDirectory?: string
+): SmartHandshake => {
+  const query = useQuery({
+    ...smartHandshakeQueryBase,
+    queryFn: () => readySmartClient(registration, servedDirectory),
+  })
   if (query.isSuccess) return { kind: 'ready', client: query.data }
   if (query.isError) return { kind: 'error', error: query.error }
   return { kind: 'connecting' }
+}
+
+/**
+ * The {@link SmartClient} the page's SMART handshake resolved to, or `None`
+ * while it has not (still exchanging, failed, or not started on this page).
+ *
+ * @remarks
+ * Read-only: it observes the handshake query {@link useSmartHandshake} runs
+ * and has no `queryFn` of its own (`skipToken`), so no reader can start the
+ * single-use exchange, however it mounts. It re-renders when the handshake
+ * settles.
+ */
+const useSmartClient = (): Option.Option<SmartClient> => {
+  const query = useQuery({ ...smartHandshakeQueryBase, queryFn: skipToken })
+  return Option.fromNullable(query.data)
 }
 
 /**
@@ -93,7 +121,7 @@ const whenSmartHandshakeReady = (
   let notified = false
   const notifyIfReady = (): void => {
     if (notified) return
-    const readyClient = queryClient.getQueryData(smartHandshakeQuery.queryKey)
+    const readyClient = queryClient.getQueryData(smartHandshakeQueryBase.queryKey)
     if (readyClient === undefined) return
     notified = true
     onReady(readyClient)
@@ -113,7 +141,7 @@ const whenSmartHandshakeReady = (
  * there as the launch failure the page arrived with.
  */
 const isSmartHandshakeQuery = (query: Pick<Query, 'queryKey'>): boolean =>
-  hashKey(query.queryKey) === hashKey(smartHandshakeQuery.queryKey)
+  hashKey(query.queryKey) === hashKey(smartHandshakeQueryBase.queryKey)
 
 /**
  * Send a failed handshake back to the app root, carrying its reason as
@@ -148,6 +176,7 @@ export {
   isSmartHandshakeQuery,
   SMART_HANDSHAKE_QUERY_KEY,
   useLaunchFailureRedirect,
+  useSmartClient,
   useSmartHandshake,
   whenSmartHandshakeReady,
   type SmartHandshake,
