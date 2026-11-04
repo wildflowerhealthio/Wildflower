@@ -12,11 +12,17 @@
   padding: var(--space-9) var(--space-7) var(--space-13);
 }
 
-/* The title and, under it, whose record is open. */
+/* The title, shown in every handshake state. */
 .header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  margin-bottom: var(--space-9);
+}
+
+/* Whose record is open, close under the title. */
+.header:has(+ .patient-line) {
+  margin-bottom: var(--space-3);
+}
+
+.patient-line {
   margin-bottom: var(--space-9);
 }
 
