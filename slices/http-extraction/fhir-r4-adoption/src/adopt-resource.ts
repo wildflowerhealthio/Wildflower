@@ -528,7 +528,8 @@ const detachReference =
  *
  * @param baseUrl - The server's base URL, the `[base]` of its
  *   `[base]/[type]/[id]`
- * @returns A function from one served resource to its detached form
+ * @returns A function from one served resource to its detached form, of the
+ *   same resource type
  *
  * @remarks
  * For a response kind whose records really were a FHIR server's (a FHIR R4
@@ -551,19 +552,26 @@ const detachReference =
 const detach = (baseUrl: string) => {
   const urlOf = memoisedUrlOf()
   const detachReferences = mapReferences(detachReference(baseUrl, urlOf))
-  return (resource: FhirResource): DetachedResource.Type => {
+  return <TResource extends FhirResource>(
+    resource: TResource
+  ): DetachedResource.Detached<TResource> => {
     const detached = detachReferences(resource)
     const { id } = resource
-    return id !== null && DetachedResource.hasIdentifier(detached)
-      ? {
-          ...detached,
-          id: null,
-          identifier: [
-            identifierOf(urlOf(serverSystemOf(baseUrl, detached.resourceType)), id),
-            ...detached.identifier,
-          ],
-        }
-      : { ...detached, id: null }
+    const keyed: DetachedResource.Type =
+      id !== null && DetachedResource.hasIdentifier(detached)
+        ? {
+            ...detached,
+            id: null,
+            identifier: [
+              identifierOf(urlOf(serverSystemOf(baseUrl, detached.resourceType)), id),
+              ...detached.identifier,
+            ],
+          }
+        : { ...detached, id: null }
+    // `mapReferences` maps each variant to itself, so `keyed` is `resource`'s
+    // own type, detached; the type system cannot see that (see its remarks).
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return keyed as DetachedResource.Detached<TResource>
   }
 }
 

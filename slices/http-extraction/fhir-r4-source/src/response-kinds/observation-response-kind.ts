@@ -1,10 +1,9 @@
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
-import { HttpResponseKind, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { Effect, Schema } from 'effect'
+import { type HttpResponseKind, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { Array as Arr, Effect, flow, Schema } from 'effect'
 
-import { extractJson } from '../extract-json.ts'
-import { detachUnderFhirRoot, recognizeFhirRoot } from '../recognize-fhir-root.ts'
+import * as FhirServerResponseKind from '../fhir-server-response-kind.ts'
 
 const decode = Schema.decode(Schema.parseJson(Observation.Schema))
 
@@ -14,21 +13,13 @@ const observationUrl = UrlMatch.make({
   segments: [UrlMatch.literal('Observation'), UrlMatch.id],
 })
 
-/**
- * Entity for a single FHIR R4 `Observation` resource fetched at
- * `…/Observation/:id`. The wire schema lives in `fhir-r4/resources` —
- * its `Encoded` is the FHIR R4 wire JSON, its `Type` is the decoded
- * FHIR value, detached under the server's root. {@link extractJson} normalizes the body
- * across raw-JSON XHR intercepts and the mobile WebView's JSON viewer
- * wrap.
- */
-const ObservationResponseKind: HttpResponseKind.HttpResponseKind<DetachedResource.Type> =
-  HttpResponseKind.make({
-    name: 'ObservationResponseKind',
-    tryRecognize: recognizeFhirRoot(observationUrl),
-    parse: detachUnderFhirRoot(observationUrl)((response) =>
-      Effect.map(decode(extractJson(response.text())), (observation) => [observation])
-    ),
-  })
+/** A FHIR R4 `Observation` read, `…/Observation/<id>`: the one Observation. */
+const ObservationResponseKind: HttpResponseKind.HttpResponseKind<
+  DetachedResource.Detached<typeof Observation.Schema.Type>
+> = FhirServerResponseKind.make({
+  name: 'ObservationResponseKind',
+  url: observationUrl,
+  records: flow(decode, Effect.map(Arr.of)),
+})
 
 export { ObservationResponseKind }

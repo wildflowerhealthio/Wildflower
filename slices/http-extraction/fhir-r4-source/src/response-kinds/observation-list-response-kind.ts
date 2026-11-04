@@ -1,11 +1,10 @@
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Bundle } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
-import { HttpResponseKind, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { type HttpResponseKind, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Effect, Schema } from 'effect'
 
-import { extractJson } from '../extract-json.ts'
-import { detachUnderFhirRoot, recognizeFhirRoot } from '../recognize-fhir-root.ts'
+import * as FhirServerResponseKind from '../fhir-server-response-kind.ts'
 
 const ObservationBundle = Bundle.Schema(Observation.Schema)
 const decode = Schema.decode(Schema.parseJson(ObservationBundle))
@@ -23,36 +22,29 @@ const observationListUrl = UrlMatch.make({
 })
 
 /**
- * Entity for a FHIR R4 `Bundle` of `Observation` resources fetched at
- * `…/Observation?…`. The Bundle schema decodes each `entry.resource` as
- * `Observation | null` (`OrNullAsOptional`), so entries with no resource
- * (search-outcome or request/response-only entries) survive decode as
- * `null`; the `isObservation` filter drops those `null`s and keeps only
- * present `Observation` resources, each detached under the server's root.
- * The dropped count is surfaced via
- * `Effect.logInfo` so those losses aren't invisible at runtime.
- * {@link extractJson} normalizes the body
- * across raw-JSON XHR intercepts and the mobile WebView's JSON viewer
- * wrap.
+ * A FHIR R4 `Observation` search, `…/Observation?…`: the searchset's
+ * Observations. An entry with no resource (a search-outcome or
+ * request/response-only entry) is dropped, and the drop counted with
+ * `Effect.logInfo`.
  */
-const ObservationListResponseKind: HttpResponseKind.HttpResponseKind<DetachedResource.Type> =
-  HttpResponseKind.make({
-    name: 'ObservationListResponseKind',
-    tryRecognize: recognizeFhirRoot(observationListUrl),
-    parse: detachUnderFhirRoot(observationListUrl)((response) =>
-      Effect.gen(function* () {
-        const bundle = yield* decode(extractJson(response.text()))
-        const allEntries = bundle.entry ?? []
-        const resources = allEntries.map(({ resource }) => resource).filter((o) => isObservation(o))
-        const droppedCount = allEntries.length - resources.length
-        if (droppedCount > 0) {
-          yield* Effect.logInfo(
-            `ObservationListResponseKind: dropped ${droppedCount} of ${allEntries.length} Bundle entries that did not decode as Observation`
-          )
-        }
-        return resources
-      })
-    ),
-  })
+const ObservationListResponseKind: HttpResponseKind.HttpResponseKind<
+  DetachedResource.Detached<typeof Observation.Schema.Type>
+> = FhirServerResponseKind.make({
+  name: 'ObservationListResponseKind',
+  url: observationListUrl,
+  records: (body) =>
+    Effect.gen(function* () {
+      const bundle = yield* decode(body)
+      const allEntries = bundle.entry ?? []
+      const resources = allEntries.map(({ resource }) => resource).filter((o) => isObservation(o))
+      const droppedCount = allEntries.length - resources.length
+      if (droppedCount > 0) {
+        yield* Effect.logInfo(
+          `ObservationListResponseKind: dropped ${droppedCount} of ${allEntries.length} Bundle entries that did not decode as Observation`
+        )
+      }
+      return resources
+    }),
+})
 
 export { ObservationListResponseKind }

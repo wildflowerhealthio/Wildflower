@@ -693,7 +693,10 @@ describe('detach', () => {
   })
 
   test('a Binary is keyless — R4 gives it no identifier element', () => {
-    const detached = detachFhir({ ...sample(Binary.Schema, 11), id: 'src-1' })
+    const detached = detachFhir<typeof Binary.Schema.Type>({
+      ...sample(Binary.Schema, 11),
+      id: 'src-1',
+    })
     expect(detached.id).toBeNull()
     expect('identifier' in detached).toBe(false)
     expect(DetachedResource.keyOf(detached)).toEqual(Option.none())
@@ -1224,7 +1227,7 @@ describe('detaching nested references', () => {
       quantity: null,
       description: 'Walk 30 minutes daily',
     } as const satisfies typeof CarePlanActivityDetail.Schema.Type
-    const detached = detachFhir({
+    const detached = detachFhir<typeof CarePlan.Schema.Type>({
       ...sample(CarePlan.Schema, 21),
       id: 'plan-1',
       activity: [
@@ -1269,7 +1272,7 @@ describe('detaching nested references', () => {
   // pinned here.
   test('detaches the subject of a PlanDefinition action at every depth', () => {
     const emptyAction = Schema.decodeSync(PlanDefinitionAction.Schema)({})
-    const detached = detachFhir({
+    const detached = detachFhir<typeof PlanDefinition.Schema.Type>({
       ...sample(PlanDefinition.Schema, 23),
       id: 'plan-1',
       action: [

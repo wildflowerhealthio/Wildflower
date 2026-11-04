@@ -120,6 +120,13 @@ describe('PatientResponseKind', () => {
       )
     })
 
+    it('keeps a Patient the server sent with no id, keyless', () => {
+      expectRightToEqual(
+        runParse(makeResponse(JSON.stringify({ resourceType: 'Patient', gender: 'female' }))),
+        [expect.objectContaining({ id: null, identifier: [], gender: 'female' })]
+      )
+    })
+
     it('parses a Patient JSON wrapped in the WebView JSON-viewer HTML envelope', () => {
       const raw = JSON.stringify({ resourceType: 'Patient', id: '99' })
       expectRightToEqual(runParse(makeResponse(wrappedHtml(raw))), [
