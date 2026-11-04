@@ -50,18 +50,6 @@ const LaunchErrorParameter = Schema.compose(
   Schema.parseJson(LaunchErrorBody)
 )
 
-/**
- * The OAuth-standard error return (RFC 6749 §4.1.2.1) the authorization server
- * appends to the redirect URI.
- */
-const OAuthErrorReturn = Schema.Struct({
-  error: Schema.NonEmptyString,
-  error_description: OptionalText,
-  error_uri: OptionalText,
-})
-
-const decodeOAuthErrorReturn = Schema.decodeUnknownOption(OAuthErrorReturn)
-
 /** The search parameter the launch error rides on, matching the Tauri arm. */
 const LAUNCH_ERROR_PARAM = 'launchError'
 
@@ -138,48 +126,6 @@ const smartLaunchError = (message: string): Error => {
 }
 
 /**
- * The value to hand `ErrorBanner` for the current URL's search string: an
- * {@link Error} describing the failed launch, or `null` when the search carries
- * no failure at all (the resting state, where the banner renders nothing).
- *
- * @remarks
- * Two transports land here, because a launch can fail on either side of the
- * authorization server:
- *
- * - **`?launchError=`** — our own encoded body, set by the launch page when
- *   {@link authorizeSmartLaunch} rejects before any redirect, and by the app
- *   when the token exchange fails.
- * - **`?error=`** — the OAuth-standard error return, which the authorization
- *   server itself appends to the redirect URI on a denied or expired
- *   authorization. `shouldCompleteSmartLaunch` deliberately routes these to the
- *   connect menu rather than completing a handshake that failed; reading them
- *   here is what stops that landing being silent.
- *
- * `search` is a parameter (defaulting to the live URL) so the decision can be
- * exercised without a window — the same transport-is-a-parameter style as the
- * rest of `smart/`.
- */
-const launchErrorFrom = (search: string = window.location.search): Error | null => {
-  const parameters = new URLSearchParams(search)
-
-  const encoded = parameters.get(LAUNCH_ERROR_PARAM)
-  if (encoded !== null && encoded !== '') return launchError(decodeLaunchError(encoded))
-
-  return Option.match(decodeOAuthErrorReturn(Object.fromEntries(parameters)), {
-    onNone: () => null,
-    onSome: (oauthError) =>
-      launchError(
-        Option.some({
-          error: 'AuthorizationDenied',
-          message: oauthError.error,
-          description: oauthError.error_description,
-          uri: oauthError.error_uri,
-        })
-      ),
-  })
-}
-
-/**
  * Parameters stripped from a launch-error redirect target, because leaving them
  * on would make the app root try the very handshake that just failed.
  */
@@ -195,7 +141,7 @@ const CALLBACK_PARAMS = ['code', 'state', 'error', 'error_description', 'error_u
  * launch page, which has no UI of its own beyond a "Launching…" line.
  *
  * The OAuth callback parameters are dropped from the target. That is what makes
- * the redirect safe to fire from a failed token exchange: `shouldCompleteSmartLaunch`
+ * the redirect safe to fire from a failed token exchange: `rootArrivalFrom`
  * reads `code`/`state` off the URL, so carrying them to the app root would put
  * it straight back into the launched branch, fail the same single-use code
  * again, and redirect again — an infinite loop. The reason for the failure
@@ -235,7 +181,6 @@ export {
   encodeLaunchError,
   launchError,
   launchErrorBodyFor,
-  launchErrorFrom,
   launchErrorRedirect,
   type LaunchErrorBody,
 }

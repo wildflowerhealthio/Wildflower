@@ -18,8 +18,9 @@ import {
   type SignInError,
   type SmartIssuer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { Effect, Option, Schema } from 'effect'
+import { Data, Effect, Match, Option, Schema } from 'effect'
 
+import { RootArrival, rootArrivalFrom } from './root-arrival.ts'
 import { decodeFhirBaseUrl, FhirBaseUrl, SmartConnection } from './smart-connection.ts'
 
 /**
@@ -102,14 +103,13 @@ const rememberPendingOpenServer = (
  * @returns The open-server record as stored, `None` when there is none.
  *
  * @remarks
- * A sign-in's return (`code`) leaves `authorization-core`'s record to
- * `completeSignIn`, which takes it before it redeems the code; any other
- * arrival forgets it. The open-server record is taken either way, and decoded
+ * A `SignInReturn` leaves `authorization-core`'s record to `completeSignIn`,
+ * which takes it before it redeems the code; any other arrival forgets it. The open-server record is taken either way, and decoded
  * only by the arrival that completes it ({@link connectOpenServer}). A
  * storage that throws fails with `PendingRequestUnusable`.
  */
 const takePendingConnection = (
-  search: string,
+  arrival: RootArrival,
   environment: SignInEnvironment
 ): Effect.Effect<Option.Option<string>, PendingRequestUnusable> =>
   Effect.gen(function* () {
@@ -121,18 +121,9 @@ const takePendingConnection = (
       },
       catch: blockedStorage,
     })
-    if (!new URLSearchParams(search).has('code')) yield* forgetPendingSignIn(environment)
+    if (!RootArrival.$is('SignInReturn')(arrival)) yield* forgetPendingSignIn(environment)
     return storedOpenServer
   }).pipe(Effect.ensuring(Effect.sync(scrubAuthorizationResponse)))
-
-/**
- * Whether the callback `search` is a sign-in's return — a code, or the
- * authorization server's refusal — for `completeSignIn` to finish.
- */
-const redeemsSignIn = (search: string): boolean => {
-  const params = new URLSearchParams(search)
-  return params.has('code') || params.has('error')
-}
 
 /** Run `beginning`, then send the browser to the authorization URL it yields. */
 const leaveForAuthorization = <E>(beginning: Effect.Effect<string, E>): Effect.Effect<void, E> =>
@@ -221,33 +212,35 @@ const connectionOf = (session: Session): SmartConnection =>
     ),
   })
 
-/** Redeem the code `search` carries for the sign-in `environment` started. */
+/**
+ * Redeem the code `signInReturn` carries for the sign-in `environment`
+ * started.
+ *
+ * @remarks
+ * `completeSignIn` reads the return from a query string, so the arrival is
+ * written back as one. A return that carries a code always completes or
+ * fails, so its `None` (no return at all) cannot happen here.
+ */
 const redeemSignIn = (
-  search: string,
+  { code, state }: Data.TaggedEnum.Value<RootArrival, 'SignInReturn'>,
   environment: SignInEnvironment
 ): Effect.Effect<SmartConnection, SignInError> =>
-  completeSignIn(search, environment).pipe(
+  completeSignIn(`?${new URLSearchParams({ code, state }).toString()}`, environment).pipe(
     Effect.flatMap(
       Option.match({
-        onNone: () =>
-          Effect.fail(
-            new AuthorizationRejected({
-              reason:
-                'The authorization server sent this page back without an authorization code. ' +
-                'Connect again.',
-            })
-          ),
+        onNone: () => Effect.dieMessage('A sign-in return with a code completed to no session'),
         onSome: (session) => Effect.succeed(connectionOf(session)),
       })
     )
   )
 
 /**
- * The open server the stored record names, once `search` comes back with its
- * `state`. Only an absent record means there is no connection to complete.
+ * The open server the stored record names, once `selfAddressedReturn` comes
+ * back with its `state`. Only an absent record means there is no connection
+ * to complete.
  */
 const connectOpenServer = (
-  search: string,
+  selfAddressedReturn: Data.TaggedEnum.Value<RootArrival, 'SelfAddressedSignInReturn'>,
   storedOpenServer: Option.Option<string>
 ): Effect.Effect<SmartConnection, AuthorizationRejected | PendingRequestUnrecognised> =>
   Effect.gen(function* () {
@@ -264,7 +257,7 @@ const connectOpenServer = (
           'Connect again.',
       })
     }
-    if (new URLSearchParams(search).get('state') !== pendingOpenServer.value.state) {
+    if (selfAddressedReturn.state !== pendingOpenServer.value.state) {
       return yield* new AuthorizationRejected({
         reason: 'The connection came back with the wrong state parameter, so it was discarded.',
       })
@@ -289,12 +282,12 @@ const scrubAuthorizationResponse = (): void => {
   )
 }
 
-/** The callback search and the sign-in environment of the app at `registration`. */
+/** The page's arrival and the sign-in environment of the app at `registration`. */
 const callbackEnvironment = (
   registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
   servedDirectory: string | undefined
-): { readonly search: string; readonly environment: SignInEnvironment } => ({
-  search: window.location.search,
+): { readonly arrival: RootArrival; readonly environment: SignInEnvironment } => ({
+  arrival: rootArrivalFrom(window.location.search),
   environment: signInEnvironmentFor({
     ...registration,
     redirectUri: appRootRedirectUri(window.location.href, servedDirectory),
@@ -323,11 +316,21 @@ const readySmartClient = (
   servedDirectory?: string
 ): Effect.Effect<SmartConnection, SignInError> =>
   Effect.gen(function* () {
-    const { search, environment } = callbackEnvironment(registration, servedDirectory)
-    const storedOpenServer = yield* takePendingConnection(search, environment)
-    return yield* redeemsSignIn(search)
-      ? redeemSignIn(search, environment)
-      : connectOpenServer(search, storedOpenServer)
+    const { arrival, environment } = callbackEnvironment(registration, servedDirectory)
+    const storedOpenServer = yield* takePendingConnection(arrival, environment)
+    return yield* Match.value(arrival).pipe(
+      Match.tag('SignInReturn', (signInReturn) => redeemSignIn(signInReturn, environment)),
+      Match.tag('SelfAddressedSignInReturn', (selfAddressedReturn) =>
+        connectOpenServer(selfAddressedReturn, storedOpenServer)
+      ),
+      Match.orElse(() =>
+        Effect.fail(
+          new AuthorizationRejected({
+            reason: 'This page has no connection in progress to complete. Connect again.',
+          })
+        )
+      )
+    )
   })
 
 /**
@@ -344,36 +347,9 @@ const discardPendingConnection = (
   servedDirectory?: string
 ): Effect.Effect<void, PendingRequestUnusable> =>
   Effect.suspend(() => {
-    const { search, environment } = callbackEnvironment(registration, servedDirectory)
-    return Effect.asVoid(takePendingConnection(search, environment))
+    const { arrival, environment } = callbackEnvironment(registration, servedDirectory)
+    return Effect.asVoid(takePendingConnection(arrival, environment))
   })
-
-/**
- * Whether `search` is a SMART/OAuth redirect the app should complete with
- * {@link readySmartClient} (rather than showing the connect menu).
- *
- * @remarks
- * The app root serves a fresh visit (no query → show the connect menu), a
- * launch it was opened to start ({@link arrivingSmartLaunchFrom}), and the OAuth
- * redirect target (has a callback → run the app). `code` marks a SMART return
- * and `state` an open-server one; either means there is a handshake to
- * complete.
- *
- * An `error=…` return is excluded deliberately: an OAuth error still carries
- * `state`, so without this the app would try to complete a handshake that failed
- * (a denied or expired authorization). Excluding it routes those to the
- * connect menu to retry instead, which shows the refusal and takes the pending
- * records with {@link discardPendingConnection}.
- *
- * `search` is a parameter (default `window.location.search`) so the decision can
- * be exercised without a window — the same transport-is-a-parameter style as the
- * rest of `smart/`.
- */
-const shouldCompleteSmartLaunch = (search: string = window.location.search): boolean => {
-  const params = new URLSearchParams(search)
-  if (params.has('error')) return false
-  return params.has('code') || params.has('state')
-}
 
 /**
  * The OAuth redirect URI for a SMART app, from the URL of any of its pages:
@@ -425,7 +401,6 @@ export {
   PENDING_AUTHORIZATION_KEY,
   PENDING_CONNECTION_KEY,
   readySmartClient,
-  shouldCompleteSmartLaunch,
   /** Re-exported with `arrivingSmartLaunchFrom`: the parameters it reads a launch from. */
   SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,

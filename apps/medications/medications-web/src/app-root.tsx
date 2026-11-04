@@ -14,15 +14,15 @@ import { smartAppTelemetry, smartRegistration } from './config.ts'
  *
  * @param page - The page the app's router runs over, whose served directory
  *   is also the OAuth redirect target.
- * @param launched - Whether the URL carries a SMART callback to complete; see
- *   `SmartAppRoot`. Defaults to the live URL check; tests pass it explicitly.
+ * @param search - The query string the page arrived with; see `SmartAppRoot`.
+ *   Defaults to the live URL's; tests pass one.
  */
 function AppRoot({
   page,
-  launched,
+  search,
 }: {
   readonly page: SmartAppPage
-  readonly launched?: boolean
+  readonly search?: string
 }): JSX.Element {
   return (
     <SmartAppRoot
@@ -30,7 +30,7 @@ function AppRoot({
       registration={smartRegistration}
       telemetry={smartAppTelemetry}
       servedDirectory={page.basepath}
-      launched={launched}
+      search={search}
     >
       <App page={page} />
     </SmartAppRoot>

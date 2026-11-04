@@ -6,7 +6,6 @@ export {
   authorizeSmartLaunchAt,
   discardPendingConnection,
   readySmartClient,
-  shouldCompleteSmartLaunch,
   SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
   type OpenServerConfig,
@@ -20,6 +19,8 @@ export {
   startStandaloneLaunch,
   type SmartSupport,
 } from './standalone-launch.ts'
+
+export { RootArrival, rootArrivalFrom, type SignInArrival } from './root-arrival.ts'
 
 export { withLocalNetworkAccessHint } from './local-network-hint.ts'
 
@@ -142,7 +143,6 @@ export {
   encodeLaunchError,
   launchError,
   launchErrorBodyFor,
-  launchErrorFrom,
   launchErrorRedirect,
   type LaunchErrorBody,
 } from './launch-error.ts'

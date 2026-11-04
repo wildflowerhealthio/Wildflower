@@ -1,5 +1,4 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { isAuthorizationResponse } from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   APP_DESCRIPTIONS,
   TELEMETRY_CONSENT_COPY,
@@ -14,17 +13,17 @@ import {
   useTelemetryConsentControls,
 } from '@wildflowerhealthio/telemetry-react'
 import { redactServerHost, Sentry, setFhirServerHost } from '@wildflowerhealthio/telemetry-web'
-import { Data, Effect, Match, Option } from 'effect'
+import { Effect, Match, Option } from 'effect'
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 
 import {
   appRootRedirectUri,
-  arrivingSmartLaunchFrom,
   buildSmartQueryClient,
   discardPendingConnection,
   isSmartHandshakeQuery,
-  launchErrorFrom,
-  shouldCompleteSmartLaunch,
+  launchError,
+  RootArrival,
+  rootArrivalFrom,
   whenSmartHandshakeReady,
   type ArrivingSmartLaunch,
   type SmartLaunchConfig,
@@ -53,38 +52,28 @@ interface SmartAppTelemetry {
   readonly app: string
 }
 
-/**
- * Why the app root was opened, latched on mount: to complete the callback of
- * a SMART launch, to start the launch its URL carries, or a plain visit.
- */
-type RootArrival = Data.TaggedEnum<{
-  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
-  readonly Callback: Record<never, never>
-  readonly Launch: { readonly launch: ArrivingSmartLaunch }
-  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
-  readonly Visit: Record<never, never>
-}>
-const RootArrival = Data.taggedEnum<RootArrival>()
-
 /** The `launch` tag telemetry carries for each {@link RootArrival}. */
 const LAUNCH_TAGS = {
-  Launch: 'launching',
-  Callback: 'launched',
+  LaunchRequest: 'launching',
+  SignInReturn: 'launched',
+  SelfAddressedSignInReturn: 'launched',
+  SignInRefused: 'standalone',
   Visit: 'standalone',
 } as const satisfies Record<RootArrival['_tag'], string>
 
 /**
- * The {@link RootArrival} the page's URL is, or the one `launched` names: a
- * test's `true` is a callback and `false` a visit, with no launch read.
+ * The launch failure `arrival` reports, for the connect menu's banner: the
+ * authorization server's refusal, or our own `?launchError` a failed launch
+ * came back with.
  */
-const rootArrivalFrom = (launched: boolean | undefined): RootArrival => {
-  if (launched !== undefined) return launched ? RootArrival.Callback() : RootArrival.Visit()
-  if (shouldCompleteSmartLaunch()) return RootArrival.Callback()
-  return Option.match(arrivingSmartLaunchFrom(window.location.search), {
-    onNone: () => RootArrival.Visit(),
-    onSome: (launch) => RootArrival.Launch({ launch }),
-  })
-}
+const launchFailureOf = (arrival: RootArrival): Option.Option<Error> =>
+  Match.value(arrival).pipe(
+    Match.tag('SignInRefused', ({ refusal }) => Option.some(launchError(Option.some(refusal)))),
+    Match.tag('Visit', ({ launchError: failure }) =>
+      Option.map(failure, (body) => launchError(Option.some(body)))
+    ),
+    Match.orElse(() => Option.none())
+  )
 
 /** Props for {@link SmartAppRoot}. */
 interface SmartAppRootProps {
@@ -111,13 +100,12 @@ interface SmartAppRootProps {
    */
   readonly servedDirectory?: string
   /**
-   * Whether the URL carries a SMART callback to complete. Read once, on mount:
-   * defaults to the live URL checks (`shouldCompleteSmartLaunch`, then
-   * `arrivingSmartLaunchFrom`); tests pass it explicitly, and then no launch is
-   * read. A later change to the prop is ignored — see the remarks on
-   * {@link SmartAppRoot}.
+   * The query string the page arrived with, read once, on mount, into its
+   * `RootArrival` (`rootArrivalFrom`). Defaults to `window.location.search`;
+   * tests pass one, e.g. `'?code=c&state=s'`. A later change to the prop is
+   * ignored — see the remarks on {@link SmartAppRoot}.
    */
-  readonly launched?: boolean
+  readonly search?: string
   /**
    * Replaces the page with `url` in the session history, as the launch page
    * leaves for the app root. Defaults to `window.location.replace`; tests pass
@@ -236,39 +224,44 @@ function SmartAppRoot({
   registration,
   telemetry,
   servedDirectory,
-  launched,
+  search,
   replaceLocation = replaceWindowLocation,
   children,
 }: SmartAppRootProps): JSX.Element {
-  const [arrival] = useState(() => rootArrivalFrom(launched))
+  const [arrival] = useState(() => rootArrivalFrom(search ?? window.location.search))
 
   // A plain visit (a fresh one, a failed launch sent back here, a page back
-  // from the back-forward cache) completes no launch, so the route a launch
-  // saved to return to is cleared: it must not hijack a later callback. A
-  // visit that is the authorization server's `?error=` return also takes the
-  // connection in progress, as every callback arrival does; the menu shows
-  // the refusal, and a storage that will not give the records up is reported.
+  // from the back-forward cache) or a refused sign-in completes no launch, so
+  // the route a launch saved to return to is cleared: it must not hijack a
+  // later callback. A refused sign-in also takes the connection in progress,
+  // as every callback arrival does; the menu shows the refusal, and a storage
+  // that will not give the records up is reported.
   useEffect(() => {
-    if (!RootArrival.$is('Visit')(arrival)) return
-    clearReturnRoute(window.sessionStorage)
-    if (!isAuthorizationResponse(window.location.search)) return
-    discardPendingConnection(registration, servedDirectory).pipe(
-      Effect.tapError((discardError) =>
-        Effect.sync(() => {
-          Sentry.captureException(discardError, { tags: { source: 'pending-connection' } })
-        })
-      ),
-      Effect.runFork
+    Match.value(arrival).pipe(
+      Match.tag('SignInRefused', () => {
+        clearReturnRoute(window.sessionStorage)
+        discardPendingConnection(registration, servedDirectory).pipe(
+          Effect.tapError((discardError) =>
+            Effect.sync(() => {
+              Sentry.captureException(discardError, { tags: { source: 'pending-connection' } })
+            })
+          ),
+          Effect.runFork
+        )
+      }),
+      Match.tag('Visit', () => {
+        clearReturnRoute(window.sessionStorage)
+      }),
+      Match.orElse(() => undefined)
     )
   }, [arrival, registration, servedDirectory])
 
   // A failed launch lands back here carrying its reason — our own `?launchError`
   // from the launch page or the token exchange, or the authorization server's
-  // own OAuth `?error`. Latched on mount for the same reason as `arrival`:
-  // completing a handshake rewrites the URL, and the menu's banner must not
-  // vanish because of it. The menu drops it once the reader starts another
-  // connect.
-  const [launchFailure] = useState(() => launchErrorFrom())
+  // own OAuth `?error` — read with the arrival, so it does not vanish when a
+  // completion rewrites the URL. The menu drops it once the reader starts
+  // another connect.
+  const [launchFailure] = useState(() => launchFailureOf(arrival))
 
   // One QueryClient for the whole page: the app completes the SMART handshake
   // as a query on it and runs its own reads on it too, so they share one cache
@@ -293,8 +286,9 @@ function SmartAppRoot({
     dsn: telemetry.dsn,
     tags: { app: telemetry.app, launch: LAUNCH_TAGS[arrival._tag] },
     onFirstStart: () => {
-      if (launchFailure === null) return
-      Sentry.captureException(launchFailure, { tags: { source: 'launch-error' } })
+      Option.map(launchFailure, (failure) =>
+        Sentry.captureException(failure, { tags: { source: 'launch-error' } })
+      )
     },
   })
 
@@ -339,7 +333,7 @@ function SmartAppRoot({
           clientId={registration.clientId}
           scope={registration.scope}
           redirectUri={redirectUri}
-          arrivalProblem={launchFailure ?? undefined}
+          arrivalProblem={Option.getOrUndefined(launchFailure)}
         />
       </CrashReportingBoundary>
     </AppLandingPage>
@@ -348,7 +342,7 @@ function SmartAppRoot({
   return (
     <TelemetryConsentGate copy={TELEMETRY_CONSENT_COPY} onDecided={startTelemetry}>
       {Match.value(arrival).pipe(
-        Match.tag('Launch', ({ launch }) => (
+        Match.tag('LaunchRequest', ({ launch }) => (
           <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
             <LaunchingApp
               app={app}
@@ -359,10 +353,10 @@ function SmartAppRoot({
             />
           </CrashReportingBoundary>
         )),
-        Match.tag('Callback', () => (
+        Match.tag('SignInReturn', 'SelfAddressedSignInReturn', () => (
           <QueryClientProvider client={queryClient}>{launchedApp}</QueryClientProvider>
         )),
-        Match.tag('Visit', () => (
+        Match.tag('SignInRefused', 'Visit', () => (
           <QueryClientProvider client={queryClient}>{connectMenu}</QueryClientProvider>
         )),
         Match.exhaustive

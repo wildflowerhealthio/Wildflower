@@ -13,16 +13,16 @@ import { smartAppTelemetry, smartRegistration } from './config.ts'
  * dialog, and the app's telemetry goes to its own Sentry project
  * (`smartAppTelemetry`) only once they say yes.
  *
- * @param launched - Whether the URL carries a SMART callback to complete; see
- *   `SmartAppRoot`. Defaults to the live URL check; tests pass it explicitly.
+ * @param search - The query string the page arrived with; see `SmartAppRoot`.
+ *   Defaults to the live URL's; tests pass one.
  */
-function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
+function AppRoot({ search }: { readonly search?: string }): JSX.Element {
   return (
     <SmartAppRoot
       app="syntheticData"
       registration={smartRegistration}
       telemetry={smartAppTelemetry}
-      launched={launched}
+      search={search}
     >
       <App />
     </SmartAppRoot>
