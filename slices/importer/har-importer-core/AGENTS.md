@@ -53,7 +53,7 @@ shell's shared `persistTransactionBundle`.
   responses that parsed to at least one resource), each record titled by the
   reference it is written under (`DecodedFileSet.writtenReferenceTitle`) —
   plus one diagnostic note per response that yielded nothing (no kind
-  matched, every matching kind disabled, a kind that keys no records, parse
+  matched, every matching kind disabled, parse
   failure, body absent, duplicate). The import stage adopts the records and
   puts them under the source-file section described above. Never
   fails: a malformed source file comes back as that file's `unreadableFiles` entry,
