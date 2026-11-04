@@ -6,110 +6,66 @@
  * @packageDocumentation
  */
 import {
-  adoptUnderKey,
-  type ResourceWithSourceId,
-  withSourceId,
+  adopt as adoptRecord,
+  DetachedResource,
+  randomResourceId,
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import type { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { type Array as Arr, Data, MutableHashMap, Option } from 'effect'
+import { type Array as Arr, Option } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
 
 /**
- * One record of a `FromSource` section: its review key and title, and the
- * record as its source gave it beside the `system` and `sourceId` it is
- * adopted under.
+ * One record of a section: its review key and title, and the record as its
+ * source gave it, detached (`fhir-r4-adoption`'s `DetachedResource`): no id,
+ * keyed by its first identifier, naming every other record it decoded by a
+ * logical reference.
  */
-interface FromSourceEntry {
+interface Entry {
   readonly key: string
   readonly title: string
-  readonly system: string
-  readonly sourceId: string
-  readonly resource: FhirResource
+  readonly resource: DetachedResource.Type
 }
 
 /**
  * A titled group of records from one source batch, as the import stage
- * receives it: every record already adopted, or each beside the key it is
- * adopted under. Every entry carries its review key and its title.
+ * receives it: each record detached, beside its review key and title.
  *
  * @remarks
- * - `Adopted`: every record already the device's own, with its `wf-` id; the
- *   import stage keeps each as it is. What the HAR decoders still return,
- *   through `DecodeFunction.fromAdopted`; deleted once they return
- *   `FromSource` sections.
- * - `FromSource`: each record as its source gave it, beside its key less its
- *   type: the `system` its source id is unique in, an absolute URI, and the
- *   `sourceId` in it. A decoder builds one per source batch: LifeLabs' and
- *   DICOM's under a `FixedAcrossResourceTypes` family. Each record's `system`
- *   and `sourceId` are what `fhir-r4-adoption`'s `withSourceId` reads: its own
- *   id under `SystemFamily.systemFor(family, type)`, else
- *   `CONTENT_DIGEST_SYSTEM` and a digest of its content. The import stage
- *   adopts each (`adoptUnderKey`), its references keyed in the section's
- *   `systemFamily`: one family per batch, not per record.
+ * A decoder builds one per batch it reads: LifeLabs one per report, DICOM one
+ * per study, the HAR importer one per response URL. Each decoder detaches its
+ * records itself (`fhir-r4-adoption`'s `detach`, under the system family its
+ * source's ids belong to), so a section carries no family: everything the
+ * import stage needs to adopt a record is on the record.
+ *
+ * A separate type from `DecodedFile.Section`, the same records adopted: the
+ * two differ in what their records are, and every reader of a decoded file
+ * reads `resources` off it.
  *
  * The section listing a set's source files is built by the import stage,
  * never decoded.
  */
-type Section = Data.TaggedEnum<{
-  Adopted: {
-    readonly title: string
-    readonly entries: readonly {
-      readonly key: string
-      readonly title: string
-      readonly resource: FhirResourceWithId
-    }[]
-  }
-  FromSource: {
-    readonly title: string
-    readonly systemFamily: SystemFamily.Type
-    readonly entries: readonly FromSourceEntry[]
-  }
-}>
-
-const Section = Data.taggedEnum<Section>()
-
-/** A record's review row: the key it is selected and edited under, and its title. */
-interface ReviewLabel {
-  readonly key: string
+interface Section {
   readonly title: string
+  readonly entries: readonly Entry[]
 }
 
 /**
- * One source batch's records as a `FromSource` section, the batch's system
- * family given once: each record beside its source id in that family
- * (`fhir-r4-adoption`'s `withSourceId`), labelled by `labelOf`.
+ * A record's review title: the reference the import stage writes it under,
+ * `<Type>/<id>`, the id its key derives ({@link DetachedResource.keyedIdOf});
+ * for a keyless record, whose id is only minted at import, its type and its
+ * review key, `<Type> (<review key>)`.
  *
- * @param section.systemFamily - The systems the batch keys each type in
- * @param section.title - The section's title
- * @param section.resources - The batch's records, as its source gave them
- * @param section.labelOf - Each record's review key and title, given it
- *   beside the `system` and `sourceId` it is adopted under
+ * @param resource - The detached record
+ * @param reviewKey - Its review key within its section, before the set's
+ *   prefix: stable across a settings re-decode, as the title has to be
  */
-const fromSourceSection = <TResource extends FhirResource>({
-  systemFamily,
-  title,
-  resources,
-  labelOf,
-}: {
-  readonly systemFamily: SystemFamily.Type
-  readonly title: string
-  readonly resources: readonly TResource[]
-  readonly labelOf: (record: ResourceWithSourceId & { readonly resource: TResource }) => ReviewLabel
-}): Section => {
-  const keyed = withSourceId(systemFamily)
-  return Section.FromSource({
-    title,
-    systemFamily,
-    entries: resources.map((resource): FromSourceEntry => {
-      const record = { ...keyed(resource), resource }
-      return { ...labelOf(record), ...record }
-    }),
+const writtenReferenceTitle = (resource: DetachedResource.Type, reviewKey: string): string =>
+  Option.match(DetachedResource.keyedIdOf(resource), {
+    onSome: (id) => `${resource.resourceType}/${id}`,
+    onNone: () => `${resource.resourceType} (${reviewKey})`,
   })
-}
 
 /**
  * One picked file of a set, beside what its own content identifies it as.
@@ -151,67 +107,50 @@ const unidentified = (pickedFile: PickedFile.Type): PickedFileIdentity => ({
  *
  * @param prefix - The set's key namespace, from `FormatDecode.keyPrefix`
  */
-const namespaceKeys = (sections: readonly Section[], prefix: string): readonly Section[] => {
-  const prefixed = <TEntry extends { readonly key: string }>(
-    entries: readonly TEntry[]
-  ): readonly TEntry[] => entries.map((entry) => ({ ...entry, key: `${prefix}${entry.key}` }))
-  return sections.map(
-    Section.$match({
-      Adopted: ({ title, entries }) => Section.Adopted({ title, entries: prefixed(entries) }),
-      FromSource: ({ title, systemFamily, entries }) =>
-        Section.FromSource({ title, systemFamily, entries: prefixed(entries) }),
-    })
-  )
-}
-
-/** The one adopter of each system family, built the first time a section asks for it. */
-type AdopterOf = (systemFamily: SystemFamily.Type) => ReturnType<typeof adoptUnderKey>
-
-/** {@link AdopterOf}, each family's `adoptUnderKey` built once and reused. */
-const memoisedAdopterOf = (): AdopterOf => {
-  const adopters = MutableHashMap.empty<SystemFamily.Type, ReturnType<typeof adoptUnderKey>>()
-  return (systemFamily) =>
-    Option.getOrElse(MutableHashMap.get(adopters, systemFamily), () => {
-      const adopter = adoptUnderKey(systemFamily)
-      MutableHashMap.set(adopters, systemFamily, adopter)
-      return adopter
-    })
-}
+const namespaceKeys = (sections: readonly Section[], prefix: string): readonly Section[] =>
+  sections.map(({ title, entries }) => ({
+    title,
+    entries: entries.map((entry) => ({ ...entry, key: `${prefix}${entry.key}` })),
+  }))
 
 /**
- * One section's records, adopted: a `FromSource` section's each under its
- * key, its references keyed in the section's system family; an `Adopted`
- * section's as they are.
- */
-const adoptSection = (adopterOf: AdopterOf): ((section: Section) => DecodedFile.Section) =>
-  Section.$match({
-    Adopted: ({ title, entries }): DecodedFile.Section => ({ title, resources: entries }),
-    FromSource: ({ title, systemFamily, entries }): DecodedFile.Section => {
-      const adoptEntry = adopterOf(systemFamily)
-      return {
-        title,
-        resources: entries.map((entry) => ({
-          key: entry.key,
-          title: entry.title,
-          resource: adoptEntry(entry),
-        })),
-      }
-    },
-  })
-
-/**
- * A decode's sections adopted, each by {@link adoptSection}, beside its notes:
- * how the import stage makes a file set's records the device's own, before it
- * mints source files, links and stamps.
+ * A decode's sections adopted beside its notes: how the import stage makes a
+ * file set's records the device's own, before it mints source files, links
+ * and stamps.
+ *
+ * @param decoded - The set's sections and notes
+ * @param mintId - Mints the id of a keyless record; random outside tests
  *
  * @remarks
- * Sections that share a system family share one `adoptUnderKey`, so its parsed
- * systems are cached across them.
+ * Every record goes through one `fhir-r4-adoption` `adopt` over the whole set,
+ * as a FHIR server processes one transaction bundle: a keyed record lands on
+ * the id its key derives and a keyless one on a minted id, and a logical
+ * reference resolves when the record it names by key is in the set, whichever
+ * section holds it (`DetachedResource.storedReferencesOf`). One that names a
+ * record the set does not hold stays logical, for the identity map.
  */
-const adopt = (decoded: Pick<Type, 'sections' | 'notes'>): DecodedFile.DecodedFile => ({
-  sections: decoded.sections.map(adoptSection(memoisedAdopterOf())),
-  notes: decoded.notes,
-})
+const adopt = (
+  decoded: Pick<Type, 'sections' | 'notes'>,
+  mintId: () => string = randomResourceId
+): DecodedFile.DecodedFile => {
+  const adoptEntry = adoptRecord({
+    storedReferences: DetachedResource.storedReferencesOf(
+      decoded.sections.flatMap(({ entries }) => entries.map(({ resource }) => resource))
+    ),
+    mintId,
+  })
+  return {
+    sections: decoded.sections.map(({ title, entries }) => ({
+      title,
+      resources: entries.map(({ key, title: entryTitle, resource }) => ({
+        key,
+        title: entryTitle,
+        resource: adoptEntry(resource),
+      })),
+    })),
+    notes: decoded.notes,
+  }
+}
 
-export { adopt, fromSourceSection, namespaceKeys, Section, unidentified }
-export type { FromSourceEntry, PickedFileIdentity, ReviewLabel, Type }
+export { adopt, namespaceKeys, unidentified, writtenReferenceTitle }
+export type { Entry, PickedFileIdentity, Section, Type }
