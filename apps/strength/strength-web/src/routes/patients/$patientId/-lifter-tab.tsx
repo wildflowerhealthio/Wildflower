@@ -33,10 +33,7 @@ const useLifterRecord = (): LifterRecordRead => {
     from: '/patients/$patientId',
     select: (params) => params.patientId,
   })
-  const session = useMemo(
-    (): StrengthSession => ({ patientId, runAuthed }),
-    [patientId, runAuthed]
-  )
+  const session = useMemo((): StrengthSession => ({ patientId, runAuthed }), [patientId, runAuthed])
   const trainingRecord = useQuery({
     queryKey: [...strengthKeyOf(patientId), 'training'],
     queryFn: () => runAuthed(readTrainingRecord(patientId)),

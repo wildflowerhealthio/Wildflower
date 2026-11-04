@@ -125,9 +125,8 @@ const scrubAuthorizationResponse = (): void => {
  * once it settles, whichever way: the callback leaves the URL as soon as the
  * retained sign-in requests are taken.
  */
-const scrubbingAuthorizationResponse = <A, E>(
-  taking: Effect.Effect<A, E>
-): Effect.Effect<A, E> => Effect.ensuring(taking, Effect.sync(scrubAuthorizationResponse))
+const scrubbingAuthorizationResponse = <A, E>(taking: Effect.Effect<A, E>): Effect.Effect<A, E> =>
+  Effect.ensuring(taking, Effect.sync(scrubAuthorizationResponse))
 
 /**
  * The sign-in a page landed on after its redirect, and what the page needs

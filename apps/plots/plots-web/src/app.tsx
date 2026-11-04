@@ -57,7 +57,9 @@ const PlotsPage = ({ connection }: { readonly connection: SmartConnection }): JS
   // The instant the page opened: the right edge of every bounded range, held
   // still so the chart's window does not move on each render.
   const [openedAt] = useState(() => DateTime.unsafeNow())
-  const { patientChoice, choosePatient, changePatient } = usePatientChoice(connection.launchPatientId)
+  const { patientChoice, choosePatient, changePatient } = usePatientChoice(
+    connection.launchPatientId
+  )
 
   return (
     <>

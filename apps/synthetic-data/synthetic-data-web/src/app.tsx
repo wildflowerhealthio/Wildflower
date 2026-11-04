@@ -98,16 +98,18 @@ const SyntheticDataApp = ({ context, serverUrl }: SyntheticDataAppProps): JSX.El
  */
 const App = (): JSX.Element => (
   <main className={styles.app}>
-    <SmartHandshakeGate
-      connecting={<PageLoading message="Connecting…" />}
-    >
+    <SmartHandshakeGate connecting={<PageLoading message="Connecting…" />}>
       {(runtime) => <ConnectedSyntheticDataApp runtime={runtime} />}
     </SmartHandshakeGate>
   </main>
 )
 
 /** {@link SyntheticDataApp} over a completed handshake's `runtime`, on the page's one `QueryClient`. */
-const ConnectedSyntheticDataApp = ({ runtime }: { readonly runtime: SmartRuntime }): JSX.Element => {
+const ConnectedSyntheticDataApp = ({
+  runtime,
+}: {
+  readonly runtime: SmartRuntime
+}): JSX.Element => {
   const queryClient = useQueryClient()
   const context = useMemo<RouterContext>(
     () => buildSmartRouterContext(runtime, queryClient),

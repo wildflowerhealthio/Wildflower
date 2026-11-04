@@ -51,9 +51,7 @@ const PatientChoiceLine = ({
 }: PatientChoiceLineProps): JSX.Element => (
   <div {...rootProps} className={cn(styles['patient-choice-line'], className)}>
     {Match.value(patientChoice).pipe(
-      Match.when({ kind: 'patient' }, ({ patientId }) => (
-        <PatientNameLine patientId={patientId} />
-      )),
+      Match.when({ kind: 'patient' }, ({ patientId }) => <PatientNameLine patientId={patientId} />),
       Match.when({ kind: 'all-patients' }, () => <span>All patients</span>),
       Match.exhaustive
     )}

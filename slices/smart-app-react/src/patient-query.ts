@@ -25,8 +25,7 @@ const patientQuery = (
 > =>
   queryOptions({
     queryKey: ['patient', patientId] as const,
-    queryFn: (): Promise<Option.Option<PatientResource>> =>
-      runSmart(fetchPatient(patientId)),
+    queryFn: (): Promise<Option.Option<PatientResource>> => runSmart(fetchPatient(patientId)),
   })
 
 export { patientQuery }

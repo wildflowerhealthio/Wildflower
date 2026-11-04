@@ -75,7 +75,11 @@ const medicationRequestRead: PagedResourceRead<
  */
 const fetchMedicationRequestPage = (
   cursor: MedicationRequestCursor
-): Effect.Effect<MedicationRequestPage, ResourcePageRequestError | BundleDecodeError, SmartClient> =>
+): Effect.Effect<
+  MedicationRequestPage,
+  ResourcePageRequestError | BundleDecodeError,
+  SmartClient
+> =>
   fetchResourcePage(
     medicationRequestRead,
     'pageUrl' in cursor ? { pageUrl: cursor.pageUrl } : { first: cursor.patientId }

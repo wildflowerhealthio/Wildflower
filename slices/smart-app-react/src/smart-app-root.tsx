@@ -30,9 +30,9 @@ import {
   type SmartRegistration,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 
-import { redirectForLaunchRequest } from './redirect-for-launch-request.ts'
 import { ConnectMenu } from './connect-menu.tsx'
 import { LaunchPage } from './launch-page.tsx'
+import { redirectForLaunchRequest } from './redirect-for-launch-request.ts'
 import { clearReturnRoute } from './return-route.ts'
 import { SignInLandingContext } from './sign-in-landing.ts'
 
@@ -287,7 +287,10 @@ function SmartAppRoot({
     Match.value(arrival).pipe(
       Match.tag('SignInRefused', (refused) => {
         clearReturnRoute(window.sessionStorage)
-        discardRefusedSignInAfterRedirectHere(refused, { registration, appRootRedirectUri: redirectUri }).pipe(
+        discardRefusedSignInAfterRedirectHere(refused, {
+          registration,
+          appRootRedirectUri: redirectUri,
+        }).pipe(
           Effect.tapError((discardError) =>
             Effect.sync(() => {
               Sentry.captureException(discardError, { tags: { source: 'pending-connection' } })

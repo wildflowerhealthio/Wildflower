@@ -88,10 +88,11 @@ const readTrainingRecord = (
   patientId: string
 ): Effect.Effect<TrainingRecord, ReadFailure, SmartClient> =>
   Effect.gen(function* () {
-    const serviceRequests = yield* fetchAllResourcePages(
-      fetchActiveServiceRequestPage,
-      { patientId, categoryToken: StrengthFeature.TOKEN, instantiatesCanonicalUrl: null }
-    )
+    const serviceRequests = yield* fetchAllResourcePages(fetchActiveServiceRequestPage, {
+      patientId,
+      categoryToken: StrengthFeature.TOKEN,
+      instantiatesCanonicalUrl: null,
+    })
     const activeExerciseRequests = decodeEvery(ExerciseRequest.Schema, serviceRequests)
     const unreadableRequests = {
       ...NO_UNREADABLE,

@@ -3,12 +3,12 @@ import { Data, Effect, Either, Match } from 'effect'
 import { useEffect, useMemo } from 'react'
 
 import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'
-import type { SmartConnection } from './smart-connection.ts'
 import {
   completeSignInAfterRedirectHere,
   type SignInAfterRedirectError,
   type SignInLanding,
 } from './sign-in-after-redirect.ts'
+import type { SmartConnection } from './smart-connection.ts'
 
 /**
  * The state of completing the SMART handshake on the redirect page: still

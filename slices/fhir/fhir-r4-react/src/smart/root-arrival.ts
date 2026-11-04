@@ -99,16 +99,15 @@ const rootArrivalFrom = (search: string): RootArrival => {
   const parameters = new URLSearchParams(search)
   const fields = Object.fromEntries(parameters)
   return decodeOAuthErrorReturn(fields).pipe(
-    Option.map(
-      (refusal): RootArrival =>
-        RootArrival.SignInRefused({
-          refusal: {
-            error: 'AuthorizationDenied',
-            message: refusal.error,
-            description: refusal.error_description,
-            uri: refusal.error_uri,
-          },
-        })
+    Option.map((refusal): RootArrival =>
+      RootArrival.SignInRefused({
+        refusal: {
+          error: 'AuthorizationDenied',
+          message: refusal.error,
+          description: refusal.error_description,
+          uri: refusal.error_uri,
+        },
+      })
     ),
     Option.orElse(() =>
       Option.map(decodeSignInReturn(fields), (signInReturn) =>

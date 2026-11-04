@@ -112,7 +112,9 @@ const isUnderFhirBase = (url: string, fhirBaseUrl: FhirBaseUrl): boolean => {
  */
 const requestTargetOf = (url: string, fhirBaseUrl: FhirBaseUrl): RequestTarget => {
   if (!hasAbsoluteScheme(url)) return RequestTarget.Relative({ path: url.replace(/^\/+/u, '') })
-  return isUnderFhirBase(url, fhirBaseUrl) ? RequestTarget.UnderFhirBase() : RequestTarget.Elsewhere()
+  return isUnderFhirBase(url, fhirBaseUrl)
+    ? RequestTarget.UnderFhirBase()
+    : RequestTarget.Elsewhere()
 }
 
 /**

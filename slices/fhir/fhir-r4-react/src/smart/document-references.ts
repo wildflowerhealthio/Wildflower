@@ -92,8 +92,11 @@ const documentReferenceRead: PagedResourceRead<
  */
 const fetchDocumentReferencePage = (
   cursor: DocumentReferencePageCursor
-): Effect.Effect<DocumentReferencePage, ResourcePageRequestError | BundleDecodeError, SmartClient> =>
-  fetchResourcePage(documentReferenceRead, cursor)
+): Effect.Effect<
+  DocumentReferencePage,
+  ResourcePageRequestError | BundleDecodeError,
+  SmartClient
+> => fetchResourcePage(documentReferenceRead, cursor)
 
 export {
   fetchDocumentReferencePage,

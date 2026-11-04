@@ -28,7 +28,6 @@
  * client's redirect URIs decide where a launch may return, and any userinfo the
  * page URL carries is kept.
  */
-const appRootRedirectUri = (href: string, basepath = '.'): string =>
-  new URL(basepath, href).href
+const appRootRedirectUri = (href: string, basepath = '.'): string => new URL(basepath, href).href
 
 export { appRootRedirectUri }

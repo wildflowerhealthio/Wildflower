@@ -109,9 +109,7 @@ const SettingsApp = ({
  */
 const App = (): JSX.Element => (
   <main className={styles['app']}>
-    <SmartHandshakeGate
-      connecting={<PageLoading message="Connecting…" />}
-    >
+    <SmartHandshakeGate connecting={<PageLoading message="Connecting…" />}>
       {(runtime) => <ConnectedSettingsApp runtime={runtime} />}
     </SmartHandshakeGate>
   </main>

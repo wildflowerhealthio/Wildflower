@@ -27,11 +27,7 @@ const returnRouteOf = (launchPageHref: string, basepath?: string): Option.Option
  * root to return to once the launch completes ({@link appRootRedirect}); a
  * launch at the bare app root clears whatever an earlier launch saved.
  */
-const saveReturnRoute = (
-  storage: Storage,
-  launchPageHref: string,
-  basepath?: string
-): void => {
+const saveReturnRoute = (storage: Storage, launchPageHref: string, basepath?: string): void => {
   Option.match(returnRouteOf(launchPageHref, basepath), {
     onNone: () => {
       storage.removeItem(RETURN_ROUTE_STORAGE_KEY)
