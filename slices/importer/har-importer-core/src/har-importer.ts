@@ -1,14 +1,15 @@
 import { Effect } from 'effect'
 
-import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
+import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type HttpResponseKind,
   SourceDescriptor,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
+  DecodedFileSet,
   DecodeFunction,
   type FileImporter,
-  type DecodedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
 
 import {
@@ -26,8 +27,8 @@ import { mergeSharedResources } from './merge-shared-resources.ts'
 import { preview, type PreviewedResponse } from './review.ts'
 
 type FhirPreview = PreviewedResponse<
-  HttpResponseKind.HttpResponseKind<FhirResourceWithId>,
-  FhirResourceWithId
+  HttpResponseKind.HttpResponseKind<FhirResource>,
+  DetachedResource.Type
 >
 
 const fhirPool = SourceDescriptor.poolOf(fhirSources)
@@ -37,24 +38,25 @@ const enabledKindNames = (settings: HarSettings): ReadonlySet<string> => {
   return new Set(fhirPool.map((kind) => kind.name).filter((name) => !disabled.has(name)))
 }
 
-const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFile.Section[] => {
-  const order: string[] = []
-  const byUrl = new Map<string, DecodedFile.Resource[]>()
+/**
+ * The previews' records as one section per response URL, in the order each
+ * URL first appears in the archive, each record titled by the reference it is
+ * written under (`DecodedFileSet.writtenReferenceTitle`).
+ */
+const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFileSet.Section[] => {
+  const byUrl = new Map<string, DecodedFileSet.Entry[]>()
   for (const entry of previews) {
     if (entry.outcome._tag !== 'resources' || entry.outcome.resources.length === 0) continue
-    const url = entry.ref.url
-    const labeled = entry.outcome.resources.map((resource): DecodedFile.Resource => ({
-      key: resource.key,
-      title: `${resource.resource.resourceType}/${resource.resource.id}`,
-      resource: resource.resource,
+    const labeled = entry.outcome.resources.map(({ key, resource }): DecodedFileSet.Entry => ({
+      key,
+      title: DecodedFileSet.writtenReferenceTitle(resource, key),
+      resource,
     }))
-    const existing = byUrl.get(url)
-    if (existing === undefined) {
-      order.push(url)
-      byUrl.set(url, [...labeled])
-    } else existing.push(...labeled)
+    const existing = byUrl.get(entry.ref.url)
+    if (existing === undefined) byUrl.set(entry.ref.url, labeled)
+    else existing.push(...labeled)
   }
-  return order.map((url) => ({ title: url, resources: byUrl.get(url) ?? [] }))
+  return Array.from(byUrl, ([url, entries]) => ({ title: url, entries }))
 }
 
 const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
@@ -65,6 +67,9 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
     if (tag === 'duplicate') return [`Duplicate of an earlier response — not imported: ${url}`]
     if (tag === 'parseError') return [`Could not be parsed and will not import: ${url}`]
     if (tag === 'bodyAbsent') return [`The archive captured no response body: ${url}`]
+    if (tag === 'noSystemFamily') {
+      return [`Recognized, but its kind keys no records, so it will not import: ${url}`]
+    }
     return entry.recognized.candidates.length === 0
       ? [`Matched no importer: ${url}`]
       : [`Excluded — every matching kind is turned off in the settings: ${url}`]
@@ -84,8 +89,8 @@ const sourceFileFormat = {
 }
 
 /**
- * The HAR importer: one source file per pick, its recognized responses folded into
- * per-URL sections.
+ * The HAR importer: one source file per pick, its recognized responses
+ * detached and folded into per-URL sections.
  *
  * @remarks
  * No `groupBy` — a HAR stands alone, so every pick is its own set — and no
@@ -103,14 +108,14 @@ const harImporter: FileImporter.Type<HarSettings, typeof format> = {
     format,
     decodeFileSet: (pickedFiles, settings) =>
       decodeHar(pickedFiles[0].bytes, settings).pipe(
-        Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
+        Effect.flatMap((responses) =>
+          preview(fhirPool, responses, enabledKindNames(settings), detach)
+        ),
         Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
-        Effect.map((previews) =>
-          DecodeFunction.fromAdopted({
-            sections: sectionsByUrl(previews),
-            notes: notesFor(previews),
-          })
-        )
+        Effect.map((previews) => ({
+          sections: sectionsByUrl(previews),
+          notes: notesFor(previews),
+        }))
       ),
   }),
 }

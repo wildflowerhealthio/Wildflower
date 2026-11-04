@@ -34,6 +34,7 @@
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/fhir-r4-source": "workspace:*",
     "@wildflowerhealthio/http-archive": "workspace:*",
     "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
@@ -51,6 +52,7 @@
   },
   "peerDependencies": {
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/fhir-r4-source": "workspace:*",
     "@wildflowerhealthio/http-archive": "workspace:*",
     "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
