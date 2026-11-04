@@ -3,16 +3,21 @@ import {
   authorizeSmartLaunch,
   launchErrorBodyFor,
   launchErrorRedirect,
+  type ArrivingSmartLaunch,
   type SmartLaunchConfig,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 
 import { saveReturnRoute } from './return-route.ts'
 
 /**
- * Authorize the SMART launch the page at `launchPageHref` was opened to
- * start, resolving to where the page must go if the launch fails before it
- * leaves.
+ * Authorize `arrivingLaunch`, the SMART launch the page at `launchPageHref`
+ * was opened to start, resolving to where the page must go if the launch
+ * fails before it leaves.
  *
+ * @param registration - The app's SMART registration
+ * @param arrivingLaunch - The launch the page's URL carries, as the app root
+ *   read it on arrival
+ * @param launchPageHref - The launch page's URL
  * @param servedDirectory - The directory the app is served from (a routed
  *   app's basepath), as `appRootRedirectUri` takes it; omitted, the page's
  *   own directory.
@@ -21,7 +26,8 @@ import { saveReturnRoute } from './return-route.ts'
  *   `authorizeSmartLaunch` rejects.
  *
  * @remarks
- * fhirclient reads `iss` and `launch` off the page URL itself. The OAuth
+ * The launch is the page URL's `iss`, with the EHR's `launch` for an EHR
+ * launch. The OAuth
  * redirect target is the app's root (`appRootRedirectUri`), derived from
  * `launchPageHref` and `servedDirectory`, whichever route of the app the launch
  * opened. A launch that never reaches the authorization server fails
@@ -38,7 +44,8 @@ import { saveReturnRoute } from './return-route.ts'
  * whose redirect (`appRootRedirect`) returns to it.
  */
 const authorizeFromLaunchPage = async (
-  launch: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'>,
+  registration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'>,
+  arrivingLaunch: ArrivingSmartLaunch,
   launchPageHref: string,
   servedDirectory?: string
 ): Promise<string | null> => {
@@ -46,7 +53,10 @@ const authorizeFromLaunchPage = async (
   const search = new URL(launchPageHref).search
   saveReturnRoute(window.sessionStorage, launchPageHref, servedDirectory)
   try {
-    await authorizeSmartLaunch({ ...launch, redirectUri })
+    await authorizeSmartLaunch(
+      { ...registration, redirectUri, iss: arrivingLaunch.iss },
+      arrivingLaunch.launch
+    )
     return null
   } catch (error: unknown) {
     return launchErrorRedirect(redirectUri, launchErrorBodyFor('AuthorizeFailed', error, search))
