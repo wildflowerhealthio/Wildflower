@@ -16,21 +16,21 @@
       "group": "dicom",
       "key": "0:chest-x-ray.dcm/patient",
       "resource": "Patient/wf-ad7916b90543748aa8d3c17085d90b81",
-      "title": "Patient/ed3fb2303ba15aa9"
+      "title": "Patient/wf-ad7916b90543748aa8d3c17085d90b81"
     },
     {
       "disposition": "Included",
       "group": "dicom",
       "key": "0:chest-x-ray.dcm/service-request",
       "resource": "ServiceRequest/wf-2747b2b5cec8bc60e3f9cd572ad7fce3",
-      "title": "ServiceRequest/d4beb9c067c2b2db"
+      "title": "ServiceRequest/wf-2747b2b5cec8bc60e3f9cd572ad7fce3"
     },
     {
       "disposition": "Included",
       "group": "dicom",
       "key": "0:chest-x-ray.dcm/imaging-study",
       "resource": "ImagingStudy/wf-d45a66f6a11d5ff365d0e5a4199e5438",
-      "title": "ImagingStudy/5571855be678fefb"
+      "title": "ImagingStudy/wf-d45a66f6a11d5ff365d0e5a4199e5438"
     }
   ],
   "sourceFileRePicks": [
