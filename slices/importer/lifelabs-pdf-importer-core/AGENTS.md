@@ -91,9 +91,8 @@ that hands back a hand-written positioned-text document.
   (the reports as the decode yields them: the synthesis, its records written
   detached and keyed in `LIFELABS_SYSTEM`, one section per
   report titled by **`reportSectionTitle`** (the report's `Lab No` and date
-  of service, `'LifeLabs report'` when both are masked), each review row
-  keyed `<Type>/<source id>` and titled by the reference it is written under,
-  `<Type>/<local id>` (`DecodedFileSet.writtenReferenceTitle`), and no notes)
+  of service, `'LifeLabs report'` when both are masked), each entry's
+  `fullUrl` `<Type>/<source id>`, and no notes)
   and the
   `ReportResources` / `SynthesisOptions` types, none of which requires an
   extractor. For callers that build reports themselves

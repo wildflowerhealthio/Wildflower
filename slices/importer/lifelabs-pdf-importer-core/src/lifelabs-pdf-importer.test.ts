@@ -79,7 +79,7 @@ describe('lifeLabsPdfImporter decode', () => {
           const sections = decoded.fileSets.flatMap((fileSet) => fileSet.sections)
           const entries = sections.flatMap((section) => section.entries)
           expect(entries.map(({ resource }) => resource.id)).toEqual(entries.map(() => null))
-          const keys = entries.map((entry) => entry.key)
+          const keys = entries.map((entry) => entry.fullUrl)
           expect(keys.length).toBeGreaterThan(0)
           for (const key of keys) {
             expect(key.startsWith(FormatDecode.keyPrefix(file))).toBe(true)

@@ -50,8 +50,8 @@ shell's shared `persistTransactionBundle`.
   settings' enabled kinds (each kind yields detached records), then
   `mergeSharedResources`, folded into `DecodedFileSet` sections —
   one section per URL, a plain insertion-ordered map (first-seen order, only
-  responses that parsed to at least one resource), each record titled by the
-  reference it is written under (`DecodedFileSet.writtenReferenceTitle`) —
+  responses that parsed to at least one resource), each entry's `fullUrl` its
+  preview key, `<response id>:<index>` —
   plus one diagnostic note per response that yielded nothing (no kind
   matched, every matching kind disabled, parse
   failure, body absent, duplicate). The import stage adopts the records and

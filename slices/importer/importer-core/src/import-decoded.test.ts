@@ -70,8 +70,7 @@ const decodeBytes = (
           {
             title: file.fileName,
             entries: [...file.bytes].map((byte, index) => ({
-              key: `${file.fileName}:${index}`,
-              title: `Patient/${byte}`,
+              fullUrl: `${file.fileName}:${index}`,
               resource: fakeResource(`${byte}`),
             })),
           },
@@ -459,8 +458,7 @@ const decodeGroup = (
           {
             title: groupOf(pickedFiles[0].fileName) ?? pickedFiles[0].fileName,
             entries: pickedFiles.map((file) => ({
-              key: `file/${file.id}`,
-              title: file.fileName,
+              fullUrl: `file/${file.id}`,
               resource: fakeResource(`${file.bytes[0] ?? 0}`),
             })),
           },
@@ -703,11 +701,11 @@ describe('the records the import adopts', () => {
       decodedOf([
         {
           title: 'records',
-          entries: [{ key: 'patient', title: 'patient', resource: patient }],
+          entries: [{ fullUrl: 'patient', resource: patient }],
         },
         {
           title: 'results',
-          entries: [{ key: 'observation', title: 'observation', resource: observation }],
+          entries: [{ fullUrl: 'observation', resource: observation }],
         },
       ])
     )
@@ -733,13 +731,11 @@ describe('the records the import adopts', () => {
           title: 'records',
           entries: [
             {
-              key: 'patient',
-              title: 'patient',
+              fullUrl: 'patient',
               resource: detach(SystemFamily.FhirStyleBaseUrl({ baseUrl }))(sourcePatient),
             },
             {
-              key: 'observation',
-              title: 'observation',
+              fullUrl: 'observation',
               resource: detach(SystemFamily.FhirStyleBaseUrl({ baseUrl }))(sourceObservation),
             },
           ],
@@ -764,7 +760,7 @@ describe('the records the import adopts', () => {
           decodedOf([
             {
               title: 'records',
-              entries: [{ key: 'observation', title: 'observation', resource: detached }],
+              entries: [{ fullUrl: 'observation', resource: detached }],
             },
           ])
         )

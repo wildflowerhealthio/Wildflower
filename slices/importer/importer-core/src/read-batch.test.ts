@@ -82,8 +82,7 @@ const fakeDecode = <K extends FormatKind>(kind: K): DecodeFunction.Type<unknown,
                 title: `${kind}:${JSON.stringify(settings)}`,
                 entries: [
                   {
-                    key: `r:${file.fileName}`,
-                    title: `Patient/${kind}-${file.fileName}`,
+                    fullUrl: `r:${file.fileName}`,
                     resource: fakeResource(`${kind}-${file.fileName}`),
                   },
                 ],

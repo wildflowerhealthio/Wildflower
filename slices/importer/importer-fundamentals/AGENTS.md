@@ -88,20 +88,21 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   SOP Instance UID as `urn:oid:`), or `None` for a format whose files do not
   name themselves; the import stage writes it onto the file's source file as
   `masterIdentifier`. A **`Section`** is a titled group of records from one
-  source batch, `{ title, entries }`, each **`Entry`** a review key, a title
-  and its record **detached** (`fhir-r4-adoption`'s `DetachedResource`: no
+  source batch, `{ title, entries }`, each **`Entry`** `{ fullUrl, resource }`:
+  its identity within the set before it is stored (FHIR's `Bundle.entry.fullUrl`
+  in a transaction, what the review tracks a choice by) and its record **detached** (`fhir-r4-adoption`'s `DetachedResource`: no
   id, keyed by its first identifier, naming every other decoded record by a
   logical reference). A decoder writes or detaches its own records, so a
   section carries no system family. It is a
   separate type from `DecodedFile.Section`, the same records adopted: the two
   hold different records, and every reader of a decoded file reads
   `resources` off it. The "Source file(s)" section is the import stage's own,
-  never decoded. **`writtenReferenceTitle(resource, reviewKey)`** is a
-  record's review title, the reference the import stage writes it under,
-  `<Type>/<id>` (the id its key derives), or `<Type> (<review key>)` for a
-  keyless record, whose id is only minted at import; the HAR and LifeLabs
-  decoders title their rows with it.
-  **`namespaceKeys(sections, prefix)`** prefixes every entry's review key;
+  never decoded. **`writtenReferenceTitle(entry)`** is every decoded record's
+  review title, the reference the import stage writes it under, `<Type>/<id>`
+  (the id its key derives), or `<Type> (<fullUrl>)` for a keyless record,
+  whose id is only minted at import; `adopt` titles each row with it, so no
+  decoder titles its records.
+  **`namespaceKeys(sections, prefix)`** prefixes every entry's `fullUrl`;
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
   **`adopt({ sections, notes }, mintId?)`** is how the import stage makes a
   decode's records the device's own, as a `DecodedFile`: one

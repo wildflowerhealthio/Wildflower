@@ -84,7 +84,8 @@ carrying the one `ImagingStudy` its files make up.
   again; that double parse is the deliberate price of a decode constructor with
   no parsed-value passthrough. It yields one section of labeled FHIR
   resources, each written detached and keyed in `DICOM_SYSTEM`
-  (`fhir-r4-adoption`'s `DetachedResource`) and titled `<Type>/<source id>`, for the import stage to adopt
+  (`fhir-r4-adoption`'s `DetachedResource`), each entry's `fullUrl` fixed by its
+  type (`patient`, `service-request`, `imaging-study`), for the import stage to adopt
   before it runs
   `linkToPatientAndStudy` and `addGridfsFileIds`, and pairs each picked file with its SOP Instance UID
   (**`sopInstanceIdentifier`**: `{ system: 'urn:ietf:rfc:3986', value:

@@ -6,7 +6,7 @@ import {
   SourceDescriptor,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
-  DecodedFileSet,
+  type DecodedFileSet,
   DecodeFunction,
   type FileImporter,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -39,16 +39,15 @@ const enabledKindNames = (settings: HarSettings): ReadonlySet<string> => {
 
 /**
  * The previews' records as one section per response URL, in the order each
- * URL first appears in the archive, each record titled by the reference it is
- * written under (`DecodedFileSet.writtenReferenceTitle`).
+ * URL first appears in the archive, each record's `fullUrl` its preview key
+ * (`<response id>:<index>`).
  */
 const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFileSet.Section[] => {
   const byUrl = new Map<string, DecodedFileSet.Entry[]>()
   for (const entry of previews) {
     if (entry.outcome._tag !== 'resources' || entry.outcome.resources.length === 0) continue
     const labeled = entry.outcome.resources.map(({ key, resource }): DecodedFileSet.Entry => ({
-      key,
-      title: DecodedFileSet.writtenReferenceTitle(resource, key),
+      fullUrl: key,
       resource,
     }))
     const existing = byUrl.get(entry.ref.url)

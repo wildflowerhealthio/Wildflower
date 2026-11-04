@@ -39,17 +39,13 @@ const observationOn = (subject: Record<string, unknown>): DetachedResource.Type 
     })
   )
 
-/** A section of `resources`, each keyed by its position. */
+/** A section of `resources`, each identified by its position. */
 const sectionOf = (
   title: string,
   resources: readonly DetachedResource.Type[]
 ): DecodedFileSet.Section => ({
   title,
-  entries: resources.map((resource, index) => ({
-    key: `${title}:${index}`,
-    title: DecodedFileSet.writtenReferenceTitle(resource, `${title}:${index}`),
-    resource,
-  })),
+  entries: resources.map((resource, index) => ({ fullUrl: `${title}:${index}`, resource })),
 })
 
 /** A minter that counts: `minted-1`, `minted-2`, …. */
@@ -133,20 +129,31 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
     )
   })
 
-  it('names a keyless record by its type and its review key, which a re-decode keeps', () => {
-    expect(DecodedFileSet.writtenReferenceTitle(patient(null), 'har-entry-3:0')).toBe(
-      'Patient (har-entry-3:0)'
-    )
+  it('names a keyless record by its type and its fullUrl, which a re-decode keeps', () => {
+    expect(
+      DecodedFileSet.writtenReferenceTitle({ fullUrl: 'har-entry-3:0', resource: patient(null) })
+    ).toBe('Patient (har-entry-3:0)')
+  })
+
+  it('keys each adopted row by its entry fullUrl', () => {
+    const [section] = DecodedFileSet.adopt({
+      sections: [sectionOf('people', [patient('pat-7'), patient(null)])],
+      notes: [],
+    }).sections
+    expect(section?.resources.map(({ key }) => key)).toEqual(['people:0', 'people:1'])
   })
 })
 
 describe('DecodedFileSet.namespaceKeys', () => {
-  it('prefixes every review key and keeps everything else', () => {
+  it('prefixes every fullUrl and keeps everything else', () => {
     const section = sectionOf('people', [patient('pat-7')])
     expect(DecodedFileSet.namespaceKeys([section], '0:a.har/')).toEqual([
       {
         ...section,
-        entries: section.entries.map((entry) => ({ ...entry, key: `0:a.har/${entry.key}` })),
+        entries: section.entries.map((entry) => ({
+          ...entry,
+          fullUrl: `0:a.har/${entry.fullUrl}`,
+        })),
       },
     ])
   })

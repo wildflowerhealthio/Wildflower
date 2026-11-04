@@ -6,7 +6,6 @@
  * @packageDocumentation
  */
 import { DicomHeader } from '@wildflowerhealthio/dicom'
-import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext } from '@wildflowerhealthio/fhir-r4/resources'
 import {
@@ -31,29 +30,21 @@ import type { DicomSettings } from './settings.ts'
 /** One record a study synthesizes. */
 type StudyResource = Effect.Effect.Success<ReturnType<typeof toFhirResources>>[number]
 
-/** Each study record's review key, fixed and unique only within one study. */
-const STUDY_REVIEW_KEYS = {
+/**
+ * Each study record's `fullUrl`, fixed and unique within one study: a study
+ * synthesizes at most one record of each type.
+ */
+const STUDY_FULL_URLS = {
   Patient: 'patient',
   ServiceRequest: 'service-request',
   ImagingStudy: 'imaging-study',
 } as const satisfies Record<StudyResource['resourceType'], string>
 
-/**
- * A study record as its review row: its fixed key, and its type and the source
- * id the synthesis gave it (its key's value) as its title. The synthesis gives
- * every record an id; a keyless one would be titled `<Type> (<key>)`.
- */
-const studyEntryOf = (resource: StudyResource): DecodedFileSet.Entry => {
-  const key = STUDY_REVIEW_KEYS[resource.resourceType]
-  return {
-    key,
-    title: Option.match(DetachedResource.keyOf(resource), {
-      onSome: ({ value }) => `${resource.resourceType}/${value}`,
-      onNone: () => `${resource.resourceType} (${key})`,
-    }),
-    resource,
-  }
-}
+/** A study record as its section entry, under its type's fixed `fullUrl`. */
+const studyEntryOf = (resource: StudyResource): DecodedFileSet.Entry => ({
+  fullUrl: STUDY_FULL_URLS[resource.resourceType],
+  resource,
+})
 
 /** One file of a study, as the synthesis sees it: its header and its name. */
 interface StudyFile extends StudyInstance {

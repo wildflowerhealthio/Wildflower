@@ -51,7 +51,7 @@ describe('decodeLifeLabsPdfDocument', () => {
     )
   })
 
-  it('property: each row is keyed {resourceType}/{source id} and titled by the reference it is written under', () => {
+  it('property: each entry fullUrl is {resourceType}/{source id}, and its row titled by the reference it is written under', () => {
     fc.assert(
       fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
         const document = layoutDocument(reports)
@@ -59,7 +59,7 @@ describe('decodeLifeLabsPdfDocument', () => {
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
         const entries = entriesOf(decoded)
-        expect(entries.map(({ key }) => key)).toEqual(
+        expect(entries.map(({ fullUrl }) => fullUrl)).toEqual(
           entries.map(({ resource }) =>
             Option.match(DetachedResource.keyOf(resource), {
               onSome: ({ value }) => `${resource.resourceType}/${value}`,

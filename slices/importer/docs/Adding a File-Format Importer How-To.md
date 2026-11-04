@@ -68,11 +68,7 @@ const decodeMyFormat = (
 // each section:
 //   {
 //     title,
-//     entries: resources.map((resource) => ({
-//       key,
-//       title: DecodedFileSet.writtenReferenceTitle(resource, key),
-//       resource,
-//     })),
+//     entries: resources.map((resource) => ({ fullUrl, resource })),
 //   }
 ```
 
@@ -84,10 +80,11 @@ resources by logical reference by their key
 (`DetachedResource.logicalReferenceWire`). Decode each wire with
 `DetachedResource.decodeUnknown(<Type>.Schema)`, which fails a wire that
 carries an `id`. A section carries no system family: everything the import
-stage needs is on the records. A review key must be stable across a settings
-re-decode; `DecodedFileSet.writtenReferenceTitle` titles a row by the reference
-it will be written under. The decode never makes a `wf-` id; the import stage
-does.
+stage needs is on the records. An entry's `fullUrl` is its identity within the
+set, as in a FHIR transaction bundle, and must be stable across a settings
+re-decode. The import stage titles every row by the reference it will be
+written under (`DecodedFileSet.writtenReferenceTitle`), and makes every `wf-`
+id; the decode makes neither.
 
 A format whose files stand alone reads `pickedFiles[0]` and says nothing more:
 each picked file is its own set by default, in the order the files were picked.
@@ -98,7 +95,7 @@ manifest naming its siblings, a DICOM study — states a `groupBy` instead (see
 `DecodeFunction.make` lifts that into the batch `decode(files, settings)` the
 shell runs across every file the format claimed. That lifted decode:
 
-- **namespaces every review key** with the set's first picked file, so two sets
+- **namespaces every `fullUrl`** with the set's first picked file, so two sets
   cannot collide on a key (see the obligations below);
 - folds a `ParseError` into one `unreadableFiles` row per picked file of the
   failing set;

@@ -49,8 +49,7 @@ const decode = DecodeFunction.make({
             {
               title: pickedFiles[0].fileName,
               entries: pickedFiles.map((file) => ({
-                key: file.fileName,
-                title: file.fileName,
+                fullUrl: file.fileName,
                 resource: fakeResource(`${file.bytes[0]}`),
               })),
             },
@@ -78,8 +77,7 @@ describe('DecodeFunction.make', () => {
             {
               title: 'a-1.bin',
               entries: [a1, a2].map((file) => ({
-                key: `${FormatDecode.keyPrefix(a1)}${file.fileName}`,
-                title: file.fileName,
+                fullUrl: `${FormatDecode.keyPrefix(a1)}${file.fileName}`,
                 resource: fakeResource(`${file.bytes[0]}`),
               })),
             },
@@ -93,8 +91,7 @@ describe('DecodeFunction.make', () => {
               title: 'b-1.bin',
               entries: [
                 {
-                  key: `${FormatDecode.keyPrefix(b1)}b-1.bin`,
-                  title: 'b-1.bin',
+                  fullUrl: `${FormatDecode.keyPrefix(b1)}b-1.bin`,
                   resource: fakeResource('2'),
                 },
               ],

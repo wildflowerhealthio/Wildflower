@@ -17,20 +17,26 @@ import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
 
 /**
- * One record of a section: its review key and title, and the record as its
- * source gave it, detached (`fhir-r4-adoption`'s `DetachedResource`): no id,
- * keyed by its first identifier, naming every other record it decoded by a
- * logical reference.
+ * One record of a section: the record as its source gave it, detached
+ * (`fhir-r4-adoption`'s `DetachedResource`: no id, keyed by its first
+ * identifier, naming every other record it decoded by a logical reference),
+ * beside its identity within the decoded set.
+ *
+ * @remarks
+ * `fullUrl` plays the part of FHIR's `Bundle.entry.fullUrl` in a transaction:
+ * the record's identity within the set before it is stored, which the
+ * review tracks an exclusion or an edit by. It is stable across a settings
+ * re-decode, and unique within the set once `namespaceKeys` prefixes it. It is
+ * not the record's `id`: `id: null` is what marks a record detached.
  */
 interface Entry {
-  readonly key: string
-  readonly title: string
+  readonly fullUrl: string
   readonly resource: DetachedResource.Type
 }
 
 /**
  * A titled group of records from one source batch, as the import stage
- * receives it: each record detached, beside its review key and title.
+ * receives it: each record detached, beside its `fullUrl`.
  *
  * @remarks
  * A decoder builds one per batch it reads: LifeLabs one per report, DICOM one
@@ -51,19 +57,16 @@ interface Section {
 }
 
 /**
- * A record's review title: the reference the import stage writes it under,
- * `<Type>/<id>`, the id its key derives ({@link DetachedResource.keyedIdOf});
- * for a keyless record, whose id is only minted at import, its type and its
- * review key, `<Type> (<review key>)`.
- *
- * @param resource - The detached record
- * @param reviewKey - Its review key within its section, before the set's
- *   prefix: stable across a settings re-decode, as the title has to be
+ * A record's review title, the one title every decoded record is reviewed
+ * under: the reference the import stage writes it under, `<Type>/<id>`, the id
+ * its key derives ({@link DetachedResource.keyedIdOf}); for a keyless record,
+ * whose id is only minted at import, its type and its `fullUrl`,
+ * `<Type> (<fullUrl>)`.
  */
-const writtenReferenceTitle = (resource: DetachedResource.Type, reviewKey: string): string =>
+const writtenReferenceTitle = ({ fullUrl, resource }: Entry): string =>
   Option.match(DetachedResource.keyedIdOf(resource), {
     onSome: (id) => `${resource.resourceType}/${id}`,
-    onNone: () => `${resource.resourceType} (${reviewKey})`,
+    onNone: () => `${resource.resourceType} (${fullUrl})`,
   })
 
 /**
@@ -101,21 +104,22 @@ const unidentified = (pickedFile: PickedFile.Type): PickedFileIdentity => ({
 })
 
 /**
- * Prefix every review key in `sections`, so one file set's keys cannot collide
- * with another's once the batch merges their sections.
+ * Prefix every `fullUrl` in `sections`, so one file set's cannot collide with
+ * another's once the batch merges their sections.
  *
  * @param prefix - The set's key namespace, from `FormatDecode.keyPrefix`
  */
 const namespaceKeys = (sections: readonly Section[], prefix: string): readonly Section[] =>
   sections.map(({ title, entries }) => ({
     title,
-    entries: entries.map((entry) => ({ ...entry, key: `${prefix}${entry.key}` })),
+    entries: entries.map((entry) => ({ ...entry, fullUrl: `${prefix}${entry.fullUrl}` })),
   }))
 
 /**
  * A decode's sections adopted beside its notes: how the import stage makes a
  * file set's records the device's own, before it mints source files, links
- * and stamps.
+ * and stamps. Each adopted row is keyed by its entry's `fullUrl` and titled
+ * by {@link writtenReferenceTitle}.
  *
  * @param decoded - The set's sections and notes
  * @param mintId - Mints the id of a keyless record; random outside tests
@@ -141,10 +145,10 @@ const adopt = (
   return {
     sections: decoded.sections.map(({ title, entries }) => ({
       title,
-      resources: entries.map(({ key, title: entryTitle, resource }) => ({
-        key,
-        title: entryTitle,
-        resource: adoptEntry(resource),
+      resources: entries.map((entry) => ({
+        key: entry.fullUrl,
+        title: writtenReferenceTitle(entry),
+        resource: adoptEntry(entry.resource),
       })),
     })),
     notes: decoded.notes,

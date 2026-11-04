@@ -14,29 +14,29 @@
  * @packageDocumentation
  */
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import { DecodedFileSet, type DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
+import { type DecodedFileSet, type DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Option, type ParseResult } from 'effect'
 
 import type * as Report from './entities/report.ts'
 import { type SynthesisOptions, toFhirResources } from './fhir/to-fhir.ts'
 
 /**
- * A detached record as its review row: keyed by its type and its key's value
- * (the source id the synthesis gave it), which a settings re-decode keeps, and
- * titled by the reference it is written under, `<Type>/<local id>`.
+ * A detached record as its section entry: its `fullUrl` its type and its key's
+ * value (the source id the synthesis gave it), which a settings re-decode
+ * keeps.
  *
  * @remarks
  * The synthesis gives every record an id, so every record is keyed. A keyless
- * one would be reviewed under its type and its position in the report,
+ * one would be identified by its type and its position in the report,
  * `<Type>#<index>`, which a re-decode of the same print also keeps.
  */
-const reportEntryOf = (resource: DetachedResource.Type, index: number): DecodedFileSet.Entry => {
-  const key = Option.match(DetachedResource.keyOf(resource), {
+const reportEntryOf = (resource: DetachedResource.Type, index: number): DecodedFileSet.Entry => ({
+  fullUrl: Option.match(DetachedResource.keyOf(resource), {
     onSome: ({ value }) => `${resource.resourceType}/${value}`,
     onNone: () => `${resource.resourceType}#${index}`,
-  })
-  return { key, title: DecodedFileSet.writtenReferenceTitle(resource, key), resource }
-}
+  }),
+  resource,
+})
 
 /**
  * The section title one report's resources are reviewed under: the report's
@@ -52,9 +52,8 @@ const reportSectionTitle = (report: Report.Type): string => {
 
 /**
  * The reports as the LifeLabs decode yields them: one section per report, its
- * records detached and keyed in `LIFELABS_SYSTEM`, each reviewed as
- * `<Type>/<source id>` and titled by the reference it is written under, no
- * notes.
+ * records detached and keyed in `LIFELABS_SYSTEM`, each entry's `fullUrl`
+ * `<Type>/<source id>`, no notes.
  *
  * @param reports - The parsed reports, in print order
  * @param options - The zone the reports' printed clock is in

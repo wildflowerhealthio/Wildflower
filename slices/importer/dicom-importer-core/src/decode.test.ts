@@ -147,17 +147,14 @@ describe('decodeStudy', () => {
     expect(study.series[0].instance[0].extension).toEqual([])
   })
 
-  it('detaches each record, keyed by the id the synthesis gave it in the DICOM system, its title that id', async () => {
+  it('writes each record detached, keyed in the DICOM system', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
     const [section] = result.sections
     if (section === undefined) throw expect.fail('expected a section')
-    for (const { title, resource } of section.entries) {
+    for (const { resource } of section.entries) {
       expect(resource.id).toBeNull()
       const key = DetachedResource.keyOf(resource)
       expect(Option.map(key, ({ system }) => system)).toEqual(Option.some(DICOM_SYSTEM))
-      expect(Option.map(key, ({ value }) => `${resource.resourceType}/${value}`)).toEqual(
-        Option.some(title)
-      )
     }
   })
 
