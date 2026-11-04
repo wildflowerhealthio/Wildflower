@@ -39,7 +39,6 @@
     "@wildflowerhealthio/telemetry-web": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhirclient": "^3.0.1",
     "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
