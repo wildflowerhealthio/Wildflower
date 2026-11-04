@@ -36,6 +36,14 @@
       ]
     },
     {
+      "id": "rust-deps",
+      "tools": "edit",
+      "pattern": "(^|/)(deny\\.toml|Cargo\\.lock)$",
+      "docs": [
+        "docs/Dependencies/Rust Dependency Alerts Explanation.md — cargo-deny vs Dependabot alerts, the helios serde pin and the alerts it blocks; drop a deny.toml ignore when cargo-deny reports advisory-not-detected"
+      ]
+    },
+    {
       "id": "diesel-persistence",
       "tools": "edit",
       "pattern": "^slices/persistence-rust/src/|^slices/[^/]+/[^/]+-rust/src/db/",
