@@ -6,7 +6,7 @@ import {
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Effect, Option, RegExp as EffectRegExp, pipe, Schema, String as Str } from 'effect'
 import { CarebookProfile } from '../carebook-profile.ts'
-import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
+import { REXALL_CAREBOOK_SYSTEM_FAMILY } from '../source-system.ts'
 import { REXALL_PROFILE_URL, tunnelGetMatcher } from '../tunnel-url.ts'
 
 type PatientType = typeof Patient.Schema.Type
@@ -82,7 +82,7 @@ const profileUrl = new RegExp(`^${EffectRegExp.escape(REXALL_PROFILE_URL)}(?:\\?
  */
 const ProfileResponseKind: HttpResponseKind.HttpResponseKind<PatientType> = HttpResponseKind.make({
   name: 'ProfileResponseKind',
-  tryRecognize: recognizePortal(tunnelGetMatcher(profileUrl), REXALL_CAREBOOK_SYSTEM),
+  tryRecognize: recognizePortal(tunnelGetMatcher(profileUrl), REXALL_CAREBOOK_SYSTEM_FAMILY),
   parse: (response) =>
     Effect.gen(function* () {
       const profile = yield* decodeProfile(extractJson(response.text()))

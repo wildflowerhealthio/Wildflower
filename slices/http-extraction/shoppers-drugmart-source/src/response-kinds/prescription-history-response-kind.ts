@@ -24,7 +24,7 @@ import {
   shoppersStoreDisplay,
   shoppersStoreLocatorUrl,
 } from '../shoppers.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
+import { SHOPPERS_DRUGMART_SYSTEM_FAMILY } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
 
 /** The dispensing store as a history entry carries it (all parts optional; `null` reads as absent). */
@@ -94,6 +94,13 @@ const accountSubjectWire = (customerId: string): Record<string, unknown> => ({
  * relative `MedicationRequest/<prescriptionId>` reference carrying
  * `prescriptionNumber` as the reference's own `identifier`. `undefined` when
  * neither is present.
+ *
+ * @remarks
+ * Detaching turns a `MedicationRequest/<prescriptionId>` literal into the
+ * logical reference by the prescription's key, which replaces the number
+ * (the slot holds one identifier, and the request carries its number itself).
+ * A fill with no `prescriptionId` keeps the number, as an identifier-only
+ * reference.
  */
 const authorizingPrescriptionWire = (
   dispense: SourceHistoryDispense
@@ -113,7 +120,7 @@ const authorizingPrescriptionWire = (
 
 /**
  * The `location` wire: a `Reference` to the public store-locator URL for the
- * store id (absolute, so adoption leaves it untouched), with the store name as
+ * store id (absolute, so detach leaves it as it is), with the store name as
  * `display`, else one made from the store number. `undefined` when no store id
  * is present.
  */
@@ -147,7 +154,6 @@ const dispenseWire = (
   const wire: Record<string, unknown> = {
     resourceType: 'MedicationDispense',
     id: dispense.dispenseId,
-    identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: dispense.dispenseId }],
     status: 'completed',
     subject: accountSubjectWire(customerId),
   }
@@ -194,7 +200,7 @@ const historyUrl = new RegExp(
 const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
     name: 'PrescriptionHistoryResponseKind',
-    tryRecognize: recognizePortal(portalGetMatcher(historyUrl), SHOPPERS_DRUGMART_SYSTEM),
+    tryRecognize: recognizePortal(portalGetMatcher(historyUrl), SHOPPERS_DRUGMART_SYSTEM_FAMILY),
     parse: (response) =>
       Effect.gen(function* () {
         const customerId = yield* customerIdOf(response.url)

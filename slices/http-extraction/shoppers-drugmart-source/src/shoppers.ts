@@ -11,7 +11,11 @@
  *
  * @remarks
  * These system URIs are best-guess namespaces under the portal host, *not*
- * captured from a canonical registry. In particular:
+ * captured from a canonical registry. `PatientId`, `PrescriptionId` and
+ * `DispenseId` are the namespaces of the portal's own ids for the three types
+ * this source writes, so they are what its records are keyed in
+ * (`source-system.ts`): **persisted wire format**, the hash domain of every id
+ * a Shoppers import stores under. In particular:
  *
  * - `PatientId` names a person the account manages (a
  *   `customer.patients[].id`, the id a prescription's `patientId` references);
@@ -43,6 +47,12 @@ const ShoppersIdentifierSystem = {
    * reviewer says the account's fills are for.
    */
   CustomerId: `${SYSTEM_BASE}/identifier/customer-id`,
+  /**
+   * A prescription's own id: the prescription-status payload's `id` (the
+   * `<uuid>` of its XHR path), which a history fill names as its
+   * `prescriptionId`.
+   */
+  PrescriptionId: `${SYSTEM_BASE}/identifier/prescription-id`,
   /** A prescription's human-facing `prescriptionNumber`. */
   PrescriptionNumber: `${SYSTEM_BASE}/identifier/prescription-number`,
   /** A dispense's `dispenseId`. */

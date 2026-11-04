@@ -29,7 +29,6 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
-    "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/fhir-stu3-as-r4": "workspace:*",
     "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
@@ -42,7 +41,6 @@
   },
   "peerDependencies": {
     "@wildflowerhealthio/fhir-r4": "workspace:*",
-    "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/fhir-stu3-as-r4": "workspace:*",
     "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",

@@ -9,8 +9,7 @@ import { Array as Arr, Effect, type ParseResult, RegExp as EffectRegExp, Schema 
 
 import { DecodableEntries, MalformedAsAbsent } from '../lenient-schemas.ts'
 import { portalGetMatcher, SHOPPERS_API_BASE_URL } from '../portal-url.ts'
-import { ShoppersIdentifierSystem } from '../shoppers.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
+import { SHOPPERS_DRUGMART_SYSTEM_FAMILY } from '../source-system.ts'
 
 /**
  * A postal address as the customers payload carries it: every part optional,
@@ -132,20 +131,17 @@ const telecomWire = (
 }
 
 /**
- * The demographic `Patient` **wire** for one managed person, keyed by its own
- * `id` (the record `subject` references resolve to), with `patientId` as
- * `identifier[0]`, and reached at their own phone and then at each of
+ * The demographic `Patient` **wire** for one managed person, its `id` the
+ * person's `patientId` (the id `subject` references name, in the
+ * `ShoppersIdentifierSystem.PatientId` system the source's family gives
+ * Patient), and reached at their own phone and then at each of
  * `alsoReachedAt`.
  */
 const patientWire = (
   patient: SourcePatient,
   alsoReachedAt: readonly SourceContact[]
 ): Record<string, unknown> => {
-  const wire: Record<string, unknown> = {
-    resourceType: 'Patient',
-    id: patient.id,
-    identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: patient.id }],
-  }
+  const wire: Record<string, unknown> = { resourceType: 'Patient', id: patient.id }
   const name = nameWire(patient)
   if (name != null) wire['name'] = name
   const telecom = telecomWire([{ phoneNumber: patient.phoneNumber }, ...alsoReachedAt])
@@ -189,7 +185,7 @@ const customerUrl = new RegExp(
 const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = HttpResponseKind.make(
   {
     name: 'CustomerResponseKind',
-    tryRecognize: recognizePortal(portalGetMatcher(customerUrl), SHOPPERS_DRUGMART_SYSTEM),
+    tryRecognize: recognizePortal(portalGetMatcher(customerUrl), SHOPPERS_DRUGMART_SYSTEM_FAMILY),
     parse: (response) =>
       Effect.gen(function* () {
         const { customer } = yield* decodeCustomer(extractJson(response.text()))

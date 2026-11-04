@@ -1,5 +1,4 @@
 export { shoppersDrugMartSource } from './source.ts'
-export { SHOPPERS_DRUGMART_SYSTEM } from './source-system.ts'
 export { PRESCRIPTION_STATUS_TYPE_SYSTEM, ShoppersIdentifierSystem } from './shoppers.ts'
 export {
   SHOPPERS_API_BASE_URL,

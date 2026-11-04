@@ -32,7 +32,7 @@ import {
   shoppersStoreDisplay,
   shoppersStoreLocatorUrl,
 } from '../shoppers.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
+import { SHOPPERS_DRUGMART_SYSTEM_FAMILY } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
 
 /** True for a value that is itself a dispense object (carries a `dispenseId`). */
@@ -292,7 +292,7 @@ const requestWire = (
   }
 
   // The prior rx's number as an identifier-only reference (its uuid is unknown;
-  // adoption leaves it untouched).
+  // it stays as written through detach and import).
   if (rx.previousPrescription != null) {
     wire['priorPrescription'] = {
       identifier: {
@@ -327,7 +327,6 @@ const dispenseWire = (
   const wire: Record<string, unknown> = {
     resourceType: 'MedicationDispense',
     id: dispense.dispenseId,
-    identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: dispense.dispenseId }],
     status: dispenseStatus(dispense.status),
     subject: patientReference(rx.patientId),
     authorizingPrescription: [{ reference: `MedicationRequest/${rx.id}` }],
@@ -370,7 +369,7 @@ const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> 
     name: 'PrescriptionResponseKind',
     tryRecognize: recognizePortal(
       portalGetMatcher(prescriptionStatusUrl),
-      SHOPPERS_DRUGMART_SYSTEM
+      SHOPPERS_DRUGMART_SYSTEM_FAMILY
     ),
     parse: (response) =>
       Effect.gen(function* () {

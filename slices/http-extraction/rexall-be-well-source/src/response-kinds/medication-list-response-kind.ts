@@ -11,7 +11,7 @@ import {
 import { Effect, Predicate, RegExp as EffectRegExp, Schema } from 'effect'
 import { promoteMedicationDispense } from '../promote/medication-dispense.ts'
 import { promoteMedicationRequest } from '../promote/medication-request.ts'
-import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
+import { REXALL_CAREBOOK_SYSTEM_FAMILY } from '../source-system.ts'
 import { REXALL_PHARMACY_LOCATION_URL, tunnelGetMatcher } from '../tunnel-url.ts'
 
 /** A decoded carebook medication: an fhir-r4 `MedicationRequest` or `MedicationDispense`. */
@@ -88,7 +88,10 @@ const medicationListUrl = new RegExp(`^${EffectRegExp.escape(REXALL_PHARMACY_LOC
 const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<MedicationResource> =
   HttpResponseKind.make({
     name: 'MedicationListResponseKind',
-    tryRecognize: recognizePortal(tunnelGetMatcher(medicationListUrl), REXALL_CAREBOOK_SYSTEM),
+    tryRecognize: recognizePortal(
+      tunnelGetMatcher(medicationListUrl),
+      REXALL_CAREBOOK_SYSTEM_FAMILY
+    ),
     parse: (response) =>
       Effect.gen(function* () {
         const bundle = yield* decode(extractJson(response.text()))

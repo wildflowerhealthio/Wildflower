@@ -2,8 +2,10 @@ import type {
   CodeableConcept,
   IdentifierAndReference,
 } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { FhirResourceWithId, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResource, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
+
+import { ShoppersIdentifierSystem } from './shoppers.ts'
 
 /**
  * The Shoppers source's `mergeResources`: one dispense seen in both the
@@ -17,21 +19,21 @@ type Reference = IdentifierAndReference.ReferenceType
 type Concept = typeof CodeableConcept.Schema.Type
 
 /**
- * Whether `dispense` is the history feed's copy: its `subject` has no literal
- * `reference`.
+ * Whether `dispense` is the history feed's copy: its `subject` names the
+ * account, by `ShoppersIdentifierSystem.CustomerId`.
  *
  * @remarks
  * The two copies are told apart by this marker because it is the difference
- * the merge is about: the history feed knows only the account, by an
- * identifier-only reference, and the status feed knows the person, by a
- * literal `Patient/<patientId>` reference. Adoption rewrites a literal
- * reference and leaves an identifier-only one as it is, so the marker
- * survives it. Reading it off the resource, rather than asking which kind
- * emitted it, keeps the merge a function of the two resources alone, with the
- * same answer in either arrival order.
+ * the merge is about: the history feed knows only the account, and the status
+ * feed knows the person, whom it names by `patientId` (a literal
+ * `Patient/<patientId>` as the kind writes it, the logical reference by the
+ * person's key once detached). Reading it off the resource, rather than
+ * asking which kind emitted it, keeps the merge a function of the two
+ * resources alone, with the same answer in either arrival order and on either
+ * side of detaching.
  */
 const isHistoryCopy = (dispense: MedicationDispense.Type): boolean =>
-  dispense.subject?.reference == null
+  dispense.subject?.identifier?.system?.href === ShoppersIdentifierSystem.CustomerId
 
 /**
  * The status copy's store link, labelled with the history copy's store name
@@ -80,20 +82,19 @@ const mergeDispenseCopies = <TDispense extends MedicationDispense.Type>(
   ),
 })
 
+/** Whether `resource` is a `MedicationDispense`, keeping whatever else its type says of it. */
+const isDispense = <TResource extends FhirResource>(
+  resource: TResource
+): resource is TResource & MedicationDispense.Type => resource.resourceType === 'MedicationDispense'
+
 /**
- * Two Shoppers resources under one id, as the one to write. A dispense with
+ * Two Shoppers resources under one key, as the one to keep. A dispense with
  * one copy from each feed merges through {@link mergeDispenseCopies}, in
  * either order. Anything else keeps the later copy, as the store would: two
  * copies from one feed, and every other resource type.
  */
-const mergeShoppersResources: SourceDescriptor.ResourceMerge<FhirResourceWithId> = (
-  earlier,
-  later
-) => {
-  if (
-    earlier.resourceType !== 'MedicationDispense' ||
-    later.resourceType !== 'MedicationDispense'
-  ) {
+const mergeShoppersResources: SourceDescriptor.ResourceMerge<FhirResource> = (earlier, later) => {
+  if (!isDispense(earlier) || !isDispense(later)) {
     return later
   }
   const earlierIsHistoryCopy = isHistoryCopy(earlier)
