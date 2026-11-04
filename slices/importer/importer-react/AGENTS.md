@@ -473,7 +473,10 @@ The importer has no HTTP wire union to derive, so there is no separate
   source file coding (`WEB_TRACE_CODE_SYSTEM|har-archive` for HAR, the LifeLabs and DICOM
   systems for theirs), built at module
   load from `PickedFile.categoryToken` over each format's `sourceFileFormat`,
-  so it cannot drift from what the mint writes. Each returned resource is
+  so it cannot drift from what the mint writes. It is one
+  `fhir-r4-react/smart` `fetchDocumentReferencePage` read per page, run on the
+  page's SMART runtime (`useRunSmart`), each later page the previous bundle's
+  `next` link verbatim. Each returned resource is
   classified in registry order through `PickedFile.isSourceFile`; the predicates
   are disjoint by construction (each tests a different `system|code`),
   so at most one claims any row and a row no predicate claims is

@@ -86,9 +86,10 @@ they cover.
   `smart-app-react`'s `SmartHandshakeGate`, by when the handshake has taken
   `code` and `state` out of the URL: nothing the router does may rewrite a
   URL the token exchange still reads. It runs over the `SmartAppPage`
-  `main.tsx` opens (`openSmartAppPage`: the window's history, the served
-  directory as basepath), and is built once for the visit, its context
-  fixed (query cache, client, `runAuthed`, the StrongLifts template ids);
+  `main.tsx` opens (`openSmartAppPage`: the window's history and the
+  basepath), and is built once for the visit, its context fixed (the SMART
+  router context over the gate's runtime — query cache, connection,
+  `runAuthed` — and the StrongLifts template ids);
   `/` redirects to the route the launch started on, else
   `launchStartRoute`'s; see
   "Routing a SMART app" in
@@ -122,9 +123,9 @@ they cover.
 - The screens are driven end to end through the app's router
   (`StrengthRouter`) over an in-memory FHIR server: one stub transport that
   answers searches and reads of one resource (such as the lifter's `Patient`)
-  from its store and applies batches to it, under the real `smartClientFor`
+  from its store and applies batches to it, under the real `smartRuntimeFor`
   the `fhir-r4-react/smart` readers read through and the real
-  `buildSmartRouterContext` and `persistBatchBundleOrFail` write through
+  `persistBatchBundleOrFail` writes through
   (`fake-fhir-server.test-helpers.ts`). Seeded records are built through
   `strength-core-js`'s `make`s and `PlannedWorkout.submit`, and what lands is
   decoded back through core's schemas (`strength-app.test-helpers.ts`, whose

@@ -1,8 +1,8 @@
 # AGENTS.md — slices/smart-app-react
 
 The Wildflower chrome every first-party SMART app boots through. The SMART
-wiring (the handshake, the SMART runtime, the launch-error contract, the
-standalone-launch primitives) is `fhir-r4-react/smart`'s, and the Wildflower
+wiring (the sign-in, the handshake, the SMART runtime, the launch-error
+contract, the arrival parse) is `fhir-r4-react/smart`'s, and the Wildflower
 look (header, footer, brand bar, landing layout) is `branding-react`'s. This
 package is where the two meet, so neither has to know about the other.
 
@@ -14,28 +14,32 @@ it names none, the menu's copy), is
 `smart-app-core`'s, so a page that is not React (the server-docs console)
 offers the same choices; this package re-exports its preset groups.
 
-- `SmartAppRoot({ app, registration, telemetry, servedDirectory?, launched?, replaceLocation?, children })`
+- `SmartAppRoot({ app, registration, telemetry, basepath?, search?, replaceLocation?, children })`
   — the app root, and the app's one page: it starts a SMART launch its URL
-  carries, completes the callback, and shows the landing on a plain visit.
-  `registration` is the app's SMART registration (`clientId` and `scope`),
-  for a launch the URL carries and for the connect menu alike.
-  `servedDirectory` is a routed app's (`SmartAppPage.basepath`): the OAuth
-  redirect URI is that directory, whichever route the page was opened at;
-  without it, the page URL's own directory. `telemetry`
+  carries, completes a sign-in that came back, and shows the landing on a
+  plain visit. `registration` is the app's `SmartRegistration` (`clientId`
+  and `scope`), for a launch the URL carries, the connect menu and the
+  sign-in's return alike. `basepath` is a routed app's
+  (`SmartAppPage.basepath`): the OAuth redirect URI is that directory,
+  whichever route the page was opened at; without it, the page URL's own
+  directory. `search` is the query string it parses into its `RootArrival`
+  (default `window.location.search`; tests pass one). `telemetry`
   (`SmartAppTelemetry`: `dsn`, `app`) names where the app reports once the
   visitor consents: its own Sentry project's DSN and the id its events are
   tagged with. `replaceLocation` replaces the page in the session history
   when it leaves for the app root, and defaults to `window.location.replace`.
 - `ConnectMenu({ target, … })` and its `DEFAULT_SERVER_PRESET_GROUPS` — the
-  standalone connect flow. `target: 'fhir-r4'` launches a SMART app against a FHIR R4
-  base with `startStandaloneLaunch`; `target: 'wildflower'` hands the Wildflower
+  standalone connect flow. `target: 'fhir-r4'` signs a SMART app in to a FHIR R4
+  base with `redirectToPickedServerSignIn`; `target: 'wildflower'` hands the Wildflower
   launcher's own sign-in (`connect`) the picked URL (a Wildflower server's
   API base, or the demo server's FHIR base), and also runs the
   page's "Sign in to …" row (`chosenServer`) and sign-in on arrival
   (`autoConnect`). Either target shows the problem the page arrived with
   (`arrivalProblem`).
 - `openSmartAppPage(import.meta.url)`, its `SmartAppPage` (`history`,
-  `basepath`), `SmartHandshakeGate({ registration, servedDirectory?, connecting, children })` and
+  `basepath`), `SmartHandshakeGate({ connecting, children })`,
+  `SignInLandingContext` (what the root provides the gate, for a test that
+  mounts an app without the root) and
   `appRootRedirect(startRoute)` — what a routed app's router runs over, the
   gate it is built under, and what its `/` redirects to; see
   [Routing a SMART app](#routing-a-smart-app).
@@ -54,18 +58,19 @@ offers the same choices; this package re-exports its preset groups.
   - `usePatientChoice(launchPatientId)` — the choice the page reads under,
     `?patient=` in the URL, `None` while the reader is choosing, with
     `choosePatient` and `changePatient`, for an app without a router.
-  - `usePathPatientChoice()`, `requirePatient(queryClient, client,
-    patientId)`, `launchStartRoute(client)`, `NoPageCard` and
+  - `usePathPatientChoice()`, `requirePatient(queryClient, runSmart,
+    patientId)`, `launchStartRoute(connection)`, `NoPageCard` and
     `NoPatientCard` — the choice for an app whose router names the patient
     in the path; see [Routing a SMART app](#routing-a-smart-app).
-  - `PatientPicker({ client, onPatientChoice })` — "All patients" first,
+  - `PatientPicker({ onPatientChoice })` — "All patients" first,
     then every patient the session can see (`fetchPatientPage`, name and
     birth date per row, sorted by family name, "More patients" while the
     server has more).
-  - `PatientChoiceLine({ client, patientChoice, onPatientChange })` — the
+  - `PatientChoiceLine({ patientChoice, onPatientChange })` — the
     line under an app's title: `Name · born YYYY-MM-DD` (one `fetchPatient`
     read, which says so when the server has no such patient) or "All
-    patients", and a "Change patient" link.
+    patients", and a "Change patient" link. Both read through the runtime
+    the gate provides (`useRunSmart`).
 
 Consumers: `apps/medications/medications-web`, `apps/plots/plots-web`, `apps/strength/strength-web`,
 `apps/importer-web` and `apps/synthetic-data/synthetic-data-web` mount
@@ -105,25 +110,26 @@ package, in an order that is load-bearing:
 - **`main.tsx` opens the page once.** `openSmartAppPage(import.meta.url)`
   creates the window's browser history for the page's life (creating it
   touches no URL; it only tags the current entry's state) and reads the
-  served directory, the router's basepath, off the entry module's URL
-  (`servedDirectoryOf`: the directory above `assets/` in a build, above
+  router's basepath off the entry module's URL
+  (`basepathOf`: the directory above `assets/` in a build, above
   `src/` under the dev server). Never off the page's URL: a load can land on
   a deep route (a dev or preview server's SPA fallback serving `/import/`),
   and that route would become the basepath. `main.tsx` hands the
   `SmartAppPage` to its `AppRoot`, which hands it to `App`.
 - **The router is built only under `SmartHandshakeGate`.** The app root is
   the OAuth redirect target, so its URL carries `?code=…&state=…` until
-  the handshake takes them out with the pending records. A router matches the
-  URL and rewrites it (`/` redirects, below), so it must not exist while the
-  exchange still reads that URL. The gate runs `useSmartHandshake` with the
-  registration and served directory the app hands `SmartAppRoot` too — it is
-  the one place the exchange runs; anything else reads the client with
-  `useSmartClient` — shows
-  the app's `connecting` element meanwhile, shows a failed exchange and
-  carries it to the app root (`useLaunchFailureRedirect`), and renders
-  `children(client)` once ready; the app builds its router there, once
-  (`useState` or a memo on its context), so a tab change is a navigation
-  inside it, never a rebuild. A launch URL never reaches the router at all:
+  the handshake takes them out with the retained sign-in requests. A router
+  matches the URL and rewrites it (`/` redirects, below), so it must not
+  exist while the exchange still reads that URL. The gate runs
+  `useSmartHandshake` on the `SignInLanding` the root provides — it is the
+  one place the exchange runs — shows the app's `connecting` element
+  meanwhile, shows a failed exchange and carries it to the landing's app
+  root (`useRedirectToRootOnFailure`), and once ready tells the root the
+  connection (`onSignedIn`), builds the one `SmartRuntime` from it, provides
+  it (`useRunSmart`) and renders `children(runtime)`; the app builds its
+  router there, once (`useState` or a memo on its context), with
+  `buildSmartRouterContext(runtime, queryClient)`, so a tab change is a
+  navigation inside it, never a rebuild. A launch URL never reaches the router at all:
   `SmartAppRoot` starts the launch before the app mounts.
 - **The patient is in the path.** The routes follow one scheme: `/`, which
   is never a page (below), `/patients` the picker, one patient's pages under
@@ -158,7 +164,7 @@ package, in an order that is load-bearing:
 - **`/` redirects.** The app's index route's `beforeLoad` throws
   `appRootRedirect(startRoute)`, which replaces `/` in history with the
   route the launch started on (below) when one is saved, else with
-  `startRoute`: `launchStartRoute(client)` (`/patients/<client.launchPatientId>`
+  `startRoute`: `launchStartRoute(connection)` (`/patients/<connection.launchPatientId>`
   for a launch with a patient, else `/patients`), or a tab of the app's own
   (the importer's `/import`). Both are router paths, which the router puts
   under its basepath, so the redirect never leaves the app. The callback
@@ -166,15 +172,15 @@ package, in an order that is load-bearing:
   entry.
 - **A launch from a deep route comes back to that route.** The OAuth
   redirect URI is the app root, so a launch at
-  `/patients/123/calendar?iss=…&launch=…` returns there: the served
-  directory (`SmartAppRoot`'s `servedDirectory`), never the launch route's
-  own directory, which is no registered redirect URI. Before the page
-  leaves, `authorizeFromLaunchPage` saves the route it sat on, relative to
-  the served directory (path, its own query less `SMART_LAUNCH_PARAMS`, and
+  `/patients/123/calendar?iss=…&launch=…` returns there: the basepath
+  (`SmartAppRoot`'s `basepath`), never the launch route's own directory,
+  which is no registered redirect URI. Before the page leaves,
+  `redirectForLaunchRequest` saves the route it sat on, relative to the
+  basepath (path, its own query less `SMART_LAUNCH_PARAMS`, and
   fragment), in `sessionStorage` under `RETURN_ROUTE_STORAGE_KEY`
   (`return-route.ts`); a launch at the app root clears it. `/`'s redirect
   reads it and leaves it in place; only a path on the page's own origin,
-  other than `/` itself, is read. Every plain visit to `SmartAppRoot` (a
+  other than `/` itself, is read. Every `Visit` and `SignInRefused` (a
   failed launch's `?launchError`, an OAuth `?error`, a page back from the
   back-forward cache, a fresh visit) clears it, so a route one launch saved
   never redirects a later one. A standalone `ConnectMenu` connect
@@ -186,14 +192,13 @@ package, in an order that is load-bearing:
 
 ## Guardrails
 
-- **A launch waits for the consent answer, then starts once.** When
-  `arrivingSmartLaunchFrom` finds one (`iss`, with or without an EHR's
-  `launch`, and no callback), `SmartAppRoot` renders `LaunchPage`
-  (`Launching <app name>…` under `BrandBar`, the name from
-  `APP_DESCRIPTIONS`) inside the consent gate and a `CrashReportingBoundary`,
-  like the other branches, and authorizes with `authorizeFromLaunchPage` once
-  it mounts, handing it the launch the arrival already parsed (the root's
-  `RootArrival`'s `Launch`), so the URL is read for a launch once. A returning visitor's stored answer skips the dialog, so their
+- **A launch waits for the consent answer, then starts once.** On a
+  `LaunchRequest` (`iss`, with or without an EHR's `launch`), `SmartAppRoot`
+  renders `LaunchPage` (`Launching <app name>…` under `BrandBar`, the name
+  from `APP_DESCRIPTIONS`) inside the consent gate and a
+  `CrashReportingBoundary`, like the other branches, and signs in with
+  `redirectForLaunchRequest` once it mounts, handing it the arrival it
+  already parsed, so the URL is read for a launch once. A returning visitor's stored answer skips the dialog, so their
   launch starts at once. A launch older than 5 minutes is refused, and the
   failure lands on the connect menu. A ref guards the authorize, as
   `ConnectMenu`'s `autoConnect` is guarded, so StrictMode's second effect run
@@ -219,44 +224,50 @@ package, in an order that is load-bearing:
   nothing on an SDK that was never initialized.
   `onQueryError` skips the handshake query (`isSmartHandshakeQuery`): a failed
   handshake comes back to the root as its launch failure and is reported
-  there, so it is reported once. An app keeps the plain
+  there, and a defect is thrown to the boundary that reports it, so either
+  is reported once. The gate's runtime goes out over the plain
   `FetchHttpClient.layer`. Tests cover each branch
   directly (`smart-app-root.test.tsx`).
 - **The telemetry status control is on the launched and standalone branches.** It sits in
   `BrandBar`'s `trailing` slot on the launched branch and in
   `AppLandingPage`'s `aboveFooter` row on the standalone branch, and reopens
   the dialog.
-- **The case is latched on mount.** `SmartAppRoot` reads its
-  `RootArrival` — `Callback`, `Launch` (carrying the `ArrivingSmartLaunch`) or
-  `Visit` — from `shouldCompleteSmartLaunch()` and `arrivingSmartLaunchFrom`
-  (or the `launched` prop), and `launchErrorFrom()`, once, in `useState`
-  initializers, and renders the arrival with `Match.tag`. Every arrival that
-  carries a callback (`code`, `state` or `error`) has its pending records
-  taken and the callback scrubbed from the URL before anything is redeemed:
-  by `readySmartClient` for a `Callback`, and by `discardPendingConnection`
-  for a `Visit` that is the authorization server's `?error=` return (a
-  storage that will not give them up is reported to Sentry). Re-reading the
-  URL on a later render would flip a launch back to the connect menu under
-  the authenticated app — and drop the failure banner a launch landed with.
+- **The arrival is parsed once, on mount.** `SmartAppRoot` reads its
+  `RootArrival` (`fhir-r4-react/smart`'s `rootArrivalFrom` over `search`)
+  in a `useState` initializer, and `Match`es on it: `SignInReturn` and
+  `SelfAddressedSignInReturn` render the app under the `SignInLanding`
+  their gate completes, `SignInRefused` and `Visit` the connect menu with the
+  failure either carries, `LaunchRequest` the launch page. Every sign-in
+  arrival has its retained sign-in requests taken and the callback scrubbed
+  from the URL before anything is redeemed: by
+  `completeSignInAfterRedirectHere` for a return, and by
+  `discardRefusedSignInAfterRedirectHere` for a `SignInRefused` (a storage
+  that will not give them up is reported to Sentry). Re-reading the URL on a
+  later render would flip a sign-in back to the connect menu under the
+  authenticated app — and drop the failure banner a launch landed with. The
+  telemetry `launch` tag is the arrival's: `launching`, `launched` for
+  either return, `standalone` for a refusal or a visit.
 - **One `QueryClient` per page, built by the shell.** `SmartAppRoot` builds it
   with `buildSmartQueryClient({ onQueryError })` and provides it at the root,
-  where the app's `SmartHandshakeGate` runs the handshake; the app hands that same instance to
-  `buildSmartRouterContext`. The shell reads the handshake's result off that
-  client with `whenSmartHandshakeReady` rather than running the exchange
-  itself. See the `useSmartHandshake` guardrail in
+  where the app's `SmartHandshakeGate` runs the handshake; the app hands that
+  same instance to `buildSmartRouterContext`. The shell learns the connection
+  from the gate (`onSignedIn`), holds it, and tags Sentry with its host once
+  telemetry runs, rather than running the exchange itself. See the `useSmartHandshake` guardrail in
   [slices/fhir/AGENTS.md](../fhir/AGENTS.md) for why the exchange must run once.
-- **Redirect targets are derived from the page URL, in render.** The shell's
-  `ConnectMenu` redirect, a launch the URL carries, and a failed handshake's
-  return are all `fhir-r4-react/smart`'s `appRootRedirectUri(href)` (the page's
-  directory), so the bundle works at whatever origin and path it is served
-  from, and no module reads `window` as a side effect of being imported.
-- **A failed launch goes to the app root, never a dead end.** A rejected
-  `authorizeSmartLaunch` on the launch page is handed to the app root, without
-  the launch, through
-  `launchErrorRedirect`, where `SmartAppRoot` latches it and hands it to the
-  `ConnectMenu` as its `arrivalProblem`; the contract is `fhir-r4-react/smart`'s
+- **Redirect targets are derived from the page URL, on mount.** The shell's
+  `ConnectMenu` redirect, a launch the URL carries, the sign-in's return and
+  a failed handshake's way back are all `fhir-r4-react/smart`'s
+  `appRootRedirectUri(href, basepath)`, which the root computes once and
+  hands the gate in its `SignInLanding`, so the bundle works at whatever
+  origin and path it is served from, and no module reads `window` as a side
+  effect of being imported.
+- **A failed launch goes to the app root, never a dead end.** A failed
+  `redirectToSignIn` on the launch page is handed to the app root, without
+  the launch, through `launchErrorRedirect` (`Effect.match` into its
+  `?launchError`), where `SmartAppRoot` reads it as a `Visit`'s launch error
+  and hands it to the `ConnectMenu` as its `arrivalProblem`; the contract is `fhir-r4-react/smart`'s
   `launch-error.ts`.
-- **`ConnectMenu` probes before it connects, and `unreachable` ≠ `open`.** It
+- **`ConnectMenu` probes before it connects, and `Unreachable` ≠ `Open`.** It
   renders inside `AppLanding` on the standalone branch: first an "Official
   Wildflower Relay" entry, whose relay name field is subtitled with where the
   server is found (`https://[Name].relay.wildflowerhealth.io`), then launch
@@ -277,9 +288,9 @@ package, in an order that is load-bearing:
   of a plain-http server off loopback is refused before connecting, for either
   target, with `insecureTargetReason`'s explanation in the banner beside where
   the connect started (re-exported by `fhir-r4-react/smart`, like `normalizeServerUrl`; the scheme
-  read when the pick is made). `startStandaloneLaunch`'s
-  `unreachable` and `unusable` outcomes, a launch it rejects (a sign-in that
-  cannot keep its pending record), and a problem the
+  read when the pick is made). `redirectToPickedServerSignIn`'s
+  `Unreachable` and `Unusable` outcomes, a sign-in it fails (one that cannot
+  retain its request), and a problem the
   `wildflower` caller's `connect` reports, are shown as a retryable error
   banner beside where the connect started (the bottom for a pick) rather than
   connecting. A `connect` that
@@ -288,8 +299,8 @@ package, in an order that is load-bearing:
   (`withLocalNetworkAccessHint`, the page's scheme read when the pick is made),
   so every app on the published site names Chrome's prompt; a caller's
   `connect` returns its problem without the hint. A page restored from the back-forward cache mid-launch comes
-  back idle rather than disabled; why an `unreachable` probe must never degrade
-  to `open` is the standalone-launch guardrail in
+  back idle rather than disabled; why an `Unreachable` probe must never degrade
+  to `Open` is the picked-server sign-in guardrail in
   [slices/fhir/AGENTS.md](../fhir/AGENTS.md).
 - **`ConnectMenu` runs every sign-in on its page, through one state.** A pick,
   the `wildflower` target's "Sign in to {url}" row for the server the page is
@@ -300,7 +311,7 @@ package, in an order that is load-bearing:
   through the same `connect` and the same `launching` state. There is one busy
   flag, one problem at a time, and one `pageshow` reset, so Back from the
   authorization server leaves nothing disabled. The page's `arrivalProblem`
-  (the latched launch error, or the launcher's boot redemption failure) shows
+  (the arrival's launch failure, or the launcher's boot redemption failure) shows
   at the top until any connect starts; a connect's own problem shows beside
   where it started, at the top for the chosen server and at the bottom for a
   pick. A page keeps only the policy (which server, whether to sign in on
@@ -313,9 +324,9 @@ package, in an order that is load-bearing:
   ever it), and an absent or empty `patient` is no choice yet
   (`decodePatientChoice` / `withPatientChoice` in `patient-choice.ts`).
 - **The URL wins over the launch.** `usePatientChoice` reads the URL once, on
-  mount; without a choice there it opens on the launch's `client.launchPatientId`
-  (an `Option`, `None` before the handshake completes; an EHR launch from a
-  patient's record), and with neither it has none and
+  mount; without a choice there it opens on the launch's
+  `connection.launchPatientId` (an `Option`; an EHR launch from a patient's
+  record), and with neither it has none and
   the page shows the picker. A reload keeps the reader's own pick.
 - **Nothing is written until the reader chooses**, and a write touches only
   `patient`: an app's own query state (the health viewer's selection) sits

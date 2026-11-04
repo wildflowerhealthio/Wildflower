@@ -277,19 +277,20 @@ page drive a desktop host.
 ### The SMART apps
 
 The React SMART apps sign in through this client too, by way of
-`slices/fhir/fhir-r4-react/src/smart/*`. Its `authorizeSmartLaunch` runs
-`beginSignIn` for an EHR launch, its standalone launch runs `beginSignInAt` at
-the issuer its probe found, and its `readySmartClient` runs `completeSignIn` on
-the redirect target, under the app's own registration, which
-`smart-app-react`'s `SmartHandshakeGate` hands it. What it adds is what the apps need beyond a token:
+`slices/fhir/fhir-r4-react/src/smart/*`. Its `redirectToSignIn` runs
+`beginSignIn` for an EHR launch, its picked-server sign-in runs
+`beginSignInAt` at the endpoints its probe discovered, and its
+`completeSignInAfterRedirectHere` runs `completeSignIn` on the redirect
+target, under the app's own registration, which the app root's
+`SignInLanding` hands it. What it adds is what the apps need beyond a token:
 
 - **Open servers.** A FHIR server whose SMART configuration names no
-  authorization endpoint is connected with no sign-in at all: the page goes
-  straight to its redirect target with a `state`, and the app reads the server
-  with no token.
-- **A FHIR client.** The redeemed `Session` becomes a `SmartClient` whose
-  `request` reads the FHIR server, sending the bearer token only to the FHIR
-  base the session names.
+  authorization endpoint is signed in to by a self-addressed redirect: the
+  page retains the server and an expected `state`, goes straight back to its
+  own redirect target, and reads the server with no token.
+- **A FHIR client.** The redeemed `Session` becomes a `SmartConnection`, and
+  the `SmartClient` built from it reads the FHIR server, sending the bearer
+  token only to the FHIR base the connection names.
 
 `normalizeServerUrl`, `insecureTargetReason` and `arrivingSmartLaunchFrom` are
 re-exported there, and the standalone probe runs a configuration through
