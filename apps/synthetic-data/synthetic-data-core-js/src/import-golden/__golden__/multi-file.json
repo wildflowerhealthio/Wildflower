@@ -424,7 +424,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "e707dfd6d358d4b1"
           },
-          "reference": "Observation/wf-3a2491bf06f64c173c7e85ce78904780"
+          "reference": "Observation/wf-3a2491bf06f64c173c7e85ce78904780",
+          "type": "Observation"
         }
       ],
       "resultsInterpreter": [
@@ -435,7 +436,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "89cbf94afbd515b7"
           },
-          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b"
+          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b",
+          "type": "Practitioner"
         },
         {
           "extension": [],
@@ -444,7 +446,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "aaaf66a1620d6aae"
           },
-          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759"
+          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759",
+          "type": "Practitioner"
         }
       ],
       "specimen": [],
@@ -456,7 +459,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
           "value": "a5ff7f4bd78368a3"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "type": "Patient"
       }
     },
     {
@@ -529,7 +533,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "d0a244442a06d3e0"
           },
-          "reference": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404"
+          "reference": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404",
+          "type": "Observation"
         },
         {
           "extension": [],
@@ -538,7 +543,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "89a50a75b0a929da"
           },
-          "reference": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684"
+          "reference": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684",
+          "type": "Observation"
         }
       ],
       "resultsInterpreter": [
@@ -549,7 +555,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "89cbf94afbd515b7"
           },
-          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b"
+          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b",
+          "type": "Practitioner"
         },
         {
           "extension": [],
@@ -558,7 +565,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "aaaf66a1620d6aae"
           },
-          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759"
+          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759",
+          "type": "Practitioner"
         }
       ],
       "specimen": [],
@@ -570,7 +578,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
           "value": "a5ff7f4bd78368a3"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "type": "Patient"
       }
     },
     {
@@ -881,7 +890,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/dicom",
             "value": "d4beb9c067c2b2db"
           },
-          "reference": "ServiceRequest/wf-2747b2b5cec8bc60e3f9cd572ad7fce3"
+          "reference": "ServiceRequest/wf-2747b2b5cec8bc60e3f9cd572ad7fce3",
+          "type": "ServiceRequest"
         }
       ],
       "contained": [],
@@ -972,7 +982,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/dicom",
           "value": "ed3fb2303ba15aa9"
         },
-        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81"
+        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81",
+        "type": "Patient"
       }
     },
     {
@@ -984,7 +995,7 @@
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-order",
             "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
           },
-          "reference": "PrescriptionOrder/wf-db21ef893de05d6ea9ab7423520c0feb"
+          "reference": "PrescriptionOrder/ddee1205-f792-4b31-8565-24fb2fdc7cb9"
         },
         {
           "extension": [],
@@ -993,7 +1004,7 @@
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-refill",
             "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
           },
-          "reference": "PrescriptionOrder/wf-db21ef893de05d6ea9ab7423520c0feb"
+          "reference": "PrescriptionOrder/ddee1205-f792-4b31-8565-24fb2fdc7cb9"
         }
       ],
       "contained": [],
@@ -1110,7 +1121,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81"
+        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "type": "Patient"
       },
       "supportingInformation": [],
       "whenHandedOver": "2026-11-04T21:16:30.000Z",
@@ -1125,7 +1137,7 @@
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-order",
             "value": "f6c0c793-b0be-4177-b852-6214a1559e5b"
           },
-          "reference": "PrescriptionOrder/wf-86c27a1d84b261a9afa3ef8bd1182e94"
+          "reference": "PrescriptionOrder/f415051e-4207-4475-a1a1-08d37bb52edc"
         },
         {
           "extension": [],
@@ -1134,7 +1146,7 @@
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-refill",
             "value": "f6c0c793-b0be-4177-b852-6214a1559e5b"
           },
-          "reference": "PrescriptionOrder/wf-86c27a1d84b261a9afa3ef8bd1182e94"
+          "reference": "PrescriptionOrder/f415051e-4207-4475-a1a1-08d37bb52edc"
         }
       ],
       "contained": [],
@@ -1251,7 +1263,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81"
+        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "type": "Patient"
       },
       "supportingInformation": [],
       "whenHandedOver": "2026-06-15T19:51:19.000Z",
@@ -1266,7 +1279,7 @@
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-order",
             "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
           },
-          "reference": "PrescriptionOrder/wf-cf78dec5b76249ea3dad3a108ef78487"
+          "reference": "PrescriptionOrder/e23cb27c-2050-40ea-90dd-926b866c886c"
         },
         {
           "extension": [],
@@ -1275,7 +1288,7 @@
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-refill",
             "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
           },
-          "reference": "PrescriptionOrder/wf-cf78dec5b76249ea3dad3a108ef78487"
+          "reference": "PrescriptionOrder/e23cb27c-2050-40ea-90dd-926b866c886c"
         }
       ],
       "contained": [],
@@ -1392,7 +1405,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81"
+        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "type": "Patient"
       },
       "supportingInformation": [],
       "whenHandedOver": "2026-11-15T16:58:52.000Z",
@@ -1613,7 +1627,7 @@
           "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
           "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
         },
-        "reference": "Practitioner/wf-b8a272a8f35766f961f5ed108ac375ca"
+        "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
       "status": "active",
@@ -1624,7 +1638,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81"
+        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "type": "Patient"
       },
       "supportingInformation": []
     },
@@ -1843,7 +1858,7 @@
           "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
           "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
         },
-        "reference": "Practitioner/wf-b8a272a8f35766f961f5ed108ac375ca"
+        "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
       "status": "stopped",
@@ -1854,7 +1869,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81"
+        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "type": "Patient"
       },
       "supportingInformation": []
     },
@@ -2073,7 +2089,7 @@
           "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
           "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
         },
-        "reference": "Practitioner/wf-b8a272a8f35766f961f5ed108ac375ca"
+        "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
       "status": "active",
@@ -2084,7 +2100,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81"
+        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "type": "Patient"
       },
       "supportingInformation": []
     },
@@ -2165,7 +2182,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
           "value": "a5ff7f4bd78368a3"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "type": "Patient"
       },
       "valueQuantity": {
         "code": "U/L",
@@ -2259,7 +2277,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
           "value": "a5ff7f4bd78368a3"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "type": "Patient"
       },
       "valueQuantity": {
         "code": "mmol/L",
@@ -2371,7 +2390,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
           "value": "a5ff7f4bd78368a3"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "type": "Patient"
       },
       "valueQuantity": {
         "code": "mmol/L",
@@ -2704,7 +2724,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/dicom",
           "value": "ed3fb2303ba15aa9"
         },
-        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81"
+        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81",
+        "type": "Patient"
       },
       "supportingInfo": []
     }

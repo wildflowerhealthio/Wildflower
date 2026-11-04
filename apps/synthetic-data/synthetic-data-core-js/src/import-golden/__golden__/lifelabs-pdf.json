@@ -147,7 +147,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "e707dfd6d358d4b1"
           },
-          "reference": "Observation/wf-3a2491bf06f64c173c7e85ce78904780"
+          "reference": "Observation/wf-3a2491bf06f64c173c7e85ce78904780",
+          "type": "Observation"
         }
       ],
       "resultsInterpreter": [
@@ -158,7 +159,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "89cbf94afbd515b7"
           },
-          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b"
+          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b",
+          "type": "Practitioner"
         },
         {
           "extension": [],
@@ -167,7 +169,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "aaaf66a1620d6aae"
           },
-          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759"
+          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759",
+          "type": "Practitioner"
         }
       ],
       "specimen": [],
@@ -179,7 +182,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
           "value": "a5ff7f4bd78368a3"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "type": "Patient"
       }
     },
     {
@@ -252,7 +256,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "d0a244442a06d3e0"
           },
-          "reference": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404"
+          "reference": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404",
+          "type": "Observation"
         },
         {
           "extension": [],
@@ -261,7 +266,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "89a50a75b0a929da"
           },
-          "reference": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684"
+          "reference": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684",
+          "type": "Observation"
         }
       ],
       "resultsInterpreter": [
@@ -272,7 +278,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "89cbf94afbd515b7"
           },
-          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b"
+          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b",
+          "type": "Practitioner"
         },
         {
           "extension": [],
@@ -281,7 +288,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
             "value": "aaaf66a1620d6aae"
           },
-          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759"
+          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759",
+          "type": "Practitioner"
         }
       ],
       "specimen": [],
@@ -293,7 +301,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
           "value": "a5ff7f4bd78368a3"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "type": "Patient"
       }
     },
     {
@@ -422,7 +431,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
           "value": "a5ff7f4bd78368a3"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "type": "Patient"
       },
       "valueQuantity": {
         "code": "U/L",
@@ -516,7 +526,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
           "value": "a5ff7f4bd78368a3"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "type": "Patient"
       },
       "valueQuantity": {
         "code": "mmol/L",
@@ -628,7 +639,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
           "value": "a5ff7f4bd78368a3"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "type": "Patient"
       },
       "valueQuantity": {
         "code": "mmol/L",

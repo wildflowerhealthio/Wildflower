@@ -121,7 +121,8 @@
             "system": "https://wildflowerhealth.io/fhir/sid/dicom",
             "value": "d4beb9c067c2b2db"
           },
-          "reference": "ServiceRequest/wf-2747b2b5cec8bc60e3f9cd572ad7fce3"
+          "reference": "ServiceRequest/wf-2747b2b5cec8bc60e3f9cd572ad7fce3",
+          "type": "ServiceRequest"
         }
       ],
       "contained": [],
@@ -212,7 +213,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/dicom",
           "value": "ed3fb2303ba15aa9"
         },
-        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81"
+        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81",
+        "type": "Patient"
       }
     },
     {
@@ -319,7 +321,8 @@
           "system": "https://wildflowerhealth.io/fhir/sid/dicom",
           "value": "ed3fb2303ba15aa9"
         },
-        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81"
+        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81",
+        "type": "Patient"
       },
       "supportingInfo": []
     }
