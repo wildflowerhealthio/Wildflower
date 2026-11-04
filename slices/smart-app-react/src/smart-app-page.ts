@@ -18,9 +18,9 @@ interface SmartAppPage {
  * under the dev server. The page's own URL cannot say, since a load can land
  * on a deep route (a dev server's SPA fallback, a reload on a tab).
  *
- * @example servedDirectoryOf('https://importer.example/pr-7/assets/main-3f2a.js') // '/pr-7/'
+ * @example basepathOf('https://importer.example/pr-7/assets/main-3f2a.js') // '/pr-7/'
  */
-const servedDirectoryOf = (entryModuleUrl: string): string => new URL('..', entryModuleUrl).pathname
+const basepathOf = (entryModuleUrl: string): string => new URL('..', entryModuleUrl).pathname
 
 /**
  * The page a routed SMART app's router runs over, for an app whose entry
@@ -33,7 +33,7 @@ const servedDirectoryOf = (entryModuleUrl: string): string => new URL('..', entr
  */
 const openSmartAppPage = (entryModuleUrl: string): SmartAppPage => ({
   history: createBrowserHistory(),
-  basepath: servedDirectoryOf(entryModuleUrl),
+  basepath: basepathOf(entryModuleUrl),
 })
 
-export { openSmartAppPage, servedDirectoryOf, type SmartAppPage }
+export { openSmartAppPage, basepathOf, type SmartAppPage }

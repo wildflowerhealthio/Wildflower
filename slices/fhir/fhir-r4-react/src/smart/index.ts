@@ -1,24 +1,28 @@
 export {
   appRootRedirectUri,
   arrivingSmartLaunchFrom,
-  authorizeOpenServer,
-  authorizeSmartLaunch,
-  authorizeSmartLaunchAt,
-  discardPendingConnection,
-  readySmartClient,
+  CallbackStateMismatch,
+  completeSignInAfterRedirectHere,
+  discardRefusedSignInAfterRedirectHere,
+  NoSignInInProgress,
+  redirectToSelfAddressedSignInReturn,
+  redirectToSignIn,
+  redirectToSignInAt,
   SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
-  type OpenServerConfig,
+  type SelfAddressedSignInConfig,
+  type SignInAfterRedirectError,
   type SignInLanding,
   type SmartLaunchConfig,
+  type SmartRegistration,
 } from './smart-launch.ts'
 
 export {
   detectSmartSupport,
   insecureTargetReason,
   normalizeServerUrl,
-  startStandaloneLaunch,
-  type SmartSupport,
+  redirectToPickedServerSignIn,
+  SmartSupport,
 } from './standalone-launch.ts'
 
 export { RootArrival, rootArrivalFrom, type SignInArrival } from './root-arrival.ts'
@@ -122,9 +126,9 @@ export { decodeFhirBaseUrl, FhirBaseUrl, SmartConnection } from './smart-connect
 
 export {
   isSmartHandshakeQuery,
-  useLaunchFailureRedirect,
+  useRedirectToRootOnFailure,
   useSmartHandshake,
-  type SmartHandshake,
+  SmartHandshake,
 } from './use-smart-handshake.ts'
 
 export {

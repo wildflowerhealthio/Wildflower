@@ -1,4 +1,4 @@
-import type { SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartRegistration } from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
 
 /**
@@ -47,7 +47,7 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  * in `authorization-server-rust`'s `db/clients.rs`, and the dev client in `seeding.rs`.
  * Change one, change all four.
  */
-const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartRegistration: SmartRegistration = {
   clientId: import.meta.env.DEV
     ? '61e195d6b08bab6bf2cedb1ef3831fa7'
     : '6847df97d54c31936d54ca1b36b3bb09',

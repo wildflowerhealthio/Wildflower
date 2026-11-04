@@ -1,6 +1,5 @@
 import {
   arrivingSmartLaunchFrom,
-  AuthorizationRejected,
   beginSignIn,
   beginSignInAt,
   browserSignInEnvironment,
@@ -23,110 +22,127 @@ import { Data, Effect, Match, Option, Schema } from 'effect'
 import type { RootArrival, SignInArrival } from './root-arrival.ts'
 import { decodeFhirBaseUrl, FhirBaseUrl, SmartConnection } from './smart-connection.ts'
 
-/**
- * Configuration for a SMART App Launch: the app's registered client, where the
- * authorization server sends the browser back to, and the FHIR server
- * (`iss`, the "issuer") to sign in to.
- */
-interface SmartLaunchConfig {
+/** The app's SMART registration: the client it signs in as, and the scopes it asks for. */
+interface SmartRegistration {
   readonly clientId: string
   readonly scope: string
-  readonly redirectUri: string
-  /** The FHIR server base to sign in to: an EHR launch's `iss`, or a picked server. */
-  readonly iss: FhirBaseUrl
 }
 
 /**
- * The `sessionStorage` key `authorization-core`'s sign-in keeps its pending
- * record at, for every SMART app on this package. `sessionStorage` is per tab,
- * so it is one key for the one sign-in a tab can be in.
+ * Configuration for a SMART App Launch: the app's registration, where the
+ * authorization server sends the browser back to, and the FHIR server to sign
+ * in to.
  */
-const PENDING_AUTHORIZATION_KEY = 'fhir-r4-react.pending-authorization'
+interface SmartLaunchConfig extends SmartRegistration {
+  readonly redirectUri: string
+  /** The FHIR server base to sign in to: an EHR launch's `iss`, or a picked server. */
+  readonly fhirBaseUrl: FhirBaseUrl
+}
 
 /**
- * The `sessionStorage` key the {@link PendingOpenServer} this tab started
- * lives at until the redirect target completes it.
+ * The `sessionStorage` key `authorization-core`'s sign-in retains its sign-in
+ * request at, for every SMART app on this package. `sessionStorage` is per
+ * tab, so it is one key for the one sign-in a tab can be in.
  */
-const PENDING_CONNECTION_KEY = 'fhir-r4-react.pending-connection'
+const RETAINED_SIGN_IN_REQUEST_KEY = 'fhir-r4-react.retained-sign-in-request'
 
 /**
- * A connection to an open server in progress, carried across the redirect in
- * `sessionStorage`: the server, and the `state` the redirect target must come
+ * The `sessionStorage` key the {@link RetainedSelfAddressedSignInRequest} this
+ * tab started lives at until the redirect target completes it.
+ */
+const RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY =
+  'fhir-r4-react.retained-self-addressed-sign-in-request'
+
+/**
+ * A self-addressed sign-in in progress, retained across the redirect in
+ * `sessionStorage`: the open server, and the `state` the redirect must come
  * back with. It holds no credential.
  */
-const PendingOpenServer = Schema.Struct({
-  state: Schema.String,
-  serverUrl: FhirBaseUrl,
+const RetainedSelfAddressedSignInRequest = Schema.Struct({
+  /** The `state` the redirect carries, which its return must carry back. */
+  expectedState: Schema.String,
+  fhirBaseUrl: FhirBaseUrl,
 })
-type PendingOpenServer = Schema.Schema.Type<typeof PendingOpenServer>
+type RetainedSelfAddressedSignInRequest = Schema.Schema.Type<
+  typeof RetainedSelfAddressedSignInRequest
+>
 
-const PendingOpenServerJson = Schema.parseJson(PendingOpenServer)
-const encodePendingOpenServer = Schema.encodeSync(PendingOpenServerJson)
-const decodePendingOpenServer = Schema.decodeUnknownOption(PendingOpenServerJson)
+const RetainedSelfAddressedSignInRequestJson = Schema.parseJson(RetainedSelfAddressedSignInRequest)
+const encodeRetainedSelfAddressedSignInRequest = Schema.encodeSync(
+  RetainedSelfAddressedSignInRequestJson
+)
+const decodeRetainedSelfAddressedSignInRequest = Schema.decodeUnknownOption(
+  RetainedSelfAddressedSignInRequestJson
+)
 
 /** The sign-in environment for `registration`, wired to this page. */
-const signInEnvironmentFor = (registration: Omit<SmartLaunchConfig, 'iss'>): SignInEnvironment =>
+const signInEnvironmentFor = (
+  registration: SmartRegistration & { readonly redirectUri: string }
+): SignInEnvironment =>
   browserSignInEnvironment(window, {
     clientId: registration.clientId,
-    pendingKey: PENDING_AUTHORIZATION_KEY,
+    pendingKey: RETAINED_SIGN_IN_REQUEST_KEY,
     scope: registration.scope,
     redirectUri: registration.redirectUri,
   })
 
-/** Why the page cannot use the record it keeps a connection in progress in. */
+/** Why the page cannot use the sign-in request it retained. */
 const blockedStorage = (): PendingRequestUnusable =>
   new PendingRequestUnusable({
     reason:
-      'This browser would not let the page use the connection it kept ' +
+      'This browser would not let the page use the sign-in request it kept ' +
       '(session storage is blocked), so it cannot be completed.',
   })
 
-/** Keep `pendingOpenServer` for the redirect target, before the page leaves. */
-const rememberPendingOpenServer = (
-  pendingOpenServer: PendingOpenServer
+/** Retain `request` for the redirect's return, before the page leaves. */
+const retainSelfAddressedSignInRequest = (
+  request: RetainedSelfAddressedSignInRequest
 ): Effect.Effect<void, PendingRequestUnusable> =>
   Effect.try({
     try: () =>
       window.sessionStorage.setItem(
-        PENDING_CONNECTION_KEY,
-        encodePendingOpenServer(pendingOpenServer)
+        RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
+        encodeRetainedSelfAddressedSignInRequest(request)
       ),
     catch: blockedStorage,
   })
 
 /**
- * Take every pending record a callback arrival can complete out of
+ * Take every retained sign-in request an arrival can complete out of
  * `sessionStorage`, then scrub the callback from the address bar: the one rule
- * every arrival at the app root carrying `code`, `state` or `error` follows,
- * before it decides what to show.
+ * every sign-in arrival at the app root follows, before it decides what to
+ * show.
  *
- * @returns The open-server record as stored, `None` when there is none.
+ * @returns The retained self-addressed sign-in request as stored, `None` when
+ *   there is none.
  *
  * @remarks
- * A `SignInReturn` leaves `authorization-core`'s record to `completeSignIn`,
- * which takes it before it redeems the code; any other arrival forgets it. The open-server record is taken either way, and decoded
- * only by the arrival that completes it ({@link connectOpenServer}). A
- * storage that throws fails with `PendingRequestUnusable`.
+ * A `SignInReturn` leaves `authorization-core`'s retained request to
+ * `completeSignIn`, which takes it before it redeems the code; any other
+ * arrival forgets it. The self-addressed request is taken either way, and
+ * decoded only by the arrival that completes it
+ * ({@link completeSelfAddressedSignIn}). A storage that throws fails with
+ * `PendingRequestUnusable`.
  */
-const takePendingConnection = (
+const takeRetainedSignInRequests = (
   arrival: RootArrival,
   environment: SignInEnvironment
 ): Effect.Effect<Option.Option<string>, PendingRequestUnusable> =>
   Effect.gen(function* () {
-    const storedOpenServer = yield* Effect.try({
+    const retained = yield* Effect.try({
       try: () => {
-        const stored = window.sessionStorage.getItem(PENDING_CONNECTION_KEY)
-        window.sessionStorage.removeItem(PENDING_CONNECTION_KEY)
+        const stored = window.sessionStorage.getItem(RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY)
+        window.sessionStorage.removeItem(RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY)
         return Option.fromNullable(stored)
       },
       catch: blockedStorage,
     })
     if (arrival._tag !== 'SignInReturn') yield* forgetPendingSignIn(environment)
-    return storedOpenServer
+    return retained
   }).pipe(Effect.ensuring(Effect.sync(scrubAuthorizationResponse)))
 
 /** Run `beginning`, then send the browser to the authorization URL it yields. */
-const leaveForAuthorization = <E>(beginning: Effect.Effect<string, E>): Effect.Effect<void, E> =>
+const redirectToAuthorization = <E>(beginning: Effect.Effect<string, E>): Effect.Effect<void, E> =>
   Effect.flatMap(beginning, (authorizeUrl) =>
     Effect.sync(() => {
       window.location.assign(authorizeUrl)
@@ -134,70 +150,73 @@ const leaveForAuthorization = <E>(beginning: Effect.Effect<string, E>): Effect.E
   )
 
 /**
- * Begin the SMART App Launch against `config.iss`: discover its endpoints, keep
- * what the redirect target needs, and send the browser to the authorization
- * endpoint. `launch` is the EHR's launch token for an EHR launch, and
- * `undefined` for a standalone launch.
+ * Sign in to `config.fhirBaseUrl`: discover its endpoints, retain what the
+ * return needs, and send the browser to the authorization endpoint. `launch`
+ * is the EHR's launch token for an EHR launch, and `undefined` for a
+ * standalone launch.
  *
  * @remarks
  * `authorization-core`'s `beginSignIn` discovers the endpoints from
- * `{iss}/.well-known/smart-configuration` and accepts the authorization
+ * `{fhirBaseUrl}/.well-known/smart-configuration` and accepts the authorization
  * endpoint only when `endpointUrlFrom` does for this page: a `javascript:`
  * URL, one carrying userinfo or a fragment, and plain http off loopback from an
  * https page are each refused. Then it fails with discovery's reason and the
  * page stays where it is.
  */
-const authorizeSmartLaunch = (
+const redirectToSignIn = (
   config: SmartLaunchConfig,
   launch: string | undefined
 ): Effect.Effect<void, SignInError> =>
-  leaveForAuthorization(
-    beginSignIn(config.iss, undefined, signInEnvironmentFor(config), {
+  redirectToAuthorization(
+    beginSignIn(config.fhirBaseUrl, undefined, signInEnvironmentFor(config), {
       launch,
     })
   )
 
 /**
- * Begin a standalone SMART App Launch at the already-discovered `issuer`, as
- * {@link authorizeSmartLaunch} does once it has discovered one: the probe that
- * found the issuer is the one fetch of its SMART configuration.
+ * Sign in at the already-`discovered` SMART server, as {@link redirectToSignIn}
+ * does once it has discovered one: the probe that discovered it is the one
+ * fetch of its SMART configuration.
  */
-const authorizeSmartLaunchAt = (
-  issuer: SmartIssuer,
-  config: Omit<SmartLaunchConfig, 'iss'>
+const redirectToSignInAt = (
+  discovered: SmartIssuer,
+  config: Omit<SmartLaunchConfig, 'fhirBaseUrl'>
 ): Effect.Effect<void, PkceUnavailable | PendingRequestUnusable> =>
-  leaveForAuthorization(beginSignInAt(issuer, undefined, signInEnvironmentFor(config)))
+  redirectToAuthorization(beginSignInAt(discovered, undefined, signInEnvironmentFor(config)))
 
 /**
- * Configuration for connecting to an **open** FHIR server — one whose
- * `.well-known/smart-configuration` names no authorization endpoint (or serves
- * no config at all). There is no OAuth handshake: the page goes straight to
- * the redirect target, which `readySmartClient` completes into a connection
- * with no access token.
+ * Configuration for a self-addressed sign-in to an **open** FHIR server — one
+ * whose `.well-known/smart-configuration` names no authorization endpoint (or
+ * serves no config at all).
  */
-interface OpenServerConfig {
+interface SelfAddressedSignInConfig {
   /** The FHIR server base to connect to, used with no `Authorization` header. */
-  readonly fhirServiceUrl: FhirBaseUrl
+  readonly fhirBaseUrl: FhirBaseUrl
+  /** The app root the sign-in is addressed to. */
   readonly redirectUri: string
 }
 
 /**
- * Begin an open-server connection: keep the server for the redirect target
- * and send the browser straight there, carrying a fresh `state`, so the page
- * usually navigates away. The URL is the app's own redirect target, not one a
- * server advertised.
+ * Sign in to an open server by addressing the redirect to this page.
+ *
+ * @remarks
+ * An open server has no authorization server, so the page signs in by
+ * addressing the redirect to itself: it keeps the server and an
+ * `expectedState` under {@link RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY},
+ * then redirects straight back here. On return the `state` must match, so a
+ * link someone else crafted cannot make the app connect to a server they
+ * chose.
  */
-const authorizeOpenServer = (config: OpenServerConfig): Effect.Effect<void, PendingRequestUnusable> =>
+const redirectToSelfAddressedSignInReturn = (
+  config: SelfAddressedSignInConfig
+): Effect.Effect<void, PendingRequestUnusable> =>
   Effect.gen(function* () {
-      const state = createState(window.crypto)
-      yield* rememberPendingOpenServer({
-        state,
-        serverUrl: config.fhirServiceUrl,
-      })
-      const redirectTarget = new URL(config.redirectUri)
-      redirectTarget.searchParams.set('state', state)
-      window.location.assign(redirectTarget.href)
-    })
+    const expectedState = createState(window.crypto)
+    yield* retainSelfAddressedSignInRequest({ expectedState, fhirBaseUrl: config.fhirBaseUrl })
+    const redirectTarget = new URL(config.redirectUri)
+    redirectTarget.searchParams.set('state', expectedState)
+    window.location.assign(redirectTarget.href)
+  })
 
 /**
  * The connection a redeemed sign-in `session` is: its server, its token, and
@@ -234,36 +253,55 @@ const redeemSignIn = (
     )
   )
 
+/** The page came back from a self-addressed sign-in it holds no request for. */
+class NoSignInInProgress extends Data.TaggedError('NoSignInInProgress')<{
+  readonly reason: string
+}> {}
+
 /**
- * The open server the stored record names, once `selfAddressedReturn` comes
- * back with its `state`. Only an absent record means there is no connection
- * to complete.
+ * A self-addressed sign-in came back with a `state` other than the one its
+ * retained request expects: a link the page did not make.
  */
-const connectOpenServer = (
+class CallbackStateMismatch extends Data.TaggedError('CallbackStateMismatch')<{
+  readonly reason: string
+}> {}
+
+/** Every way completing a sign-in after its redirect can fail. */
+type SignInAfterRedirectError = SignInError | NoSignInInProgress | CallbackStateMismatch
+
+/**
+ * The open server the `retained` request names, once `selfAddressedReturn`
+ * comes back with its expected `state`. Only an absent request means there is
+ * no sign-in to complete.
+ */
+const completeSelfAddressedSignIn = (
   selfAddressedReturn: Data.TaggedEnum.Value<RootArrival, 'SelfAddressedSignInReturn'>,
-  storedOpenServer: Option.Option<string>
-): Effect.Effect<SmartConnection, AuthorizationRejected | PendingRequestUnrecognised> =>
+  retained: Option.Option<string>
+): Effect.Effect<
+  SmartConnection,
+  NoSignInInProgress | PendingRequestUnrecognised | CallbackStateMismatch
+> =>
   Effect.gen(function* () {
-    if (Option.isNone(storedOpenServer)) {
-      return yield* new AuthorizationRejected({
-        reason: 'This page has no connection in progress to complete. Connect again.',
+    if (Option.isNone(retained)) {
+      return yield* new NoSignInInProgress({
+        reason: 'This page has no sign-in in progress to complete. Connect again.',
       })
     }
-    const pendingOpenServer = decodePendingOpenServer(storedOpenServer.value)
-    if (Option.isNone(pendingOpenServer)) {
+    const request = decodeRetainedSelfAddressedSignInRequest(retained.value)
+    if (Option.isNone(request)) {
       return yield* new PendingRequestUnrecognised({
         reason:
-          'The connection in progress was started by a different version of this page. ' +
+          'The sign-in in progress was started by a different version of this page. ' +
           'Connect again.',
       })
     }
-    if (selfAddressedReturn.state !== pendingOpenServer.value.state) {
-      return yield* new AuthorizationRejected({
-        reason: 'The connection came back with the wrong state parameter, so it was discarded.',
+    if (selfAddressedReturn.state !== request.value.expectedState) {
+      return yield* new CallbackStateMismatch({
+        reason: 'The sign-in came back with the wrong state parameter, so it was discarded.',
       })
     }
     return new SmartConnection({
-      fhirBaseUrl: pendingOpenServer.value.serverUrl,
+      fhirBaseUrl: request.value.fhirBaseUrl,
       accessToken: Option.none(),
       launchPatientId: Option.none(),
     })
@@ -290,7 +328,7 @@ interface SignInLanding {
   /** The sign-in the page's query string carries. */
   readonly arrival: SignInArrival
   /** The app's SMART registration, which the code is redeemed as. */
-  readonly registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>
+  readonly registration: SmartRegistration
   /**
    * The app root's redirect URI ({@link appRootRedirectUri}), derived the same
    * way the outbound leg derived it, so the token request names the redirect
@@ -308,62 +346,65 @@ const landingEnvironment = (
   signInEnvironmentFor({ ...landing.registration, redirectUri: landing.appRootRedirectUri })
 
 /**
- * Complete the connection on the redirect target: redeem the code a SMART
- * sign-in came back with, or accept an open server's return, and resolve to
- * the {@link SmartConnection} it made.
+ * Complete the sign-in the page landed on after its redirect: redeem the code
+ * a sign-in's return carries, or accept a self-addressed sign-in's return, and
+ * resolve to the {@link SmartConnection} it made.
  *
  * @param landing - The sign-in the page landed on, the registration it
  *   redeems as, and the redirect URI the token request names
  *
  * @remarks
- * Every pending record is taken first ({@link takePendingConnection}), so a
- * second completion (a reload, a remount) finds nothing to complete and
- * fails, as a page with no connection in progress does, and the callback
- * leaves the address bar whichever way the connection settles.
+ * Every retained sign-in request is taken first
+ * ({@link takeRetainedSignInRequests}), so a second completion (a reload, a
+ * remount) finds nothing to complete and fails, as a page with no sign-in in
+ * progress does, and the callback leaves the address bar whichever way the
+ * sign-in settles.
  */
-const readySmartClient = (
+const completeSignInAfterRedirectHere = (
   landing: Pick<SignInLanding, 'arrival' | 'registration' | 'appRootRedirectUri'>
-): Effect.Effect<SmartConnection, SignInError> =>
+): Effect.Effect<SmartConnection, SignInAfterRedirectError> =>
   Effect.gen(function* () {
     const environment = landingEnvironment(landing)
-    const storedOpenServer = yield* takePendingConnection(landing.arrival, environment)
+    const retained = yield* takeRetainedSignInRequests(landing.arrival, environment)
     return yield* Match.value(landing.arrival).pipe(
       Match.tagsExhaustive({
         SignInReturn: (signInReturn) => redeemSignIn(signInReturn, environment),
         SelfAddressedSignInReturn: (selfAddressedReturn) =>
-          connectOpenServer(selfAddressedReturn, storedOpenServer),
+          completeSelfAddressedSignIn(selfAddressedReturn, retained),
       })
     )
   })
 
 /**
- * Drop every pending record and scrub the callback, for the authorization
- * server's refusal, which the root shows on the connect menu.
+ * Drop every retained sign-in request and scrub the callback, for the
+ * authorization server's refusal, which the root shows on the connect menu.
  *
  * @param refused - The refusal the page landed on
  * @param landing - The registration and redirect URI of the app at the root
  *
  * @remarks
- * The same rule {@link readySmartClient} takes the records by
- * ({@link takePendingConnection}); it fails only when the storage throws.
+ * The same rule {@link completeSignInAfterRedirectHere} takes the records by
+ * ({@link takeRetainedSignInRequests}); it fails only when the storage throws.
  */
-const discardPendingConnection = (
+const discardRefusedSignInAfterRedirectHere = (
   refused: Data.TaggedEnum.Value<RootArrival, 'SignInRefused'>,
   landing: Pick<SignInLanding, 'registration' | 'appRootRedirectUri'>
 ): Effect.Effect<void, PendingRequestUnusable> =>
-  Effect.suspend(() => Effect.asVoid(takePendingConnection(refused, landingEnvironment(landing))))
+  Effect.suspend(() =>
+    Effect.asVoid(takeRetainedSignInRequests(refused, landingEnvironment(landing)))
+  )
 
 /**
  * The OAuth redirect URI for a SMART app, from the URL of any of its pages:
- * the app's served directory, `servedDirectory`, on `href`'s origin,
- * without the page's query or fragment. Without `servedDirectory` it is
+ * the directory the app is served from, `basepath`, on `href`'s origin,
+ * without the page's query or fragment. Without `basepath` it is
  * `href`'s own directory (`new URL('.', href)`), right for an app whose every
  * page sits at its root.
  *
  * @param href - The page's URL.
- * @param servedDirectory - The directory the app is served from, as an
- *   absolute, slash-suffixed path (a routed app's basepath, e.g. `/pr-7/`). A
- *   routed app passes it, since a launch can open one of its deep routes
+ * @param basepath - The directory the app is served from, as an absolute,
+ *   slash-suffixed path (`SmartAppPage.basepath`, e.g. `/pr-7/`). A routed app
+ *   passes it, since a launch can open one of its deep routes
  *   (`/patients/123/today?iss=…`), whose own directory is no registered
  *   redirect URI.
  *
@@ -371,9 +412,9 @@ const discardPendingConnection = (
  * The app root, which serves `index.html`, is the one redirect target for every
  * way in: a launch it was opened to start ({@link arrivingSmartLaunchFrom}), a
  * standalone launch from the connect menu, and a failed launch sent back with
- * `launchErrorRedirect`. It is
- * the page that completes the handshake ({@link readySmartClient}) and the page
- * that can show a failure, so a launch always returns there. Every such page
+ * `launchErrorRedirect`. It is the page that completes the sign-in
+ * ({@link completeSignInAfterRedirectHere}) and the page that can show a
+ * failure, so a launch always returns there. Every such page
  * derives the same value, and the value is the same on the way out and on the
  * callback whatever query the page carries.
  *
@@ -383,11 +424,13 @@ const discardPendingConnection = (
  * client's redirect URIs decide where a launch may return, and any userinfo the
  * page URL carries is kept.
  */
-const appRootRedirectUri = (href: string, servedDirectory = '.'): string =>
-  new URL(servedDirectory, href).href
+const appRootRedirectUri = (href: string, basepath = '.'): string =>
+  new URL(basepath, href).href
 
 export {
   appRootRedirectUri,
+  CallbackStateMismatch,
+  NoSignInInProgress,
   /**
    * Re-exported from `authorization-core/smart-client`, like `normalizeServerUrl`:
    * the launch a page's URL asks it to start, which the app root reads to
@@ -396,17 +439,19 @@ export {
    * this package.
    */
   arrivingSmartLaunchFrom,
-  authorizeOpenServer,
-  authorizeSmartLaunch,
-  authorizeSmartLaunchAt,
-  discardPendingConnection,
-  PENDING_AUTHORIZATION_KEY,
-  PENDING_CONNECTION_KEY,
-  readySmartClient,
+  redirectToSelfAddressedSignInReturn,
+  redirectToSignIn,
+  redirectToSignInAt,
+  discardRefusedSignInAfterRedirectHere,
+  RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
+  RETAINED_SIGN_IN_REQUEST_KEY,
+  completeSignInAfterRedirectHere,
   /** Re-exported with `arrivingSmartLaunchFrom`: the parameters it reads a launch from. */
   SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
-  type OpenServerConfig,
+  type SelfAddressedSignInConfig,
+  type SignInAfterRedirectError,
   type SignInLanding,
   type SmartLaunchConfig,
+  type SmartRegistration,
 }

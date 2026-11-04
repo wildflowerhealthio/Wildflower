@@ -13,25 +13,24 @@ import {
   useTelemetryConsentControls,
 } from '@wildflowerhealthio/telemetry-react'
 import { redactServerHost, Sentry, setFhirServerHost } from '@wildflowerhealthio/telemetry-web'
-import { Effect, Match, Option } from 'effect'
+import { type Data, Effect, Match, Option } from 'effect'
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
 
 import {
   appRootRedirectUri,
   buildSmartQueryClient,
-  discardPendingConnection,
+  discardRefusedSignInAfterRedirectHere,
   isSmartHandshakeQuery,
   launchError,
   type RootArrival,
   rootArrivalFrom,
-  type ArrivingSmartLaunch,
   type SignInArrival,
   type SignInLanding,
   type SmartConnection,
-  type SmartLaunchConfig,
+  type SmartRegistration,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 
-import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
+import { redirectForLaunchRequest } from './redirect-for-launch-request.ts'
 import { ConnectMenu } from './connect-menu.tsx'
 import { LaunchPage } from './launch-page.tsx'
 import { clearReturnRoute } from './return-route.ts'
@@ -91,7 +90,7 @@ interface SmartAppRootProps {
    * page's root and the FHIR server is the launch's `iss` or the user's pick,
    * so neither is part of it.
    */
-  readonly registration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'>
+  readonly registration: SmartRegistration
   /** Where the app's telemetry goes once the visitor consents to it. */
   readonly telemetry: SmartAppTelemetry
   /**
@@ -101,7 +100,7 @@ interface SmartAppRootProps {
    * page was opened at. Omitted, it is the page URL's own directory, right
    * for an app that is only ever opened at its root.
    */
-  readonly servedDirectory?: string
+  readonly basepath?: string
   /**
    * The query string the page arrived with, read once, on mount, into its
    * `RootArrival` (`rootArrivalFrom`). Defaults to `window.location.search`;
@@ -142,33 +141,33 @@ function ConsentStatusControl(): JSX.Element {
 function LaunchingApp({
   app,
   registration,
-  launch,
-  servedDirectory,
+  launchRequest,
+  basepath,
   replaceLocation,
-}: Pick<SmartAppRootProps, 'app' | 'registration' | 'servedDirectory'> & {
-  readonly launch: ArrivingSmartLaunch
+}: Pick<SmartAppRootProps, 'app' | 'registration' | 'basepath'> & {
+  readonly launchRequest: Data.TaggedEnum.Value<RootArrival, 'LaunchRequest'>
   readonly replaceLocation: (url: string) => void
 }): JSX.Element {
   const launchAuthorized = useRef(false)
   useEffect(() => {
     if (launchAuthorized.current) return
     launchAuthorized.current = true
-    void authorizeFromLaunchPage(registration, launch, window.location.href, servedDirectory).then(
+    void redirectForLaunchRequest(registration, launchRequest, window.location.href, basepath).then(
       Option.map(replaceLocation)
     )
-  }, [registration, launch, servedDirectory, replaceLocation])
+  }, [registration, launchRequest, basepath, replaceLocation])
 
   useEffect(() => {
     const onPageShow = (event: PageTransitionEvent): void => {
       if (event.persisted) {
-        replaceLocation(appRootRedirectUri(window.location.href, servedDirectory))
+        replaceLocation(appRootRedirectUri(window.location.href, basepath))
       }
     }
     window.addEventListener('pageshow', onPageShow)
     return (): void => {
       window.removeEventListener('pageshow', onPageShow)
     }
-  }, [servedDirectory, replaceLocation])
+  }, [basepath, replaceLocation])
 
   return <LaunchPage message={`Launching ${APP_DESCRIPTIONS[app].name}…`} />
 }
@@ -255,7 +254,7 @@ const replaceWindowLocation = (url: string): void => {
  *
  * The case is latched on mount: every arrival carrying a callback has its
  * pending records taken and `code`/`state`/`error` scrubbed from the URL
- * (`readySmartClient` on a callback, `discardPendingConnection` on an OAuth
+ * (`completeSignInAfterRedirectHere` on a callback, `discardRefusedSignInAfterRedirectHere` on an OAuth
  * error return), so re-reading the URL later would flip a launch back to the
  * connect menu. See the guardrails in `slices/smart-app-react/AGENTS.md`.
  */
@@ -263,7 +262,7 @@ function SmartAppRoot({
   app,
   registration,
   telemetry,
-  servedDirectory,
+  basepath,
   search,
   replaceLocation = replaceWindowLocation,
   children,
@@ -272,7 +271,7 @@ function SmartAppRoot({
   // The app root is also the OAuth redirect target, the same URI whichever of
   // the app's routes the page opened at. Derived on mount, not at module
   // load, so importing this module never reads `window`.
-  const [redirectUri] = useState(() => appRootRedirectUri(window.location.href, servedDirectory))
+  const [redirectUri] = useState(() => appRootRedirectUri(window.location.href, basepath))
   const [connection, setConnection] = useState<Option.Option<SmartConnection>>(Option.none())
   const onSignedIn = useCallback((signedIn: SmartConnection) => {
     setConnection(Option.some(signedIn))
@@ -288,7 +287,7 @@ function SmartAppRoot({
     Match.value(arrival).pipe(
       Match.tag('SignInRefused', (refused) => {
         clearReturnRoute(window.sessionStorage)
-        discardPendingConnection(refused, { registration, appRootRedirectUri: redirectUri }).pipe(
+        discardRefusedSignInAfterRedirectHere(refused, { registration, appRootRedirectUri: redirectUri }).pipe(
           Effect.tapError((discardError) =>
             Effect.sync(() => {
               Sentry.captureException(discardError, { tags: { source: 'pending-connection' } })
@@ -378,13 +377,13 @@ function SmartAppRoot({
   return (
     <TelemetryConsentGate copy={TELEMETRY_CONSENT_COPY} onDecided={startTelemetry}>
       {Match.value(arrival).pipe(
-        Match.tag('LaunchRequest', ({ launch }) => (
+        Match.tag('LaunchRequest', (launchRequest) => (
           <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
             <LaunchingApp
               app={app}
               registration={registration}
-              launch={launch}
-              servedDirectory={servedDirectory}
+              launchRequest={launchRequest}
+              basepath={basepath}
               replaceLocation={replaceLocation}
             />
           </CrashReportingBoundary>

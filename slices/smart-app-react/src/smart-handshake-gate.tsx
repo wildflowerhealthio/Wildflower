@@ -1,9 +1,10 @@
 import {
   type SmartConnection,
+  SmartHandshake,
   type SmartRuntime,
   SmartRuntimeContext,
   smartRuntimeFor,
-  useLaunchFailureRedirect,
+  useRedirectToRootOnFailure,
   useSmartHandshake,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
@@ -51,25 +52,24 @@ function SignedIn({
  * out. A router matches the URL and redirects `/` to a route, so an app
  * builds its router in `children`, never above this gate: nothing may
  * rewrite a URL the exchange still reads. A failed exchange shows its error
- * here and goes back to the app root (`useLaunchFailureRedirect`), which can
+ * here and goes back to the app root (`useRedirectToRootOnFailure`), which can
  * offer the connect menu; the code is single-use, so there is nothing to
  * retry.
  */
 function SmartHandshakeGate({ connecting, children }: SmartHandshakeGateProps): JSX.Element {
   const landing = useSignInLanding()
   const handshake = useSmartHandshake(landing)
-  useLaunchFailureRedirect(handshake, landing.appRootRedirectUri)
+  useRedirectToRootOnFailure(handshake, landing.appRootRedirectUri)
   const { onSignedIn } = landing
   useEffect(() => {
-    if (handshake.kind === 'ready') onSignedIn(handshake.connection)
+    if (SmartHandshake.$is('Ready')(handshake)) onSignedIn(handshake.connection)
   }, [handshake, onSignedIn])
   return Match.value(handshake).pipe(
-    Match.when({ kind: 'error' }, ({ error }) => <ErrorBanner error={error.reason} />),
-    Match.when({ kind: 'connecting' }, () => connecting),
-    Match.when({ kind: 'ready' }, ({ connection }) => (
-      <SignedIn connection={connection}>{children}</SignedIn>
-    )),
-    Match.exhaustive
+    Match.tagsExhaustive({
+      Failed: ({ error }) => <ErrorBanner error={error.reason} />,
+      Connecting: () => connecting,
+      Ready: ({ connection }) => <SignedIn connection={connection}>{children}</SignedIn>,
+    })
   )
 }
 

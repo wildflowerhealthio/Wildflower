@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type JSX, type SubmitEvent } from 'react'
 import {
   decodeFhirBaseUrl,
   insecureTargetReason,
-  startStandaloneLaunch,
+  redirectToPickedServerSignIn,
   withLocalNetworkAccessHint,
   type SmartSupport,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
@@ -36,7 +36,7 @@ interface FhirR4ConnectMenuProps {
   readonly scope: string
   /**
    * The OAuth redirect target — the app root that serves `index.html` and runs
-   * `readySmartClient()` (`appRootRedirectUri`). Shared with the EHR launch's
+   * `completeSignInAfterRedirectHere()` (`appRootRedirectUri`). Shared with the EHR launch's
    * callback.
    */
   readonly redirectUri: string
@@ -122,22 +122,21 @@ type ConnectState =
 
 /**
  * The problem to show for a standalone launch's probe outcome against
- * `serverUrl`, or `undefined` when there is none: `smart`/`open` redirect the
- * page away, so only `unreachable` and `unusable` are left to report.
+ * `serverUrl`, or `undefined` when there is none: `Smart`/`Open` redirect the
+ * page away, so only `Unreachable` and `Unusable` are left to report.
  */
 const standaloneLaunchProblem =
   (serverUrl: string) =>
   (support: SmartSupport): string | undefined =>
     Match.value(support).pipe(
       Match.withReturnType<string | undefined>(),
-      Match.when(
-        { kind: 'unreachable' },
-        ({ message }) =>
-          `Could not reach ${serverUrl}. Check the URL and that the server allows this app. (${message})`
+      Match.tag(
+        'Unreachable',
+        ({ reason }) =>
+          `Could not reach ${serverUrl}. Check the URL and that the server allows this app. (${reason})`
       ),
-      Match.when({ kind: 'unusable' }, ({ reason }) => `Cannot sign in to ${serverUrl}. ${reason}`),
-      Match.when({ kind: 'smart' }, () => undefined),
-      Match.when({ kind: 'open' }, () => undefined),
+      Match.tag('Unusable', ({ reason }) => `Cannot sign in to ${serverUrl}. ${reason}`),
+      Match.tag('Smart', 'Open', () => undefined),
       Match.exhaustive
     )
 
@@ -222,8 +221,8 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
    */
   const startConnecting = (serverUrl: string): Promise<string | undefined> =>
     props.target === 'fhir-r4'
-      ? startStandaloneLaunch({
-          iss: decodeFhirBaseUrl(serverUrl),
+      ? redirectToPickedServerSignIn({
+          fhirBaseUrl: decodeFhirBaseUrl(serverUrl),
           clientId: props.clientId,
           scope: props.scope,
           redirectUri: props.redirectUri,

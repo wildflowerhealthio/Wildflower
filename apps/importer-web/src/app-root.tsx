@@ -30,7 +30,7 @@ function AppRoot({
       app="importer"
       registration={smartRegistration}
       telemetry={smartAppTelemetry}
-      servedDirectory={page.basepath}
+      basepath={page.basepath}
       search={search}
     >
       <App page={page} />

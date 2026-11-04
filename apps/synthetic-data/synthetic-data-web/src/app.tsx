@@ -88,7 +88,7 @@ const SyntheticDataApp = ({ context, serverUrl }: SyntheticDataAppProps): JSX.El
  * The handshake finishes before the router is built, because the router
  * context carries the HTTP layer, and the layer needs the token and the
  * server the handshake produces. A failed exchange goes back to the app root
- * (`useLaunchFailureRedirect`), which offers the connect menu.
+ * (`useRedirectToRootOnFailure`), which offers the connect menu.
  *
  * The transport is the plain `FetchHttpClient.layer`: the app's traffic is the
  * FHIR server the handshake named, the snapshot's own host (fetched without

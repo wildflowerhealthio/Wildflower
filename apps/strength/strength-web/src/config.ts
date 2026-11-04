@@ -1,4 +1,4 @@
-import type { SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartRegistration } from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
 
 /**
@@ -57,7 +57,7 @@ const STRENGTH_CLIENT_ID = import.meta.env.DEV
  * not set here, and `redirectUri` (the app root) is computed at launch time
  * from the current origin.
  */
-const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartRegistration: SmartRegistration = {
   clientId: STRENGTH_CLIENT_ID,
   scope: STRENGTH_SCOPE,
 }

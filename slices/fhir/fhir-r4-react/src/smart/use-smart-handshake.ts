@@ -1,20 +1,31 @@
 import { hashKey, queryOptions, useQuery, type Query } from '@tanstack/react-query'
-import type { SignInError } from '@wildflowerhealthio/authorization-core/smart-client'
-import { Effect, Either } from 'effect'
+import { Data, Effect, Either, Match } from 'effect'
 import { useEffect, useMemo } from 'react'
 
 import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'
 import type { SmartConnection } from './smart-connection.ts'
-import { readySmartClient, type SignInLanding } from './smart-launch.ts'
+import {
+  completeSignInAfterRedirectHere,
+  type SignInAfterRedirectError,
+  type SignInLanding,
+} from './smart-launch.ts'
 
 /**
  * The state of completing the SMART handshake on the redirect page: still
  * exchanging, failed, or resolved to the {@link SmartConnection} it made.
  */
-type SmartHandshake =
-  | { readonly kind: 'connecting' }
-  | { readonly kind: 'error'; readonly error: SignInError }
-  | { readonly kind: 'ready'; readonly connection: SmartConnection }
+type SmartHandshake = Data.TaggedEnum<{
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
+  readonly Connecting: Record<never, never>
+  readonly Failed: { readonly error: SignInAfterRedirectError }
+  readonly Ready: { readonly connection: SmartConnection }
+}>
+const SmartHandshake = Data.taggedEnum<SmartHandshake>()
+const {
+  Connecting: connectingHandshake,
+  Failed: failedHandshake,
+  Ready: readyHandshake,
+} = SmartHandshake
 
 /**
  * The key the handshake query runs under. App-independent and constant so that
@@ -35,7 +46,9 @@ const SMART_HANDSHAKE_QUERY_KEY = ['fhir-r4-react', 'smart-handshake'] as const
  * and `gcTime` are `Infinity` because there is nothing to refetch — the
  * handshake is a one-shot whose result lives for the page.
  */
-const smartHandshakeQueryBase = queryOptions<Either.Either<SmartConnection, SignInError>>({
+const smartHandshakeQueryBase = queryOptions<
+  Either.Either<SmartConnection, SignInAfterRedirectError>
+>({
   queryKey: SMART_HANDSHAKE_QUERY_KEY,
   retry: false,
   staleTime: Infinity,
@@ -53,7 +66,7 @@ const smartHandshakeQueryBase = queryOptions<Either.Either<SmartConnection, Sign
  *
  * @remarks
  * This is the one hook that runs the exchange. The authorization code in the redirect
- * URL is single-use: the token exchange (`readySmartClient` →
+ * URL is single-use: the token exchange (`completeSignInAfterRedirectHere` →
  * `authorization-core`'s `completeSignIn`, the POST to the token endpoint)
  * may run **once, ever**. Routing it through a keyed query is what makes that
  * hold under `React.StrictMode`, whose dev-only mount → unmount → mount would
@@ -69,16 +82,16 @@ const useSmartHandshake = (
 ): SmartHandshake => {
   const { data } = useQuery({
     ...smartHandshakeQueryBase,
-    queryFn: () => Effect.runPromise(Effect.either(readySmartClient(landing))),
+    queryFn: () => Effect.runPromise(Effect.either(completeSignInAfterRedirectHere(landing))),
   })
   // Memoised on the outcome, so an effect keyed on the handshake runs once it settles.
   return useMemo(
     (): SmartHandshake =>
       data === undefined
-        ? { kind: 'connecting' }
+        ? connectingHandshake()
         : Either.match(data, {
-            onLeft: (error): SmartHandshake => ({ kind: 'error', error }),
-            onRight: (connection): SmartHandshake => ({ kind: 'ready', connection }),
+            onLeft: (error) => failedHandshake({ error }),
+            onRight: (connection) => readyHandshake({ connection }),
           }),
     [data]
   )
@@ -90,7 +103,7 @@ const useSmartHandshake = (
  * @remarks
  * For a client-wide query callback (`buildSmartQueryClient`'s `onQueryError`)
  * that treats the handshake apart from the app's reads. A failed handshake is
- * sent back to the app root by {@link useLaunchFailureRedirect}, and lands
+ * sent back to the app root by {@link useRedirectToRootOnFailure}, and lands
  * there as the launch failure the page arrived with.
  */
 const isSmartHandshakeQuery = (query: Pick<Query, 'queryKey'>): boolean =>
@@ -114,11 +127,18 @@ const isSmartHandshakeQuery = (query: Pick<Query, 'queryKey'>): boolean =>
  * `location.replace` is idempotent for this purpose, and the handshake query is
  * `retry: false`, so the error state settles once.
  */
-const useLaunchFailureRedirect = (handshake: SmartHandshake, appRootRedirectUri: string): void => {
+const useRedirectToRootOnFailure = (
+  handshake: SmartHandshake,
+  appRootRedirectUri: string
+): void => {
   useEffect(() => {
-    if (handshake.kind !== 'error') return
-    window.location.replace(
-      launchErrorRedirect(appRootRedirectUri, launchErrorBodyFor('HandshakeFailed', handshake.error))
+    Match.value(handshake).pipe(
+      Match.tag('Failed', ({ error }) => {
+        window.location.replace(
+          launchErrorRedirect(appRootRedirectUri, launchErrorBodyFor('HandshakeFailed', error))
+        )
+      }),
+      Match.orElse(() => undefined)
     )
   }, [handshake, appRootRedirectUri])
 }
@@ -126,7 +146,7 @@ const useLaunchFailureRedirect = (handshake: SmartHandshake, appRootRedirectUri:
 export {
   isSmartHandshakeQuery,
   SMART_HANDSHAKE_QUERY_KEY,
-  useLaunchFailureRedirect,
+  useRedirectToRootOnFailure,
   useSmartHandshake,
-  type SmartHandshake,
+  SmartHandshake,
 }

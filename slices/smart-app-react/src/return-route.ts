@@ -10,14 +10,14 @@ const RETURN_ROUTE_STORAGE_KEY = 'wildflower.smart-launch-return-route'
 
 /**
  * The route a launch page at `launchPageHref` sits on, as a path of the
- * app's router (relative to `servedDirectory`, as `appRootRedirectUri` takes
+ * app's router (relative to `basepath`, as `appRootRedirectUri` takes
  * it) with its query, less `SMART_LAUNCH_PARAMS`, and fragment; `None` at the
  * app root, which is where the launch returns anyway.
  */
-const returnRouteOf = (launchPageHref: string, servedDirectory?: string): Option.Option<string> => {
+const returnRouteOf = (launchPageHref: string, basepath?: string): Option.Option<string> => {
   const page = new URL(launchPageHref)
   for (const param of SMART_LAUNCH_PARAMS) page.searchParams.delete(param)
-  const appRoot = new URL(appRootRedirectUri(launchPageHref, servedDirectory)).pathname
+  const appRoot = new URL(appRootRedirectUri(launchPageHref, basepath)).pathname
   const path = `/${page.pathname.slice(appRoot.length)}`
   return path === '/' ? Option.none() : Option.some(`${path}${page.search}${page.hash}`)
 }
@@ -30,9 +30,9 @@ const returnRouteOf = (launchPageHref: string, servedDirectory?: string): Option
 const saveReturnRoute = (
   storage: Storage,
   launchPageHref: string,
-  servedDirectory?: string
+  basepath?: string
 ): void => {
-  Option.match(returnRouteOf(launchPageHref, servedDirectory), {
+  Option.match(returnRouteOf(launchPageHref, basepath), {
     onNone: () => {
       storage.removeItem(RETURN_ROUTE_STORAGE_KEY)
     },
