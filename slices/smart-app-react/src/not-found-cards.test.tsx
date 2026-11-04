@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vite-plus/test'
 import {
   answerJson,
   answerStatus,
-  stubSmartClient,
+  stubSmartRuntime,
 } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { NoPageCard, NoPatientCard } from './not-found-cards.tsx'
 import { requirePatient } from './patient-route.ts'
@@ -30,7 +30,7 @@ afterEach(() => {
  */
 const renderAt = (url: string): void => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const { client } = stubSmartClient({
+  const { runtime } = stubSmartRuntime({
     'Patient/p1': answerJson({ resourceType: 'Patient', id: 'p1' }),
     'Patient/': answerStatus(404),
   })
@@ -38,7 +38,7 @@ const renderAt = (url: string): void => {
   const patientRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/patients/$patientId',
-    loader: ({ params }) => requirePatient(queryClient, client, params.patientId),
+    loader: ({ params }) => requirePatient(queryClient, runtime.runSmart, params.patientId),
     notFoundComponent: NoPatientCard,
   })
   const router = createRouter({

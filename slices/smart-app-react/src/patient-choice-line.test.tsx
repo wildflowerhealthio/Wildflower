@@ -3,11 +3,12 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { SmartRuntimeContext } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   answerJson,
   answerStatus,
   type StubAnswers,
-  stubSmartClient,
+  stubSmartRuntime,
 } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { PatientChoiceLine } from './patient-choice-line.tsx'
 import type { PatientChoiceLineProps } from './patient-choice-line.tsx'
@@ -21,25 +22,26 @@ import styles from './patient-choice-line.module.css'
 const renderLine = (
   patientChoice: PatientChoice,
   responses: StubAnswers,
-  rootProps: Omit<PatientChoiceLineProps, 'client' | 'patientChoice' | 'onPatientChange'> &
+  rootProps: Omit<PatientChoiceLineProps, 'patientChoice' | 'onPatientChange'> &
     Record<`data-${string}`, string> = {}
 ): {
   readonly onPatientChange: ReturnType<typeof vi.fn<() => void>>
   readonly requests: readonly string[]
 } => {
   const onPatientChange = vi.fn<() => void>()
-  const { client, urls: requests } = stubSmartClient(responses)
+  const { runtime, urls: requests } = stubSmartRuntime(responses)
   render(
     <StrictMode>
       <QueryClientProvider
         client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
       >
-        <PatientChoiceLine
-          {...rootProps}
-          client={client}
-          patientChoice={patientChoice}
-          onPatientChange={onPatientChange}
-        />
+        <SmartRuntimeContext value={runtime}>
+          <PatientChoiceLine
+            {...rootProps}
+            patientChoice={patientChoice}
+            onPatientChange={onPatientChange}
+          />
+        </SmartRuntimeContext>
       </QueryClientProvider>
     </StrictMode>
   )

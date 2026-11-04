@@ -21,9 +21,9 @@ const ORIGIN = window.location.origin
 /** An EHR launch's parameters, as a launch URL carries them. */
 const LAUNCH = 'iss=https%3A%2F%2Fehr.example%2Ffhir&launch=xyz'
 
-/** What the store holds after `saveReturnRoute` on `href`, served from `servedDirectory`. */
-const savedFor = (href: string, servedDirectory?: string): string | null => {
-  saveReturnRoute(window.sessionStorage, href, servedDirectory)
+/** What the store holds after `saveReturnRoute` on `href`, served from `basepath`. */
+const savedFor = (href: string, basepath?: string): string | null => {
+  saveReturnRoute(window.sessionStorage, href, basepath)
   return window.sessionStorage.getItem(RETURN_ROUTE_STORAGE_KEY)
 }
 

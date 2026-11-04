@@ -3,13 +3,14 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { SmartRuntimeContext } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   answerJson,
   bundleOf,
   type StubAnswers,
   answerStatus,
   neverAnswer,
-  stubSmartClient,
+  stubSmartRuntime,
 } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import type { PatientChoice } from './patient-choice.ts'
 import { PatientPicker } from './patient-picker.tsx'
@@ -33,13 +34,15 @@ const renderPicker = (
   responses: StubAnswers
 ): { readonly onPatientChoice: ReturnType<typeof vi.fn<(choice: PatientChoice) => void>> } => {
   const onPatientChoice = vi.fn<(choice: PatientChoice) => void>()
-  const { client } = stubSmartClient(responses)
+  const { runtime } = stubSmartRuntime(responses)
   render(
     <StrictMode>
       <QueryClientProvider
         client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
       >
-        <PatientPicker client={client} onPatientChoice={onPatientChoice} />
+        <SmartRuntimeContext value={runtime}>
+          <PatientPicker onPatientChoice={onPatientChoice} />
+        </SmartRuntimeContext>
       </QueryClientProvider>
     </StrictMode>
   )

@@ -1,57 +1,78 @@
 import { cleanup, render, screen } from '@testing-library/react'
+import { AuthorizationRejected } from '@wildflowerhealthio/authorization-core/smart-client'
 import type * as FhirSmart from '@wildflowerhealthio/fhir-r4-react/smart'
-import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  RootArrival,
+  SmartHandshake,
+  type SignInLanding,
+  useRunSmart,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { Effect } from 'effect'
+import { useEffect, useState, type JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { stubSmartClient } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
+import { stubConnection } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
+import { SignInLandingContext } from './sign-in-landing.ts'
 import { SmartHandshakeGate } from './smart-handshake-gate.tsx'
 
 // The handshake is the gate's one input: each test hands it a state, and reads
 // back what the gate renders and what it carries to the app root.
-const { handshakeMock, launchFailureRedirectMock } = vi.hoisted(() => ({
-  handshakeMock:
-    vi.fn<
-      (
-        registration: { readonly clientId: string; readonly scope: string },
-        servedDirectory?: string
-      ) => SmartHandshake
-    >(),
-  launchFailureRedirectMock: vi.fn<(handshake: SmartHandshake) => void>(),
+const { handshakeMock, redirectToRootMock } = vi.hoisted(() => ({
+  handshakeMock: vi.fn<(landing: SignInLanding) => SmartHandshake>(),
+  redirectToRootMock: vi.fn<(handshake: SmartHandshake, appRootRedirectUri: string) => void>(),
 }))
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
   ...(await importOriginal<typeof FhirSmart>()),
   useSmartHandshake: handshakeMock,
-  useLaunchFailureRedirect: launchFailureRedirectMock,
+  useRedirectToRootOnFailure: redirectToRootMock,
 }))
 
 afterEach(() => {
   cleanup()
   handshakeMock.mockReset()
-  launchFailureRedirectMock.mockReset()
+  redirectToRootMock.mockReset()
 })
 
-/** A client the gate only forwards to its children. */
-const client = { ...stubSmartClient({}).client, serverUrl: 'https://fhir.example/r4' }
+/** A connection the gate builds the app's runtime from. */
+const connection = stubConnection()
 
-/** The app's registration, which the gate runs the handshake as. */
-const REGISTRATION = { clientId: 'medication-app', scope: 'launch openid' }
+/** The sign-in the app root landed on, and what it is told of the connection. */
+const landingWith = (onSignedIn: SignInLanding['onSignedIn'] = vi.fn()): SignInLanding => ({
+  arrival: RootArrival.SignInReturn({ code: 'code-1', state: 'state-1' }),
+  registration: { clientId: 'medication-app', scope: 'launch openid' },
+  appRootRedirectUri: 'https://apps.example/app/',
+  onSignedIn,
+})
 
-/** The gate, its children naming the server of the client they were handed. */
-const renderGate = (): void => {
+/** A child that runs one Effect over the runtime the gate provides, and shows its answer. */
+function RunsOverTheRuntime(): JSX.Element {
+  const runSmart = useRunSmart()
+  const [answer, setAnswer] = useState('')
+  useEffect(() => {
+    void runSmart(Effect.succeed('ran over the runtime')).then(setAnswer)
+  }, [runSmart])
+  return <p>{answer}</p>
+}
+
+/** The gate under `landing`, its children naming the server of the runtime they were handed. */
+const renderGate = (landing: SignInLanding = landingWith()): void => {
   render(
-    <SmartHandshakeGate
-      registration={REGISTRATION}
-      servedDirectory="/app/"
-      connecting={<p>Connecting…</p>}
-    >
-      {(ready) => <p>App over {ready.serverUrl}</p>}
-    </SmartHandshakeGate>
+    <SignInLandingContext value={landing}>
+      <SmartHandshakeGate connecting={<p>Connecting…</p>}>
+        {(runtime) => (
+          <>
+            <p>App over {runtime.connection.fhirBaseUrl}</p>
+            <RunsOverTheRuntime />
+          </>
+        )}
+      </SmartHandshakeGate>
+    </SignInLandingContext>
   )
 }
 
 describe('SmartHandshakeGate', () => {
   it('should show the connecting element, not the app, while the exchange runs', () => {
-    handshakeMock.mockReturnValue({ kind: 'connecting' })
+    handshakeMock.mockReturnValue(SmartHandshake.Connecting())
 
     renderGate()
 
@@ -59,30 +80,43 @@ describe('SmartHandshakeGate', () => {
     expect(screen.queryByText(/App over/)).toBeNull()
   })
 
-  it('should render the app over the client once the handshake is ready', () => {
-    handshakeMock.mockReturnValue({ kind: 'ready', client })
+  it('should render the app over the runtime it built, provided to the tree, once ready', async () => {
+    handshakeMock.mockReturnValue(SmartHandshake.Ready({ connection }))
 
     renderGate()
 
-    expect(screen.getByText('App over https://fhir.example/r4')).toBeDefined()
+    expect(screen.getByText(`App over ${connection.fhirBaseUrl}`)).toBeDefined()
+    expect(await screen.findByText('ran over the runtime')).toBeDefined()
   })
 
-  it('should run the handshake as the registration and served directory it was handed', () => {
-    handshakeMock.mockReturnValue({ kind: 'connecting' })
+  it('should tell the landing the connection once ready', () => {
+    const onSignedIn = vi.fn<(signedIn: typeof connection) => void>()
+    handshakeMock.mockReturnValue(SmartHandshake.Ready({ connection }))
 
-    renderGate()
+    renderGate(landingWith(onSignedIn))
 
-    expect(handshakeMock).toHaveBeenCalledWith(REGISTRATION, '/app/')
+    expect(onSignedIn).toHaveBeenCalledExactlyOnceWith(connection)
   })
 
-  it('should show a failed exchange and carry it to the app root, without the app', () => {
-    const handshake: SmartHandshake = { kind: 'error', error: new Error('code already redeemed') }
+  it('should run the handshake for the landing the root provides', () => {
+    const landing = landingWith()
+    handshakeMock.mockReturnValue(SmartHandshake.Connecting())
+
+    renderGate(landing)
+
+    expect(handshakeMock).toHaveBeenCalledWith(landing)
+  })
+
+  it('should show a failed exchange and carry it to the landing’s app root, without the app', () => {
+    const handshake = SmartHandshake.Failed({
+      error: new AuthorizationRejected({ reason: 'code already redeemed' }),
+    })
     handshakeMock.mockReturnValue(handshake)
 
     renderGate()
 
     expect(screen.getByText('code already redeemed')).toBeDefined()
     expect(screen.queryByText(/App over/)).toBeNull()
-    expect(launchFailureRedirectMock).toHaveBeenCalledWith(handshake)
+    expect(redirectToRootMock).toHaveBeenCalledWith(handshake, 'https://apps.example/app/')
   })
 })

@@ -8,22 +8,25 @@ import {
 } from '@wildflowerhealthio/branding-core'
 import { type TelemetryConsent, writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
-import { Option } from 'effect'
+import { Effect, Option } from 'effect'
 import { StrictMode, type JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
-  arrivingSmartLaunchFrom,
-  authorizeSmartLaunch,
+  decodeFhirBaseUrl,
   decodeLaunchError,
   encodeLaunchError,
-  useSmartHandshake,
+  redirectToSignIn,
+  RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
+  RETAINED_SIGN_IN_REQUEST_KEY,
+  rootArrivalFrom,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 
-import type * as AuthorizeFromLaunchPage from './authorize-from-launch-page.ts'
 import type { ConnectMenuProps } from './connect-menu.tsx'
+import type * as RedirectForLaunchRequest from './redirect-for-launch-request.ts'
 import { RETURN_ROUTE_STORAGE_KEY } from './return-route.ts'
 import { SmartAppRoot, type SmartAppTelemetry } from './smart-app-root.tsx'
+import { SmartHandshakeGate } from './smart-handshake-gate.tsx'
 
 /** The part of Sentry's `captureException` hint the root sets. */
 interface CaptureHint {
@@ -74,13 +77,13 @@ const fakeServer: {
   requestedUrls: [],
 }
 
-// The root's own authorize entry, spied through to the real one: it counts
-// every authorize the root starts.
-const { authorizeFromLaunchPageSpy } = vi.hoisted(() => ({
-  authorizeFromLaunchPageSpy: vi.fn<typeof AuthorizeFromLaunchPage.authorizeFromLaunchPage>(),
+// The root's own launch-request entry, spied through to the real one: it
+// counts every sign-in the root starts for a launch.
+const { redirectForLaunchRequestSpy } = vi.hoisted(() => ({
+  redirectForLaunchRequestSpy: vi.fn<typeof RedirectForLaunchRequest.redirectForLaunchRequest>(),
 }))
-vi.mock('./authorize-from-launch-page.ts', () => ({
-  authorizeFromLaunchPage: authorizeFromLaunchPageSpy,
+vi.mock('./redirect-for-launch-request.ts', () => ({
+  redirectForLaunchRequest: redirectForLaunchRequestSpy,
 }))
 
 // The stubbed connect menu throws this from render when it is set, as a
@@ -129,6 +132,9 @@ const STATUS_CONTROL_NAME = /change telemetry settings/
 /** An EHR launch, as the desktop base opens a server's launcher with it. */
 const EHR_LAUNCH = '?iss=https%3A%2F%2Fruth.wildflowerhealth.io&launch=xyz'
 
+/** A sign-in's return, for a test that does not complete it. */
+const SIGN_IN_RETURN = '?code=abc&state=xyz'
+
 /** A launch the launch page could not start, as it lands in `?launchError=`. */
 const FAILED_LAUNCH = encodeLaunchError({
   error: 'AuthorizeFailed',
@@ -165,7 +171,7 @@ describe('SmartAppRoot', () => {
 
   it('should render the brand bar over its children when launched', () => {
     // Arrange / Act
-    renderShell({ launched: true })
+    renderShell({ search: SIGN_IN_RETURN })
 
     // Assert — the brand bar is a single link back to the marketing site
     const brandLink = within(screen.getByRole('banner')).getByRole('link', {
@@ -182,7 +188,7 @@ describe('SmartAppRoot', () => {
 
   it('should render the site header, connect menu, and footer when not launched', () => {
     // Arrange / Act
-    renderShell({ launched: false })
+    renderShell({ search: '' })
 
     // Assert — full site chrome: header with the primary nav, a main region, a footer
     expect(screen.getByRole('banner').id).toBe('top')
@@ -199,7 +205,7 @@ describe('SmartAppRoot', () => {
     setUrl('/importer/index.html?utm_source=email')
 
     // Act
-    renderShell({ launched: false })
+    renderShell({})
 
     // Assert
     const menu = screen.getByTestId('connect-menu-stub')
@@ -209,12 +215,12 @@ describe('SmartAppRoot', () => {
     expect(menu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/importer/`)
   })
 
-  it('should hand the connect menu the served directory as its redirect on a deep route', () => {
+  it('should hand the connect menu the basepath as its redirect on a deep route', () => {
     // Arrange — a plain visit to a routed app's nested route
     setUrl('/strength/patients/123/today')
 
     // Act
-    renderShell({ launched: false, servedDirectory: '/strength/' })
+    renderShell({ basepath: '/strength/' })
 
     // Assert
     expect(screen.getByTestId('connect-menu-stub').getAttribute('data-redirect-uri')).toBe(
@@ -224,7 +230,7 @@ describe('SmartAppRoot', () => {
 
   it('should resolve every header nav link as an absolute published-site URL', () => {
     // Arrange / Act
-    renderShell({ launched: false })
+    renderShell({ search: '' })
 
     // Assert — the brand link leaves for the marketing site, and every nav link
     // for an app's own origin under it
@@ -243,7 +249,7 @@ describe('SmartAppRoot', () => {
     'should introduce "%s" as the page’s only h1 when not launched',
     (app) => {
       // Arrange / Act
-      renderShell({ app, launched: false })
+      renderShell({ app, search: '' })
 
       // Assert — the site header's brand is a div, so the app name is the only h1
       const headings = screen.getAllByRole('heading', { level: 1 })
@@ -254,7 +260,7 @@ describe('SmartAppRoot', () => {
     }
   )
 
-  describe('with no `launched` prop, the URL decides', () => {
+  describe('with no `search` prop, the URL decides', () => {
     it.each([
       { search: '?code=abc&state=xyz', expectApp: true },
       { search: '?state=xyz', expectApp: true },
@@ -290,13 +296,13 @@ describe('SmartAppRoot', () => {
     expect(screen.queryByTestId('connect-menu-stub')).toBeNull()
   })
 
-  it('should ignore a flip of the `launched` prop after mount', () => {
+  it('should ignore a change of the `search` prop after mount', () => {
     // Arrange
-    const { rerender } = render(<Shell launched={false} />)
+    const { rerender } = render(<Shell search="" />)
     expect(screen.queryByTestId('connect-menu-stub')).not.toBeNull()
 
     // Act
-    rerender(<Shell launched />)
+    rerender(<Shell search={SIGN_IN_RETURN} />)
 
     // Assert — still the standalone branch it mounted with
     expect(screen.queryByTestId('connect-menu-stub')).not.toBeNull()
@@ -310,14 +316,24 @@ describe('SmartAppRoot', () => {
     // Act — rendered twice (StrictMode) and then re-rendered
     const { rerender } = render(
       <StrictMode>
-        <SmartAppRoot app="medications" registration={REGISTRATION} telemetry={TELEMETRY} launched>
+        <SmartAppRoot
+          app="medications"
+          registration={REGISTRATION}
+          telemetry={TELEMETRY}
+          search={SIGN_IN_RETURN}
+        >
           <HandshakeProbe seen={seen} />
         </SmartAppRoot>
       </StrictMode>
     )
     rerender(
       <StrictMode>
-        <SmartAppRoot app="medications" registration={REGISTRATION} telemetry={TELEMETRY} launched>
+        <SmartAppRoot
+          app="medications"
+          registration={REGISTRATION}
+          telemetry={TELEMETRY}
+          search={SIGN_IN_RETURN}
+        >
           <HandshakeProbe seen={seen} />
         </SmartAppRoot>
       </StrictMode>
@@ -330,8 +346,8 @@ describe('SmartAppRoot', () => {
   })
 
   it('should hand a failed launch to the connect menu as its arrival problem', () => {
-    // Arrange — the URL the launch page redirects to when `authorizeSmartLaunch`
-    // rejects (an unreachable or CORS-blocked `iss`).
+    // Arrange — the URL the launch page redirects to when `redirectToSignIn`
+    // fails (an unreachable or CORS-blocked `iss`).
     const encoded = encodeLaunchError({
       error: 'AuthorizeFailed',
       message: 'Failed to fetch',
@@ -340,15 +356,15 @@ describe('SmartAppRoot', () => {
     setUrl(`/?launchError=${encoded}`)
 
     // Act
-    renderShell({ launched: false })
+    renderShell({})
 
     // Assert — the menu shows the failure, with the retry right there
     expect(arrivalProblem()).toContain('Failed to fetch')
   })
 
   it('should report the authorization server’s own OAuth error return', () => {
-    // Arrange — `shouldCompleteSmartLaunch` deliberately ignores an `error=`
-    // return, which is exactly what would otherwise make this landing silent.
+    // Arrange — the refusal carries a `state`, which must not read as a
+    // self-addressed return and make this landing silent.
     setUrl('/?error=access_denied&error_description=The+user+declined&state=xyz')
 
     // Act
@@ -358,12 +374,12 @@ describe('SmartAppRoot', () => {
     expect(arrivalProblem()).toContain('The user declined')
   })
 
-  it('should take every connection in progress on an OAuth error return, and scrub it', async () => {
-    // Arrange — a sign-in and an open-server connection both left records
+  it('should take every retained sign-in request on a refusal, and scrub it', async () => {
+    // Arrange — a sign-in and a self-addressed sign-in both left requests
     await arriveFromSignIn(FHIR_SERVER_URL)
     window.sessionStorage.setItem(
-      'fhir-r4-react.pending-connection',
-      '{"state":"o","serverUrl":"x"}'
+      RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
+      '{"expectedState":"o","fhirBaseUrl":"x"}'
     )
     setUrl('/?error=access_denied&error_description=The+user+declined&state=xyz&utm=kept')
 
@@ -375,16 +391,16 @@ describe('SmartAppRoot', () => {
     await waitFor(() => {
       expect(window.location.search).toBe('?utm=kept')
     })
-    expect(window.sessionStorage.getItem('fhir-r4-react.pending-authorization')).toBeNull()
-    expect(window.sessionStorage.getItem('fhir-r4-react.pending-connection')).toBeNull()
+    expect(window.sessionStorage.getItem(RETAINED_SIGN_IN_REQUEST_KEY)).toBeNull()
+    expect(window.sessionStorage.getItem(RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY)).toBeNull()
     expect(tokenRequests()).toHaveLength(0)
   })
 
-  it('should leave the connections in progress alone on a plain visit', () => {
+  it('should leave the retained sign-in requests alone on a plain visit', () => {
     // Arrange
     window.sessionStorage.setItem(
-      'fhir-r4-react.pending-connection',
-      '{"state":"o","serverUrl":"x"}'
+      RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
+      '{"expectedState":"o","fhirBaseUrl":"x"}'
     )
     setUrl('/?utm=kept')
 
@@ -392,7 +408,9 @@ describe('SmartAppRoot', () => {
     renderShell({})
 
     // Assert
-    expect(window.sessionStorage.getItem('fhir-r4-react.pending-connection')).not.toBeNull()
+    expect(
+      window.sessionStorage.getItem(RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY)
+    ).not.toBeNull()
   })
 
   it.each([
@@ -421,7 +439,7 @@ describe('SmartAppRoot', () => {
 
   it('should hand the menu no arrival problem on a plain visit', () => {
     // Arrange / Act — the resting state: nothing failed, so nothing is announced.
-    renderShell({ launched: false })
+    renderShell({ search: '' })
 
     // Assert
     expect(arrivalProblem()).toBeNull()
@@ -433,10 +451,10 @@ describe('SmartAppRoot on a launch', () => {
   beforeEach(async () => {
     // Discovery never settles, as while the authorize redirect is pending
     fakeServer.smartConfiguration = () => new Promise<never>(() => undefined)
-    const actual = await vi.importActual<typeof AuthorizeFromLaunchPage>(
-      './authorize-from-launch-page.ts'
+    const actual = await vi.importActual<typeof RedirectForLaunchRequest>(
+      './redirect-for-launch-request.ts'
     )
-    authorizeFromLaunchPageSpy.mockImplementation(actual.authorizeFromLaunchPage)
+    redirectForLaunchRequestSpy.mockImplementation(actual.redirectForLaunchRequest)
   })
 
   // The tests below run as a returning visitor, whose stored answer skips the
@@ -460,28 +478,28 @@ describe('SmartAppRoot on a launch', () => {
       await waitFor(() => {
         expect(discoveryRequests()).toHaveLength(1)
       })
-      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledExactlyOnceWith(
+      expect(redirectForLaunchRequestSpy).toHaveBeenCalledExactlyOnceWith(
         REGISTRATION,
-        Option.getOrThrow(arrivingSmartLaunchFrom(search)),
+        rootArrivalFrom(search),
         `${window.location.origin}/importer/${search}`,
         undefined
       )
     })
 
-    it('should authorize a launch at a nested route with the served directory as its redirect', async () => {
+    it('should authorize a launch at a nested route with the basepath as its redirect', async () => {
       // Arrange
       setUrl(`/strength/patients/123/today${EHR_LAUNCH}`)
 
       // Act
-      renderShell({ servedDirectory: '/strength/' })
+      renderShell({ basepath: '/strength/' })
 
       // Assert
       await waitFor(() => {
         expect(discoveryRequests()).toHaveLength(1)
       })
-      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledExactlyOnceWith(
+      expect(redirectForLaunchRequestSpy).toHaveBeenCalledExactlyOnceWith(
         REGISTRATION,
-        Option.getOrThrow(arrivingSmartLaunchFrom(EHR_LAUNCH)),
+        rootArrivalFrom(EHR_LAUNCH),
         `${window.location.origin}/strength/patients/123/today${EHR_LAUNCH}`,
         '/strength/'
       )
@@ -519,7 +537,7 @@ describe('SmartAppRoot on a launch', () => {
       rerender(<Shell registration={{ ...REGISTRATION }} />)
 
       // Assert
-      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
+      expect(redirectForLaunchRequestSpy).toHaveBeenCalledTimes(1)
     })
 
     it('should send a launch that fails to start to the app root as ?launchError, once', async () => {
@@ -621,7 +639,7 @@ describe('SmartAppRoot on a launch', () => {
 
       // Assert — a plain visit to the app root, and the spent launch not reused
       expect(replaceLocation.mock.calls).toStrictEqual([[`${window.location.origin}/importer/`]])
-      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
+      expect(redirectForLaunchRequestSpy).toHaveBeenCalledTimes(1)
     })
 
     it.each([
@@ -642,7 +660,7 @@ describe('SmartAppRoot on a launch', () => {
       // Assert — the callback or the landing, and no authorize
       expect(screen.queryByTestId('app') !== null).toBe(expectApp)
       expect(screen.queryByTestId('connect-menu-stub') !== null).toBe(!expectApp)
-      expect(authorizeFromLaunchPageSpy).not.toHaveBeenCalled()
+      expect(redirectForLaunchRequestSpy).not.toHaveBeenCalled()
     })
   })
 
@@ -654,7 +672,7 @@ describe('SmartAppRoot on a launch', () => {
     // Assert — the dialog alone, and the launch not yet spent
     expect(openDialog()).not.toBeNull()
     expect(screen.queryByText(`Launching ${APP_DESCRIPTIONS.importer.name}…`)).toBeNull()
-    expect(authorizeFromLaunchPageSpy).not.toHaveBeenCalled()
+    expect(redirectForLaunchRequestSpy).not.toHaveBeenCalled()
 
     // Act
     answerDialog({ crashReports: true, performance: false })
@@ -663,7 +681,7 @@ describe('SmartAppRoot on a launch', () => {
     await waitFor(() => {
       expect(discoveryRequests()).toHaveLength(1)
     })
-    expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
+    expect(redirectForLaunchRequestSpy).toHaveBeenCalledTimes(1)
     expect(screen.getByText(`Launching ${APP_DESCRIPTIONS.importer.name}…`)).toBeDefined()
     expect(initConsentedTelemetryMock.mock.calls[0]?.[0].tags).toStrictEqual({
       app: TELEMETRY.app,
@@ -674,15 +692,15 @@ describe('SmartAppRoot on a launch', () => {
 
 describe('SmartAppRoot telemetry consent', () => {
   describe.each([
-    { branch: 'launched', launched: true },
-    { branch: 'standalone', launched: false },
-  ])('on the $branch branch', ({ launched }) => {
+    { branch: 'launched', search: SIGN_IN_RETURN },
+    { branch: 'standalone', search: '' },
+  ])('on the $branch branch', ({ branch, search }) => {
     it('should show only the consent dialog, and start nothing, until the visitor answers', () => {
       // Arrange — a failed launch to report, were anything allowed to report it
       setUrl(`/?launchError=${FAILED_LAUNCH}`)
 
       // Act
-      renderShell({ launched })
+      renderShell({ search })
 
       // Assert — the dialog alone: no app, no connect menu, no status control
       expect(openDialog()).not.toBeNull()
@@ -696,7 +714,7 @@ describe('SmartAppRoot telemetry consent', () => {
 
     it('should start telemetry with the app’s DSN and tags once the visitor says yes', () => {
       // Arrange
-      renderShell({ launched })
+      renderShell({ search })
 
       // Act
       answerDialog({ crashReports: true, performance: false })
@@ -709,14 +727,14 @@ describe('SmartAppRoot telemetry consent', () => {
       expect(config.otel.serviceName).toBe(TELEMETRY.app)
       expect(tags).toStrictEqual({
         app: TELEMETRY.app,
-        launch: launched ? 'launched' : 'standalone',
+        launch: branch,
       })
     })
 
     it('should show the status control, and reopen the dialog from it', () => {
       // Arrange
       storeConsent({ crashReports: false, performance: true })
-      renderShell({ launched })
+      renderShell({ search })
       expect(openDialog()).toBeNull()
 
       // Act
@@ -732,7 +750,7 @@ describe('SmartAppRoot telemetry consent', () => {
     storeConsent({ crashReports: false, performance: false })
 
     // Act
-    renderShell({ launched: true })
+    renderShell({ search: SIGN_IN_RETURN })
 
     // Assert — in the banner, outside the link home
     const banner = screen.getByRole('banner')
@@ -747,7 +765,7 @@ describe('SmartAppRoot telemetry consent', () => {
     storeConsent({ crashReports: false, performance: false })
 
     // Act
-    renderShell({ launched: false })
+    renderShell({ search: '' })
 
     // Assert
     const control = screen.getByRole('button', { name: STATUS_CONTROL_NAME })
@@ -759,7 +777,7 @@ describe('SmartAppRoot telemetry consent', () => {
     // Arrange
     initConsentedTelemetryMock.mockReturnValue(true)
     setUrl(`/?launchError=${FAILED_LAUNCH}`)
-    renderShell({ launched: false })
+    renderShell({})
 
     // Act — answer, then reopen and answer again
     answerDialog({ crashReports: true, performance: false })
@@ -777,7 +795,7 @@ describe('SmartAppRoot telemetry consent', () => {
   it('should not report the launch failure when the answer starts no telemetry', () => {
     // Arrange — `initConsentedTelemetry` starts nothing (both switches off)
     setUrl(`/?launchError=${FAILED_LAUNCH}`)
-    renderShell({ launched: false })
+    renderShell({})
 
     // Act
     answerDialog({ crashReports: false, performance: false })
@@ -794,7 +812,7 @@ describe('SmartAppRoot telemetry consent', () => {
     await arriveFromSignIn(FHIR_SERVER_URL)
 
     // Act
-    renderShell({ launched: true, children: <HandshakeProbe seen={[]} /> })
+    renderShell({ children: <HandshakeProbe seen={[]} /> })
 
     // Assert
     await waitFor(() => {
@@ -810,7 +828,7 @@ describe('SmartAppRoot telemetry consent', () => {
     const seen: QueryClient[] = []
 
     // Act
-    renderShell({ launched: true, children: <HandshakeProbe seen={seen} /> })
+    renderShell({ children: <HandshakeProbe seen={seen} /> })
 
     // Assert — the handshake completes, and still nothing is tagged
     await waitFor(() => {
@@ -826,7 +844,7 @@ describe('SmartAppRoot telemetry consent', () => {
     const renderFailure = new Error('the app failed to render')
 
     // Act
-    renderShell({ launched: true, children: <Throws error={renderFailure} /> })
+    renderShell({ search: SIGN_IN_RETURN, children: <Throws error={renderFailure} /> })
 
     // Assert — reported, and the boundary's fallback shown under the brand bar
     expect(captureExceptionMock).toHaveBeenCalledTimes(1)
@@ -840,7 +858,7 @@ describe('SmartAppRoot telemetry consent', () => {
     // Arrange — a first visit to the launched branch, under StrictMode
     await arriveFromSignIn(FHIR_SERVER_URL)
     const seen: QueryClient[] = []
-    renderShell({ launched: true, children: <HandshakeProbe seen={seen} /> })
+    renderShell({ children: <HandshakeProbe seen={seen} /> })
     expect(tokenRequests()).toHaveLength(0)
 
     // Act
@@ -863,13 +881,14 @@ describe('SmartAppRoot telemetry consent', () => {
     fakeServer.tokenResponse = { error: 'invalid_grant' }
     const seen: QueryClient[] = []
 
+    // jsdom cannot follow the gate's redirect to the app root, and says so
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
     // Act
-    renderShell({ launched: true, children: <HandshakeProbe seen={seen} /> })
+    renderShell({ children: <HandshakeProbe seen={seen} /> })
 
     // Assert
-    await waitFor(() => {
-      expect(seen[0].getQueryCache().getAll()[0]?.state.status).toBe('error')
-    })
+    expect(await screen.findByText(/invalid_grant/)).toBeDefined()
     expect(captureExceptionMock).not.toHaveBeenCalled()
   })
 
@@ -880,7 +899,7 @@ describe('SmartAppRoot telemetry consent', () => {
     await arriveFromSignIn('ruth.example')
 
     // Act
-    renderShell({ launched: true, children: <HandshakeProbe seen={[]} /> })
+    renderShell({ children: <HandshakeProbe seen={[]} /> })
 
     // Assert
     await waitFor(() => {
@@ -903,7 +922,7 @@ describe('SmartAppRoot telemetry consent', () => {
     connectMenuRenderFailure.current = renderFailure
 
     // Act
-    renderShell({ launched: false })
+    renderShell({ search: '' })
 
     // Assert — reported; the fallback sits under the app's h1, beside the
     // status control and the footer
@@ -936,7 +955,7 @@ describe('SmartAppRoot telemetry consent', () => {
           app="medications"
           registration={REGISTRATION}
           telemetry={{ dsn: appDsn, app: TELEMETRY.app }}
-          launched={false}
+          search=""
         >
           <div data-testid="app" />
         </SmartAppRoot>
@@ -954,7 +973,7 @@ describe('SmartAppRoot telemetry consent', () => {
     const readFailure = new Error('401 Unauthorized')
 
     // Act
-    renderShell({ launched: true, children: <FailingRead error={readFailure} /> })
+    renderShell({ search: SIGN_IN_RETURN, children: <FailingRead error={readFailure} /> })
 
     // Assert
     await waitFor(() => {
@@ -977,10 +996,10 @@ function setUrl(url: string): void {
 
 /** The shell around a stub app, with the test's registration unless given another. */
 function Shell({
-  launched,
+  search,
   registration = REGISTRATION,
 }: {
-  readonly launched?: boolean
+  readonly search?: string
   readonly registration?: typeof REGISTRATION
 }): JSX.Element {
   return (
@@ -988,7 +1007,7 @@ function Shell({
       app="medications"
       registration={registration}
       telemetry={TELEMETRY}
-      launched={launched}
+      search={search}
     >
       <div data-testid="app" />
     </SmartAppRoot>
@@ -998,14 +1017,14 @@ function Shell({
 /** Render the shell under StrictMode, as an app's `main.tsx` does. */
 function renderShell({
   app = 'medications',
-  servedDirectory,
-  launched,
+  basepath,
+  search,
   replaceLocation,
   children = <div data-testid="app" />,
 }: {
   readonly app?: AppSectionId
-  readonly servedDirectory?: string
-  readonly launched?: boolean
+  readonly basepath?: string
+  readonly search?: string
   readonly replaceLocation?: (url: string) => void
   readonly children?: JSX.Element
 }): void {
@@ -1015,8 +1034,8 @@ function renderShell({
         app={app}
         registration={REGISTRATION}
         telemetry={TELEMETRY}
-        servedDirectory={servedDirectory}
-        launched={launched}
+        basepath={basepath}
+        search={search}
         replaceLocation={replaceLocation}
       >
         {children}
@@ -1130,9 +1149,15 @@ function tokenRequests(): string[] {
 async function arriveFromSignIn(serverUrl: string): Promise<void> {
   const assign = vi.fn<(url: string) => void>()
   vi.stubGlobal('location', Object.assign(new URL(window.location.href), { assign }))
-  await authorizeSmartLaunch(
-    { ...REGISTRATION, iss: serverUrl, redirectUri: `${window.location.origin}/` },
-    undefined
+  await Effect.runPromise(
+    redirectToSignIn(
+      {
+        ...REGISTRATION,
+        fhirBaseUrl: decodeFhirBaseUrl(serverUrl),
+        redirectUri: `${window.location.origin}/`,
+      },
+      undefined
+    )
   )
   vi.unstubAllGlobals()
   stubFakeServerFetch()
@@ -1141,9 +1166,12 @@ async function arriveFromSignIn(serverUrl: string): Promise<void> {
   fakeServer.requestedUrls.length = 0
 }
 
-/** Starts the SMART handshake and records the client it was provided. */
-function HandshakeProbe({ seen }: { readonly seen: QueryClient[] }): null {
+/** Completes the sign-in under the app's gate, and records the client it was provided. */
+function HandshakeProbe({ seen }: { readonly seen: QueryClient[] }): JSX.Element {
   seen.push(useQueryClient())
-  useSmartHandshake(REGISTRATION)
-  return null
+  return (
+    <SmartHandshakeGate connecting={<p>Connecting…</p>}>
+      {() => <p>Signed in</p>}
+    </SmartHandshakeGate>
+  )
 }
