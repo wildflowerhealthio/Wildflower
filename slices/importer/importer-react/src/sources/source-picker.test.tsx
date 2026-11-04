@@ -8,7 +8,14 @@ import {
   DICOM_SYSTEM,
 } from '@wildflowerhealthio/dicom-importer-core/source-file'
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
-import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type * as FhirR4Smart from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  decodeFhirBaseUrl,
+  RESOURCE_PAGE_SIZE,
+  type RunSmart,
+  SmartConnection,
+  smartRuntimeFor,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   HAR_ARCHIVE_CODE,
   WEB_TRACE_CODE_SYSTEM,
@@ -18,7 +25,7 @@ import {
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_SYSTEM,
 } from '@wildflowerhealthio/lifelabs-pdf-importer-core/source-file'
-import { DateTime, Effect, Layer, Schema } from 'effect'
+import { DateTime, Effect, Layer, Option, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -40,9 +47,10 @@ const testDetectors: readonly FormatDetector.Type[] = [harDetector]
 /**
  * The whole picker, driven over the real
  * query → runner → FHIR-client → `HttpClient` path with a stub transport. Only
- * the router seam (`useRunAuthed`) is replaced, the `documents-panel.test.tsx`
- * pattern, and the runner carries a bearer token via `fhir-r4-react/smart` so the
- * search's URL and its `Authorization` header can both be asserted.
+ * the runner seams (`useRunAuthed`, `useRunSmart`) are replaced, the
+ * `documents-panel.test.tsx` pattern, and the runner carries a bearer token via
+ * `fhir-r4-react/smart` so the search's URL and its `Authorization` header can
+ * both be asserted.
  *
  * The load-bearing observation is convergence: a file dropped, a file chosen, and
  * a server source file selected all reach `onPick` with the same HAR text — the
@@ -53,6 +61,11 @@ const testDetectors: readonly FormatDetector.Type[] = [harDetector]
 vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
   const actual = await importOriginal<typeof FhirR4React>()
   return { ...actual, useRunAuthed: (): FhirR4React.RunAuthed => currentRunAuthed }
+})
+
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
+  const actual = await importOriginal<typeof FhirR4Smart>()
+  return { ...actual, useRunSmart: (): RunSmart => currentRunAuthed }
 })
 
 const SERVER_URL = 'http://127.0.0.1:8080'
@@ -73,7 +86,7 @@ const VALID_HAR = JSON.stringify({
   },
 })
 
-let currentRunAuthed: FhirR4React.RunAuthed
+let currentRunAuthed: RunSmart
 let sentRequests: HttpClientRequest.HttpClientRequest[] = []
 let queryClient: QueryClient
 
@@ -183,7 +196,7 @@ describe('SourcePicker', () => {
     expect(SOURCE_FILES_CATEGORY_TOKEN).toBe(
       `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_SOURCE_FILE_CODE},${DICOM_SYSTEM}|${DICOM_SOURCE_FILE_CODE}`
     )
-    expect(paramsOf(0)['_count']).toBe('50')
+    expect(paramsOf(0)['_count']).toBe(String(RESOURCE_PAGE_SIZE))
     expect(sentRequests[0]?.headers['authorization']).toBe(`Bearer ${ACCESS_TOKEN}`)
 
     // Act — select the row and pick it
@@ -498,7 +511,7 @@ const serveArchives = (config: {
     HttpClient.HttpClient,
     HttpClient.make((request) => {
       sentRequests.push(request)
-      const params = Object.fromEntries(request.urlParams)
+      const params = Object.fromEntries(new URL(request.url).searchParams)
       if (params['category'] !== undefined) {
         const page = config.pages[pageIndexOf(params['_pageToken'])]
         const wires = (page?.sourceFiles ?? []).map((one) => sourceFileWire(one))
@@ -511,17 +524,21 @@ const serveArchives = (config: {
       return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(wire)))
     })
   )
-  currentRunAuthed = buildSmartRouterContext(
-    { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
+  currentRunAuthed = smartRuntimeFor(
+    new SmartConnection({
+      fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
+      accessToken: Option.some(ACCESS_TOKEN),
+      launchPatientId: Option.none(),
+    }),
     httpLayer
-  ).runAuthed
+  ).runSmart
 }
 
 /** The search parameters of the nth recorded request, as a plain lookup. */
 const paramsOf = (index: number): Readonly<Record<string, string | undefined>> => {
   const request = sentRequests[index]
   if (request === undefined) throw new Error(`no request recorded at index ${index}`)
-  return Object.fromEntries(request.urlParams)
+  return Object.fromEntries(new URL(request.url).searchParams)
 }
 
 const withQueryClient = ({ children }: { readonly children: ReactNode }): JSX.Element => (

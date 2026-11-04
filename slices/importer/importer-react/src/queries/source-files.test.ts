@@ -4,8 +4,13 @@ import {
   DICOM_SOURCE_FILE_CODE,
   DICOM_SYSTEM,
 } from '@wildflowerhealthio/dicom-importer-core/source-file'
-import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
-import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  decodeFhirBaseUrl,
+  RESOURCE_PAGE_SIZE,
+  type RunSmart,
+  SmartConnection,
+  smartRuntimeFor,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   HAR_ARCHIVE_CODE,
   WEB_TRACE_CODE_SYSTEM,
@@ -14,18 +19,14 @@ import {
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_SYSTEM,
 } from '@wildflowerhealthio/lifelabs-pdf-importer-core/source-file'
-import { DateTime, Effect, Layer, Schema } from 'effect'
+import { DateTime, Effect, Layer, Option, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
-import {
-  SOURCE_FILES_CATEGORY_TOKEN,
-  sourceFilesInfiniteQueryOptions,
-  DEFAULT_PAGE_SIZE,
-} from './source-files.ts'
+import { SOURCE_FILES_CATEGORY_TOKEN, sourceFilesInfiniteQueryOptions } from './source-files.ts'
 
 /**
  * The source file list read, driven over the real
- * query → runner → FHIR-client → `HttpClient` path with a stub transport.
+ * query → runner → `SmartClient` → `HttpClient` path with a stub transport.
  * Only the transport is a stub; the runner is built through
  * `fhir-r4-react/smart` so a bearer token rides the wire, exactly as a
  * SMART app's does.
@@ -59,7 +60,7 @@ describe('sourceFilesInfiniteQueryOptions', () => {
   it('should search the comma-joined source file category over every registered format, sized and authed', async () => {
     // Arrange
     const queryClient = freshQueryClient()
-    const options = sourceFilesInfiniteQueryOptions(runAuthedOver([searchset([])]))
+    const options = sourceFilesInfiniteQueryOptions(runSmartOver([searchset([])]))
 
     // Act
     await queryClient.infiniteQuery(options)
@@ -69,7 +70,7 @@ describe('sourceFilesInfiniteQueryOptions', () => {
     expect(SOURCE_FILES_CATEGORY_TOKEN).toBe(
       `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_SOURCE_FILE_CODE},${DICOM_SYSTEM}|${DICOM_SOURCE_FILE_CODE}`
     )
-    expect(paramsOf(0)['_count']).toBe(String(DEFAULT_PAGE_SIZE))
+    expect(paramsOf(0)['_count']).toBe(String(RESOURCE_PAGE_SIZE))
     // …and it went out authenticated with the granted token
     expect(sentRequests[0]?.headers['authorization']).toBe(`Bearer ${ACCESS_TOKEN}`)
   })
@@ -84,7 +85,7 @@ describe('sourceFilesInfiniteQueryOptions', () => {
       unrelatedDocumentWire({ id: 'other-1', fileName: 'notes.txt' }),
     ]
     const queryClient = freshQueryClient()
-    const options = sourceFilesInfiniteQueryOptions(runAuthedOver([searchset(rows)]))
+    const options = sourceFilesInfiniteQueryOptions(runSmartOver([searchset(rows)]))
 
     // Act
     const data = await queryClient.infiniteQuery(options)
@@ -106,7 +107,7 @@ describe('sourceFilesInfiniteQueryOptions', () => {
     const queryClient = freshQueryClient()
     const data = await queryClient.infiniteQuery(
       sourceFilesInfiniteQueryOptions(
-        runAuthedOver([
+        runSmartOver([
           searchset([
             harArchiveWire({ id: 'har-1', fileName: 'session.har', uploadedAt }),
             undatedHarArchiveWire({ id: 'har-2', fileName: 'undated.har' }),
@@ -117,7 +118,7 @@ describe('sourceFilesInfiniteQueryOptions', () => {
     expect(data.pages[0]?.sourceFiles.map((row) => row.lastUpdated)).toEqual([uploadedAt, null])
   })
 
-  it('should page with the cursor from the bundle next link and stop when there is none', async () => {
+  it('should page by the bundle next link verbatim and stop when there is none', async () => {
     // Arrange
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
     const first = searchset(
@@ -128,27 +129,28 @@ describe('sourceFilesInfiniteQueryOptions', () => {
       lifelabsPdfArchiveWire({ id: 'p2', fileName: 'two.pdf', uploadedAt }),
     ])
     const queryClient = freshQueryClient()
-    const options = sourceFilesInfiniteQueryOptions(runAuthedOver([first, second]))
+    const options = sourceFilesInfiniteQueryOptions(runSmartOver([first, second]))
 
     // Act
     const data = await queryClient.infiniteQuery({ ...options, pages: 3 })
 
-    // Assert — the second request carried the cursor, and the third never happened
+    // Assert — the second request was the next link, and the third never happened
+    const nextLink = `${SERVER_URL}/DocumentReference?category=any&_pageToken=cursor-2`
     expect(sentRequests).toHaveLength(2)
     expect(paramsOf(0)['_pageToken']).toBeUndefined()
-    expect(paramsOf(1)['_pageToken']).toBe('cursor-2')
+    expect(sentRequests[1]?.url).toBe(nextLink)
     expect(data.pages.flatMap((page) => page.sourceFiles.map((one) => one.id))).toEqual([
       'p1',
       'p2',
     ])
-    expect(data.pageParams).toEqual([null, 'cursor-2'])
+    expect(data.pageParams).toEqual([null, nextLink])
   })
 
   it('should reject when the read fails', async () => {
     // Arrange
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     queryClients.push(queryClient)
-    const options = sourceFilesInfiniteQueryOptions(failingRunAuthed())
+    const options = sourceFilesInfiniteQueryOptions(failingRunSmart())
 
     // Act / Assert
     await expect(queryClient.infiniteQuery(options)).rejects.toThrow()
@@ -306,13 +308,20 @@ const failingHttpClientLayer = (): Layer.Layer<HttpClient.HttpClient> =>
     )
   )
 
-const runAuthedFor = (transport: Layer.Layer<HttpClient.HttpClient>): RunAuthed =>
-  buildSmartRouterContext({ serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN }, transport).runAuthed
+const runSmartFor = (transport: Layer.Layer<HttpClient.HttpClient>): RunSmart =>
+  smartRuntimeFor(
+    new SmartConnection({
+      fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
+      accessToken: Option.some(ACCESS_TOKEN),
+      launchPatientId: Option.none(),
+    }),
+    transport
+  ).runSmart
 
-const runAuthedOver = (bodies: readonly unknown[]): RunAuthed =>
-  runAuthedFor(stubHttpClientLayer(bodies))
+const runSmartOver = (bodies: readonly unknown[]): RunSmart =>
+  runSmartFor(stubHttpClientLayer(bodies))
 
-const failingRunAuthed = (): RunAuthed => runAuthedFor(failingHttpClientLayer())
+const failingRunSmart = (): RunSmart => runSmartFor(failingHttpClientLayer())
 
 const freshQueryClient = (): QueryClient => {
   const queryClient = new QueryClient()
@@ -323,5 +332,5 @@ const freshQueryClient = (): QueryClient => {
 const paramsOf = (index: number): Readonly<Record<string, string | undefined>> => {
   const request = sentRequests[index]
   if (request === undefined) throw new Error(`no request recorded at index ${index}`)
-  return Object.fromEntries(request.urlParams)
+  return Object.fromEntries(new URL(request.url).searchParams)
 }
