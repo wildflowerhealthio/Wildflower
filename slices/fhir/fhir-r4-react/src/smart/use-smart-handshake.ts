@@ -5,7 +5,9 @@ import {
   type Query,
   type QueryClient,
 } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import type { SignInError } from '@wildflowerhealthio/authorization-core/smart-client'
+import { Effect, Either, Option } from 'effect'
+import { useEffect, useMemo } from 'react'
 
 import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'
 import type { SmartConnection } from './smart-connection.ts'
@@ -17,7 +19,7 @@ import { appRootRedirectUri, readySmartClient, type SmartLaunchConfig } from './
  */
 type SmartHandshake =
   | { readonly kind: 'connecting' }
-  | { readonly kind: 'error'; readonly error: unknown }
+  | { readonly kind: 'error'; readonly error: SignInError }
   | { readonly kind: 'ready'; readonly connection: SmartConnection }
 
 /**
@@ -28,20 +30,25 @@ const SMART_HANDSHAKE_QUERY_KEY = ['fhir-r4-react', 'smart-handshake'] as const
 
 /**
  * The handshake query's settings, shared by the hook that runs it and the
- * root that waits on it: the key, typed so a read of its data is a
- * {@link SmartConnection}.
+ * root that waits on it: the key, typed so a read of its data is the
+ * handshake's outcome, the {@link SmartConnection} it made or why it failed.
  *
  * @remarks
+ * The failure is the query's data rather than its error, so it keeps its
+ * type. A defect (a bug, not a failure) is the query's error, and is thrown
+ * to the nearest error boundary (`throwOnError`).
+ *
  * `retry: false` because re-POSTing a consumed code cannot succeed. `staleTime`
  * and `gcTime` are `Infinity` because there is nothing to refetch — the
  * handshake is a one-shot whose result lives for the page.
  */
-const smartHandshakeQueryBase = queryOptions<SmartConnection>({
+const smartHandshakeQueryBase = queryOptions<Either.Either<SmartConnection, SignInError>>({
   queryKey: SMART_HANDSHAKE_QUERY_KEY,
   retry: false,
   staleTime: Infinity,
   gcTime: Infinity,
   refetchOnWindowFocus: false,
+  throwOnError: true,
 })
 
 /**
@@ -71,13 +78,21 @@ const useSmartHandshake = (
   registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
   servedDirectory?: string
 ): SmartHandshake => {
-  const query = useQuery({
+  const { data } = useQuery({
     ...smartHandshakeQueryBase,
-    queryFn: () => readySmartClient(registration, servedDirectory),
+    queryFn: () => Effect.runPromise(Effect.either(readySmartClient(registration, servedDirectory))),
   })
-  if (query.isSuccess) return { kind: 'ready', connection: query.data }
-  if (query.isError) return { kind: 'error', error: query.error }
-  return { kind: 'connecting' }
+  // Memoised on the outcome, so an effect keyed on the handshake runs once it settles.
+  return useMemo(
+    (): SmartHandshake =>
+      data === undefined
+        ? { kind: 'connecting' }
+        : Either.match(data, {
+            onLeft: (error): SmartHandshake => ({ kind: 'error', error }),
+            onRight: (connection): SmartHandshake => ({ kind: 'ready', connection }),
+          }),
+    [data]
+  )
 }
 
 /**
@@ -103,10 +118,12 @@ const whenSmartHandshakeReady = (
   let notified = false
   const notifyIfReady = (): void => {
     if (notified) return
-    const readyClient = queryClient.getQueryData(smartHandshakeQueryBase.queryKey)
-    if (readyClient === undefined) return
+    const connection = Option.fromNullable(
+      queryClient.getQueryData(smartHandshakeQueryBase.queryKey)
+    ).pipe(Option.flatMap(Either.getRight))
+    if (Option.isNone(connection)) return
     notified = true
-    onReady(readyClient)
+    onReady(connection.value)
   }
   const unsubscribe = queryClient.getQueryCache().subscribe(notifyIfReady)
   notifyIfReady()
@@ -143,15 +160,13 @@ const isSmartHandshakeQuery = (query: Pick<Query, 'queryKey'>): boolean =>
  * `retry: false`, so the error state settles once.
  */
 const useLaunchFailureRedirect = (handshake: SmartHandshake): void => {
-  const failed = handshake.kind === 'error'
-  const error = handshake.kind === 'error' ? handshake.error : undefined
   useEffect(() => {
-    if (!failed) return
+    if (handshake.kind !== 'error') return
     const appRoot = appRootRedirectUri(window.location.href)
     window.location.replace(
-      launchErrorRedirect(appRoot, launchErrorBodyFor('HandshakeFailed', error))
+      launchErrorRedirect(appRoot, launchErrorBodyFor('HandshakeFailed', handshake.error))
     )
-  }, [failed, error])
+  }, [handshake])
 }
 
 export {

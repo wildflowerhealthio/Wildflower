@@ -73,7 +73,7 @@ function SmartHandshakeGate({
   const handshake = useSmartHandshake(registration, servedDirectory)
   useLaunchFailureRedirect(handshake)
   return Match.value(handshake).pipe(
-    Match.when({ kind: 'error' }, ({ error }) => <ErrorBanner error={error} />),
+    Match.when({ kind: 'error' }, ({ error }) => <ErrorBanner error={error.reason} />),
     Match.when({ kind: 'connecting' }, () => connecting),
     Match.when({ kind: 'ready' }, ({ connection }) => (
       <SignedIn connection={connection}>{children}</SignedIn>

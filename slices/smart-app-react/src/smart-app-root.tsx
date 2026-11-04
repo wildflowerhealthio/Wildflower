@@ -14,7 +14,7 @@ import {
   useTelemetryConsentControls,
 } from '@wildflowerhealthio/telemetry-react'
 import { redactServerHost, Sentry, setFhirServerHost } from '@wildflowerhealthio/telemetry-web'
-import { Data, Match, Option } from 'effect'
+import { Data, Effect, Match, Option } from 'effect'
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 
 import {
@@ -163,9 +163,7 @@ function LaunchingApp({
     if (launchAuthorized.current) return
     launchAuthorized.current = true
     void authorizeFromLaunchPage(registration, launch, window.location.href, servedDirectory).then(
-      (failure) => {
-        if (failure !== null) replaceLocation(failure)
-      }
+      Option.map(replaceLocation)
     )
   }, [registration, launch, servedDirectory, replaceLocation])
 
@@ -254,9 +252,14 @@ function SmartAppRoot({
     if (!RootArrival.$is('Visit')(arrival)) return
     clearReturnRoute(window.sessionStorage)
     if (!isAuthorizationResponse(window.location.search)) return
-    discardPendingConnection(registration, servedDirectory).catch((discardError: unknown) => {
-      Sentry.captureException(discardError, { tags: { source: 'pending-connection' } })
-    })
+    discardPendingConnection(registration, servedDirectory).pipe(
+      Effect.tapError((discardError) =>
+        Effect.sync(() => {
+          Sentry.captureException(discardError, { tags: { source: 'pending-connection' } })
+        })
+      ),
+      Effect.runFork
+    )
   }, [arrival, registration, servedDirectory])
 
   // A failed launch lands back here carrying its reason — our own `?launchError`

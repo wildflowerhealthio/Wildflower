@@ -8,6 +8,8 @@ import {
   type SmartLaunchConfig,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 
+import { Effect, Option } from 'effect'
+
 import { saveReturnRoute } from './return-route.ts'
 
 /**
@@ -22,9 +24,9 @@ import { saveReturnRoute } from './return-route.ts'
  * @param servedDirectory - The directory the app is served from (a routed
  *   app's basepath), as `appRootRedirectUri` takes it; omitted, the page's
  *   own directory.
- * @returns `null` once the page has been sent to the authorization server,
+ * @returns `None` once the page has been sent to the authorization server,
  *   or the app-root URL carrying the failure as `?launchError` when
- *   `authorizeSmartLaunch` rejects.
+ *   `authorizeSmartLaunch` fails.
  *
  * @remarks
  * The launch is the page URL's `iss`, with the EHR's `launch` for an EHR
@@ -44,24 +46,28 @@ import { saveReturnRoute } from './return-route.ts'
  * leaves (`saveReturnRoute`), since the callback comes back to the app root,
  * whose redirect (`appRootRedirect`) returns to it.
  */
-const authorizeFromLaunchPage = async (
+const authorizeFromLaunchPage = (
   registration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'>,
   arrivingLaunch: ArrivingSmartLaunch,
   launchPageHref: string,
   servedDirectory?: string
-): Promise<string | null> => {
+): Promise<Option.Option<string>> => {
   const redirectUri = appRootRedirectUri(launchPageHref, servedDirectory)
   const search = new URL(launchPageHref).search
   saveReturnRoute(window.sessionStorage, launchPageHref, servedDirectory)
-  try {
-    await authorizeSmartLaunch(
-      { ...registration, redirectUri, iss: decodeFhirBaseUrl(arrivingLaunch.iss) },
-      arrivingLaunch.launch
-    )
-    return null
-  } catch (error: unknown) {
-    return launchErrorRedirect(redirectUri, launchErrorBodyFor('AuthorizeFailed', error, search))
-  }
+  return authorizeSmartLaunch(
+    { ...registration, redirectUri, iss: decodeFhirBaseUrl(arrivingLaunch.iss) },
+    arrivingLaunch.launch
+  ).pipe(
+    Effect.match({
+      onFailure: (failure) =>
+        Option.some(
+          launchErrorRedirect(redirectUri, launchErrorBodyFor('AuthorizeFailed', failure, search))
+        ),
+      onSuccess: () => Option.none(),
+    }),
+    Effect.runPromise
+  )
 }
 
 export { authorizeFromLaunchPage }

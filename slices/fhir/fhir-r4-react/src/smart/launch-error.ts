@@ -209,19 +209,20 @@ const launchErrorRedirect = (appRoot: string, body: LaunchErrorBody): string => 
 }
 
 /**
- * The body describing a thrown value, for the launch page's rejection handler.
- * `iss` is carried when the launch URL named one, since a discovery or CORS
- * failure is about that origin and naming it is most of the diagnosis.
+ * The body describing `failure`, a launch step's typed failure, its `reason`
+ * the body's `message`. `iss` is carried when the launch URL named one,
+ * since a discovery or CORS failure is about that origin and naming it is
+ * most of the diagnosis.
  */
 const launchErrorBodyFor = (
   tag: string,
-  thrown: unknown,
+  failure: { readonly reason: string },
   search: string = window.location.search
 ): LaunchErrorBody => {
   const iss = new URLSearchParams(search).get('iss')
   return {
     error: tag,
-    message: thrown instanceof Error ? thrown.message : String(thrown),
+    message: failure.reason,
     ...(iss === null || iss === '' ? {} : { iss }),
   }
 }

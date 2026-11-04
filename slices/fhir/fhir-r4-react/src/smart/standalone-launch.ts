@@ -1,10 +1,13 @@
 import {
   insecureTargetReason,
   normalizeServerUrl,
+  type PendingRequestUnusable,
+  type PkceUnavailable,
   smartIssuerFrom,
   type SmartIssuer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { Either, Schema } from 'effect'
+import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
+import { Effect, Either, Match, Schema } from 'effect'
 
 import {
   authorizeOpenServer,
@@ -44,12 +47,14 @@ type SmartSupport =
  */
 const NamesAuthorizationEndpoint = Schema.Struct({ authorization_endpoint: Schema.String })
 
-const namesAuthorizationEndpoint = Schema.is(NamesAuthorizationEndpoint)
+/** Whether a configuration is one a SMART server serves: JSON that names an `authorization_endpoint`. */
+const decodeSmartConfiguration = Schema.decodeUnknown(NamesAuthorizationEndpoint)
 
 /**
  * Probe `{iss}/.well-known/smart-configuration` to decide how to connect.
  *
  * @remarks
+ * Every outcome is a {@link SmartSupport}, so the Effect never fails.
  * `fetchFn` is a parameter (default `globalThis.fetch`) so a test can drive the
  * outcomes over a stub without a real wire — the same transport-is-a-parameter
  * philosophy as the SMART runtime's `HttpClient`. `pageIsSecure` (default: read
@@ -60,37 +65,35 @@ const namesAuthorizationEndpoint = Schema.is(NamesAuthorizationEndpoint)
  * @param fetchFn - The `fetch` to probe with; defaults to `globalThis.fetch`
  * @param pageIsSecure - Whether this page is served over https
  */
-const detectSmartSupport = async (
+const detectSmartSupport = (
   iss: FhirBaseUrl,
   fetchFn: typeof fetch = globalThis.fetch,
   pageIsSecure: boolean = window.location.protocol === 'https:'
-): Promise<SmartSupport> => {
-  let response: Response
-  try {
-    response = await fetchFn(`${iss}/.well-known/smart-configuration`, {
-      headers: { Accept: 'application/json' },
-    })
-  } catch (error) {
+): Effect.Effect<SmartSupport> =>
+  Effect.gen(function* () {
     // A rejected fetch is network-or-CORS and the two are indistinguishable
     // here — surface it, never degrade to `open`.
-    return { kind: 'unreachable', message: error instanceof Error ? error.message : String(error) }
-  }
-  // A real HTTP answer that isn't ok (404, 500, …) is a server with no SMART
-  // config → open. Only a config that names an authorization endpoint is SMART,
-  // and only when its endpoints are usable from this page.
-  if (!response.ok) return { kind: 'open' }
-  let config: unknown
-  try {
-    config = await response.json()
-  } catch {
-    return { kind: 'open' }
-  }
-  if (!namesAuthorizationEndpoint(config)) return { kind: 'open' }
-  return Either.match(smartIssuerFrom(iss, config, { pageIsSecure }), {
-    onLeft: (failed): SmartSupport => ({ kind: 'unusable', reason: failed.reason }),
-    onRight: (issuer): SmartSupport => ({ kind: 'smart', issuer }),
-  })
-}
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetchFn(`${iss}/.well-known/smart-configuration`, {
+          headers: { Accept: 'application/json' },
+        }),
+      catch: (error): SmartSupport => ({ kind: 'unreachable', message: unknownErrorToString(error) }),
+    })
+    // A real HTTP answer that isn't ok (404, 500, …) is a server with no SMART
+    // config → open. Only a config that names an authorization endpoint is
+    // SMART, and only when its endpoints are usable from this page.
+    if (!response.ok) return { kind: 'open' }
+    const config = yield* Effect.tryPromise((): Promise<unknown> => response.json()).pipe(
+      // Checked, not narrowed: `smartIssuerFrom` reads the whole configuration.
+      Effect.tap(decodeSmartConfiguration),
+      Effect.mapError((): SmartSupport => ({ kind: 'open' }))
+    )
+    return Either.match(smartIssuerFrom(iss, config, { pageIsSecure }), {
+      onLeft: (failed): SmartSupport => ({ kind: 'unusable', reason: failed.reason }),
+      onRight: (issuer): SmartSupport => ({ kind: 'smart', issuer }),
+    })
+  }).pipe(Effect.merge)
 
 /**
  * Run a standalone SMART App Launch against `config.iss`: probe, then take the
@@ -100,11 +103,10 @@ const detectSmartSupport = async (
  * On `smart`/`open` the browser redirects away (`authorizeSmartLaunchAt` sends
  * it to the provider, `authorizeOpenServer` straight to the redirect target),
  * so the page usually leaves. The sign-in starts at the issuer the probe
- * found, so the server's SMART configuration is fetched once. A rejection of
- * either (a storage that will not keep the pending record) propagates. On
- * `unreachable` or `unusable` there is no
- * redirect — the `SmartSupport` is returned so the caller can render the
- * error and offer a retry.
+ * found, so the server's SMART configuration is fetched once. A failure of
+ * either (a storage that will not keep the pending record) is this Effect's.
+ * On `unreachable` or `unusable` there is no redirect — the `SmartSupport` is
+ * the result, so the caller can render the error and offer a retry.
  *
  * @param config - The picked server plus the app's client id, scope, and
  *   redirect target
@@ -113,20 +115,22 @@ const detectSmartSupport = async (
  *   case the redirect does not navigate the page away; `unreachable` and
  *   `unusable` always are.
  */
-const startStandaloneLaunch = async (
+const startStandaloneLaunch = (
   config: SmartLaunchConfig,
   fetchFn: typeof fetch = globalThis.fetch
-): Promise<SmartSupport> => {
-  const support = await detectSmartSupport(config.iss, fetchFn)
-  if (support.kind === 'smart') {
-    await authorizeSmartLaunchAt(support.issuer, config)
-  } else if (support.kind === 'open') {
-    await authorizeOpenServer({ fhirServiceUrl: config.iss, redirectUri: config.redirectUri })
-  }
-  // `unreachable` and `unusable` fall through with no redirect — the caller
-  // renders them.
-  return support
-}
+): Effect.Effect<SmartSupport, PkceUnavailable | PendingRequestUnusable> =>
+  detectSmartSupport(config.iss, fetchFn).pipe(
+    Effect.tap((support) =>
+      Match.value(support).pipe(
+        Match.when({ kind: 'smart' }, ({ issuer }) => authorizeSmartLaunchAt(issuer, config)),
+        Match.when({ kind: 'open' }, () =>
+          authorizeOpenServer({ fhirServiceUrl: config.iss, redirectUri: config.redirectUri })
+        ),
+        // `unreachable` and `unusable` have no redirect — the caller renders them.
+        Match.orElse(() => Effect.void)
+      )
+    )
+  )
 
 export {
   detectSmartSupport,

@@ -1,5 +1,5 @@
 import { ErrorBanner, TextField } from '@wildflowerhealthio/react-tundraish'
-import { Either, Match } from 'effect'
+import { Effect, Either, Match } from 'effect'
 import { useEffect, useRef, useState, type JSX, type SubmitEvent } from 'react'
 
 import {
@@ -227,7 +227,13 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
           clientId: props.clientId,
           scope: props.scope,
           redirectUri: props.redirectUri,
-        }).then(standaloneLaunchProblem(serverUrl))
+        }).pipe(
+          Effect.match({
+            onFailure: (failure) => failure.reason,
+            onSuccess: standaloneLaunchProblem(serverUrl),
+          }),
+          Effect.runPromise
+        )
       : props.connect(serverUrl)
 
   const connectTo = (serverUrl: string, from: ConnectOrigin = 'pick'): void => {

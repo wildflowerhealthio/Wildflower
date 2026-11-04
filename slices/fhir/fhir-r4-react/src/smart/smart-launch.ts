@@ -9,6 +9,7 @@ import {
   forgetPendingSignIn,
   PendingRequestUnrecognised,
   PendingRequestUnusable,
+  type PkceUnavailable,
   searchWithoutAuthorizationResponse,
   SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
@@ -17,7 +18,7 @@ import {
   type SignInError,
   type SmartIssuer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { Effect, Either, Option, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 
 import { decodeFhirBaseUrl, FhirBaseUrl, SmartConnection } from './smart-connection.ts'
 
@@ -133,21 +134,10 @@ const redeemsSignIn = (search: string): boolean => {
   return params.has('code') || params.has('error')
 }
 
-/**
- * Run a connection step at the page's Promise boundary: its value, or a
- * rejection with an `Error` whose message is the failure's reader-facing
- * `reason`, the tagged failure as its `cause`.
- */
-const runConnectionStep = async <A>(step: Effect.Effect<A, SignInError>): Promise<A> =>
-  Either.getOrThrowWith(
-    await Effect.runPromise(Effect.either(step)),
-    (failure) => new Error(failure.reason, { cause: failure })
-  )
-
 /** Run `beginning`, then send the browser to the authorization URL it yields. */
-const leaveForAuthorization = (beginning: Effect.Effect<string, SignInError>): Promise<void> =>
-  runConnectionStep(
-    Effect.map(beginning, (authorizeUrl) => {
+const leaveForAuthorization = <E>(beginning: Effect.Effect<string, E>): Effect.Effect<void, E> =>
+  Effect.flatMap(beginning, (authorizeUrl) =>
+    Effect.sync(() => {
       window.location.assign(authorizeUrl)
     })
   )
@@ -163,13 +153,13 @@ const leaveForAuthorization = (beginning: Effect.Effect<string, SignInError>): P
  * `{iss}/.well-known/smart-configuration` and accepts the authorization
  * endpoint only when `endpointUrlFrom` does for this page: a `javascript:`
  * URL, one carrying userinfo or a fragment, and plain http off loopback from an
- * https page are each refused. Then the promise rejects with discovery's
- * reason and the page stays where it is.
+ * https page are each refused. Then it fails with discovery's reason and the
+ * page stays where it is.
  */
 const authorizeSmartLaunch = (
   config: SmartLaunchConfig,
   launch: string | undefined
-): Promise<void> =>
+): Effect.Effect<void, SignInError> =>
   leaveForAuthorization(
     beginSignIn(config.iss, undefined, signInEnvironmentFor(config), {
       launch,
@@ -184,7 +174,7 @@ const authorizeSmartLaunch = (
 const authorizeSmartLaunchAt = (
   issuer: SmartIssuer,
   config: Omit<SmartLaunchConfig, 'iss'>
-): Promise<void> =>
+): Effect.Effect<void, PkceUnavailable | PendingRequestUnusable> =>
   leaveForAuthorization(beginSignInAt(issuer, undefined, signInEnvironmentFor(config)))
 
 /**
@@ -206,9 +196,8 @@ interface OpenServerConfig {
  * usually navigates away. The URL is the app's own redirect target, not one a
  * server advertised.
  */
-const authorizeOpenServer = (config: OpenServerConfig): Promise<void> =>
-  runConnectionStep(
-    Effect.gen(function* () {
+const authorizeOpenServer = (config: OpenServerConfig): Effect.Effect<void, PendingRequestUnusable> =>
+  Effect.gen(function* () {
       const state = createState(window.crypto)
       yield* rememberPendingOpenServer({
         state,
@@ -218,7 +207,6 @@ const authorizeOpenServer = (config: OpenServerConfig): Promise<void> =>
       redirectTarget.searchParams.set('state', state)
       window.location.assign(redirectTarget.href)
     })
-  )
 
 /**
  * The connection a redeemed sign-in `session` is: its server, its token, and
@@ -327,22 +315,20 @@ const callbackEnvironment = (
  * @remarks
  * Every pending record is taken first ({@link takePendingConnection}), so a
  * second completion (a reload, a remount) finds nothing to complete and
- * rejects, as a page with no connection in progress does, and the callback
+ * fails, as a page with no connection in progress does, and the callback
  * leaves the address bar whichever way the connection settles.
  */
 const readySmartClient = (
   registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
   servedDirectory?: string
-): Promise<SmartConnection> =>
-  runConnectionStep(
-    Effect.gen(function* () {
-      const { search, environment } = callbackEnvironment(registration, servedDirectory)
-      const storedOpenServer = yield* takePendingConnection(search, environment)
-      return yield* redeemsSignIn(search)
-        ? redeemSignIn(search, environment)
-        : connectOpenServer(search, storedOpenServer)
-    })
-  )
+): Effect.Effect<SmartConnection, SignInError> =>
+  Effect.gen(function* () {
+    const { search, environment } = callbackEnvironment(registration, servedDirectory)
+    const storedOpenServer = yield* takePendingConnection(search, environment)
+    return yield* redeemsSignIn(search)
+      ? redeemSignIn(search, environment)
+      : connectOpenServer(search, storedOpenServer)
+  })
 
 /**
  * Drop every pending record and scrub the callback, for an arrival that
@@ -351,15 +337,16 @@ const readySmartClient = (
  *
  * @remarks
  * The same rule {@link readySmartClient} takes the records by
- * ({@link takePendingConnection}); it rejects only when the storage throws.
+ * ({@link takePendingConnection}); it fails only when the storage throws.
  */
 const discardPendingConnection = (
   registration: Pick<SmartLaunchConfig, 'clientId' | 'scope'>,
   servedDirectory?: string
-): Promise<void> => {
-  const { search, environment } = callbackEnvironment(registration, servedDirectory)
-  return runConnectionStep(Effect.asVoid(takePendingConnection(search, environment)))
-}
+): Effect.Effect<void, PendingRequestUnusable> =>
+  Effect.suspend(() => {
+    const { search, environment } = callbackEnvironment(registration, servedDirectory)
+    return Effect.asVoid(takePendingConnection(search, environment))
+  })
 
 /**
  * Whether `search` is a SMART/OAuth redirect the app should complete with
