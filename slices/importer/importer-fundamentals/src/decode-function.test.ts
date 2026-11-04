@@ -1,11 +1,11 @@
-import { IdentifierAndReference, withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import { SystemFamily } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { detach, type DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as DecodeFunction from './decode-function.ts'
-import * as DecodedFileSet from './decoded-file-set.ts'
+import type * as DecodedFileSet from './decoded-file-set.ts'
 import * as FormatDecode from './format-decode.ts'
 import type * as PickedFile from './picked-file.ts'
 
@@ -15,8 +15,11 @@ import type * as PickedFile from './picked-file.ts'
 
 const SYSTEM = 'https://source.example/fhir/sid/test'
 
-const fakeResource = (id: string): FhirResourceWithId =>
-  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
+/** A Patient its source calls `id`, detached under {@link SYSTEM}. */
+const fakeResource = (id: string): DetachedResource.Type =>
+  detach(SystemFamily.FixedAcrossResourceTypes({ system: SYSTEM }))(
+    Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+  )
 
 const pickedFile = (index: number, fileName: string, bytes: number[]): PickedFile.Type => ({
   id: `${index}:${fileName}`,
@@ -41,25 +44,23 @@ const decode = DecodeFunction.make({
             issue: new ParseResult.Type(Schema.Unknown.ast, pickedFiles[0].fileName, 'empty file'),
           })
         )
-      : Effect.succeed(
-          DecodeFunction.fromAdopted({
-            sections: [
-              {
-                title: pickedFiles[0].fileName,
-                resources: pickedFiles.map((file) => ({
-                  key: file.fileName,
-                  title: file.fileName,
-                  resource: fakeResource(`${file.bytes[0]}`),
-                })),
-              },
-            ],
-            notes: [`${pickedFiles.length} files`],
-          })
-        ),
+      : Effect.succeed({
+          sections: [
+            {
+              title: pickedFiles[0].fileName,
+              entries: pickedFiles.map((file) => ({
+                key: file.fileName,
+                title: file.fileName,
+                resource: fakeResource(`${file.bytes[0]}`),
+              })),
+            },
+          ],
+          notes: [`${pickedFiles.length} files`],
+        }),
 })
 
 describe('DecodeFunction.make', () => {
-  it('returns each set apart, its picked files in the order they were picked and its sections Adopted under namespaced keys', async () => {
+  it('returns each set apart, its picked files in the order they were picked and its sections under namespaced keys', async () => {
     const files = [
       pickedFile(0, 'a-1.bin', [1]),
       pickedFile(1, 'b-1.bin', [2]),
@@ -74,21 +75,21 @@ describe('DecodeFunction.make', () => {
         {
           pickedFiles: [a1, a2].map(unidentified),
           sections: [
-            DecodedFileSet.Section.Adopted({
+            {
               title: 'a-1.bin',
               entries: [a1, a2].map((file) => ({
                 key: `${FormatDecode.keyPrefix(a1)}${file.fileName}`,
                 title: file.fileName,
                 resource: fakeResource(`${file.bytes[0]}`),
               })),
-            }),
+            },
           ],
           notes: ['2 files'],
         },
         {
           pickedFiles: [b1].map(unidentified),
           sections: [
-            DecodedFileSet.Section.Adopted({
+            {
               title: 'b-1.bin',
               entries: [
                 {
@@ -97,7 +98,7 @@ describe('DecodeFunction.make', () => {
                   resource: fakeResource('2'),
                 },
               ],
-            }),
+            },
           ],
           notes: ['1 files'],
         },
@@ -114,41 +115,6 @@ describe('DecodeFunction.make', () => {
       decoded.fileSets.map((fileSet) => fileSet.pickedFiles.map((one) => one.pickedFile.id))
     ).toEqual([['0:a-1.bin']])
     expect(decoded.unreadableFiles.map((one) => one.id)).toEqual(['test/1:b-1.bin'])
-  })
-
-  it("namespaces a FromSource section's keys, keeping each record's source id and its family", async () => {
-    const systemFamily = SystemFamily.FixedAcrossResourceTypes({ system: SYSTEM })
-    const file = pickedFile(0, 'a-1.bin', [1])
-    const record = {
-      title: 'Patient/src-1',
-      system: SYSTEM,
-      sourceId: 'src-1',
-      resource: fakeResource('src-1'),
-    }
-    const fromSource = DecodeFunction.make({
-      format: 'test',
-      decodeFileSet: () =>
-        Effect.succeed({
-          sections: [
-            DecodedFileSet.Section.FromSource({
-              title: 'records',
-              systemFamily,
-              entries: [{ key: 'Patient/src-1', ...record }],
-            }),
-          ],
-          notes: [],
-        }),
-    })
-    const decoded = await Effect.runPromise(fromSource([file], null))
-    expect(decoded.fileSets.map((fileSet) => fileSet.sections)).toEqual([
-      [
-        DecodedFileSet.Section.FromSource({
-          title: 'records',
-          systemFamily,
-          entries: [{ key: `${FormatDecode.keyPrefix(file)}Patient/src-1`, ...record }],
-        }),
-      ],
-    ])
   })
 
   it('pairs each picked file with what its decode says it identifies itself as', async () => {

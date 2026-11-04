@@ -1,5 +1,5 @@
-import { adoptUnderKey, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
-import { IdentifierAndReference, withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { adopt, detach, DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   DocumentReferenceContext,
@@ -8,9 +8,9 @@ import {
   Observation,
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
+import type { DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
 import {
   DecodedFile,
-  DecodedFileSet,
   DecodeFunction,
   FileImporter,
   FormatDecode,
@@ -31,8 +31,17 @@ import { importDecoded, type ImportingFormat } from './import-decoded.ts'
 
 const SYSTEM = 'https://example.test/fhir/CodeSystem/source-file'
 
-const fakeResource = (id: string): FhirResourceWithId =>
-  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
+/** The system the test decoders' Patients are keyed in. */
+const FAKE_SYSTEM = 'https://example.test/fhir/sid/fake'
+
+/** A Patient its source calls `id`, detached as a decoder hands it over. */
+const fakeResource = (id: string): DetachedResource.Type =>
+  detach(SystemFamily.FixedAcrossResourceTypes({ system: FAKE_SYSTEM }))(
+    Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+  )
+
+/** The id the import stores {@link fakeResource}`(id)` under. */
+const fakeResourceId = (id: string): string => localResourceId(FAKE_SYSTEM, 'Patient', id)
 
 /** A pick as `readBatch` stamps it: its slot in the batch, then its name. */
 const pickedFile = (index: number, fileName: string, bytes: Uint8Array): PickedFile.Type => ({
@@ -56,21 +65,19 @@ const decodeBytes = (
 ): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
   file.bytes.length === 0
     ? Effect.fail(emptyFileError(file.fileName))
-    : Effect.succeed(
-        DecodeFunction.fromAdopted({
-          sections: [
-            {
-              title: file.fileName,
-              resources: [...file.bytes].map((byte, index) => ({
-                key: `${file.fileName}:${index}`,
-                title: `Patient/${byte}`,
-                resource: fakeResource(`${byte}`),
-              })),
-            },
-          ],
-          notes: [],
-        })
-      )
+    : Effect.succeed({
+        sections: [
+          {
+            title: file.fileName,
+            entries: [...file.bytes].map((byte, index) => ({
+              key: `${file.fileName}:${index}`,
+              title: `Patient/${byte}`,
+              resource: fakeResource(`${byte}`),
+            })),
+          },
+        ],
+        notes: [],
+      })
 
 const testFormat = 'test'
 const sourceFileFormat: PickedFile.FormatValue = {
@@ -238,8 +245,10 @@ describe('the source file a format links off its import', () => {
       linkingDecode,
       oneFile('scan.bin', new Uint8Array([9]))
     )
-    expect(sourceRow.subject?.reference).toBe('Patient/9')
-    expect(sourceRow.context?.related.map((one) => one.reference)).toEqual(['Patient/9'])
+    expect(sourceRow.subject?.reference).toBe(`Patient/${fakeResourceId('9')}`)
+    expect(sourceRow.context?.related.map((one) => one.reference)).toEqual([
+      `Patient/${fakeResourceId('9')}`,
+    ])
   })
 
   it('should keep the minted id, and stamp meta.source with it', async () => {
@@ -445,21 +454,19 @@ const decodeGroup = (
 ): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
   pickedFiles.some((file) => file.bytes.length === 0)
     ? Effect.fail(emptyFileError(pickedFiles[0].fileName))
-    : Effect.succeed(
-        DecodeFunction.fromAdopted({
-          sections: [
-            {
-              title: groupOf(pickedFiles[0].fileName) ?? pickedFiles[0].fileName,
-              resources: pickedFiles.map((file) => ({
-                key: `file/${file.id}`,
-                title: file.fileName,
-                resource: fakeResource(`${file.bytes[0] ?? 0}`),
-              })),
-            },
-          ],
-          notes: [`${groupOf(pickedFiles[0].fileName) ?? '?'}: ${pickedFiles.length} files`],
-        })
-      )
+    : Effect.succeed({
+        sections: [
+          {
+            title: groupOf(pickedFiles[0].fileName) ?? pickedFiles[0].fileName,
+            entries: pickedFiles.map((file) => ({
+              key: `file/${file.id}`,
+              title: file.fileName,
+              resource: fakeResource(`${file.bytes[0] ?? 0}`),
+            })),
+          },
+        ],
+        notes: [`${groupOf(pickedFiles[0].fileName) ?? '?'}: ${pickedFiles.length} files`],
+      })
 
 const groupedDecode = decodeAndImport(
   { sourceFileFormat },
@@ -686,71 +693,87 @@ const importedSourceFileIds = async (
 }
 
 describe('the records the import adopts', () => {
-  it('adopts a FromSource record under its key, its references keyed in its section family', async () => {
-    const family = SystemFamily.FixedAcrossResourceTypes({ system: SOURCE_SYSTEM })
-    const patient = { system: SOURCE_SYSTEM, sourceId: 'p1', resource: sourcePatient }
-    const observation = { system: SOURCE_SYSTEM, sourceId: 'o1', resource: sourceObservation }
+  it('adopts each detached record under the id its key derives, its references to records of the set resolved', async () => {
+    const detachSource = detach(SystemFamily.FixedAcrossResourceTypes({ system: SOURCE_SYSTEM }))
+    const patient = detachSource(sourcePatient)
+    const observation = detachSource(sourceObservation)
     const [sourceFileId] = await importedSourceFileIds(decodedOf([]))
 
-    expect(
-      await importedRecords(
-        decodedOf([
-          DecodedFileSet.Section.FromSource({
-            title: 'records',
-            systemFamily: family,
-            entries: [
-              { key: 'patient', title: 'patient', ...patient },
-              { key: 'observation', title: 'observation', ...observation },
-            ],
-          }),
-        ])
-      )
-    ).toEqual(
-      [patient, observation].map((record) =>
-        MetaSource.stamp(
-          adoptUnderKey(family)(record),
-          MetaSource.makeReference(sourceFileId ?? '')
-        )
+    const imported = await importedRecords(
+      decodedOf([
+        {
+          title: 'records',
+          entries: [{ key: 'patient', title: 'patient', resource: patient }],
+        },
+        {
+          title: 'results',
+          entries: [{ key: 'observation', title: 'observation', resource: observation }],
+        },
+      ])
+    )
+    // The Observation is keyless, so the stage minted its id: the expectation
+    // reuses it.
+    const mintedObservationId = imported[1]?.id ?? ''
+    const adoptRecord = adopt({
+      storedReferences: DetachedResource.storedReferencesOf([patient, observation]),
+      mintId: () => mintedObservationId,
+    })
+    expect(imported).toEqual(
+      [adoptRecord(patient), adoptRecord(observation)].map((record) =>
+        MetaSource.stamp(record, MetaSource.makeReference(sourceFileId ?? ''))
       )
     )
   })
 
-  it("keys a FromSource record's references by the target's type under a FHIR-style family", async () => {
+  it("resolves a reference by the target's type under a FHIR-style family", async () => {
     const baseUrl = 'https://r4.example.test/fhir'
     const [observation] = await importedRecords(
       decodedOf([
-        DecodedFileSet.Section.FromSource({
+        {
           title: 'records',
-          systemFamily: SystemFamily.FhirStyleBaseUrl({ baseUrl }),
           entries: [
+            {
+              key: 'patient',
+              title: 'patient',
+              resource: detach(SystemFamily.FhirStyleBaseUrl({ baseUrl }))(sourcePatient),
+            },
             {
               key: 'observation',
               title: 'observation',
-              system: `${baseUrl}/Observation`,
-              sourceId: 'o1',
-              resource: sourceObservation,
+              resource: detach(SystemFamily.FhirStyleBaseUrl({ baseUrl }))(sourceObservation),
             },
           ],
-        }),
+        },
       ])
-    )
+    ).then((records) => records.filter((record) => record.resourceType === 'Observation'))
     expect(observation?.resourceType === 'Observation' && observation.subject?.reference).toBe(
       `Patient/${localResourceId(`${baseUrl}/Patient`, 'Patient', 'p1')}`
     )
   })
 
-  it('keeps an Adopted record as it is, but for its meta.source', async () => {
-    const adopted = fakeResource('wf-1')
-    const [sourceFileId] = await importedSourceFileIds(decodedOf([]))
-    expect(
-      await importedRecords(
-        decodedOf([
-          DecodedFileSet.Section.Adopted({
-            title: 'records',
-            entries: [{ key: 'patient', title: 'patient', resource: adopted }],
-          }),
-        ])
+  // The source gave the Observation no id and no identifier, so nothing names
+  // it: it is stored under an id of its own, a fresh one on every import.
+  it('stores a keyless record under a fresh random id', async () => {
+    const detached = detach(SystemFamily.FixedAcrossResourceTypes({ system: SOURCE_SYSTEM }))(
+      sourceObservation
+    )
+    expect(DetachedResource.keyOf(detached)).toEqual(Option.none())
+    const imported = await Promise.all(
+      [1, 2].map(() =>
+        importedRecords(
+          decodedOf([
+            {
+              title: 'records',
+              entries: [{ key: 'observation', title: 'observation', resource: detached }],
+            },
+          ])
+        )
       )
-    ).toEqual([MetaSource.stamp(adopted, MetaSource.makeReference(sourceFileId ?? ''))])
+    )
+    const [[first], [second]] = imported
+    expect(first?.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    )
+    expect(second?.id).not.toBe(first?.id)
   })
 })

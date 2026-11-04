@@ -1,3 +1,4 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { type FhirResource, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
 import { HarFromJson, HttpArchive, emitHar } from '@wildflowerhealthio/http-archive'
 import {
@@ -27,7 +28,7 @@ import {
   jsonBody,
   traceExchange,
 } from '@wildflowerhealthio/web-trace-core/test-helpers'
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it, test } from 'vite-plus/test'
 
@@ -126,14 +127,11 @@ const pickedHar = (): PickedFile.Type => ({
   bytes: RECOGNIZED_WITH_NOISE,
 })
 
-/**
- * Decode one pick, which must have been read, into its one file set's
- * sections and notes, every record of which the HAR decode adopted.
- */
-const readOne = async (
+/** Decode one pick, which must have been read, into its one file set. */
+const decodeOne = async (
   file: PickedFile.Type,
   settings: HarSettings = defaultHarSettings
-): Promise<DecodedFile.DecodedFile> => {
+): Promise<DecodedFileSet.Type> => {
   const result = await Effect.runPromise(harImporter.decode([file], settings))
   const [fileSet] = result.fileSets
   if (result.unreadableFiles.length > 0 || fileSet === undefined) {
@@ -141,16 +139,17 @@ const readOne = async (
       `Expected a readable result, got ${result.unreadableFiles.length} unreadable files`
     )
   }
-  return {
-    sections: fileSet.sections.map(
-      DecodedFileSet.Section.$match({
-        Adopted: ({ title, entries }) => ({ title, resources: entries }),
-        FromSource: () => expect.fail('the HAR decode adopts its records'),
-      })
-    ),
-    notes: fileSet.notes,
-  }
+  return fileSet
 }
+
+/**
+ * Decode one pick into its one file set's sections and notes, every record
+ * adopted as the import stage adopts it.
+ */
+const readOne = async (
+  file: PickedFile.Type,
+  settings: HarSettings = defaultHarSettings
+): Promise<DecodedFile.DecodedFile> => DecodedFileSet.adopt(await decodeOne(file, settings))
 
 describe('harImporter.decode', () => {
   it('should fold a recognized source file into one section per URL, in first-seen order', async () => {
@@ -163,6 +162,69 @@ describe('harImporter.decode', () => {
     expect(decoded.sections[1]?.resources.map((entry) => entry.title)).toEqual([
       expect.stringMatching(/^Observation\//),
       expect.stringMatching(/^Observation\//),
+    ])
+  })
+
+  it("should hand every record over detached, keyed by the server's own id", async () => {
+    const fileSet = await decodeOne(pickedHar())
+    const records = fileSet.sections.flatMap((section) => section.entries)
+
+    expect(records.map(({ resource }) => resource.id)).toEqual([null, null, null])
+    expect(records.map(({ resource }) => DetachedResource.keyOf(resource))).toEqual([
+      Option.some({ system: `${ROOT}/Patient`, value: 'pat-7' }),
+      Option.some({ system: `${ROOT}/Observation`, value: 'obs-1' }),
+      Option.some({ system: `${ROOT}/Observation`, value: 'obs-2' }),
+    ])
+  })
+
+  it('should title each record by the reference the import stage writes it under', async () => {
+    const decoded = await readOne(pickedHar())
+
+    for (const { title, resource } of decoded.sections.flatMap((section) => section.resources)) {
+      expect(title).toBe(`${resource.resourceType}/${resource.id}`)
+    }
+  })
+
+  it('should hold every record of one URL in its one section, whichever response brought it', async () => {
+    const observationsWith = (...ids: readonly string[]): unknown => ({
+      resourceType: 'Bundle',
+      type: 'searchset',
+      entry: ids.map((id) => ({
+        resource: { resourceType: 'Observation', id, status: 'final', code: { text: 'Weight' } },
+      })),
+    })
+    const decoded = await readOne({
+      id: '0:one-url.har',
+      fileName: 'one-url.har',
+      bytes: harBytesOf(
+        [
+          { url: OBSERVATION_URL, body: observationsWith('obs-1', 'obs-2') },
+          { url: PATIENT_URL, body: { resourceType: 'Patient', id: 'pat-7' } },
+          { url: OBSERVATION_URL, body: observationsWith('obs-3') },
+        ].map(({ url, body }, index) =>
+          traceExchange({
+            requestId: `req-${index}`,
+            url,
+            headers: [['content-type', 'application/fhir+json']],
+            body: storedJson(body),
+            startedAtMillis: CAPTURE_FLOOR + index * 1000,
+          })
+        )
+      ),
+    })
+
+    expect(
+      decoded.sections.map((section) => [
+        section.title,
+        section.resources.map(({ resource }) =>
+          resource.resourceType === 'Observation' || resource.resourceType === 'Patient'
+            ? resource.identifier[0]?.value
+            : null
+        ),
+      ])
+    ).toEqual([
+      [OBSERVATION_URL, ['obs-1', 'obs-2', 'obs-3']],
+      [PATIENT_URL, ['pat-7']],
     ])
   })
 
@@ -375,7 +437,7 @@ const { exchange: exchangeArbitrary } = arbitraries(fc)
 /** The Rexall carebook profile uid of the one person a Rexall capture is about. */
 const REXALL_PROFILE_UID = 'uid-abc-123'
 
-/** The system Rexall keys its own ids under, which adoption puts in `identifier[0]`. */
+/** The system Rexall's ids belong to, which detaching puts in `identifier[0]`. */
 const REXALL_CAREBOOK_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/rexall-carebook'
 
 /** The tunnel host the Rexall portal's XHRs go to. */
@@ -386,7 +448,9 @@ const REXALL_TUNNEL = 'https://rexall-prd-tunnel.letsbewell.ca/enduser'
  * fill and its dispense, the request naming its prescriber the way carebook
  * does, by `requester.agent.display` behind an empty `reference`.
  */
-const rexallExchanges = (): readonly TraceExchange[] =>
+const rexallExchanges = (
+  requester: Record<string, unknown> = { agent: { reference: '', display: 'DR PATEL' } }
+): readonly TraceExchange[] =>
   [
     {
       url: `${REXALL_TUNNEL}/profile/v2/me`,
@@ -412,9 +476,7 @@ const rexallExchanges = (): readonly TraceExchange[] =>
             id: 'rx-1',
             medicationCodeableConcept: { text: 'Atorvastatin 20 mg tablet' },
             subject: { reference: `Patient/${REXALL_PROFILE_UID}`, display: '' },
-            ...(resource.resourceType === 'MedicationRequest'
-              ? { requester: { agent: { reference: '', display: 'DR PATEL' } } }
-              : {}),
+            ...(resource.resourceType === 'MedicationRequest' ? { requester } : {}),
           },
         })),
       },
@@ -448,6 +510,37 @@ describe('harImporter.decode over a Rexall capture', () => {
     ).toEqual([
       ['AsResource', 'Patient', REXALL_CAREBOOK_SYSTEM, REXALL_PROFILE_UID],
       ['ByMentionOnly', 'Practitioner', Practitioner.NAME_IDENTIFIER_SYSTEM, 'DR PATEL'],
+    ])
+  })
+})
+
+describe('harImporter.decode over a Rexall capture naming a prescriber carebook does not serve', () => {
+  // The import holds no Practitioner keyed by that id, so the reference stays
+  // logical rather than pointing at an id nothing is stored under, and the
+  // identity map offers it as a provider to link.
+  it('should name the prescriber as a referent by mention, by its carebook id', async () => {
+    const result = await readOne({
+      id: '0:rexall.har',
+      fileName: 'rexall.har',
+      bytes: harBytesOf(rexallExchanges({ agent: { reference: 'Practitioner/dr-1' } })),
+    })
+
+    const request = result.sections
+      .flatMap((section) => section.resources)
+      .find(({ resource }) => resource.resourceType === 'MedicationRequest')?.resource
+    expect(
+      request?.resourceType === 'MedicationRequest' ? request.requester?.reference : ''
+    ).toBeNull()
+    expect(
+      Effect.runSync(Referent.discover([result])).map(({ _tag, logicalReference }) => [
+        _tag,
+        logicalReference.type,
+        logicalReference.identifier.system.href,
+        logicalReference.identifier.value,
+      ])
+    ).toEqual([
+      ['AsResource', 'Patient', REXALL_CAREBOOK_SYSTEM, REXALL_PROFILE_UID],
+      ['ByMentionOnly', 'Practitioner', REXALL_CAREBOOK_SYSTEM, 'dr-1'],
     ])
   })
 })

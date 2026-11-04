@@ -1,8 +1,11 @@
-import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
+import { detach, DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
+import {
+  type HttpResponseKind,
+  SystemFamily,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
-import { Effect, Either } from 'effect'
+import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { fhirR4ResponseKinds } from './response-kinds.ts'
@@ -24,6 +27,24 @@ const parse = (name: string, url: string, body: unknown): readonly FhirResource[
     )
   )
 
+/** The family `name`'s `tryRecognize` mints for a GET of `url`. */
+const familyOf = (name: string, url: string): Option.Option<SystemFamily.Type | undefined> =>
+  Option.map(
+    kindNamed(name).tryRecognize(url, Option.some('GET')),
+    ({ systemFamily }) => systemFamily
+  )
+
+/** `name`'s parse of `body` at `url`, each resource detached under the family it mints there. */
+const detachedFrom = (
+  name: string,
+  url: string,
+  body: unknown
+): readonly DetachedResource.Type[] => {
+  const family = Option.getOrThrow(familyOf(name, url))
+  if (family === undefined) throw new Error(`${name} mints no family at ${url}`)
+  return parse(name, url, body).map(detach(family))
+}
+
 describe('fhirR4ResponseKinds', () => {
   it('contains the three kinds in plan order', () => {
     expect(fhirR4ResponseKinds.map((kind) => kind.name)).toEqual([
@@ -33,62 +54,79 @@ describe('fhirR4ResponseKinds', () => {
     ])
   })
 
-  it("keys a resource in its type's id space under its own URL's root", () => {
+  it("mints the FHIR style under its own URL's root", () => {
     const root = 'https://r4.example.org/baseR4'
-    const [patient] = parse('PatientResponseKind', `${root}/Patient/pat-7`, {
+    expect(familyOf('PatientResponseKind', `${root}/Patient/pat-7`)).toEqual(
+      Option.some(SystemFamily.FhirStyleBaseUrl({ baseUrl: root }))
+    )
+  })
+
+  it("keys a detached resource in its type's system under its own URL's root", () => {
+    const root = 'https://r4.example.org/baseR4'
+    const [patient] = detachedFrom('PatientResponseKind', `${root}/Patient/pat-7`, {
       resourceType: 'Patient',
       id: 'pat-7',
     })
-    expect(patient?.id).toBe(localResourceId(`${root}/Patient`, 'Patient', 'pat-7'))
+    expect(Option.flatMap(Option.fromNullable(patient), DetachedResource.keyOf)).toEqual(
+      Option.some({ system: `${root}/Patient`, value: 'pat-7' })
+    )
   })
 
   it('keys resources from different servers under their own roots, no shared system', () => {
     const rootA = 'https://a.example.org/baseR4'
     const rootB = 'https://b.example.org/fhir/R4'
-    const [fromA] = parse('PatientResponseKind', `${rootA}/Patient/1`, {
+    const [fromA] = detachedFrom('PatientResponseKind', `${rootA}/Patient/1`, {
       resourceType: 'Patient',
       id: '1',
     })
-    const [fromB] = parse('ObservationResponseKind', `${rootB}/Observation/2`, {
+    const [fromB] = detachedFrom('ObservationResponseKind', `${rootB}/Observation/2`, {
       resourceType: 'Observation',
       id: '2',
       status: 'final',
       code: { text: 'Weight' },
     })
-    expect(fromA?.id).toBe(localResourceId(`${rootA}/Patient`, 'Patient', '1'))
-    expect(fromB?.id).toBe(localResourceId(`${rootB}/Observation`, 'Observation', '2'))
+    expect(Option.flatMap(Option.fromNullable(fromA), DetachedResource.keyOf)).toEqual(
+      Option.some({ system: `${rootA}/Patient`, value: '1' })
+    )
+    expect(Option.flatMap(Option.fromNullable(fromB), DetachedResource.keyOf)).toEqual(
+      Option.some({ system: `${rootB}/Observation`, value: '2' })
+    )
   })
 
-  it("rewrites a relative reference into its target type's id space under the referring resource's root", () => {
+  it('parses every id and reference as the server spelled it', () => {
     const root = 'https://r4.example.org/baseR4'
     const [observation] = parse('ObservationResponseKind', `${root}/Observation/obs-1`, {
       resourceType: 'Observation',
       id: 'obs-1',
       status: 'final',
       code: { text: 'Weight' },
-      subject: { reference: 'Patient/pat-7' },
+      subject: { reference: `${root}/Patient/pat-7` },
+      performer: [{ reference: 'https://elsewhere.example/fhir/Practitioner/pr-1' }],
     })
     if (observation?.resourceType !== 'Observation') throw new Error('expected an Observation')
-    expect(observation.subject?.reference).toBe(
-      `Patient/${localResourceId(`${root}/Patient`, 'Patient', 'pat-7')}`
+    expect(observation.id).toBe('obs-1')
+    expect(observation.subject?.reference).toBe(`${root}/Patient/pat-7`)
+    expect(observation.performer[0]?.reference).toBe(
+      'https://elsewhere.example/fhir/Practitioner/pr-1'
     )
   })
 
-  it('fails with a ParseError when handed a URL its kind does not recognize', () => {
-    const result = Effect.runSync(
-      Effect.either(
-        kindNamed('PatientResponseKind').parse(
-          makeHttpResponse({
-            url: 'https://example.com/not-a-fhir-url',
-            headers: [['content-type', 'application/fhir+json']],
-            body: JSON.stringify({ resourceType: 'Patient', id: 'pat-7' }),
-          })
-        )
-      )
+  it('a record the server sent with no id parses with none, and detaches keyless', () => {
+    const root = 'https://r4.example.org/baseR4'
+    const [observation] = detachedFrom(
+      'ObservationListResponseKind',
+      `${root}/Observation?subject=pat-7`,
+      {
+        resourceType: 'Bundle',
+        type: 'searchset',
+        entry: [
+          { resource: { resourceType: 'Observation', status: 'final', code: { text: 'Weight' } } },
+        ],
+      }
     )
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe('ParseError')
-    }
+    expect(observation?.id).toBeNull()
+    expect(Option.flatMap(Option.fromNullable(observation), DetachedResource.keyOf)).toEqual(
+      Option.none()
+    )
   })
 })

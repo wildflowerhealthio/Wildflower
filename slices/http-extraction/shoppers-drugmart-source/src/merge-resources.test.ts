@@ -1,5 +1,6 @@
+import { detach, DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { FhirResourceWithId, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResource, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { Effect, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
@@ -10,8 +11,10 @@ import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from './shoppers.ts
 import { shoppersDrugMartSource } from './source.ts'
 
 /**
- * The merge over what the source's pre-adopted kinds really emit: one account
- * managing one person, whose one fill is in both prescription feeds.
+ * The merge over what the source's kinds really emit, detached under the
+ * family their `tryRecognize` mints, as the HAR importer holds them when it
+ * merges: one account managing one person, whose one fill is in both
+ * prescription feeds.
  */
 
 const ACCOUNT_ID = 'a7353645-83bf-4371-8b87-486b3d5b9802'
@@ -23,8 +26,8 @@ const STORE_NAME = 'SDM Pharmacy #9000'
 
 const decodeReference = Schema.decodeUnknownSync(IdentifierAndReference.ReferenceSchema)
 
-/** What the source's kinds make of `payload` served at `url`. */
-const extract = (url: string, payload: unknown): readonly FhirResourceWithId[] => {
+/** What the source's kinds make of `payload` served at `url`, as parsed. */
+const parsed = (url: string, payload: unknown): readonly FhirResource[] => {
   const kind = shoppersDrugMartSource.responseKinds.find((candidate) =>
     Option.isSome(candidate.tryRecognize(url, Option.some('GET')))
   )
@@ -32,67 +35,130 @@ const extract = (url: string, payload: unknown): readonly FhirResourceWithId[] =
   return Effect.runSync(kind.parse(makeHttpResponse({ url, body: JSON.stringify(payload) })))
 }
 
-/** A dispense the source's kinds made: adopted, so with an id. */
-type AdoptedDispense = MedicationDispense.Type & { readonly id: string }
-
-const dispensesOf = (resources: readonly FhirResourceWithId[]): readonly AdoptedDispense[] =>
-  resources.flatMap((resource) =>
-    resource.resourceType === 'MedicationDispense' ? [resource] : []
+/** {@link parsed}, each resource detached under the family its kind minted for `url`. */
+const extract = (url: string, payload: unknown): readonly DetachedResource.Type[] => {
+  const recognized = shoppersDrugMartSource.responseKinds.flatMap((candidate) =>
+    Option.toArray(candidate.tryRecognize(url, Option.some('GET')))
   )
+  const family = recognized[0]?.systemFamily
+  if (family === undefined) throw new Error(`no Shoppers kind mints a family at ${url}`)
+  return parsed(url, payload).map(detach(family))
+}
+
+/** A dispense the source's kinds made, detached. */
+type DetachedDispense = MedicationDispense.Type & { readonly id: null }
+
+/** Whether `resource` is a dispense, keeping whatever else its type says of it. */
+const isDispense = <TResource extends FhirResource>(
+  resource: TResource
+): resource is TResource & MedicationDispense.Type => resource.resourceType === 'MedicationDispense'
+
+const dispensesOf = <TResource extends FhirResource>(
+  resources: readonly TResource[]
+): readonly (TResource & MedicationDispense.Type)[] => resources.filter(isDispense)
 
 /** The one dispense `resources` holds. */
-const onlyDispenseOf = (resources: readonly FhirResourceWithId[]): AdoptedDispense => {
+const onlyDispenseOf = <TResource extends FhirResource>(
+  resources: readonly TResource[]
+): TResource & MedicationDispense.Type => {
   const [dispense, ...rest] = dispensesOf(resources)
   if (dispense === undefined || rest.length > 0) throw new Error('expected exactly one dispense')
   return dispense
 }
 
-const customers = (): readonly FhirResourceWithId[] =>
-  extract(customerUrlOf(ACCOUNT_ID), {
-    customer: { patients: [{ id: PERSON_ID, firstName: 'Ada' }] },
-  })
+const CUSTOMERS_PAYLOAD = { customer: { patients: [{ id: PERSON_ID, firstName: 'Ada' }] } }
 
-/** The status feed's copy; `din` is the prescription's, when it states one. */
-const statusCopy = (din?: string): AdoptedDispense =>
-  onlyDispenseOf(
-    extract(prescriptionStatusUrlOf(PRESCRIPTION_ID), {
-      id: PRESCRIPTION_ID,
-      patientId: PERSON_ID,
-      brandName: 'Amoxil',
-      storeId: STORE_ID,
-      ...(din === undefined ? {} : { din }),
-      dispenses: [{ dispenseId: DISPENSE_ID, status: 'IN_PROGRESS', quantityDispensed: 30 }],
-    })
-  )
+const customers = (): readonly DetachedResource.Type[] =>
+  extract(customerUrlOf(ACCOUNT_ID), CUSTOMERS_PAYLOAD)
 
-/** The history feed's copy of the same fill. */
-const historyCopy = (): AdoptedDispense =>
-  onlyDispenseOf(
-    extract(prescriptionHistoryUrlOf(ACCOUNT_ID), {
-      dispenses: [
-        {
-          prescriptionId: PRESCRIPTION_ID,
-          dispenseId: DISPENSE_ID,
-          prescriptionNumber: 9534360,
-          brandName: 'Apo-Amoxi',
-          din: '80717730',
-          quantityDispensed: 30,
-          store: { id: STORE_ID, storeName: STORE_NAME },
-        },
-      ],
-    })
-  )
+/** The status feed's payload; `din` is the prescription's, when it states one. */
+const statusPayload = (din?: string): unknown => ({
+  id: PRESCRIPTION_ID,
+  patientId: PERSON_ID,
+  prescriptionNumber: 9534360,
+  brandName: 'Amoxil',
+  storeId: STORE_ID,
+  ...(din === undefined ? {} : { din }),
+  dispenses: [{ dispenseId: DISPENSE_ID, status: 'IN_PROGRESS', quantityDispensed: 30 }],
+})
+
+/** The status feed's copy of the fill, detached. */
+const statusCopy = (din?: string): DetachedDispense =>
+  onlyDispenseOf(extract(prescriptionStatusUrlOf(PRESCRIPTION_ID), statusPayload(din)))
+
+const HISTORY_PAYLOAD = {
+  dispenses: [
+    {
+      prescriptionId: PRESCRIPTION_ID,
+      dispenseId: DISPENSE_ID,
+      prescriptionNumber: 9534360,
+      brandName: 'Apo-Amoxi',
+      din: '80717730',
+      quantityDispensed: 30,
+      store: { id: STORE_ID, storeName: STORE_NAME },
+    },
+  ],
+}
+
+/** The history feed's copy of the same fill, detached. */
+const historyCopy = (): DetachedDispense =>
+  onlyDispenseOf(extract(prescriptionHistoryUrlOf(ACCOUNT_ID), HISTORY_PAYLOAD))
+
+/** `system` and `value` as the qualified identifier a detached record or reference carries. */
+const identifierIn = (system: string, value: string): IdentifierAndReference.IdentifierType =>
+  Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)({ system, value })
 
 describe('shoppersDrugMartSource', () => {
   it('should merge with mergeShoppersResources', () => {
     expect(shoppersDrugMartSource.mergeResources).toBe(mergeShoppersResources)
   })
 
-  it("should adopt the status copy's subject onto the person's Patient, and leave the history copy's naming the account by identifier alone", () => {
-    const [personPatient] = customers()
+  it("should key each record by the portal's own id for it, in the portal's system for its type", () => {
+    const [person] = customers()
+    const request = extract(prescriptionStatusUrlOf(PRESCRIPTION_ID), statusPayload()).find(
+      (resource) => resource.resourceType === 'MedicationRequest'
+    )
 
-    expect(personPatient?.id).toEqual(expect.stringMatching(/^wf-/))
-    expect(statusCopy().subject?.reference).toBe(`Patient/${personPatient?.id}`)
+    expect(Option.flatMap(Option.fromNullable(person), DetachedResource.keyOf)).toStrictEqual(
+      Option.some({ system: ShoppersIdentifierSystem.PatientId, value: PERSON_ID })
+    )
+    expect(Option.flatMap(Option.fromNullable(request), DetachedResource.keyOf)).toStrictEqual(
+      Option.some({ system: ShoppersIdentifierSystem.PrescriptionId, value: PRESCRIPTION_ID })
+    )
+    expect(DetachedResource.keyOf(statusCopy())).toStrictEqual(
+      Option.some({ system: ShoppersIdentifierSystem.DispenseId, value: DISPENSE_ID })
+    )
+  })
+
+  // One wording per fact: the family says what a Shoppers id is, so the key is
+  // written once and the prescription keeps its number beside it.
+  it('should carry each key once, the prescription its number behind it', () => {
+    const [person] = customers()
+    const request = extract(prescriptionStatusUrlOf(PRESCRIPTION_ID), statusPayload()).find(
+      (resource) => resource.resourceType === 'MedicationRequest'
+    )
+
+    expect(person?.resourceType === 'Patient' ? person.identifier : null).toStrictEqual([
+      identifierIn(ShoppersIdentifierSystem.PatientId, PERSON_ID),
+    ])
+    expect(request?.resourceType === 'MedicationRequest' ? request.identifier : null).toStrictEqual(
+      [
+        identifierIn(ShoppersIdentifierSystem.PrescriptionId, PRESCRIPTION_ID),
+        identifierIn(ShoppersIdentifierSystem.PrescriptionNumber, '9534360'),
+      ]
+    )
+    expect(historyCopy().identifier).toStrictEqual([
+      identifierIn(ShoppersIdentifierSystem.DispenseId, DISPENSE_ID),
+    ])
+  })
+
+  it("should name the person by their key in the status copy, and leave the history copy's naming the account by identifier alone", () => {
+    expect(statusCopy().subject).toStrictEqual(
+      decodeReference({
+        type: 'Patient',
+        identifier: { system: ShoppersIdentifierSystem.PatientId, value: PERSON_ID },
+      })
+    )
     expect(historyCopy().subject).toStrictEqual(
       decodeReference({
         type: 'Patient',
@@ -101,8 +167,19 @@ describe('shoppersDrugMartSource', () => {
     )
   })
 
-  it('should give both copies of one fill the same adopted id', () => {
-    expect(historyCopy().id).toBe(statusCopy().id)
+  it("should name the history copy's prescription by its key, which replaces the number on the reference", () => {
+    expect(historyCopy().authorizingPrescription).toStrictEqual([
+      decodeReference({
+        type: 'MedicationRequest',
+        identifier: { system: ShoppersIdentifierSystem.PrescriptionId, value: PRESCRIPTION_ID },
+      }),
+    ])
+  })
+
+  it('should give both copies of one fill the same key', () => {
+    expect(DetachedResource.keyOf(historyCopy())).toStrictEqual(
+      DetachedResource.keyOf(statusCopy())
+    )
   })
 })
 
@@ -156,6 +233,17 @@ describe('mergeShoppersResources', () => {
     const later = statusCopy('51480840')
 
     expect(mergeShoppersResources(earlier, later)).toBe(later)
+  })
+
+  it('should tell the copies apart as the kinds parse them too, before they are detached', () => {
+    const status = onlyDispenseOf(parsed(prescriptionStatusUrlOf(PRESCRIPTION_ID), statusPayload()))
+    const history = onlyDispenseOf(parsed(prescriptionHistoryUrlOf(ACCOUNT_ID), HISTORY_PAYLOAD))
+
+    const merged = mergeShoppersResources(history, status)
+
+    if (merged.resourceType !== 'MedicationDispense') throw new Error('expected a dispense')
+    expect(merged.subject).toStrictEqual(status.subject)
+    expect(merged.location?.display).toBe(STORE_NAME)
   })
 
   it('should keep the later copy of anything but a dispense', () => {

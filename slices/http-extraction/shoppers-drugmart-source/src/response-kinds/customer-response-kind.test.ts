@@ -1,18 +1,13 @@
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  type HttpResponse,
-  Specificity,
-  SystemFamily,
-} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { ShoppersIdentifierSystem } from '../shoppers.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
+import { SHOPPERS_DRUGMART_SYSTEM_FAMILY } from '../source-system.ts'
 import { CustomerResponseKind } from './customer-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
@@ -115,7 +110,7 @@ describe('CustomerResponseKind', () => {
       expect(Option.isSome(CustomerResponseKind.tryRecognize(url, Option.none()))).toBe(match)
     })
 
-    it('mints its system, fixed across resource types, at portal specificity', () => {
+    it("mints the portal's system per type at portal specificity", () => {
       expect(
         CustomerResponseKind.tryRecognize(
           `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}`,
@@ -124,7 +119,7 @@ describe('CustomerResponseKind', () => {
       ).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SHOPPERS_DRUGMART_SYSTEM }),
+          systemFamily: SHOPPERS_DRUGMART_SYSTEM_FAMILY,
         })
       )
     })
@@ -141,7 +136,6 @@ describe('CustomerResponseKind', () => {
         decodePatient({
           resourceType: 'Patient',
           id: 'pt-uuid-1',
-          identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
           name: [{ family: 'Okafor', given: ['Dana'], text: 'Dana Okafor' }],
           telecom: [{ system: 'phone', value: '4165550100' }],
           address: [{ line: ['12 Maple Ave'], city: 'Toronto', state: 'ON' }],
@@ -149,7 +143,6 @@ describe('CustomerResponseKind', () => {
         decodePatient({
           resourceType: 'Patient',
           id: 'pt-uuid-2',
-          identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-2' }],
           name: [{ family: 'Okafor', given: ['Sam'], text: 'Sam Okafor' }],
           telecom: [{ system: 'phone', value: '6135550111' }],
           address: [{ line: ['77 King St'], city: 'Ottawa', state: 'ON', postalCode: 'K1A 0B1' }],
@@ -192,7 +185,6 @@ describe('CustomerResponseKind', () => {
           decodePatient({
             resourceType: 'Patient',
             id: 'pt-uuid-1',
-            identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
             name: [{ given: ['Dana'] }],
             telecom,
           }),
@@ -222,7 +214,6 @@ describe('CustomerResponseKind', () => {
         decodePatient({
           resourceType: 'Patient',
           id: 'pt-uuid-1',
-          identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
           name: [{ family: 'Okafor', given: ['Dana'] }],
         }),
       ])
@@ -253,7 +244,6 @@ describe('CustomerResponseKind', () => {
         decodePatient({
           resourceType: 'Patient',
           id: 'pt-uuid-1',
-          identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
           name: [{ given: ['Dana'] }],
           address: [{ line: ['12 Maple Ave'], state: 'ON' }],
         }),

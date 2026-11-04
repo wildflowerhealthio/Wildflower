@@ -14,11 +14,7 @@ import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import {
-  type HttpResponse,
-  Specificity,
-  SystemFamily,
-} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 
 import {
@@ -26,7 +22,7 @@ import {
   ShoppersIdentifierSystem,
   shoppersStoreLocatorUrl,
 } from '../shoppers.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
+import { SHOPPERS_DRUGMART_SYSTEM_FAMILY } from '../source-system.ts'
 import { PrescriptionResponseKind } from './prescription-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
@@ -155,7 +151,6 @@ const expectedRequest = decodeRequest({
 const expectedDispense = decodeDispense({
   resourceType: 'MedicationDispense',
   id: 'disp-1',
-  identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-1' }],
   status: 'completed',
   subject: { reference: 'Patient/pt-uuid-1' },
   authorizingPrescription: [{ reference: 'MedicationRequest/rx-uuid-1' }],
@@ -206,11 +201,11 @@ describe('PrescriptionResponseKind', () => {
       expect(Option.isSome(PrescriptionResponseKind.tryRecognize(url, Option.none()))).toBe(match)
     })
 
-    it('mints its system, fixed across resource types, at portal specificity', () => {
+    it("mints the portal's system per type at portal specificity", () => {
       expect(PrescriptionResponseKind.tryRecognize(STATUS_URL, Option.none())).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SHOPPERS_DRUGMART_SYSTEM }),
+          systemFamily: SHOPPERS_DRUGMART_SYSTEM_FAMILY,
         })
       )
     })

@@ -144,8 +144,8 @@ const NAMED_NO_SUBJECT_HAR: string = recognizedHar(
 
 /**
  * {@link NAMED_PATIENT_HAR} with Observations that carry no `id`, as a FHIR
- * server may send a searchset's entries: the passthrough kinds adopt each under
- * an id of its content.
+ * server may send a searchset's entries: each detaches keyless, and the import
+ * stage stores it under an id minted for it.
  */
 const ID_LESS_OBSERVATIONS_HAR: string = recognizedHar(
   { name: [{ family: 'Banks', given: ['Tyra'] }], birthDate: '1990-01-02' },

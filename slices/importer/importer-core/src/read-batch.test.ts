@@ -1,5 +1,5 @@
 import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
-import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { detach, type DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodedFile,
@@ -59,8 +59,11 @@ const kindOf = (fileName: string): FormatKind | undefined => {
 const reviewKeys = (result: FormatDecode.Result<FormatKind>): readonly string[] =>
   DecodedFile.resources(result.decoded).map((resource) => resource.key)
 
-const fakeResource = (id: string): FhirResourceWithId =>
-  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
+/** A Patient its source calls `id`, detached as a decoder hands it over. */
+const fakeResource = (id: string): DetachedResource.Type =>
+  detach(SystemFamily.FixedAcrossResourceTypes({ system: 'https://example.test/fhir/sid/fake' }))(
+    Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+  )
 
 /** A fake decode: one section per file, under the settings. A file whose first byte is 0 is unreadable. */
 const fakeDecode = <K extends FormatKind>(kind: K): DecodeFunction.Type<unknown, K> =>
@@ -73,23 +76,21 @@ const fakeDecode = <K extends FormatKind>(kind: K): DecodeFunction.Type<unknown,
               issue: new ParseResult.Type(Schema.Unknown.ast, file.fileName, 'zero'),
             })
           )
-        : Effect.succeed(
-            DecodeFunction.fromAdopted({
-              sections: [
-                {
-                  title: `${kind}:${JSON.stringify(settings)}`,
-                  resources: [
-                    {
-                      key: `r:${file.fileName}`,
-                      title: `Patient/${kind}-${file.fileName}`,
-                      resource: fakeResource(`${kind}-${file.fileName}`),
-                    },
-                  ],
-                },
-              ],
-              notes: [],
-            })
-          ),
+        : Effect.succeed({
+            sections: [
+              {
+                title: `${kind}:${JSON.stringify(settings)}`,
+                entries: [
+                  {
+                    key: `r:${file.fileName}`,
+                    title: `Patient/${kind}-${file.fileName}`,
+                    resource: fakeResource(`${kind}-${file.fileName}`),
+                  },
+                ],
+              },
+            ],
+            notes: [],
+          }),
   })
 
 /** Source-file constants for a fake format. */

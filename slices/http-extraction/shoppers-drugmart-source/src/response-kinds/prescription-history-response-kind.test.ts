@@ -4,11 +4,7 @@ import {
 } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  type HttpResponse,
-  Specificity,
-  SystemFamily,
-} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Logger, Option, Schema } from 'effect'
@@ -16,7 +12,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
+import { SHOPPERS_DRUGMART_SYSTEM_FAMILY } from '../source-system.ts'
 import { PrescriptionHistoryResponseKind } from './prescription-history-response-kind.ts'
 
 const BASE = 'https://mypharmacy.shoppersdrugmart.ca'
@@ -103,7 +99,7 @@ describe('PrescriptionHistoryResponseKind', () => {
       )
     })
 
-    it('mints its system, fixed across resource types, at portal specificity', () => {
+    it("mints the portal's system per type at portal specificity", () => {
       expect(
         PrescriptionHistoryResponseKind.tryRecognize(
           `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`,
@@ -112,7 +108,7 @@ describe('PrescriptionHistoryResponseKind', () => {
       ).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
-          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SHOPPERS_DRUGMART_SYSTEM }),
+          systemFamily: SHOPPERS_DRUGMART_SYSTEM_FAMILY,
         })
       )
     })
@@ -128,7 +124,6 @@ describe('PrescriptionHistoryResponseKind', () => {
         decodeDispense({
           resourceType: 'MedicationDispense',
           id: 'disp-1',
-          identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-1' }],
           status: 'completed',
           subject: accountSubject(),
           medicationCodeableConcept: {
@@ -150,7 +145,6 @@ describe('PrescriptionHistoryResponseKind', () => {
         decodeDispense({
           resourceType: 'MedicationDispense',
           id: 'disp-2',
-          identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-2' }],
           status: 'completed',
           subject: accountSubject(),
           medicationCodeableConcept: {
@@ -241,7 +235,6 @@ describe('PrescriptionHistoryResponseKind', () => {
         decodeDispense({
           resourceType: 'MedicationDispense',
           id: 'disp-9',
-          identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-9' }],
           status: 'completed',
           subject: accountSubject(),
           medicationCodeableConcept: {

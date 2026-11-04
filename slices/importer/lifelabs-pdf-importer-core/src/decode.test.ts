@@ -1,13 +1,13 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   DecodedFile,
   DecodedFileSet,
   type DecodeFunction,
   Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { fromSourceSectionsOf } from '@wildflowerhealthio/importer-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
-import { Effect, Either, Layer, ParseResult } from 'effect'
+import { Effect, Either, Layer, Option, ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -15,7 +15,7 @@ import { decodeLifeLabsPdf, decodeLifeLabsPdfDocument } from './decode.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
 import { patientOriginalId, practitionerOriginalId } from './fhir/to-fhir.ts'
 import { LIFELABS_SYSTEM } from './source-system.ts'
-import { LIFELABS_SYSTEM_FAMILY, reportSectionTitle } from './synthesis.ts'
+import { reportSectionTitle } from './synthesis.ts'
 import { layoutDocument } from './test-helpers.ts'
 
 /**
@@ -29,11 +29,9 @@ import { layoutDocument } from './test-helpers.ts'
 
 const SETTINGS = { timeZone: 'America/Vancouver' }
 
-/** Every record of a decode, each section `FromSource`. */
-const entriesOf = (
-  decoded: DecodeFunction.FileSetDecode
-): readonly DecodedFileSet.FromSourceEntry[] =>
-  fromSourceSectionsOf(decoded).flatMap(({ entries }) => entries)
+/** Every record of a decode, detached. */
+const entriesOf = (decoded: DecodeFunction.FileSetDecode): readonly DecodedFileSet.Entry[] =>
+  decoded.sections.flatMap(({ entries }) => entries)
 
 describe('decodeLifeLabsPdfDocument', () => {
   it('property: a document with LifeLabs reports decodes to one titled section per report', () => {
@@ -62,7 +60,12 @@ describe('decodeLifeLabsPdfDocument', () => {
 
         const entries = entriesOf(decoded)
         expect(entries.map(({ key }) => key)).toEqual(
-          entries.map(({ resource, sourceId }) => `${resource.resourceType}/${sourceId}`)
+          entries.map(({ resource }) =>
+            Option.match(DetachedResource.keyOf(resource), {
+              onSome: ({ value }) => `${resource.resourceType}/${value}`,
+              onNone: () => 'keyless',
+            })
+          )
         )
         const written = DecodedFile.resources(DecodedFileSet.adopt(decoded))
         expect(written.map(({ title }) => title)).toEqual(
@@ -73,20 +76,19 @@ describe('decodeLifeLabsPdfDocument', () => {
     )
   })
 
-  it('property: each record is keyed by its own id in the LifeLabs system', () => {
+  it('property: each record is detached, keyed by the id the synthesis gave it in the LifeLabs system', () => {
     fc.assert(
       fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
-        for (const section of decoded.sections) {
-          expect(section).toMatchObject({ systemFamily: LIFELABS_SYSTEM_FAMILY })
+        for (const { resource } of entriesOf(decoded)) {
+          expect(resource.id).toBeNull()
+          expect(Option.map(DetachedResource.keyOf(resource), ({ system }) => system)).toEqual(
+            Option.some(LIFELABS_SYSTEM)
+          )
         }
-        const entries = entriesOf(decoded)
-        expect(entries.map(({ system, sourceId }) => [system, sourceId])).toEqual(
-          entries.map(({ resource }) => [LIFELABS_SYSTEM, resource.id])
-        )
       }),
       { numRuns: numRunsFor({ base: 30 }) }
     )
