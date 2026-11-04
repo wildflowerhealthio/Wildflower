@@ -31,9 +31,9 @@ same paged-read drain (`useFetchEveryPage`) and read-status lines.
   `decodeSelection` and writes every change back with `withSelection`
   through `history.replaceState` (never `pushState` — a checkbox is not a
   navigation), touching only its own keys: `?patient=` beside them is
-  `usePatientChoice`'s. Nothing writes the URL on mount: before the handshake
-  completes the URL still carries the OAuth `code` / `state` fhirclient reads,
-  and replacing the query would lose them.
+  `usePatientChoice`'s. Nothing writes the URL on mount, and the page that
+  does mounts only under `SmartHandshakeGate`, once the handshake has taken
+  the OAuth `code` / `state` out of the URL.
 - **Every selection change is an updater.** Series, range, view and the
   reconciliation all go through `updateSelection((latest) => …)`, never a
   copy of the selection a render saw, so changes made in one tick compose.

@@ -14,7 +14,7 @@ SMART-built context). What differs is below.
 
 ## Layout
 
-- `app.tsx` — `App` is the only component that holds the fhirclient `Client`.
+- `app.tsx` — `App` is the only component that holds the `SmartClient`.
   It completes the handshake and turns it into two things: a router context
   (`buildSmartRouterContext`), and the `PebbleSettings.Connection` the grant
   carried (token, server).
@@ -169,6 +169,6 @@ jsdom.
 - [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md) — the shell this
   app boots through
 - [slices/fhir/AGENTS.md](../../../slices/fhir/AGENTS.md) — the SMART primitives
-  (`useSmartHandshake`, `buildSmartRouterContext`)
+  (`useSmartHandshake`, which `SmartHandshakeGate` runs, and `buildSmartRouterContext`)
 - [apps/wildflower-site AGENTS.md](../../wildflower-site/AGENTS.md) — how the sites are
   published

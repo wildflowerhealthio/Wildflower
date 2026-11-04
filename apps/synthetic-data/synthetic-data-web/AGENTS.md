@@ -26,8 +26,8 @@ its authed runner from route context. Like the Importer, **this app writes.**
   `VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB` build variable (see `.env.example`), with
   `synthetic-data-web` as its `app` tag. A bare visit shows
   `APP_DESCRIPTIONS.syntheticData`'s landing beside the `ConnectMenu`.
-- `src/app.tsx` — `App` completes the handshake (`useSmartHandshake`; a
-  failure goes back to the app root through `useLaunchFailureRedirect`) and
+- `src/app.tsx` — `App` completes the handshake under `smart-app-react`'s
+  `SmartHandshakeGate` (a failure goes back to the app root) and
   builds the router context with `buildSmartRouterContext` over the plain
   `FetchHttpClient.layer` and the shell's `QueryClient`. `SyntheticDataApp`
   renders the title and the server it loads into, and mounts
