@@ -19,9 +19,8 @@ import type * as HttpResponseKind from './http-response-kind.ts'
  * - `name`: stable identifier for logs and registries (`'fhir-r4'`).
  * - `display`: user-facing strings a review or settings surface shows for the
  *   source as a whole.
- * - `responseKinds`: the source's kinds, pre-adopted where the source supports
- *   archive import, in the order an importer pool routes by. Consumers share
- *   this array by reference.
+ * - `responseKinds`: the source's kinds, in the order an importer pool routes
+ *   by. Consumers share this array by reference.
  * - `mergeResources`: optional; see {@link ResourceMerge}. Absent, two
  *   resources sharing an identity are both written, and the later one wins.
  */
@@ -34,12 +33,17 @@ interface SourceDescriptor<TParsed> {
 
 /**
  * How a source combines two resources its kinds emitted, in one extraction,
- * under one identity (for a FHIR store, one `resourceType` and `id`): the one
- * resource to write in their place.
+ * under one identity (for FHIR, one `resourceType` and key): the one resource
+ * to keep in their place.
  *
+ * @typeParam TParsed - What the source's kinds parse
+ * @typeParam TResource - What the consumer holds them as when it merges, one
+ *   of `TParsed`'s subtypes: a merge hands back what it was handed, so a
+ *   consumer that has narrowed its records (a HAR import holds them
+ *   detached) keeps them narrowed
  * @param earlier - The copy that arrived first
  * @param later - The copy that arrived after it
- * @returns The resource to write, under the same identity
+ * @returns The resource to keep, under the same identity
  *
  * @remarks
  * A source needs one when two of its feeds describe the same thing and each
@@ -49,7 +53,10 @@ interface SourceDescriptor<TParsed> {
  * source can keep last-write-wins, returning `later`, for the resources it has
  * no rule for.
  */
-type ResourceMerge<TParsed> = (earlier: TParsed, later: TParsed) => TParsed
+type ResourceMerge<TParsed> = <TResource extends TParsed>(
+  earlier: TResource,
+  later: TResource
+) => TResource
 
 /**
  * Same clone-and-freeze contract as `HttpResponseKind.make`, for the
