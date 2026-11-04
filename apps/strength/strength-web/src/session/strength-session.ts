@@ -1,7 +1,6 @@
 import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-
-import type { SmartClient } from '../smart-client.ts'
 
 /**
  * Everything a lifting screen that writes reads and writes through: one

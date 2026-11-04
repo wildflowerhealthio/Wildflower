@@ -1,8 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
-
-import type { SmartClient } from './smart-client.ts'
+import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 
 /**
  * What every route reads from the router, fixed for the visit: the page's

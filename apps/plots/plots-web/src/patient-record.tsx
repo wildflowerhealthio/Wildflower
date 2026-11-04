@@ -1,3 +1,4 @@
+import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   type PlotView,
   type RangePreset,
@@ -29,7 +30,6 @@ import type { JSX } from 'react'
 import { useCallback, useEffect, useMemo } from 'react'
 
 import { PLOTS_WALKTHROUGH_STEPS, usePlotsWalkthrough } from './plots-walkthrough.ts'
-import type { SmartClient } from './smart-client.ts'
 import { type RecordRead, useRecordRead } from './use-record-read.ts'
 import type { SelectionUpdate } from './use-url-selection.ts'
 import styles from './app.module.css'

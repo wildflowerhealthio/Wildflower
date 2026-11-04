@@ -1,7 +1,7 @@
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { useQueryClient } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { buildSmartRouterContext, type SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   LoadingLine,
   type SmartAppPage,
@@ -13,7 +13,6 @@ import { type JSX, useState } from 'react'
 import { AppTitle } from './app-title.tsx'
 import { strongLiftsPlanDefinitionIdMinter } from './ids/strong-lifts-plan-definition-id-minter.ts'
 import { buildRouter } from './router.ts'
-import type { SmartClient } from './smart-client.ts'
 import styles from './app.module.css'
 
 /** Props for {@link App}. */
