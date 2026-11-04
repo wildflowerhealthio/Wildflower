@@ -6,6 +6,7 @@ import { PageLoading } from '@wildflowerhealthio/react-tundraish'
 import { type SmartAppPage, SmartHandshakeGate } from '@wildflowerhealthio/smart-app-react'
 import { useMemo, type JSX } from 'react'
 
+import { smartRegistration } from './config.ts'
 import { buildRouter, type RouterContext } from './router.ts'
 import styles from './app.module.css'
 
@@ -94,7 +95,11 @@ const LaunchedImporter = ({ page, client }: LaunchedImporterProps): JSX.Element 
  */
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>
-    <SmartHandshakeGate connecting={<PageLoading message="Connecting…" />}>
+    <SmartHandshakeGate
+      registration={smartRegistration}
+      servedDirectory={page.basepath}
+      connecting={<PageLoading message="Connecting…" />}
+    >
       {(client) => <LaunchedImporter page={page} client={client} />}
     </SmartHandshakeGate>
   </main>

@@ -11,6 +11,7 @@ import type { Layer } from 'effect'
 import { type JSX, useState } from 'react'
 
 import { AppTitle } from './app-title.tsx'
+import { smartRegistration } from './config.ts'
 import { strongLiftsPlanDefinitionIdMinter } from './ids/strong-lifts-plan-definition-id-minter.ts'
 import { buildRouter } from './router.ts'
 import styles from './app.module.css'
@@ -76,6 +77,8 @@ function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.E
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>
     <SmartHandshakeGate
+      registration={smartRegistration}
+      servedDirectory={page.basepath}
       connecting={
         <>
           <AppTitle />
