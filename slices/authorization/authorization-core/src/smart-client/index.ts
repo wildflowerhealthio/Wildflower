@@ -56,7 +56,14 @@ export {
   standaloneLaunchScopeParameter,
 } from './standalone-launch-scopes.ts'
 
-export { beginSignIn, completeSignIn, PendingRequestUnusable } from './sign-in.ts'
+export {
+  beginSignIn,
+  beginSignInAt,
+  completeSignIn,
+  forgetPendingSignIn,
+  PendingRequestUnrecognised,
+  PendingRequestUnusable,
+} from './sign-in.ts'
 export type {
   AuthorizationRequestExtras,
   PendingStore,

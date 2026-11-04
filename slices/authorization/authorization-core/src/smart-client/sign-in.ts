@@ -2,7 +2,8 @@
  * The two halves of a sign-in, each written as one `Effect` over an injected
  * environment: {@link beginSignIn} discovers the target's OAuth endpoints and
  * builds the URL to leave for (a standalone launch, or an EHR launch when the
- * app hands it one), {@link completeSignIn} picks the flow back up when the
+ * app hands it one) — {@link beginSignInAt} when the caller has already
+ * discovered them — and {@link completeSignIn} picks the flow back up when the
  * browser comes back and redeems the code.
  *
  * Neither navigates and neither touches the DOM — `beginSignIn` *yields* the
@@ -12,15 +13,14 @@
  *
  * Nothing here knows which app it is running for: the client id, the requested
  * scopes, the redirect URI and the `sessionStorage` key all arrive in the
- * {@link SignInEnvironment}, so two Wildflower pages on one origin cannot read
- * each other's pending record.
+ * {@link SignInEnvironment}.
  *
  * ## The error channel
  *
  * Every way a sign-in can fail is a tagged error in {@link SignInError}, raised
  * where it happens: {@link PkceUnavailable} and {@link DiscoveryFailed} from the
- * modules that own those steps, {@link PendingRequestUnusable} from the storage
- * round trip here, {@link AuthorizationRejected} and
+ * modules that own those steps, {@link PendingRequestUnusable} and
+ * {@link PendingRequestUnrecognised} from the storage round trip here, {@link AuthorizationRejected} and
  * {@link TokenExchangeFailed} from the flow's pure validation. Nothing throws
  * and nothing returns an ad-hoc `{ ok }` union; the app runs the Effect at one
  * boundary and renders `error.reason` wherever it shows status.
@@ -37,11 +37,12 @@
  * deleted the instant the client returns, before the code is even redeemed.
  */
 
-import { Data, Effect, Either, Option } from 'effect'
+import { Data, Effect, Option } from 'effect'
 
 import {
   authorizationRedirectOutcome,
   authorizationRequestUrl,
+  isAuthorizationResponse,
   parsePendingAuthorization,
   parseTokenResponse,
   serializePendingAuthorization,
@@ -57,15 +58,25 @@ import type { DigestSource, PkceUnavailable, RandomBytesSource } from './pkce.ts
 import {
   discoverSmartEndpoints,
   type DiscoveryFailed,
+  type SmartIssuer,
   type SmartServer,
 } from './smart-discovery.ts'
 
 /**
  * Raised when the browser will not carry the pending request across the
- * redirect (Safari's private mode throws on `setItem`), or when the token
- * endpoint cannot be reached to redeem the code.
+ * redirect (Safari's private mode throws on `setItem`, and a blocked storage
+ * throws on every read), or when the token endpoint cannot be reached to
+ * redeem the code.
  */
 class PendingRequestUnusable extends Data.TaggedError('PendingRequestUnusable')<{
+  readonly reason: string
+}> {}
+
+/**
+ * Raised when the storage holds a pending record that does not read as one:
+ * a record a different version of the page wrote, or one edited by hand.
+ */
+class PendingRequestUnrecognised extends Data.TaggedError('PendingRequestUnrecognised')<{
   readonly reason: string
 }> {}
 
@@ -74,6 +85,7 @@ type SignInError =
   | DiscoveryFailed
   | PkceUnavailable
   | PendingRequestUnusable
+  | PendingRequestUnrecognised
   | AuthorizationRejected
   | TokenExchangeFailed
 
@@ -94,10 +106,8 @@ interface SignInEnvironment {
   readonly subtle: DigestSource
   readonly store: PendingStore
   /**
-   * The `sessionStorage` key the pending record lives at. Namespace it with the
-   * app's own name (`server-docs-web.pending-authorization`): these pages
-   * share an origin, so a key chosen here would be one key for all of them, and
-   * one tab's return leg could consume a record another tab was waiting on.
+   * The `sessionStorage` key the pending record lives at (see
+   * `ClientRegistration.pendingKey`).
    */
   readonly pendingKey: string
   /** The `client_id` this app is registered as. */
@@ -117,16 +127,33 @@ interface SignInEnvironment {
 type AuthorizationRequestExtras = Pick<AuthorizationRequestParameters, 'launch' | 'prompt'>
 
 /**
- * Start a sign-in against `serverUrl`: discover its endpoints, mint the PKCE
- * pair and the `state`, stash what the return leg needs, and yield the
- * authorization URL to navigate to.
+ * Start a sign-in against `serverUrl`: discover its endpoints, then begin the
+ * sign-in there as {@link beginSignInAt} does.
  *
  * The SMART `iss` — the FHIR base whose `.well-known/smart-configuration`
  * answered, and the `aud` the authorization request names — is `serverUrl`
  * itself (a Wildflower server serves FHIR at its root), and
- * `discoverSmartEndpoints` reads which kind of server it is. It is the server
- * the pending record and the {@link Session} name. Only the endpoints discovered there ride the
- * pending record, so the return leg needs nothing more.
+ * `discoverSmartEndpoints` reads which kind of server it is.
+ */
+const beginSignIn = (
+  serverUrl: string,
+  returnTo: string | undefined,
+  environment: SignInEnvironment,
+  request: AuthorizationRequestExtras = {}
+): Effect.Effect<string, SignInError> =>
+  discoverSmartEndpoints(serverUrl, {
+    fetch: environment.fetch,
+    pageIsSecure: environment.pageIsSecure,
+  }).pipe(Effect.flatMap((issuer) => beginSignInAt(issuer, returnTo, environment, request)))
+
+/**
+ * Start a sign-in at the already-discovered `issuer`: mint the PKCE pair and
+ * the `state`, stash what the return leg needs, and yield the authorization URL
+ * to navigate to.
+ *
+ * The issuer's FHIR base is the server the pending record and the
+ * {@link Session} name. Only the endpoints discovered there ride the pending
+ * record, so the return leg needs nothing more.
  *
  * `returnTo` is the in-app path the app wants to land on once signed in; it
  * rides the pending record and comes back as {@link Session.returnTo}, because
@@ -143,17 +170,14 @@ type AuthorizationRequestExtras = Pick<AuthorizationRequestParameters, 'launch' 
  * The pending record is written **before** the URL is yielded, so a caller
  * cannot navigate away from a flow whose verifier was never saved.
  */
-const beginSignIn = (
-  serverUrl: string,
+const beginSignInAt = (
+  issuer: SmartIssuer,
   returnTo: string | undefined,
   environment: SignInEnvironment,
   request: AuthorizationRequestExtras = {}
-): Effect.Effect<string, SignInError> =>
+): Effect.Effect<string, PkceUnavailable | PendingRequestUnusable> =>
   Effect.gen(function* () {
-    const { smartServer, endpoints } = yield* discoverSmartEndpoints(serverUrl, {
-      fetch: environment.fetch,
-      pageIsSecure: environment.pageIsSecure,
-    })
+    const { smartServer, endpoints } = issuer
     const codeVerifier = createCodeVerifier(environment.random)
     const state = createState(environment.random)
     const codeChallenge = yield* codeChallengeS256(codeVerifier, environment.subtle)
@@ -165,7 +189,7 @@ const beginSignIn = (
           serializePendingAuthorization({
             state,
             codeVerifier,
-            serverUrl,
+            serverUrl: smartServer.fhirBaseUrl,
             smartServer,
             tokenEndpoint: endpoints.tokenEndpoint,
             returnTo,
@@ -212,24 +236,24 @@ interface Session {
 /**
  * Finish a sign-in from the query string the client came back on: `None` when
  * this page load is not a return from the authorization server (the common
- * case), a {@link Session} when it is and the code redeemed.
+ * case) or is a return that carries no code to redeem, a {@link Session} when
+ * it carries one and the code redeemed.
  *
- * The pending record is single-use: it is dropped as soon as this page load is
- * known to be a return leg — before the code is redeemed, and on the rejected
+ * Any authorization-response parameter (`code`, `state`, `error`, …) makes the
+ * load a return leg, and a return leg takes the pending record: it is
+ * single-use, so it is dropped before the code is redeemed, and on the rejected
  * paths too, so a discarded flow cannot leave a record behind that makes a later
- * stray `?code=` look legitimate.
+ * stray `?code=` look legitimate. A load that is no return leg leaves storage
+ * untouched.
  */
 const completeSignIn = (
   search: string,
   environment: SignInEnvironment
 ): Effect.Effect<Option.Option<Session>, SignInError> =>
   Effect.gen(function* () {
-    const stored = readPendingRecord(environment.store, environment.pendingKey)
-    const outcome = authorizationRedirectOutcome(search, stored)
-    const isReturnLeg = Either.isLeft(outcome) || Option.isSome(outcome.right)
-    if (isReturnLeg)
-      yield* Effect.sync(() => forgetPendingRecord(environment.store, environment.pendingKey))
-    const returning = yield* outcome
+    if (!isAuthorizationResponse(search)) return Option.none()
+    const stored = yield* takePendingRecord(environment)
+    const returning = yield* authorizationRedirectOutcome(search, stored)
     if (Option.isNone(returning)) return Option.none()
     const { code, pending } = returning.value
 
@@ -262,33 +286,57 @@ const completeSignIn = (
     return Option.some(sessionFrom(grant, pending))
   })
 
-/**
- * The pending record `store` holds at `key`, if any. A storage that refuses to
- * be read is indistinguishable from an empty one here, and neither is an error:
- * it only means this page load cannot be a return leg.
- */
-const readPendingRecord = (
-  store: PendingStore,
-  key: string
-): Option.Option<PendingAuthorization> => {
-  try {
-    return parsePendingAuthorization(store.getItem(key))
-  } catch {
-    return Option.none()
-  }
-}
+/** Why a pending record the page cannot reach cannot be completed. */
+const blockedStorage = (): PendingRequestUnusable =>
+  new PendingRequestUnusable({
+    reason:
+      'This browser would not let the page use the sign-in request it kept ' +
+      '(session storage is blocked), so it cannot be completed.',
+  })
 
 /**
- * Drop the pending record. A storage that refuses removal cannot be helped, and
- * the flow is already past the point where the record mattered.
+ * Take the pending record out of `environment`'s store: read it and drop it.
+ * `None` only when there is none; a store that refuses to be read or written
+ * fails with {@link PendingRequestUnusable}, and a record that does not read
+ * as one with {@link PendingRequestUnrecognised}.
  */
-const forgetPendingRecord = (store: PendingStore, key: string): void => {
-  try {
-    store.removeItem(key)
-  } catch {
-    // Deliberately ignored; see the doc comment.
-  }
-}
+const takePendingRecord = (
+  environment: SignInEnvironment
+): Effect.Effect<
+  Option.Option<PendingAuthorization>,
+  PendingRequestUnusable | PendingRequestUnrecognised
+> =>
+  Effect.gen(function* () {
+    const stored = yield* Effect.try({
+      try: () => environment.store.getItem(environment.pendingKey),
+      catch: blockedStorage,
+    })
+    if (stored === null) return Option.none()
+    yield* forgetPendingSignIn(environment)
+    const pending = parsePendingAuthorization(stored)
+    if (Option.isNone(pending)) {
+      return yield* new PendingRequestUnrecognised({
+        reason:
+          'The sign-in in progress was started by a different version of this page. ' +
+          'Sign in again.',
+      })
+    }
+    return pending
+  })
+
+/**
+ * Drop the sign-in `environment`'s store holds, without reading it: for a
+ * page that completes some other flow on its return leg and must not leave
+ * this one's record behind. A store that refuses removal fails with
+ * {@link PendingRequestUnusable}.
+ */
+const forgetPendingSignIn = (
+  environment: SignInEnvironment
+): Effect.Effect<void, PendingRequestUnusable> =>
+  Effect.try({
+    try: () => environment.store.removeItem(environment.pendingKey),
+    catch: blockedStorage,
+  })
 
 /** The session a `grant` redeemed for the `pending` request becomes. */
 const sessionFrom = (grant: AccessGrant, pending: PendingAuthorization): Session => ({
@@ -301,5 +349,12 @@ const sessionFrom = (grant: AccessGrant, pending: PendingAuthorization): Session
   returnTo: pending.returnTo,
 })
 
-export { PendingRequestUnusable, beginSignIn, completeSignIn }
+export {
+  PendingRequestUnrecognised,
+  PendingRequestUnusable,
+  beginSignIn,
+  beginSignInAt,
+  completeSignIn,
+  forgetPendingSignIn,
+}
 export type { AuthorizationRequestExtras, SignInError, PendingStore, SignInEnvironment, Session }

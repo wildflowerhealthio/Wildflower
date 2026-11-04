@@ -35,10 +35,11 @@ interface ClientRegistration {
   /** The `client_id` this page is registered as. */
   readonly clientId: string
   /**
-   * The `sessionStorage` key the pending record lives at, namespaced with the
-   * app's own name: these pages share an origin, so an unnamespaced key would
-   * be one key for all of them and one tab's return leg could consume a record
-   * another tab was waiting on.
+   * The `sessionStorage` key the pending record lives at, from the sign-in
+   * that starts it to the return leg that takes it. `sessionStorage` is per
+   * origin and per tab, and each Wildflower app is served from its own origin,
+   * so the key only has to tell apart the flows one app runs in a tab: one key
+   * per flow.
    */
   readonly pendingKey: string
   /** The space-delimited `scope` parameter to request. */
