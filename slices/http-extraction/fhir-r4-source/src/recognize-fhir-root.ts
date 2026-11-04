@@ -1,4 +1,4 @@
-import { detach, type DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type HttpMethod,
@@ -36,8 +36,8 @@ const recognizeFhirRoot =
  *
  * @remarks
  * A FHIR server's ids and literal references belong to that server, so this
- * is where they are detached (`fhir-r4-adoption`'s `detach` under
- * `SystemFamily.FhirStyleBaseUrl`): a `Patient` keyed in `<root>/Patient`,
+ * is where they are detached (`fhir-r4-adoption`'s `detach` under the
+ * root): a `Patient` keyed in `<root>/Patient`,
  * a reference to one, relative or absolute, turned logical by that key. A
  * response whose URL the matcher does not claim fails with a `ParseError`: it
  * was routed to this kind by a different claim than the kind makes.
@@ -64,7 +64,7 @@ const detachUnderFhirRoot =
           })
         ),
       onSome: (root) => {
-        const detachUnderRoot = detach(SystemFamily.FhirStyleBaseUrl({ baseUrl: root }))
+        const detachUnderRoot = detach(root)
         return Effect.map(parseServerRecords(response), (records) => records.map(detachUnderRoot))
       },
     })

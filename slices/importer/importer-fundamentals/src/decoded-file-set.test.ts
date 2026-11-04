@@ -1,4 +1,4 @@
-import { detach, type DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   Binary,
@@ -17,9 +17,9 @@ import * as DecodedFile from './decoded-file.ts'
  * detached records under one adoption, and the titles a decoder gives them.
  */
 
-const SYSTEM = 'https://source.example/fhir/sid/test'
+const BASE_URL = 'https://source.example/fhir'
 
-const detachTest = detach(SystemFamily.FixedAcrossResourceTypes({ system: SYSTEM }))
+const detachTest = detach(BASE_URL)
 
 const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
 const decodeObservation = Schema.decodeUnknownSync(Observation.Schema)
@@ -68,7 +68,7 @@ const subjectOf = (resource: FhirResourceWithId | undefined): string | null | un
 describe('DecodedFileSet.adopt', () => {
   it('stores a keyed record under the id its key derives', () => {
     const [adopted] = adoptedIn([sectionOf('people', [patient('pat-7')])])
-    expect(adopted?.id).toBe(localResourceId(SYSTEM, 'Patient', 'pat-7'))
+    expect(adopted?.id).toBe(localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7'))
   })
 
   it('stores each keyless record under an id the injected minter mints, in review order', () => {

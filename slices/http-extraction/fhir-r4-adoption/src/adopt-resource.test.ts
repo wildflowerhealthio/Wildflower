@@ -30,7 +30,6 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { adopt, adoptedReferenceOf, detach, originalIdOf } from './adopt-resource.ts'
 import * as DetachedResource from './detached-resource.ts'
-import * as SystemFamily from './system-family.ts'
 
 /**
  * Covers detaching a single resource from its source (no id, keyed by its
@@ -52,21 +51,17 @@ import * as SystemFamily from './system-family.ts'
  * author forgot to fill in.
  */
 
+/** The FHIR server the records are detached from: its base URL. */
 const BASE = 'https://source.example/baseR4'
 
-/** A FHIR server's systems: `<baseUrl>/<Type>` for each type. */
-const SOURCE = SystemFamily.FhirStyleBaseUrl({ baseUrl: BASE })
-
-/** {@link SOURCE}'s system for `resourceType`. */
+/** {@link BASE}'s system for `resourceType`, `<baseUrl>/<Type>`. */
 const fhirSystem = (resourceType: string): string => `${BASE}/${resourceType}`
 
+/** A system no record here is keyed in. */
 const SYSTEM = 'https://wildflowerhealth.io/fhir/sid/example-portal'
 
-/** A fixed system: the one system whatever the type, and references always relative. */
-const RELATIVE_SOURCE = SystemFamily.FixedAcrossResourceTypes({ system: SYSTEM })
-
-/** {@link SOURCE}'s detach. */
-const detachFhir = detach(SOURCE)
+/** {@link BASE}'s detach. */
+const detachFhir = detach(BASE)
 
 /**
  * An adoption over `batch`, as the import stage runs one over a file set: its
@@ -87,8 +82,8 @@ const adoptionOver = (
 }
 
 /**
- * `resource` detached from {@link SOURCE} and adopted in a batch of it and
- * `others`, all detached from {@link SOURCE}.
+ * `resource` detached from {@link BASE} and adopted in a batch of it and
+ * `others`, all detached from {@link BASE}.
  */
 const detachThenAdopt = (
   resource: FhirResource,
@@ -670,7 +665,7 @@ describe('detach', () => {
     })
   }
 
-  test('keys every type with an identifier element by its id, in the system its family gives the type', () => {
+  test('keys every type with an identifier element by its id, in the system its server gives the type', () => {
     for (const resource of resources) {
       if (resource.resourceType === 'Binary') continue
       expect(DetachedResource.keyOf(detachFhir(resource))).toEqual(
@@ -730,11 +725,11 @@ describe('detaching references', () => {
     subject,
   })
 
-  const subjectOf = (family: SystemFamily.Type, subject: ReferenceType): ReferenceType | null =>
-    asObservation(detach(family)(observationWith(subject))).subject
+  const subjectOf = (baseUrl: string, subject: ReferenceType): ReferenceType | null =>
+    asObservation(detach(baseUrl)(observationWith(subject))).subject
 
   test('a literal reference becomes the logical reference to its target by its key', () => {
-    expect(subjectOf(SOURCE, reference({ reference: 'Patient/pat-7', display: 'Avery' }))).toEqual(
+    expect(subjectOf(BASE, reference({ reference: 'Patient/pat-7', display: 'Avery' }))).toEqual(
       reference({
         type: 'Patient',
         identifier: identifier({ value: 'pat-7', system: new URL(fhirSystem('Patient')) }),
@@ -745,7 +740,7 @@ describe('detaching references', () => {
 
   test("the logical reference names the target by exactly the key the target's own detach gives it", () => {
     const patient = detachFhir({ ...sample(Patient.Schema, 12), id: 'pat-7' })
-    const subject = subjectOf(SOURCE, reference({ reference: 'Patient/pat-7' }))
+    const subject = subjectOf(BASE, reference({ reference: 'Patient/pat-7' }))
     expect(
       Option.map(DetachedResource.keyOf(patient), (key) => ({
         system: new URL(key.system),
@@ -765,14 +760,14 @@ describe('detaching references', () => {
       system: new URL('https://vendor.example/id'),
     })
     expect(
-      subjectOf(SOURCE, reference({ reference: 'Patient/pat-7', identifier: vendor }))?.identifier
+      subjectOf(BASE, reference({ reference: 'Patient/pat-7', identifier: vendor }))?.identifier
     ).toEqual(identifier({ value: 'pat-7', system: new URL(fhirSystem('Patient')) }))
   })
 
   test('detaches an absolute self-reference exactly as its relative spelling', () => {
-    const relative = subjectOf(SOURCE, reference({ reference: 'Patient/pat-7' }))
+    const relative = subjectOf(BASE, reference({ reference: 'Patient/pat-7' }))
     const absolute = subjectOf(
-      SOURCE,
+      BASE,
       reference({ reference: 'https://source.example/baseR4/Patient/pat-7' })
     )
     expect(absolute).toEqual(relative)
@@ -788,20 +783,13 @@ describe('detaching references', () => {
   ] as const) {
     test(`keeps ${label} under the base in its absolute spelling`, () => {
       const original = reference({ reference: target })
-      expect(subjectOf(SOURCE, original)).toEqual(original)
+      expect(subjectOf(BASE, original)).toEqual(original)
     })
   }
 
-  test('keeps a reference under a longer base the family is only a prefix of', () => {
+  test('keeps a reference under a longer base the base URL is only a prefix of', () => {
     const original = reference({ reference: 'https://h.example/fhir/R4/Patient/1' })
-    expect(
-      subjectOf(SystemFamily.FhirStyleBaseUrl({ baseUrl: 'https://h.example/fhir' }), original)
-    ).toEqual(original)
-  })
-
-  test('leaves an absolute reference alone when the systems are not FHIR style', () => {
-    const target = 'https://source.example/baseR4/Patient/pat-7'
-    expect(subjectOf(RELATIVE_SOURCE, reference({ reference: target }))?.reference).toBe(target)
+    expect(subjectOf('https://h.example/fhir', original)).toEqual(original)
   })
 
   for (const [label, target] of [
@@ -815,7 +803,7 @@ describe('detaching references', () => {
   ] as const) {
     test(`leaves ${label} untouched`, () => {
       const original = reference({ reference: target })
-      expect(subjectOf(SOURCE, original)).toEqual(original)
+      expect(subjectOf(BASE, original)).toEqual(original)
     })
   }
 
@@ -827,17 +815,17 @@ describe('detaching references', () => {
         system: new URL('https://portal.example/acct'),
       }),
     })
-    expect(subjectOf(SOURCE, original)).toEqual(original)
+    expect(subjectOf(BASE, original)).toEqual(original)
   })
 
   test('detaches a reference to a type this package does not store, in that type’s system', () => {
-    expect(subjectOf(SOURCE, reference({ reference: 'Organization/org-3' }))?.identifier).toEqual(
+    expect(subjectOf(BASE, reference({ reference: 'Organization/org-3' }))?.identifier).toEqual(
       identifier({ value: 'org-3', system: new URL(fhirSystem('Organization')) })
     )
   })
 
   test('detaches a reference to an R4 type this package does not model, in that type’s system', () => {
-    expect(subjectOf(SOURCE, reference({ reference: 'Encounter/enc-1' }))).toEqual(
+    expect(subjectOf(BASE, reference({ reference: 'Encounter/enc-1' }))).toEqual(
       reference({
         type: 'Encounter',
         identifier: identifier({ value: 'enc-1', system: new URL(fhirSystem('Encounter')) }),
@@ -856,7 +844,7 @@ describe('detaching references', () => {
         system: new URL('https://vendor.example/identifier/order'),
       }),
     })
-    expect(subjectOf(RELATIVE_SOURCE, original)).toEqual(original)
+    expect(subjectOf(BASE, original)).toEqual(original)
   })
 
   // Found by the schema-derived coverage guard above, not by reading the spec:
@@ -1036,8 +1024,8 @@ describe('adopt', () => {
         system: new URL('https://portal.example/fhir/identifier/customer-id'),
       }),
     })
-    const person = detach(RELATIVE_SOURCE)({ ...sample(Patient.Schema, 12), id: 'pat-7' })
-    const observation = detach(RELATIVE_SOURCE)({
+    const person = detachFhir({ ...sample(Patient.Schema, 12), id: 'pat-7' })
+    const observation = detachFhir({
       ...sample(Observation.Schema, 13),
       id: 'obs-1',
       subject: account,
@@ -1048,20 +1036,22 @@ describe('adopt', () => {
   for (const [label, logical] of [
     [
       'states no type',
-      reference({ identifier: identifier({ value: 'pat-7', system: new URL(SYSTEM) }) }),
+      reference({
+        identifier: identifier({ value: 'pat-7', system: new URL(fhirSystem('Patient')) }),
+      }),
     ],
     [
       'states a type R4 does not define',
       reference({
         type: 'PrescriptionOrder',
-        identifier: identifier({ value: 'pat-7', system: new URL(SYSTEM) }),
+        identifier: identifier({ value: 'pat-7', system: new URL(fhirSystem('Patient')) }),
       }),
     ],
     [
       'states a type that is a URI, not a resource type',
       reference({
         type: 'https://profiles.example/StructureDefinition/Thing',
-        identifier: identifier({ value: 'pat-7', system: new URL(SYSTEM) }),
+        identifier: identifier({ value: 'pat-7', system: new URL(fhirSystem('Patient')) }),
       }),
     ],
     [
@@ -1070,12 +1060,15 @@ describe('adopt', () => {
     ],
     [
       'names its target by an identifier with no value',
-      reference({ type: 'Patient', identifier: identifier({ system: new URL(SYSTEM) }) }),
+      reference({
+        type: 'Patient',
+        identifier: identifier({ system: new URL(fhirSystem('Patient')) }),
+      }),
     ],
   ] as const) {
     test(`leaves a logical reference that ${label} as it is`, () => {
-      const person = detach(RELATIVE_SOURCE)({ ...sample(Patient.Schema, 12), id: 'pat-7' })
-      const observation = detach(RELATIVE_SOURCE)({
+      const person = detachFhir({ ...sample(Patient.Schema, 12), id: 'pat-7' })
+      const observation = detachFhir({
         ...sample(Observation.Schema, 13),
         id: 'obs-1',
         subject: logical,
@@ -1115,17 +1108,17 @@ describe('adopt', () => {
   test('resolves a logical reference the source wrote by key, when the batch holds its target', () => {
     const byKey = reference({
       type: 'Patient',
-      identifier: identifier({ value: 'pat-7', system: new URL(SYSTEM) }),
+      identifier: identifier({ value: 'pat-7', system: new URL(fhirSystem('Patient')) }),
     })
-    const person = detach(RELATIVE_SOURCE)({ ...sample(Patient.Schema, 12), id: 'pat-7' })
-    const observation = detach(RELATIVE_SOURCE)({
+    const person = detachFhir({ ...sample(Patient.Schema, 12), id: 'pat-7' })
+    const observation = detachFhir({
       ...sample(Observation.Schema, 13),
       id: 'obs-1',
       subject: byKey,
     })
     expect(asObservation(adoptionOver([person, observation])(observation)).subject).toEqual({
       ...byKey,
-      reference: `Patient/${localResourceId(SYSTEM, 'Patient', 'pat-7')}`,
+      reference: `Patient/${localResourceId(fhirSystem('Patient'), 'Patient', 'pat-7')}`,
     })
   })
 
@@ -1195,7 +1188,7 @@ describe('adopt', () => {
 })
 
 describe('detaching nested references', () => {
-  /** The logical reference to the `resourceType` record {@link SOURCE} calls `id`. */
+  /** The logical reference to the `resourceType` record {@link BASE} calls `id`. */
   const logicalTo = (resourceType: string, id: string): ReferenceType =>
     reference({
       type: resourceType,
@@ -1333,18 +1326,21 @@ describe('writing a record detached', () => {
             decodeDetachedObservation({
               ...base,
               identifier: [
-                DetachedResource.keyIdentifierWire({ system: SYSTEM, value: observationId }),
+                DetachedResource.keyIdentifierWire({
+                  system: fhirSystem('Observation'),
+                  value: observationId,
+                }),
               ],
               subject: {
                 ...DetachedResource.logicalReferenceWire('Patient', {
-                  system: SYSTEM,
+                  system: fhirSystem('Patient'),
                   value: patientId,
                 }),
                 display: 'Avery',
               },
             })
           )
-          expect(writtenDetached).toEqual(detach(RELATIVE_SOURCE)(serverShaped))
+          expect(writtenDetached).toEqual(detachFhir(serverShaped))
         }
       ),
       { numRuns: numRunsFor({ base: 50 }) }
@@ -1390,22 +1386,18 @@ describe('adoptedReferenceOf', () => {
   test('property: spells a reference as adopt resolves one to a record of the batch', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom(SOURCE, RELATIVE_SOURCE),
+        fc.constantFrom(BASE, 'https://other.example/fhir'),
         fc.constantFrom<'Patient' | 'Practitioner'>('Patient', 'Practitioner'),
         fc.stringMatching(/^[A-Za-z0-9\-.]{1,64}$/),
-        (family, resourceType, originalId) => {
-          const target = detach(family)(targetOf(resourceType, originalId))
-          const observation = detach(family)({
+        (baseUrl, resourceType, originalId) => {
+          const target = detach(baseUrl)(targetOf(resourceType, originalId))
+          const observation = detach(baseUrl)({
             ...sample(Observation.Schema, 13),
             id: 'obs-1',
             subject: reference({ reference: `${resourceType}/${originalId}` }),
           })
           expect(
-            adoptedReferenceOf(
-              SystemFamily.systemFor(family, resourceType),
-              resourceType,
-              originalId
-            )
+            adoptedReferenceOf(`${baseUrl}/${resourceType}`, resourceType, originalId)
           ).toEqual(asObservation(adoptionOver([target, observation])(observation)).subject)
         }
       ),
@@ -1415,7 +1407,7 @@ describe('adoptedReferenceOf', () => {
 })
 
 describe('originalIdOf', () => {
-  test('reads the id a source gave a record back off it, in the system its family gives the type', () => {
+  test('reads the id a source gave a record back off it, in the system its server gives the type', () => {
     for (const resource of resources) {
       if (resource.resourceType === 'Binary') continue
       expect(originalIdOf(fhirSystem(resource.resourceType), detachThenAdopt(resource))).toBe(

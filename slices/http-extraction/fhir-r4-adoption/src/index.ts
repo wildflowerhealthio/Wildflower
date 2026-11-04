@@ -16,4 +16,3 @@ export {
 } from './adopt-resource.ts'
 export type { Adoption } from './adopt-resource.ts'
 export * as DetachedResource from './detached-resource.ts'
-export * as SystemFamily from './system-family.ts'

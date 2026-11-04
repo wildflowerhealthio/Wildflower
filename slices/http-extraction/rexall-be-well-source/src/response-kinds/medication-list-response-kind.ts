@@ -1,4 +1,4 @@
-import { detach, type DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   Bundle,
   MedicationDispense,
@@ -12,8 +12,11 @@ import {
 import { Effect, Predicate, RegExp as EffectRegExp, Schema } from 'effect'
 import { promoteMedicationDispense } from '../promote/medication-dispense.ts'
 import { promoteMedicationRequest } from '../promote/medication-request.ts'
-import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
-import { REXALL_PHARMACY_LOCATION_URL, tunnelGetMatcher } from '../tunnel-url.ts'
+import {
+  REXALL_PHARMACY_LOCATION_URL,
+  REXALL_STU3_BASE_URL,
+  tunnelGetMatcher,
+} from '../tunnel-url.ts'
 
 /** A decoded carebook medication: an fhir-r4 `MedicationRequest` or `MedicationDispense`. */
 type MedicationResource =
@@ -73,15 +76,13 @@ const promote = (resource: MedicationResource): MedicationResource =>
     : promoteMedicationDispense(resource)
 
 /**
- * Detach a promoted carebook medication: carebook's searchset is a server's
- * response, with carebook's own ids and literal references, so its records
- * are keyed in {@link REXALL_CAREBOOK_SYSTEM} for every type. Carebook's
- * non-R4 `PrescriptionOrder/<id>` literals pass through as carebook wrote
- * them.
+ * Detach a promoted carebook medication: carebook is a FHIR server, its
+ * searchset rooted at {@link REXALL_STU3_BASE_URL}, so a `MedicationRequest`
+ * is keyed in `<base>/MedicationRequest` and its `Patient/<uid>` subject
+ * names the key in `<base>/Patient`. Carebook's non-R4
+ * `PrescriptionOrder/<id>` literals pass through as carebook wrote them.
  */
-const detachCarebook = detach(
-  SystemFamily.FixedAcrossResourceTypes({ system: REXALL_CAREBOOK_SYSTEM })
-)
+const detachCarebook = detach(REXALL_STU3_BASE_URL)
 
 /**
  * {@link REXALL_PHARMACY_LOCATION_URL} followed by a query: the

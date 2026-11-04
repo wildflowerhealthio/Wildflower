@@ -1,4 +1,4 @@
-import { detach, type DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
@@ -13,13 +13,11 @@ import type * as PickedFile from './picked-file.ts'
 // tested there (`import-decoded.test.ts`). What this file covers is what the
 // constructor itself returns: the file sets, apart, and their records.
 
-const SYSTEM = 'https://source.example/fhir/sid/test'
+const BASE_URL = 'https://source.example/fhir'
 
-/** A Patient its source calls `id`, detached under {@link SYSTEM}. */
+/** A Patient its source calls `id`, detached from {@link BASE_URL}. */
 const fakeResource = (id: string): DetachedResource.Type =>
-  detach(SystemFamily.FixedAcrossResourceTypes({ system: SYSTEM }))(
-    Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
-  )
+  detach(BASE_URL)(Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id }))
 
 const pickedFile = (index: number, fileName: string, bytes: number[]): PickedFile.Type => ({
   id: `${index}:${fileName}`,

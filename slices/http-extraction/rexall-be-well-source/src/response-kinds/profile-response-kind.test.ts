@@ -8,7 +8,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import profileMe from '../fixtures/profile-me.json' with { type: 'json' }
-import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
+import { REXALL_STU3_PATIENT_SYSTEM } from '../tunnel-url.ts'
 import { ProfileResponseKind } from './profile-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
@@ -69,7 +69,7 @@ describe('ProfileResponseKind', () => {
       // id is the uid every medication's subject references.
       expect(patient.id).toBeNull()
       expect(DetachedResource.keyOf(patient)).toEqual(
-        Option.some({ system: REXALL_CAREBOOK_SYSTEM, value: 'uid-abc-123' })
+        Option.some({ system: REXALL_STU3_PATIENT_SYSTEM, value: 'uid-abc-123' })
       )
       expect(patient.birthDate).toBe('1985-07-14')
       expect(patient.name[0]?.family).toBe('Rivera')
@@ -88,7 +88,7 @@ describe('ProfileResponseKind', () => {
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
       const patient = result.right[0]
       expect(DetachedResource.keyOf(patient)).toEqual(
-        Option.some({ system: REXALL_CAREBOOK_SYSTEM, value: 'uid-only' })
+        Option.some({ system: REXALL_STU3_PATIENT_SYSTEM, value: 'uid-only' })
       )
       expect(patient.name).toEqual([])
       expect(patient.birthDate).toBeNull()
@@ -129,7 +129,7 @@ describe('ProfileResponseKind', () => {
       const result = runParse(makeResponse(JSON.stringify(unreadFieldsOddlyShaped)))
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
       expect(result.right.map(DetachedResource.keyOf)).toEqual([
-        Option.some({ system: REXALL_CAREBOOK_SYSTEM, value: 'uid-1' }),
+        Option.some({ system: REXALL_STU3_PATIENT_SYSTEM, value: 'uid-1' }),
       ])
     })
 

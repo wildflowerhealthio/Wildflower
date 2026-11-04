@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { CarebookCodingSystem, CarebookExtension } from '../carebook.ts'
 import prescriptions from '../fixtures/prescriptions-searchset.json' with { type: 'json' }
-import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
+import { REXALL_STU3_BASE_URL, REXALL_STU3_PATIENT_SYSTEM } from '../tunnel-url.ts'
 import { MedicationListResponseKind } from './medication-list-response-kind.ts'
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
@@ -93,6 +93,24 @@ describe('MedicationListResponseKind', () => {
       ])
     })
 
+    it("keys each record in its type's system under the STU3 base, and names its Patient there", () => {
+      const result = runParse(makeResponse(JSON.stringify(prescriptions)))
+      if (result._tag !== 'Right') throw new Error('expected a successful parse')
+      for (const record of result.right) {
+        expect(Option.map(DetachedResource.keyOf(record), ({ system }) => system)).toEqual(
+          Option.some(`${REXALL_STU3_BASE_URL}/${record.resourceType}`)
+        )
+      }
+      const request = result.right.find((r) => r.resourceType === 'MedicationRequest')
+      if (request?.resourceType !== 'MedicationRequest')
+        throw new Error('missing MedicationRequest')
+      expect(request.subject).toMatchObject({
+        reference: null,
+        type: 'Patient',
+        identifier: { system: new URL(REXALL_STU3_PATIENT_SYSTEM) },
+      })
+    })
+
     it('decodes the carebook MedicationRequest straight to its fhir-r4 shape', () => {
       const result = runParse(makeResponse(JSON.stringify(prescriptions)))
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
@@ -104,7 +122,7 @@ describe('MedicationListResponseKind', () => {
       expect(request.requester).toMatchObject({
         reference: null,
         type: 'Practitioner',
-        identifier: { system: new URL(REXALL_CAREBOOK_SYSTEM), value: 'dr-smith' },
+        identifier: { system: new URL(`${REXALL_STU3_BASE_URL}/Practitioner`), value: 'dr-smith' },
       })
       expect(request.dispenseRequest?.numberOfRepeatsAllowed).toBe(3)
     })

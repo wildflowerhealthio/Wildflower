@@ -35,7 +35,7 @@ const RUNS = numRunsFor({ base: 25 })
 const pharmacyPatientArbitrary = fc
   .record({
     system: fc.constantFrom(
-      'https://wildflowerhealth.io/fhir/sid/rexall-carebook',
+      'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient',
       'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart'
     ),
     originalId: fc.uuid(),

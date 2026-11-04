@@ -9,6 +9,10 @@ import {
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
+  REXALL_STU3_BASE_URL,
+  REXALL_STU3_PATIENT_SYSTEM,
+} from '@wildflowerhealthio/rexall-be-well-source'
+import {
   customerUrlOf,
   prescriptionHistoryUrlOf,
   prescriptionStatusUrlOf,
@@ -437,9 +441,6 @@ const { exchange: exchangeArbitrary } = arbitraries(fc)
 /** The Rexall carebook profile uid of the one person a Rexall capture is about. */
 const REXALL_PROFILE_UID = 'uid-abc-123'
 
-/** The system Rexall's ids belong to, which detaching puts in `identifier[0]`. */
-const REXALL_CAREBOOK_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/rexall-carebook'
-
 /** The tunnel host the Rexall portal's XHRs go to. */
 const REXALL_TUNNEL = 'https://rexall-prd-tunnel.letsbewell.ca/enduser'
 
@@ -508,7 +509,7 @@ describe('harImporter.decode over a Rexall capture', () => {
         logicalReference.identifier.value,
       ])
     ).toEqual([
-      ['AsResource', 'Patient', REXALL_CAREBOOK_SYSTEM, REXALL_PROFILE_UID],
+      ['AsResource', 'Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
       ['ByMentionOnly', 'Practitioner', Practitioner.NAME_IDENTIFIER_SYSTEM, 'DR PATEL'],
     ])
   })
@@ -539,8 +540,8 @@ describe('harImporter.decode over a Rexall capture naming a prescriber carebook 
         logicalReference.identifier.value,
       ])
     ).toEqual([
-      ['AsResource', 'Patient', REXALL_CAREBOOK_SYSTEM, REXALL_PROFILE_UID],
-      ['ByMentionOnly', 'Practitioner', REXALL_CAREBOOK_SYSTEM, 'dr-1'],
+      ['AsResource', 'Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
+      ['ByMentionOnly', 'Practitioner', `${REXALL_STU3_BASE_URL}/Practitioner`, 'dr-1'],
     ])
   })
 })

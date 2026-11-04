@@ -6,6 +6,7 @@ import {
   runExtraction,
 } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { REXALL_STU3_PATIENT_SYSTEM } from '@wildflowerhealthio/rexall-be-well-source'
 import { type TraceBody, type TraceExchange } from '@wildflowerhealthio/web-trace-core'
 import {
   CAPTURE_FLOOR,
@@ -276,7 +277,7 @@ describe('decodeHar + runExtraction', () => {
       expect(extraction.bodyAbsent).toHaveLength(0)
       expect(extraction.parseFailures).toEqual([])
       expect(keysOfType(extraction, 'Patient')).toEqual([
-        { system: 'https://wildflowerhealth.io/fhir/sid/rexall-carebook', value: 'uid-abc-123' },
+        { system: REXALL_STU3_PATIENT_SYSTEM, value: 'uid-abc-123' },
       ])
     })
   })

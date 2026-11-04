@@ -1,4 +1,4 @@
-import { adopt, detach, DetachedResource, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { adopt, detach, DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
@@ -31,17 +31,16 @@ import { importDecoded, type ImportingFormat } from './import-decoded.ts'
 
 const SYSTEM = 'https://example.test/fhir/CodeSystem/source-file'
 
-/** The system the test decoders' Patients are keyed in. */
-const FAKE_SYSTEM = 'https://example.test/fhir/sid/fake'
+/** The FHIR server the test decoders' Patients are detached from. */
+const FAKE_BASE_URL = 'https://example.test/fhir'
 
 /** A Patient its source calls `id`, detached as a decoder hands it over. */
 const fakeResource = (id: string): DetachedResource.Type =>
-  detach(SystemFamily.FixedAcrossResourceTypes({ system: FAKE_SYSTEM }))(
-    Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
-  )
+  detach(FAKE_BASE_URL)(Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id }))
 
 /** The id the import stores {@link fakeResource}`(id)` under. */
-const fakeResourceId = (id: string): string => localResourceId(FAKE_SYSTEM, 'Patient', id)
+const fakeResourceId = (id: string): string =>
+  localResourceId(`${FAKE_BASE_URL}/Patient`, 'Patient', id)
 
 /** A pick as `readBatch` stamps it: its slot in the batch, then its name. */
 const pickedFile = (index: number, fileName: string, bytes: Uint8Array): PickedFile.Type => ({
@@ -644,7 +643,7 @@ describe('a grouped decode', () => {
 // Records the stage adopts
 // ---------------------------------------------------------------------------
 
-const SOURCE_SYSTEM = 'https://example.test/fhir/sid/source'
+const SOURCE_BASE_URL = 'https://example.test/fhir/source'
 
 const sourcePatient: FhirResource = Schema.decodeUnknownSync(Patient.Schema)({
   resourceType: 'Patient',
@@ -692,7 +691,7 @@ const importedSourceFileIds = async (
 
 describe('the records the import adopts', () => {
   it('adopts each detached record under the id its key derives, its references to records of the set resolved', async () => {
-    const detachSource = detach(SystemFamily.FixedAcrossResourceTypes({ system: SOURCE_SYSTEM }))
+    const detachSource = detach(SOURCE_BASE_URL)
     const patient = detachSource(sourcePatient)
     const observation = detachSource(sourceObservation)
     const [sourceFileId] = await importedSourceFileIds(decodedOf([]))
@@ -723,7 +722,7 @@ describe('the records the import adopts', () => {
     )
   })
 
-  it("resolves a reference by the target's type under a FHIR-style family", async () => {
+  it("resolves a reference by the target's type under the server's base URL", async () => {
     const baseUrl = 'https://r4.example.test/fhir'
     const [observation] = await importedRecords(
       decodedOf([
@@ -732,11 +731,11 @@ describe('the records the import adopts', () => {
           entries: [
             {
               fullUrl: 'patient',
-              resource: detach(SystemFamily.FhirStyleBaseUrl({ baseUrl }))(sourcePatient),
+              resource: detach(baseUrl)(sourcePatient),
             },
             {
               fullUrl: 'observation',
-              resource: detach(SystemFamily.FhirStyleBaseUrl({ baseUrl }))(sourceObservation),
+              resource: detach(baseUrl)(sourceObservation),
             },
           ],
         },
@@ -750,9 +749,7 @@ describe('the records the import adopts', () => {
   // The source gave the Observation no id and no identifier, so nothing names
   // it: it is stored under an id of its own, a fresh one on every import.
   it('stores a keyless record under a fresh random id', async () => {
-    const detached = detach(SystemFamily.FixedAcrossResourceTypes({ system: SOURCE_SYSTEM }))(
-      sourceObservation
-    )
+    const detached = detach(SOURCE_BASE_URL)(sourceObservation)
     expect(DetachedResource.keyOf(detached)).toEqual(Option.none())
     const imported = await Promise.all(
       [1, 2].map(() =>

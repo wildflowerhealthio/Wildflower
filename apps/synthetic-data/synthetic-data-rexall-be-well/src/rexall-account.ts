@@ -3,7 +3,7 @@ import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   type CarebookProfile,
   type medicationListUrlOf,
-  REXALL_CAREBOOK_SYSTEM,
+  REXALL_STU3_PATIENT_SYSTEM,
 } from '@wildflowerhealthio/rexall-be-well-source'
 import type { StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 
@@ -36,11 +36,11 @@ interface RexallAccount extends Pick<ProfileIdentifiers, 'uid' | 'reportingGuid'
 /**
  * A reference to the Patient the Rexall import makes of `account`'s profile,
  * as that import spells its own: the logical reference by the Patient's key,
- * the profile's `uid` in the carebook source system, resolved to the id that
+ * the profile's `uid` in carebook's Patient system, resolved to the id that
  * key derives. What a result from another source is filed on.
  */
 const rexallPatientReferenceOf = (account: RexallAccount): ReferenceType =>
-  adoptedReferenceOf(REXALL_CAREBOOK_SYSTEM, 'Patient', account.uid)
+  adoptedReferenceOf(REXALL_STU3_PATIENT_SYSTEM, 'Patient', account.uid)
 
 export { rexallPatientReferenceOf }
 export type { RexallAccount }

@@ -26,7 +26,6 @@ import {
 import { Match, Option } from 'effect'
 
 import * as DetachedResource from './detached-resource.ts'
-import * as SystemFamily from './system-family.ts'
 
 /**
  * FHIR R4's relative-reference grammar: a resource-type token, `/`, and a
@@ -461,21 +460,38 @@ const memoisedUrlOf = (): ((url: string) => URL) => {
 }
 
 /**
- * A reference whose literal, relativised for `family`, is a relative
+ * The system a FHIR server at `baseUrl` keys its records of `resourceType` in,
+ * `<baseUrl>/<Type>`: the `[base]/[type]` of its `[base]/[type]/[id]`, since
+ * a FHIR server's ids are unique per type.
+ */
+const serverSystemOf = (baseUrl: string, resourceType: string): string =>
+  `${baseUrl}/${resourceType}`
+
+/**
+ * A reference literal as the relative `Type/id` {@link detach} reads a
+ * target's id from: a FHIR server at `baseUrl` may spell a reference to its own
+ * record absolutely, `<baseUrl>/Type/id`, which is the same target as
+ * `Type/id`, so that prefix is read back off. Any other literal as it is.
+ */
+const relativise = (baseUrl: string, reference: string): string =>
+  reference.startsWith(`${baseUrl}/`) ? reference.slice(baseUrl.length + 1) : reference
+
+/**
+ * A reference whose literal, relativised against `baseUrl`, is a relative
  * `Type/id`, as the logical reference to its target: no literal, `type` the
- * target's type, and `identifier` the target's key, the system `family` gives
- * that type and the id as its value. Every other reference exactly as it is.
+ * target's type, and `identifier` the target's key, `<baseUrl>/<Type>` and
+ * the id as its value. Every other reference exactly as it is.
  *
  * @remarks
- * The literal is read through {@link SystemFamily.relativise}, so a FHIR
- * server's absolute `<baseUrl>/Type/id` detaches exactly as its `Type/id`. A
- * literal that is still not a relative `Type/id` of an R4 resource type once
- * relativised — a `#fragment`, a `urn:uuid:`, a foreign absolute URL, a
- * versioned `Type/id/_history/v`, a search URL, an id past 64 characters, a
- * base that is only a prefix of the server's, a type R4 does not define — is
- * kept in its original spelling, absolute or not, its `identifier` included.
- * A reference with no literal (an identifier-only or display-only one) is kept
- * as the source wrote it.
+ * The literal is read through {@link relativise}, so a FHIR server's absolute
+ * `<baseUrl>/Type/id` detaches exactly as its `Type/id`. A literal that is
+ * still not a relative `Type/id` of an R4 resource type once relativised — a
+ * `#fragment`, a `urn:uuid:`, a foreign absolute URL, a versioned
+ * `Type/id/_history/v`, a search URL, an id past 64 characters, a base that is
+ * only a prefix of the server's, a type R4 does not define — is kept in its
+ * original spelling, absolute or not, its `identifier` included. A reference
+ * with no literal (an identifier-only or display-only one) is kept as the
+ * source wrote it.
  *
  * An `identifier` the server had also put on a reference it is turned
  * logical is **replaced** by the target's key: the slot is 0..1, and the key
@@ -485,11 +501,13 @@ const memoisedUrlOf = (): ((url: string) => URL) => {
  * was decoded too.
  * `display` and `extension` are kept.
  */
-const detachReference = (family: SystemFamily.Type, urlOf: (url: string) => URL) => {
-  const relativise = SystemFamily.relativise(family)
-  return (reference: ReferenceType): ReferenceType => {
+const detachReference =
+  (baseUrl: string, urlOf: (url: string) => URL) =>
+  (reference: ReferenceType): ReferenceType => {
     const match =
-      reference.reference === null ? null : RELATIVE_REFERENCE.exec(relativise(reference.reference))
+      reference.reference === null
+        ? null
+        : RELATIVE_REFERENCE.exec(relativise(baseUrl, reference.reference))
     const resourceType = match?.[1]
     const id = match?.[2]
     if (resourceType === undefined || id === undefined || !ResourceType.is(resourceType)) {
@@ -499,40 +517,40 @@ const detachReference = (family: SystemFamily.Type, urlOf: (url: string) => URL)
       ...reference,
       reference: null,
       type: resourceType,
-      identifier: identifierOf(urlOf(SystemFamily.systemFor(family, resourceType)), id),
+      identifier: identifierOf(urlOf(serverSystemOf(baseUrl, resourceType)), id),
     }
   }
-}
 
 /**
- * Detach a resource a server served, with its ids and literal references:
- * drop its `id`, key it by that id, and turn each reference to another record
- * into a logical one.
+ * Detach a resource a FHIR server served, with its ids and literal
+ * references: drop its `id`, key it by that id, and turn each reference to
+ * another of the server's records into a logical one.
  *
- * @param family - The systems the server's ids belong to, per type
+ * @param baseUrl - The server's base URL, the `[base]` of its
+ *   `[base]/[type]/[id]`
  * @returns A function from one served resource to its detached form
  *
  * @remarks
- * For a response kind whose records really were a server's (a FHIR server's
- * reads, carebook's searchset), as a private step of its `parse`. A decoder
- * that synthesizes its records writes them detached instead
- * (`DetachedResource.keyIdentifierWire`, `logicalReferenceWire`).
+ * For a response kind whose records really were a FHIR server's (a FHIR R4
+ * server's reads, carebook's STU3 searchset), as a private step of its
+ * `parse`. A decoder that synthesizes its records writes them detached
+ * instead (`DetachedResource.keyIdentifierWire`, `logicalReferenceWire`).
  *
  * - `id` becomes `null`. When it was set and the type has an `identifier`
- *   element, `{ system: SystemFamily.systemFor(family, Type), value: id }` is
- *   prepended as `identifier[0]`, the record's key; every identifier the
- *   server wrote is kept behind it. A `Binary` (no `identifier` element) and
- *   a record with no `id` keep only what they had, so they are keyless unless
- *   the server's own first identifier names them.
+ *   element, `{ system: <baseUrl>/<Type>, value: id }` is prepended as
+ *   `identifier[0]`, the record's key; every identifier the server wrote is
+ *   kept behind it. A `Binary` (no `identifier` element) and a record with no
+ *   `id` keep only what they had, so they are keyless unless the server's own
+ *   first identifier names them.
  * - Every reference the per-type table ({@link mapReferences}) reaches is run
  *   through {@link detachReference}.
  *
  * There is deliberately no "already keyed?" guard: a server that publishes
  * its own id as an identifier in the same system yields a benign duplicate.
  */
-const detach = (family: SystemFamily.Type) => {
+const detach = (baseUrl: string) => {
   const urlOf = memoisedUrlOf()
-  const detachReferences = mapReferences(detachReference(family, urlOf))
+  const detachReferences = mapReferences(detachReference(baseUrl, urlOf))
   return (resource: FhirResource): DetachedResource.Type => {
     const detached = detachReferences(resource)
     const { id } = resource
@@ -541,7 +559,7 @@ const detach = (family: SystemFamily.Type) => {
           ...detached,
           id: null,
           identifier: [
-            identifierOf(urlOf(SystemFamily.systemFor(family, detached.resourceType)), id),
+            identifierOf(urlOf(serverSystemOf(baseUrl, detached.resourceType)), id),
             ...detached.identifier,
           ],
         }
@@ -616,7 +634,7 @@ const adoptReference =
  * {@link adoptReference}. Nothing else changes: the record's identifiers,
  * its key first, are written as they are.
  *
- * Takes no system family: everything it needs is on the records.
+ * Takes no base URL: everything it needs is on the records.
  */
 const adopt = ({ storedReferences, mintId }: Adoption) => {
   const adoptReferences = mapReferences(adoptReference(storedReferences))
@@ -631,8 +649,7 @@ const adopt = ({ storedReferences, mintId }: Adoption) => {
  * `system`.
  *
  * @param system - The system the source's ids for the type belong to: for a
- *   FHIR-style source `<baseUrl>/<Type>`, not the base itself
- *   ({@link SystemFamily.systemFor})
+ *   FHIR server `<baseUrl>/<Type>`, not the base itself
  * @param resource - The adopted resource
  * @returns The first identifier value in `system`, or `null` when it has none
  *   there (and always for a `Binary`, which has no identifiers)
@@ -654,8 +671,7 @@ const originalIdOf = (system: string, resource: FhirResource): string | null =>
  * `type` and `identifier` the key.
  *
  * @param system - The system the source's ids for the target's type belong
- *   to: for a FHIR-style source `<baseUrl>/<Type>`, not the base itself
- *   ({@link SystemFamily.systemFor})
+ *   to: for a FHIR server `<baseUrl>/<Type>`, not the base itself
  * @param resourceType - The target's type (`Patient`)
  * @param originalId - The id the source gave the target
  *

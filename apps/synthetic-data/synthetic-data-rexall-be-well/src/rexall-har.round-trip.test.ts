@@ -20,7 +20,7 @@ import {
   repeatsAvailableOf,
   type MedicationRequestWithId,
 } from '@wildflowerhealthio/medication-core/fhir'
-import { REXALL_CAREBOOK_SYSTEM } from '@wildflowerhealthio/rexall-be-well-source'
+import { REXALL_STU3_BASE_URL } from '@wildflowerhealthio/rexall-be-well-source'
 import {
   ageOn,
   asOfArbitrary,
@@ -162,7 +162,8 @@ const dispensesAuthorizedBy = (
 ): readonly MedicationDispense.Type[] => {
   const carebookIds = new Set(
     request.identifier.flatMap((identifier) =>
-      identifier.system?.href === REXALL_CAREBOOK_SYSTEM && typeof identifier.value === 'string'
+      identifier.system?.href === `${REXALL_STU3_BASE_URL}/MedicationRequest` &&
+      typeof identifier.value === 'string'
         ? [identifier.value]
         : []
     )

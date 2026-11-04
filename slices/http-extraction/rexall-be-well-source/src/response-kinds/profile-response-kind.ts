@@ -7,8 +7,7 @@ import {
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Effect, Option, RegExp as EffectRegExp, pipe, Schema, String as Str } from 'effect'
 import { CarebookProfile } from '../carebook-profile.ts'
-import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
-import { REXALL_PROFILE_URL, tunnelGetMatcher } from '../tunnel-url.ts'
+import { REXALL_PROFILE_URL, REXALL_STU3_PATIENT_SYSTEM, tunnelGetMatcher } from '../tunnel-url.ts'
 
 /**
  * The part of {@link CarebookProfile} the `Patient` is built from. Decoding
@@ -41,7 +40,7 @@ const namePartOf = (
 
 /**
  * Build the detached FHIR R4 `Patient` **wire** from the decoded profile: keyed
- * by the profile's `uid` in {@link REXALL_CAREBOOK_SYSTEM}, emitting every
+ * by the profile's `uid` in {@link REXALL_STU3_PATIENT_SYSTEM}, emitting every
  * other field only when the source carries it. A blank string counts as absent — the
  * profile sends `""` for a name it holds no value for.
  */
@@ -50,7 +49,7 @@ const patientWire = (profile: Profile): Record<string, unknown> => {
     resourceType: 'Patient',
     identifier: [
       DetachedResource.keyIdentifierWire({
-        system: REXALL_CAREBOOK_SYSTEM,
+        system: REXALL_STU3_PATIENT_SYSTEM,
         value: profile.data.identifiers.uid,
       }),
     ],
