@@ -1,7 +1,6 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   readSeenWalkthrough,
   WALKTHROUGH_ANCHOR_ATTRIBUTE,
@@ -10,8 +9,12 @@ import {
 import { DateTime, Effect, Layer } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { ImporterApp } from '../../app.tsx'
-import { currentRoute, pageAt, stubPageBrowserApis } from '../../importer-app.test-helpers.ts'
+import {
+  currentRoute,
+  pageAt,
+  renderImporterApp,
+  stubPageBrowserApis,
+} from '../../importer-app.test-helpers.ts'
 import {
   IMPORTER_WALKTHROUGH_ID,
   IMPORTER_WALKTHROUGH_STEPS,
@@ -63,11 +66,11 @@ const emptyServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
 
 /** The Importer at `route` under the test basepath, over {@link emptyServer}. */
 const renderImporterAt = (route: string): void => {
-  const context = buildSmartRouterContext(
-    { serverUrl: 'http://127.0.0.1:8080', accessToken: 'tok-abc' },
-    emptyServer
-  )
-  render(<ImporterApp page={pageAt(route)} context={context} />)
+  renderImporterApp(pageAt(route), {
+    fhirBaseUrl: 'http://127.0.0.1:8080',
+    accessToken: 'tok-abc',
+    transport: emptyServer,
+  })
 }
 
 /** The anchors on the page that a step of the Importer's walkthrough points at. */

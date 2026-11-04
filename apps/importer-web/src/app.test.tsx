@@ -1,7 +1,6 @@
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/platform'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   HAR_ARCHIVE_CODE,
   WEB_TRACE_CODE_SYSTEM,
@@ -17,8 +16,12 @@ import {
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { ImporterApp } from './app.tsx'
-import { currentRoute, pageAt, stubPageBrowserApis } from './importer-app.test-helpers.ts'
+import {
+  currentRoute,
+  pageAt,
+  renderImporterApp,
+  stubPageBrowserApis,
+} from './importer-app.test-helpers.ts'
 
 /**
  * The app's own wiring, end to end: its router context satisfies
@@ -27,7 +30,7 @@ import { currentRoute, pageAt, stubPageBrowserApis } from './importer-app.test-h
  * mounts walks all the way from a picked HAR to a completed import.
  *
  * Only the transport is a stub. Everything above it — the real
- * `buildSmartRouterContext`, the router over the address bar, the queries, the typed FHIR client, the
+ * `smartRuntimeFor` and `buildSmartRouterContext`, the router over the address bar, the queries, the typed FHIR client, the
  * HAR parser and the source file codec — is the production path, so a break in any
  * of them fails here rather than only on a device.
  *
@@ -514,10 +517,16 @@ const recordingServer = (
         }
       }
 
-      const params = Object.fromEntries(request.urlParams)
+      // Recorded split, as a batch entry is: the source list carries its
+      // search in its URL, the typed client its own as `urlParams`.
+      const [path = '', query = ''] = request.url.split('?', 2)
+      const params = {
+        ...Object.fromEntries(new URLSearchParams(query)),
+        ...Object.fromEntries(request.urlParams),
+      }
       recorded.push({
         method: request.method,
-        url: request.url,
+        url: path,
         urlParams: params,
         authorization,
         body,
@@ -576,9 +585,9 @@ interface MountedApp {
 }
 
 /**
- * Mount the app through the **real** `buildSmartRouterContext`, so the URL
- * prefixing and the bearer header under test are the production ones, at
- * `route` under the test basepath (the app root unless told otherwise).
+ * Mount the app through the **real** SMART runtime, so the URL prefixing and
+ * the bearer header under test are the production ones, at `route` under the
+ * test basepath (the app root unless told otherwise).
  */
 const mount = (config: {
   readonly sourceFiles?: readonly ServerSourceFile[]
@@ -586,11 +595,11 @@ const mount = (config: {
 }): MountedApp => {
   const page = pageAt(config.route ?? '')
   const historyLengthAtMount = window.history.length
-  const context = buildSmartRouterContext(
-    { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
-    recordingServer(config.sourceFiles ?? [])
-  )
-  render(<ImporterApp page={page} context={context} />)
+  renderImporterApp(page, {
+    fhirBaseUrl: SERVER_URL,
+    accessToken: ACCESS_TOKEN,
+    transport: recordingServer(config.sourceFiles ?? []),
+  })
   return { historyLengthAtMount }
 }
 

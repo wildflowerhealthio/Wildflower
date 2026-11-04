@@ -54,7 +54,7 @@ afterEach(() => {
 describe('AppRoot', () => {
   it('should mount the shell as Strength when not launched', () => {
     // Arrange / Act
-    render(<AppRoot page={page} launched={false} />)
+    render(<AppRoot page={page} search="" />)
 
     // Assert — the landing introduces this app, not another
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
@@ -65,7 +65,7 @@ describe('AppRoot', () => {
 
   it('should start telemetry with this app’s own DSN and name', () => {
     // Arrange / Act
-    render(<AppRoot page={page} launched={false} />)
+    render(<AppRoot page={page} search="" />)
 
     // Assert
     expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(1)

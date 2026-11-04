@@ -15,7 +15,7 @@ import {
 } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import type { PebbleSettings } from '@wildflowerhealthio/fhir-sync-pebble-core'
 import { ReturnTarget, type ReturnTargetStore } from '@wildflowerhealthio/pebble-configuration'
-import { Either } from 'effect'
+import { Either, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 /**
@@ -27,17 +27,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
  * one layer down can see it.
  */
 
+// The handshake is driven per test, and the runtime the gate builds goes out
+// over a stub server that answers nothing.
 const { handshakeMock } = vi.hoisted(() => ({
   handshakeMock: vi.fn<() => SmartHandshake>(),
 }))
-vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
-  ...(await importOriginal<typeof SmartModule>()),
-  useSmartHandshake: () => handshakeMock(),
-  useLaunchFailureRedirect: (): void => undefined,
-}))
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
+  const actual = await importOriginal<typeof SmartModule>()
+  return {
+    ...actual,
+    useSmartHandshake: () => handshakeMock(),
+    useRedirectToRootOnFailure: (): void => undefined,
+    smartRuntimeFor: (
+      connection: SmartModule.SmartConnection,
+      transport = stubFhirServer({}).transport
+    ) => actual.smartRuntimeFor(connection, transport),
+  }
+})
 
-const { buildSmartRouterContext, smartClientFor } =
-  await import('@wildflowerhealthio/fhir-r4-react/smart')
+const {
+  buildSmartRouterContext,
+  decodeFhirBaseUrl,
+  RootArrival,
+  SmartConnection,
+  SmartHandshake: SmartHandshakeOf,
+  smartRuntimeFor,
+} = await import('@wildflowerhealthio/fhir-r4-react/smart')
+const { SignInLandingContext } = await import('@wildflowerhealthio/smart-app-react')
 const { App, SettingsApp } = await import('./app.tsx')
 
 const SERVER_URL = 'https://fhir.example/r4'
@@ -70,7 +86,7 @@ afterEach(() => {
 describe('App', () => {
   it('should show the connecting state while the handshake is in flight', () => {
     // Arrange
-    handshakeMock.mockReturnValue({ kind: 'connecting' })
+    handshakeMock.mockReturnValue(SmartHandshakeOf.Connecting())
 
     // Act
     renderApp()
@@ -82,10 +98,9 @@ describe('App', () => {
 
   it("should take the settings page's refusal from what the grant lacked", async () => {
     // Arrange — the server completed the handshake without an access token
-    handshakeMock.mockReturnValue({
-      kind: 'ready',
-      client: grantedClient({ accessToken: undefined }),
-    })
+    handshakeMock.mockReturnValue(
+      SmartHandshakeOf.Ready({ connection: grantedConnection({ accessToken: Option.none() }) })
+    )
 
     // Act
     renderApp()
@@ -294,8 +309,10 @@ const mount = ({
 }): void => {
   mountedServer = stubFhirServer({ [SERVER_URL]: server })
   const context = buildSmartRouterContext(
-    { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
-    mountedServer.transport,
+    smartRuntimeFor(
+      grantedConnection({ accessToken: Option.some(ACCESS_TOKEN) }),
+      mountedServer.transport
+    ),
     new QueryClient({ defaultOptions: { queries: { retry: false } } })
   )
   const returnTargets: ReturnTargetStore.Store = {
@@ -321,21 +338,28 @@ const renderApp = (): void => {
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <App />
+      <SignInLandingContext
+        value={{
+          arrival: RootArrival.SignInReturn({ code: 'abc', state: 'xyz' }),
+          registration: { clientId: 'fhir-sync-pebble', scope: 'launch' },
+          appRootRedirectUri: `${window.location.origin}/`,
+          onSignedIn: () => undefined,
+        }}
+      >
+        <App />
+      </SignInLandingContext>
     </QueryClientProvider>
   )
 }
 
-/**
- * A ready client carrying what the server granted. `App` reads only its server
- * and token, so its own requests go to a stub server that answers none.
- */
-const grantedClient = ({
+/** A connection to {@link SERVER_URL} carrying what the server granted. */
+const grantedConnection = ({
   accessToken,
 }: {
-  readonly accessToken: string | undefined
-}): SmartModule.SmartClient =>
-  smartClientFor(
-    { serverUrl: SERVER_URL, accessToken, patient: undefined },
-    stubFhirServer({}).transport
-  )
+  readonly accessToken: Option.Option<string>
+}): SmartModule.SmartConnection =>
+  new SmartConnection({
+    fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
+    accessToken,
+    launchPatientId: Option.none(),
+  })

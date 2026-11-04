@@ -4,8 +4,10 @@ import { render } from '@testing-library/react'
 import { createElement, type JSX, StrictMode } from 'react'
 import { onTestFinished } from 'vite-plus/test'
 
+import { SignInLandingContext } from '@wildflowerhealthio/smart-app-react'
+
 import { App } from '../app.tsx'
-import { BASEPATH } from './app-fakes.ts'
+import { BASEPATH, signInLanding } from './app-fakes.ts'
 
 /** What {@link renderApp} hands the test. */
 interface RenderedApp {
@@ -16,7 +18,8 @@ interface RenderedApp {
 }
 
 /**
- * Render `App` under StrictMode over a retry-free client (fast failures), at
+ * Render `App` under StrictMode over a retry-free client (fast failures), on
+ * the sign-in landing the app root would hand it, at
  * `route` under {@link BASEPATH} (the app root by default), over a browser
  * history the test destroys as it finishes, as a page would never need to.
  */
@@ -34,7 +37,11 @@ const renderApp = ({ route = '' }: { readonly route?: string } = {}): RenderedAp
       createElement(
         QueryClientProvider,
         { client: queryClient },
-        createElement(App, { page: { basepath: BASEPATH, history } })
+        createElement(
+          SignInLandingContext,
+          { value: signInLanding },
+          createElement(App, { page: { basepath: BASEPATH, history } })
+        )
       )
     )
   const { rerender } = render(app())

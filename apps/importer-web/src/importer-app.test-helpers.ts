@@ -1,7 +1,20 @@
+import type { HttpClient } from '@effect/platform'
 import { createBrowserHistory } from '@tanstack/react-router'
+import { render } from '@testing-library/react'
+import {
+  buildSmartRouterContext,
+  decodeFhirBaseUrl,
+  SmartConnection,
+  SmartRuntimeContext,
+  smartRuntimeFor,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
 import type { SmartAppPage } from '@wildflowerhealthio/smart-app-react'
+import { Option, type Layer } from 'effect'
+import { createElement } from 'react'
 import { onTestFinished, vi } from 'vite-plus/test'
+
+import { ImporterApp } from './app.tsx'
 
 /** The directory the app is served from in these tests. */
 const BASEPATH = '/importer/'
@@ -40,4 +53,39 @@ const pageAt = (route: string): SmartAppPage => {
 /** The address bar's path under {@link BASEPATH}. */
 const currentRoute = (): string => window.location.pathname.slice(BASEPATH.length)
 
-export { BASEPATH, currentRoute, pageAt, stubPageBrowserApis }
+/**
+ * Render the Importer on `page` through the **real** SMART runtime, connected
+ * to `fhirBaseUrl` with `accessToken`, over `transport`, as the app's
+ * `SmartHandshakeGate` mounts it: provided to the tree, and carried in the
+ * router context.
+ */
+const renderImporterApp = (
+  page: SmartAppPage,
+  {
+    fhirBaseUrl,
+    accessToken,
+    transport,
+  }: {
+    readonly fhirBaseUrl: string
+    readonly accessToken: string
+    readonly transport: Layer.Layer<HttpClient.HttpClient>
+  }
+): void => {
+  const runtime = smartRuntimeFor(
+    new SmartConnection({
+      fhirBaseUrl: decodeFhirBaseUrl(fhirBaseUrl),
+      accessToken: Option.some(accessToken),
+      launchPatientId: Option.none(),
+    }),
+    transport
+  )
+  render(
+    createElement(
+      SmartRuntimeContext,
+      { value: runtime },
+      createElement(ImporterApp, { page, context: buildSmartRouterContext(runtime) })
+    )
+  )
+}
+
+export { BASEPATH, currentRoute, pageAt, renderImporterApp, stubPageBrowserApis }

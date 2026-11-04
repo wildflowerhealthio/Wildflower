@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import type * as SmartClientModule from '@wildflowerhealthio/authorization-core/smart-client'
 import { PlainSmartServer, type Session } from '@wildflowerhealthio/authorization-core/smart-client'
 import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
-import { authorizeSmartLaunch } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { decodeFhirBaseUrl, redirectToSignIn } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { Effect, Option } from 'effect'
@@ -78,13 +78,15 @@ const letAuthorizeThrough = (): void => {
 /** Start a sign-in as the launch page does, so a callback has a connection to complete. */
 const startSignIn = async (): Promise<void> => {
   letAuthorizeThrough()
-  await authorizeSmartLaunch(
-    {
-      ...smartRegistration,
-      redirectUri: `${window.location.origin}${BASEPATH}`,
-      iss: FHIR_SERVER_URL,
-    },
-    'xyz'
+  await Effect.runPromise(
+    redirectToSignIn(
+      {
+        ...smartRegistration,
+        redirectUri: `${window.location.origin}${BASEPATH}`,
+        fhirBaseUrl: decodeFhirBaseUrl(FHIR_SERVER_URL),
+      },
+      'xyz'
+    )
   )
 }
 

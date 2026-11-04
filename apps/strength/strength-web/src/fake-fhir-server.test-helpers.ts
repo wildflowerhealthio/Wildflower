@@ -1,17 +1,31 @@
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/platform'
 import { Array as Arr, Effect, Layer, Option, Order, Schema } from 'effect'
 
-import { smartClientFor, type SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  decodeFhirBaseUrl,
+  SmartConnection,
+  SmartRuntimeContext,
+  smartRuntimeFor,
+  type SmartRuntime,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { createElement, type ReactElement } from 'react'
 
 /**
  * An in-memory FHIR server for driving the app end to end: one stub transport
  * that answers searches and reads from its store and applies batch `Bundle`s
- * to it, which the real `smartClientFor` reads over and the real
- * `buildSmartRouterContext` writes over.
+ * to it, which the real `smartRuntimeFor` reads and writes over.
  */
 
 const SERVER_URL = 'http://127.0.0.1:8080'
 const ACCESS_TOKEN = 'tok-lift'
+
+/** The connection a launch naming `patientId` (`null` for none) makes to the fake server. */
+const connectionFor = (patientId: string | null): SmartConnection =>
+  new SmartConnection({
+    fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
+    accessToken: Option.some(ACCESS_TOKEN),
+    launchPatientId: Option.fromNullable(patientId),
+  })
 
 /** The codings of a concept the fake server searches on. */
 const CodeableConceptFields = Schema.Struct({
@@ -94,7 +108,18 @@ interface FakeFhirServer {
   /** Every batch `Bundle`'s resources, one array per batch, in order. */
   readonly writes: (readonly unknown[])[]
   readonly transport: Layer.Layer<HttpClient.HttpClient>
-  readonly clientFor: (patientId: string | null) => SmartClient
+  /** The connection a launch naming `patientId` (`null` for none) makes to this server. */
+  readonly connectionFor: (patientId: string | null) => SmartConnection
+  /** The runtime over {@link FakeFhirServer.connectionFor}'s connection and this transport. */
+  readonly runtimeFor: (patientId: string | null) => SmartRuntime
+  /**
+   * What `render` makes of {@link FakeFhirServer.runtimeFor}'s runtime, with
+   * the runtime provided to it, as `SmartHandshakeGate` provides it.
+   */
+  readonly underRuntime: (
+    patientId: string | null,
+    render: (runtime: SmartRuntime) => ReactElement
+  ) => ReactElement
   readonly seedWire: (wire: unknown) => void
   /** Store a decoded resource as the app writes one: its JSON. */
   readonly seedResource: (resource: unknown) => void
@@ -247,11 +272,8 @@ const fakeFhirServer = (): FakeFhirServer => {
     )
   )
 
-  const clientFor = (patientId: string | null): SmartClient =>
-    smartClientFor(
-      { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN, patient: patientId ?? undefined },
-      transport
-    )
+  const runtimeFor = (patientId: string | null): SmartRuntime =>
+    smartRuntimeFor(connectionFor(patientId), transport)
 
   return {
     searches,
@@ -259,7 +281,12 @@ const fakeFhirServer = (): FakeFhirServer => {
     requests,
     writes,
     transport,
-    clientFor,
+    connectionFor,
+    runtimeFor,
+    underRuntime: (patientId, render) => {
+      const runtime = runtimeFor(patientId)
+      return createElement(SmartRuntimeContext, { value: runtime }, render(runtime))
+    },
     seedWire,
     seedResource: (resource) => {
       seedWire(JSON.parse(JSON.stringify(resource)))

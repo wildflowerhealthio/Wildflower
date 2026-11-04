@@ -2,17 +2,22 @@ import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  buildSmartRouterContext,
+  decodeFhirBaseUrl,
+  SmartConnection,
+  smartRuntimeFor,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 import { FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
 import { Snapshot, type SnapshotFile } from '@wildflowerhealthio/synthetic-data-core-js'
-import { DateTime, Effect, Either, Layer, Schema } from 'effect'
+import { DateTime, Effect, Either, Layer, Option, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { SyntheticDataApp } from './app.tsx'
 import { PUBLISHED_SNAPSHOT_ADDRESS, SYNTHETIC_DATA_SCOPE } from './config.ts'
 
 /**
- * The app's own wiring, end to end: the real `buildSmartRouterContext` over a
+ * The app's own wiring, end to end: the real SMART runtime and router context over a
  * stub transport, the real screen over a stubbed `fetch` serving a small
  * snapshot at the published address. The screen's behaviour is
  * `synthetic-data-react`'s test; what only this app can show is where each
@@ -92,8 +97,14 @@ afterEach(() => {
 describe('SyntheticDataApp', () => {
   it('loads the published snapshot into the connected server, with the token on the writes alone', async () => {
     const context = buildSmartRouterContext(
-      { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
-      recordingServer(),
+      smartRuntimeFor(
+        new SmartConnection({
+          fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
+          accessToken: Option.some(ACCESS_TOKEN),
+          launchPatientId: Option.none(),
+        }),
+        recordingServer()
+      ),
       new QueryClient({ defaultOptions: { queries: { retry: false } } })
     )
     render(<SyntheticDataApp context={context} serverUrl={SERVER_URL} />)

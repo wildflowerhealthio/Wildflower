@@ -37,10 +37,10 @@ import {
 /**
  * The app's own wiring, end to end, over an in-memory FHIR server
  * (`fake-fhir-server.test-helpers.ts`): reads go through the real
- * `fhir-r4-react/smart` page readers, writes through the real
- * `buildSmartRouterContext` and `persistBatchBundleOrFail`, and every decision
+ * `fhir-r4-react/smart` page readers and writes through the real
+ * `persistBatchBundleOrFail`, both on the real `smartRuntimeFor`, and every decision
  * through the real `strength-core-js`. Only the SMART handshake (which needs a
- * browser redirect) and `useLaunchFailureRedirect` (which would navigate away)
+ * browser redirect) and `useRedirectToRootOnFailure` (which would navigate away)
  * are stubbed, in `app.test.tsx`.
  *
  * What only this layer can show: that what the screens hand back is what
@@ -279,11 +279,7 @@ const mountStrengthApp = (
   window.history.replaceState(null, '', `${BASEPATH}${route}`)
   const page = openTestPage()
   renderWithQueryClient(
-    createElement(StrengthRouter, {
-      page,
-      client: server.clientFor(PATIENT_ID),
-      transport: server.transport,
-    })
+    server.underRuntime(PATIENT_ID, (runtime) => createElement(StrengthRouter, { page, runtime }))
   )
   return page
 }
