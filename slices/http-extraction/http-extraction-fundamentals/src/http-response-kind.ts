@@ -13,9 +13,10 @@ interface RecognizedUrlData {
   /** The number routing ranks by, highest wins — see the `Specificity` tiers. */
   readonly specificity: number
   /**
-   * The identifier systems this response's resources key under, per resource
-   * type ({@link SystemFamily}). Absent = recognized but mints no identity (a
-   * recorder records, it doesn't import).
+   * The identifier systems the ids this response's resources carry belong
+   * to, per resource type ({@link SystemFamily}). Absent = recognized but
+   * mints no identity (a recorder records, it doesn't import), so nothing
+   * this kind parses can be keyed.
    */
   readonly systemFamily?: SystemFamily.Type
 }
