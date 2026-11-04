@@ -1,17 +1,11 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+
 import type * as Report from '../../entities/report.ts'
 import type * as TestTableRow from '../../entities/test-table-row.ts'
+import { LifeLabsIdentifierSystem } from '../../source-system.ts'
 import { parseReferenceRange } from '../reference-range.ts'
 import { parseResultValue } from '../result-value.ts'
-import {
-  keyWire,
-  performerWire,
-  quantityWire,
-  referenceWire,
-  reportStatus,
-  sourceId,
-  timingWire,
-  type Wire,
-} from './shared.ts'
+import { performerWire, quantityWire, reportStatus, timingWire, type Wire } from './shared.ts'
 
 const OBSERVATION_CATEGORY_SYSTEM = 'http://terminology.hl7.org/CodeSystem/observation-category'
 const INTERPRETATION_SYSTEM = 'http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation'
@@ -24,13 +18,20 @@ const INTERPRETATIONS: Readonly<
   LO: { code: 'L', display: 'Low' },
 }
 
-const observationOriginalId = (
-  reportId: string,
+/**
+ * A result row is keyed by the report's `Lab No`, the row's section and test
+ * name, and its ordinal among the report's rows, read as printed:
+ * `<Lab No>/<section>/<test name>/<ordinal>`.
+ */
+const observationKeyOf = (
+  report: Report.Type,
   section: string,
-  group: string,
   row: TestTableRow.Type,
   ordinal: number
-): string => sourceId(['observation', reportId, section, group, row.name, String(ordinal)])
+): DetachedResource.Key => ({
+  system: LifeLabsIdentifierSystem.Result,
+  value: [report.labNo, section, row.name, String(ordinal)].join('/'),
+})
 
 const referenceRangeWire = (row: TestTableRow.Type): Wire[] => {
   if (row.referenceRange === '') return []
@@ -59,11 +60,11 @@ const valueWire = (row: TestTableRow.Type): Wire => {
 
 const observationWire = (
   report: Report.Type,
-  patientId: string,
+  patientKey: DetachedResource.Key,
   section: string,
   group: string,
   row: TestTableRow.Type,
-  id: string,
+  key: DetachedResource.Key,
   timeZone: string
 ): Wire => {
   // A row printed before any section or group heading has neither; a FHIR
@@ -71,7 +72,7 @@ const observationWire = (
   const categoryText = [section, group].filter((part) => part.length > 0).join(' · ')
   const wire: Wire = {
     resourceType: 'Observation',
-    identifier: [keyWire(id)],
+    identifier: [DetachedResource.keyIdentifierWire(key)],
     status: reportStatus(report),
     category: [
       {
@@ -82,7 +83,7 @@ const observationWire = (
       },
     ],
     code: { text: row.name },
-    subject: referenceWire('Patient', patientId),
+    subject: DetachedResource.logicalReferenceWire('Patient', patientKey),
     ...timingWire(report, timeZone),
     ...valueWire(row),
   }
@@ -96,4 +97,4 @@ const observationWire = (
   return wire
 }
 
-export { observationOriginalId, observationWire }
+export { observationKeyOf, observationWire }

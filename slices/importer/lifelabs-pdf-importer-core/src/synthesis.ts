@@ -2,14 +2,14 @@
  * The FHIR synthesis on its own: the parsed `Report` model's types,
  * `toFhirResources`, and {@link decodedReportsOf} — the reports as the
  * LifeLabs decode yields them, one section per report, each synthesized
- * resource detached, keyed in `LIFELABS_SYSTEM` — without the PDF extraction
- * the main entry's decode requires.
+ * resource detached and keyed by an identifier the report prints — without
+ * the PDF extraction the main entry's decode requires.
  *
  * @remarks
  * For callers that build `Report` values themselves rather than reading them
  * off a PDF, such as `synthetic-data-lifelabs`. Only the synthesis: the
  * importer's settings and source-system constants are the main entry's (and
- * `LIFELABS_SYSTEM` also `/source-file`'s).
+ * the source-file ones also `/source-file`'s).
  *
  * @packageDocumentation
  */
@@ -22,13 +22,12 @@ import { type SynthesisOptions, toFhirResources } from './fhir/to-fhir.ts'
 
 /**
  * A detached record as its section entry: its `fullUrl` its type and its key's
- * value (the source id the synthesis gave it), which a settings re-decode
- * keeps.
+ * value, `<Type>/<value>`, which a settings re-decode keeps.
  *
  * @remarks
- * The synthesis gives every record an id, so every record is keyed. A keyless
- * one would be identified by its type and its position in the report,
- * `<Type>#<index>`, which a re-decode of the same print also keeps.
+ * A keyless record (a `DiagnosticReport` whose report prints no `Lab No`) is
+ * identified by its type and its position in the report, `<Type>#<index>`,
+ * which a re-decode of the same print also keeps.
  */
 const reportEntryOf = (resource: DetachedResource.Type, index: number): DecodedFileSet.Entry => ({
   fullUrl: Option.match(DetachedResource.keyOf(resource), {
@@ -52,8 +51,8 @@ const reportSectionTitle = (report: Report.Type): string => {
 
 /**
  * The reports as the LifeLabs decode yields them: one section per report, its
- * records detached and keyed in `LIFELABS_SYSTEM`, each entry's `fullUrl`
- * `<Type>/<source id>`, no notes.
+ * records detached and keyed by the identifiers the report prints, each
+ * entry's `fullUrl` `<Type>/<key value>`, no notes.
  *
  * @param reports - The parsed reports, in print order
  * @param options - The zone the reports' printed clock is in

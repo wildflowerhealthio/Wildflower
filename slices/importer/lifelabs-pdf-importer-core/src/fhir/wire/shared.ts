@@ -1,40 +1,10 @@
-import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import { joinIdComponents } from '@wildflowerhealthio/fhir-r4/identity'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
 import { DateTime, Option } from 'effect'
 
 import type * as Report from '../../entities/report.ts'
-import { LIFELABS_SYSTEM } from '../../source-system.ts'
 import { parsePrintedDateTime } from '../dates.ts'
 import { ucumCodeFor, UCUM_SYSTEM } from '../units.ts'
 
 type Wire = Record<string, unknown>
-
-/**
- * The source id for a resource, from the report facts that determine it: the
- * components folded the way `fhir-r4/identity` folds them (length-prefixed,
- * so no component can impersonate two) and digested to sixteen hex digits.
- *
- * @remarks
- * A digest rather than the joined text so every key value has one short,
- * fixed shape: a practitioner's printed name or a joined lab-number-and-date
- * would not. The facts themselves stay readable on the resource (identifiers,
- * `name.text`), only the key is hashed. **Persisted wire format:** the value
- * of every LifeLabs record's key, and so part of the id it is stored under.
- */
-const sourceId = (components: readonly string[]): string =>
-  fnv1a64(joinIdComponents(components)).toString(16).padStart(16, '0')
-
-/** The key identifier wire of the record the synthesis gave `id`: `identifier[0]`. */
-const keyWire = (id: string): Wire => ({
-  ...DetachedResource.keyIdentifierWire({ system: LIFELABS_SYSTEM, value: id }),
-})
-
-/** The logical reference wire to the record of `resourceType` the synthesis gave `id`. */
-const referenceWire = (resourceType: FhirResource['resourceType'], id: string): Wire => ({
-  ...DetachedResource.logicalReferenceWire(resourceType, { system: LIFELABS_SYSTEM, value: id }),
-})
 
 const timingWire = (
   report: Report.Type,
@@ -77,5 +47,5 @@ const quantityWire = (value: number, unit: string): Wire => {
   return wire
 }
 
-export { keyWire, performerWire, quantityWire, referenceWire, reportStatus, sourceId, timingWire }
+export { performerWire, quantityWire, reportStatus, timingWire }
 export type { Wire }

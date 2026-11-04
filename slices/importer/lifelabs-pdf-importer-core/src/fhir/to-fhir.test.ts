@@ -1,3 +1,4 @@
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Option } from 'effect'
@@ -9,9 +10,10 @@ import type * as Report from '../entities/report.ts'
 import type * as TestTableRow from '../entities/test-table-row.ts'
 import { LifeLabsIdentifierSystem } from '../source-system.ts'
 import {
-  patientOriginalId,
-  practitionerOriginalId,
-  reportOriginalId,
+  observationKeyOf,
+  patientKeyOf,
+  practitionerKeyOf,
+  reportKeyOf,
   toFhirResources,
 } from './to-fhir.ts'
 import { UCUM_SYSTEM } from './units.ts'
@@ -33,16 +35,30 @@ const ofType = <T extends FhirResource['resourceType']>(
       resource.resourceType === resourceType
   )
 
-/** The id the synthesis gave `resource`: the value of its key, `identifier[0]`. */
-const idOf = (resource: FhirResource | undefined): string | null =>
-  resource !== undefined && 'identifier' in resource
-    ? (resource.identifier[0]?.value ?? null)
-    : null
+/** `key` as `<system>|<value>`, the spelling the helpers below compare keys in. */
+const keyText = ({ system, value }: DetachedResource.Key): string => `${system}|${value}`
 
-/** The id of the record `reference` names: its logical reference's identifier value. */
+/** An identifier as `<system>|<value>`, or `null` when it has neither. */
+const identifierText = (
+  identifier: { readonly system: URL | null; readonly value: string | null } | null | undefined
+): string | null =>
+  identifier?.system == null || identifier.value === null
+    ? null
+    : `${identifier.system.href}|${identifier.value}`
+
+/** The key the synthesis gave `resource`, `identifier[0]`, as `<system>|<value>`. */
+const idOf = (resource: FhirResource | undefined): string | null =>
+  resource !== undefined && 'identifier' in resource ? identifierText(resource.identifier[0]) : null
+
+/** The key of the record `reference` names: its logical reference's identifier. */
 const targetOf = (
-  reference: { readonly identifier: { readonly value: string | null } | null } | null | undefined
-): string | null => reference?.identifier?.value ?? null
+  reference:
+    | {
+        readonly identifier: { readonly system: URL | null; readonly value: string | null } | null
+      }
+    | null
+    | undefined
+): string | null => identifierText(reference?.identifier)
 
 const hemoglobinRow: TestTableRow.Type = {
   name: 'Hemoglobin',
@@ -127,32 +143,24 @@ const sample: Report.Type = {
   ],
 }
 
-/** The lab number and date of service an anonymized export masks every report's to. */
+/** The lab number an anonymized export masks every report's to. */
 const MASKED_LAB_NO = '0000-XX0000000'
-const MASKED_DATE_OF_SERVICE = 'Xxx 00 0000 00:00'
 
-/**
- * Arrays of reports, some masked to the same lab number and date of service —
- * the anonymized export whose reports print one shared key, which the
- * synthesis must still keep apart.
- */
-const reportsArbitrary = fc.array(
-  fc
-    .tuple(reportArbitrary, fc.boolean())
-    .map(([report, masked]) =>
-      masked ? { ...report, labNo: MASKED_LAB_NO, dateOfService: MASKED_DATE_OF_SERVICE } : report
-    ),
-  { minLength: 1, maxLength: 3 }
-)
+/** Arrays of reports, each printing its own lab number. */
+const reportsArbitrary = fc.uniqueArray(reportArbitrary, {
+  minLength: 1,
+  maxLength: 3,
+  selector: (report) => report.labNo,
+})
 
 describe('toFhirResources', () => {
-  it('property: every row is one Observation the report lists, on the one Patient, and every id is unique', () => {
+  it('property: every row is one Observation the report lists, on the one Patient, and every key is unique', () => {
     fc.assert(
       fc.property(reportsArbitrary, (reports) => {
         const resources = synthesize(reports)
 
-        const ids = resources.map((resource) => `${resource.resourceType}/${idOf(resource)}`)
-        expect(new Set(ids).size).toBe(ids.length)
+        const keys = resources.map((resource) => `${resource.resourceType}/${idOf(resource)}`)
+        expect(new Set(keys).size).toBe(keys.length)
 
         const observations = ofType(resources, 'Observation')
         const rowCount = reports.reduce(
@@ -196,7 +204,7 @@ describe('toFhirResources', () => {
     )
   }, 60_000)
 
-  it('property: a re-synthesis mints the same ids — the report determines them', () => {
+  it('property: a re-synthesis writes the same keys — the report determines them', () => {
     fc.assert(
       fc.property(reportArbitrary, (report) => {
         const first = synthesize([report]).map((r) => `${r.resourceType}/${idOf(r)}`)
@@ -207,19 +215,25 @@ describe('toFhirResources', () => {
     )
   })
 
-  it('keeps two reports printing the same lab number and date of service apart', () => {
-    const masked = { ...sample, labNo: MASKED_LAB_NO, dateOfService: MASKED_DATE_OF_SERVICE }
+  // Accepted: the Lab No is the report's own identifier, so two reports
+  // printing one are one key, and the import stores them as one record.
+  it('keys two reports printing one lab number alike, and their rows alike', () => {
+    const masked = { ...sample, labNo: MASKED_LAB_NO }
 
-    const resources = synthesize([masked, masked])
+    const resources = synthesize([masked, { ...masked, dateOfService: 'Aug 20 2026 09:15' }])
 
     const reports = ofType(resources, 'DiagnosticReport')
-    expect(reports.map(idOf)).toEqual([reportOriginalId(masked, 0), reportOriginalId(masked, 1)])
-    const observationIds = ofType(resources, 'Observation').map(idOf)
-    expect(new Set(observationIds).size).toBe(observationIds.length)
-    // A document with no repeat keeps the plain key.
-    expect(idOf(ofType(synthesize([masked]), 'DiagnosticReport')[0])).toBe(
-      reportOriginalId(masked, 0)
-    )
+    expect(reports.map(idOf)).toEqual([
+      `${LifeLabsIdentifierSystem.LabNumber}|${MASKED_LAB_NO}`,
+      `${LifeLabsIdentifierSystem.LabNumber}|${MASKED_LAB_NO}`,
+    ])
+    const observationKeys = ofType(resources, 'Observation').map(idOf)
+    expect(observationKeys).toHaveLength(6)
+    expect(new Set(observationKeys).size).toBe(3)
+  })
+
+  it('leaves a report that prints no lab number keyless', () => {
+    expect(reportKeyOf({ ...sample, labNo: '' })).toEqual(Option.none())
   })
 
   it('emits each practitioner and patient once across reports that share them', () => {
@@ -237,7 +251,7 @@ describe('toFhirResources', () => {
     const [patient] = ofType(synthesize([sample]), 'Patient')
 
     expect(patient?.id).toBeNull()
-    expect(idOf(patient)).toBe(patientOriginalId(sample.patient))
+    expect(idOf(patient)).toBe(keyText(patientKeyOf(sample.patient)))
     expect(patient?.name[0]).toMatchObject({
       family: 'OKAFOR',
       given: ['DANA', 'MARIE'],
@@ -245,12 +259,13 @@ describe('toFhirResources', () => {
     })
     expect(patient?.gender).toBe('female')
     expect(patient?.birthDate).toBe('1981-08-13')
-    expect(patient?.identifier).toContainEqual(
+    // The health card number is the key, written once.
+    expect(patient?.identifier).toEqual([
       expect.objectContaining({
         system: new URL(LifeLabsIdentifierSystem.OntarioHealthCardNumber),
         value: '1234567890 AB',
-      })
-    )
+      }),
+    ])
     expect(patient?.telecom[0]).toMatchObject({ system: 'phone', value: '(416) 555-0100' })
     // The report's providers are the DiagnosticReport's resultsInterpreter, not
     // the patient's GP — a lab report names who to send results to, not who the
@@ -258,35 +273,60 @@ describe('toFhirResources', () => {
     expect(patient?.generalPractitioner).toEqual([])
   })
 
-  it('keys a patient by Patient ID first, then health card digits, then name and birth date', () => {
-    const byPatientId = patientOriginalId({ ...sample.patient, patientId: 'P-77' })
-    const byHealthCard = patientOriginalId(sample.patient)
-    const byName = patientOriginalId({ ...sample.patient, healthCardNumber: '' })
+  it('keys a patient by Patient ID first, then health card number, then name and birth date, as printed', () => {
+    expect(patientKeyOf({ ...sample.patient, patientId: 'P-77' })).toEqual({
+      system: LifeLabsIdentifierSystem.PatientId,
+      value: 'P-77',
+    })
+    expect(patientKeyOf(sample.patient)).toEqual({
+      system: LifeLabsIdentifierSystem.OntarioHealthCardNumber,
+      value: '1234567890 AB',
+    })
+    expect(
+      patientKeyOf({ ...sample.patient, name: ' OKAFOR, DANA MARIE ', healthCardNumber: '' })
+    ).toEqual({
+      system: LifeLabsIdentifierSystem.PatientNameBirthDate,
+      value: 'OKAFOR, DANA MARIE, Aug 13 1981',
+    })
+  })
 
-    expect(patientOriginalId({ ...sample.patient, patientId: 'P-77', name: 'OTHER, ONE' })).toBe(
-      byPatientId
+  it('writes the other identifiers the report prints behind the key, the key once', () => {
+    const [patient] = ofType(
+      synthesize([{ ...sample, patient: { ...sample.patient, patientId: 'P-77' } }]),
+      'Patient'
     )
-    expect(patientOriginalId({ ...sample.patient, healthCardNumber: '1234567890 AC' })).toBe(
-      byHealthCard
+
+    expect(patient?.identifier.map(identifierText)).toEqual([
+      `${LifeLabsIdentifierSystem.PatientId}|P-77`,
+      `${LifeLabsIdentifierSystem.OntarioHealthCardNumber}|1234567890 AB`,
+    ])
+  })
+
+  it('keys a practitioner by the printed name, inner whitespace collapsed', () => {
+    expect(practitionerKeyOf('  HAMILTON-REYES   DR.\tSAM ')).toEqual({
+      system: LifeLabsIdentifierSystem.PractitionerName,
+      value: 'HAMILTON-REYES DR. SAM',
+    })
+  })
+
+  it('keys a result row by lab number, section, test name and ordinal, as printed', () => {
+    const [, granulocytes] = ofType(synthesize([sample]), 'Observation')
+
+    expect(idOf(granulocytes)).toBe(
+      `${LifeLabsIdentifierSystem.Result}|2024-JJ6330780/Hematology/Immature Granulocytes/1`
     )
-    expect(byName).toBe(patientOriginalId({ ...sample.patient, healthCardNumber: '' }))
-    expect(byName).not.toBe(
-      patientOriginalId({ ...sample.patient, healthCardNumber: '', dateOfBirth: 'Aug 14 1981' })
-    )
-    expect(new Set([byPatientId, byHealthCard, byName]).size).toBe(3)
+    expect(observationKeyOf(sample, 'Hematology', hemoglobinRow, 0)).toEqual({
+      system: LifeLabsIdentifierSystem.Result,
+      value: '2024-JJ6330780/Hematology/Hemoglobin/0',
+    })
   })
 
   it('builds the DiagnosticReport: lab number, LOINC code, sections as text, timing in the zone, results, performer, resultsInterpreter', () => {
     const [report] = ofType(synthesize([sample]), 'DiagnosticReport')
 
-    expect(idOf(report)).toBe(reportOriginalId(sample, 0))
+    expect(idOf(report)).toBe(`${LifeLabsIdentifierSystem.LabNumber}|2024-JJ6330780`)
     expect(report?.status).toBe('final')
-    expect(report?.identifier).toContainEqual(
-      expect.objectContaining({
-        system: new URL(LifeLabsIdentifierSystem.LabNumber),
-        value: '2024-JJ6330780',
-      })
-    )
+    expect(report?.identifier).toHaveLength(1)
     expect(report?.code.coding[0]).toMatchObject({ code: '11502-2', display: 'Laboratory report' })
     expect(report?.code.text).toBe('Hematology, Molecular Biology')
     expect(report?.effectiveDateTime).toEqual(
@@ -302,8 +342,8 @@ describe('toFhirResources', () => {
     // Every provider named on the report — the ordering provider and each CC'd
     // provider — is a resultsInterpreter reference, in that order.
     expect(report?.resultsInterpreter.map(targetOf)).toEqual([
-      practitionerOriginalId(sample.orderedBy),
-      practitionerOriginalId(sample.copyTo[0] ?? ''),
+      keyText(practitionerKeyOf(sample.orderedBy)),
+      keyText(practitionerKeyOf(sample.copyTo[0] ?? '')),
     ])
   })
 
@@ -430,8 +470,11 @@ describe('toFhirResources', () => {
     expect(patient?.birthDate).toBeNull()
     expect(patient?.gender).toBeNull()
     expect(patient?.telecom).toEqual([])
-    // Only the key the synthesis gave it: no identifier the header masked.
-    expect(patient?.identifier.slice(1)).toEqual([])
+    // Only the key, by name and the birth date as printed: no identifier the
+    // header masked.
+    expect(patient?.identifier.map(identifierText)).toEqual([
+      `${LifeLabsIdentifierSystem.PatientNameBirthDate}|OKAFOR, DANA MARIE, Xxx 00 0000`,
+    ])
     expect(patient?.generalPractitioner).toEqual([])
     expect(report?.resultsInterpreter).toEqual([])
     expect(report?.effectiveDateTime).toBeNull()
@@ -449,8 +492,8 @@ describe('toFhirResources', () => {
     const [report] = ofType(resources, 'DiagnosticReport')
     const [observation] = ofType(resources, 'Observation')
 
-    // Only the key the synthesis gave it: no lab number.
-    expect(report?.identifier.slice(1)).toEqual([])
+    // No lab number, so no key.
+    expect(report?.identifier).toEqual([])
     expect(observation?.category[0]?.coding[0]?.code).toBe('laboratory')
     expect(observation?.category[0]?.text).toBeNull()
   })
@@ -506,7 +549,7 @@ describe('toFhirResources', () => {
     expect(groups.map((group) => group.report)).toEqual([sample, second])
     const [first, again] = groups
     // The two reports name the same patient and practitioners — deduplicated
-    // by id, they appear in the first group and never again.
+    // by key, they appear in the first group and never again.
     expect(ofType(first?.resources ?? [], 'Patient')).toHaveLength(1)
     expect(ofType(again?.resources ?? [], 'Patient')).toHaveLength(0)
     expect(ofType(again?.resources ?? [], 'Practitioner')).toHaveLength(0)

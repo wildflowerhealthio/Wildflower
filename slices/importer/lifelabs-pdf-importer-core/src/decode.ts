@@ -36,7 +36,7 @@ const asParseError = (
  * @param settings - The import's settings (time zone for date interpretation)
  * @returns The document's reports as {@link decodedReportsOf} yields them:
  *   one section per report, titled by its `Lab No` and date of service, its
- *   records detached and keyed in `LIFELABS_SYSTEM`, no notes; fails only with a
+ *   records detached and keyed by what the report prints, no notes; fails only with a
  *   `ParseError` when the document is not a recognized LifeLabs report;
  *   requires nothing
  *
@@ -45,7 +45,7 @@ const asParseError = (
  * printed inverse instead of going through an extractor.
  * `decodeLifeLabsPdf` is `decodeLifeLabsPdfDocument ∘ PositionedTextExtractor`.
  * A `Patient` or `Practitioner` shared across reports appears in the section
- * of the first report naming it — the synthesis deduplicates by id.
+ * of the first report naming it — the synthesis deduplicates by key.
  */
 const decodeLifeLabsPdfDocument = (
   document: Document.Type,

@@ -1,23 +1,36 @@
-import { Option } from 'effect'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { Array as Arr, Option } from 'effect'
 
 import type * as Report from '../../entities/report.ts'
 import { LifeLabsIdentifierSystem } from '../../source-system.ts'
 import { parsePrintedDate } from '../dates.ts'
-import { keyWire, sourceId, type Wire } from './shared.ts'
+import type { Wire } from './shared.ts'
 
-const digitsOf = (text: string): string => text.replaceAll(/\D/g, '')
+/** The identifiers the report prints for its patient, as printed: `Patient ID`, then `HC #`. */
+const printedIdentifiersOf = (patient: Report.Type['patient']): DetachedResource.Key[] => [
+  ...(patient.patientId === ''
+    ? []
+    : [{ system: LifeLabsIdentifierSystem.PatientId, value: patient.patientId }]),
+  ...(patient.healthCardNumber === ''
+    ? []
+    : [
+        {
+          system: LifeLabsIdentifierSystem.OntarioHealthCardNumber,
+          value: patient.healthCardNumber,
+        },
+      ]),
+]
 
 /**
- * The id the report determines for its patient: the printed `Patient ID`,
- * else the health card number's digits, else the name and date of birth
- * together — the most stable fact the report prints, in that order.
+ * The key the report gives its patient: the printed `Patient ID`, else the
+ * health card number as printed, else the name and date of birth as printed,
+ * `<name>, <date of birth>`.
  */
-const patientOriginalId = (patient: Report.Type['patient']): string => {
-  if (patient.patientId !== '') return sourceId(['patient-id', patient.patientId])
-  const healthCard = digitsOf(patient.healthCardNumber)
-  if (healthCard !== '') return sourceId(['health-card', healthCard])
-  return sourceId(['name', patient.name, patient.dateOfBirth])
-}
+const patientKeyOf = (patient: Report.Type['patient']): DetachedResource.Key =>
+  Option.getOrElse(Arr.head(printedIdentifiersOf(patient)), () => ({
+    system: LifeLabsIdentifierSystem.PatientNameBirthDate,
+    value: `${patient.name.trim()}, ${patient.dateOfBirth}`,
+  }))
 
 /** `FAMILY, GIVEN GIVEN` → a HumanName; any other shape becomes `text`. */
 const humanNameWire = (printed: string): Wire => {
@@ -41,19 +54,16 @@ const genderOf = (sex: string): string | undefined => {
 
 const patientWire = (report: Report.Type): Wire => {
   const { patient } = report
-  const identifier: Wire[] = []
-  if (patient.patientId !== '') {
-    identifier.push({ system: LifeLabsIdentifierSystem.PatientId, value: patient.patientId })
-  }
-  if (patient.healthCardNumber !== '') {
-    identifier.push({
-      system: LifeLabsIdentifierSystem.OntarioHealthCardNumber,
-      value: patient.healthCardNumber,
-    })
-  }
+  const key = patientKeyOf(patient)
+  // The key first, then every other identifier the report prints.
   const wire: Wire = {
     resourceType: 'Patient',
-    identifier: [keyWire(patientOriginalId(patient)), ...identifier],
+    identifier: [
+      DetachedResource.keyIdentifierWire(key),
+      ...printedIdentifiersOf(patient)
+        .filter(({ system }) => system !== key.system)
+        .map(DetachedResource.keyIdentifierWire),
+    ],
   }
   if (patient.name !== '') wire['name'] = [humanNameWire(patient.name)]
   const gender = genderOf(patient.sex)
@@ -64,4 +74,4 @@ const patientWire = (report: Report.Type): Wire => {
   return wire
 }
 
-export { patientOriginalId, patientWire }
+export { patientKeyOf, patientWire }
