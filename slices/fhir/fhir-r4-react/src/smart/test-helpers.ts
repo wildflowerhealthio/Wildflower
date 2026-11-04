@@ -1,6 +1,6 @@
 /**
  * A stub FHIR server for the tests of anything that reads through a
- * `SmartClient` or a SMART router context: an `HttpClient` transport that
+ * `SmartRuntime` or a SMART router context: an `HttpClient` transport that
  * answers each request by the longest URL prefix it matches and records what
  * was sent, so a test asserts what actually went on the wire.
  *
@@ -12,12 +12,13 @@ import {
   HttpClientResponse,
   type HttpClientRequest,
 } from '@effect/platform'
-import { Effect, Layer, Match } from 'effect'
+import { Effect, Layer, Match, Option } from 'effect'
 
-import { requestTargetOf, smartClientFor, type SmartClient } from './smart-client.ts'
-import { decodeFhirBaseUrl, type SmartConnection } from './smart-connection.ts'
+import { requestTargetOf } from './smart-client.ts'
+import { decodeFhirBaseUrl, SmartConnection } from './smart-connection.ts'
+import { smartRuntimeFor, type SmartRuntime } from './smart-runtime.ts'
 
-/** The FHIR base a {@link stubSmartClient} is connected to, and relative keys resolve under. */
+/** The FHIR base a {@link stubSmartRuntime} is connected to, and relative keys resolve under. */
 const STUB_FHIR_BASE = decodeFhirBaseUrl('https://fhir.example')
 
 /** How the stub server answers one request it was sent. */
@@ -34,7 +35,7 @@ type StubAnswers = Readonly<Record<string, StubAnswer>>
 
 /** A stub server's transport, and the record of what was sent through it. */
 interface StubFhirServer {
-  /** The transport to hand `smartClientFor` or `buildSmartRouterContext`. */
+  /** The transport to hand `smartRuntimeFor`. */
   readonly transport: Layer.Layer<HttpClient.HttpClient>
   /** Every request the transport was sent, in order, as sent. */
   readonly requests: readonly HttpClientRequest.HttpClientRequest[]
@@ -76,25 +77,34 @@ const stubFhirServer = (answers: StubAnswers): StubFhirServer => {
 }
 
 /**
- * A {@link SmartClient} on a {@link stubFhirServer} answering from `answers`,
- * connected to {@link STUB_FHIR_BASE} with no token and no launch patient
- * unless `connection` says otherwise.
+ * A connection to {@link STUB_FHIR_BASE} with no token and no launch patient,
+ * unless `fields` says otherwise.
  */
-const stubSmartClient = (
+const stubConnection = (
+  fields: Partial<ConstructorParameters<typeof SmartConnection>[0]> = {}
+): SmartConnection =>
+  new SmartConnection({
+    fhirBaseUrl: STUB_FHIR_BASE,
+    accessToken: Option.none(),
+    launchPatientId: Option.none(),
+    ...fields,
+  })
+
+/**
+ * A {@link SmartRuntime} on a {@link stubFhirServer} answering from `answers`,
+ * over `connection` ({@link stubConnection}'s by default).
+ */
+const stubSmartRuntime = (
   answers: StubAnswers,
-  connection: Partial<SmartConnection> = {}
-): StubFhirServer & { readonly client: SmartClient } => {
+  connection: SmartConnection = stubConnection()
+): StubFhirServer & { readonly runtime: SmartRuntime } => {
   const server = stubFhirServer(answers)
-  const client = smartClientFor(
-    { serverUrl: STUB_FHIR_BASE, accessToken: undefined, patient: undefined, ...connection },
-    server.transport
-  )
-  return { ...server, client }
+  return { ...server, runtime: smartRuntimeFor(connection, server.transport) }
 }
 
-/** A {@link stubSmartClient} whose server answers every request with `body` as JSON. */
-const smartClientAnswering = (body: unknown): ReturnType<typeof stubSmartClient> =>
-  stubSmartClient(answerEveryRequest(answerJson(body)))
+/** A {@link stubSmartRuntime} whose server answers every request with `body` as JSON. */
+const smartRuntimeAnswering = (body: unknown): ReturnType<typeof stubSmartRuntime> =>
+  stubSmartRuntime(answerEveryRequest(answerJson(body)))
 
 /** An answer of `status` (200 unless given) with `body` as JSON. */
 const answerJson =
@@ -168,10 +178,11 @@ export {
   bundleOf,
   dropRequest,
   neverAnswer,
-  smartClientAnswering,
+  smartRuntimeAnswering,
   STUB_FHIR_BASE,
+  stubConnection,
   stubFhirServer,
-  stubSmartClient,
+  stubSmartRuntime,
   type StubAnswer,
   type StubAnswers,
   type StubFhirServer,

@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchMedicationRequestPage } from './medication-requests.ts'
 import { BundleDecodeError } from './resource-page.ts'
-import { smartClientAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
+import { smartRuntimeAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
 
 // A minimal, fully-specified MedicationRequest (mirrors the shell in the
 // fhir-r4 resource test), encoded to valid FHIR wire so the fetch can decode
@@ -77,9 +77,11 @@ const bundle = (resources: readonly unknown[], nextUrl?: string): unknown => ({
 
 describe('fetchMedicationRequestPage', () => {
   test('scopes the first-page query to the patient, newest-authored first', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
-    await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: 'pat/1' }))
+    await Effect.runPromise(
+      fetchMedicationRequestPage({ patientId: 'pat/1' }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     // The patientId is URL-encoded into the `patient=` search parameter, and the
     // page is sorted server-side so scroll paging can append without reordering.
@@ -89,27 +91,33 @@ describe('fetchMedicationRequestPage', () => {
   })
 
   test('reads every MedicationRequest when no patient is in context (system launch)', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
-    await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
+    await Effect.runPromise(
+      fetchMedicationRequestPage({ patientId: null }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(urls).toEqual([`${STUB_FHIR_BASE}/MedicationRequest?_count=200&_sort=-authoredon`])
   })
 
   test('requests a later page by its cursor URL verbatim', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
     const pageUrl = 'https://fhir.example/MedicationRequest?_getpages=abc&_getpagesoffset=20'
 
-    await Effect.runPromise(fetchMedicationRequestPage(client, { pageUrl }))
+    await Effect.runPromise(
+      fetchMedicationRequestPage({ pageUrl }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     // The server's own `next` link is used as-is — no re-derivation of scope/sort.
     expect(urls).toEqual([pageUrl])
   })
 
   test('decodes returned resources and drops undecodable entries', async () => {
-    const { client } = smartClientAnswering(bundle([sampleWire, { malformed: true }]))
+    const { runtime } = smartRuntimeAnswering(bundle([sampleWire, { malformed: true }]))
 
-    const page = await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
+    const page = await Effect.runPromise(
+      fetchMedicationRequestPage({ patientId: null }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(page.items).toHaveLength(1)
     expect(page.items[0]?.id).toBe('medreq-id')
@@ -121,9 +129,11 @@ describe('fetchMedicationRequestPage', () => {
       ...sampleMedicationRequest,
       id: null,
     })
-    const { client } = smartClientAnswering(bundle([sampleWire, withoutId]))
+    const { runtime } = smartRuntimeAnswering(bundle([sampleWire, withoutId]))
 
-    const page = await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
+    const page = await Effect.runPromise(
+      fetchMedicationRequestPage({ patientId: null }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(page.items.map((request) => request.id)).toEqual(['medreq-id'])
     expect(page.droppedEntryCount).toBe(1)
@@ -131,26 +141,30 @@ describe('fetchMedicationRequestPage', () => {
 
   test('reports the next-page cursor from the bundle `next` link', async () => {
     const nextUrl = 'https://fhir.example/MedicationRequest?_getpages=abc&_getpagesoffset=20'
-    const { client } = smartClientAnswering(bundle([sampleWire], nextUrl))
+    const { runtime } = smartRuntimeAnswering(bundle([sampleWire], nextUrl))
 
-    const page = await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
+    const page = await Effect.runPromise(
+      fetchMedicationRequestPage({ patientId: null }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(page.nextPageUrl).toBe(nextUrl)
   })
 
   test('reports no cursor on the last page (no `next` link)', async () => {
-    const { client } = smartClientAnswering(bundle([sampleWire]))
+    const { runtime } = smartRuntimeAnswering(bundle([sampleWire]))
 
-    const page = await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
+    const page = await Effect.runPromise(
+      fetchMedicationRequestPage({ patientId: null }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(page.nextPageUrl).toBeNull()
   })
 
   test('fails with BundleDecodeError when the response is not a bundle', async () => {
-    const { client } = smartClientAnswering('not a bundle')
+    const { runtime } = smartRuntimeAnswering('not a bundle')
 
     const exit = await Effect.runPromiseExit(
-      fetchMedicationRequestPage(client, { patientId: null })
+      fetchMedicationRequestPage({ patientId: null }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(exit._tag).toBe('Failure')

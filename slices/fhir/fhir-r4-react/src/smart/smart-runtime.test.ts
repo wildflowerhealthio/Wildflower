@@ -1,23 +1,33 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import type { Query } from '@tanstack/react-query'
+import { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
+import { SmartClient } from './smart-client.ts'
+import { decodeFhirBaseUrl } from './smart-connection.ts'
 import {
   buildSmartQueryClient,
   buildSmartRouterContext,
   smartHttpClientLayer,
-  type SmartSession,
+  smartRuntimeFor,
 } from './smart-runtime.ts'
+import { answerJson, bundleOf, stubConnection, stubFhirServer } from './test-helpers.ts'
+
+/** The FHIR base and token a test sends a request for. */
+interface Target {
+  readonly fhirBaseUrl: string
+  readonly accessToken: string | undefined
+}
 
 /**
  * Drive one request through a layer and hand back what actually went on the
  * wire. The inner `HttpClient` is a stub, so nothing leaves the test.
  */
 const sendThrough = (
-  session: SmartSession,
+  target: Target,
   request: HttpClientRequest.HttpClientRequest
 ): Promise<{ readonly url: string; readonly authorization: string | undefined }> => {
   let captured: { readonly url: string; readonly authorization: string | undefined } | null = null
@@ -33,12 +43,22 @@ const sendThrough = (
       const client = yield* HttpClient.HttpClient
       yield* client.execute(request)
       return captured ?? { url: '(never sent)', authorization: undefined }
-    }).pipe(Effect.provide(smartHttpClientLayer(session, stub)))
+    }).pipe(
+      Effect.provide(
+        smartHttpClientLayer(
+          {
+            fhirBaseUrl: decodeFhirBaseUrl(target.fhirBaseUrl),
+            accessToken: Option.fromNullable(target.accessToken),
+          },
+          stub
+        )
+      )
+    )
   )
 }
 
 describe('smartHttpClientLayer', () => {
-  const session = { serverUrl: 'http://127.0.0.1:8080', accessToken: 'tok-123' }
+  const session: Target = { fhirBaseUrl: 'http://127.0.0.1:8080', accessToken: 'tok-123' }
 
   test('addresses a relative client path at the FHIR server and attaches the token', async () => {
     const sent = await sendThrough(session, HttpClientRequest.get('/DocumentReference'))
@@ -52,7 +72,7 @@ describe('smartHttpClientLayer', () => {
   // parsed, so any of these addresses correctly.
   test('prepends an arbitrary server base verbatim', async () => {
     const sent = await sendThrough(
-      { serverUrl: 'https://launch.smarthealthit.org/v/r4/fhir', accessToken: undefined },
+      { fhirBaseUrl: 'https://launch.smarthealthit.org/v/r4/fhir', accessToken: undefined },
       HttpClientRequest.get('/Patient')
     )
     expect(sent.url).toBe('https://launch.smarthealthit.org/v/r4/fhir/Patient')
@@ -69,7 +89,7 @@ describe('smartHttpClientLayer', () => {
           // trailing slashes are trimmed, nothing else about the base is touched.
           const serverUrl = `${base}${'/'.repeat(extraSlashes)}`
           const sent = await sendThrough(
-            { serverUrl, accessToken: undefined },
+            { fhirBaseUrl: serverUrl, accessToken: undefined },
             HttpClientRequest.get('/Patient')
           )
           expect(sent.url).toBe(`${base}/Patient`)
@@ -96,7 +116,7 @@ describe('smartHttpClientLayer', () => {
 
   test('addresses a path with no leading slash under the FHIR server too', async () => {
     const sent = await sendThrough(
-      { serverUrl: 'https://launch.smarthealthit.org/v/r4/fhir/', accessToken: undefined },
+      { fhirBaseUrl: 'https://launch.smarthealthit.org/v/r4/fhir/', accessToken: undefined },
       HttpClientRequest.get('Patient?_count=200')
     )
     expect(sent.url).toBe('https://launch.smarthealthit.org/v/r4/fhir/Patient?_count=200')
@@ -116,7 +136,7 @@ describe('smartHttpClientLayer', () => {
     { case: 'plain http to the same host', url: 'http://fhir.example/r4/Patient' },
   ])('sends no token to $case', async ({ url }) => {
     const sent = await sendThrough(
-      { serverUrl: 'https://fhir.example/r4', accessToken: 'tok-123' },
+      { fhirBaseUrl: 'https://fhir.example/r4', accessToken: 'tok-123' },
       HttpClientRequest.get(url)
     )
     expect(sent).toEqual({ url, authorization: undefined })
@@ -138,21 +158,52 @@ const deadTransport = Layer.succeed(
   HttpClient.make(() => Effect.die(new Error('no request expected')))
 )
 
-describe('buildSmartRouterContext', () => {
-  test('runAuthed runs an effect against the built runtime', async () => {
-    const context = buildSmartRouterContext(
-      { serverUrl: 'http://127.0.0.1:8080', accessToken: 'tok-123' },
-      deadTransport
+describe('smartRuntimeFor', () => {
+  test('runs the SmartClient and the typed client over the one transport, both addressed', async () => {
+    const server = stubFhirServer({
+      'Patient/p1': answerJson({ resourceType: 'Patient', id: 'p1' }),
+      Observation: answerJson(bundleOf([])),
+    })
+    const runtime = smartRuntimeFor(
+      stubConnection({ accessToken: Option.some('tok-123') }),
+      server.transport
     )
+
+    await runtime.runSmart(
+      Effect.gen(function* () {
+        const smartClient = yield* SmartClient
+        yield* smartClient.request('Patient/p1')
+        const typedClient = yield* FhirR4ResourcesHttpApiClient
+        yield* typedClient.Observation.SearchByGet({ urlParams: {} })
+      })
+    )
+
+    expect(
+      server.requests.map((request) => ({
+        url: request.url,
+        authorization: request.headers['authorization'],
+      }))
+    ).toEqual([
+      { url: 'https://fhir.example/Patient/p1', authorization: 'Bearer tok-123' },
+      { url: 'https://fhir.example/Observation', authorization: 'Bearer tok-123' },
+    ])
+  })
+})
+
+describe('buildSmartRouterContext', () => {
+  const runtime = smartRuntimeFor(stubConnection(), deadTransport)
+
+  test('carries the runtime it is handed, and its connection', async () => {
+    const context = buildSmartRouterContext(runtime)
+
     await expect(context.runAuthed(Effect.succeed(42))).resolves.toBe(42)
+    expect(context.runAuthed).toBe(runtime.runSmart)
+    expect(context.runtimeLayer).toBe(runtime.runtimeLayer)
+    expect(context.connection).toBe(runtime.connection)
   })
 
   test('awaitAuthReady resolves — the handshake is already complete', async () => {
-    const context = buildSmartRouterContext(
-      { serverUrl: 'http://127.0.0.1:8080', accessToken: 'tok-123' },
-      deadTransport
-    )
-    await expect(context.awaitAuthReady()).resolves.toBeUndefined()
+    await expect(buildSmartRouterContext(runtime).awaitAuthReady()).resolves.toBeUndefined()
   })
 
   // The app provides one QueryClient at its root (where the handshake runs) and
@@ -160,19 +211,13 @@ describe('buildSmartRouterContext', () => {
   // share a cache. The context must carry the handed-in client verbatim.
   test('carries the QueryClient it is handed rather than making a second one', () => {
     const queryClient = buildSmartQueryClient()
-    const context = buildSmartRouterContext(
-      { serverUrl: 'http://127.0.0.1:8080', accessToken: 'tok-123' },
-      deadTransport,
-      queryClient
-    )
-    expect(context.queryClient).toBe(queryClient)
+    expect(buildSmartRouterContext(runtime, queryClient).queryClient).toBe(queryClient)
   })
 
   test('defaults to a fresh QueryClient when the caller hands none', () => {
-    const session = { serverUrl: 'http://127.0.0.1:8080', accessToken: 'tok-123' }
-    const first = buildSmartRouterContext(session, deadTransport)
-    const second = buildSmartRouterContext(session, deadTransport)
-    expect(first.queryClient).not.toBe(second.queryClient)
+    expect(buildSmartRouterContext(runtime).queryClient).not.toBe(
+      buildSmartRouterContext(runtime).queryClient
+    )
   })
 })
 

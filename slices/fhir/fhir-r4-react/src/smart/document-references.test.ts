@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchDocumentReferencePage } from './document-references.ts'
-import { smartClientAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
+import { smartRuntimeAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
 const bundle = (resources: readonly unknown[]): unknown => ({
@@ -28,12 +28,12 @@ const documentReferenceWire = (id: string): unknown => ({
 
 describe('fetchDocumentReferencePage', () => {
   test('scopes the first-page query to patient and category, newest first, 200 to a page', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchDocumentReferencePage(client, {
+      fetchDocumentReferencePage({
         first: { patientId: 'pat/1', category: 'sys|code' },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(urls).toEqual([
@@ -42,12 +42,12 @@ describe('fetchDocumentReferencePage', () => {
   })
 
   test('omits patient filter when patientId is null', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchDocumentReferencePage(client, {
+      fetchDocumentReferencePage({
         first: { patientId: null, category: 'sys|code' },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     const params = searchParamsOf(urls[0] ?? '')
@@ -58,12 +58,12 @@ describe('fetchDocumentReferencePage', () => {
   })
 
   test('omits category filter when category is null', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchDocumentReferencePage(client, {
+      fetchDocumentReferencePage({
         first: { patientId: 'pat-1', category: null },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     const params = searchParamsOf(urls[0] ?? '')
@@ -73,35 +73,37 @@ describe('fetchDocumentReferencePage', () => {
   })
 
   test('reads all DocumentReferences when both filters are null', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchDocumentReferencePage(client, {
+      fetchDocumentReferencePage({
         first: { patientId: null, category: null },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(urls).toEqual([`${STUB_FHIR_BASE}/DocumentReference?_sort=-date&_count=200`])
   })
 
   test('requests a later page by its cursor URL verbatim', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
     const pageUrl = 'https://fhir.example/DocumentReference?_getpages=abc&_getpagesoffset=200'
 
-    await Effect.runPromise(fetchDocumentReferencePage(client, { pageUrl }))
+    await Effect.runPromise(
+      fetchDocumentReferencePage({ pageUrl }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(urls).toEqual([pageUrl])
   })
 
   test('decodes returned DocumentReferences and drops undecodable entries', async () => {
-    const { client } = smartClientAnswering(
+    const { runtime } = smartRuntimeAnswering(
       bundle([{ malformed: true }, documentReferenceWire('doc-1')])
     )
 
     const page = await Effect.runPromise(
-      fetchDocumentReferencePage(client, {
+      fetchDocumentReferencePage({
         first: { patientId: null, category: null },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(page.items.map((item) => item.id)).toEqual(['doc-1'])
@@ -111,12 +113,12 @@ describe('fetchDocumentReferencePage', () => {
   test('property: any patient id survives the query as itself', async () => {
     await fc.assert(
       fc.asyncProperty(fc.string(), async (patientId) => {
-        const { client, urls } = smartClientAnswering(bundle([]))
+        const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
         await Effect.runPromise(
-          fetchDocumentReferencePage(client, {
+          fetchDocumentReferencePage({
             first: { patientId, category: null },
-          })
+          }).pipe(Effect.provide(runtime.runtimeLayer))
         )
 
         const params = searchParamsOf(urls[0] ?? '')
@@ -129,12 +131,12 @@ describe('fetchDocumentReferencePage', () => {
   test('property: any category token survives the query as itself', async () => {
     await fc.assert(
       fc.asyncProperty(fc.string(), async (category) => {
-        const { client, urls } = smartClientAnswering(bundle([]))
+        const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
         await Effect.runPromise(
-          fetchDocumentReferencePage(client, {
+          fetchDocumentReferencePage({
             first: { patientId: null, category },
-          })
+          }).pipe(Effect.provide(runtime.runtimeLayer))
         )
 
         const params = searchParamsOf(urls[0] ?? '')

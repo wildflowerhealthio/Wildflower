@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchProcedurePage } from './procedures.ts'
-import { smartClientAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
+import { smartRuntimeAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
 const bundle = (resources: readonly unknown[]): unknown => ({
@@ -23,16 +23,16 @@ const PLAN_DEFINITION_URL = 'https://wildflower.example/PlanDefinition/pd-1'
 
 describe('fetchProcedurePage', () => {
   test("searches the patient's procedures of one category carrying out one definition, oldest first", async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchProcedurePage(client, {
+      fetchProcedurePage({
         first: {
           patientId: 'pat/1',
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: PLAN_DEFINITION_URL,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(urls).toEqual([
@@ -41,32 +41,32 @@ describe('fetchProcedurePage', () => {
   })
 
   test('drops the patient filter when no patient is in context (system launch)', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchProcedurePage(client, {
+      fetchProcedurePage({
         first: {
           patientId: null,
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: PLAN_DEFINITION_URL,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(searchParamsOf(urls[0] ?? '').has('patient')).toBe(false)
   })
 
   test('drops the definition filter when no canonical url is given, reading procedures of every definition', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchProcedurePage(client, {
+      fetchProcedurePage({
         first: {
           patientId: 'pat-1',
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: null,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     const params = searchParamsOf(urls[0] ?? '')
@@ -82,12 +82,12 @@ describe('fetchProcedurePage', () => {
         fc.string(),
         fc.option(fc.string(), { nil: null }),
         async (patientId, categoryToken, instantiatesCanonicalUrl) => {
-          const { client, urls } = smartClientAnswering(bundle([]))
+          const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
           await Effect.runPromise(
-            fetchProcedurePage(client, {
+            fetchProcedurePage({
               first: { patientId, categoryToken, instantiatesCanonicalUrl },
-            })
+            }).pipe(Effect.provide(runtime.runtimeLayer))
           )
 
           // Parsed back rather than string-compared: a value carrying `&`, `=`
@@ -106,16 +106,18 @@ describe('fetchProcedurePage', () => {
   })
 
   test('requests a later page by its cursor URL verbatim', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
     const pageUrl = 'https://fhir.example/Procedure?_getpages=abc&_getpagesoffset=200'
 
-    await Effect.runPromise(fetchProcedurePage(client, { pageUrl }))
+    await Effect.runPromise(
+      fetchProcedurePage({ pageUrl }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(urls).toEqual([pageUrl])
   })
 
   test('drops an entry without an id, counting it', async () => {
-    const { client } = smartClientAnswering(
+    const { runtime } = smartRuntimeAnswering(
       bundle([
         {
           resourceType: 'Procedure',
@@ -128,13 +130,13 @@ describe('fetchProcedurePage', () => {
     )
 
     const page = await Effect.runPromise(
-      fetchProcedurePage(client, {
+      fetchProcedurePage({
         first: {
           patientId: null,
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: PLAN_DEFINITION_URL,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(page.items.map((procedure) => procedure.id)).toEqual(['pr-1'])

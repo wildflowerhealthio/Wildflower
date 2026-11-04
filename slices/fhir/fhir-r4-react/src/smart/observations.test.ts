@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchObservationBasedOnOrPartOfPage, fetchObservationPage } from './observations.ts'
-import { smartClientAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
+import { smartRuntimeAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
 const bundle = (resources: readonly unknown[]): unknown => ({
@@ -20,17 +20,21 @@ const searchParamsOf = (query: string): URLSearchParams =>
 
 describe('fetchObservationPage', () => {
   test('scopes the first-page query to the patient, oldest-observed first, 200 to a page', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
-    await Effect.runPromise(fetchObservationPage(client, { first: 'pat/1' }))
+    await Effect.runPromise(
+      fetchObservationPage({ first: 'pat/1' }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(urls).toEqual([`${STUB_FHIR_BASE}/Observation?patient=pat%2F1&_sort=date&_count=200`])
   })
 
   test('reads every Observation when no patient is in context (system launch)', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
-    await Effect.runPromise(fetchObservationPage(client, { first: null }))
+    await Effect.runPromise(
+      fetchObservationPage({ first: null }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(urls).toEqual([`${STUB_FHIR_BASE}/Observation?_sort=date&_count=200`])
   })
@@ -38,9 +42,11 @@ describe('fetchObservationPage', () => {
   test('property: any patient id survives the query as itself', async () => {
     await fc.assert(
       fc.asyncProperty(fc.string(), async (patientId) => {
-        const { client, urls } = smartClientAnswering(bundle([]))
+        const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
-        await Effect.runPromise(fetchObservationPage(client, { first: patientId }))
+        await Effect.runPromise(
+          fetchObservationPage({ first: patientId }).pipe(Effect.provide(runtime.runtimeLayer))
+        )
 
         // Parsed back rather than string-compared: an id carrying `&`, `=` or a
         // space must arrive at the server as one parameter value, not as extra
@@ -55,10 +61,12 @@ describe('fetchObservationPage', () => {
   })
 
   test('requests a later page by its cursor URL verbatim', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
     const pageUrl = 'https://fhir.example/Observation?_getpages=abc&_getpagesoffset=200'
 
-    await Effect.runPromise(fetchObservationPage(client, { pageUrl }))
+    await Effect.runPromise(
+      fetchObservationPage({ pageUrl }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(urls).toEqual([pageUrl])
   })
@@ -67,11 +75,13 @@ describe('fetchObservationPage', () => {
     // FHIR R4 requires `Observation.status`, but real servers omit it; the
     // schema defaults it rather than failing the row, and the page must not
     // undo that by dropping it.
-    const { client } = smartClientAnswering(
+    const { runtime } = smartRuntimeAnswering(
       bundle([{ resourceType: 'Observation', id: 'obs-1', code: {} }])
     )
 
-    const page = await Effect.runPromise(fetchObservationPage(client, { first: null }))
+    const page = await Effect.runPromise(
+      fetchObservationPage({ first: null }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(page.items).toHaveLength(1)
     expect(page.items[0]?.status).toBe('unknown')
@@ -79,9 +89,11 @@ describe('fetchObservationPage', () => {
 
   test('drops an undecodable row without failing the page', async () => {
     const good: unknown = { resourceType: 'Observation', id: 'obs-1', status: 'final', code: {} }
-    const { client } = smartClientAnswering(bundle([{ malformed: true }, good]))
+    const { runtime } = smartRuntimeAnswering(bundle([{ malformed: true }, good]))
 
-    const page = await Effect.runPromise(fetchObservationPage(client, { first: null }))
+    const page = await Effect.runPromise(
+      fetchObservationPage({ first: null }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(page.items.map((item) => item.id)).toEqual(['obs-1'])
     expect(page.droppedEntryCount).toBe(1)
@@ -90,16 +102,16 @@ describe('fetchObservationPage', () => {
 
 describe('fetchObservationBasedOnOrPartOfPage', () => {
   test('narrows by based-on and part-of, oldest-observed first, 200 to a page', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchObservationBasedOnOrPartOfPage(client, {
+      fetchObservationBasedOnOrPartOfPage({
         first: {
           patientId: 'pat/1',
           basedOnReference: 'ServiceRequest/sr-1',
           partOfReference: 'Procedure/pr-1',
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(urls).toEqual([
@@ -108,12 +120,12 @@ describe('fetchObservationBasedOnOrPartOfPage', () => {
   })
 
   test('omits a reference that is not named, and the patient filter with no patient in context', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchObservationBasedOnOrPartOfPage(client, {
+      fetchObservationBasedOnOrPartOfPage({
         first: { patientId: null, basedOnReference: null, partOfReference: 'Procedure/pr-1' },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(urls).toEqual([
@@ -128,12 +140,12 @@ describe('fetchObservationBasedOnOrPartOfPage', () => {
         fc.string(),
         fc.option(fc.string(), { nil: null }),
         async (patientId, basedOnReference, partOfReference) => {
-          const { client, urls } = smartClientAnswering(bundle([]))
+          const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
           await Effect.runPromise(
-            fetchObservationBasedOnOrPartOfPage(client, {
+            fetchObservationBasedOnOrPartOfPage({
               first: { patientId, basedOnReference, partOfReference },
-            })
+            }).pipe(Effect.provide(runtime.runtimeLayer))
           )
 
           const params = searchParamsOf(urls[0] ?? '')
@@ -149,10 +161,12 @@ describe('fetchObservationBasedOnOrPartOfPage', () => {
   })
 
   test('requests a later page by its cursor URL verbatim', async () => {
-    const { client, urls } = smartClientAnswering(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
     const pageUrl = 'https://fhir.example/Observation?_getpages=abc&_getpagesoffset=200'
 
-    await Effect.runPromise(fetchObservationBasedOnOrPartOfPage(client, { pageUrl }))
+    await Effect.runPromise(
+      fetchObservationBasedOnOrPartOfPage({ pageUrl }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
     expect(urls).toEqual([pageUrl])
   })

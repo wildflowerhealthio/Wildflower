@@ -26,14 +26,15 @@ import {
   type ResourcePageCursor,
 } from './resource-page.ts'
 
-import { FhirHttpError, FhirRequestDropped, type SmartClient } from './smart-client.ts'
+import { FhirHttpError, FhirRequestDropped } from './smart-client.ts'
+import type { SmartRuntime } from './smart-runtime.ts'
 import {
   answerEveryRequest,
   answerInTurn,
   answerJson,
   answerStatus,
   answerText,
-  stubSmartClient,
+  stubSmartRuntime,
   STUB_FHIR_BASE,
   type StubAnswer,
 } from './test-helpers.ts'
@@ -169,24 +170,24 @@ const droppedRequestArb: fc.Arbitrary<StubAnswer> = fc
 const httpError = (status: number): FhirHttpError =>
   new FhirHttpError({ url: FIRST_PAGE_URL, status, outcomeText: Option.none() })
 
-/** A stub client answering every request with `response`. */
-const clientAnswering = (
+/** A stub runtime answering every request with `response`. */
+const runtimeAnswering = (
   response: unknown
-): { readonly client: SmartClient; readonly urls: readonly string[] } =>
-  stubSmartClient(answerEveryRequest(answerJson(response)))
+): { readonly runtime: SmartRuntime; readonly urls: readonly string[] } =>
+  stubSmartRuntime(answerEveryRequest(answerJson(response)))
 
 /**
- * A stub client whose server answers each of `failures` in turn and then
+ * A stub runtime whose server answers each of `failures` in turn and then
  * succeeds with `response`, counting the attempts it was asked for.
  */
-const flakySmartClient = (
+const flakySmartRuntime = (
   failures: readonly StubAnswer[],
   response: unknown
-): { readonly client: SmartClient; readonly attempts: () => number } => {
-  const { client, urls } = stubSmartClient(
+): { readonly runtime: SmartRuntime; readonly attempts: () => number } => {
+  const { runtime, urls } = stubSmartRuntime(
     answerEveryRequest(answerInTurn(...failures, answerJson(response)))
   )
-  return { client, attempts: () => urls.length }
+  return { runtime, attempts: () => urls.length }
 }
 
 /**
@@ -209,7 +210,7 @@ describe('fetchResourcePage', () => {
         fc.array(entryArb, { maxLength: 8 }),
         linkCaseArb,
         async (entries, linkCase) => {
-          const { client } = clientAnswering(
+          const { runtime } = runtimeAnswering(
             bundle(
               entries.map((entry) => entry.resource),
               linkCase.link
@@ -217,7 +218,9 @@ describe('fetchResourcePage', () => {
           )
 
           const page = await Effect.runPromise(
-            fetchResourcePage(client, observationRead, { first: 'pat-1' })
+            fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+              Effect.provide(runtime.runtimeLayer)
+            )
           )
 
           // Each fixture really is (un)decodable — otherwise the assertions
@@ -248,14 +251,13 @@ describe('fetchResourcePage', () => {
           // A verified mock: the query it returns is reachable only through the
           // `first` the cursor carried.
           const firstPageQuery = vi.fn((value: string): string => `${paramName}=${value}`)
-          const { client, urls } = clientAnswering(bundle([], undefined))
+          const { runtime, urls } = runtimeAnswering(bundle([], undefined))
 
           await Effect.runPromise(
             fetchResourcePage(
-              client,
               { resourceType, schema: Observation.Schema, firstPageQuery },
               { first }
-            )
+            ).pipe(Effect.provide(runtime.runtimeLayer))
           )
 
           expect(firstPageQuery).toHaveBeenCalledWith(first)
@@ -270,10 +272,12 @@ describe('fetchResourcePage', () => {
     await fc.assert(
       fc.asyncProperty(fc.webUrl(), async (pageUrl) => {
         const firstPageQuery = vi.fn((patientId: string): string => patientId)
-        const { client, urls } = clientAnswering(bundle([], undefined))
+        const { runtime, urls } = runtimeAnswering(bundle([], undefined))
 
         await Effect.runPromise(
-          fetchResourcePage(client, { ...observationRead, firstPageQuery }, { pageUrl })
+          fetchResourcePage({ ...observationRead, firstPageQuery }, { pageUrl }).pipe(
+            Effect.provide(runtime.runtimeLayer)
+          )
         )
 
         // The server's own `next` link is used as-is — no re-derivation of
@@ -288,10 +292,12 @@ describe('fetchResourcePage', () => {
   test.each([null, 'a string', 42, true])(
     'a response that is not a bundle fails with BundleDecodeError: %p',
     async (response) => {
-      const { client } = clientAnswering(response)
+      const { runtime } = runtimeAnswering(response)
 
       const exit = await Effect.runPromiseExit(
-        fetchResourcePage(client, observationRead, { first: 'pat-1' })
+        fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+          Effect.provide(runtime.runtimeLayer)
+        )
       )
 
       expect(exit._tag).toBe('Failure')
@@ -306,10 +312,12 @@ describe('fetchResourcePage', () => {
   )
 
   test('a request failure surfaces as ResourcePageRequestError', async () => {
-    const { client } = stubSmartClient(answerEveryRequest(answerStatus(500)))
+    const { runtime } = stubSmartRuntime(answerEveryRequest(answerStatus(500)))
 
     const exit = await Effect.runPromiseExit(
-      fetchResourcePage(client, observationRead, { first: 'pat-1' })
+      fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+        Effect.provide(runtime.runtimeLayer)
+      )
     )
 
     expect(exit._tag).toBe('Failure')
@@ -327,13 +335,15 @@ describe('fetchResourcePage', () => {
       fc.asyncProperty(
         fc.array(droppedRequestArb, { minLength: 1, maxLength: 3 }),
         async (drops) => {
-          const { client, attempts } = flakySmartClient(
+          const { runtime, attempts } = flakySmartRuntime(
             drops,
             bundle([{ resourceType: 'Observation', id: 'obs-1', status: 'final', code: {} }], [])
           )
 
           const exit = await runOnTestClock(
-            fetchResourcePage(client, observationRead, { first: 'pat-1' })
+            fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+              Effect.provide(runtime.runtimeLayer)
+            )
           )
 
           expect(Exit.isSuccess(exit)).toBe(true)
@@ -349,10 +359,14 @@ describe('fetchResourcePage', () => {
 
   test('a request the network keeps dropping fails after its retries, carrying the last cause', async () => {
     const causes = [1, 2, 3, 4, 5].map((attempt) => new TypeError(`Failed to fetch (${attempt})`))
-    const { client, attempts } = flakySmartClient(causes.map(dropWith), bundle([], undefined))
+    const { runtime, attempts } = flakySmartRuntime(causes.map(dropWith), bundle([], undefined))
 
     const exit = await runOnTestClock(
-      Effect.flip(fetchResourcePage(client, observationRead, { first: 'pat-1' }))
+      Effect.flip(
+        fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+          Effect.provide(runtime.runtimeLayer)
+        )
+      )
     )
 
     // One initial attempt + three retries.
@@ -372,10 +386,14 @@ describe('fetchResourcePage', () => {
     { name: 'HTTP 500', answer: answerStatus(500), tag: 'FhirHttpError' },
     { name: 'a body that is not JSON', answer: answerText('<html>'), tag: 'FhirResponseNotJson' },
   ])('$name fails at once, without a retry', async ({ answer, tag }) => {
-    const { client, attempts } = flakySmartClient([answer, answer], bundle([], undefined))
+    const { runtime, attempts } = flakySmartRuntime([answer, answer], bundle([], undefined))
 
     const exit = await runOnTestClock(
-      Effect.flip(fetchResourcePage(client, observationRead, { first: 'pat-1' }))
+      Effect.flip(
+        fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+          Effect.provide(runtime.runtimeLayer)
+        )
+      )
     )
 
     expect(attempts()).toBe(1)
@@ -409,10 +427,12 @@ describe('fetchResourcePage', () => {
       await Promise.all(
         samples.map(async (observation) => {
           const wire = encodeObservation(observation)
-          const { client } = clientAnswering(bundle([wire], undefined))
+          const { runtime } = runtimeAnswering(bundle([wire], undefined))
 
           const page = await Effect.runPromise(
-            fetchResourcePage(client, observationRead, { first: 'pat-1' })
+            fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+              Effect.provide(runtime.runtimeLayer)
+            )
           )
 
           expect(page.items).toHaveLength(1)
