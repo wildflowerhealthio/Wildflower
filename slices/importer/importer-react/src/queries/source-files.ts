@@ -7,10 +7,7 @@ import {
 } from '@tanstack/react-query'
 import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
-import {
-  fetchDocumentReferencePage,
-  useSmartHandshake,
-} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { fetchDocumentReferencePage, useSmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { FhirR4ResourcesHttpApiClient, nextPageToken } from '@wildflowerhealthio/fhir-r4/clients'
 import type { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
@@ -276,10 +273,10 @@ const useSourceFilesQuery = (
 
 /**
  * Query options for the source-file listing that pages through
- * {@link fetchDocumentReferencePage} via the SMART fhirclient `Client`, rather
- * than the typed Effect client.
+ * {@link fetchDocumentReferencePage} via the SMART client, rather than the
+ * typed Effect client.
  *
- * @param smartClient - The fhirclient `Client` from a completed SMART handshake
+ * @param smartClient - The client from a completed SMART handshake
  * @param options - Page size (default {@link DEFAULT_PAGE_SIZE})
  * @returns Infinite-query options whose pages are {@link SourceFilePage}s
  *
@@ -330,9 +327,8 @@ const smartSourceFilesInfiniteQueryOptions = (
 }
 
 /**
- * Lists the device's uploaded source files using the SMART fhirclient
- * transport. The SMART client comes from `useSmartHandshake`; if the
- * handshake has not completed yet the query is disabled.
+ * Lists the device's uploaded source files through the SMART client the
+ * page's handshake resolved to (`useSmartClient`, which only reads it).
  *
  * @param options - Page size
  * @returns The infinite query; `data.pages` are {@link SourceFilePage}s in
@@ -341,16 +337,16 @@ const smartSourceFilesInfiniteQueryOptions = (
 const useSmartSourceFilesQuery = (
   options?: SourceFilesQueryOptions
 ): UseInfiniteQueryResult<InfiniteData<SourceFilePage, SourceFilePageParam>, Error> => {
-  const handshake = useSmartHandshake()
-  const client = handshake.kind === 'ready' ? handshake.client : undefined
+  const smartClient = useSmartClient()
   // When the SMART client is not yet available, fall back to the typed-client
   // variant so the query still works (e.g. when the handshake is in progress
   // and the component mounts during the connection phase).
   const runAuthed = useRunAuthed()
   return useInfiniteQuery(
-    client !== undefined
-      ? smartSourceFilesInfiniteQueryOptions(client, options)
-      : sourceFilesInfiniteQueryOptions(runAuthed, options)
+    Option.match(smartClient, {
+      onNone: () => sourceFilesInfiniteQueryOptions(runAuthed, options),
+      onSome: (client) => smartSourceFilesInfiniteQueryOptions(client, options),
+    })
   )
 }
 
