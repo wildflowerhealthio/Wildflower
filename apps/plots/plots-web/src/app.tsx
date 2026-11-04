@@ -49,7 +49,7 @@ export const App = (): JSX.Element => {
 
   const client = handshake.kind === 'ready' ? handshake.client : undefined
   const { patientChoice, choosePatient, changePatient } = usePatientChoice(
-    client === undefined ? null : Option.getOrNull(client.launchPatientId)
+    Option.flatMap(Option.fromNullable(client), (readyClient) => readyClient.launchPatientId)
   )
 
   const body = Match.value(handshake).pipe(
