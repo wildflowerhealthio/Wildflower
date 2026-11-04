@@ -4,10 +4,10 @@
  *
  * @packageDocumentation
  */
-import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { IdentifierAndReference, type IdentifierType } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Option, pipe } from 'effect'
+import { Array as Arr, Option, pipe, Predicate } from 'effect'
 
 /**
  * `TResource` with no logical id, distributed over a union so each variant
@@ -39,17 +39,18 @@ interface Key {
 }
 
 /**
- * Whether FHIR R4 gives `resource`'s type an `identifier` element.
+ * Whether `resource`'s type has an `identifier` element.
  *
  * @remarks
- * `Binary` is the one type in the union without one, so a Binary is always
- * keyless. A type added to the union without `identifier` is added here, and
- * nowhere else.
+ * Every `fhir-r4` resource schema whose type has the element defaults it to
+ * `[]`, so a decoded resource carries the property exactly when R4 gives its
+ * type one: a type added to the union needs no edit here. `Binary` is one
+ * without it, so a Binary is always keyless.
  */
 const hasIdentifier = <TResource extends FhirResource>(
   resource: TResource
-): resource is Exclude<TResource, { readonly resourceType: 'Binary' }> =>
-  resource.resourceType !== 'Binary'
+): resource is Extract<TResource, { readonly identifier: readonly IdentifierType[] }> =>
+  Predicate.hasProperty(resource, 'identifier')
 
 /**
  * `record`'s key: its first identifier, when that identifier has both a

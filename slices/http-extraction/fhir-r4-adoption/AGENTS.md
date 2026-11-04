@@ -21,7 +21,9 @@ bundle. It sits above
   stored under, for a review title), `storedReferenceOf` (the one spelling of
   a keyed record's stored reference, `<Type>/<localResourceId(…)>`),
   `storedReferencesOf` (the stored reference of every keyed record of a
-  batch), and `hasIdentifier`.
+  batch), and `hasIdentifier` (whether the record's type has an `identifier`
+  element: every `fhir-r4` schema with one defaults it to `[]`, so the
+  decoded record carries the property exactly then).
 - `src/adopt-resource.ts` — the per-type reference table (`mapReferences`,
   the one place a resource's references are walked) and the two directions
   through it. `detach(family)` drops a resource's `id`, prepends
