@@ -419,8 +419,9 @@ narrowed to a `Patient` or `Practitioner` and an identifier with both a
   identifier it brings: its own, and the one its demographics derive (below).
   A keyless one names nothing the map can link, so it is written as it is.
 - **By mention only**: mentions name it by a logical reference and no decode
-  emitted its resource. A Shoppers account id on a history fill is one; so is
-  a prescriber known only by name.
+  emitted its resource. A Shoppers account id on a history fill is one when
+  the account manages several people (an account of one gives its person's
+  Patient that id too); so is a prescriber known only by name.
 
 Which type a mention names is the reference's own business. A logical
 reference states its `type`; an identifier-only reference that states none

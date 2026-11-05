@@ -19,17 +19,21 @@ rather than a copy, and what it writes is what the response kinds read.
 - `src/response-kinds/customer-response-kind.ts` —
   `…/api/v1/customers/pcid/<uuid>` → one demographic `Patient` per managed
   person, the holder included, and nothing for the account itself. When the
-  account's `patients` holds exactly one entry, a person, the account's email
-  and phone join that person's `telecom` (each once); with any other entry
-  beside them (another person, or one that does not decode), they are
-  dropped. The account's own name and address are not read.
+  account's `patients` holds exactly one entry, a person, the account is
+  theirs alone: its email and phone join that person's `telecom` (each once),
+  and its `pcid`, from the URL, is their second identifier under
+  `ShoppersIdentifierSystem.CustomerId`. With any other entry beside them
+  (another person, or one that does not decode), the contacts are dropped
+  and no Patient carries the `pcid`. The account's own name and address are
+  not read.
 - `src/response-kinds/prescription-response-kind.ts` —
   `…/prescriptions/:uuid/prescription-status` → one `MedicationRequest` + one
   `MedicationDispense` per dispense entry.
 - `src/response-kinds/prescription-history-response-kind.ts` —
   `…/prescription-history?customerId=…` → one `MedicationDispense` per history
   entry (no Patient, no MedicationRequest), its `subject` the **account** by
-  identifier alone (see [Conventional slots](#conventional-slots)).
+  identifier alone, which names the account's one person when it manages
+  only one (see [Conventional slots](#conventional-slots)).
 - `src/response-kinds/medication-wire.ts` — the `medicationCodeableConcept`
   builder (brand/chemical text + DIN codings) shared by the two dispense-emitting
   entities.
@@ -67,8 +71,9 @@ rather than a copy, and what it writes is what the response kinds read.
   Shoppers DIN system — DINs use the canonical `CanadianCodingSystem.Din`.
   `PatientId`, `PrescriptionId` and `DispenseId` are the portal's own
   namespaces for each type's ids, and the systems the kinds key their records
-  in: a `Patient` has no identifier but its key, a dispense none but its key,
-  and a `MedicationRequest` its key and then its `PrescriptionNumber`.
+  in: a `Patient` has its key and, when its account manages only them, the
+  account's `CustomerId`; a dispense none but its key; and a
+  `MedicationRequest` its key and then its `PrescriptionNumber`.
 - `src/dates.ts` — `decodesAsDateTime` / `firstDateTime` date-validation helpers
   shared across entities.
 - `src/response-kinds.ts` — `shoppersDrugMartResponseKinds` (internal, the
@@ -105,9 +110,13 @@ and `rexall-be-well-source` alike:
   `MedicationDispense` names the **account** by an identifier-only reference,
   the URL's `customerId` under `ShoppersIdentifierSystem.CustomerId`, with no
   literal `reference`: the history payload does not say which managed person
-  a fill was for, and no Patient stands for the account. The identifier is
-  there for the importer's identity map to resolve to a person; adopting
-  leaves it as it is, since no record of the import is keyed by it.
+  a fill was for, and no Patient stands for the account. When the account
+  manages exactly one person, their Patient carries the same identifier
+  after its key: `CustomerResponseKind` reads it from the customers URL's
+  `pcid`, the id the history URL names as `customerId`. The importer's
+  identity map resolves the fill to that Patient by it. An account managing
+  several people gives no Patient the identifier, so the map resolves its
+  history-only fills only to the person a reviewer names.
 - **Prescriber** — a status-feed `MedicationRequest.requester` is
   `fhir-r4`'s `Practitioner.tryReferenceWireFromName` of `prescriberName`,
   since the portal knows the prescriber only by that name: a logical

@@ -1,4 +1,5 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
@@ -7,6 +8,7 @@ import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { customerUrlOf } from '../portal-url.ts'
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
 import { CustomerResponseKind } from './customer-response-kind.ts'
 
@@ -17,14 +19,24 @@ const ACCOUNT_ID = 'a7353645-83bf-4371-8b87-486b3d5b9802'
 
 const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
 
-const makeResponse = (body: string): HttpResponse.HttpResponse =>
-  makeHttpResponse({
-    url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}?expand=abc.def`,
-    body,
-  })
+const makeResponse = (
+  body: string,
+  url = `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}?expand=abc.def`
+): HttpResponse.HttpResponse => makeHttpResponse({ url, body })
 
-const parse = (payload: unknown): readonly DetachedResource.Type[] =>
-  Effect.runSync(CustomerResponseKind.parse(makeResponse(JSON.stringify(payload))))
+const parse = (payload: unknown, url?: string): readonly DetachedResource.Type[] =>
+  Effect.runSync(CustomerResponseKind.parse(makeResponse(JSON.stringify(payload), url)))
+
+/** The `identifier` of each Patient in `resources`. */
+const identifiersOf = (resources: readonly DetachedResource.Type[]): readonly unknown[] =>
+  resources.map((resource) => (resource.resourceType === 'Patient' ? resource.identifier : null))
+
+/** `system` and `value` as the qualified identifier a decoded Patient carries. */
+const identifierIn = (system: string, value: string): IdentifierAndReference.IdentifierType =>
+  Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)({ system, value })
+
+/** A customers payload listing just the one person `pt-uuid-1`. */
+const onePersonPayload = { customer: { patients: [{ id: 'pt-uuid-1', firstName: 'Dana' }] } }
 
 const runParse = (
   r: HttpResponse.HttpResponse
@@ -40,8 +52,8 @@ const runParse = (
 const customerPayload = (overrides?: Record<string, unknown>): Record<string, unknown> =>
   overrides ?? {
     customer: {
-      id: 'acct-uuid-1',
-      pcid: 'acct-uuid-1',
+      id: ACCOUNT_ID,
+      pcid: ACCOUNT_ID,
       firstName: 'Dana',
       lastName: 'Okafor',
       email: 'dana.okafor@example.com',
@@ -53,7 +65,7 @@ const customerPayload = (overrides?: Record<string, unknown>): Record<string, un
           firstName: 'Dana',
           lastName: 'Okafor',
           displayName: 'Dana Okafor',
-          userId: 'acct-uuid-1',
+          userId: ACCOUNT_ID,
           storeId: 9000,
           phoneNumber: '4165550100',
           address: { line1: '12 Maple Ave', city: 'Toronto', province: 'ON' },
@@ -63,7 +75,7 @@ const customerPayload = (overrides?: Record<string, unknown>): Record<string, un
           firstName: 'Sam',
           lastName: 'Okafor',
           displayName: 'Sam Okafor',
-          userId: 'acct-uuid-1',
+          userId: ACCOUNT_ID,
           storeId: 9001,
           phoneNumber: '6135550111',
           address: {
@@ -179,7 +191,10 @@ describe('CustomerResponseKind', () => {
         expect(result).toStrictEqual([
           decodePatient({
             resourceType: 'Patient',
-            identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
+            identifier: [
+              { system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' },
+              { system: ShoppersIdentifierSystem.CustomerId, value: ACCOUNT_ID },
+            ],
             name: [{ given: ['Dana'] }],
             telecom,
           }),
@@ -187,9 +202,47 @@ describe('CustomerResponseKind', () => {
       }
     )
 
-    it("drops a patient entry with no id, keeps the rest, and gives the survivor none of the account's contacts", () => {
+    it("identifies an account's one person by the account's pcid, under CustomerId, after their key", () => {
+      expect(identifiersOf(parse(onePersonPayload))).toStrictEqual([
+        [
+          identifierIn(ShoppersIdentifierSystem.PatientId, 'pt-uuid-1'),
+          identifierIn(ShoppersIdentifierSystem.CustomerId, ACCOUNT_ID),
+        ],
+      ])
+    })
+
+    it("identifies an account's one person by the pcid its URL names, decoded", () => {
+      fc.assert(
+        fc.property(fc.string({ minLength: 1 }), (pcid) => {
+          expect(identifiersOf(parse(onePersonPayload, customerUrlOf(pcid)))).toStrictEqual([
+            [
+              identifierIn(ShoppersIdentifierSystem.PatientId, 'pt-uuid-1'),
+              identifierIn(ShoppersIdentifierSystem.CustomerId, pcid),
+            ],
+          ])
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      )
+    })
+
+    it("identifies an account's one person by their key alone when the URL's pcid does not decode", () => {
+      const url = `${CUSTOMERS_BASE}/api/v1/customers/pcid/%E0%A4%A`
+
+      expect(identifiersOf(parse(onePersonPayload, url))).toStrictEqual([
+        [identifierIn(ShoppersIdentifierSystem.PatientId, 'pt-uuid-1')],
+      ])
+    })
+
+    it("identifies each of several people by their key alone, not the account's pcid", () => {
+      expect(identifiersOf(parse(customerPayload()))).toStrictEqual([
+        [identifierIn(ShoppersIdentifierSystem.PatientId, 'pt-uuid-1')],
+        [identifierIn(ShoppersIdentifierSystem.PatientId, 'pt-uuid-2')],
+      ])
+    })
+
+    it("drops a patient entry with no id, keeps the rest, and gives the survivor none of the account's contacts nor its pcid", () => {
       // Arrange — the second patient has no id, so nothing says the account's
-      // email and phone are the first's alone.
+      // email, phone and fills are the first's alone.
       const payload = customerPayload({
         customer: {
           email: 'dana.okafor@example.com',
@@ -238,7 +291,10 @@ describe('CustomerResponseKind', () => {
       expect(result).toStrictEqual([
         decodePatient({
           resourceType: 'Patient',
-          identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
+          identifier: [
+            { system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' },
+            { system: ShoppersIdentifierSystem.CustomerId, value: ACCOUNT_ID },
+          ],
           name: [{ given: ['Dana'] }],
           address: [{ line: ['12 Maple Ave'], state: 'ON' }],
         }),

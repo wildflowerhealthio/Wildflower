@@ -78,9 +78,11 @@ const customerIdOf = (url: string): Effect.Effect<string, ParseResult.ParseError
 /**
  * The `subject` wire: the account the history is for, as a logical reference
  * to a `Patient` by `customerId` under `ShoppersIdentifierSystem.CustomerId`,
- * with no literal `reference`. The feed names no managed person and no
- * Patient stands for the account, so the identifier is all it can say, for
- * the importer's identity map to resolve to a person; the stated `type` is
+ * with no literal `reference`. The feed names no managed person, so the
+ * account's id is all it can say. When the account manages just one person,
+ * their Patient carries the same identifier (`CustomerResponseKind`), and the
+ * importer's identity map resolves the fill to them by it; otherwise it is
+ * for the map to resolve to the person a reviewer names. The stated `type` is
  * what tells the map it names a patient.
  */
 const accountSubjectWire = (customerId: string): Record<string, unknown> => ({
@@ -199,14 +201,16 @@ const historyUrl = new RegExp(
  * request via `authorizingPrescription`. Its `subject` names the **account**
  * by the URL's `customerId`, as an identifier-only reference under
  * `ShoppersIdentifierSystem.CustomerId`, not the managed person the fill was
- * for: the payload does not say which person that is. A prescription's
- * latest fill also appears in the status feed under the same `dispenseId`,
- * which names the person; the source's `mergeResources` combines the two
- * copies wherever one extraction holds both (`merge-resources.ts`). A
- * dispense entry that does not decode as a {@link SourceHistoryDispense} (a
- * `quantityDispensed` sent as a string, say, or an entry that is not an
- * object), and one with no `dispenseId` (absent or `null`), drops-and-counts
- * via `Effect.logInfo`; its siblings are still emitted. A URL with no
+ * for: the payload does not say which person that is. When the account
+ * manages just one person, their Patient carries that identifier too, so the
+ * fill is filed on them at import. A prescription's latest fill also appears
+ * in the status feed under the same `dispenseId`, which names the person; the
+ * source's `mergeResources` combines the two copies wherever one extraction
+ * holds both (`merge-resources.ts`). A dispense entry that does not decode as
+ * a {@link SourceHistoryDispense} (a `quantityDispensed` sent as a string, say,
+ * or an entry that is not an object), and one with no `dispenseId` (absent or
+ * `null`), drops-and-counts via `Effect.logInfo`; its siblings are still
+ * emitted. A URL with no
  * `customerId` fails the parse.
  */
 const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<DetachedResource.Type> =

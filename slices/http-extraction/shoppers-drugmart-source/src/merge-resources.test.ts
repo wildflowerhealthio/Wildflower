@@ -120,8 +120,9 @@ describe('shoppersDrugMartSource', () => {
   })
 
   // One wording per fact: the family says what a Shoppers id is, so the key is
-  // written once and the prescription keeps its number beside it.
-  it('should carry each key once, the prescription its number behind it', () => {
+  // written once; the prescription keeps its number beside it, and the
+  // account's one person the account's id.
+  it("should carry each key once, the prescription its number behind it and the account's one person the account's id", () => {
     const [person] = customers()
     const request = extract(prescriptionStatusUrlOf(PRESCRIPTION_ID), statusPayload()).find(
       (resource) => resource.resourceType === 'MedicationRequest'
@@ -129,6 +130,7 @@ describe('shoppersDrugMartSource', () => {
 
     expect(person?.resourceType === 'Patient' ? person.identifier : null).toStrictEqual([
       identifierIn(ShoppersIdentifierSystem.PatientId, PERSON_ID),
+      identifierIn(ShoppersIdentifierSystem.CustomerId, ACCOUNT_ID),
     ])
     expect(request?.resourceType === 'MedicationRequest' ? request.identifier : null).toStrictEqual(
       [
@@ -163,6 +165,14 @@ describe('shoppersDrugMartSource', () => {
         identifier: { system: ShoppersIdentifierSystem.PrescriptionId, value: PRESCRIPTION_ID },
       }),
     ])
+  })
+
+  it("should identify the account's one person by the identifier the history copy names the account by", () => {
+    const [person] = customers()
+
+    expect(person?.resourceType === 'Patient' ? person.identifier : []).toContainEqual(
+      historyCopy().subject?.identifier
+    )
   })
 
   it('should give both copies of one fill the same key', () => {
