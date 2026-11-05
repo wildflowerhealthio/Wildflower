@@ -75,6 +75,7 @@ export {
   beginSignInAt,
   completeSignIn,
   forgetRetainedSignInRequest,
+  peekRetainedSignInRequest,
   retainedRequestUnrecognisedFromAnotherVersion,
   RetainedRequestUnrecognised,
   RetainedRequestUnusable,

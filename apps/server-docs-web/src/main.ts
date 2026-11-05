@@ -13,6 +13,7 @@ import {
   insecureTargetReason,
   isAuthorizationResponse,
   normalizeServerUrl,
+  peekRetainedSignInRequest,
   redirectUriForPage,
   searchWithServerUrl,
   serverUrlFromSearch,
@@ -23,11 +24,7 @@ import {
   type SignInServices,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 
-import {
-  pendingSignInServerUrl,
-  resetAuthControlsOnBackForwardRestore,
-  searchSettledFrom,
-} from './arrival.ts'
+import { resetAuthControlsOnBackForwardRestore, searchSettledFrom } from './arrival.ts'
 import { consoleConfiguration } from './configuration.ts'
 import {
   CONNECT_CHOICES,
@@ -475,10 +472,18 @@ const initialServerUrl = currentServerUrl()
 renderAuthControls(initialServerUrl)
 
 // The server a return leg's sign-in was for. Read now: `completeSignIn` drops
-// the pending record it is read from.
-const pendingServerUrl = returningFromAuthorization
-  ? Effect.runSync(pendingSignInServerUrl.pipe(Effect.provide(signInLayer)))
-  : undefined
+// the retained sign-in request it is read from. The redirect URI carries no
+// `?server=`, so this is how a failed or cancelled return gets back to the
+// server the reader picked. A store that refuses to be read names none.
+const retainedServerUrl: Option.Option<string> = returningFromAuthorization
+  ? Effect.runSync(
+      peekRetainedSignInRequest.pipe(
+        Effect.map(Option.map((retained) => retained.smartServer.fhirBaseUrl)),
+        Effect.orElseSucceed(Option.none),
+        Effect.provide(signInLayer)
+      )
+    )
+  : Option.none()
 
 // Mount the reference now on an ordinary load. On a return leg, defer it: a
 // successful sign-in re-targets the reference at the signed-in server, so mounting
@@ -492,8 +497,12 @@ if (!returningFromAuthorization) render(initialServerUrl)
  * sign-in was for, or the page's own target when no pending record names one.
  */
 const returnWithoutSession = (): void => {
-  if (pendingServerUrl === undefined) render(initialServerUrl)
-  else applyServerUrl(pendingServerUrl)
+  Option.match(retainedServerUrl, {
+    onNone: () => {
+      render(initialServerUrl)
+    },
+    onSome: applyServerUrl,
+  })
 }
 
 // A return leg from `/oauth/authorize` looks like any other load until the query

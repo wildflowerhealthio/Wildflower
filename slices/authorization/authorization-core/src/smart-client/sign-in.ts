@@ -304,6 +304,23 @@ const retainedRequestUnrecognisedFromAnotherVersion = (): RetainedRequestUnrecog
   })
 
 /**
+ * The retained request a store gave back as `stored`: `None` when it held
+ * none, and {@link RetainedRequestUnrecognised} when what it held does not
+ * read as one.
+ */
+const retainedSignInRequestIn = (
+  stored: Option.Option<string>
+): Effect.Effect<Option.Option<RetainedSignInRequest>, RetainedRequestUnrecognised> =>
+  Option.match(stored, {
+    onNone: () => Effect.succeedNone,
+    onSome: (serialized) =>
+      Option.match(parseRetainedSignInRequest(serialized), {
+        onNone: () => Effect.fail(retainedRequestUnrecognisedFromAnotherVersion()),
+        onSome: Effect.succeedSome,
+      }),
+  })
+
+/**
  * Take the retained request out of the {@link RetainedSignInRequestStore}: read
  * it and drop it. `None` only when there is none; a store that refuses the
  * read fails with {@link RetainedRequestUnusable} (one that refuses only the
@@ -314,14 +331,25 @@ const takeRetainedSignInRequest: Effect.Effect<
   Option.Option<RetainedSignInRequest>,
   RetainedRequestUnusable | RetainedRequestUnrecognised,
   RetainedSignInRequestStore
-> = Effect.gen(function* () {
-  const store = yield* RetainedSignInRequestStore
-  const stored = yield* store.take
-  if (Option.isNone(stored)) return Option.none()
-  const retained = parseRetainedSignInRequest(stored.value)
-  if (Option.isNone(retained)) return yield* retainedRequestUnrecognisedFromAnotherVersion()
-  return retained
-})
+> = Effect.flatMap(RetainedSignInRequestStore, (store) => store.take).pipe(
+  Effect.flatMap(retainedSignInRequestIn)
+)
+
+/**
+ * Read the retained request in the {@link RetainedSignInRequestStore} without
+ * dropping it: for a page that needs to know what a sign-in is waiting on
+ * (its server, say) before {@link completeSignIn} takes it. This peek is what
+ * the store's `read` member is for. `None` when there is none; a store that
+ * refuses the read fails with {@link RetainedRequestUnusable}, and a record
+ * that does not read as one with {@link RetainedRequestUnrecognised}.
+ */
+const peekRetainedSignInRequest: Effect.Effect<
+  Option.Option<RetainedSignInRequest>,
+  RetainedRequestUnusable | RetainedRequestUnrecognised,
+  RetainedSignInRequestStore
+> = Effect.flatMap(RetainedSignInRequestStore, (store) => store.read).pipe(
+  Effect.flatMap(retainedSignInRequestIn)
+)
 
 /**
  * Drop the sign-in the {@link RetainedSignInRequestStore} holds, without
@@ -353,6 +381,7 @@ export {
   beginSignInAt,
   completeSignIn,
   forgetRetainedSignInRequest,
+  peekRetainedSignInRequest,
   retainedRequestUnrecognisedFromAnotherVersion,
 }
 export type { AuthorizationRequestExtras, ClientRegistration, SignInError, SignInOptions, Session }

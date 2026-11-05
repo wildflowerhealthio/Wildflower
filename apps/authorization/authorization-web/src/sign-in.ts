@@ -24,9 +24,8 @@ import {
   BrowserSignIn,
   completeSignIn,
   discoverSmartEndpoints,
-  parseRetainedSignInRequest,
+  peekRetainedSignInRequest,
   redirectUriForRoute,
-  RetainedSignInRequestStore,
   type ClientRegistration,
   type DiscoveryFailed,
   type Session,
@@ -176,23 +175,6 @@ const startSignIn = (
     )
   ).pipe(Effect.provide(signInLayer(page)), Effect.runPromise)
 
-/**
- * The server the pending record in the {@link RetainedSignInRequestStore}
- * names, if any. An unreadable store is treated as an empty one, as
- * `completeSignIn` treats it.
- */
-const pendingServerUrl: Effect.Effect<string | undefined, never, RetainedSignInRequestStore> =
-  Effect.flatMap(RetainedSignInRequestStore, (store) => store.read).pipe(
-    Effect.map((stored) =>
-      stored.pipe(
-        Option.flatMap(parseRetainedSignInRequest),
-        Option.map((pending) => pending.smartServer.fhirBaseUrl),
-        Option.getOrUndefined
-      )
-    ),
-    Effect.orElseSucceed(() => undefined)
-  )
-
 /** The {@link ServerSession} a redeemed `session` becomes, once its server's API is found. */
 const serverSessionFor = (
   session: Session
@@ -224,7 +206,17 @@ const finishSignIn = (
   basePath: string
 ): Promise<FinishedSignIn> =>
   Effect.gen(function* () {
-    const serverUrl = yield* pendingServerUrl
+    // An unreadable store names no server, as `completeSignIn` treats it as
+    // an empty one.
+    const serverUrl = yield* peekRetainedSignInRequest.pipe(
+      Effect.map((retained) =>
+        retained.pipe(
+          Option.map((request) => request.smartServer.fhirBaseUrl),
+          Option.getOrUndefined
+        )
+      ),
+      Effect.orElseSucceed(() => undefined)
+    )
     const step = yield* stepOf(
       completeSignIn(search, signInRegistration(page.location.href, basePath)).pipe(
         Effect.flatMap((redeemed) =>
