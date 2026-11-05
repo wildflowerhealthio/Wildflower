@@ -1,6 +1,6 @@
-import { Client } from '@wildflowerhealthio/authorization-core/domain'
+import { Client, RefreshPolicy } from '@wildflowerhealthio/authorization-core/domain'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { DateTime, Schema } from 'effect'
+import { Arbitrary, DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -112,6 +112,7 @@ const ohifViewer = {
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
   essential: false,
+  refreshPolicy: { idleTtlSeconds: 604800, maxTtlSeconds: 2592000, endsWithBrowserSession: false },
 }
 
 const instantArb = (): fc.Arbitrary<DateTime.Utc> =>
@@ -130,4 +131,5 @@ const clientArb = (): fc.Arbitrary<Client.Type> =>
     registeredAt: instantArb(),
     disabledAt: fc.option(instantArb(), { nil: null }),
     essential: fc.boolean(),
+    refreshPolicy: Arbitrary.make(RefreshPolicy.Schema),
   })

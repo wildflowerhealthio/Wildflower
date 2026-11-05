@@ -89,6 +89,11 @@ const CLIENTS = [
     registeredAt: '2026-06-01T00:00:00Z',
     disabledAt: null,
     essential: false,
+    refreshPolicy: {
+      idleTtlSeconds: 604800,
+      maxTtlSeconds: 2592000,
+      endsWithBrowserSession: false,
+    },
   },
 ]
 
