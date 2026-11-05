@@ -4,7 +4,7 @@
  *
  * A server URL is a FHIR base: a Wildflower server serves FHIR at its root, so
  * its address is its FHIR base, and a plain SMART server's is the URL itself
- * (the SmartHealthIT demo's `…/fhir`). {@link discoverSmartEndpoints} reads the
+ * (the SmartHealthIT demo's `…/fhir`). {@link discoverSmartServer} reads the
  * configuration under it, and the document says which kind of server it is: a
  * Wildflower server lists {@link WILDFLOWER_SERVER_CAPABILITY} among its
  * `capabilities`. A Wildflower server answers from
@@ -338,7 +338,7 @@ const fetchSmartConfiguration = (
  * included: there is no configuration there), a non-JSON body — is a
  * {@link DiscoveryFailed} naming the URL.
  */
-const discoverSmartEndpoints = (
+const discoverSmartServer = (
   serverUrl: string
 ): Effect.Effect<DiscoveredSmartServer, DiscoveryFailed, HttpClient.HttpClient | PageSecurity> =>
   Effect.gen(function* () {
@@ -388,7 +388,7 @@ export {
   usableEndpointUrl,
   insecureTargetReason,
   discoveredSmartServerFrom,
-  discoverSmartEndpoints,
+  discoverSmartServer,
   fetchSmartConfiguration,
   SmartConfigurationFetch,
   WILDFLOWER_SERVER_CAPABILITY,

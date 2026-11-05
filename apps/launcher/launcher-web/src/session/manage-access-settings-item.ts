@@ -2,7 +2,7 @@ import type { HttpClient } from '@effect/platform'
 import { queryOptions, skipToken, useQuery, type UseQueryOptions } from '@tanstack/react-query'
 import {
   BrowserSignIn,
-  discoverSmartEndpoints,
+  discoverSmartServer,
   type PageSecurity,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
@@ -58,8 +58,8 @@ const managementEndpointQueryOptions = (
       serverUrl === undefined
         ? skipToken
         : () =>
-            discoverSmartEndpoints(serverUrl).pipe(
-              Effect.map((issuer) => Option.getOrNull(issuer.managementEndpoint)),
+            discoverSmartServer(serverUrl).pipe(
+              Effect.map((discovered) => Option.getOrNull(discovered.managementEndpoint)),
               Effect.provide(source.discovery),
               Effect.runPromise
             ),

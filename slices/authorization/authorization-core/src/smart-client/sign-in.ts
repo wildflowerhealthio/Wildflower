@@ -70,7 +70,7 @@ import {
   type SignInServices,
 } from './sign-in-services.ts'
 import {
-  discoverSmartEndpoints,
+  discoverSmartServer,
   type DiscoveryFailed,
   type DiscoveredSmartServer,
   type SmartServer,
@@ -142,14 +142,14 @@ interface SignInOptions extends AuthorizationRequestExtras {
  * The SMART `iss` — the FHIR base whose `.well-known/smart-configuration`
  * answered, and the `aud` the authorization request names — is `serverUrl`
  * itself (a Wildflower server serves FHIR at its root), and
- * `discoverSmartEndpoints` reads which kind of server it is.
+ * `discoverSmartServer` reads which kind of server it is.
  */
 const beginSignIn = (
   serverUrl: string,
   registration: ClientRegistration,
   options: SignInOptions = {}
 ): Effect.Effect<string, SignInError, SignInServices> =>
-  discoverSmartEndpoints(serverUrl).pipe(
+  discoverSmartServer(serverUrl).pipe(
     Effect.flatMap((discovered) => beginSignInAt(discovered, registration, options))
   )
 

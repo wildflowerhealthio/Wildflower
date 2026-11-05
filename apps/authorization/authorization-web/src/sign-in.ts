@@ -23,7 +23,7 @@ import {
   beginSignIn,
   BrowserSignIn,
   completeSignIn,
-  discoverSmartEndpoints,
+  discoverSmartServer,
   peekRetainedSignInRequest,
   redirectUriForRoute,
   type ClientRegistration,
@@ -123,15 +123,15 @@ const signInLayer = (page: SignInWindow): Layer.Layer<SignInServices> =>
   BrowserSignIn.layer(page, RETAINED_SIGN_IN_REQUEST_KEY)
 
 /**
- * The base of the authorization API `issuer` advertises, when it is a
+ * The base of the authorization API the `discovered` server advertises, when it is a
  * Wildflower server that advertises one.
  */
 const authorizationApiOf = (
-  issuer: DiscoveredSmartServer
+  discovered: DiscoveredSmartServer
 ): Effect.Effect<string, NotAWildflowerServer> =>
-  issuer.smartServer._tag === 'WildflowerServer'
+  discovered.smartServer._tag === 'WildflowerServer'
     ? Effect.orElseFail(
-        issuer.wildflowerAuthorizationApi,
+        discovered.wildflowerAuthorizationApi,
         () => new NotAWildflowerServer({ reason: NO_AUTHORIZATION_API })
       )
     : Effect.fail(new NotAWildflowerServer({ reason: NOT_A_WILDFLOWER_SERVER }))
@@ -143,7 +143,7 @@ const discoverAuthorizationApi = (
   string,
   DiscoveryFailed | NotAWildflowerServer,
   HttpClient.HttpClient | PageSecurity
-> => discoverSmartEndpoints(serverUrl).pipe(Effect.flatMap(authorizationApiOf))
+> => discoverSmartServer(serverUrl).pipe(Effect.flatMap(authorizationApiOf))
 
 /** A sign-in Effect's outcome as a {@link SignInStep}: its failure channel folded in. */
 const stepOf = <A, R>(

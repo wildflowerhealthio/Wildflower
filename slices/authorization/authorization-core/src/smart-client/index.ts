@@ -90,7 +90,7 @@ export type {
 } from './sign-in.ts'
 
 export {
-  discoverSmartEndpoints,
+  discoverSmartServer,
   DiscoveryFailed,
   endpointUrlFrom,
   fetchSmartConfiguration,
