@@ -108,13 +108,20 @@ describe('DecodedFileSet.adopt', () => {
     })
   })
 
-  // A keyless record's id is minted at import, so nothing names it by key.
-  it('leaves a reference to a keyless record of the set logical', () => {
-    const [, observation] = adoptedIn([
-      sectionOf('people', [patient(null)]),
+  // A keyless record's id is minted at import, so nothing names it by key:
+  // not even an identifier it carries behind an unqualified first one.
+  it('leaves a reference to a keyless record of the set logical, whatever identifiers it carries', () => {
+    const keyless = detachTest(
+      decodePatient({
+        resourceType: 'Patient',
+        identifier: [{ value: 'unqualified' }, { system: `${BASE_URL}/Patient`, value: 'pat-7' }],
+      })
+    )
+    const [person, observation] = adoptedIn([
+      sectionOf('people', [keyless]),
       sectionOf('results', [observationOn({ reference: 'Patient/pat-7' })]),
     ])
-    expect(subjectOf(observation)).toBeNull()
+    expect([person?.id, subjectOf(observation)]).toEqual(['minted-1', null])
   })
 })
 
