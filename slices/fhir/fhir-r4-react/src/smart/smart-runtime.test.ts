@@ -190,6 +190,46 @@ describe('smartRuntimeFor', () => {
   })
 })
 
+describe('smartRuntimeFor services', () => {
+  test('builds the services once, on the first run, for every run after it', async () => {
+    let transportBuilds = 0
+    const countingTransport = Layer.effect(
+      HttpClient.HttpClient,
+      Effect.sync(() => {
+        transportBuilds += 1
+        return HttpClient.make(() => Effect.die(new Error('no request expected')))
+      })
+    )
+    const runtime = smartRuntimeFor(stubConnection(), countingTransport)
+
+    await runtime.runSmart(Effect.void)
+    await runtime.runSmart(Effect.void)
+
+    expect(transportBuilds).toBe(1)
+  })
+
+  test('closes the services’ scope on release, and builds them afresh for a later run', async () => {
+    const lifecycle: string[] = []
+    const scopedTransport = Layer.scoped(
+      HttpClient.HttpClient,
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          lifecycle.push('built')
+          return HttpClient.make(() => Effect.die(new Error('no request expected')))
+        }),
+        () => Effect.sync(() => lifecycle.push('released'))
+      )
+    )
+    const runtime = smartRuntimeFor(stubConnection(), scopedTransport)
+    await runtime.runSmart(Effect.void)
+
+    await runtime.release()
+    const answer = await runtime.runSmart(Effect.succeed(42))
+
+    expect({ lifecycle, answer }).toEqual({ lifecycle: ['built', 'released', 'built'], answer: 42 })
+  })
+})
+
 describe('buildSmartRouterContext', () => {
   const runtime = smartRuntimeFor(stubConnection(), deadTransport)
 

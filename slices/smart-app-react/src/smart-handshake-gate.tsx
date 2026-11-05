@@ -26,7 +26,8 @@ interface SmartHandshakeGateProps {
 
 /**
  * The app over the runtime built from `connection`, once, with the runtime
- * provided to the tree for `useRunSmart`.
+ * provided to the tree for `useRunSmart`. The runtime's services are released
+ * when the connection changes or this unmounts.
  */
 function SignedIn({
   connection,
@@ -36,6 +37,12 @@ function SignedIn({
   readonly children: (runtime: SmartRuntime) => JSX.Element
 }): JSX.Element {
   const runtime = useMemo(() => smartRuntimeFor(connection), [connection])
+  useEffect(
+    () => (): void => {
+      void runtime.release()
+    },
+    [runtime]
+  )
   return <SmartRuntimeContext value={runtime}>{children(runtime)}</SmartRuntimeContext>
 }
 

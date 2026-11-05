@@ -5,10 +5,11 @@ import {
   RootArrival,
   SmartHandshake,
   type SignInLanding,
+  type SmartRuntime,
   useRunSmart,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { Effect } from 'effect'
-import { useEffect, useState, type JSX } from 'react'
+import { StrictMode, useEffect, useState, type JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { stubConnection } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
@@ -16,21 +17,32 @@ import { SignInLandingContext } from './sign-in-landing.ts'
 import { SmartHandshakeGate } from './smart-handshake-gate.tsx'
 
 // The handshake is the gate's one input: each test hands it a state, and reads
-// back what the gate renders and what it carries to the app root.
-const { handshakeMock, redirectToRootMock } = vi.hoisted(() => ({
+// back what the gate renders and what it carries to the app root. Every
+// runtime the gate builds is the real one, recorded.
+const { handshakeMock, redirectToRootMock, builtRuntimes } = vi.hoisted(() => ({
   handshakeMock: vi.fn<(landing: SignInLanding) => SmartHandshake>(),
   redirectToRootMock: vi.fn<(handshake: SmartHandshake, appRootRedirectUri: string) => void>(),
+  builtRuntimes: [] as SmartRuntime[],
 }))
-vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
-  ...(await importOriginal<typeof FhirSmart>()),
-  useSmartHandshake: handshakeMock,
-  useRedirectToRootOnFailure: redirectToRootMock,
-}))
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
+  const actual = await importOriginal<typeof FhirSmart>()
+  return {
+    ...actual,
+    useSmartHandshake: handshakeMock,
+    useRedirectToRootOnFailure: redirectToRootMock,
+    smartRuntimeFor: (...args: Parameters<typeof actual.smartRuntimeFor>) => {
+      const runtime = actual.smartRuntimeFor(...args)
+      builtRuntimes.push(runtime)
+      return runtime
+    },
+  }
+})
 
 afterEach(() => {
   cleanup()
   handshakeMock.mockReset()
   redirectToRootMock.mockReset()
+  builtRuntimes.length = 0
 })
 
 /** A connection the gate builds the app's runtime from. */
@@ -55,7 +67,7 @@ function RunsOverTheRuntime(): JSX.Element {
 }
 
 /** The gate under `landing`, its children naming the server of the runtime they were handed. */
-const renderGate = (landing: SignInLanding = landingWith()): void => {
+const renderGate = (landing: SignInLanding = landingWith(), strict = false): void => {
   render(
     <SignInLandingContext value={landing}>
       <SmartHandshakeGate connecting={<p>Connecting…</p>}>
@@ -66,7 +78,8 @@ const renderGate = (landing: SignInLanding = landingWith()): void => {
           </>
         )}
       </SmartHandshakeGate>
-    </SignInLandingContext>
+    </SignInLandingContext>,
+    { wrapper: strict ? StrictMode : undefined }
   )
 }
 
@@ -87,6 +100,26 @@ describe('SmartHandshakeGate', () => {
 
     expect(screen.getByText(`App over ${connection.fhirBaseUrl}`)).toBeDefined()
     expect(await screen.findByText('ran over the runtime')).toBeDefined()
+  })
+
+  it('should run the app over a live runtime under StrictMode’s remount', async () => {
+    handshakeMock.mockReturnValue(SmartHandshake.Ready({ connection }))
+
+    renderGate(landingWith(), true)
+
+    expect(await screen.findByText('ran over the runtime')).toBeDefined()
+  })
+
+  it('should release the runtime it built, once, when it unmounts', async () => {
+    handshakeMock.mockReturnValue(SmartHandshake.Ready({ connection }))
+    renderGate()
+    await screen.findByText('ran over the runtime')
+    const releases = builtRuntimes.map((runtime) => vi.spyOn(runtime, 'release'))
+
+    cleanup()
+
+    expect(releases).toHaveLength(1)
+    expect(releases[0]).toHaveBeenCalledOnce()
   })
 
   it('should tell the landing the connection once ready', () => {

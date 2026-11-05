@@ -125,8 +125,9 @@ package, in an order that is load-bearing:
   one place the exchange runs — shows the app's `connecting` element
   meanwhile, shows a failed exchange and carries it to the landing's app
   root (`useRedirectToRootOnFailure`), and once ready tells the root the
-  connection (`onSignedIn`), builds the one `SmartRuntime` from it, provides
-  it (`useRunSmart`) and renders `children(runtime)`; the app builds its
+  connection (`onSignedIn`), builds the one `SmartRuntime` from it (released
+  when the connection changes or the gate unmounts), provides it
+  (`useRunSmart`) and renders `children(runtime)`; the app builds its
   router there, once (`useState` or a memo on its context), with
   `buildSmartRouterContext(runtime, queryClient)`, so a tab change is a
   navigation inside it, never a rebuild. A launch URL never reaches the router at all:

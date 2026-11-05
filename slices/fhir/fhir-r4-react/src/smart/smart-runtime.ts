@@ -2,7 +2,7 @@ import { FetchHttpClient, HttpClient } from '@effect/platform'
 import { QueryCache, QueryClient, type Query } from '@tanstack/react-query'
 import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import type { BaseRouterContext } from '@wildflowerhealthio/shared-structures-react'
-import { Duration, Effect, Layer, pipe } from 'effect'
+import { Duration, Effect, Layer, ManagedRuntime, pipe } from 'effect'
 
 import { sliceRuntimeLayer } from '../router-context.ts'
 import { addressedTo, SmartClient } from './smart-client.ts'
@@ -93,15 +93,21 @@ type RunSmart = BaseRouterContext.RunAuthedWith<SmartServices>
  * The one runtime a completed SMART handshake hands the app:
  * `SmartHandshakeGate` builds it from the connection, provides it to the
  * tree (`useRunSmart`), and hands it to the app, whose router context
- * carries the same runtime ({@link buildSmartRouterContext}).
+ * carries the same runtime ({@link buildSmartRouterContext}). Its services
+ * are built once, on the first run, and live until it is released.
  */
 interface SmartRuntime {
   /** The server the handshake connected to. */
   readonly connection: SmartConnection
   /** Every SMART service, over one `HttpClient`. */
   readonly runtimeLayer: SmartRuntimeLayer
-  /** Run an Effect over {@link SmartRuntime.runtimeLayer}. */
+  /** Run an Effect over the services {@link SmartRuntime.runtimeLayer} built. */
   readonly runSmart: RunSmart
+  /**
+   * Release the services built so far, closing their scope; a run after this
+   * builds them afresh.
+   */
+  readonly release: () => Promise<void>
 }
 
 /**
@@ -114,8 +120,11 @@ interface SmartRuntime {
  *   `FetchHttpClient.layer` in the app (the default), a stub in a test
  *
  * @remarks
- * Nothing is re-sent on a 401: a bearer token is in hand before this is built,
- * so a 401 here is a real 401.
+ * The services are a `ManagedRuntime` over the layer, built on the first run
+ * and shared by every run after it, until `release` disposes it and puts an
+ * unbuilt one in its place. Nothing is re-sent on a
+ * 401: a bearer token is in hand before this is built, so a 401 here is a
+ * real 401.
  */
 const smartRuntimeFor = (
   connection: SmartConnection,
@@ -125,9 +134,14 @@ const smartRuntimeFor = (
     SmartClient.layer(connection),
     Layer.provideMerge(sliceRuntimeLayer, smartHttpClientLayer(connection, transport))
   ).pipe(Layer.provide(transport))
-  const runSmart: RunSmart = (effect, options) =>
-    Effect.runPromise(Effect.provide(effect, runtimeLayer), options)
-  return { connection, runtimeLayer, runSmart }
+  let managedRuntime = ManagedRuntime.make(runtimeLayer)
+  const runSmart: RunSmart = (effect, options) => managedRuntime.runPromise(effect, options)
+  const release = (): Promise<void> => {
+    const releasedRuntime = managedRuntime
+    managedRuntime = ManagedRuntime.make(runtimeLayer)
+    return releasedRuntime.dispose()
+  }
+  return { connection, runtimeLayer, runSmart, release }
 }
 
 /**
