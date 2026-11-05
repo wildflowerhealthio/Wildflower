@@ -8,7 +8,7 @@ import {
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
-import type { Client } from '@wildflowerhealthio/authorization-core/domain'
+import type { Client, RefreshPolicy } from '@wildflowerhealthio/authorization-core/domain'
 import type { AccessManagement } from '@wildflowerhealthio/authorization-core/http-api-definition'
 import { Data, DateTime, Effect, type Schema } from 'effect'
 
@@ -109,10 +109,46 @@ const useUpdateClientMutation = (): UseMutationResult<
   })
 }
 
+/** `UpdateClient`'s input for a new refresh policy: the client, and its whole policy. */
+interface UpdateRefreshPolicyVariables {
+  readonly clientId: string
+  readonly refreshPolicy: RefreshPolicy.Type
+}
+
+/**
+ * `UpdateClient` (PATCH) with a new `refreshPolicy`, which the client's
+ * refresh-token families pick up on their next refresh. Invalidates the
+ * clients list.
+ */
+const useUpdateRefreshPolicyMutation = (): UseMutationResult<
+  Client.Type,
+  Error,
+  UpdateRefreshPolicyVariables
+> => {
+  const runAuthed = useRunAuthed()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ clientId, refreshPolicy }) =>
+      runAuthed(
+        Effect.flatMap(AuthorizationServerHttpApiClient, (client) =>
+          client['access-management'].UpdateClient({
+            // See `useUpdateClientMutation`: a URL-shaped id stays one segment.
+            path: { clientId: encodeURIComponent(clientId) },
+            payload: { refreshPolicy },
+          })
+        )
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: CLIENTS_QUERY_KEY })
+    },
+  })
+}
+
 export {
   clientsQueryOptions,
   EssentialClientDisableRefusal,
   useClientsQuery,
   useUpdateClientMutation,
+  useUpdateRefreshPolicyMutation,
 }
-export type { ClientSwitch, UpdateClientVariables }
+export type { ClientSwitch, UpdateClientVariables, UpdateRefreshPolicyVariables }
