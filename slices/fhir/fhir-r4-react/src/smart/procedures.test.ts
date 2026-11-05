@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchProcedurePage } from './procedures.ts'
-import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
+import { smartRuntimeAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
 const bundle = (resources: readonly unknown[]): unknown => ({
@@ -23,53 +23,53 @@ const PLAN_DEFINITION_URL = 'https://wildflower.example/PlanDefinition/pd-1'
 
 describe('fetchProcedurePage', () => {
   test("searches the patient's procedures of one category carrying out one definition, oldest first", async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchProcedurePage(client, {
+      fetchProcedurePage({
         first: {
           patientId: 'pat/1',
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: PLAN_DEFINITION_URL,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
-    expect(queries).toEqual([
-      `Procedure?patient=pat%2F1&category=${encodeURIComponent(CATEGORY_TOKEN)}&instantiates-canonical=${encodeURIComponent(PLAN_DEFINITION_URL)}&_sort=date&_count=200`,
+    expect(urls).toEqual([
+      `${STUB_FHIR_BASE}/Procedure?patient=pat%2F1&category=${encodeURIComponent(CATEGORY_TOKEN)}&instantiates-canonical=${encodeURIComponent(PLAN_DEFINITION_URL)}&_sort=date&_count=200`,
     ])
   })
 
   test('drops the patient filter when no patient is in context (system launch)', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchProcedurePage(client, {
+      fetchProcedurePage({
         first: {
           patientId: null,
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: PLAN_DEFINITION_URL,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
-    expect(searchParamsOf(queries[0] ?? '').has('patient')).toBe(false)
+    expect(searchParamsOf(urls[0] ?? '').has('patient')).toBe(false)
   })
 
   test('drops the definition filter when no canonical url is given, reading procedures of every definition', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchProcedurePage(client, {
+      fetchProcedurePage({
         first: {
           patientId: 'pat-1',
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: null,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
-    const params = searchParamsOf(queries[0] ?? '')
+    const params = searchParamsOf(urls[0] ?? '')
     expect(params.has('instantiates-canonical')).toBe(false)
     expect(params.get('patient')).toBe('pat-1')
     expect(params.get('category')).toBe(CATEGORY_TOKEN)
@@ -82,17 +82,17 @@ describe('fetchProcedurePage', () => {
         fc.string(),
         fc.option(fc.string(), { nil: null }),
         async (patientId, categoryToken, instantiatesCanonicalUrl) => {
-          const { client, queries } = stubSmartClient(bundle([]))
+          const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
           await Effect.runPromise(
-            fetchProcedurePage(client, {
+            fetchProcedurePage({
               first: { patientId, categoryToken, instantiatesCanonicalUrl },
-            })
+            }).pipe(Effect.provide(runtime.runtimeLayer))
           )
 
           // Parsed back rather than string-compared: a value carrying `&`, `=`
           // or a space must arrive at the server as one parameter value.
-          const params = searchParamsOf(queries[0] ?? '')
+          const params = searchParamsOf(urls[0] ?? '')
           expect(params.get('patient')).toBe(patientId)
           expect(params.get('category')).toBe(categoryToken)
           expect(params.get('instantiates-canonical')).toBe(instantiatesCanonicalUrl)
@@ -106,16 +106,18 @@ describe('fetchProcedurePage', () => {
   })
 
   test('requests a later page by its cursor URL verbatim', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
     const pageUrl = 'https://fhir.example/Procedure?_getpages=abc&_getpagesoffset=200'
 
-    await Effect.runPromise(fetchProcedurePage(client, { pageUrl }))
+    await Effect.runPromise(
+      fetchProcedurePage({ pageUrl }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
-    expect(queries).toEqual([pageUrl])
+    expect(urls).toEqual([pageUrl])
   })
 
   test('drops an entry without an id, counting it', async () => {
-    const { client } = stubSmartClient(
+    const { runtime } = smartRuntimeAnswering(
       bundle([
         {
           resourceType: 'Procedure',
@@ -128,13 +130,13 @@ describe('fetchProcedurePage', () => {
     )
 
     const page = await Effect.runPromise(
-      fetchProcedurePage(client, {
+      fetchProcedurePage({
         first: {
           patientId: null,
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: PLAN_DEFINITION_URL,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(page.items.map((procedure) => procedure.id)).toEqual(['pr-1'])

@@ -14,7 +14,7 @@ type RouterContext = FhirR4ResourcesRouterContext.RouterContext
 type ImporterRouter = Router<typeof routeTree, 'never', false>
 
 /**
- * The app's router over `page` (its history, under the served directory: one
+ * The app's router over `page` (its history, under its basepath: one
  * build serves its origin's root and a PR preview's `/pr-<n>/`), giving every
  * route `context`.
  */

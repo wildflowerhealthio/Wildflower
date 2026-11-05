@@ -1,17 +1,37 @@
+import type { HttpClient } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type * as SmartReads from '@wildflowerhealthio/fhir-r4-react/smart'
-import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  CallbackStateMismatch,
+  RootArrival,
+  SmartHandshake,
+  type SignInLanding,
+  type SmartConnection,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  answerJson,
+  answerStatus,
+  bundleOf,
+  neverAnswer,
+  STUB_FHIR_BASE,
+  stubConnection,
+  stubFhirServer,
+  type StubAnswer,
+  type StubAnswers,
+  type StubFhirServer,
+} from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest, Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import { SERIES_PARAM, decodeSelection, readRecord } from '@wildflowerhealthio/plots-core-js'
 import { PlotsWalkthroughAnchor, seriesColors } from '@wildflowerhealthio/plots-react'
+import { SignInLandingContext } from '@wildflowerhealthio/smart-app-react'
 import {
   readSeenWalkthrough,
   WALKTHROUGH_ANCHOR_ATTRIBUTE,
   writeSeenWalkthrough,
 } from '@wildflowerhealthio/walkthrough-core'
-import { DateTime, Schema } from 'effect'
+import { DateTime, Effect, type Layer, Option, Schema } from 'effect'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -21,81 +41,70 @@ import {
   PLOTS_WALKTHROUGH_VERSION,
   PlotsPageWalkthroughAnchor,
 } from './plots-walkthrough.ts'
-import type { SmartClient } from './smart-client.ts'
 
 // Only the handshake is stubbed: the page reads are the real `fhir-r4-react/smart`
-// ones, issued through a stub client whose `request` answers from a table of
-// FHIR responses. So decoding — an Observation, a MedicationRequest without
-// its id — is exercised end to end rather than assumed.
-const { handshakeMock, launchFailureRedirectMock } = vi.hoisted(() => ({
+// ones, on the runtime the real gate builds, over a stub transport that answers
+// from a table of FHIR responses. So decoding — an Observation, a
+// MedicationRequest without its id — is exercised end to end rather than
+// assumed.
+const { handshakeMock, launchFailureRedirectMock, launchTransport } = vi.hoisted(() => ({
   handshakeMock: vi.fn<() => SmartHandshake>(),
   launchFailureRedirectMock: vi.fn<(handshake: SmartHandshake) => void>(),
+  launchTransport: { current: undefined as Layer.Layer<HttpClient.HttpClient> | undefined },
 }))
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
   const actual: typeof SmartReads = await importOriginal()
   return {
     ...actual,
     useSmartHandshake: () => handshakeMock(),
-    useLaunchFailureRedirect: (handshake: SmartHandshake) => {
+    useRedirectToRootOnFailure: (handshake: SmartHandshake) => {
       launchFailureRedirectMock(handshake)
     },
+    smartRuntimeFor: (connection: SmartConnection, transport = launchTransport.current) =>
+      actual.smartRuntimeFor(connection, transport),
   }
 })
 
 const { App } = await import('./app.tsx')
 
-/** The FHIR server behind the stub client: response by request-URL prefix. */
-type FhirResponses = Readonly<Record<string, () => Promise<unknown>>>
+/** The stub servers the test's launches read from, each recording what it was sent. */
+const stubServers: StubFhirServer[] = []
 
-/** A request no entry in the table answers — a test that forgot a response. */
-class UnexpectedRequestError extends Error {}
-
-/** Every URL the stub clients were asked for, in order. */
-const requestedUrls: string[] = []
-
-/** A SMART client whose reads answer from `responses`, launched with `patientId` in context. */
-const stubClient = (patientId: string | null, responses: FhirResponses): SmartClient => {
-  const request = (url: string): Promise<unknown> => {
-    requestedUrls.push(url)
-    const prefix = Object.keys(responses)
-      .filter((candidate) => url.startsWith(candidate))
-      .toSorted((left, right) => right.length - left.length)[0]
-    const respond = prefix === undefined ? undefined : responses[prefix]
-    return respond === undefined
-      ? Promise.reject(new UnexpectedRequestError(`unexpected request ${url}`))
-      : respond()
-  }
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub: the reads touch only `request` and `patient.id`
-  return { patient: { id: patientId }, request } as unknown as SmartClient
+/** A launch: the connection it made, and the transport its reads go out over. */
+interface StubLaunch {
+  readonly connection: SmartConnection
+  readonly transport: Layer.Layer<HttpClient.HttpClient>
 }
 
-/** A search-result bundle holding `resources`, pointing on to `nextUrl` when given. */
-const bundleOf = (resources: readonly unknown[], nextUrl?: string): unknown => ({
-  resourceType: 'Bundle',
-  type: 'searchset',
-  entry: resources.map((resource) => ({ resource })),
-  link: nextUrl === undefined ? [] : [{ relation: 'next', url: nextUrl }],
-})
-
-const answer =
-  (body: unknown): (() => Promise<unknown>) =>
-  () =>
-    Promise.resolve(body)
-
-/** A response that never arrives — a page still in flight. */
-const pending = (): Promise<unknown> => new Promise(() => {})
+/**
+ * A launch with `patientId` in context, whose reads answer from `responses`.
+ * A request no entry answers dies, as a test that forgot a response.
+ */
+const stubLaunch = (patientId: string | null, responses: StubAnswers): StubLaunch => {
+  const server = stubFhirServer(responses)
+  stubServers.push(server)
+  return {
+    connection: stubConnection({ launchPatientId: Option.fromNullable(patientId) }),
+    transport: server.transport,
+  }
+}
 
 /** A response that arrives when the test says, for asserting what holds before it does. */
 const deferredAnswer = (
   body: unknown
-): { readonly respond: () => Promise<unknown>; readonly release: () => void } => {
+): { readonly respond: StubAnswer; readonly release: () => void } => {
   let release = (): void => undefined
-  const arrived = new Promise<unknown>((resolve) => {
-    release = () => {
-      resolve(body)
-    }
+  const arrived = new Promise<void>((resolve) => {
+    release = resolve
   })
-  return { respond: () => arrived, release: () => release() }
+  return {
+    respond: (request) =>
+      Effect.flatMap(
+        Effect.promise(() => arrived),
+        () => answerJson(body)(request)
+      ),
+    release: () => release(),
+  }
 }
 
 const patientWire = {
@@ -180,25 +189,39 @@ const NEXT_OBSERVATIONS = 'https://fhir.example/next/observations'
 const NEXT_MEDICATION_REQUESTS = 'https://fhir.example/next/medication-requests'
 
 /** A launch with `p1` in context whose record holds glucose and metformin, one page each. */
-const recordResponses = (overrides: FhirResponses = {}): FhirResponses => ({
-  'Patient/p1': answer(patientWire),
-  'Observation?': answer(bundleOf([glucoseWire])),
-  'MedicationRequest?': answer(bundleOf([metforminWire])),
+const recordResponses = (overrides: StubAnswers = {}): StubAnswers => ({
+  'Patient/p1': answerJson(patientWire),
+  'Observation?': answerJson(bundleOf([glucoseWire])),
+  'MedicationRequest?': answerJson(bundleOf([metforminWire])),
   ...overrides,
 })
 
-const launchWith = (client: SmartClient): void => {
-  handshakeMock.mockReturnValue({ kind: 'ready', client })
+const launchWith = ({ connection, transport }: StubLaunch): void => {
+  launchTransport.current = transport
+  handshakeMock.mockReturnValue(SmartHandshake.Ready({ connection }))
 }
 
-/** Render `App` under StrictMode over a retry-free client (fast failures). */
+/** The sign-in the app root hands the app: a return to the app root. */
+const SIGN_IN_LANDING: SignInLanding = {
+  arrival: RootArrival.SignInReturn({ code: 'abc', state: 'xyz' }),
+  registration: { clientId: 'plots', scope: 'launch' },
+  appRootRedirectUri: `${window.location.origin}/health-viewer/`,
+  onSignedIn: () => undefined,
+}
+
+/**
+ * Render `App` under StrictMode over a retry-free client (fast failures), on
+ * the sign-in landing the app root would hand it.
+ */
 const renderApp = (): void => {
   render(
     <StrictMode>
       <QueryClientProvider
         client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
       >
-        <App />
+        <SignInLandingContext value={SIGN_IN_LANDING}>
+          <App />
+        </SignInLandingContext>
       </QueryClientProvider>
     </StrictMode>
   )
@@ -217,13 +240,14 @@ const selectionInUrl = (): ReturnType<typeof decodeSelection> =>
 
 /** The query of each record read the app issued for `resourceType`, in order. */
 const recordReadQueries = (resourceType: string): readonly URLSearchParams[] =>
-  requestedUrls
-    .filter((url) => url.startsWith(`${resourceType}?`))
+  stubServers
+    .flatMap((server) => server.urls)
+    .filter((url) => url.startsWith(`${STUB_FHIR_BASE}/${resourceType}?`))
     .map((url) => new URLSearchParams(url.slice(url.indexOf('?') + 1)))
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/health-viewer/')
-  requestedUrls.length = 0
+  stubServers.length = 0
 })
 
 afterEach(() => {
@@ -233,33 +257,39 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('should say Loading… while the handshake is still connecting', () => {
+  it('should say Loading… under the title while the handshake is still connecting', () => {
     // Arrange
-    handshakeMock.mockReturnValue({ kind: 'connecting' })
+    handshakeMock.mockReturnValue(SmartHandshake.Connecting())
 
     // Act
     renderApp()
 
     // Assert
+    expect(screen.getByRole('heading', { level: 1, name: 'Plots' })).toBeDefined()
     expect(screen.getByText('Loading…')).toBeDefined()
   })
 
-  it('should surface a failed token exchange and carry it to the app root', () => {
+  it('should surface a failed token exchange under the title and carry it to the app root', () => {
     // Arrange
-    handshakeMock.mockReturnValue({ kind: 'error', error: new Error('token exchange failed') })
+    handshakeMock.mockReturnValue(
+      SmartHandshake.Failed({
+        error: new CallbackStateMismatch({ reason: 'token exchange failed' }),
+      })
+    )
 
     // Act
     renderApp()
 
     // Assert
+    expect(screen.getByRole('heading', { level: 1, name: 'Plots' })).toBeDefined()
     expect(screen.getByRole('alert').textContent).toContain('token exchange failed')
     const [carried] = launchFailureRedirectMock.mock.calls[0] ?? []
-    expect(carried?.kind).toBe('error')
+    expect(carried?._tag).toBe('Failed')
   })
 
   it('should name the patient in context under the title', async () => {
     // Arrange
-    launchWith(stubClient('p1', recordResponses()))
+    launchWith(stubLaunch('p1', recordResponses()))
 
     // Act
     renderApp()
@@ -271,9 +301,9 @@ describe('App', () => {
   it('should offer a patient picker with no patient in context, and write the choice to the URL', async () => {
     // Arrange
     launchWith(
-      stubClient(null, {
+      stubLaunch(null, {
         ...recordResponses(),
-        'Patient?': answer(bundleOf([patientWire])),
+        'Patient?': answerJson(bundleOf([patientWire])),
       })
     )
     renderApp()
@@ -291,9 +321,9 @@ describe('App', () => {
   it("should chart every patient's records together for All patients, read unscoped", async () => {
     // Arrange — the two series belong to different patients
     launchWith(
-      stubClient(null, {
+      stubLaunch(null, {
         ...recordResponses(),
-        'Patient?': answer(bundleOf([patientWire, otherPatientWire])),
+        'Patient?': answerJson(bundleOf([patientWire, otherPatientWire])),
       })
     )
     renderApp()
@@ -316,10 +346,10 @@ describe('App', () => {
   it("should open on the launch's patient, and change to another from the picker", async () => {
     // Arrange
     launchWith(
-      stubClient('p1', {
+      stubLaunch('p1', {
         ...recordResponses(),
-        'Patient/p2': answer(otherPatientWire),
-        'Patient?': answer(bundleOf([patientWire, otherPatientWire])),
+        'Patient/p2': answerJson(otherPatientWire),
+        'Patient?': answerJson(bundleOf([patientWire, otherPatientWire])),
       })
     )
     renderApp()
@@ -343,9 +373,9 @@ describe('App', () => {
     // Arrange
     window.history.replaceState(null, '', '/health-viewer/?patient=p2')
     launchWith(
-      stubClient('p1', {
+      stubLaunch('p1', {
         ...recordResponses(),
-        'Patient/p2': answer(otherPatientWire),
+        'Patient/p2': answerJson(otherPatientWire),
       })
     )
 
@@ -359,7 +389,7 @@ describe('App', () => {
 
   it('should list an observation category group and a Medications group, and plot a selected dose', async () => {
     // Arrange
-    launchWith(stubClient('p1', recordResponses()))
+    launchWith(stubLaunch('p1', recordResponses()))
     renderApp()
     const metforminRow = await waitFor(() => seriesCheckbox(metforminSeries?.label ?? ''))
 
@@ -377,11 +407,11 @@ describe('App', () => {
   it('should say Loading more… while either read still has a next page', async () => {
     // Arrange — observations point on to a page still in flight
     launchWith(
-      stubClient(
+      stubLaunch(
         'p1',
         recordResponses({
-          'Observation?': answer(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
-          [NEXT_OBSERVATIONS]: pending,
+          'Observation?': answerJson(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
+          [NEXT_OBSERVATIONS]: neverAnswer,
         })
       )
     )
@@ -398,10 +428,10 @@ describe('App', () => {
   it('should not plot a MedicationRequest without an id, and count it as unreadable', async () => {
     // Arrange
     launchWith(
-      stubClient(
+      stubLaunch(
         'p1',
         recordResponses({
-          'MedicationRequest?': answer(
+          'MedicationRequest?': answerJson(
             bundleOf([metforminWire, medicationRequestWire(undefined, 'Lisinopril 10 mg tablet')])
           ),
         })
@@ -420,11 +450,11 @@ describe('App', () => {
   it('should keep every loaded series listed when a later page of either read fails', async () => {
     // Arrange
     launchWith(
-      stubClient(
+      stubLaunch(
         'p1',
         recordResponses({
-          'MedicationRequest?': answer(bundleOf([metforminWire], NEXT_MEDICATION_REQUESTS)),
-          [NEXT_MEDICATION_REQUESTS]: () => Promise.reject(new Error('page two failed')),
+          'MedicationRequest?': answerJson(bundleOf([metforminWire], NEXT_MEDICATION_REQUESTS)),
+          [NEXT_MEDICATION_REQUESTS]: answerStatus(500),
         })
       )
     )
@@ -441,12 +471,7 @@ describe('App', () => {
 
   it('should replace the body when the first page of either read fails', async () => {
     // Arrange
-    launchWith(
-      stubClient(
-        'p1',
-        recordResponses({ 'Observation?': () => Promise.reject(new Error('search failed')) })
-      )
-    )
+    launchWith(stubLaunch('p1', recordResponses({ 'Observation?': answerStatus(500) })))
 
     // Act
     renderApp()
@@ -463,7 +488,7 @@ describe('App', () => {
     params.append(SERIES_PARAM, metforminSeries?.id ?? '')
     params.set('r', '1y')
     window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
-    launchWith(stubClient('p1', recordResponses()))
+    launchWith(stubLaunch('p1', recordResponses()))
     renderApp()
     const glucoseRow = await waitFor(() => seriesCheckbox(glucoseSeries?.label ?? ''))
 
@@ -491,7 +516,7 @@ describe('App', () => {
     params.append(SERIES_PARAM, metforminSeries?.id ?? '')
     params.set('v', 'scatter')
     window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
-    launchWith(stubClient('p1', recordResponses()))
+    launchWith(stubLaunch('p1', recordResponses()))
     renderApp()
     const glucoseRow = await waitFor(() => seriesCheckbox(glucoseSeries?.label ?? ''))
 
@@ -531,10 +556,10 @@ describe('App', () => {
     params.set('v', 'scatter')
     window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
     launchWith(
-      stubClient(
+      stubLaunch(
         'p1',
         recordResponses({
-          'Observation?': answer(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
+          'Observation?': answerJson(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
           [NEXT_OBSERVATIONS]: secondObservationPage.respond,
         })
       )
@@ -571,9 +596,9 @@ describe('App', () => {
     params.append(SERIES_PARAM, metforminSeries?.id ?? '')
     window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
     launchWith(
-      stubClient(
+      stubLaunch(
         'p1',
-        recordResponses({ 'Observation?': answer(bundleOf([potassiumWire, glucoseWire])) })
+        recordResponses({ 'Observation?': answerJson(bundleOf([potassiumWire, glucoseWire])) })
       )
     )
     renderApp()
@@ -605,10 +630,10 @@ describe('App', () => {
     params.append(SERIES_PARAM, potassiumSeries?.id ?? '')
     window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
     launchWith(
-      stubClient(
+      stubLaunch(
         'p1',
         recordResponses({
-          'Observation?': answer(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
+          'Observation?': answerJson(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
           [NEXT_OBSERVATIONS]: secondObservationPage.respond,
         })
       )
@@ -632,9 +657,9 @@ describe('App', () => {
   it('should say how many records were left out of the chart', async () => {
     // Arrange
     launchWith(
-      stubClient(
+      stubLaunch(
         'p1',
-        recordResponses({ 'Observation?': answer(bundleOf([glucoseWire, undatedWire])) })
+        recordResponses({ 'Observation?': answerJson(bundleOf([glucoseWire, undatedWire])) })
       )
     )
 
@@ -695,11 +720,11 @@ describe('the Plots walkthrough', () => {
     // Arrange
     recordWalkthroughSeen()
     launchWith(
-      stubClient(
+      stubLaunch(
         'p1',
         recordResponses({
-          'Observation?': answer(bundleOf([])),
-          'MedicationRequest?': answer(bundleOf([])),
+          'Observation?': answerJson(bundleOf([])),
+          'MedicationRequest?': answerJson(bundleOf([])),
         })
       )
     )
@@ -721,7 +746,7 @@ describe('the Plots walkthrough', () => {
     const params = new URLSearchParams({ v: 'table' })
     params.append(SERIES_PARAM, glucoseSeries?.id ?? '')
     window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
-    launchWith(stubClient('p1', recordResponses()))
+    launchWith(stubLaunch('p1', recordResponses()))
 
     // Act
     renderApp()
@@ -739,7 +764,7 @@ describe('the Plots walkthrough', () => {
 
   it('should open on a first visit once the record loads, and stay closed once skipped', async () => {
     // Arrange
-    launchWith(stubClient('p1', recordResponses()))
+    launchWith(stubLaunch('p1', recordResponses()))
     renderApp()
 
     // Act
@@ -759,7 +784,7 @@ describe('the Plots walkthrough', () => {
     const params = new URLSearchParams({ patient: 'p1', r: '1y', v: 'chart' })
     params.append(SERIES_PARAM, glucoseSeries?.id ?? '')
     window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
-    launchWith(stubClient('p1', recordResponses()))
+    launchWith(stubLaunch('p1', recordResponses()))
     renderApp()
     await waitFor(() => seriesCheckbox(glucoseSeries?.label ?? ''))
 

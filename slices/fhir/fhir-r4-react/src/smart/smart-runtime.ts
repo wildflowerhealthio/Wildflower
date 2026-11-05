@@ -1,98 +1,35 @@
-import { HttpClient, HttpClientRequest } from '@effect/platform'
+import { FetchHttpClient, HttpClient } from '@effect/platform'
 import { QueryCache, QueryClient, type Query } from '@tanstack/react-query'
-import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
-import { Duration, Effect, Layer, pipe } from 'effect'
+import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
+import type { BaseRouterContext } from '@wildflowerhealthio/shared-structures-react'
+import { Duration, Effect, Layer, ManagedRuntime, pipe } from 'effect'
 
-import {
-  sliceRuntimeLayer,
-  type RouterContext,
-  type RunAuthed,
-  type RuntimeLayer,
-} from '../router-context.ts'
+import { sliceRuntimeLayer } from '../router-context.ts'
+import { addressedTo, SmartClient } from './smart-client.ts'
+import type { SmartConnection } from './smart-connection.ts'
 
 /**
- * The SMART handshake resolved to the two facts a SMART app's HTTP layer
- * needs.
+ * Wrap an `HttpClient` layer so every request for the FHIR server is addressed
+ * to it and carries the SMART bearer token, and no other request does: the
+ * rule `SmartClient` follows ({@link addressedTo}), for a client that is not a
+ * `SmartClient`, such as the typed `FhirR4ResourcesHttpApiClient`.
  *
  * @remarks
- * Deliberately not a `fhirclient` `Client`: keeping the seam to primitives means
- * the runtime below is testable without a SMART handshake, and this module never
- * has to name a `fhirclient` type.
- */
-interface SmartSession {
-  /**
-   * The FHIR server base the handshake named — an EHR launch's `iss`, or the
-   * server a standalone launch was pointed at (e.g.
-   * `https://launch.smarthealthit.org/v/r4/fhir`). Used verbatim as the base for
-   * the typed client's relative paths; only trailing slashes are trimmed.
-   */
-  readonly serverUrl: string
-  /** The bearer token from the token exchange, or `undefined` for an open server. */
-  readonly accessToken: string | undefined
-}
-
-/** True when `url` leads with a scheme, per RFC 3986's `scheme` production. */
-const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test(url)
-
-/**
- * Wrap an `HttpClient` layer so every relative request is addressed to the FHIR
- * server and carries the SMART bearer token.
- *
- * @remarks
- * Both halves are needed because a SMART app is served from its **own** origin
- * (its published site, or `http://localhost:{port}/` under its dev server), not
- * the FHIR server's. Left alone, the typed client's relative `/Patient…`
- * paths would resolve against the app's origin, and nothing else authenticates
- * the app cross-origin. So this app authenticates the way any third-party SMART
- * app does: with the token it was granted.
- *
- * The base is `session.serverUrl` verbatim — the typed client emits
- * base-relative paths, so whatever server the handshake named is the base,
- * prepended as-is (trailing slashes trimmed). The typed client emits
- * base-relative paths like `/Patient`, which become `{serverUrl}/Patient`.
- *
- * The prefix is applied to *relative* URLs only. Prepending it to an
- * already-absolute URL yields `http://host…http://…`, which `fetch` then
- * resolves against the page origin — silent corruption rather than a failure.
- *
- * A session with no `accessToken` sets no header at all, rather than an empty
- * `Bearer `: an absent credential must read as absent.
- *
- * The token rides only the requests this layer *addressed* — i.e. the relative
- * paths the typed client emits, which the prefix sends to the FHIR server. An
- * already-absolute URL names an origin the session never granted anything for,
- * so it goes out bare: a credential must never leave for a host that did not
- * issue it.
- *
  * The transport is a parameter rather than baked in — the same shape as
  * `apps/launcher/launcher-web`'s `prependApiBaseUrl` — so what goes on the wire can
  * be asserted against a stub instead of a real `fetch`.
  *
- * @param session - The FHIR base and bearer token from the SMART handshake
+ * @param target - The FHIR base and bearer token from the SMART handshake
  * @param transport - The underlying `HttpClient` this wraps
  * @returns The wrapped layer
  */
 const smartHttpClientLayer = (
-  session: SmartSession,
+  target: Pick<SmartConnection, 'fhirBaseUrl' | 'accessToken'>,
   transport: Layer.Layer<HttpClient.HttpClient>
-): Layer.Layer<HttpClient.HttpClient> => {
-  const { accessToken } = session
-  const baseUrl = trimTrailingSlashes(session.serverUrl)
-  return Layer.effect(
-    HttpClient.HttpClient,
-    Effect.map(HttpClient.HttpClient, (client) =>
-      client.pipe(
-        HttpClient.mapRequest((request) => {
-          if (hasAbsoluteScheme(request.url)) return request
-          const addressed = HttpClientRequest.prependUrl(baseUrl)(request)
-          return accessToken === undefined
-            ? addressed
-            : HttpClientRequest.bearerToken(accessToken)(addressed)
-        })
-      )
-    )
-  ).pipe(Layer.provide(transport))
-}
+): Layer.Layer<HttpClient.HttpClient> =>
+  Layer.effect(HttpClient.HttpClient, Effect.map(HttpClient.HttpClient, addressedTo(target))).pipe(
+    Layer.provide(transport)
+  )
 
 /** Options for {@link buildSmartQueryClient}. */
 interface BuildSmartQueryClientOptions {
@@ -119,7 +56,7 @@ interface BuildSmartQueryClientOptions {
  * because a SMART viewer has nothing that goes stale on focus.
  *
  * Exported so the app can build the client **once**, provide it at the tree root
- * (where {@link useSmartHandshake} runs the token exchange, before any router
+ * (where `useSmartHandshake` runs the token exchange, before any router
  * context exists), and hand that same instance to {@link buildSmartRouterContext}
  * — one client for the handshake query and every app query alike.
  *
@@ -139,57 +76,118 @@ const buildSmartQueryClient = (options: BuildSmartQueryClientOptions = {}): Quer
   })
 
 /**
- * The router context the app threads into its router, built from a completed
- * SMART handshake.
+ * What every read and write over a completed SMART handshake is run with:
+ * the `SmartClient` the readers here use, the typed
+ * `FhirR4ResourcesHttpApiClient` the writers use, and the addressed
+ * `HttpClient` under both.
+ */
+type SmartServices = SmartClient | FhirR4ResourcesHttpApiClient
+
+/** The layer that provides {@link SmartServices} over the page's `HttpClient`. */
+type SmartRuntimeLayer = BaseRouterContext.RuntimeLayerWith<SmartServices>
+
+/** Run an Effect needing any of {@link SmartServices} at a Promise boundary. */
+type RunSmart = BaseRouterContext.RunAuthedWith<SmartServices>
+
+/**
+ * The one runtime a completed SMART handshake hands the app:
+ * `SmartHandshakeGate` builds it from the connection, provides it to the
+ * tree (`useRunSmart`), and hands it to the app, whose router context
+ * carries the same runtime ({@link buildSmartRouterContext}). Its services
+ * are built once, on the first run, and live until it is released.
+ */
+interface SmartRuntime {
+  /** The server the handshake connected to. */
+  readonly connection: SmartConnection
+  /** Every SMART service, over one `HttpClient`. */
+  readonly runtimeLayer: SmartRuntimeLayer
+  /** Run an Effect over the services {@link SmartRuntime.runtimeLayer} built. */
+  readonly runSmart: RunSmart
+  /**
+   * Release the services built so far, closing their scope; a run after this
+   * builds them afresh.
+   */
+  readonly release: () => Promise<void>
+}
+
+/**
+ * The {@link SmartRuntime} for `connection`: `SmartClient.layer` and the typed
+ * `FhirR4ResourcesHttpApiClient` over the same `transport`, each addressing
+ * its requests by the rule `SmartClient` follows.
+ *
+ * @param connection - The server the SMART handshake connected to
+ * @param transport - The `HttpClient` every request goes out over:
+ *   `FetchHttpClient.layer` in the app (the default), a stub in a test
  *
  * @remarks
- * The transport is a parameter for the same reason
- * {@link smartHttpClientLayer}'s is: the app's whole tree can then be mounted
- * over a stub in a test. The app passes `FetchHttpClient.layer`.
+ * The services are a `ManagedRuntime` over the layer, built on the first run
+ * and shared by every run after it, until `release` disposes it and puts an
+ * unbuilt one in its place. Nothing is re-sent on a
+ * 401: a bearer token is in hand before this is built, so a 401 here is a
+ * real 401.
+ */
+const smartRuntimeFor = (
+  connection: SmartConnection,
+  transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient.layer
+): SmartRuntime => {
+  const runtimeLayer: SmartRuntimeLayer = Layer.mergeAll(
+    SmartClient.layer(connection),
+    Layer.provideMerge(sliceRuntimeLayer, smartHttpClientLayer(connection, transport))
+  ).pipe(Layer.provide(transport))
+  let managedRuntime = ManagedRuntime.make(runtimeLayer)
+  const runSmart: RunSmart = (effect, options) => managedRuntime.runPromise(effect, options)
+  const release = (): Promise<void> => {
+    const releasedRuntime = managedRuntime
+    managedRuntime = ManagedRuntime.make(runtimeLayer)
+    return releasedRuntime.dispose()
+  }
+  return { connection, runtimeLayer, runSmart, release }
+}
+
+/**
+ * The router context a routed SMART app threads into its router: the page's
+ * query cache, the server the handshake connected to, and the runtime the
+ * handshake built, as `runAuthed` and `runtimeLayer`.
+ */
+interface SmartRouterContext extends BaseRouterContext.RouterContextWith<SmartServices> {
+  /** The server the handshake connected to. */
+  readonly connection: SmartConnection
+}
+
+/**
+ * The router context over `runtime`, the one `SmartHandshakeGate` built.
  *
- * `queryClient` is a parameter (default a fresh {@link buildSmartQueryClient})
- * so the app can hand in the same client it provided at the tree root — the one
- * {@link useSmartHandshake} completed the exchange on — rather than the context
- * carrying a second, disconnected client. The default keeps callers that only
- * read `runAuthed` (importer tests) unchanged.
+ * @param runtime - The runtime the completed SMART handshake handed the app
+ * @param queryClient - The `QueryClient` the context carries; the app passes
+ *   the one it provided at the tree root, where `useSmartHandshake` completed
+ *   the exchange, so the handshake and every app query share one cache
+ * @returns A router context ready for `createRouter`'s `context`
  *
+ * @remarks
  * `awaitAuthReady` resolves immediately: the shared shape carries it for host
  * apps whose route guards wait on a token that arrives asynchronously, and by
- * the time this runs the handshake is already complete. A consumer typically
- * reads only `runAuthed`, but the context has to be a faithful
- * `RouterContextWith<FhirR4ResourcesHttpApiClient>` for its `useRouteContext`
- * select to type.
- *
- * Nothing is re-sent on a 401: a bearer token is in hand before this is built,
- * so a 401 here is a real 401.
- *
- * @param session - The FHIR base and bearer token from the SMART handshake
- * @param transport - The underlying `HttpClient` every read goes out over
- * @param queryClient - The `QueryClient` the context carries; defaults to a
- *   fresh {@link buildSmartQueryClient}
- * @returns A router context ready for `createRouter`'s `context`
+ * the time this runs the handshake is already complete.
  */
 const buildSmartRouterContext = (
-  session: SmartSession,
-  transport: Layer.Layer<HttpClient.HttpClient>,
+  runtime: SmartRuntime,
   queryClient: QueryClient = buildSmartQueryClient()
-): RouterContext => {
-  const httpLayer = smartHttpClientLayer(session, transport)
-  const runtimeLayer: RuntimeLayer = Layer.provideMerge(sliceRuntimeLayer, httpLayer)
-  const runAuthed: RunAuthed = (effect, options) =>
-    Effect.runPromise(Effect.provide(effect, runtimeLayer), options)
-  return {
-    queryClient,
-    runAuthed,
-    runtimeLayer,
-    awaitAuthReady: () => Promise.resolve(),
-  }
-}
+): SmartRouterContext => ({
+  queryClient,
+  connection: runtime.connection,
+  runAuthed: runtime.runSmart,
+  runtimeLayer: runtime.runtimeLayer,
+  awaitAuthReady: () => Promise.resolve(),
+})
 
 export {
   buildSmartQueryClient,
   buildSmartRouterContext,
   smartHttpClientLayer,
+  smartRuntimeFor,
   type BuildSmartQueryClientOptions,
-  type SmartSession,
+  type RunSmart,
+  type SmartRouterContext,
+  type SmartRuntime,
+  type SmartRuntimeLayer,
+  type SmartServices,
 }

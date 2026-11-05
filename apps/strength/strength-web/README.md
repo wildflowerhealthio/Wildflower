@@ -29,20 +29,20 @@ basepath), and renders `<AppRoot page={page} />` inside `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="strength"
 registration={smartRegistration} telemetry={smartAppTelemetry}
-servedDirectory={page.basepath}>` around `<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+basepath={page.basepath}>` around `<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
 starts a launch the URL carries under a loading line or renders one of the
 other two branches (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project
 through the `VITE_SENTRY_DSN_STRENGTH_WEB` build variable; see `.env.example`),
-owns the single `QueryClientProvider`, and branches, latched on mount, on
-whether a SMART callback is in the URL — the slim `BrandBar` above `<App />`
-when launched, the full Wildflower chrome with `APP_DESCRIPTIONS.strength`'s
-`AppLanding` beside `ConnectMenu` on a bare visit.
+owns the single `QueryClientProvider`, and branches, read on mount, on the
+URL's arrival — the slim `BrandBar` above `<App />` for a sign-in's return,
+the full Wildflower chrome with `APP_DESCRIPTIONS.strength`'s `AppLanding`
+beside `ConnectMenu` for a refusal or a bare visit.
 
 ## The page
 
 `src/app.tsx`'s `App` completes the handshake under `SmartHandshakeGate`, and
-builds the page's router once, with the write runner
-(`buildSmartRouterContext` over `FetchHttpClient.layer`). Whose record the
+builds the page's router once, over the runtime the gate builds
+(`buildSmartRouterContext`), which every read and write runs on. Whose record the
 page shows is the path:
 
 - **`/`**: never a page. It replaces itself with the route the launch
@@ -77,7 +77,7 @@ Forward or a link. A path param is the string the address bar holds, so an
 id such as `1.50` is never read as a number.
 
 The app root is the OAuth redirect target, so the router is built only once
-the SMART handshake has completed: by then fhirclient has taken `code` and
+the SMART handshake has completed: by then the handshake has taken `code` and
 `state` out of the address bar, and nothing the router does can rewrite a URL
 the token exchange still reads. A launch URL never reaches the router at all:
 `SmartAppRoot` starts its launch before the app mounts. The callback lands on
@@ -86,7 +86,7 @@ the route the launch started on (a deep link such as `/patients/123/plan?iss=…
 reopens that tab), or, with none, `launchStartRoute`'s: the launch's patient's
 page, else the picker. The
 router is built once for the visit, its context fixed: the page's query
-cache, the client, the write runner, and the StrongLifts 5×5 template id per
+cache, the connection, the runner every read and write goes through, and the StrongLifts 5×5 template id per
 lifter, minted the first time it is asked for, so a retried start for one
 lifter writes the same id.
 
@@ -94,7 +94,7 @@ The router's basepath is the served directory, read off the entry module's
 URL rather than the page's, so a deep link such as `/patients/123/plan` (or
 `/pr-<n>/patients/123/plan` in a preview), served by the 404 page's redirect
 to the app root and restored there, opens on its tab. The OAuth redirect URI
-is the same directory (`SmartAppRoot`'s `servedDirectory`), so a launch from any
+is the same directory (`SmartAppRoot`'s `basepath`), so a launch from any
 route returns to the app root.
 
 ### Reads (`src/record/`)

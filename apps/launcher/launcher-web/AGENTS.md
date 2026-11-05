@@ -62,9 +62,7 @@ the base opens a server's launcher.
   (`ehrLaunchIn`, then `sign-in.ts`'s `unsentEhrLaunch`, as
   `RouterContext.ehrLaunch`), and the first sign-in to its server takes it, so
   no other sign-in carries it, even from a landing that mounts again:
-  the authorization server accepts a launch once. It is not fhirclient's launch,
-  as in the SMART apps, because fhirclient keeps its token in
-  `sessionStorage`, and the owner's bearer stays in page memory. A sign-in
+  the authorization server accepts a launch once. A sign-in
   that fails on its return leg (a rejected launch among them) points
   `?server=` back at its server (`searchAfterReturnLeg`), so the landing
   shows the problem beside a "Sign in to …" for it. Every return leg loses

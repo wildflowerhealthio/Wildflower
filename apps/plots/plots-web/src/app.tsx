@@ -1,18 +1,15 @@
-import {
-  useLaunchFailureRedirect,
-  useSmartHandshake,
-} from '@wildflowerhealthio/fhir-r4-react/smart'
-import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
+import type { SmartConnection } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   LoadingLine,
   PatientChoiceLine,
   PatientPicker,
   patientChoiceKeyOf,
   patientScopeOf,
+  SmartHandshakeGate,
   usePatientChoice,
 } from '@wildflowerhealthio/smart-app-react'
 import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
-import { DateTime, Match, Option } from 'effect'
+import { DateTime, Option } from 'effect'
 import type { JSX } from 'react'
 import { useState } from 'react'
 
@@ -22,71 +19,77 @@ import { useUrlSelection } from './use-url-selection.ts'
 import styles from './app.module.css'
 
 /**
- * The redirect-target app: completes the SMART handshake, settles on whose
- * record to read, and hands it to {@link PatientRecord}.
+ * The redirect-target app: completes the SMART handshake under
+ * `SmartHandshakeGate`, settles on whose record to read, and hands it to
+ * {@link PatientRecord}.
  *
  * @remarks
  * Whose record is `smart-app-react`'s `usePatientChoice`: the URL's
- * `?patient=`, else the launch's patient (`client.patient.id`); with neither
+ * `?patient=`, else the launch's patient (`connection.launchPatientId`); with neither
  * the page is the `PatientPicker`. "All patients" reads every patient's
- * Observations and MedicationRequests unscoped, charted together. The title's
- * `PatientChoiceLine` names the choice and goes back to the picker, and
- * carries the Plots walkthrough's anchor.
+ * Observations and MedicationRequests unscoped, charted together. The
+ * `PatientChoiceLine` under the title names the choice and goes back to the picker, and
+ * carries the Plots walkthrough's anchor. The title sits above the gate, so
+ * it shows while the handshake connects and when it fails.
  *
  * The selection lives only in the URL ({@link useUrlSelection}) beside the
  * patient; every change — a series or a range in the record — is an updater
  * over the latest selection, so changes made in one tick compose.
  */
-export const App = (): JSX.Element => {
-  const handshake = useSmartHandshake()
-  // A failed exchange has nothing to retry here (the code is single-use), so
-  // carry the reason to the app root, which can offer the connect menu.
-  useLaunchFailureRedirect(handshake)
+export const App = (): JSX.Element => (
+  <main className={styles.app}>
+    <header className={styles.header}>
+      <h1 className="text-heading-3">Plots</h1>
+    </header>
+    <SmartHandshakeGate connecting={<LoadingLine />}>
+      {({ connection }) => <PlotsPage connection={connection} />}
+    </SmartHandshakeGate>
+  </main>
+)
+
+/**
+ * The page over a completed handshake's `connection`: the line naming whose
+ * record it reads, under the title, then the picker or the chosen record,
+ * each read over the handshake's runtime (`useRunSmart`).
+ */
+const PlotsPage = ({ connection }: { readonly connection: SmartConnection }): JSX.Element => {
   const { selection, updateSelection } = useUrlSelection()
   // The instant the page opened: the right edge of every bounded range, held
   // still so the chart's window does not move on each render.
   const [openedAt] = useState(() => DateTime.unsafeNow())
-
-  const client = handshake.kind === 'ready' ? handshake.client : undefined
   const { patientChoice, choosePatient, changePatient } = usePatientChoice(
-    client?.patient.id ?? null
-  )
-
-  const body = Match.value(handshake).pipe(
-    Match.when({ kind: 'error' }, ({ error }) => <ErrorBanner error={error} />),
-    Match.when({ kind: 'connecting' }, () => <LoadingLine />),
-    Match.when({ kind: 'ready' }, ({ client: readyClient }) =>
-      Option.isNone(patientChoice) ? (
-        <PatientPicker client={readyClient} onPatientChoice={choosePatient} />
-      ) : (
-        <PatientRecord
-          // Remounted per choice, so no read or reconciliation carries over.
-          key={patientChoiceKeyOf(patientChoice.value)}
-          client={readyClient}
-          patientId={patientScopeOf(patientChoice.value)}
-          selection={selection}
-          onSelectionUpdate={updateSelection}
-          openedAt={openedAt}
-        />
-      )
-    ),
-    Match.exhaustive
+    connection.launchPatientId
   )
 
   return (
-    <main className={styles.app}>
-      <header className={styles.header}>
-        <h1 className="text-heading-3">Plots</h1>
-        {client !== undefined && Option.isSome(patientChoice) && (
+    <>
+      {patientChoice.pipe(
+        Option.map((chosen) => (
           <PatientChoiceLine
-            client={client}
-            patientChoice={patientChoice.value}
+            key="patient-line"
+            className={styles['patient-line']}
+            patientChoice={chosen}
             onPatientChange={changePatient}
             {...walkthroughAnchor(PlotsPageWalkthroughAnchor.patientLine)}
           />
-        )}
-      </header>
-      {body}
-    </main>
+        )),
+        Option.getOrNull
+      )}
+      {patientChoice.pipe(
+        Option.map((chosen) => (
+          <PatientRecord
+            // Remounted per choice, so no read or reconciliation carries over.
+            key={patientChoiceKeyOf(chosen)}
+            patientId={patientScopeOf(chosen)}
+            selection={selection}
+            onSelectionUpdate={updateSelection}
+            openedAt={openedAt}
+          />
+        )),
+        Option.getOrElse(() => (
+          <PatientPicker key="patient-picker" onPatientChoice={choosePatient} />
+        ))
+      )}
+    </>
   )
 }

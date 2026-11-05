@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchActiveServiceRequestPage, fetchServiceRequestPage } from './service-requests.ts'
-import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
+import { smartRuntimeAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
 const bundle = (resources: readonly unknown[]): unknown => ({
@@ -23,53 +23,53 @@ const PLAN_DEFINITION_URL = 'https://wildflower.example/PlanDefinition/pd-1'
 
 describe('fetchActiveServiceRequestPage', () => {
   test("searches the patient's active requests of one category carrying out one definition", async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchActiveServiceRequestPage(client, {
+      fetchActiveServiceRequestPage({
         first: {
           patientId: 'pat/1',
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: PLAN_DEFINITION_URL,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
-    expect(queries).toEqual([
-      `ServiceRequest?patient=pat%2F1&category=${encodeURIComponent(CATEGORY_TOKEN)}&instantiates-canonical=${encodeURIComponent(PLAN_DEFINITION_URL)}&status=active&_sort=authored&_count=200`,
+    expect(urls).toEqual([
+      `${STUB_FHIR_BASE}/ServiceRequest?patient=pat%2F1&category=${encodeURIComponent(CATEGORY_TOKEN)}&instantiates-canonical=${encodeURIComponent(PLAN_DEFINITION_URL)}&status=active&_sort=authored&_count=200`,
     ])
   })
 
   test('drops the patient filter when no patient is in context (system launch)', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchActiveServiceRequestPage(client, {
+      fetchActiveServiceRequestPage({
         first: {
           patientId: null,
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: PLAN_DEFINITION_URL,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
-    expect(searchParamsOf(queries[0] ?? '').has('patient')).toBe(false)
+    expect(searchParamsOf(urls[0] ?? '').has('patient')).toBe(false)
   })
 
   test('drops the definition filter when no canonical url is given, reading requests of every definition', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchActiveServiceRequestPage(client, {
+      fetchActiveServiceRequestPage({
         first: {
           patientId: 'pat-1',
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: null,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
-    const params = searchParamsOf(queries[0] ?? '')
+    const params = searchParamsOf(urls[0] ?? '')
     expect(params.has('instantiates-canonical')).toBe(false)
     expect(params.get('patient')).toBe('pat-1')
     expect(params.get('category')).toBe(CATEGORY_TOKEN)
@@ -82,17 +82,17 @@ describe('fetchActiveServiceRequestPage', () => {
         fc.string(),
         fc.option(fc.string(), { nil: null }),
         async (patientId, categoryToken, instantiatesCanonicalUrl) => {
-          const { client, queries } = stubSmartClient(bundle([]))
+          const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
           await Effect.runPromise(
-            fetchActiveServiceRequestPage(client, {
+            fetchActiveServiceRequestPage({
               first: { patientId, categoryToken, instantiatesCanonicalUrl },
-            })
+            }).pipe(Effect.provide(runtime.runtimeLayer))
           )
 
           // Parsed back rather than string-compared: a value carrying `&`, `=`
           // or a space must arrive at the server as one parameter value.
-          const params = searchParamsOf(queries[0] ?? '')
+          const params = searchParamsOf(urls[0] ?? '')
           expect(params.get('patient')).toBe(patientId)
           expect(params.get('category')).toBe(categoryToken)
           expect(params.get('instantiates-canonical')).toBe(instantiatesCanonicalUrl)
@@ -106,16 +106,18 @@ describe('fetchActiveServiceRequestPage', () => {
   })
 
   test('requests a later page by its cursor URL verbatim', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
     const pageUrl = 'https://fhir.example/ServiceRequest?_getpages=abc&_getpagesoffset=200'
 
-    await Effect.runPromise(fetchActiveServiceRequestPage(client, { pageUrl }))
+    await Effect.runPromise(
+      fetchActiveServiceRequestPage({ pageUrl }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
-    expect(queries).toEqual([pageUrl])
+    expect(urls).toEqual([pageUrl])
   })
 
   test('drops an entry without an id, counting it', async () => {
-    const { client } = stubSmartClient(
+    const { runtime } = smartRuntimeAnswering(
       bundle([
         {
           resourceType: 'ServiceRequest',
@@ -134,13 +136,13 @@ describe('fetchActiveServiceRequestPage', () => {
     )
 
     const page = await Effect.runPromise(
-      fetchActiveServiceRequestPage(client, {
+      fetchActiveServiceRequestPage({
         first: {
           patientId: null,
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: PLAN_DEFINITION_URL,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(page.items.map((serviceRequest) => serviceRequest.id)).toEqual(['sr-1'])
@@ -150,20 +152,20 @@ describe('fetchActiveServiceRequestPage', () => {
 
 describe('fetchServiceRequestPage', () => {
   test("searches the patient's requests of one category carrying out one definition, in every status", async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchServiceRequestPage(client, {
+      fetchServiceRequestPage({
         first: {
           patientId: 'pat/1',
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: PLAN_DEFINITION_URL,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
-    expect(queries).toEqual([
-      `ServiceRequest?patient=pat%2F1&category=${encodeURIComponent(CATEGORY_TOKEN)}&instantiates-canonical=${encodeURIComponent(PLAN_DEFINITION_URL)}&_sort=authored&_count=200`,
+    expect(urls).toEqual([
+      `${STUB_FHIR_BASE}/ServiceRequest?patient=pat%2F1&category=${encodeURIComponent(CATEGORY_TOKEN)}&instantiates-canonical=${encodeURIComponent(PLAN_DEFINITION_URL)}&_sort=authored&_count=200`,
     ])
   })
 
@@ -174,15 +176,15 @@ describe('fetchServiceRequestPage', () => {
         fc.string(),
         fc.option(fc.string(), { nil: null }),
         async (patientId, categoryToken, instantiatesCanonicalUrl) => {
-          const { client, queries } = stubSmartClient(bundle([]))
+          const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
           await Effect.runPromise(
-            fetchServiceRequestPage(client, {
+            fetchServiceRequestPage({
               first: { patientId, categoryToken, instantiatesCanonicalUrl },
-            })
+            }).pipe(Effect.provide(runtime.runtimeLayer))
           )
 
-          const params = searchParamsOf(queries[0] ?? '')
+          const params = searchParamsOf(urls[0] ?? '')
           expect(params.get('patient')).toBe(patientId)
           expect(params.get('category')).toBe(categoryToken)
           expect(params.get('instantiates-canonical')).toBe(instantiatesCanonicalUrl)
@@ -196,7 +198,7 @@ describe('fetchServiceRequestPage', () => {
   })
 
   test('decodes a closed request beside an active one', async () => {
-    const { client } = stubSmartClient(
+    const { runtime } = smartRuntimeAnswering(
       bundle(
         (['active', 'completed', 'revoked'] as const).map((status) => ({
           resourceType: 'ServiceRequest',
@@ -209,13 +211,13 @@ describe('fetchServiceRequestPage', () => {
     )
 
     const page = await Effect.runPromise(
-      fetchServiceRequestPage(client, {
+      fetchServiceRequestPage({
         first: {
           patientId: 'pat-1',
           categoryToken: CATEGORY_TOKEN,
           instantiatesCanonicalUrl: null,
         },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(page.items.map((serviceRequest) => serviceRequest.status)).toEqual([

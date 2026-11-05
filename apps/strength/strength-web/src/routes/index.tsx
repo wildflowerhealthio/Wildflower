@@ -7,8 +7,8 @@ import { appRootRedirect, launchStartRoute } from '@wildflowerhealthio/smart-app
  * (`launchStartRoute`). A completed launch's callback lands here.
  */
 const Route = createFileRoute('/')({
-  beforeLoad: ({ context: { client } }) => {
-    throw appRootRedirect(launchStartRoute(client))
+  beforeLoad: ({ context: { connection } }) => {
+    throw appRootRedirect(launchStartRoute(connection))
   },
 })
 

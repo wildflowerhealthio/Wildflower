@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchDocumentReferencePage } from './document-references.ts'
-import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
+import { smartRuntimeAnswering, STUB_FHIR_BASE } from './test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
 const bundle = (resources: readonly unknown[]): unknown => ({
@@ -28,29 +28,29 @@ const documentReferenceWire = (id: string): unknown => ({
 
 describe('fetchDocumentReferencePage', () => {
   test('scopes the first-page query to patient and category, newest first, 200 to a page', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchDocumentReferencePage(client, {
+      fetchDocumentReferencePage({
         first: { patientId: 'pat/1', category: 'sys|code' },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
-    expect(queries).toEqual([
-      'DocumentReference?patient=pat%2F1&category=sys%7Ccode&_sort=-date&_count=200',
+    expect(urls).toEqual([
+      `${STUB_FHIR_BASE}/DocumentReference?patient=pat%2F1&category=sys%7Ccode&_sort=-date&_count=200`,
     ])
   })
 
   test('omits patient filter when patientId is null', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchDocumentReferencePage(client, {
+      fetchDocumentReferencePage({
         first: { patientId: null, category: 'sys|code' },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
-    const params = searchParamsOf(queries[0] ?? '')
+    const params = searchParamsOf(urls[0] ?? '')
     expect(params.has('patient')).toBe(false)
     expect(params.get('category')).toBe('sys|code')
     expect(params.get('_sort')).toBe('-date')
@@ -58,50 +58,52 @@ describe('fetchDocumentReferencePage', () => {
   })
 
   test('omits category filter when category is null', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchDocumentReferencePage(client, {
+      fetchDocumentReferencePage({
         first: { patientId: 'pat-1', category: null },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
-    const params = searchParamsOf(queries[0] ?? '')
+    const params = searchParamsOf(urls[0] ?? '')
     expect(params.get('patient')).toBe('pat-1')
     expect(params.has('category')).toBe(false)
     expect(params.get('_sort')).toBe('-date')
   })
 
   test('reads all DocumentReferences when both filters are null', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
     await Effect.runPromise(
-      fetchDocumentReferencePage(client, {
+      fetchDocumentReferencePage({
         first: { patientId: null, category: null },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
-    expect(queries).toEqual(['DocumentReference?_sort=-date&_count=200'])
+    expect(urls).toEqual([`${STUB_FHIR_BASE}/DocumentReference?_sort=-date&_count=200`])
   })
 
   test('requests a later page by its cursor URL verbatim', async () => {
-    const { client, queries } = stubSmartClient(bundle([]))
+    const { runtime, urls } = smartRuntimeAnswering(bundle([]))
     const pageUrl = 'https://fhir.example/DocumentReference?_getpages=abc&_getpagesoffset=200'
 
-    await Effect.runPromise(fetchDocumentReferencePage(client, { pageUrl }))
+    await Effect.runPromise(
+      fetchDocumentReferencePage({ pageUrl }).pipe(Effect.provide(runtime.runtimeLayer))
+    )
 
-    expect(queries).toEqual([pageUrl])
+    expect(urls).toEqual([pageUrl])
   })
 
   test('decodes returned DocumentReferences and drops undecodable entries', async () => {
-    const { client } = stubSmartClient(
+    const { runtime } = smartRuntimeAnswering(
       bundle([{ malformed: true }, documentReferenceWire('doc-1')])
     )
 
     const page = await Effect.runPromise(
-      fetchDocumentReferencePage(client, {
+      fetchDocumentReferencePage({
         first: { patientId: null, category: null },
-      })
+      }).pipe(Effect.provide(runtime.runtimeLayer))
     )
 
     expect(page.items.map((item) => item.id)).toEqual(['doc-1'])
@@ -111,15 +113,15 @@ describe('fetchDocumentReferencePage', () => {
   test('property: any patient id survives the query as itself', async () => {
     await fc.assert(
       fc.asyncProperty(fc.string(), async (patientId) => {
-        const { client, queries } = stubSmartClient(bundle([]))
+        const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
         await Effect.runPromise(
-          fetchDocumentReferencePage(client, {
+          fetchDocumentReferencePage({
             first: { patientId, category: null },
-          })
+          }).pipe(Effect.provide(runtime.runtimeLayer))
         )
 
-        const params = searchParamsOf(queries[0] ?? '')
+        const params = searchParamsOf(urls[0] ?? '')
         expect(params.get('patient')).toBe(patientId)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -129,15 +131,15 @@ describe('fetchDocumentReferencePage', () => {
   test('property: any category token survives the query as itself', async () => {
     await fc.assert(
       fc.asyncProperty(fc.string(), async (category) => {
-        const { client, queries } = stubSmartClient(bundle([]))
+        const { runtime, urls } = smartRuntimeAnswering(bundle([]))
 
         await Effect.runPromise(
-          fetchDocumentReferencePage(client, {
+          fetchDocumentReferencePage({
             first: { patientId: null, category },
-          })
+          }).pipe(Effect.provide(runtime.runtimeLayer))
         )
 
-        const params = searchParamsOf(queries[0] ?? '')
+        const params = searchParamsOf(urls[0] ?? '')
         expect(params.get('category')).toBe(category)
       }),
       { numRuns: numRunsFor({ base: 100 }) }

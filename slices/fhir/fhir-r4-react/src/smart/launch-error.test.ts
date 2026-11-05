@@ -1,5 +1,5 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Option } from 'effect'
+import { Match, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -11,10 +11,23 @@ import {
   encodeLaunchError,
   launchError,
   launchErrorBodyFor,
-  launchErrorFrom,
   launchErrorRedirect,
   type LaunchErrorBody,
 } from './launch-error.ts'
+import { rootArrivalFrom } from './root-arrival.ts'
+
+/**
+ * The failure the app root's banner shows for `search`: the one its
+ * {@link rootArrivalFrom} arrival carries, or `null` for none.
+ */
+const reportedFrom = (search: string): Error | null =>
+  Match.value(rootArrivalFrom(search)).pipe(
+    Match.tag('SignInRefused', ({ refusal }) => Option.some(refusal)),
+    Match.tag('Visit', ({ launchError: failure }) => failure),
+    Match.orElse(() => Option.none<LaunchErrorBody>()),
+    Option.map((body) => launchError(Option.some(body))),
+    Option.getOrNull
+  )
 
 /** Arbitrary free text, including the non-Latin-1 that a naive `btoa` breaks on. */
 const text = fc.string({ minLength: 1, maxLength: 60 })
@@ -119,8 +132,8 @@ describe('encodeLaunchError / decodeLaunchError', () => {
 
 describe('launchErrorRedirect', () => {
   it('never carries an OAuth callback parameter to the target', () => {
-    // This is the anti-loop property: `shouldCompleteSmartLaunch` reads
-    // `code`/`state`, so carrying either would send the app root back into the
+    // This is the anti-loop property: `rootArrivalFrom` reads `code`/`state`,
+    // so carrying either would send the app root back into the
     // launched branch and fail the same single-use code forever.
     fc.assert(
       fc.property(bodyArb, text, text, (body, code, state) => {
@@ -136,7 +149,7 @@ describe('launchErrorRedirect', () => {
           expect(target.searchParams.has(parameter)).toBe(false)
         }
         // And the resulting URL is one the reader finds no callback in.
-        expect(launchErrorFrom(target.search)).not.toBeNull()
+        expect(reportedFrom(target.search)).not.toBeNull()
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -162,20 +175,20 @@ describe('launchErrorRedirect', () => {
   })
 })
 
-describe('launchErrorFrom', () => {
+describe('the launch failure a root arrival carries', () => {
   it('returns null for a search with no failure in it', () => {
     // The resting state: the banner renders nothing for a plain visit or a
     // successful callback.
-    expect(launchErrorFrom('')).toBeNull()
-    expect(launchErrorFrom('?code=abc&state=xyz')).toBeNull()
-    expect(launchErrorFrom(`?${LAUNCH_ERROR_PARAM}=`)).toBeNull()
+    expect(reportedFrom('')).toBeNull()
+    expect(reportedFrom('?code=abc&state=xyz')).toBeNull()
+    expect(reportedFrom(`?${LAUNCH_ERROR_PARAM}=`)).toBeNull()
   })
 
   it('reports any encoded body as an Error carrying its detail', () => {
     fc.assert(
       fc.property(bodyArb, (body) => {
         const search = `?${LAUNCH_ERROR_PARAM}=${encodeLaunchError(body)}`
-        const reported = launchErrorFrom(search)
+        const reported = reportedFrom(search)
         expect(reported).toBeInstanceOf(Error)
         // The detail the body carried is never dropped on the floor — it is the
         // whole point of the transport.
@@ -189,7 +202,7 @@ describe('launchErrorFrom', () => {
   })
 
   it('reads the OAuth error return as the headline and the server’s sentence, not the code', () => {
-    const reported = launchErrorFrom(
+    const reported = reportedFrom(
       '?error=invalid_request&error_description=This+launch+has+expired.+Open+the+app+again.&state=xyz'
     )
     expect(reported).toBeInstanceOf(Error)
@@ -200,7 +213,7 @@ describe('launchErrorFrom', () => {
   })
 
   it('reads an OAuth error return with no description as the headline and the bare code', () => {
-    const reported = launchErrorFrom('?error=access_denied&state=xyz')
+    const reported = reportedFrom('?error=access_denied&state=xyz')
     expect(reported?.message).toBe(
       `${LAUNCH_ERROR_MESSAGES['AuthorizationDenied'] ?? ''} access_denied`
     )
@@ -212,33 +225,23 @@ describe('launchErrorFrom', () => {
       message: 'Failed to fetch',
       iss: 'https://ruth.wildflowerhealth.io/fhir-r4',
     })}`
-    const reported = launchErrorFrom(search)
+    const reported = reportedFrom(search)
     expect(reported).not.toBeNull()
     expect(Reflect.get(reported ?? {}, 'tag')).toBe('AuthorizeFailed')
     expect(Reflect.get(reported ?? {}, 'iss')).toBe('https://ruth.wildflowerhealth.io/fhir-r4')
   })
 
-  it('prefers our own body over an OAuth error when both are present', () => {
-    const search = `?error=access_denied&${LAUNCH_ERROR_PARAM}=${encodeLaunchError({
-      error: 'HandshakeFailed',
-      message: 'token exchange rejected',
-    })}`
-    expect(launchErrorFrom(search)?.message).toContain('token exchange rejected')
-  })
-
   it('falls back to a readable message for an undecodable parameter', () => {
     // Garbage in the URL still produces a sentence, never `[object Object]`
     // and never a throw.
-    const reported = launchErrorFrom(`?${LAUNCH_ERROR_PARAM}=%%%not-base64%%%`)
+    const reported = reportedFrom(`?${LAUNCH_ERROR_PARAM}=%%%not-base64%%%`)
     expect(reported?.message).toBe(FALLBACK_LAUNCH_MESSAGE)
   })
 
   it('never produces an empty or object-stringified message', () => {
     fc.assert(
       fc.property(bodyArb, (body) => {
-        const message = launchErrorFrom(
-          `?${LAUNCH_ERROR_PARAM}=${encodeLaunchError(body)}`
-        )?.message
+        const message = reportedFrom(`?${LAUNCH_ERROR_PARAM}=${encodeLaunchError(body)}`)?.message
         expect(message).toBeDefined()
         expect(message).not.toBe('')
         expect(message).not.toContain('[object Object]')
@@ -265,10 +268,10 @@ describe('launchError', () => {
 })
 
 describe('launchErrorBodyFor', () => {
-  it('carries the thrown message and the iss the launch URL named', () => {
+  it("carries the failure's reason and the iss the launch URL named", () => {
     const body = launchErrorBodyFor(
       'AuthorizeFailed',
-      new TypeError('Failed to fetch'),
+      { reason: 'Failed to fetch' },
       '?launch=abc&iss=https://ruth.wildflowerhealth.io/fhir-r4'
     )
     expect(body).toEqual({
@@ -278,34 +281,24 @@ describe('launchErrorBodyFor', () => {
     })
   })
 
-  it('stringifies a non-Error throw rather than losing it', () => {
-    fc.assert(
-      fc.property(fc.oneof(text, fc.integer(), fc.boolean()), (thrown) => {
-        const body = launchErrorBodyFor('AuthorizeFailed', thrown, '')
-        expect(body.message).toBe(String(thrown))
-      }),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
-
   it('omits iss when the launch URL named none', () => {
-    const body = launchErrorBodyFor('HandshakeFailed', new Error('nope'), '?code=abc')
+    const body = launchErrorBodyFor('HandshakeFailed', { reason: 'nope' }, '?code=abc')
     expect(body.iss).toBeUndefined()
     expect('iss' in body).toBe(false)
   })
 
   it('round-trips end to end, from the throw to the rendered message', () => {
-    // The whole contract in one line: a launch page catching `error` produces a
-    // URL whose app root reports that same message to the user.
+    // The whole contract in one line: a launch page's failure produces a URL
+    // whose app root reports that same reason to the user.
     fc.assert(
       fc.property(text, fc.webUrl(), (message, iss) => {
         const body = launchErrorBodyFor(
           'AuthorizeFailed',
-          new Error(message),
+          { reason: message },
           `?iss=${encodeURIComponent(iss)}`
         )
         const href = launchErrorRedirect('https://medications.wildflowerhealth.io/', body)
-        const reported = launchErrorFrom(new URL(href).search)
+        const reported = reportedFrom(new URL(href).search)
         expect(reported?.message).toContain(message)
         expect(Reflect.get(reported ?? {}, 'iss')).toBe(iss)
       }),

@@ -7,12 +7,11 @@ import {
   type ResourcePage,
   type ResourcePageCycleError,
   type ResourcePageRequestError,
+  type SmartClient,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import { ExerciseSetObservation } from '@wildflowerhealthio/strength-core-js'
 import { Array as Arr, type Effect, Schema } from 'effect'
-
-import type { SmartClient } from '../smart-client.ts'
 
 /**
  * Reading a lifter's record off the FHIR server: every page of each search,
@@ -60,12 +59,14 @@ const decodeExerciseSetObservations = (
     ),
   })
 
-/** Every page of the sets one first page names, over `client`. */
+/** Every page of the sets one first page names. */
 const fetchEveryObservation = (
-  client: SmartClient,
   first: ObservationBasedOnOrPartOfFirstPage
-): Effect.Effect<Omit<ResourcePage<ObservationResource>, 'nextPageUrl'>, ReadFailure> =>
-  fetchAllResourcePages((cursor) => fetchObservationBasedOnOrPartOfPage(client, cursor), first)
+): Effect.Effect<
+  Omit<ResourcePage<ObservationResource>, 'nextPageUrl'>,
+  ReadFailure,
+  SmartClient
+> => fetchAllResourcePages(fetchObservationBasedOnOrPartOfPage, first)
 
 /**
  * How many per-resource searches run at once: one per active

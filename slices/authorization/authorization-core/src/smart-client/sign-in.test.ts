@@ -1,3 +1,4 @@
+import { StorageBlocked } from '@wildflowerhealthio/kitchen-sink'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Either, Match, Option } from 'effect'
 import * as fc from 'fast-check'
@@ -11,7 +12,10 @@ import {
 import { codeChallengeS256 } from './pkce.ts'
 import {
   beginSignIn,
+  beginSignInAt,
   completeSignIn,
+  forgetPendingSignIn,
+  pendingRequestUnusableFrom,
   type PendingStore,
   type SignInEnvironment,
 } from './sign-in.ts'
@@ -301,6 +305,49 @@ describe('beginSignIn', () => {
   })
 })
 
+describe('beginSignInAt', () => {
+  it('starts at the issuer it was handed, fetching nothing, and stashes its FHIR base', async () => {
+    // Arrange
+    const store = memoryStore()
+    const environment = testEnvironment({ store, fetch: refusingFetch })
+    const issuer = {
+      smartServer: PlainSmartServer.make({ fhirBaseUrl: DEMO_FHIR_BASE }),
+      endpoints: {
+        authorizationEndpoint: `${DEMO_AUTH_ORIGIN}/auth/authorize`,
+        tokenEndpoint: `${DEMO_AUTH_ORIGIN}/auth/token`,
+      },
+      managementEndpoint: Option.none(),
+      wildflowerAuthorizationApi: Option.none(),
+    }
+
+    // Act
+    const result = await runToEither(
+      beginSignInAt(issuer, '/home', environment, { launch: 'launch-1' })
+    )
+
+    // Assert
+    if (Either.isLeft(result)) throw new Error(result.left.reason)
+    const url = new URL(result.right)
+    expect(url.origin + url.pathname).toBe(`${DEMO_AUTH_ORIGIN}/auth/authorize`)
+    expect(url.searchParams.get('aud')).toBe(DEMO_FHIR_BASE)
+    expect(url.searchParams.get('launch')).toBe('launch-1')
+    const pending = parsePendingAuthorization(store.getItem(PENDING_KEY))
+    expect(
+      Option.map(pending, ({ serverUrl, tokenEndpoint, returnTo }) => ({
+        serverUrl,
+        tokenEndpoint,
+        returnTo,
+      }))
+    ).toEqual(
+      Option.some({
+        serverUrl: DEMO_FHIR_BASE,
+        tokenEndpoint: `${DEMO_AUTH_ORIGIN}/auth/token`,
+        returnTo: '/home',
+      })
+    )
+  })
+})
+
 describe('completeSignIn', () => {
   it('leaves an ordinary page load alone', async () => {
     // Arrange
@@ -321,9 +368,9 @@ describe('completeSignIn', () => {
   })
 
   it('never redeems a code against another page’s pending record', async () => {
-    // Two Wildflower pages share `sessionStorage` on one origin. A return leg
-    // must look only at its own key: reading a neighbour's record would let one
-    // page complete a sign-in the other started.
+    // Two sign-in flows on one origin share the tab's `sessionStorage`. A
+    // return leg must look only at its own key: reading a neighbour's record
+    // would let one flow complete a sign-in the other started.
     // Arrange
     const store = memoryStore()
     const pending = stashedRequest()
@@ -612,7 +659,134 @@ describe('completeSignIn', () => {
   })
 })
 
+describe('completeSignIn and the pending record', () => {
+  it('takes the pending record on a return that carries no code', async () => {
+    // Arrange — a `state` alone: another flow's return on the same page
+    const store = memoryStore()
+    store.setItem(PENDING_KEY, serializePendingAuthorization(stashedRequest()))
+
+    // Act
+    const result = await runToEither(
+      completeSignIn('?state=another-flow', testEnvironment({ store, fetch: refusingFetch }))
+    )
+
+    // Assert
+    expect(result).toEqual(Either.right(Option.none()))
+    expect(store.getItem(PENDING_KEY)).toBeNull()
+  })
+
+  it('leaves a store that throws untouched on an ordinary page load', async () => {
+    // Act
+    const result = await runToEither(
+      completeSignIn('', testEnvironment({ store: throwingStore(), fetch: refusingFetch }))
+    )
+
+    // Assert
+    expect(result).toEqual(Either.right(Option.none()))
+  })
+
+  it('reports a store that refuses to be read on a return leg', async () => {
+    // Act
+    const result = await runToEither(
+      completeSignIn(
+        '?code=the-code&state=a-stashed-state',
+        testEnvironment({ store: throwingStore(), fetch: refusingFetch })
+      )
+    )
+
+    // Assert
+    if (Either.isRight(result)) throw new Error('expected the blocked storage to fail sign-in')
+    expect(result.left._tag).toBe('PendingRequestUnusable')
+    expect(result.left.reason).toContain('session storage is blocked')
+  })
+
+  it('redeems a pending record the store gives up but will not remove', async () => {
+    // Arrange — a store that reads, but throws on every removal
+    const store = memoryStore()
+    const pending = stashedRequest()
+    store.setItem(PENDING_KEY, serializePendingAuthorization(pending))
+    const refusingRemoval: PendingStore = {
+      ...store,
+      removeItem: () => {
+        throw new DOMException('The operation is insecure.', 'SecurityError')
+      },
+    }
+    const answerToken: typeof globalThis.fetch = () =>
+      Promise.resolve(
+        jsonResponse({ access_token: 'header.payload.signature', token_type: 'Bearer' })
+      )
+
+    // Act
+    const result = await runToEither(
+      completeSignIn(
+        `?code=the-code&state=${pending.state}`,
+        testEnvironment({ store: refusingRemoval, fetch: answerToken })
+      )
+    )
+
+    // Assert
+    expect(result).toMatchObject({
+      _tag: 'Right',
+      right: { _tag: 'Some', value: { accessToken: 'header.payload.signature' } },
+    })
+  })
+
+  it('reports, and drops, a pending record that does not read as one', async () => {
+    // Arrange — a record a different version of the page wrote
+    const store = memoryStore()
+    store.setItem(PENDING_KEY, '{"state":"a-stashed-state"}')
+
+    // Act
+    const result = await runToEither(
+      completeSignIn(
+        '?code=the-code&state=a-stashed-state',
+        testEnvironment({ store, fetch: refusingFetch })
+      )
+    )
+
+    // Assert
+    if (Either.isRight(result)) throw new Error('expected the stale record to fail sign-in')
+    expect(result.left._tag).toBe('PendingRequestUnrecognised')
+    expect(result.left.reason).toContain('different version of this page')
+    expect(store.getItem(PENDING_KEY)).toBeNull()
+  })
+})
+
+describe('forgetPendingSignIn', () => {
+  it('drops the pending record, leaving every other key', async () => {
+    // Arrange
+    const store = memoryStore()
+    store.setItem(PENDING_KEY, serializePendingAuthorization(stashedRequest()))
+    store.setItem('another-flow.pending', 'kept')
+
+    // Act
+    await Effect.runPromise(forgetPendingSignIn(testEnvironment({ store, fetch: refusingFetch })))
+
+    // Assert
+    expect(store.getItem(PENDING_KEY)).toBeNull()
+    expect(store.getItem('another-flow.pending')).toBe('kept')
+  })
+
+  it('reports a store that refuses removal', async () => {
+    // Act
+    const result = await runToEither(
+      forgetPendingSignIn(testEnvironment({ store: throwingStore(), fetch: refusingFetch }))
+    )
+
+    // Assert
+    expect(Either.isLeft(result) ? result.left._tag : 'forgotten').toBe('PendingRequestUnusable')
+  })
+})
+
 // Helpers
+
+/** A `sessionStorage` that throws on every call, as a blocked one does. */
+const throwingStore = (): PendingStore => {
+  const blocked = (): never => {
+    throw new DOMException('The operation is insecure.', 'SecurityError')
+  }
+  return { getItem: blocked, setItem: blocked, removeItem: blocked }
+}
 
 /**
  * Run a sign-in Effect to its `Either`, so the tagged error is assertable
@@ -724,3 +898,17 @@ const jsonResponse = (body: unknown): Response =>
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   })
+
+describe('pendingRequestUnusableFrom', () => {
+  it.each([
+    { operation: 'write', says: 'would not let the page remember the sign-in request' },
+    { operation: 'read', says: 'would not let the page use the sign-in request it kept' },
+    { operation: 'remove', says: 'would not let the page use the sign-in request it kept' },
+  ] as const)('should say what a blocked $operation stopped', ({ operation, says }) => {
+    const unusable = pendingRequestUnusableFrom(new StorageBlocked({ operation, key: 'pending' }))
+
+    expect(unusable._tag).toBe('PendingRequestUnusable')
+    expect(unusable.reason).toContain(says)
+    expect(unusable.reason).toContain('(session storage is blocked)')
+  })
+})

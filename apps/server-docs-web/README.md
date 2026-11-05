@@ -208,8 +208,8 @@ the server returns is discarded: there is no session to refresh into.
 The console does not carry a list of addresses it is allowed to sign in from.
 It **derives** its `redirect_uri` from where the page is being served, with
 `authorization-core/smart-client`'s `redirectUriForPage` — the page's own directory
-URL, which is what the fhirclient-based apps (`apps/medications/medications-web`,
-`apps/importer-web`) have always done. One build
+URL, which is what the SMART apps (`apps/medications/medications-web`,
+`apps/importer-web`) do too. One build
 therefore signs in from the published site, from a PR preview under
 `https://server-docs.wildflowerhealth.io/pr-<n>/`,
 and from `vp run -F @wildflowerhealthio/server-docs-web dev`, with nothing to keep in step.

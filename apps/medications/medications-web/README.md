@@ -16,26 +16,26 @@ stylesheet module (`react-tundraish/styles` — tundra-css, react-tundraish and
 the self-hosted fonts, in that order),
 completes a GitHub Pages 404 redirect, wires the OS colour-scheme listener,
 and renders `<AppRoot page={openSmartAppPage(import.meta.url)} />` inside
-`<StrictMode>`: the page's one history and the served directory, which the
+`<StrictMode>`: the page's one history and its basepath, which the
 router navigates and runs under once it is built.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="medications"
 registration={smartRegistration} telemetry={smartAppTelemetry}
-servedDirectory={page.basepath}>` around `<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
-latches on mount which of three cases the URL is:
+basepath={page.basepath}>` around `<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+reads on mount which arrival the URL is:
 
-- **Launch** (`iss`, with or without an EHR's `launch`, and no callback) —
-  shows a loading line under `BrandBar` and starts the authorize redirect,
-  sending a failed launch back to the app root as `?launchError`.
-- **Launched** (OAuth callback present) — renders `<BrandBar />` (a slim brand
-  link back to the marketing site, with the telemetry status control at its
-  end) above `<App />`.
-- **Standalone** (bare visit) — renders the full Wildflower chrome:
+- **A launch request** (`iss`, with or without an EHR's `launch`) — shows a
+  loading line under `BrandBar` and starts the sign-in redirect, sending a
+  failed launch back to the app root as `?launchError`.
+- **A sign-in's return** — renders `<BrandBar />` (a slim brand link back to
+  the marketing site, with the telemetry status control at its end) above
+  `<App />`.
+- **A refusal or a bare visit** — renders the full Wildflower chrome:
   `<SiteHeader>`, the app's `<AppLanding>` introduction beside `<ConnectMenu>`,
   the telemetry status control, `<SiteFooter>`, with nav links resolving as
   absolute URLs back to `wildflowerhealth.io`.
 
-The launched and standalone branches share the root's single
+The app and the connect menu share the root's single
 `QueryClientProvider`.
 
 `smartAppTelemetry` in `src/config.ts` names the app's Sentry project through
@@ -43,8 +43,8 @@ the `VITE_SENTRY_DSN_MEDICATIONS_WEB` build variable (see `.env.example`).
 Nothing is reported until the visitor says yes.
 
 `AppRoot` takes the `page` the app's router runs over and an optional
-`launched` prop (defaults to the live URL checks) so the launched and
-standalone branches are testable without URL manipulation. The package exports
+`search` (defaults to the live URL's) so every arrival is testable without
+URL manipulation. The package exports
 `AppRoot` via the `source` condition for future aggregator-shell composition.
 
 ## The patient
@@ -135,12 +135,12 @@ The history, the basepath, and building the router only once the SMART
 handshake has completed are `smart-app-react`'s; the ordering rules are its
 [Routing a SMART app](../../../slices/smart-app-react/AGENTS.md#routing-a-smart-app).
 `<App />` builds the router under its `SmartHandshakeGate`, once, for the
-visit, with a context fixed for it: the page's query cache, the one client
-the handshake hands out, and the page store. A deep link such as
+visit, with a context fixed for it: the page's query cache, the one runtime
+the handshake builds, and the page store. A deep link such as
 `/patients/123/calendar` (or `/pr-<n>/patients/123/calendar` in a preview)
 is served by the 404 page's redirect to the app root and restored there. The
-OAuth redirect URI is the app's served root (`SmartAppRoot`'s
-`servedDirectory`), so every launch returns there, whichever route it
+OAuth redirect URI is the app's basepath (`SmartAppRoot`'s `basepath`), so
+every launch returns there, whichever route it
 started on. The callback lands on `/`, whose redirect (`appRootRedirect`)
 opens the route a launch started at (`/patients/123/calendar?iss=…&launch=…`),
 with its own query; for one started at the root, its patient's page, else

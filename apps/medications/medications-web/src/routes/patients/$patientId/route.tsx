@@ -66,8 +66,8 @@ function PatientMedications(): JSX.Element {
  */
 const Route = createFileRoute('/patients/$patientId')({
   validateSearch: Schema.standardSchemaV1(MedicationsPageSearch),
-  loader: ({ context: { queryClient, client }, params: { patientId } }) =>
-    requirePatient(queryClient, client, patientId),
+  loader: ({ context: { queryClient, runAuthed }, params: { patientId } }) =>
+    requirePatient(queryClient, runAuthed, patientId),
   remountDeps: ({ params }) => params.patientId,
   pendingComponent: () => <LoadingLine subject="the patient" />,
   component: PatientMedications,

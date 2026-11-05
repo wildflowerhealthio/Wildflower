@@ -7,6 +7,7 @@ import {
   fetchMedicationRequestPage,
   type MedicationRequestCursor,
   type MedicationRequestPage,
+  useRunSmart,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   type MedicationView,
@@ -22,10 +23,10 @@ import {
   patientScopeOf,
   usePathPatientChoice,
 } from '@wildflowerhealthio/smart-app-react'
-import { Effect, Match } from 'effect'
+import { Match } from 'effect'
 import { useCallback, useMemo } from 'react'
 
-import { usePageState, useSmartClient } from '../router-context.ts'
+import { usePageState } from '../router-context.ts'
 
 /** The page's read of the open route's MedicationRequests, as the header and every tab see it. */
 interface MedicationRead {
@@ -89,13 +90,13 @@ const noViews: readonly MedicationView[] = []
  * which only the reader's retry resumes.
  */
 const useMedicationRead = (): MedicationRead => {
-  const client = useSmartClient()
+  const runSmart = useRunSmart()
   const patientChoice = usePathPatientChoice()
   const firstPageCursor: MedicationRequestCursor = { patientId: patientScopeOf(patientChoice) }
   const pagedQuery = useInfiniteQuery({
     queryKey: ['medications', patientChoiceKeyOf(patientChoice)],
     queryFn: ({ pageParam }: { readonly pageParam: MedicationRequestCursor }) =>
-      Effect.runPromise(fetchMedicationRequestPage(client, pageParam)),
+      runSmart(fetchMedicationRequestPage(pageParam)),
     initialPageParam: firstPageCursor,
     getNextPageParam: (lastPage): MedicationRequestCursor | undefined =>
       lastPage.nextPageUrl === null ? undefined : { pageUrl: lastPage.nextPageUrl },

@@ -6,9 +6,13 @@ import {
   DICOM_SOURCE_FILE_CODE,
   DICOM_SYSTEM,
 } from '@wildflowerhealthio/dicom-importer-core/source-file'
-import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
-import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
-import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type * as FhirR4Smart from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  decodeFhirBaseUrl,
+  type RunSmart,
+  SmartConnection,
+  smartRuntimeFor,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   HAR_ARCHIVE_CODE,
   WEB_TRACE_CODE_SYSTEM,
@@ -18,7 +22,7 @@ import {
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_SYSTEM,
 } from '@wildflowerhealthio/lifelabs-pdf-importer-core/source-file'
-import { DateTime, Effect, Layer, Schema } from 'effect'
+import { DateTime, Effect, Layer, Option, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -48,9 +52,11 @@ import { ServerSourceFileList, UNDATED_LABEL } from './server-source-file-list.t
  * quiet stub, so the sentinel mounts and never fires.
  */
 
-vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
-  const actual = await importOriginal<typeof FhirR4React>()
-  return { ...actual, useRunAuthed: (): RunAuthed => currentRunAuthed }
+// The list's one runner is the page's SMART runtime: only `useRunSmart` is
+// stubbed, so a read through the router context's runner would throw here.
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
+  const actual = await importOriginal<typeof FhirR4Smart>()
+  return { ...actual, useRunSmart: (): RunSmart => currentRunSmart }
 })
 
 const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'showModal')
@@ -70,7 +76,7 @@ const HAR_TEXT = '{"log":{"version":"1.2","entries":[]}}'
 const PDF_BYTES_TEXT = '%PDF-1.4\n'
 const UPLOADED_AT = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
 
-let currentRunAuthed: RunAuthed
+let currentRunSmart: RunSmart
 let sentRequests: HttpClientRequest.HttpClientRequest[] = []
 let queryClient: QueryClient
 let createdBlobs: Blob[] = []
@@ -556,7 +562,7 @@ const servePages = (pages: readonly unknown[], resources?: readonly unknown[]): 
     HttpClient.HttpClient,
     HttpClient.make((request) => {
       sentRequests.push(request)
-      const params = Object.fromEntries(request.urlParams)
+      const params = Object.fromEntries(new URL(request.url).searchParams)
       if (params['category'] !== undefined) {
         const page = pages[served] ?? pages.at(-1)
         served += 1
@@ -573,10 +579,14 @@ const servePages = (pages: readonly unknown[], resources?: readonly unknown[]): 
       return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(wire)))
     })
   )
-  currentRunAuthed = buildSmartRouterContext(
-    { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
+  currentRunSmart = smartRuntimeFor(
+    new SmartConnection({
+      fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
+      accessToken: Option.some(ACCESS_TOKEN),
+      launchPatientId: Option.none(),
+    }),
     httpLayer
-  ).runAuthed
+  ).runSmart
 }
 
 const withQueryClient = ({ children }: { readonly children: ReactNode }): JSX.Element => (

@@ -1,20 +1,30 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import type * as SmartClientModule from '@wildflowerhealthio/authorization-core/smart-client'
+import { PlainSmartServer, type Session } from '@wildflowerhealthio/authorization-core/smart-client'
 import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
+import { decodeFhirBaseUrl, redirectToSignIn } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
+import { Effect, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { AppRoot } from './app-root.tsx'
+import { smartRegistration } from './config.ts'
 import { BASEPATH, pageAt, stubPageBrowserApis } from './importer-app.test-helpers.ts'
 
-// The real app root, app and router over the real URL, with fhirclient's
-// token exchange stubbed at the module boundary. Pins that the router never
-// touches the callback URL the exchange still reads.
-const { readyMock } = vi.hoisted(() => ({
-  readyMock: vi.fn<() => Promise<unknown>>(),
+// The real app root, app and router over the real URL, with the sign-in's
+// two halves stubbed at `authorization-core`'s boundary: `beginSignInAt` is the
+// authorize the sign-in starts, `completeSignIn` the token exchange on the
+// callback. Pins that the router never touches the callback URL the exchange
+// still reads.
+const { beginSignInAtMock, completeSignInMock } = vi.hoisted(() => ({
+  beginSignInAtMock: vi.fn<typeof SmartClientModule.beginSignInAt>(),
+  completeSignInMock: vi.fn<typeof SmartClientModule.completeSignIn>(),
 }))
-vi.mock('fhirclient/browser', () => ({
-  default: { oauth2: { ready: readyMock, authorize: vi.fn() } },
+vi.mock('@wildflowerhealthio/authorization-core/smart-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof SmartClientModule>()),
+  beginSignInAt: beginSignInAtMock,
+  completeSignIn: completeSignInMock,
 }))
 
 // Telemetry never starts: the stored answer declines it.
@@ -26,9 +36,43 @@ vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
 /** The FHIR server the completed exchange names. */
 const FHIR_SERVER_URL = 'https://fhir.example/r4'
 
-/** The client a completed exchange hands the app. */
-const readyClient = {
-  state: { serverUrl: FHIR_SERVER_URL, tokenResponse: { access_token: 'token' } },
+/** The FHIR server's SMART configuration, which a sign-in probes before it authorizes. */
+const SMART_CONFIGURATION = {
+  authorization_endpoint: 'https://fhir.example/oauth/authorize',
+  token_endpoint: 'https://fhir.example/oauth/token',
+  code_challenge_methods_supported: ['S256'],
+}
+
+/** The session a completed exchange redeems. */
+const SESSION: Session = {
+  accessToken: 'token',
+  scope: smartRegistration.scope,
+  serverUrl: FHIR_SERVER_URL,
+  smartServer: PlainSmartServer.make({ fhirBaseUrl: FHIR_SERVER_URL }),
+  expiresInSeconds: undefined,
+  patient: undefined,
+  returnTo: undefined,
+}
+
+/**
+ * Start a sign-in as the connect menu does, so the callback has a connection
+ * to complete: `beginSignInAt` yields an authorize URL on this page (a
+ * fragment, so jsdom does not navigate).
+ */
+const startSignIn = async (): Promise<void> => {
+  beginSignInAtMock.mockImplementation(() =>
+    Effect.sync(() => `${window.location.href.split('#')[0] ?? ''}#authorize`)
+  )
+  await Effect.runPromise(
+    redirectToSignIn(
+      {
+        ...smartRegistration,
+        redirectUri: `${window.location.origin}${BASEPATH}`,
+        fhirBaseUrl: decodeFhirBaseUrl(FHIR_SERVER_URL),
+      },
+      undefined
+    )
+  )
 }
 
 /** The address bar's path and query. */
@@ -42,13 +86,18 @@ beforeEach(() => {
     performance: false,
     decidedAt: '2026-09-29T12:00:00.000Z',
   })
-  // The FHIR server holds no source files: every search is an empty bundle.
-  vi.stubGlobal('fetch', () =>
+  // The FHIR server serves its SMART configuration and holds no source files:
+  // every search is an empty bundle.
+  vi.stubGlobal('fetch', (input: RequestInfo | URL) =>
     Promise.resolve(
-      new Response(JSON.stringify({ resourceType: 'Bundle', type: 'searchset', entry: [] }), {
-        status: 200,
-        headers: { 'content-type': 'application/fhir+json' },
-      })
+      String(input instanceof Request ? input.url : input).endsWith(
+        '/.well-known/smart-configuration'
+      )
+        ? Response.json(SMART_CONFIGURATION)
+        : new Response(JSON.stringify({ resourceType: 'Bundle', type: 'searchset', entry: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/fhir+json' },
+          })
     )
   )
   return stubPageBrowserApis()
@@ -57,30 +106,35 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
-  readyMock.mockReset()
+  window.sessionStorage.clear()
+  beginSignInAtMock.mockReset()
+  completeSignInMock.mockReset()
 })
 
 describe('AppRoot over the address bar', () => {
-  it('should leave the callback URL alone through the exchange, then open Import', async () => {
-    // Arrange: an exchange the test completes, taking `code` and `state` out
-    // of the address bar as fhirclient does: over an empty state, which drops
-    // the tags the browser history gave the entry.
+  it('should take the callback out of the URL, route nothing through the exchange, then open Import', async () => {
+    // Arrange: a sign-in out, and an exchange the test completes
+    await startSignIn()
     let completeExchange: () => void = () => {}
-    readyMock.mockReturnValue(
-      new Promise((resolve) => {
-        completeExchange = () => {
-          window.history.replaceState({}, '', BASEPATH)
-          resolve(readyClient)
-        }
-      })
+    completeSignInMock.mockReturnValue(
+      Effect.promise(
+        () =>
+          new Promise<Option.Option<Session>>((resolve) => {
+            completeExchange = () => {
+              resolve(Option.some(SESSION))
+            }
+          })
+      )
     )
     const page = pageAt('?code=abc&state=xyz')
     const callbackUrl = addressBar()
     render(<AppRoot page={page} />)
     await waitFor(() => {
-      expect(readyMock).toHaveBeenCalledTimes(1)
+      expect(completeSignInMock).toHaveBeenCalledTimes(1)
     })
-    expect(addressBar()).toBe(callbackUrl)
+    // The connection in progress is taken, and its callback with it, before
+    // the code is redeemed; nothing else moves the address bar meanwhile.
+    expect(addressBar()).toBe(callbackUrl.replace('?code=abc&state=xyz', ''))
 
     // Act
     completeExchange()
@@ -88,6 +142,6 @@ describe('AppRoot over the address bar', () => {
     // Assert
     expect(await screen.findByRole('region', { name: 'File source' })).toBeDefined()
     expect(addressBar()).toBe(`${BASEPATH}import`)
-    expect(readyMock).toHaveBeenCalledTimes(1)
+    expect(completeSignInMock).toHaveBeenCalledTimes(1)
   })
 })

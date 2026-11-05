@@ -3,6 +3,7 @@ import {
   fetchAllResourcePages,
   fetchPlanDefinitionPage,
   fetchProcedurePage,
+  type SmartClient,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   ExerciseRequest,
@@ -13,7 +14,6 @@ import {
 } from '@wildflowerhealthio/strength-core-js'
 import { Array as Arr, Effect, Option } from 'effect'
 
-import type { SmartClient } from '../smart-client.ts'
 import {
   decodeEvery,
   decodeExerciseSetObservations,
@@ -85,14 +85,14 @@ const currentTrainingPlanDefinitionUrlOf = (
  * the whole record, so a partial read would get them wrong.
  */
 const readTrainingRecord = (
-  client: SmartClient,
   patientId: string
-): Effect.Effect<TrainingRecord, ReadFailure> =>
+): Effect.Effect<TrainingRecord, ReadFailure, SmartClient> =>
   Effect.gen(function* () {
-    const serviceRequests = yield* fetchAllResourcePages(
-      (cursor) => fetchActiveServiceRequestPage(client, cursor),
-      { patientId, categoryToken: StrengthFeature.TOKEN, instantiatesCanonicalUrl: null }
-    )
+    const serviceRequests = yield* fetchAllResourcePages(fetchActiveServiceRequestPage, {
+      patientId,
+      categoryToken: StrengthFeature.TOKEN,
+      instantiatesCanonicalUrl: null,
+    })
     const activeExerciseRequests = decodeEvery(ExerciseRequest.Schema, serviceRequests)
     const unreadableRequests = {
       ...NO_UNREADABLE,
@@ -116,10 +116,10 @@ const readTrainingRecord = (
     )
     const [planDefinitions, procedures, exerciseSetObservationReads] = yield* Effect.all(
       [
-        fetchAllResourcePages((cursor) => fetchPlanDefinitionPage(client, cursor), {
+        fetchAllResourcePages(fetchPlanDefinitionPage, {
           topicToken: StrengthFeature.TOKEN,
         }),
-        fetchAllResourcePages((cursor) => fetchProcedurePage(client, cursor), {
+        fetchAllResourcePages(fetchProcedurePage, {
           patientId,
           categoryToken: StrengthFeature.TOKEN,
           instantiatesCanonicalUrl: trainingPlanDefinitionUrl,
@@ -127,7 +127,7 @@ const readTrainingRecord = (
         Effect.forEach(
           exerciseRequests,
           (exerciseRequest) =>
-            fetchEveryObservation(client, {
+            fetchEveryObservation({
               patientId,
               basedOnReference: `ServiceRequest/${exerciseRequest.id}`,
               partOfReference: null,

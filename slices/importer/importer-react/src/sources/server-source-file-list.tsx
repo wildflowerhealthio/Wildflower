@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import { useRunSmart } from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { Dialog } from '@wildflowerhealthio/react-tundraish'
 import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
@@ -11,7 +11,7 @@ import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
 import {
   type SourceFileRow,
   fetchSourceFile,
-  useSmartSourceFilesQuery,
+  useSourceFilesQuery,
 } from '../queries/source-files.ts'
 import { formatRegistry } from '../registry.ts'
 import { ImporterWalkthroughAnchor } from '../walkthrough-anchors.ts'
@@ -204,8 +204,8 @@ const SourceFileListContent = ({
  * bottom sentinel that pages the rest in as it scrolls into view.
  */
 const ServerSourceFileList = ({ onPick, maxPicks }: ServerSourceFileListProps): JSX.Element => {
-  const runAuthed = useRunAuthed()
-  const sourceFiles = useSmartSourceFilesQuery()
+  const runSmart = useRunSmart()
+  const sourceFiles = useSourceFilesQuery()
   const [error, setError] = useState<string | null>(null)
   const [previewing, setPreviewing] = useState<SourceFileRow | null>(null)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
@@ -239,7 +239,7 @@ const ServerSourceFileList = ({ onPick, maxPicks }: ServerSourceFileListProps): 
   // decode sees every file the reviewer selected — and groups them itself.
   const pickAsSource = async (chosen: readonly SourceFileRow[]): Promise<void> => {
     try {
-      const picked = await Promise.all(chosen.map((row) => fetchSourceFile(runAuthed, row)))
+      const picked = await Promise.all(chosen.map((row) => fetchSourceFile(runSmart, row)))
       setError(null)
       setSelected(new Set())
       onPick(picked)
@@ -349,10 +349,10 @@ const PreviewBody = ({
   readonly row: SourceFileRow
   readonly onClose: () => void
 }): JSX.Element => {
-  const runAuthed = useRunAuthed()
+  const runSmart = useRunSmart()
   const query = useQuery({
     queryKey: [...SOURCE_FILES_QUERY_KEY, 'preview', row.format, row.id] as const,
-    queryFn: () => fetchSourceFile(runAuthed, row),
+    queryFn: () => fetchSourceFile(runSmart, row),
     staleTime: 0,
     gcTime: 0,
     retry: false,

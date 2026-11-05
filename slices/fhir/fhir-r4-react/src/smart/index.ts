@@ -1,24 +1,43 @@
+export { appRootRedirectUri } from './app-root-redirect-uri.ts'
+
 export {
-  appRootRedirectUri,
-  arrivingSmartLaunchFrom,
-  authorizeOpenServer,
-  authorizeSmartLaunch,
-  readySmartClient,
-  shouldCompleteSmartLaunch,
-  SMART_LAUNCH_PARAMS,
-  type ArrivingSmartLaunch,
-  type OpenServerConfig,
+  RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
+  RETAINED_SIGN_IN_REQUEST_KEY,
+  type SmartRegistration,
+} from './retained-sign-in-requests.ts'
+
+export {
+  redirectToSelfAddressedSignInReturn,
+  redirectToSignInAt,
+  type SelfAddressedSignInConfig,
   type SmartLaunchConfig,
-} from './smart-launch.ts'
+} from './sign-in-redirect.ts'
+
+export {
+  CallbackStateMismatch,
+  completeSignInAfterRedirectHere,
+  discardRefusedSignInAfterRedirectHere,
+  NoSignInInProgress,
+  type SignInAfterRedirectError,
+  type SignInLanding,
+} from './sign-in-after-redirect.ts'
 
 export {
   detectSmartSupport,
   insecureTargetReason,
   normalizeServerUrl,
-  startStandaloneLaunch,
-  type SmartSupport,
-  type StandaloneLaunchConfig,
-} from './standalone-launch.ts'
+  redirectToSignIn,
+  SmartSupport,
+} from './smart-support.ts'
+
+export {
+  arrivingSmartLaunchFrom,
+  RootArrival,
+  rootArrivalFrom,
+  SMART_LAUNCH_PARAMS,
+  type ArrivingSmartLaunch,
+  type SignInArrival,
+} from './root-arrival.ts'
 
 export { withLocalNetworkAccessHint } from './local-network-hint.ts'
 
@@ -104,18 +123,33 @@ export {
   buildSmartQueryClient,
   buildSmartRouterContext,
   smartHttpClientLayer,
+  smartRuntimeFor,
   type BuildSmartQueryClientOptions,
-  type SmartSession,
+  type RunSmart,
+  type SmartRouterContext,
+  type SmartRuntime,
+  type SmartRuntimeLayer,
+  type SmartServices,
 } from './smart-runtime.ts'
+
+export { SmartRuntimeContext, useRunSmart } from './use-run-smart.ts'
+
+export { decodeFhirBaseUrl, FhirBaseUrl, SmartConnection } from './smart-connection.ts'
 
 export {
   isSmartHandshakeQuery,
-  useLaunchFailureRedirect,
+  useRedirectToRootOnFailure,
   useSmartHandshake,
-  whenSmartHandshakeReady,
-  type SmartClient,
-  type SmartHandshake,
+  SmartHandshake,
 } from './use-smart-handshake.ts'
+
+export {
+  FhirHttpError,
+  FhirRequestDropped,
+  FhirResponseNotJson,
+  SmartClient,
+  type FhirRequestError,
+} from './smart-client.ts'
 
 export {
   FALLBACK_LAUNCH_MESSAGE,
@@ -125,7 +159,6 @@ export {
   encodeLaunchError,
   launchError,
   launchErrorBodyFor,
-  launchErrorFrom,
   launchErrorRedirect,
   type LaunchErrorBody,
 } from './launch-error.ts'

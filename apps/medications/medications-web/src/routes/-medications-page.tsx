@@ -12,7 +12,6 @@ import { Walkthrough } from '@wildflowerhealthio/walkthrough-react'
 import { Match } from 'effect'
 import type { JSX } from 'react'
 
-import { useSmartClient } from '../router-context.ts'
 import { type MedicationRead, useMedicationRead } from './-medication-read.ts'
 import {
   MEDICATIONS_WALKTHROUGH_STEPS,
@@ -75,7 +74,6 @@ const useMedicationsPage = (): MedicationRead => {
  * the tabs holds that link.
  */
 function MedicationsPage({ tabs }: MedicationsPageProps): JSX.Element {
-  const client = useSmartClient()
   const patientChoice = usePathPatientChoice()
   const navigate = useNavigate()
   const read = useMedicationsPage()
@@ -85,7 +83,6 @@ function MedicationsPage({ tabs }: MedicationsPageProps): JSX.Element {
     <>
       <div className={styles['medications-page__status']}>
         <PatientChoiceLine
-          client={client}
           patientChoice={patientChoice}
           onPatientChange={() => {
             void navigate({ to: '/patients' })

@@ -2,9 +2,15 @@ import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { FhirR4ResourcesRouterContext, type RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
-import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
+import type * as FhirR4Smart from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  decodeFhirBaseUrl,
+  type RunSmart,
+  SmartConnection,
+  smartRuntimeFor,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, Layer, Option, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
@@ -28,9 +34,9 @@ import {
 /**
  * The whole preview-then-confirm flow, driven end-to-end over the real
  * screen → hooks → FHIR-client → `HttpClient` path with a recording stub
- * transport. Only the router seam (`useRunAuthed`) is replaced — the
- * `documents-panel.test.tsx` pattern — so every request the flow issues lands in
- * one ordered log the tests read.
+ * transport. Only the runner seams (`useRunAuthed`, `useRunSmart`) are
+ * replaced — the `documents-panel.test.tsx` pattern — so every request the flow
+ * issues lands in one ordered log the tests read.
  *
  * The load-bearing assertions are the opt-in seam itself:
  *
@@ -57,7 +63,12 @@ vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
   return { ...actual, useRunAuthed: (): RunAuthed => currentRunAuthed }
 })
 
-let currentRunAuthed: RunAuthed
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
+  const actual = await importOriginal<typeof FhirR4Smart>()
+  return { ...actual, useRunSmart: (): RunSmart => currentRunAuthed }
+})
+
+let currentRunAuthed: RunSmart
 let recorded: RecordedRequest[]
 let queryClient: QueryClient
 
@@ -527,7 +538,7 @@ describe('ImporterScreen', () => {
     })
     expect(reads().toSorted()).toEqual(
       [
-        'search DocumentReference?_count&category',
+        'search DocumentReference?_count&_sort&category',
         'search Patient?_count&identifier',
         'read DocumentReference',
         'read Patient',
@@ -927,7 +938,8 @@ const urlWithParams = (request: HttpClientRequest.HttpClientRequest): string => 
   const params = new URLSearchParams(
     request.urlParams.map(([key, value]) => [key, value])
   ).toString()
-  return params === '' ? request.url : `${request.url}?${params}`
+  if (params === '') return request.url
+  return `${request.url}${request.url.includes('?') ? '&' : '?'}${params}`
 }
 
 /**
@@ -946,7 +958,7 @@ const routingServer = (config: {
   readonly sourceFiles?: readonly StoredSourceFile[]
   readonly stored?: readonly unknown[]
   readonly failWrite?: (request: { readonly method: string; readonly url: string }) => boolean
-}): RunAuthed => {
+}): RunSmart => {
   const sourceFiles = config.sourceFiles ?? []
   const held = new Map<string, unknown>([
     ...sourceFiles.map((one): [string, unknown] => [`DocumentReference/${one.id}`, one.wire]),
@@ -961,7 +973,13 @@ const routingServer = (config: {
     HttpClient.HttpClient,
     HttpClient.make((request) => {
       const body = decodeBody(request.body)
-      const params = Object.fromEntries(request.urlParams)
+      // The SMART reader's source list carries its search in the URL; the
+      // typed client's requests carry theirs as `urlParams`.
+      const [path = '', query = ''] = request.url.split('?')
+      const params = {
+        ...Object.fromEntries(new URLSearchParams(query)),
+        ...Object.fromEntries(request.urlParams),
+      }
 
       // A `POST /` at the FHIR base with a Bundle body is `fhir-r4`'s
       // bundle-submit — a batch of PUT entries (persistBatchBundle) or GET
@@ -1045,7 +1063,7 @@ const routingServer = (config: {
       }
 
       recorded.push({ method: request.method, url: urlWithParams(request), body })
-      const segments = request.url.split('/').filter((segment) => segment !== '')
+      const segments = path.split('/').filter((segment) => segment !== '')
       if (request.method === 'GET' && params['category'] !== undefined) {
         const wires = sourceFiles.map((one) => one.wire)
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(wires))))
@@ -1075,17 +1093,16 @@ const routingServer = (config: {
       return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(written)))
     })
   )
-  return <A, E>(
-    effect: Effect.Effect<A, E, HttpClient.HttpClient | FhirR4ResourcesHttpApiClient>
-  ): Promise<A> =>
-    Effect.runPromise(
-      effect.pipe(
-        Effect.provide(
-          FhirR4ResourcesRouterContext.sliceRuntimeLayer.pipe(Layer.provideMerge(httpLayer))
-        ),
-        Effect.scoped
-      )
-    )
+  // An empty FHIR base leaves every request the path it was made with, as the
+  // log records it.
+  return smartRuntimeFor(
+    new SmartConnection({
+      fhirBaseUrl: decodeFhirBaseUrl(''),
+      accessToken: Option.none(),
+      launchPatientId: Option.none(),
+    }),
+    httpLayer
+  ).runSmart
 }
 
 const searchset = (resources: readonly unknown[]): unknown => ({

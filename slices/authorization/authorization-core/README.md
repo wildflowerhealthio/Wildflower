@@ -143,7 +143,7 @@ up on the way home (`authorization-flow.ts`, `sign-in.ts`).
 
 `arrivingSmartLaunchFrom` (`arriving-launch.ts`) reads the SMART launch a page
 was opened with, `iss` and the EHR's `launch` (`SMART_LAUNCH_PARAMS`), off its
-query string. The fhirclient-based SMART apps read it through
+query string. The SMART apps read it through
 `fhir-r4-react/smart`, which re-exports both. A page that signs in with this package turns a launch into its
 `?server=` with `searchAfterArrivingLaunch` (`server-target.ts`): `iss` and
 `launch` leave the URL, and `?server=` becomes the server `iss` names, in
@@ -161,9 +161,9 @@ It stays inside the `-core` layering rule by taking every impure edge — `fetch
 Web Crypto, `sessionStorage` — as an injected `SignInEnvironment`. That
 environment also carries everything app-specific: the `client_id`, the requested
 `scope`, the redirect URI and the `sessionStorage` key the pending record lives
-at. The key in particular is the app's to choose and should be namespaced with
-the app's name, because these pages share an origin and an unqualified key would
-let one page's return leg consume another's pending request.
+at. The key is the app's to choose. `sessionStorage` is per origin and per tab,
+and each Wildflower app is served from its own origin, so the key only has to
+tell apart the sign-in flows one app runs in a tab: one key per flow.
 
 What each page supplies, it supplies once. `browserSignInEnvironment(page,
 registration)` does the wiring every browser caller would otherwise repeat —
@@ -184,11 +184,24 @@ its `capabilities`. Any failure — unreachable, blocked by CORS, a 404 or anoth
 status — is reported as it is. It returns the `SmartServer` the document
 describes — `WildflowerServer` or `PlainSmartServer`, each carrying its
 `fhirBaseUrl` — with the endpoints, and `beginSignIn` names that base as the
-`aud`. The discovered token endpoint, `serverUrl` and the
+`aud`. `beginSignIn` is `discoverSmartEndpoints` followed by `beginSignInAt`,
+which starts a sign-in at an issuer the caller has already discovered, so a
+page that probed the configuration itself fetches it once. The discovered
+token endpoint, the server URL and the
 `SmartServer` ride the pending record, so the return leg is the same either way
 and the redeemed `Session` says which kind of server it signed in to. The
 `Session` also carries the token response's `patient`, the launch context a
 plain SMART server names once the reader picks a patient.
+
+Any authorization-response parameter (`code`, `state`, `error`, …) makes a page
+load a return leg, and `completeSignIn` takes the pending record on every
+return leg — reads it and drops it — before it redeems anything. A storage that
+refuses fails the sign-in with `PendingRequestUnusable`, and a record that does
+not decode (one a different version of the page wrote) with
+`PendingRequestUnrecognised`; only an absent record means there is no sign-in to
+complete. A load that is no return leg leaves storage alone. A page that
+completes some other flow on its return leg drops this one's record with
+`forgetPendingSignIn`.
 
 `internal/pkce.ts`'s `computeCodeChallenge` is a thin wrapper that binds
 `codeChallengeS256`'s digest argument to the ambient Web Crypto; there is one
@@ -197,7 +210,7 @@ S256 implementation here, and a property test pins the two together.
 ### Deriving the redirect URI
 
 `redirectUriForPage(href)` returns the page's own directory URL — the
-derivation the fhirclient-based apps use through `fhir-r4-react/smart`'s
+derivation the SMART apps use through `fhir-r4-react/smart`'s
 `appRootRedirectUri` — or `undefined`
 when the page is served somewhere a sign-in must not return to (a non-http(s)
 origin, or plaintext http off loopback).
@@ -261,17 +274,27 @@ exempt in both:
 browsers treat `http://127.0.0.1` as trustworthy, which is what lets an HTTPS
 page drive a desktop host.
 
-### Not the other SMART client
+### The SMART apps
 
-This is **not** the fhirclient-based standalone launch in
-`slices/fhir/fhir-r4-react/src/smart/*`, which the React SMART apps use.
-The two share this package's helpers — `normalizeServerUrl`,
-`insecureTargetReason` and `arrivingSmartLaunchFrom`, which `fhir-r4-react`
-re-exports, and the endpoint checks: its probe runs a configuration through
-`smartIssuerFrom`, and its authorize navigation runs fhirclient's authorize URL
-through `endpointUrlFrom`, the reason-carrying form of `usableEndpointUrl` —
-but not the launch itself: the launch here is hand-rolled and Effect-native,
-and the one there delegates to `fhirclient`.
+The React SMART apps sign in through this client too, by way of
+`slices/fhir/fhir-r4-react/src/smart/*`. Its `redirectToSignIn` runs
+`beginSignInAt` at the endpoints its probe discovered, for an EHR launch's
+`iss` and a picked server alike, and its
+`completeSignInAfterRedirectHere` runs `completeSignIn` on the redirect
+target, under the app's own registration, which the app root's
+`SignInLanding` hands it. What it adds is what the apps need beyond a token:
+
+- **Open servers.** A FHIR server whose SMART configuration names no
+  authorization endpoint is signed in to by a self-addressed redirect: the
+  page retains the server and an expected `state`, goes straight back to its
+  own redirect target, and reads the server with no token.
+- **A FHIR client.** The redeemed `Session` becomes a `SmartConnection`, and
+  the `SmartClient` built from it reads the FHIR server, sending the bearer
+  token only to the FHIR base the connection names.
+
+`normalizeServerUrl`, `insecureTargetReason` and `arrivingSmartLaunchFrom` are
+re-exported there, and the standalone probe runs a configuration through
+`smartIssuerFrom` to explain an unusable server before it connects.
 
 ## Bootstrap URL (dev-mode workaround)
 

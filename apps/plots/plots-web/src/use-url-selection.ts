@@ -34,9 +34,9 @@ const writeSelectionToUrl = (selection: Selection): void => {
  * a series change made in one tick compose rather than the second replacing
  * the first with a copy of a stale selection.
  *
- * Nothing is written until the selection first changes: before the handshake
- * completes the URL still carries the OAuth `code` / `state` fhirclient reads,
- * and replacing the query would lose them.
+ * Nothing is written until the selection first changes, so the address bar
+ * keeps the link the page was opened with: writing on open would add the
+ * default `r` and `v` to a bare visit and drop any `s` the decode discarded.
  */
 const useUrlSelection = (): UrlSelection => {
   const [openedSelection] = useState(() =>

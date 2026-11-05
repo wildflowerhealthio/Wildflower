@@ -7,6 +7,12 @@ export { formatRelativeTime } from './format-relative-time.ts'
 export { pad2 } from './pad2.ts'
 export { partitionPoint } from './partition-point.ts'
 export { sentenceJoin } from './sentence-join.ts'
+export {
+  removeStorageItem,
+  setStorageItem,
+  StorageBlocked,
+  takeStorageItem,
+} from './storage-item.ts'
 export { stripTrailingSlash } from './strip-trailing-slash.ts'
 export { unknownErrorToString } from './unknown-error-to-string.ts'
 export { unwrapFiberFailure } from './unwrap-fiber-failure.ts'

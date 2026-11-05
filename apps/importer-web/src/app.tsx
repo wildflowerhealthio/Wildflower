@@ -1,7 +1,6 @@
-import { FetchHttpClient } from '@effect/platform'
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import { buildSmartRouterContext, type SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { buildSmartRouterContext, type SmartRuntime } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { PageLoading } from '@wildflowerhealthio/react-tundraish'
 import { type SmartAppPage, SmartHandshakeGate } from '@wildflowerhealthio/smart-app-react'
 import { useMemo, type JSX } from 'react'
@@ -22,7 +21,8 @@ type ImporterAppProps = AppProps & {
 }
 
 /**
- * The importer, mounted against an already-authenticated router context.
+ * The importer, mounted against an already-authenticated router context,
+ * under the `SmartRuntimeContext` the same runtime is provided by.
  *
  * @remarks
  * Split from {@link App} so the whole tree can be driven in a test over a stub
@@ -36,7 +36,9 @@ type ImporterAppProps = AppProps & {
  *
  * It also carries `importer-react`'s authed runner, which that package reads
  * out of route context (`fhir-r4-react`'s `useRunAuthed`), as every other
- * consumer of its queries does.
+ * consumer of its queries does. Its source-file list reads the runtime from
+ * `SmartRuntimeContext` instead (`useRunSmart`), so a test provides both, as
+ * `SmartHandshakeGate` does.
  *
  * Memoised on the context, so neither a re-render nor a tab switch (a
  * navigation inside this router) rebuilds it, and with it the mounted tree.
@@ -53,36 +55,25 @@ const ImporterApp = ({ page, context }: ImporterAppProps): JSX.Element => {
 
 /** Props for {@link LaunchedImporter}. */
 type LaunchedImporterProps = AppProps & {
-  /** The client the completed SMART handshake handed the app. */
-  readonly client: SmartClient
+  /** The runtime the completed SMART handshake built. */
+  readonly runtime: SmartRuntime
 }
 
 /**
- * The importer over a completed handshake: the router context built from the
- * client it handed over, under {@link ImporterApp}.
+ * The importer over a completed handshake: the router context over the
+ * runtime it built, under {@link ImporterApp}.
  *
  * @remarks
- * Plain `FetchHttpClient.layer`: the app's only outbound traffic is the FHIR
- * server the SMART handshake named and, once the visitor consents in
- * `SmartAppRoot`'s dialog, Sentry. The handshake's `serverUrl` is the FHIR base
- * verbatim — the typed client emits base-relative paths, so there is no prefix
- * to reconcile.
+ * The app's only outbound traffic is the FHIR server the SMART handshake
+ * named and, once the visitor consents in `SmartAppRoot`'s dialog, Sentry.
  */
-const LaunchedImporter = ({ page, client }: LaunchedImporterProps): JSX.Element => {
+const LaunchedImporter = ({ page, runtime }: LaunchedImporterProps): JSX.Element => {
   const queryClient = useQueryClient()
-  // Memoised on the (stable) resolved client so a re-render neither rebuilds the
+  // Memoised on the (stable) runtime so a re-render neither rebuilds the
   // context nor, through `ImporterApp`'s own memo, the router beneath it.
   const context = useMemo(
-    () =>
-      buildSmartRouterContext(
-        {
-          serverUrl: client.state.serverUrl,
-          accessToken: client.state.tokenResponse?.access_token,
-        },
-        FetchHttpClient.layer,
-        queryClient
-      ),
-    [client, queryClient]
+    () => buildSmartRouterContext(runtime, queryClient),
+    [runtime, queryClient]
   )
   return <ImporterApp page={page} context={context} />
 }
@@ -103,7 +94,7 @@ const LaunchedImporter = ({ page, client }: LaunchedImporterProps): JSX.Element 
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>
     <SmartHandshakeGate connecting={<PageLoading message="Connecting…" />}>
-      {(client) => <LaunchedImporter page={page} client={client} />}
+      {(runtime) => <LaunchedImporter page={page} runtime={runtime} />}
     </SmartHandshakeGate>
   </main>
 )

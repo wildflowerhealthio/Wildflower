@@ -1,6 +1,5 @@
 import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Effect, Schema } from 'effect'
-import type Client from 'fhirclient/Client'
 
 import {
   RESOURCE_PAGE_SIZE,
@@ -11,6 +10,7 @@ import {
   type ResourcePage,
   type ResourcePageCursor,
 } from './resource-page.ts'
+import type { SmartClient } from './smart-client.ts'
 
 /** The decoded FHIR R4 `Observation` resource. */
 type ObservationResource = Schema.Schema.Type<typeof Observation.Schema>
@@ -23,7 +23,7 @@ type ObservationPage = ResourcePage<ObservationResource>
 
 /**
  * The cursor {@link fetchObservationPage} reads from. `first` carries the patient
- * scope — the id the caller read off `client.patient.id`, or `null` for a
+ * scope — the id the caller read off `SmartConnection.launchPatientId`, or `null` for a
  * `system/` launch with no patient in context, which reads every patient's
  * observations.
  */
@@ -111,30 +111,27 @@ const observationBasedOnOrPartOfRead: PagedResourceRead<
  * the cursor to the next page, so a viewer can page on demand (e.g.
  * scroll-driven loading) instead of reading a patient's whole history up front.
  *
- * @param client - The SMART client the search is issued through
  * @param cursor - Patient scope for the first page, or a previous page's `nextPageUrl`
  * @returns An effect yielding the page's decoded `Observation`s and the next page's cursor
  *
  * @remarks
  * The patient id is a parameter rather than something this reader lifts off
- * `client.patient.id`, so the caller decides what "no patient in context" means
+ * `SmartConnection.launchPatientId`, so the caller decides what "no patient in context" means
  * for its launch; `null` reads every patient's observations.
  *
  * Rows a server sends without a `status` survive: `Observation.Schema` defaults a
  * missing status to FHIR's own `unknown` sentinel rather than failing the entry.
  */
 const fetchObservationPage = (
-  client: Client,
   cursor: ObservationPageCursor
-): Effect.Effect<ObservationPage, ResourcePageRequestError | BundleDecodeError> =>
-  fetchResourcePage(client, observationRead, cursor)
+): Effect.Effect<ObservationPage, ResourcePageRequestError | BundleDecodeError, SmartClient> =>
+  fetchResourcePage(observationRead, cursor)
 
 /**
  * Fetch a single page of the `Observation`s made against one request
  * (`based-on`), during one event (`part-of`), or both, and report the cursor to
  * the next page.
  *
- * @param client - The SMART client the search is issued through
  * @param cursor - Patient scope and references for the first page, or a
  *   previous page's `nextPageUrl`
  * @returns An effect yielding the page's decoded `Observation`s and the next page's cursor
@@ -147,10 +144,9 @@ const fetchObservationPage = (
  * (`Type/id`), as the observations name them.
  */
 const fetchObservationBasedOnOrPartOfPage = (
-  client: Client,
   cursor: ObservationBasedOnOrPartOfPageCursor
-): Effect.Effect<ObservationPage, ResourcePageRequestError | BundleDecodeError> =>
-  fetchResourcePage(client, observationBasedOnOrPartOfRead, cursor)
+): Effect.Effect<ObservationPage, ResourcePageRequestError | BundleDecodeError, SmartClient> =>
+  fetchResourcePage(observationBasedOnOrPartOfRead, cursor)
 
 export {
   fetchObservationBasedOnOrPartOfPage,

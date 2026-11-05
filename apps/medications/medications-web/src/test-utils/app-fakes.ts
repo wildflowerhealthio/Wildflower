@@ -1,4 +1,5 @@
 import { cleanup, screen } from '@testing-library/react'
+import type * as Smart from '@wildflowerhealthio/fhir-r4-react/smart'
 import type {
   MedicationRequestCursor,
   MedicationRequestPage,
@@ -10,7 +11,6 @@ import { MedicationRequest, Patient } from '@wildflowerhealthio/fhir-r4/resource
 import type { InteractionCatalog } from '@wildflowerhealthio/medication-interaction-core-js'
 import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
 import { Effect, Option, Schema } from 'effect'
-import type Client from 'fhirclient/Client'
 import { afterEach, beforeEach, expect, vi } from 'vite-plus/test'
 
 // The seams `App` composes: the handshake hook (its state is driven per
@@ -23,6 +23,11 @@ import { afterEach, beforeEach, expect, vi } from 'vite-plus/test'
 // `smart-app-react`; the tests drive their results to exercise the app's own
 // query wiring, routing, paging, the load-everything driver, and error
 // surfacing.
+
+// The real module, for the parts of it the fake keeps: the gate builds its
+// runtime and provides it for real. `importActual` reads past the mock this
+// file stands in for, so loading it here does not load the fake again.
+const smart = await vi.importActual<typeof Smart>('@wildflowerhealthio/fhir-r4-react/smart')
 
 /** The id of the one patient the fake server has none under: its read answers 404. */
 const MISSING_PATIENT_ID = 'bogus'
@@ -52,14 +57,15 @@ const launchFailureRedirectMock = vi.fn<(handshake: SmartHandshake) => void>()
  * loading the module it stands in for.
  */
 const smartModuleFake = (): Record<string, unknown> => ({
+  ...smart,
   useSmartHandshake: () => handshakeMock(),
-  useLaunchFailureRedirect: (handshake: SmartHandshake) => {
+  useRedirectToRootOnFailure: (handshake: SmartHandshake) => {
     launchFailureRedirectMock(handshake)
   },
-  fetchMedicationRequestPage: (_client: unknown, cursor: MedicationRequestCursor) =>
+  fetchMedicationRequestPage: (cursor: MedicationRequestCursor) =>
     Effect.promise(() => fetchMock(cursor)),
   fetchPatientPage: () => Effect.promise(() => patientPageMock()),
-  fetchPatient: (_client: unknown, patientId: string) =>
+  fetchPatient: (patientId: string) =>
     Effect.succeed(
       patientId === MISSING_PATIENT_ID
         ? Option.none()
@@ -75,13 +81,36 @@ const interactionCatalogModuleFake = (): Record<string, unknown> => ({
 /** The directory the app is served from in these tests. */
 const BASEPATH = '/medications/'
 
-/** A completed handshake whose launch put `patientId` in context. */
-const handshakeLaunchedWith = (patientId: string | null): SmartHandshake => ({
-  kind: 'ready',
-  // The client is only forwarded to the (mocked) reads, and its launch patient read.
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, forwarded to a mock
-  client: { patient: { id: patientId } } as unknown as Client,
-})
+/**
+ * A completed handshake whose launch put `patientId` in context. Every read
+ * is a (mocked) reader, so nothing goes out to its server.
+ */
+const handshakeLaunchedWith = (patientId: string | null): SmartHandshake =>
+  smart.SmartHandshake.Ready({
+    connection: new smart.SmartConnection({
+      fhirBaseUrl: smart.decodeFhirBaseUrl('https://fhir.example'),
+      accessToken: Option.some('token'),
+      launchPatientId: Option.fromNullable(patientId),
+    }),
+  })
+
+/** A handshake still exchanging the code. */
+const connectingHandshake: SmartHandshake = smart.SmartHandshake.Connecting()
+
+/** A handshake that failed with `reason`. */
+const failedHandshake = (reason: string): SmartHandshake =>
+  smart.SmartHandshake.Failed({ error: new smart.CallbackStateMismatch({ reason }) })
+
+/**
+ * The sign-in the app root hands the app's `SmartHandshakeGate`: a sign-in's
+ * return to {@link BASEPATH}.
+ */
+const signInLanding: Smart.SignInLanding = {
+  arrival: smart.RootArrival.SignInReturn({ code: 'abc', state: 'xyz' }),
+  registration: { clientId: 'medications', scope: 'launch' },
+  appRootRedirectUri: `https://medications.example${BASEPATH}`,
+  onSignedIn: () => undefined,
+}
 
 /** A launch with patient `p1` in context, which the app opens on. */
 const readyHandshake = handshakeLaunchedWith('p1')
@@ -188,6 +217,9 @@ const setUpEachAppTest = (): void => {
 }
 
 export {
+  connectingHandshake,
+  failedHandshake,
+  signInLanding,
   arrangePages,
   atorvastatin,
   awaitFirstPage,

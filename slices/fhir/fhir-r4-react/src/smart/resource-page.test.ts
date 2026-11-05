@@ -12,10 +12,9 @@ import {
   TestContext,
 } from 'effect'
 import * as fc from 'fast-check'
-import type Client from 'fhirclient/Client'
-import HttpError from 'fhirclient/HttpError'
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 
+import { HttpClientError } from '@effect/platform'
 import {
   BundleDecodeError,
   ResourcePageCycleError,
@@ -26,7 +25,19 @@ import {
   type ResourcePage,
   type ResourcePageCursor,
 } from './resource-page.ts'
-import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
+
+import { FhirHttpError, FhirRequestDropped } from './smart-client.ts'
+import type { SmartRuntime } from './smart-runtime.ts'
+import {
+  answerEveryRequest,
+  answerInTurn,
+  answerJson,
+  answerStatus,
+  answerText,
+  stubSmartRuntime,
+  STUB_FHIR_BASE,
+  type StubAnswer,
+} from './test-helpers.ts'
 
 type ObservationType = Schema.Schema.Type<typeof Observation.Schema>
 type ObservationEncoded = Schema.Schema.Encoded<typeof Observation.Schema>
@@ -132,9 +143,12 @@ const bundle = (resources: readonly unknown[], link: unknown): unknown => ({
   ...(link === undefined ? {} : { link }),
 })
 
+/** The URL the first page of `observationRead` for `pat-1` is requested at. */
+const FIRST_PAGE_URL = 'https://fhir.example/Observation?patient=pat-1'
+
 /**
  * What `fetch` rejects with when no HTTP response arrived, as each browser words
- * it: Firefox, Chrome, Safari. The reader must recognise all of them by type.
+ * it: Firefox, Chrome, Safari.
  */
 const DROPPED_REQUEST_MESSAGES = [
   'NetworkError when attempting to fetch resource.',
@@ -142,35 +156,38 @@ const DROPPED_REQUEST_MESSAGES = [
   'Load failed',
 ] as const
 
-const droppedRequestArb: fc.Arbitrary<TypeError> = fc
+/** A request that gets no response, `fetch` rejecting with `cause`. */
+const dropWith =
+  (cause: TypeError): StubAnswer =>
+  (request) =>
+    Effect.fail(new HttpClientError.RequestError({ request, reason: 'Transport', cause }))
+
+const droppedRequestArb: fc.Arbitrary<StubAnswer> = fc
   .constantFrom(...DROPPED_REQUEST_MESSAGES)
-  .map((message) => new TypeError(message))
+  .map((message) => dropWith(new TypeError(message)))
 
-/**
- * A rejection fhirclient gives for an HTTP error response: the `HttpError` its
- * `checkResponse` throws for any response that is not `ok`.
- */
-const httpError = (status: number): HttpError =>
-  new HttpError(new Response(null, { status, statusText: `status ${status}` }))
+/** The failure a client gives for a response with error status `status`. */
+const httpError = (status: number): FhirHttpError =>
+  new FhirHttpError({ url: FIRST_PAGE_URL, status, outcomeText: Option.none() })
 
-/**
- * A stub fhirclient `Client` whose `request` rejects with each of `failures` in
- * turn and then resolves to `response`, counting the attempts it was asked for.
- */
-const flakySmartClient = (
-  failures: readonly unknown[],
+/** A stub runtime answering every request with `response`. */
+const runtimeAnswering = (
   response: unknown
-): { readonly client: Client; readonly attempts: () => number } => {
-  let attempts = 0
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
-  const client = {
-    request: (): Promise<unknown> => {
-      const failure = failures[attempts]
-      attempts += 1
-      return failure === undefined ? Promise.resolve(response) : Promise.reject(failure)
-    },
-  } as unknown as Client
-  return { client, attempts: () => attempts }
+): { readonly runtime: SmartRuntime; readonly urls: readonly string[] } =>
+  stubSmartRuntime(answerEveryRequest(answerJson(response)))
+
+/**
+ * A stub runtime whose server answers each of `failures` in turn and then
+ * succeeds with `response`, counting the attempts it was asked for.
+ */
+const flakySmartRuntime = (
+  failures: readonly StubAnswer[],
+  response: unknown
+): { readonly runtime: SmartRuntime; readonly attempts: () => number } => {
+  const { runtime, urls } = stubSmartRuntime(
+    answerEveryRequest(answerInTurn(...failures, answerJson(response)))
+  )
+  return { runtime, attempts: () => urls.length }
 }
 
 /**
@@ -193,7 +210,7 @@ describe('fetchResourcePage', () => {
         fc.array(entryArb, { maxLength: 8 }),
         linkCaseArb,
         async (entries, linkCase) => {
-          const { client } = stubSmartClient(
+          const { runtime } = runtimeAnswering(
             bundle(
               entries.map((entry) => entry.resource),
               linkCase.link
@@ -201,7 +218,9 @@ describe('fetchResourcePage', () => {
           )
 
           const page = await Effect.runPromise(
-            fetchResourcePage(client, observationRead, { first: 'pat-1' })
+            fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+              Effect.provide(runtime.runtimeLayer)
+            )
           )
 
           // Each fixture really is (un)decodable — otherwise the assertions
@@ -232,50 +251,57 @@ describe('fetchResourcePage', () => {
           // A verified mock: the query it returns is reachable only through the
           // `first` the cursor carried.
           const firstPageQuery = vi.fn((value: string): string => `${paramName}=${value}`)
-          const { client, queries } = stubSmartClient(bundle([], undefined))
+          const { runtime, urls } = runtimeAnswering(bundle([], undefined))
 
           await Effect.runPromise(
             fetchResourcePage(
-              client,
               { resourceType, schema: Observation.Schema, firstPageQuery },
               { first }
-            )
+            ).pipe(Effect.provide(runtime.runtimeLayer))
           )
 
           expect(firstPageQuery).toHaveBeenCalledWith(first)
-          expect(queries).toEqual([`${resourceType}?${paramName}=${first}`])
+          // As the URL parser reads it, as `fetch` would: a space is `%20`.
+          expect(urls).toEqual([
+            new URL(`${STUB_FHIR_BASE}/${resourceType}?${paramName}=${first}`).href,
+          ])
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
-  test('property: a later page is requested by its cursor URL verbatim', async () => {
+  test('property: a later page is requested by its cursor URL', async () => {
     await fc.assert(
       fc.asyncProperty(fc.webUrl(), async (pageUrl) => {
         const firstPageQuery = vi.fn((patientId: string): string => patientId)
-        const { client, queries } = stubSmartClient(bundle([], undefined))
+        const { runtime, urls } = runtimeAnswering(bundle([], undefined))
 
         await Effect.runPromise(
-          fetchResourcePage(client, { ...observationRead, firstPageQuery }, { pageUrl })
+          fetchResourcePage({ ...observationRead, firstPageQuery }, { pageUrl }).pipe(
+            Effect.provide(runtime.runtimeLayer)
+          )
         )
 
-        // The server's own `next` link is used as-is — no re-derivation of
-        // scope, sort or page size, so the first-page query is never consulted.
-        expect(queries).toEqual([pageUrl])
+        // The server's own `next` link is used as the URL parser reads it — no
+        // re-derivation of scope, sort or page size, so the first-page query is
+        // never consulted.
+        expect(urls).toEqual([new URL(pageUrl).href])
         expect(firstPageQuery).not.toHaveBeenCalled()
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
-  test.each([null, undefined, 'a string', 42, true])(
+  test.each([null, 'a string', 42, true])(
     'a response that is not a bundle fails with BundleDecodeError: %p',
     async (response) => {
-      const { client } = stubSmartClient(response)
+      const { runtime } = runtimeAnswering(response)
 
       const exit = await Effect.runPromiseExit(
-        fetchResourcePage(client, observationRead, { first: 'pat-1' })
+        fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+          Effect.provide(runtime.runtimeLayer)
+        )
       )
 
       expect(exit._tag).toBe('Failure')
@@ -290,13 +316,12 @@ describe('fetchResourcePage', () => {
   )
 
   test('a request failure surfaces as ResourcePageRequestError', async () => {
-    const requestError = new Error('network down')
-    const { client } = stubSmartClient(null)
-    // Override the stub's request to reject
-    client.request = () => Promise.reject(requestError)
+    const { runtime } = stubSmartRuntime(answerEveryRequest(answerStatus(500)))
 
     const exit = await Effect.runPromiseExit(
-      fetchResourcePage(client, observationRead, { first: 'pat-1' })
+      fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+        Effect.provide(runtime.runtimeLayer)
+      )
     )
 
     expect(exit._tag).toBe('Failure')
@@ -304,7 +329,7 @@ describe('fetchResourcePage', () => {
       const error = exit.cause._tag === 'Fail' ? exit.cause.error : undefined
       expect(error).toBeInstanceOf(ResourcePageRequestError)
       if (error instanceof ResourcePageRequestError) {
-        expect(error.cause).toBe(requestError)
+        expect(error.cause).toEqual(httpError(500))
       }
     }
   })
@@ -314,13 +339,15 @@ describe('fetchResourcePage', () => {
       fc.asyncProperty(
         fc.array(droppedRequestArb, { minLength: 1, maxLength: 3 }),
         async (drops) => {
-          const { client, attempts } = flakySmartClient(
+          const { runtime, attempts } = flakySmartRuntime(
             drops,
             bundle([{ resourceType: 'Observation', id: 'obs-1', status: 'final', code: {} }], [])
           )
 
           const exit = await runOnTestClock(
-            fetchResourcePage(client, observationRead, { first: 'pat-1' })
+            fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+              Effect.provide(runtime.runtimeLayer)
+            )
           )
 
           expect(Exit.isSuccess(exit)).toBe(true)
@@ -335,36 +362,50 @@ describe('fetchResourcePage', () => {
   })
 
   test('a request the network keeps dropping fails after its retries, carrying the last cause', async () => {
-    const drops = [1, 2, 3, 4, 5].map((attempt) => new TypeError(`Failed to fetch (${attempt})`))
-    const { client, attempts } = flakySmartClient(drops, bundle([], undefined))
+    const causes = [1, 2, 3, 4, 5].map((attempt) => new TypeError(`Failed to fetch (${attempt})`))
+    const { runtime, attempts } = flakySmartRuntime(causes.map(dropWith), bundle([], undefined))
 
     const exit = await runOnTestClock(
-      fetchResourcePage(client, observationRead, { first: 'pat-1' })
+      Effect.flip(
+        fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+          Effect.provide(runtime.runtimeLayer)
+        )
+      )
     )
 
     // One initial attempt + three retries.
     expect(attempts()).toBe(4)
-    expect(exit).toEqual(Exit.fail(new ResourcePageRequestError({ cause: drops[3] })))
+    expect(Exit.isSuccess(exit)).toBe(true)
+    if (Exit.isSuccess(exit)) {
+      const dropped = exit.value.cause
+      expect(dropped).toBeInstanceOf(FhirRequestDropped)
+      expect(dropped).toMatchObject({ url: FIRST_PAGE_URL, cause: { cause: causes[3] } })
+    }
   })
 
   test.each([
-    { name: 'HTTP 401', cause: httpError(401) },
-    { name: 'HTTP 403', cause: httpError(403) },
-    { name: 'HTTP 404', cause: httpError(404) },
-    { name: 'HTTP 500', cause: httpError(500) },
-    {
-      name: 'an aborted request',
-      cause: new DOMException('The operation was aborted.', 'AbortError'),
-    },
-  ])('$name fails at once, without a retry', async ({ cause }) => {
-    const { client, attempts } = flakySmartClient([cause, cause], bundle([], undefined))
+    { name: 'HTTP 401', answer: answerStatus(401), tag: 'FhirHttpError' },
+    { name: 'HTTP 403', answer: answerStatus(403), tag: 'FhirHttpError' },
+    { name: 'HTTP 404', answer: answerStatus(404), tag: 'FhirHttpError' },
+    { name: 'HTTP 500', answer: answerStatus(500), tag: 'FhirHttpError' },
+    { name: 'a body that is not JSON', answer: answerText('<html>'), tag: 'FhirResponseNotJson' },
+  ])('$name fails at once, without a retry', async ({ answer, tag }) => {
+    const { runtime, attempts } = flakySmartRuntime([answer, answer], bundle([], undefined))
 
     const exit = await runOnTestClock(
-      fetchResourcePage(client, observationRead, { first: 'pat-1' })
+      Effect.flip(
+        fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+          Effect.provide(runtime.runtimeLayer)
+        )
+      )
     )
 
     expect(attempts()).toBe(1)
-    expect(exit).toEqual(Exit.fail(new ResourcePageRequestError({ cause })))
+    expect(Exit.isSuccess(exit)).toBe(true)
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value).toBeInstanceOf(ResourcePageRequestError)
+      expect(exit.value.cause).toMatchObject({ _tag: tag, url: FIRST_PAGE_URL })
+    }
   })
 
   describe('a whole-schema Observation', () => {
@@ -390,10 +431,12 @@ describe('fetchResourcePage', () => {
       await Promise.all(
         samples.map(async (observation) => {
           const wire = encodeObservation(observation)
-          const { client } = stubSmartClient(bundle([wire], undefined))
+          const { runtime } = runtimeAnswering(bundle([wire], undefined))
 
           const page = await Effect.runPromise(
-            fetchResourcePage(client, observationRead, { first: 'pat-1' })
+            fetchResourcePage(observationRead, { first: 'pat-1' }).pipe(
+              Effect.provide(runtime.runtimeLayer)
+            )
           )
 
           expect(page.items).toHaveLength(1)
@@ -472,7 +515,7 @@ describe('fetchAllResourcePages', () => {
             droppedEntryCount: 0,
             nextPageUrl: 'https://fhir.example/next?page=1',
           })
-        : Effect.fail(new ResourcePageRequestError({ cause: 'down' }))
+        : Effect.fail(new ResourcePageRequestError({ cause: httpError(503) }))
 
     // Act
     const failure = await Effect.runPromise(

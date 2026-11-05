@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import { LoadingLine, ReadFailureLine } from '@wildflowerhealthio/smart-app-react'
-import { Effect, Match } from 'effect'
+import { Match } from 'effect'
 import { type JSX, useMemo } from 'react'
 
 import { TrainingRecordNotices } from '../../../record/training-record-notices.tsx'
@@ -28,18 +28,15 @@ type LifterRecordRead =
  * with the {@link StrengthSession} their writes go through.
  */
 const useLifterRecord = (): LifterRecordRead => {
-  const { client, runAuthed } = useStrengthContext()
+  const { runAuthed } = useStrengthContext()
   const patientId = useParams({
     from: '/patients/$patientId',
     select: (params) => params.patientId,
   })
-  const session = useMemo(
-    (): StrengthSession => ({ client, patientId, runAuthed }),
-    [client, patientId, runAuthed]
-  )
+  const session = useMemo((): StrengthSession => ({ patientId, runAuthed }), [patientId, runAuthed])
   const trainingRecord = useQuery({
     queryKey: [...strengthKeyOf(patientId), 'training'],
-    queryFn: () => Effect.runPromise(readTrainingRecord(client, patientId)),
+    queryFn: () => runAuthed(readTrainingRecord(patientId)),
   })
 
   if (trainingRecord.isError) return { kind: 'failed', error: trainingRecord.error }

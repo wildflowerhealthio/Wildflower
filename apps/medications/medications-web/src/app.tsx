@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { buildSmartRouterContext, type SmartRuntime } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   LoadingLine,
   type SmartAppPage,
@@ -21,8 +21,8 @@ interface AppProps {
 
 /** Props for {@link MedicationsRouter}. */
 type MedicationsRouterProps = AppProps & {
-  /** The client the completed SMART handshake handed the app. */
-  readonly client: SmartClient
+  /** The runtime the completed SMART handshake built. */
+  readonly runtime: SmartRuntime
 }
 
 /**
@@ -33,16 +33,19 @@ type MedicationsRouterProps = AppProps & {
  * Mounted under `smart-app-react`'s `SmartHandshakeGate`, so never before the
  * handshake is done with the callback URL.
  *
- * Its context is fixed for the visit: the page's query cache, the one client
- * the handshake hands out (its code is single-use, so there is never a second),
+ * Its context is fixed for the visit: the page's query cache, the one runtime
+ * the handshake builds (its code is single-use, so there is never a second),
  * and a fresh {@link makePageStore}. Whose medications the page reads is the
  * path, so a patient change is a navigation and the router lives as long as
  * the page.
  */
-function MedicationsRouter({ page, client }: MedicationsRouterProps): JSX.Element {
+function MedicationsRouter({ page, runtime }: MedicationsRouterProps): JSX.Element {
   const queryClient = useQueryClient()
   const [router] = useState(() =>
-    buildRouter(page, { queryClient, client, pageStore: makePageStore() })
+    buildRouter(page, {
+      ...buildSmartRouterContext(runtime, queryClient),
+      pageStore: makePageStore(),
+    })
   )
   return <RouterProvider router={router} />
 }
@@ -71,7 +74,7 @@ const App = ({ page }: AppProps): JSX.Element => (
         </>
       }
     >
-      {(client) => <MedicationsRouter page={page} client={client} />}
+      {(runtime) => <MedicationsRouter page={page} runtime={runtime} />}
     </SmartHandshakeGate>
   </main>
 )

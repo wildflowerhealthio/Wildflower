@@ -1,7 +1,6 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Effect, Schema } from 'effect'
-import type Client from 'fhirclient/Client'
 
 import {
   RESOURCE_PAGE_SIZE,
@@ -11,6 +10,7 @@ import {
   type PagedResourceRead,
   type ResourcePage,
 } from './resource-page.ts'
+import type { SmartClient } from './smart-client.ts'
 
 /**
  * The schema every `MedicationRequest` entry decodes through: the R4 resource
@@ -63,7 +63,6 @@ const medicationRequestRead: PagedResourceRead<
  * report the cursor to the next page, so a caller can page on demand (e.g.
  * scroll-driven loading) instead of reading every page up front.
  *
- * @param client - The SMART client the search is issued through
  * @param cursor - Patient scope for the first page, or a previous page's `nextPageUrl`
  * @returns An effect yielding the page's decoded `MedicationRequest`s and the next page's cursor
  *
@@ -75,11 +74,13 @@ const medicationRequestRead: PagedResourceRead<
  * which is what lets a caller append them without reordering earlier rows.
  */
 const fetchMedicationRequestPage = (
-  client: Client,
   cursor: MedicationRequestCursor
-): Effect.Effect<MedicationRequestPage, ResourcePageRequestError | BundleDecodeError> =>
+): Effect.Effect<
+  MedicationRequestPage,
+  ResourcePageRequestError | BundleDecodeError,
+  SmartClient
+> =>
   fetchResourcePage(
-    client,
     medicationRequestRead,
     'pageUrl' in cursor ? { pageUrl: cursor.pageUrl } : { first: cursor.patientId }
   )

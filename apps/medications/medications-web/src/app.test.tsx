@@ -6,7 +6,9 @@ import {
   atorvastatin,
   awaitFirstPage,
   BASEPATH,
+  connectingHandshake,
   currentRoute,
+  failedHandshake,
   fetchMock,
   handshakeLaunchedWith,
   handshakeMock,
@@ -201,7 +203,7 @@ describe('App', () => {
 
   it('should not read MedicationRequests until the handshake resolves', () => {
     // Arrange
-    handshakeMock.mockReturnValue({ kind: 'connecting' })
+    handshakeMock.mockReturnValue(connectingHandshake)
 
     // Act
     renderApp()
@@ -213,7 +215,7 @@ describe('App', () => {
 
   it('should leave the callback URL alone until the handshake completes, then open the launch’s patient', async () => {
     // Arrange: the OAuth callback, its code and state still to be exchanged.
-    handshakeMock.mockReturnValue({ kind: 'connecting' })
+    handshakeMock.mockReturnValue(connectingHandshake)
     fetchMock.mockResolvedValue(lastPage)
     const callback = `${BASEPATH}?code=abc&state=xyz`
     const { rerenderApp } = renderApp({ route: '?code=abc&state=xyz' })
@@ -221,8 +223,8 @@ describe('App', () => {
     // Assert: nothing routes while the exchange reads the URL.
     expect(`${window.location.pathname}${window.location.search}`).toBe(callback)
 
-    // Act: the exchange completes, fhirclient having taken code and state out
-    // of the address bar, as it does.
+    // Act: the exchange completes, having taken code and state out of the
+    // address bar, as it does.
     window.history.replaceState(window.history.state, '', BASEPATH)
     handshakeMock.mockReturnValue(readyHandshake)
     rerenderApp()
@@ -237,7 +239,7 @@ describe('App', () => {
 
   it('should surface a failed token exchange without attempting the read', () => {
     // Arrange
-    handshakeMock.mockReturnValue({ kind: 'error', error: new Error('token exchange failed') })
+    handshakeMock.mockReturnValue(failedHandshake('token exchange failed'))
 
     // Act
     renderApp()
@@ -249,7 +251,7 @@ describe('App', () => {
     // ...and it is carried to the app root, which can offer the connect menu;
     // there is nothing to retry here, because the auth code is single-use.
     const [carried] = launchFailureRedirectMock.mock.calls[0] ?? []
-    expect(carried?.kind).toBe('error')
+    expect(carried?._tag).toBe('Failed')
   })
 
   it('should surface a failed MedicationRequest read', async () => {

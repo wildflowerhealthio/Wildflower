@@ -15,7 +15,7 @@ Sentry DSN, and read-status lines.
 entry), `config.ts`,
 `app-root.tsx` (the package export), `app.tsx`, the router (`router.ts`, and
 `router-context.ts` with `useStrengthContext`, the one hook the routes read
-it through), and the app-wide `clock.ts` and `smart-client.ts`. Everything else is a folder per
+it through), and the app-wide `clock.ts`. Everything else is a folder per
 screen or concern:
 
 - `routes/` — the TanStack file routes (the tree is generated into the
@@ -83,12 +83,13 @@ they cover.
   (`null` for All patients).
 - **Route only after the handshake, once.** The app root is the OAuth
   redirect target, so `App` builds the router (`StrengthRouter`) under
-  `smart-app-react`'s `SmartHandshakeGate`, by when fhirclient has taken
+  `smart-app-react`'s `SmartHandshakeGate`, by when the handshake has taken
   `code` and `state` out of the URL: nothing the router does may rewrite a
   URL the token exchange still reads. It runs over the `SmartAppPage`
-  `main.tsx` opens (`openSmartAppPage`: the window's history, the served
-  directory as basepath), and is built once for the visit, its context
-  fixed (query cache, client, `runAuthed`, the StrongLifts template ids);
+  `main.tsx` opens (`openSmartAppPage`: the window's history and the
+  basepath), and is built once for the visit, its context fixed (the SMART
+  router context over the gate's runtime — query cache, connection,
+  `runAuthed` — and the StrongLifts template ids);
   `/` redirects to the route the launch started on, else
   `launchStartRoute`'s; see
   "Routing a SMART app" in
@@ -120,12 +121,12 @@ they cover.
 ## Testing
 
 - The screens are driven end to end through the app's router
-  (`StrengthRouter`) over an in-memory FHIR server: the real
-  `fhir-r4-react/smart` readers over a stub client that
-  answers searches from the store, and the real `buildSmartRouterContext` and
-  `persistBatchBundleOrFail` over a stub transport that applies batches to it
-  (`fake-fhir-server.test-helpers.ts`, which also answers reads of one
-  resource, such as the lifter's `Patient`). Seeded records are built through
+  (`StrengthRouter`) over an in-memory FHIR server: one stub transport that
+  answers searches and reads of one resource (such as the lifter's `Patient`)
+  from its store and applies batches to it, under the real `smartRuntimeFor`
+  the `fhir-r4-react/smart` readers read through and the real
+  `persistBatchBundleOrFail` writes through
+  (`fake-fhir-server.test-helpers.ts`). Seeded records are built through
   `strength-core-js`'s `make`s and `PlannedWorkout.submit`, and what lands is
   decoded back through core's schemas (`strength-app.test-helpers.ts`, whose
   `mountStrengthApp` opens the page at a route). Each tab's test sits in its
@@ -145,7 +146,7 @@ they cover.
   order, long exercise ids stay apart, and a minter names one resource with
   one id on every call.
 - `app-root-routing.test.tsx` — the real root, app and router over the
-  address bar, with fhirclient stubbed: a launch URL still launches, at the
+  address bar, with `authorization-core`'s sign-in stubbed: a launch URL still launches, at the
   root or a nested route, redirecting to the app root; the callback URL is
   left alone until the exchange completes, then the page opens the launch's
   patient's Today; and a launch from a lifter's Plan reopens it.

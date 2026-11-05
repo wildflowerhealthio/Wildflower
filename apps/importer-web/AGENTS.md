@@ -81,7 +81,10 @@ runtime:
 (`fhir-r4-react`'s `useRunAuthed`), which is how every consumer of that package's
 queries gets one. So this app's router supplies the same
 `RouterContextWith<FhirR4ResourcesHttpApiClient>` shape, rather than the slice
-package growing a second, prop-threaded way in. The router also carries the
+package growing a second, prop-threaded way in. Its source-file list alone
+reads the page's SMART runtime (`useRunSmart`), whose next-link read needs
+`SmartClient`, so `ImporterApp` also sits under the `SmartRuntimeContext`
+that `SmartHandshakeGate` provides. The router also carries the
 tabs, so the address bar names the open one. A link from outside the page
 still opens on Import: a visit with no callback in its URL goes through the
 launch, whose redirect URI is the app directory.
@@ -99,8 +102,8 @@ The app is reachable two ways, both wired here:
   `SmartAppRoot` from `smart-app-react`) renders `SiteHeader` +
   `AppLanding` beside `ConnectMenu` (also `smart-app-react`) + `SiteFooter` in
   shared Wildflower chrome, where the user picks the FHIR server to import into.
-  `arrivingSmartLaunchFrom` and `shouldCompleteSmartLaunch()` tell the
-  launch, the callback and the bare visit apart; the callback's branch renders
+  The root's `RootArrival` (`rootArrivalFrom`) tells the launch, the
+  sign-in's return and the bare visit apart; a return's branch renders
   `BrandBar` + `App` instead.
 
 Both run through the one registered client (the `importer` tile's, or the
@@ -268,12 +271,12 @@ package's `"."` export as a `source`-only seam) is
 around `<App page={…} />`; `SmartAppRoot` holds every branch behind the telemetry
 consent dialog and owns the `QueryClientProvider` and the chrome gate:
 
-- **launch** (`arrivingSmartLaunchFrom`) → the launch page (`BrandBar` over
-  `Launching Importer…`), once the visitor has answered, while it starts the
-  authorize redirect.
-- **launched** (`shouldCompleteSmartLaunch()` or the prop) → `<BrandBar />`
-  (with the telemetry status control at its end) + `<App />`.
-- **not launched** → `<SiteHeader nav={fromApp} />` + `<main>` wrapping the
+- **`LaunchRequest`** → the launch page (`BrandBar` over `Launching
+  Importer…`), once the visitor has answered, while it starts the sign-in
+  redirect.
+- **`SignInReturn` or `SelfAddressedSignInReturn`** → `<BrandBar />` (with
+  the telemetry status control at its end) + `<App />`.
+- **`SignInRefused` or `Visit`** → `<SiteHeader nav={fromApp} />` + `<main>` wrapping the
   Importer's `<AppLanding>` introduction beside `<ConnectMenu …/>` + the
   telemetry status control + `<SiteFooter />`. A launch that failed and landed
   back here is handed to the `ConnectMenu` as its `arrivalProblem`.
@@ -316,7 +319,7 @@ workspace `source` condition at bundle time.
   query's results survive a switch and back, and the Anonymize tab reaches a
   download from a picked HAR with **zero writes** on the wire.
 - `app-root-routing.test.tsx` — the real root, app and router over the address
-  bar, with fhirclient's token exchange stubbed: the callback URL is left alone
+  bar, with `authorization-core`'s token exchange stubbed: the callback URL is left alone
   until the exchange completes, then the page opens on `/import`.
 
 ## References

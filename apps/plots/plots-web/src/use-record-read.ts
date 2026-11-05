@@ -3,6 +3,8 @@ import {
   fetchMedicationRequestPage,
   fetchObservationPage,
   type ResourcePage,
+  type SmartClient,
+  useRunSmart,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   type RecordReading,
@@ -14,10 +16,8 @@ import {
   pagedQueryStatusOf,
   useFetchEveryPage,
 } from '@wildflowerhealthio/react-kitchen-sink'
-import { Effect } from 'effect'
+import type { Effect } from 'effect'
 import { useMemo } from 'react'
-
-import type { SmartClient } from './smart-client.ts'
 
 /**
  * Where a record read's page comes from: the patient scope, for the first
@@ -39,17 +39,16 @@ interface RecordSourceRead<TResource> {
   readonly subject: string
   /** Fetch one page: the scope's first, or the one a `next` link points to. */
   readonly fetchPage: (
-    client: SmartClient,
     cursor: RecordPageCursor
-  ) => Effect.Effect<ResourcePage<TResource>, unknown>
+  ) => Effect.Effect<ResourcePage<TResource>, unknown, SmartClient>
 }
 
 /** The `Observation` read, oldest-observed first. */
 const observationRead: RecordSourceRead<RecordResources['observations'][number]> = {
   queryName: 'observations',
   subject: 'observations',
-  fetchPage: (client, cursor) =>
-    fetchObservationPage(client, 'pageUrl' in cursor ? cursor : { first: cursor.patientId }),
+  fetchPage: (cursor) =>
+    fetchObservationPage('pageUrl' in cursor ? cursor : { first: cursor.patientId }),
 }
 
 /** The `MedicationRequest` read; an entry without an `id` is dropped and counted. */
@@ -108,14 +107,14 @@ type RecordRead =
  */
 const useRecordSourceRead = <TResource>(
   read: RecordSourceRead<TResource>,
-  client: SmartClient,
   patientId: string | null
 ): RecordSourceReading<TResource> => {
+  const runSmart = useRunSmart()
   const firstPageCursor: RecordPageCursor = { patientId }
   const pagedQuery = useInfiniteQuery({
     queryKey: [read.queryName, patientId],
     queryFn: ({ pageParam }: { readonly pageParam: RecordPageCursor }) =>
-      Effect.runPromise(read.fetchPage(client, pageParam)),
+      runSmart(read.fetchPage(pageParam)),
     initialPageParam: firstPageCursor,
     getNextPageParam: (lastPage): RecordPageCursor | undefined =>
       lastPage.nextPageUrl === null ? undefined : { pageUrl: lastPage.nextPageUrl },
@@ -184,7 +183,6 @@ const recordReadProgressOf = (
  * Read a patient's whole record: every source's paged read, drained
  * concurrently, and what has landed read into series with `readRecord`.
  *
- * @param client - The SMART client every read is issued through.
  * @param patientId - The patient whose record is read, or `null` to read
  *   every patient's unscoped, as one record.
  * @returns The one {@link RecordRead} the page renders from.
@@ -200,10 +198,10 @@ const recordReadProgressOf = (
  * The progress is folded before `readRecord` is memoised, so nothing reads
  * the landed resources after the memo captures them.
  */
-const useRecordRead = (client: SmartClient, patientId: string | null): RecordRead => {
+const useRecordRead = (patientId: string | null): RecordRead => {
   const sourceReadings = {
-    observations: useRecordSourceRead(observationRead, client, patientId),
-    medicationRequests: useRecordSourceRead(medicationRequestRead, client, patientId),
+    observations: useRecordSourceRead(observationRead, patientId),
+    medicationRequests: useRecordSourceRead(medicationRequestRead, patientId),
   } satisfies {
     readonly [Source in keyof RecordResources]: RecordSourceReading<RecordResources[Source][number]>
   }

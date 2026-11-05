@@ -14,10 +14,10 @@ SMART-built context). What differs is below.
 
 ## Layout
 
-- `app.tsx` — `App` is the only component that holds the fhirclient `Client`.
-  It completes the handshake and turns it into two things: a router context
-  (`buildSmartRouterContext`), and the `PebbleSettings.Connection` the grant
-  carried (token, server).
+- `app.tsx` — `App` is the only component that holds the SMART runtime.
+  It completes the handshake and turns the runtime it hands over into two
+  things: a router context (`buildSmartRouterContext`), and the
+  `PebbleSettings.Connection` the grant carried (token, server).
   `SettingsApp` mounts the router over that context, so the patient search
   takes its authed runner from route context (`fhir-r4-react`'s
   `useRunAuthed`), like every other first-party SMART app's reads.
@@ -169,6 +169,6 @@ jsdom.
 - [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md) — the shell this
   app boots through
 - [slices/fhir/AGENTS.md](../../../slices/fhir/AGENTS.md) — the SMART primitives
-  (`useSmartHandshake`, `buildSmartRouterContext`)
+  (`useSmartHandshake`, which `SmartHandshakeGate` runs, and `buildSmartRouterContext`)
 - [apps/wildflower-site AGENTS.md](../../wildflower-site/AGENTS.md) — how the sites are
   published

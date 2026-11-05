@@ -50,7 +50,7 @@ afterEach(() => {
 describe('AppRoot', () => {
   it('should mount the shell as Plots when not launched', () => {
     // Arrange / Act
-    render(<AppRoot launched={false} />)
+    render(<AppRoot search="" />)
 
     // Assert — the landing introduces this app, not another
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(APP_DESCRIPTIONS.plots.name)
@@ -59,7 +59,7 @@ describe('AppRoot', () => {
 
   it('should start telemetry with this app’s own DSN and name', () => {
     // Arrange / Act
-    render(<AppRoot launched={false} />)
+    render(<AppRoot search="" />)
 
     // Assert
     expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(1)

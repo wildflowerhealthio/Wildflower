@@ -1,7 +1,6 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Procedure } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Effect, Schema } from 'effect'
-import type Client from 'fhirclient/Client'
 
 import {
   RESOURCE_PAGE_SIZE,
@@ -12,6 +11,7 @@ import {
   type ResourcePage,
   type ResourcePageCursor,
 } from './resource-page.ts'
+import type { SmartClient } from './smart-client.ts'
 
 /**
  * The schema every `Procedure` entry decodes through: the R4 resource with its
@@ -86,7 +86,6 @@ const procedureRead: PagedResourceRead<
  * Fetch a single page of the `Procedure`s of one category that carry out one
  * definition, and report the cursor to the next page.
  *
- * @param client - The SMART client the search is issued through
  * @param cursor - Patient scope, category and definition for the first page,
  *   or a previous page's `nextPageUrl`
  * @returns An effect yielding the page's decoded `Procedure`s and the next page's cursor
@@ -94,7 +93,7 @@ const procedureRead: PagedResourceRead<
  * @remarks
  * Every `status` is read — which statuses a caller can use is its own
  * decision, made when it decodes the page. The patient id is a parameter
- * rather than something this reader lifts off `client.patient.id`, so the
+ * rather than something this reader lifts off `SmartConnection.launchPatientId`, so the
  * caller decides what "no patient in context" means for its launch; `null`
  * drops the `patient=` filter entirely. A `null` definition drops
  * `instantiates-canonical=`, reading the procedures across every definition.
@@ -102,10 +101,9 @@ const procedureRead: PagedResourceRead<
  * and counted like any other that fails to decode.
  */
 const fetchProcedurePage = (
-  client: Client,
   cursor: ProcedurePageCursor
-): Effect.Effect<ProcedurePage, ResourcePageRequestError | BundleDecodeError> =>
-  fetchResourcePage(client, procedureRead, cursor)
+): Effect.Effect<ProcedurePage, ResourcePageRequestError | BundleDecodeError, SmartClient> =>
+  fetchResourcePage(procedureRead, cursor)
 
 export {
   fetchProcedurePage,

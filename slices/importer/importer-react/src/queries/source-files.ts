@@ -6,18 +6,16 @@ import {
   type UseInfiniteQueryResult,
 } from '@tanstack/react-query'
 import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
-import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import {
   fetchDocumentReferencePage,
-  useSmartHandshake,
+  type RunSmart,
+  useRunSmart,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
-import { FhirR4ResourcesHttpApiClient, nextPageToken } from '@wildflowerhealthio/fhir-r4/clients'
+import { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import type { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import type { DateTime } from 'effect'
 import { Array as Arr, Effect, Option, Schema } from 'effect'
-
-type SmartClient = Parameters<typeof fetchDocumentReferencePage>[0]
 
 import { formatKinds, type FormatKind } from '@wildflowerhealthio/importer-core'
 
@@ -49,16 +47,6 @@ import { SOURCE_FILES_QUERY_KEY } from './keys.ts'
  *
  * @packageDocumentation
  */
-
-/**
- * How many source-file `DocumentReference`s one page requests.
- *
- * @remarks
- * A page is one round trip. Large enough that a device holding a handful of
- * uploaded source files lists them in one page, small enough that a long
- * history paints its first rows without waiting on the rest.
- */
-const DEFAULT_PAGE_SIZE = 50
 
 /**
  * The comma-joined `system|code` search value covering every registered
@@ -127,28 +115,15 @@ interface SourceFileRow {
 interface SourceFilePage {
   /** The source files on this page, in the order the server sent them. */
   readonly sourceFiles: readonly SourceFileRow[]
-  /** The cursor for the following page, or `undefined` at the end of the searchset. */
-  readonly nextPageToken: string | undefined
+  /** The search bundle's `next`-link URL, or `null` at the end of the searchset. */
+  readonly nextPageUrl: string | null
 }
 
-/** The cursor type paging carries; `null` is the first page, not a page named null. */
+/**
+ * The cursor paging carries: `null` for the first page, then the previous
+ * page's `next`-link URL.
+ */
 type SourceFilePageParam = string | null
-
-/** Query key for the paged read, distinguished by page size. */
-type SourceFilesQueryKey = readonly [
-  ...typeof SOURCE_FILES_QUERY_KEY,
-  { readonly pageSize: number },
-]
-
-/** Options for {@link sourceFilesInfiniteQueryOptions} and {@link useSourceFilesQuery}. */
-interface SourceFilesQueryOptions {
-  /**
-   * How many resources to request per page.
-   *
-   * @defaultValue 50
-   */
-  readonly pageSize?: number
-}
 
 /**
  * The first registered format whose `isSourceFile` claims the resource, or
@@ -167,10 +142,10 @@ const classifySourceFile = (resource: DocumentReference.Type): FormatKind | unde
   )
 
 /**
- * Projects a searchset bundle's entries into source-file rows.
+ * Projects decoded `DocumentReference` resources into source-file rows.
  *
- * @param entries - The bundle's entries, whose `resource` may be absent
- * @returns One {@link SourceFileRow} per entry that is a source file of a
+ * @param resources - A search page's resources
+ * @returns One {@link SourceFileRow} per resource that is a source file of a
  *   registered format and has an id
  *
  * @remarks
@@ -182,12 +157,9 @@ const classifySourceFile = (resource: DocumentReference.Type): FormatKind | unde
  * the resource's own `meta`; neither decodes the bytes, so listing a page never
  * pulls a single source file's contents onto the device.
  */
-const rowsOf = (
-  entries: readonly { readonly resource: DocumentReference.Type | null }[]
-): readonly SourceFileRow[] =>
-  Arr.filterMap(entries, (entry): Option.Option<SourceFileRow> => {
-    const resource = entry.resource
-    if (resource === null || resource.id === null) return Option.none()
+const rowsOf = (resources: readonly DocumentReference.Type[]): readonly SourceFileRow[] =>
+  Arr.filterMap(resources, (resource): Option.Option<SourceFileRow> => {
+    if (resource.id === null) return Option.none()
     const format = classifySourceFile(resource)
     if (format === undefined) return Option.none()
     const attachment = resource.content[0]?.attachment
@@ -201,163 +173,67 @@ const rowsOf = (
   })
 
 /**
- * Projects decoded `DocumentReference` resources (as returned by
- * {@link fetchDocumentReferencePage}) into source-file rows.
- */
-const rowsFromResources = (
-  resources: readonly DocumentReference.Type[]
-): readonly SourceFileRow[] => rowsOf(resources.map((resource) => ({ resource })))
-
-/**
  * Query options for the paged source-file read, for a caller that drives the
- * query itself (a route loader, a test through `QueryClient`).
+ * query itself (a test through `QueryClient`).
  *
- * @param runAuthed - The authed runner from router context
- * @param options - Page size
+ * @param runSmart - The SMART runtime's runner the pages are read with
  * @returns Infinite-query options whose pages are {@link SourceFilePage}s
  *
  * @remarks
- * A bundle with no `next` link has no cursor, so `getNextPageParam` returns
- * `null` — which TanStack Query reads as "no further pages".
+ * Each page is one `fetchDocumentReferencePage` over the SMART client: the
+ * first searches every registered format's category, and each later one
+ * follows the previous bundle's `next` link verbatim. A bundle with no `next`
+ * link has no cursor, so `getNextPageParam` returns `null` — which TanStack
+ * Query reads as "no further pages".
  */
 const sourceFilesInfiniteQueryOptions = (
-  runAuthed: RunAuthed,
-  options?: SourceFilesQueryOptions
+  runSmart: RunSmart
 ): UseInfiniteQueryOptions<
   SourceFilePage,
   Error,
   InfiniteData<SourceFilePage, SourceFilePageParam>,
-  SourceFilesQueryKey,
+  typeof SOURCE_FILES_QUERY_KEY,
   SourceFilePageParam
-> => {
-  const pageSize = options?.pageSize ?? DEFAULT_PAGE_SIZE
-  return infiniteQueryOptions({
-    queryKey: [...SOURCE_FILES_QUERY_KEY, { pageSize }] as const,
+> =>
+  infiniteQueryOptions({
+    queryKey: SOURCE_FILES_QUERY_KEY,
     initialPageParam: null satisfies SourceFilePageParam,
-    getNextPageParam: (lastPage: SourceFilePage): SourceFilePageParam =>
-      lastPage.nextPageToken ?? null,
+    getNextPageParam: (lastPage: SourceFilePage): SourceFilePageParam => lastPage.nextPageUrl,
     queryFn: ({
       pageParam,
     }: {
       readonly pageParam: SourceFilePageParam
     }): Promise<SourceFilePage> =>
-      runAuthed(
-        Effect.gen(function* () {
-          const client = yield* FhirR4ResourcesHttpApiClient
-          const bundle = yield* client.DocumentReference.SearchByGet({
-            urlParams: {
-              category: SOURCE_FILES_CATEGORY_TOKEN,
-              _count: pageSize,
-              ...(pageParam === null ? {} : { _pageToken: pageParam }),
-            },
-          })
-          return {
-            sourceFiles: rowsOf(bundle.entry),
-            nextPageToken: nextPageToken(bundle.link),
-          }
-        })
+      runSmart(
+        fetchDocumentReferencePage(
+          pageParam === null
+            ? { first: { patientId: null, category: SOURCE_FILES_CATEGORY_TOKEN } }
+            : { pageUrl: pageParam }
+        ).pipe(
+          Effect.map((page) => ({ sourceFiles: rowsOf(page.items), nextPageUrl: page.nextPageUrl }))
+        )
       ),
   })
-}
 
 /**
  * Lists the device's uploaded source files across every registered format,
- * one page at a time. The authed runner comes from router context via
- * `fhir-r4-react`'s `useRunAuthed`.
+ * one page at a time, over the SMART runtime the page's handshake built
+ * (`useRunSmart`).
  *
- * @param options - Page size
  * @returns The infinite query; `data.pages` are {@link SourceFilePage}s in
  *   the order they were fetched
  */
-const useSourceFilesQuery = (
-  options?: SourceFilesQueryOptions
-): UseInfiniteQueryResult<InfiniteData<SourceFilePage, SourceFilePageParam>, Error> =>
-  useInfiniteQuery(sourceFilesInfiniteQueryOptions(useRunAuthed(), options))
-
-/**
- * Query options for the source-file listing that pages through
- * {@link fetchDocumentReferencePage} via the SMART fhirclient `Client`, rather
- * than the typed Effect client.
- *
- * @param smartClient - The fhirclient `Client` from a completed SMART handshake
- * @param options - Page size (default {@link DEFAULT_PAGE_SIZE})
- * @returns Infinite-query options whose pages are {@link SourceFilePage}s
- *
- * @remarks
- * The paging cursor is the full `next`-link URL from the bundle (not the
- * extracted `_pageToken` the typed-client variant uses), passed verbatim on the
- * next request — the same mechanism every SMART reader in `fhir-r4-react/smart`
- * uses.
- */
-const smartSourceFilesInfiniteQueryOptions = (
-  smartClient: SmartClient,
-  options?: SourceFilesQueryOptions
-): UseInfiniteQueryOptions<
-  SourceFilePage,
-  Error,
+const useSourceFilesQuery = (): UseInfiniteQueryResult<
   InfiniteData<SourceFilePage, SourceFilePageParam>,
-  SourceFilesQueryKey,
-  SourceFilePageParam
-> => {
-  const pageSize = options?.pageSize ?? DEFAULT_PAGE_SIZE
-  return infiniteQueryOptions({
-    queryKey: [...SOURCE_FILES_QUERY_KEY, { pageSize }] as const,
-    initialPageParam: null satisfies SourceFilePageParam,
-    getNextPageParam: (lastPage: SourceFilePage): SourceFilePageParam =>
-      lastPage.nextPageToken ?? null,
-    queryFn: ({
-      pageParam,
-    }: {
-      readonly pageParam: SourceFilePageParam
-    }): Promise<SourceFilePage> =>
-      Effect.runPromise(
-        fetchDocumentReferencePage(
-          smartClient,
-          pageParam === null
-            ? {
-                first: {
-                  patientId: null,
-                  category: SOURCE_FILES_CATEGORY_TOKEN,
-                },
-              }
-            : { pageUrl: pageParam }
-        )
-      ).then((page) => ({
-        sourceFiles: rowsFromResources(page.items),
-        nextPageToken: page.nextPageUrl ?? undefined,
-      })),
-  })
-}
-
-/**
- * Lists the device's uploaded source files using the SMART fhirclient
- * transport. The SMART client comes from `useSmartHandshake`; if the
- * handshake has not completed yet the query is disabled.
- *
- * @param options - Page size
- * @returns The infinite query; `data.pages` are {@link SourceFilePage}s in
- *   the order they were fetched
- */
-const useSmartSourceFilesQuery = (
-  options?: SourceFilesQueryOptions
-): UseInfiniteQueryResult<InfiniteData<SourceFilePage, SourceFilePageParam>, Error> => {
-  const handshake = useSmartHandshake()
-  const client = handshake.kind === 'ready' ? handshake.client : undefined
-  // When the SMART client is not yet available, fall back to the typed-client
-  // variant so the query still works (e.g. when the handshake is in progress
-  // and the component mounts during the connection phase).
-  const runAuthed = useRunAuthed()
-  return useInfiniteQuery(
-    client !== undefined
-      ? smartSourceFilesInfiniteQueryOptions(client, options)
-      : sourceFilesInfiniteQueryOptions(runAuthed, options)
-  )
-}
+  Error
+> => useInfiniteQuery(sourceFilesInfiniteQueryOptions(useRunSmart()))
 
 /**
  * Fetches one source file whole and reads it back as named bytes.
  *
- * @param runAuthed - The authed runner from router context
+ * @param runAuthed - A runner that provides the typed FHIR client: the
+ *   source-file list passes the page's SMART runtime (`useRunSmart`), the one
+ *   its listing is read over
  * @param row - The row a selection or preview identified — its id and its
  *   classified format
  * @returns The stored file's own name and raw bytes
@@ -390,16 +266,11 @@ const fetchSourceFile = (
   )
 
 export {
-  DEFAULT_PAGE_SIZE,
   fetchSourceFile,
   SOURCE_FILES_CATEGORY_TOKEN,
   type SourceFilePage,
   type SourceFilePageParam,
   type SourceFileRow,
-  smartSourceFilesInfiniteQueryOptions,
   sourceFilesInfiniteQueryOptions,
-  type SourceFilesQueryKey,
-  type SourceFilesQueryOptions,
-  useSmartSourceFilesQuery,
   useSourceFilesQuery,
 }

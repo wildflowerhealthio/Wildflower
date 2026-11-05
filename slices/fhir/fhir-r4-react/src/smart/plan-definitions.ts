@@ -1,7 +1,6 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { PlanDefinition } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Effect, Schema } from 'effect'
-import type Client from 'fhirclient/Client'
 
 import {
   RESOURCE_PAGE_SIZE,
@@ -12,6 +11,7 @@ import {
   type ResourcePage,
   type ResourcePageCursor,
 } from './resource-page.ts'
+import type { SmartClient } from './smart-client.ts'
 
 /**
  * The schema every `PlanDefinition` entry decodes through: the R4 resource with
@@ -60,7 +60,6 @@ const planDefinitionRead: PagedResourceRead<
  * Fetch a single page of the `PlanDefinition`s on one topic from the SMART FHIR
  * server and report the cursor to the next page.
  *
- * @param client - The SMART client the search is issued through
  * @param cursor - The topic for the first page, or a previous page's `nextPageUrl`
  * @returns An effect yielding the page's decoded `PlanDefinition`s and the next page's cursor
  *
@@ -72,10 +71,9 @@ const planDefinitionRead: PagedResourceRead<
  * definitions whole and decides which it follows.
  */
 const fetchPlanDefinitionPage = (
-  client: Client,
   cursor: PlanDefinitionPageCursor
-): Effect.Effect<PlanDefinitionPage, ResourcePageRequestError | BundleDecodeError> =>
-  fetchResourcePage(client, planDefinitionRead, cursor)
+): Effect.Effect<PlanDefinitionPage, ResourcePageRequestError | BundleDecodeError, SmartClient> =>
+  fetchResourcePage(planDefinitionRead, cursor)
 
 export {
   fetchPlanDefinitionPage,

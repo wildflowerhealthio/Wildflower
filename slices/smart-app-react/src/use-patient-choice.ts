@@ -28,8 +28,8 @@ const writePatientChoiceToUrl = (patientChoice: PatientChoice): void => {
  * `?patient=` when it carries one, else the launch's patient, else none yet.
  *
  * @param launchPatientId - The patient the launch's token carries
- *   (`client.patient.id`, e.g. an EHR launch from a patient's record), or
- *   `null` — with no patient in context, or before the handshake completes.
+ *   (`connection.launchPatientId`, e.g. an EHR launch from a patient's record), or
+ *   `None` — with no patient in context, or before the handshake completes.
  *
  * @remarks
  * The URL is read once, when the page opens, and wins over the launch's
@@ -37,13 +37,12 @@ const writePatientChoiceToUrl = (patientChoice: PatientChoice): void => {
  * choice is written back as `?patient=<id>` (or `?patient=*` for every
  * patient) through `history.replaceState`, touching no other query key, so
  * an app's own URL state sits beside it. Nothing is written until the reader
- * chooses: before the handshake completes the URL still carries the OAuth
- * `code` / `state` fhirclient reads.
+ * chooses.
  *
  * Changing the patient only reopens the picker; the URL keeps the last
  * choice until another is made, so a reload mid-change returns to it.
  */
-const usePatientChoice = (launchPatientId: string | null): PatientChoosing => {
+const usePatientChoice = (launchPatientId: Option.Option<string>): PatientChoosing => {
   const [chosenPatient, setChosenPatient] = useState(() =>
     decodePatientChoice(new URLSearchParams(window.location.search))
   )
@@ -64,7 +63,7 @@ const usePatientChoice = (launchPatientId: string | null): PatientChoosing => {
       isChanging
         ? Option.none()
         : Option.orElse(chosenPatient, () =>
-            Option.map(Option.fromNullable(launchPatientId), (patientId): PatientChoice => ({
+            Option.map(launchPatientId, (patientId): PatientChoice => ({
               kind: 'patient',
               patientId,
             }))

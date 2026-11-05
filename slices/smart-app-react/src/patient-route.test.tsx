@@ -8,24 +8,28 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
-import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartConnection } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { anonymizeUrl } from '@wildflowerhealthio/telemetry-core'
 import { Option } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
+import {
+  answerJson,
+  answerStatus,
+  stubConnection,
+  stubSmartRuntime,
+} from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { patientChoiceKeyOf } from './patient-choice.ts'
 import { launchStartRoute, requirePatient, usePathPatientChoice } from './patient-route.ts'
-import { answer, stubSmartClient } from './smart-client.test-helpers.ts'
 
 afterEach(() => {
   cleanup()
 })
 
-/** A client whose launch put `patientId` in context; only `patient.id` is read. */
-const launchedWith = (patientId: string | null): SmartClient =>
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub: only `patient.id` is read
-  ({ patient: { id: patientId } }) as unknown as SmartClient
+/** A connection whose launch put `patientId` in context, or none for `null`. */
+const launchedWith = (patientId: string | null): SmartConnection =>
+  stubConnection({ launchPatientId: Option.fromNullable(patientId) })
 
 describe('launchStartRoute', () => {
   it('should open the launch’s patient', () => {
@@ -90,12 +94,12 @@ describe('requirePatient', () => {
   it('should load the patient into the cache the patient line reads', async () => {
     // Arrange
     const queryClient = testQueryClient()
-    const { client } = stubSmartClient({
-      'Patient/p1': answer({ resourceType: 'Patient', id: 'p1' }),
+    const { runtime } = stubSmartRuntime({
+      'Patient/p1': answerJson({ resourceType: 'Patient', id: 'p1' }),
     })
 
     // Act
-    await requirePatient(queryClient, client, 'p1')
+    await requirePatient(queryClient, runtime.runSmart, 'p1')
 
     // Assert
     expect(queryClient.getQueryData(['patient', 'p1'])).toMatchObject(Option.some({ id: 'p1' }))
@@ -103,12 +107,12 @@ describe('requirePatient', () => {
 
   it.each([404, 410])('should throw not-found on a %i', async (status) => {
     // Arrange
-    const { client } = stubSmartClient({
-      'Patient/bogus': () => Promise.reject(Object.assign(new Error('gone'), { status })),
+    const { runtime } = stubSmartRuntime({
+      'Patient/bogus': answerStatus(status),
     })
 
     // Act
-    const thrown: unknown = await requirePatient(testQueryClient(), client, 'bogus').then(
+    const thrown: unknown = await requirePatient(testQueryClient(), runtime.runSmart, 'bogus').then(
       () => null,
       (error: unknown) => error
     )
@@ -119,11 +123,11 @@ describe('requirePatient', () => {
 
   it('should let the route render on any other failure', async () => {
     // Arrange
-    const { client } = stubSmartClient({
-      'Patient/p1': () => Promise.reject(Object.assign(new Error('down'), { status: 503 })),
+    const { runtime } = stubSmartRuntime({
+      'Patient/p1': answerStatus(503),
     })
 
     // Act / Assert
-    await expect(requirePatient(testQueryClient(), client, 'p1')).resolves.toBeUndefined()
+    await expect(requirePatient(testQueryClient(), runtime.runSmart, 'p1')).resolves.toBeUndefined()
   })
 })

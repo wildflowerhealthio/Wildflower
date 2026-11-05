@@ -56,13 +56,14 @@ which is CI's gate.
 
 ## A URL-derived render decision must be latched on mount, not a default parameter
 
-`launched = shouldCompleteSmartLaunch()` as a React default parameter re-reads
-`window.location` on every render. fhirclient's `oauth2.ready()` calls
-`history.replaceState` to strip `code`/`state` once the token exchange completes
-(`replaceBrowserHistory` is on by default), so any later re-render flips the gate
-and unmounts the authenticated app. Read the URL once in a `useState` initializer
-(`useState(() => prop ?? shouldCompleteSmartLaunch())`); `apps/importer/importer-web`'s
-`AppRoot` is the worked example, with a re-render test that pins the latch.
+A decision read off `window.location` as a React default parameter is re-read
+on every render. `fhir-r4-react/smart`'s `completeSignInAfterRedirectHere`
+calls `history.replaceState` to strip `code`/`state` once the token exchange
+completes, so any later re-render would flip the decision and unmount the
+authenticated app. Read the URL once in a `useState` initializer:
+`smart-app-react`'s `SmartAppRoot` parses its `RootArrival` that way
+(`useState(() => rootArrivalFrom(search ?? window.location.search))`), with a
+re-render test that pins it.
 
 ## Source-only `exports` with no `default` condition work for workspace apps
 

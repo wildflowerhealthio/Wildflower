@@ -1,12 +1,12 @@
 import { ErrorBanner, TextField } from '@wildflowerhealthio/react-tundraish'
-import { Either, Match } from 'effect'
+import { Effect, Either } from 'effect'
 import { useEffect, useRef, useState, type JSX, type SubmitEvent } from 'react'
 
 import {
+  decodeFhirBaseUrl,
   insecureTargetReason,
-  startStandaloneLaunch,
+  redirectToSignIn,
   withLocalNetworkAccessHint,
-  type SmartSupport,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   DEFAULT_SERVER_PRESET_GROUPS,
@@ -21,6 +21,7 @@ import {
   type ServerPresetGroup,
 } from '@wildflowerhealthio/smart-app-core'
 
+import { signInProblem } from './sign-in-problem.ts'
 import styles from './connect-menu.module.css'
 
 /**
@@ -34,17 +35,17 @@ interface FhirR4ConnectMenuProps {
   /** The scopes the app requests on the SMART path. */
   readonly scope: string
   /**
-   * The OAuth redirect target — the app root that serves `index.html` and runs
-   * `readySmartClient()` (`appRootRedirectUri`). Shared with the EHR launch's
-   * callback.
+   * The OAuth redirect target — the app root that serves `index.html` and
+   * completes the sign-in (`appRootRedirectUri`). Shared with the EHR
+   * launch's callback.
    */
   readonly redirectUri: string
   /** The one-click choices, grouped by server; defaults to {@link DEFAULT_SERVER_PRESET_GROUPS}. */
   readonly presetGroups?: readonly ServerPresetGroup[]
   /**
-   * Why the last launch failed, when the page was reached by failing one — the
-   * app root's latched `launchErrorFrom()`. Shown at the top of the menu until
-   * the reader starts another connect.
+   * Why the last launch failed, when the page was reached by failing one —
+   * the failure the app root's `RootArrival` carries. Shown at the top of the
+   * menu until the reader starts another connect.
    */
   readonly arrivalProblem?: string | Error
 }
@@ -118,27 +119,6 @@ type ConnectState =
   | { readonly kind: 'idle' }
   | { readonly kind: 'launching'; readonly from: ConnectOrigin }
   | { readonly kind: 'error'; readonly message: string; readonly from: ConnectOrigin }
-
-/**
- * The problem to show for a standalone launch's probe outcome against
- * `serverUrl`, or `undefined` when there is none: `smart`/`open` redirect the
- * page away, so only `unreachable` and `unusable` are left to report.
- */
-const standaloneLaunchProblem =
-  (serverUrl: string) =>
-  (support: SmartSupport): string | undefined =>
-    Match.value(support).pipe(
-      Match.withReturnType<string | undefined>(),
-      Match.when(
-        { kind: 'unreachable' },
-        ({ message }) =>
-          `Could not reach ${serverUrl}. Check the URL and that the server allows this app. (${message})`
-      ),
-      Match.when({ kind: 'unusable' }, ({ reason }) => `Cannot sign in to ${serverUrl}. ${reason}`),
-      Match.when({ kind: 'smart' }, () => undefined),
-      Match.when({ kind: 'open' }, () => undefined),
-      Match.exhaustive
-    )
 
 /**
  * The standalone connect menu: first a relay name entry for a server reached
@@ -221,12 +201,21 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
    */
   const startConnecting = (serverUrl: string): Promise<string | undefined> =>
     props.target === 'fhir-r4'
-      ? startStandaloneLaunch({
-          iss: serverUrl,
-          clientId: props.clientId,
-          scope: props.scope,
-          redirectUri: props.redirectUri,
-        }).then(standaloneLaunchProblem(serverUrl))
+      ? redirectToSignIn(
+          {
+            fhirBaseUrl: decodeFhirBaseUrl(serverUrl),
+            clientId: props.clientId,
+            scope: props.scope,
+            redirectUri: props.redirectUri,
+          },
+          undefined
+        ).pipe(
+          Effect.match({
+            onFailure: (failure) => failure.reason,
+            onSuccess: (support) => signInProblem(serverUrl, support),
+          }),
+          Effect.runPromise
+        )
       : props.connect(serverUrl)
 
   const connectTo = (serverUrl: string, from: ConnectOrigin = 'pick'): void => {

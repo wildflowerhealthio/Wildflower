@@ -1,7 +1,14 @@
+import type { HttpClient } from '@effect/platform'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type * as FhirR4ReactSmart from '@wildflowerhealthio/fhir-r4-react/smart'
-import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  RootArrival,
+  SmartHandshake,
+  type SignInLanding,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { SignInLandingContext } from '@wildflowerhealthio/smart-app-react'
+import type { Layer } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { type FakeFhirServer, resourceTypeOfQuery } from './fake-fhir-server.test-helpers.ts'
@@ -18,14 +25,24 @@ import {
   startStrengthTest,
 } from './strength-app.test-helpers.ts'
 
-const { handshakeMock } = vi.hoisted(() => ({
+// The handshake is driven per test, and the runtime the gate builds goes out
+// over the test's in-memory server rather than `fetch`.
+const { handshakeMock, serverTransport } = vi.hoisted(() => ({
   handshakeMock: vi.fn<() => SmartHandshake>(),
+  serverTransport: { current: undefined as Layer.Layer<HttpClient.HttpClient> | undefined },
 }))
-vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
-  ...(await importOriginal<typeof FhirR4ReactSmart>()),
-  useSmartHandshake: () => handshakeMock(),
-  useLaunchFailureRedirect: (): void => undefined,
-}))
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
+  const actual = await importOriginal<typeof FhirR4ReactSmart>()
+  return {
+    ...actual,
+    useSmartHandshake: () => handshakeMock(),
+    useRedirectToRootOnFailure: (): void => undefined,
+    smartRuntimeFor: (
+      connection: FhirR4ReactSmart.SmartConnection,
+      transport = serverTransport.current
+    ) => actual.smartRuntimeFor(connection, transport),
+  }
+})
 
 // The router builder, spied on, so a test can tell the router outlives a
 // patient change.
@@ -41,14 +58,32 @@ const { buildRouter } = await import('./router.ts')
  * `App`: where a completed launch lands — its patient's page, or the picker
  * — and the picker's navigations, over the in-memory FHIR server (see
  * `strength-app.test-helpers.ts`). The SMART handshake (which needs a browser
- * redirect) and `useLaunchFailureRedirect` (which would navigate away) are
+ * redirect) and `useRedirectToRootOnFailure` (which would navigate away) are
  * stubbed.
  */
 
 let server: FakeFhirServer
 
+/** The sign-in the app root hands the app: a return to {@link BASEPATH}. */
+const SIGN_IN_LANDING: SignInLanding = {
+  arrival: RootArrival.SignInReturn({ code: 'abc', state: 'xyz' }),
+  registration: { clientId: 'strength', scope: 'launch' },
+  appRootRedirectUri: `${window.location.origin}${BASEPATH}`,
+  onSignedIn: () => undefined,
+}
+
+/** Render `App` on the sign-in landing the app root would hand it. */
+const renderApp = (): void => {
+  renderWithQueryClient(
+    <SignInLandingContext value={SIGN_IN_LANDING}>
+      <App page={openTestPage()} />
+    </SignInLandingContext>
+  )
+}
+
 beforeEach(() => {
   server = startStrengthTest()
+  serverTransport.current = server.transport
   window.history.replaceState(null, '', BASEPATH)
 })
 
@@ -61,10 +96,10 @@ afterEach(() => {
 describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
   it('should open the patient picker when the launch names no patient, reading no record', async () => {
     // Arrange
-    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(null) })
+    handshakeMock.mockReturnValue(SmartHandshake.Ready({ connection: server.connectionFor(null) }))
 
     // Act
-    renderWithQueryClient(<App page={openTestPage()} />)
+    renderApp()
 
     // Assert — the picker's own path, and only patients are searched
     expect(await screen.findByRole('button', { name: /Ada Lovelace/ })).toBeDefined()
@@ -78,8 +113,8 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     // Arrange
     const user = userEvent.setup()
     seedStartedLifter(server)
-    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(null) })
-    renderWithQueryClient(<App page={openTestPage()} />)
+    handshakeMock.mockReturnValue(SmartHandshake.Ready({ connection: server.connectionFor(null) }))
+    renderApp()
 
     // Act
     await user.click(await screen.findByRole('button', { name: /Ada Lovelace/ }))
@@ -92,11 +127,13 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
   it('should open the launch’s patient on their Today, in the app root’s place', async () => {
     // Arrange
     seedStartedLifter(server)
-    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
+    handshakeMock.mockReturnValue(
+      SmartHandshake.Ready({ connection: server.connectionFor(PATIENT_ID) })
+    )
     const historyLength = window.history.length
 
     // Act
-    renderWithQueryClient(<App page={openTestPage()} />)
+    renderApp()
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()
@@ -109,8 +146,10 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     // Arrange
     const user = userEvent.setup()
     seedStartedLifter(server)
-    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
-    renderWithQueryClient(<App page={openTestPage()} />)
+    handshakeMock.mockReturnValue(
+      SmartHandshake.Ready({ connection: server.connectionFor(PATIENT_ID) })
+    )
+    renderApp()
     await screen.findByRole('heading', { name: 'Workout A' })
 
     // Act
@@ -133,8 +172,10 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     // Arrange
     const user = userEvent.setup()
     seedStartedLifter(server)
-    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
-    renderWithQueryClient(<App page={openTestPage()} />)
+    handshakeMock.mockReturnValue(
+      SmartHandshake.Ready({ connection: server.connectionFor(PATIENT_ID) })
+    )
+    renderApp()
     await screen.findByRole('heading', { name: 'Workout A' })
     const routersBuilt = vi.mocked(buildRouter).mock.calls.length
 

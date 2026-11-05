@@ -1,4 +1,4 @@
-import type { SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartRegistration } from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
 
 /**
@@ -79,7 +79,7 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  * `vp run -F @wildflowerhealthio/importer-web dev`.
  *
  * The app root authorizes with it for every launch it starts: one its URL
- * carries (`iss` / `launch`, read off the URL by fhirclient) and the standalone
+ * carries (`iss` / `launch`, read off the URL by the app root) and the standalone
  * connect menu's, where the user picks the FHIR server. So `iss` is not set
  * here, and `redirectUri` (the app root) is computed at launch time from the
  * current origin.
@@ -90,7 +90,7 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  * deliberately per the app's scope set. If a server rejects the authorize
  * request over it, dropping `launch` is the first thing to try.
  */
-const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartRegistration: SmartRegistration = {
   clientId: import.meta.env.DEV
     ? '57268ff88aea38d6a22de56ae53e2c28'
     : '165cd26573e5ac72378e6ad2d2198330',

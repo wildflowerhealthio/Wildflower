@@ -3,10 +3,16 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { SmartRuntimeContext } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  answerJson,
+  answerStatus,
+  type StubAnswers,
+  stubSmartRuntime,
+} from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { PatientChoiceLine } from './patient-choice-line.tsx'
 import type { PatientChoiceLineProps } from './patient-choice-line.tsx'
 import type { PatientChoice } from './patient-choice.ts'
-import { answer, type FhirResponses, stubSmartClient } from './smart-client.test-helpers.ts'
 import styles from './patient-choice-line.module.css'
 
 /**
@@ -15,26 +21,27 @@ import styles from './patient-choice-line.module.css'
  */
 const renderLine = (
   patientChoice: PatientChoice,
-  responses: FhirResponses,
-  rootProps: Omit<PatientChoiceLineProps, 'client' | 'patientChoice' | 'onPatientChange'> &
+  responses: StubAnswers,
+  rootProps: Omit<PatientChoiceLineProps, 'patientChoice' | 'onPatientChange'> &
     Record<`data-${string}`, string> = {}
 ): {
   readonly onPatientChange: ReturnType<typeof vi.fn<() => void>>
   readonly requests: readonly string[]
 } => {
   const onPatientChange = vi.fn<() => void>()
-  const { client, requests } = stubSmartClient(responses)
+  const { runtime, urls: requests } = stubSmartRuntime(responses)
   render(
     <StrictMode>
       <QueryClientProvider
         client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
       >
-        <PatientChoiceLine
-          {...rootProps}
-          client={client}
-          patientChoice={patientChoice}
-          onPatientChange={onPatientChange}
-        />
+        <SmartRuntimeContext value={runtime}>
+          <PatientChoiceLine
+            {...rootProps}
+            patientChoice={patientChoice}
+            onPatientChange={onPatientChange}
+          />
+        </SmartRuntimeContext>
       </QueryClientProvider>
     </StrictMode>
   )
@@ -51,7 +58,7 @@ describe('PatientChoiceLine', () => {
     renderLine(
       { kind: 'patient', patientId: 'p1' },
       {
-        'Patient/p1': answer({
+        'Patient/p1': answerJson({
           resourceType: 'Patient',
           id: 'p1',
           name: [{ given: ['Ada'], family: 'Lovelace' }],
@@ -88,7 +95,7 @@ describe('PatientChoiceLine', () => {
     // Act
     renderLine(
       { kind: 'patient', patientId: 'p1' },
-      { 'Patient/p1': answer({ resourceType: 'Bundle' }) }
+      { 'Patient/p1': answerJson({ resourceType: 'Bundle' }) }
     )
 
     // Assert
@@ -98,10 +105,7 @@ describe('PatientChoiceLine', () => {
 
   it('should say the server has no such patient on a 404', async () => {
     // Act
-    renderLine(
-      { kind: 'patient', patientId: 'p1' },
-      { 'Patient/p1': () => Promise.reject(Object.assign(new Error('gone'), { status: 404 })) }
-    )
+    renderLine({ kind: 'patient', patientId: 'p1' }, { 'Patient/p1': answerStatus(404) })
 
     // Assert
     expect(

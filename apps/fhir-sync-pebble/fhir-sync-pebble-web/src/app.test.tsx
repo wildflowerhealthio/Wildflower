@@ -1,13 +1,21 @@
-import { HttpClient, HttpClientResponse, UrlParams } from '@effect/platform'
+import { UrlParams } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type * as SmartModule from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  answerJson,
+  answerStatus,
+  bundleOf,
+  neverAnswer,
+  stubFhirServer,
+  type StubAnswer,
+  type StubFhirServer,
+} from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import type { PebbleSettings } from '@wildflowerhealthio/fhir-sync-pebble-core'
 import { ReturnTarget, type ReturnTargetStore } from '@wildflowerhealthio/pebble-configuration'
-import { Effect, Either, Layer } from 'effect'
-import type Client from 'fhirclient/Client'
+import { Either, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 /**
@@ -19,30 +27,55 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
  * one layer down can see it.
  */
 
+// The handshake is driven per test, and the runtime the gate builds goes out
+// over a stub server that answers nothing.
 const { handshakeMock } = vi.hoisted(() => ({
   handshakeMock: vi.fn<() => SmartHandshake>(),
 }))
-vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
-  ...(await importOriginal<typeof SmartModule>()),
-  useSmartHandshake: () => handshakeMock(),
-  useLaunchFailureRedirect: (): void => undefined,
-}))
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
+  const actual = await importOriginal<typeof SmartModule>()
+  return {
+    ...actual,
+    useSmartHandshake: () => handshakeMock(),
+    useRedirectToRootOnFailure: (): void => undefined,
+    smartRuntimeFor: (
+      connection: SmartModule.SmartConnection,
+      transport = stubFhirServer({}).transport
+    ) => actual.smartRuntimeFor(connection, transport),
+  }
+})
 
-const { buildSmartRouterContext } = await import('@wildflowerhealthio/fhir-r4-react/smart')
+const {
+  buildSmartRouterContext,
+  decodeFhirBaseUrl,
+  RootArrival,
+  SmartConnection,
+  SmartHandshake: SmartHandshakeOf,
+  smartRuntimeFor,
+} = await import('@wildflowerhealthio/fhir-r4-react/smart')
+const { SignInLandingContext } = await import('@wildflowerhealthio/smart-app-react')
 const { App, SettingsApp } = await import('./app.tsx')
 
 const SERVER_URL = 'https://fhir.example/r4'
 const ACCESS_TOKEN = 'watch-token'
 
-/** Every request the stub server saw, in order. */
-let recorded: {
+/** The stub server the last {@link mount} read from. */
+let mountedServer: StubFhirServer | undefined
+
+/** Every request the mounted server was sent, in order. */
+const recorded = (): {
   readonly url: string
   readonly urlParams: string
   readonly authorization: string | undefined
-}[] = []
+}[] =>
+  (mountedServer?.requests ?? []).map((request) => ({
+    url: request.url,
+    urlParams: UrlParams.toString(request.urlParams),
+    authorization: request.headers['authorization'],
+  }))
 
 beforeEach(() => {
-  recorded = []
+  mountedServer = undefined
   handshakeMock.mockReset()
 })
 
@@ -53,7 +86,7 @@ afterEach(() => {
 describe('App', () => {
   it('should show the connecting state while the handshake is in flight', () => {
     // Arrange
-    handshakeMock.mockReturnValue({ kind: 'connecting' })
+    handshakeMock.mockReturnValue(SmartHandshakeOf.Connecting())
 
     // Act
     renderApp()
@@ -65,10 +98,9 @@ describe('App', () => {
 
   it("should take the settings page's refusal from what the grant lacked", async () => {
     // Arrange — the server completed the handshake without an access token
-    handshakeMock.mockReturnValue({
-      kind: 'ready',
-      client: grantedClient({ accessToken: undefined }),
-    })
+    handshakeMock.mockReturnValue(
+      SmartHandshakeOf.Ready({ connection: grantedConnection({ accessToken: Option.none() }) })
+    )
 
     // Act
     renderApp()
@@ -88,7 +120,7 @@ describe('SettingsApp', () => {
     await openPicker()
 
     // Assert
-    expect(recorded).toEqual([
+    expect(recorded()).toEqual([
       {
         url: `${SERVER_URL}/Patient`,
         urlParams: '_sort=family&_count=200',
@@ -151,7 +183,7 @@ describe('SettingsApp', () => {
       patientId: 'grace',
       patientName: 'Grace Hopper',
     })
-    expect(recorded).toHaveLength(1)
+    expect(recorded()).toHaveLength(1)
   })
 
   it('should list and hand off a patient whose birth date is only a year', async () => {
@@ -201,7 +233,7 @@ describe('SettingsApp', () => {
 
   it('should hold the save while the patients are being read', async () => {
     // Act — the server never answers
-    mount({ server: () => Effect.never })
+    mount({ server: neverAnswer })
 
     // Assert
     expect(await screen.findByText("Reading the server's patients…")).toBeDefined()
@@ -224,7 +256,7 @@ describe('SettingsApp', () => {
 
   it('should show the failure, and block the save, when the granted token cannot search patients', async () => {
     // Act
-    mount({ server: (request) => Effect.succeed(respond(request, 403, {})) })
+    mount({ server: answerStatus(403, {}) })
 
     // Assert
     expect(await screen.findByRole('alert')).toBeDefined()
@@ -236,24 +268,6 @@ describe('SettingsApp', () => {
 })
 
 // Helpers
-
-type Server = (
-  request: Parameters<Parameters<typeof HttpClient.make>[0]>[0]
-) => Effect.Effect<HttpClientResponse.HttpClientResponse>
-
-/** A JSON response to `request`. */
-const respond = (
-  request: Parameters<Server>[0],
-  status: number,
-  body: unknown
-): HttpClientResponse.HttpClientResponse =>
-  HttpClientResponse.fromWeb(
-    request,
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { 'content-type': 'application/fhir+json' },
-    })
-  )
 
 const ADA = {
   resourceType: 'Patient',
@@ -270,30 +284,7 @@ const GRACE = {
 }
 
 /** A server whose `Patient` search returns `patients`. */
-const serving =
-  (patients: readonly unknown[]): Server =>
-  (request) =>
-    Effect.succeed(
-      respond(request, 200, {
-        resourceType: 'Bundle',
-        type: 'searchset',
-        entry: patients.map((resource) => ({ resource })),
-      })
-    )
-
-/** A transport over `server` that records each request it is sent. */
-const recordingTransport = (server: Server): Layer.Layer<HttpClient.HttpClient> =>
-  Layer.succeed(
-    HttpClient.HttpClient,
-    HttpClient.make((request) => {
-      recorded.push({
-        url: request.url,
-        urlParams: UrlParams.toString(request.urlParams),
-        authorization: request.headers['authorization'],
-      })
-      return server(request)
-    })
-  )
+const serving = (patients: readonly unknown[]): StubAnswer => answerJson(bundleOf(patients))
 
 /** Opens the patient picker once the list has been read. */
 const openPicker = async (): Promise<void> => {
@@ -312,13 +303,16 @@ const mount = ({
   returnTo = ReturnTarget.DEFAULT,
   navigate = (): void => undefined,
 }: {
-  readonly server: Server
+  readonly server: StubAnswer
   readonly returnTo?: string
   readonly navigate?: (url: string) => void
 }): void => {
+  mountedServer = stubFhirServer({ [SERVER_URL]: server })
   const context = buildSmartRouterContext(
-    { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
-    recordingTransport(server),
+    smartRuntimeFor(
+      grantedConnection({ accessToken: Option.some(ACCESS_TOKEN) }),
+      mountedServer.transport
+    ),
     new QueryClient({ defaultOptions: { queries: { retry: false } } })
   )
   const returnTargets: ReturnTargetStore.Store = {
@@ -344,14 +338,28 @@ const renderApp = (): void => {
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <App />
+      <SignInLandingContext
+        value={{
+          arrival: RootArrival.SignInReturn({ code: 'abc', state: 'xyz' }),
+          registration: { clientId: 'fhir-sync-pebble', scope: 'launch' },
+          appRootRedirectUri: `${window.location.origin}/`,
+          onSignedIn: () => undefined,
+        }}
+      >
+        <App />
+      </SignInLandingContext>
     </QueryClientProvider>
   )
 }
 
-/** A ready fhirclient `Client` carrying what the server granted. */
-const grantedClient = ({ accessToken }: { readonly accessToken: string | undefined }): Client =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub: `App` reads only these fields
-  ({
-    state: { serverUrl: SERVER_URL, tokenResponse: { access_token: accessToken } },
-  }) as unknown as Client
+/** A connection to {@link SERVER_URL} carrying what the server granted. */
+const grantedConnection = ({
+  accessToken,
+}: {
+  readonly accessToken: Option.Option<string>
+}): SmartModule.SmartConnection =>
+  new SmartConnection({
+    fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
+    accessToken,
+    launchPatientId: Option.none(),
+  })
