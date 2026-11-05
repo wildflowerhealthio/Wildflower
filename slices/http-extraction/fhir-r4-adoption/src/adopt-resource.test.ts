@@ -25,7 +25,7 @@ import {
   ServiceRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Arbitrary, Effect, FastCheck as fc, Option, Schema, SchemaAST } from 'effect'
+import { Arbitrary, Array as Arr, Effect, FastCheck as fc, Option, Schema, SchemaAST } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { adopt, adoptedReferenceOf, originalIdOf } from './adopt-resource.ts'
@@ -34,7 +34,7 @@ import * as DetachedResource from './detached-resource.ts'
 /**
  * Covers detaching a single resource from its source (no id, keyed by its
  * first identifier, its references logical) and adopting a detached one (the
- * id its key derives, or a minted one, and its references by key resolved).
+ * id it is given, and its references by key resolved).
  * Three failure modes this suite exists to catch, each of which loses data
  * silently:
  *
@@ -63,22 +63,38 @@ const SYSTEM = 'https://wildflowerhealth.io/fhir/sid/example-portal'
 /** {@link BASE}'s `fromServerRecord`. */
 const detachFhir = DetachedResource.fromServerRecord(BASE)
 
+/** The id a keyless record adopted here is stored under. */
+const KEYLESS_ID = 'keyless-1'
+
 /**
- * An adoption over `batch`, as the import stage runs one over a file set: its
- * logical references resolve against the records `batch` holds, and its
- * keyless records get `minted-1`, `minted-2`, ….
+ * An adoption over `batch`, as the import stage runs one over a file set with
+ * its id plan: a keyed record is stored under the id its key derives and a
+ * keyless one under {@link KEYLESS_ID}, and a logical reference resolves when
+ * `batch` holds the record of its type keyed by its identifier.
  */
 const adoptionOver = (
   batch: readonly DetachedResource.Type[]
 ): ((record: DetachedResource.Type) => FhirResourceWithId) => {
-  let minted = 0
-  return adopt({
-    storedIds: DetachedResource.storedIdsOf(batch),
-    mintId: () => {
-      minted += 1
-      return `minted-${minted}`
-    },
-  })
+  const idOf = (record: DetachedResource.Type): string =>
+    Option.match(DetachedResource.keyOf(record), {
+      onSome: ({ system, value }) => localResourceId(system, record.resourceType, value),
+      onNone: () => KEYLESS_ID,
+    })
+  const adoptRecord = adopt((resourceType, key) =>
+    Option.map(
+      Arr.findFirst(
+        batch,
+        (record) =>
+          record.resourceType === resourceType &&
+          Option.exists(
+            DetachedResource.keyOf(record),
+            ({ system, value }) => system === key.system && value === key.value
+          )
+      ),
+      (record) => `${resourceType}/${idOf(record)}`
+    )
+  )
+  return (record) => adoptRecord(record, idOf(record))
 }
 
 /**
@@ -915,19 +931,6 @@ describe('detaching references', () => {
 describe('adopt', () => {
   for (const resource of resources) {
     const { resourceType } = resource
-    if (resourceType === 'Binary') continue
-
-    // The derivation every stored record already sits under: a re-import of a
-    // record adopted before lands on the same id.
-    test(`${resourceType}: stores a keyed record under the id its key derives`, () => {
-      expect(detachThenAdopt(resource).id).toBe(
-        localResourceId(fhirSystem(resourceType), resourceType, 'src-1')
-      )
-    })
-  }
-
-  for (const resource of resources) {
-    const { resourceType } = resource
     test(`${resourceType}: changes nothing outside the reference table`, () => {
       const detached = detachFhir(resource)
       const adopted = adoptionOver([detached])(detached)
@@ -939,21 +942,12 @@ describe('adopt', () => {
     })
   }
 
-  test('stores a keyless record under a minted id, a fresh one each', () => {
-    const adoptRecord = adoptionOver([])
-    const binary = detachFhir({ ...sample(Binary.Schema, 11), id: 'src-1' })
-    const patient = detachFhir({ ...sample(Patient.Schema, 12), id: null, identifier: [] })
-    expect(adoptRecord(binary).id).toBe('minted-1')
-    expect(adoptRecord(patient).id).toBe('minted-2')
-    expect(adoptRecord(binary).id).toBe('minted-3')
-  })
-
-  test('mints no id for a keyed record', () => {
-    const adoptRecord = adoptionOver([])
-    adoptRecord(detachFhir({ ...sample(Patient.Schema, 12), id: 'pat-7' }))
-    expect(adoptRecord(detachFhir({ ...sample(Binary.Schema, 11), id: 'src-1' })).id).toBe(
-      'minted-1'
-    )
+  test('stores a record under the id it is given, keyed or not', () => {
+    const adoptRecord = adopt(() => Option.none())
+    const keyed = detachFhir({ ...sample(Patient.Schema, 12), id: 'pat-7' })
+    const keyless = detachFhir({ ...sample(Binary.Schema, 11), id: 'src-1' })
+    expect(adoptRecord(keyed, 'planned-1').id).toBe('planned-1')
+    expect(adoptRecord(keyless, 'planned-2').id).toBe('planned-2')
   })
 
   // The cornerstone: a reference has to land on exactly the id its target gets,

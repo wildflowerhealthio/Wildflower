@@ -139,16 +139,20 @@ describe('decodeLifeLabsPdfDocument', () => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
-        const keyedIds = entriesOf(decoded).flatMap(({ resource }) =>
-          Option.toArray(DetachedResource.keyedIdOf(resource))
+        const keyedReferences = entriesOf(decoded).flatMap(({ resource }) =>
+          Option.toArray(
+            Option.map(DetachedResource.keyOf(resource), (key) =>
+              DetachedResource.storedReferenceOf(resource.resourceType, key)
+            )
+          )
         )
 
-        const adoptedIds = DecodedFile.resources(DecodedFileSet.adopt(decoded)).map(
-          ({ resource }) => resource.id
+        const adoptedReferences = DecodedFile.resources(DecodedFileSet.adopt(decoded)).map(
+          ({ resource }) => `${resource.resourceType}/${resource.id}`
         )
-        for (const id of keyedIds) {
-          expect(id).toMatch(/^wf-[0-9a-f]{32}$/)
-          expect(adoptedIds).toContain(id)
+        for (const reference of keyedReferences) {
+          expect(reference).toMatch(/^[A-Za-z]+\/wf-[0-9a-f]{32}$/)
+          expect(adoptedReferences).toContain(reference)
         }
       }),
       { numRuns: numRunsFor({ base: 30 }) }

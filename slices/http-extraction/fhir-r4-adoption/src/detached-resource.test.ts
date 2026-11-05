@@ -1,10 +1,5 @@
-import {
-  Binary,
-  type FhirResource,
-  FhirResourceSchema,
-  Patient,
-} from '@wildflowerhealthio/fhir-r4/resources'
-import { Arbitrary, Array as Arr, Effect, FastCheck as fc, Option, Schema } from 'effect'
+import { type FhirResource, FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
+import { Arbitrary, Array as Arr, FastCheck as fc, Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as DetachedResource from './detached-resource.ts'
@@ -61,58 +56,4 @@ describe('hasIdentifier', () => {
       })
     }
   }
-})
-
-describe('storedIdsOf', () => {
-  const decodePatient = DetachedResource.decodeUnknown(Patient.Schema)
-  const decodeBinary = DetachedResource.decodeUnknown(Binary.Schema)
-
-  /** A detached Patient keyed by `key`. */
-  const patientKeyedBy = (key: DetachedResource.Key): DetachedResource.Type =>
-    Effect.runSync(
-      decodePatient({
-        resourceType: 'Patient',
-        identifier: [DetachedResource.keyIdentifierWire(key)],
-      })
-    )
-
-  const key = { system: 'https://portal.example/patient-id', value: 'pat-7' }
-  const keyless = Effect.runSync(
-    decodeBinary({ resourceType: 'Binary', contentType: 'text/plain' })
-  )
-  const storedIds = DetachedResource.storedIdsOf([patientKeyedBy(key), keyless])
-
-  test('looks up a keyed record of the batch under the id and reference its key derives', () => {
-    expect(DetachedResource.storedIdIfInBatch(storedIds, 'Patient', key)).toEqual(
-      DetachedResource.keyedIdOf(patientKeyedBy(key))
-    )
-    expect(DetachedResource.storedReferenceIfInBatch(storedIds, 'Patient', key)).toEqual(
-      Option.some(DetachedResource.storedReferenceOf('Patient', key))
-    )
-  })
-
-  test('finds nothing for a key of another type or value, and holds no keyless record', () => {
-    expect(DetachedResource.storedReferenceIfInBatch(storedIds, 'Practitioner', key)).toEqual(
-      Option.none()
-    )
-    expect(
-      DetachedResource.storedReferenceIfInBatch(storedIds, 'Patient', { ...key, value: 'pat-8' })
-    ).toEqual(Option.none())
-    expect(storedIds.size).toBe(1)
-  })
-
-  // A system may carry the character a naive `<Type>|<system>|<value>` join
-  // would split on: `https://a.example/x|y` and `y|z` would spell alike.
-  test('tells apart keys that only a separator inside a system or value would join', () => {
-    const joinedAtSystem = { system: 'https://a.example/x|y', value: 'z' }
-    const joinedAtValue = { system: 'https://a.example/x', value: 'y|z' }
-    const batch = DetachedResource.storedIdsOf([patientKeyedBy(joinedAtSystem)])
-
-    expect(
-      Option.isSome(DetachedResource.storedIdIfInBatch(batch, 'Patient', joinedAtSystem))
-    ).toBe(true)
-    expect(DetachedResource.storedIdIfInBatch(batch, 'Patient', joinedAtValue)).toEqual(
-      Option.none()
-    )
-  })
 })

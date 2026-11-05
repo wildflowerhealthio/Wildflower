@@ -8,5 +8,5 @@
  * @packageDocumentation
  */
 export { adopt, adoptedReferenceOf, originalIdOf, randomResourceId } from './adopt-resource.ts'
-export type { Adoption } from './adopt-resource.ts'
+export type { ReferenceTo } from './adopt-resource.ts'
 export * as DetachedResource from './detached-resource.ts'

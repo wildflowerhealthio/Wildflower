@@ -138,85 +138,13 @@ const keyOf = (record: Type): Option.Option<Key> =>
     Option.map(({ system, value }) => ({ system: system.href, value }))
   )
 
-/** The literal reference to the record of `resourceType` stored under `id`, `<Type>/<id>`. */
-const referenceToStoredId = (resourceType: string, id: string): string => `${resourceType}/${id}`
-
 /**
  * The literal reference the import stage stores the record of `resourceType`
- * keyed by `key` under, `<Type>/<localResourceId(key.system, Type, key.value)>`:
- * the one spelling of a keyed record's stored reference.
+ * keyed by `key` under, `<Type>/<localResourceId(key.system, Type, key.value)>`,
+ * derived from the key alone.
  */
 const storedReferenceOf = (resourceType: string, { system, value }: Key): string =>
-  referenceToStoredId(resourceType, localResourceId(system, resourceType, value))
-
-/**
- * The id the import stage stores `record` under when it is keyed:
- * `localResourceId` of its key's system, its type and its key's value.
- * `None` for a keyless record, whose id is minted at import.
- */
-const keyedIdOf = (record: Type): Option.Option<string> =>
-  Option.map(keyOf(record), ({ system, value }) =>
-    localResourceId(system, record.resourceType, value)
-  )
-
-/**
- * The id each keyed record of one batch is stored under, by the record's type
- * and key: {@link storedIdsOf} builds it, {@link storedIdIfInBatch} and
- * {@link storedReferenceIfInBatch} read it.
- *
- * @remarks
- * What `adopt` takes a keyed record's id from and resolves a logical
- * reference against, as a FHIR server processing a transaction resolves a
- * conditional reference against the bundle. Each id is derived once, when the
- * batch is read, so a reference whose target is not in the batch costs a
- * lookup and no `localResourceId`.
- */
-type StoredIds = ReadonlyMap<string, string>
-
-/**
- * How {@link StoredIds} spells a record's type and key: unambiguous whatever
- * the system and value hold.
- */
-const typedKeyText = (resourceType: string, { system, value }: Key): string =>
-  JSON.stringify([resourceType, system, value])
-
-/**
- * The id every keyed record of `records` is stored under
- * ({@link keyedIdOf}), derived once each.
- */
-const storedIdsOf = (records: Iterable<Type>): StoredIds =>
-  new Map(
-    Arr.filterMap(Arr.fromIterable(records), (record) =>
-      Option.map(keyOf(record), (key): readonly [string, string] => [
-        typedKeyText(record.resourceType, key),
-        localResourceId(key.system, record.resourceType, key.value),
-      ])
-    )
-  )
-
-/**
- * The id the record of `resourceType` keyed by `key` is stored under, when it
- * is a record of the batch `storedIds` was built from; `None` otherwise.
- */
-const storedIdIfInBatch = (
-  storedIds: StoredIds,
-  resourceType: string,
-  key: Key
-): Option.Option<string> => Option.fromNullable(storedIds.get(typedKeyText(resourceType, key)))
-
-/**
- * The literal reference the record of `resourceType` keyed by `key` is stored
- * under ({@link storedReferenceOf}), when it is a record of the batch
- * `storedIds` was built from; `None` otherwise.
- */
-const storedReferenceIfInBatch = (
-  storedIds: StoredIds,
-  resourceType: string,
-  key: Key
-): Option.Option<string> =>
-  Option.map(storedIdIfInBatch(storedIds, resourceType, key), (id) =>
-    referenceToStoredId(resourceType, id)
-  )
+  `${resourceType}/${localResourceId(system, resourceType, value)}`
 
 /**
  * FHIR R4's relative-reference grammar: a resource-type token, `/`, and a
@@ -377,13 +305,9 @@ export {
   fromServerRecord,
   hasIdentifier,
   isDetached,
-  keyedIdOf,
   keyIdentifierWire,
   keyOf,
   logicalReferenceWire,
-  storedIdIfInBatch,
-  storedIdsOf,
-  storedReferenceIfInBatch,
   storedReferenceOf,
 }
-export type { Detached, Key, StoredIds, Type }
+export type { Detached, Key, Type }

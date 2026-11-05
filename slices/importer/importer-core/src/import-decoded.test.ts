@@ -14,6 +14,7 @@ import {
   DecodeFunction,
   FileImporter,
   FormatDecode,
+  IdPlan,
   MetaSource,
   PickedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -694,32 +695,27 @@ const importedSourceFileIds = async (
 describe('the records the import adopts', () => {
   it('adopts each detached record under the id its key derives, its references to records of the set resolved', async () => {
     const detachSource = DetachedResource.fromServerRecord(SOURCE_BASE_URL)
-    const patient = detachSource(sourcePatient)
-    const observation = detachSource(sourceObservation)
+    const patientEntry = { fullUrl: 'patient', resource: detachSource(sourcePatient) }
+    const observationEntry = { fullUrl: 'observation', resource: detachSource(sourceObservation) }
     const [sourceFileId] = await importedSourceFileIds(decodedOf([]))
 
     const imported = await importedRecords(
       decodedOf([
-        {
-          title: 'records',
-          entries: [{ fullUrl: 'patient', resource: patient }],
-        },
-        {
-          title: 'results',
-          entries: [{ fullUrl: 'observation', resource: observation }],
-        },
+        { title: 'records', entries: [patientEntry] },
+        { title: 'results', entries: [observationEntry] },
       ])
     )
     // The Observation is keyless, so the stage minted its id: the expectation
     // reuses it.
     const mintedObservationId = imported[1]?.id ?? ''
-    const adoptRecord = adopt({
-      storedIds: DetachedResource.storedIdsOf([patient, observation]),
-      mintId: () => mintedObservationId,
-    })
+    const plan = IdPlan.of([patientEntry, observationEntry], () => mintedObservationId)
+    const adoptRecord = adopt((resourceType, key) => IdPlan.referenceTo(plan, resourceType, key))
     expect(imported).toEqual(
-      [adoptRecord(patient), adoptRecord(observation)].map((record) =>
-        MetaSource.stamp(record, MetaSource.makeReference(sourceFileId ?? ''))
+      [patientEntry, observationEntry].map(({ fullUrl, resource }) =>
+        MetaSource.stamp(
+          adoptRecord(resource, IdPlan.idFor(plan, fullUrl).id),
+          MetaSource.makeReference(sourceFileId ?? '')
+        )
       )
     )
   })

@@ -7,14 +7,14 @@
  */
 import {
   adopt as adoptRecord,
-  DetachedResource,
+  type DetachedResource,
   randomResourceId,
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { type Array as Arr, Option } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
+import * as IdPlan from './id-plan.ts'
 import type * as PickedFile from './picked-file.ts'
 
 /**
@@ -60,18 +60,18 @@ interface Section {
 
 /**
  * A record's review title, the one title every decoded record is reviewed
- * under: for a keyed record, the reference the import stage writes it under,
- * `<Type>/<id>`, the id `adopted` is stored under; for a keyless record, whose
- * minted id changes on every re-decode, its type and its `fullUrl`,
- * `<Type> (<fullUrl>)`.
+ * under, read off the set's id plan: for a keyed record, the reference the
+ * import stage writes it under, `<Type>/<id>`, its derived id; for a keyless
+ * record, whose minted id changes on every re-decode, its type and its
+ * `fullUrl`, `<Type> (<fullUrl>)`.
  *
+ * @param plan - The id plan of the set `entry` is a record of
  * @param entry - The decoded record and its `fullUrl`
- * @param adopted - The same record, adopted
  */
-const writtenReferenceTitle = ({ fullUrl, resource }: Entry, adopted: FhirResourceWithId): string =>
-  Option.match(DetachedResource.keyOf(resource), {
-    onSome: () => `${resource.resourceType}/${adopted.id}`,
-    onNone: () => `${resource.resourceType} (${fullUrl})`,
+const writtenReferenceTitle = (plan: IdPlan.Type, { fullUrl, resource }: Entry): string =>
+  IdPlan.match(IdPlan.idFor(plan, fullUrl), {
+    Derived: ({ id }) => `${resource.resourceType}/${id}`,
+    Minted: () => `${resource.resourceType} (${fullUrl})`,
   })
 
 /**
@@ -130,35 +130,30 @@ const namespaceKeys = (sections: readonly Section[], prefix: string): readonly S
  * @param mintId - Mints the id of a keyless record; random outside tests
  *
  * @remarks
- * Every record goes through one `fhir-r4-adoption` `adopt` over the whole set,
- * as a FHIR server processes one transaction bundle: a keyed record lands on
- * the id its key derives and a keyless one on a minted id, and a logical
- * reference resolves when the record it names by key is in the set, whichever
- * section holds it (`DetachedResource.storedIdsOf`, each keyed record's id
- * derived once). One that names a record the set does not hold stays logical,
- * for the identity map.
+ * As a FHIR server processes one transaction bundle: the set's id plan
+ * (`IdPlan.of`) first decides every record's id, a keyed record's derived
+ * from its key and a keyless one's minted, then each record is adopted under
+ * its planned id, a logical reference resolving when the record it names by
+ * key is in the set, whichever section holds it. One that names a record the
+ * set does not hold stays logical, for the identity map.
  */
 const adopt = (
   decoded: Pick<Type, 'sections' | 'notes'>,
   mintId: () => string = randomResourceId
 ): DecodedFile.DecodedFile => {
-  const adoptEntry = adoptRecord({
-    storedIds: DetachedResource.storedIdsOf(
-      decoded.sections.flatMap(({ entries }) => entries.map(({ resource }) => resource))
-    ),
-    mintId,
-  })
+  const plan = IdPlan.of(
+    decoded.sections.flatMap(({ entries }) => entries),
+    mintId
+  )
+  const adoptEntry = adoptRecord((resourceType, key) => IdPlan.referenceTo(plan, resourceType, key))
   return {
     sections: decoded.sections.map(({ title, entries }) => ({
       title,
-      resources: entries.map((entry) => {
-        const adopted = adoptEntry(entry.resource)
-        return {
-          key: entry.fullUrl,
-          title: writtenReferenceTitle(entry, adopted),
-          resource: adopted,
-        }
-      }),
+      resources: entries.map((entry) => ({
+        key: entry.fullUrl,
+        title: writtenReferenceTitle(plan, entry),
+        resource: adoptEntry(entry.resource, IdPlan.idFor(plan, entry.fullUrl).id),
+      })),
     })),
     notes: decoded.notes,
   }
