@@ -261,15 +261,15 @@
       "disposition": "Included",
       "group": "lifelabs-pdf",
       "key": "3:lifelabs-report.pdf/Observation/2026-PF2780400/Chemistry/Sodium/0",
-      "resource": "Observation/wf-5ccc8258031e9bd21b31286dc4a9b811",
-      "title": "Observation/wf-5ccc8258031e9bd21b31286dc4a9b811"
+      "resource": "Observation/wf-55898962516ff63010257b19082a04f9",
+      "title": "Observation/wf-55898962516ff63010257b19082a04f9"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
       "key": "3:lifelabs-report.pdf/Observation/2026-PF2780400/Chemistry/Potassium/1",
-      "resource": "Observation/wf-14157b275c7c213e13dd30e14ea12063",
-      "title": "Observation/wf-14157b275c7c213e13dd30e14ea12063"
+      "resource": "Observation/wf-ff37617ab308f3a4c8df60851d8112bb",
+      "title": "Observation/wf-ff37617ab308f3a4c8df60851d8112bb"
     },
     {
       "disposition": "Included",
@@ -282,8 +282,8 @@
       "disposition": "Included",
       "group": "lifelabs-pdf",
       "key": "3:lifelabs-report.pdf/Observation/2026-NN6198463/Chemistry/ALT/0",
-      "resource": "Observation/wf-87a74062cb4c281591c2defc20adc898",
-      "title": "Observation/wf-87a74062cb4c281591c2defc20adc898"
+      "resource": "Observation/wf-475d03604c043bab5175cc5795e53040",
+      "title": "Observation/wf-475d03604c043bab5175cc5795e53040"
     },
     {
       "disposition": "Included",
@@ -416,20 +416,20 @@
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
             "value": "2026-PF2780400/Chemistry/Sodium/0"
           },
-          "reference": "Observation/wf-5ccc8258031e9bd21b31286dc4a9b811",
+          "reference": "Observation/wf-55898962516ff63010257b19082a04f9",
           "type": "Observation"
         },
         {
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
             "value": "2026-PF2780400/Chemistry/Potassium/1"
           },
-          "reference": "Observation/wf-14157b275c7c213e13dd30e14ea12063",
+          "reference": "Observation/wf-ff37617ab308f3a4c8df60851d8112bb",
           "type": "Observation"
         }
       ],
@@ -530,10 +530,10 @@
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
             "value": "2026-NN6198463/Chemistry/ALT/0"
           },
-          "reference": "Observation/wf-87a74062cb4c281591c2defc20adc898",
+          "reference": "Observation/wf-475d03604c043bab5175cc5795e53040",
           "type": "Observation"
         }
       ],
@@ -2108,6 +2108,189 @@
             }
           ],
           "extension": [],
+          "text": "Chemistry · Liver Function"
+        }
+      ],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "ALT"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "effectiveDateTime": "2026-10-21T12:26:00.000Z",
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-475d03604c043bab5175cc5795e53040",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
+          "value": "2026-NN6198463/Chemistry/ALT/0"
+        }
+      ],
+      "interpretation": [],
+      "issued": "2026-10-21T17:52:00.000Z",
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [
+        {
+          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
+          "extension": []
+        }
+      ],
+      "referenceRange": [
+        {
+          "appliesTo": [],
+          "extension": [],
+          "high": {
+            "code": "U/L",
+            "extension": [],
+            "system": "http://unitsofmeasure.org",
+            "unit": "U/L",
+            "value": 41
+          },
+          "modifierExtension": [],
+          "text": "<41"
+        }
+      ],
+      "resourceType": "Observation",
+      "status": "final",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
+        },
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
+        "type": "Patient"
+      },
+      "valueQuantity": {
+        "code": "U/L",
+        "extension": [],
+        "system": "http://unitsofmeasure.org",
+        "unit": "U/L",
+        "value": 22
+      }
+    },
+    {
+      "basedOn": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "laboratory",
+              "display": "Laboratory",
+              "extension": [],
+              "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+            }
+          ],
+          "extension": [],
+          "text": "Chemistry · Electrolytes"
+        }
+      ],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "Sodium"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "effectiveDateTime": "2026-09-01T13:09:00.000Z",
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-55898962516ff63010257b19082a04f9",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
+          "value": "2026-PF2780400/Chemistry/Sodium/0"
+        }
+      ],
+      "interpretation": [],
+      "issued": "2026-09-01T20:38:00.000Z",
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [
+        {
+          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
+          "extension": []
+        }
+      ],
+      "referenceRange": [
+        {
+          "appliesTo": [],
+          "extension": [],
+          "high": {
+            "code": "mmol/L",
+            "extension": [],
+            "system": "http://unitsofmeasure.org",
+            "unit": "mmol/L",
+            "value": 145
+          },
+          "low": {
+            "code": "mmol/L",
+            "extension": [],
+            "system": "http://unitsofmeasure.org",
+            "unit": "mmol/L",
+            "value": 135
+          },
+          "modifierExtension": [],
+          "text": "135 - 145"
+        }
+      ],
+      "resourceType": "Observation",
+      "status": "final",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
+        },
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
+        "type": "Patient"
+      },
+      "valueQuantity": {
+        "code": "mmol/L",
+        "extension": [],
+        "system": "http://unitsofmeasure.org",
+        "unit": "mmol/L",
+        "value": 139
+      }
+    },
+    {
+      "basedOn": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "laboratory",
+              "display": "Laboratory",
+              "extension": [],
+              "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+            }
+          ],
+          "extension": [],
           "text": "Chemistry · Electrolytes"
         }
       ],
@@ -2123,11 +2306,11 @@
       "extension": [],
       "focus": [],
       "hasMember": [],
-      "id": "wf-14157b275c7c213e13dd30e14ea12063",
+      "id": "wf-ff37617ab308f3a4c8df60851d8112bb",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
           "value": "2026-PF2780400/Chemistry/Potassium/1"
         }
       ],
@@ -2206,189 +2389,6 @@
         "system": "http://unitsofmeasure.org",
         "unit": "mmol/L",
         "value": 5.4
-      }
-    },
-    {
-      "basedOn": [],
-      "category": [
-        {
-          "coding": [
-            {
-              "code": "laboratory",
-              "display": "Laboratory",
-              "extension": [],
-              "system": "http://terminology.hl7.org/CodeSystem/observation-category"
-            }
-          ],
-          "extension": [],
-          "text": "Chemistry · Electrolytes"
-        }
-      ],
-      "code": {
-        "coding": [],
-        "extension": [],
-        "text": "Sodium"
-      },
-      "component": [],
-      "contained": [],
-      "derivedFrom": [],
-      "effectiveDateTime": "2026-09-01T13:09:00.000Z",
-      "extension": [],
-      "focus": [],
-      "hasMember": [],
-      "id": "wf-5ccc8258031e9bd21b31286dc4a9b811",
-      "identifier": [
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
-          "value": "2026-PF2780400/Chemistry/Sodium/0"
-        }
-      ],
-      "interpretation": [],
-      "issued": "2026-09-01T20:38:00.000Z",
-      "meta": {
-        "profile": [],
-        "security": [],
-        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
-        "tag": []
-      },
-      "modifierExtension": [],
-      "note": [],
-      "partOf": [],
-      "performer": [
-        {
-          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
-          "extension": []
-        }
-      ],
-      "referenceRange": [
-        {
-          "appliesTo": [],
-          "extension": [],
-          "high": {
-            "code": "mmol/L",
-            "extension": [],
-            "system": "http://unitsofmeasure.org",
-            "unit": "mmol/L",
-            "value": 145
-          },
-          "low": {
-            "code": "mmol/L",
-            "extension": [],
-            "system": "http://unitsofmeasure.org",
-            "unit": "mmol/L",
-            "value": 135
-          },
-          "modifierExtension": [],
-          "text": "135 - 145"
-        }
-      ],
-      "resourceType": "Observation",
-      "status": "final",
-      "subject": {
-        "extension": [],
-        "identifier": {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
-          "value": "OKAFOR, AVERY, Sep 21 1974"
-        },
-        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
-        "type": "Patient"
-      },
-      "valueQuantity": {
-        "code": "mmol/L",
-        "extension": [],
-        "system": "http://unitsofmeasure.org",
-        "unit": "mmol/L",
-        "value": 139
-      }
-    },
-    {
-      "basedOn": [],
-      "category": [
-        {
-          "coding": [
-            {
-              "code": "laboratory",
-              "display": "Laboratory",
-              "extension": [],
-              "system": "http://terminology.hl7.org/CodeSystem/observation-category"
-            }
-          ],
-          "extension": [],
-          "text": "Chemistry · Liver Function"
-        }
-      ],
-      "code": {
-        "coding": [],
-        "extension": [],
-        "text": "ALT"
-      },
-      "component": [],
-      "contained": [],
-      "derivedFrom": [],
-      "effectiveDateTime": "2026-10-21T12:26:00.000Z",
-      "extension": [],
-      "focus": [],
-      "hasMember": [],
-      "id": "wf-87a74062cb4c281591c2defc20adc898",
-      "identifier": [
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
-          "value": "2026-NN6198463/Chemistry/ALT/0"
-        }
-      ],
-      "interpretation": [],
-      "issued": "2026-10-21T17:52:00.000Z",
-      "meta": {
-        "profile": [],
-        "security": [],
-        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
-        "tag": []
-      },
-      "modifierExtension": [],
-      "note": [],
-      "partOf": [],
-      "performer": [
-        {
-          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
-          "extension": []
-        }
-      ],
-      "referenceRange": [
-        {
-          "appliesTo": [],
-          "extension": [],
-          "high": {
-            "code": "U/L",
-            "extension": [],
-            "system": "http://unitsofmeasure.org",
-            "unit": "U/L",
-            "value": 41
-          },
-          "modifierExtension": [],
-          "text": "<41"
-        }
-      ],
-      "resourceType": "Observation",
-      "status": "final",
-      "subject": {
-        "extension": [],
-        "identifier": {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
-          "value": "OKAFOR, AVERY, Sep 21 1974"
-        },
-        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
-        "type": "Patient"
-      },
-      "valueQuantity": {
-        "code": "U/L",
-        "extension": [],
-        "system": "http://unitsofmeasure.org",
-        "unit": "U/L",
-        "value": 22
       }
     },
     {
