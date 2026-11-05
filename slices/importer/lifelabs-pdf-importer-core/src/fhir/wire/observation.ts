@@ -29,7 +29,7 @@ const observationKeyOf = (
   row: TestTableRow.Type,
   ordinal: number
 ): DetachedResource.Key => ({
-  system: LifeLabsIdentifierSystem.Result,
+  system: LifeLabsIdentifierSystem.Observation,
   value: [report.labNo, section, row.name, String(ordinal)].join('/'),
 })
 

@@ -36,10 +36,10 @@ const LifeLabsIdentifierSystem = {
    */
   PatientNameBirthDate: 'https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date',
   /**
-   * One printed result row, `<Lab No>/<section>/<test name>/<ordinal>`:
-   * Wildflower-minted.
+   * An Observation, one per printed result row,
+   * `<Lab No>/<section>/<test name>/<ordinal>`: Wildflower-minted.
    */
-  Result: 'https://wildflowerhealth.io/fhir/sid/lifelabs/result',
+  Observation: 'https://wildflowerhealth.io/fhir/sid/lifelabs/observation',
   /**
    * A provider by the name the report prints, inner whitespace collapsed:
    * Wildflower-minted.
