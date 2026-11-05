@@ -37,6 +37,7 @@
  * deleted the instant the client returns, before the code is even redeemed.
  */
 
+import { HttpClientRequest, type HttpClient } from '@effect/platform'
 import { Data, Effect, Option } from 'effect'
 
 import {
@@ -59,7 +60,7 @@ import {
   PendingRequestUnusable,
   RetainedSignInRequestStore,
   SignInCrypto,
-  SignInPage,
+  signInHttpClient,
   type SignInServices,
 } from './sign-in-services.ts'
 import {
@@ -132,14 +133,9 @@ const beginSignIn = (
   registration: ClientRegistration,
   options: SignInOptions = {}
 ): Effect.Effect<string, SignInError, SignInServices> =>
-  Effect.gen(function* () {
-    const page = yield* SignInPage
-    const issuer = yield* discoverSmartEndpoints(serverUrl, {
-      fetch: (input, init) => globalThis.fetch(input, init),
-      pageIsSecure: page.isSecure,
-    })
-    return yield* beginSignInAt(issuer, registration, options)
-  })
+  discoverSmartEndpoints(serverUrl).pipe(
+    Effect.flatMap((issuer) => beginSignInAt(issuer, registration, options))
+  )
 
 /**
  * Start a sign-in at the already-discovered `issuer`: mint the PKCE pair and
@@ -235,7 +231,11 @@ interface Session {
 const completeSignIn = (
   search: string,
   registration: ClientRegistration
-): Effect.Effect<Option.Option<Session>, SignInError, RetainedSignInRequestStore> =>
+): Effect.Effect<
+  Option.Option<Session>,
+  SignInError,
+  HttpClient.HttpClient | RetainedSignInRequestStore
+> =>
   Effect.gen(function* () {
     if (!isAuthorizationResponse(search)) return Option.none()
     const stored = yield* takePendingRecord
@@ -243,31 +243,35 @@ const completeSignIn = (
     if (Option.isNone(returning)) return Option.none()
     const { code, pending } = returning.value
 
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        globalThis.fetch(pending.tokenEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Accept: 'application/json',
-          },
-          body: tokenRequestBody({
-            code,
-            codeVerifier: pending.codeVerifier,
-            redirectUri: registration.redirectUri,
-            clientId: registration.clientId,
-          }),
-        }),
-      catch: () =>
-        new PendingRequestUnusable({
-          reason: `Could not reach the token endpoint at ${pending.tokenEndpoint}.`,
-        }),
-    })
-    const body = yield* Effect.tryPromise({
-      try: (): Promise<unknown> => response.json(),
-      catch: () =>
-        new PendingRequestUnusable({ reason: 'The token endpoint did not answer with JSON.' }),
-    })
+    const client = yield* signInHttpClient
+    const response = yield* client
+      .execute(
+        HttpClientRequest.post(pending.tokenEndpoint).pipe(
+          HttpClientRequest.acceptJson,
+          HttpClientRequest.bodyText(
+            tokenRequestBody({
+              code,
+              codeVerifier: pending.codeVerifier,
+              redirectUri: registration.redirectUri,
+              clientId: registration.clientId,
+            }),
+            'application/x-www-form-urlencoded'
+          )
+        )
+      )
+      .pipe(
+        Effect.mapError(
+          () =>
+            new PendingRequestUnusable({
+              reason: `Could not reach the token endpoint at ${pending.tokenEndpoint}.`,
+            })
+        )
+      )
+    const body = yield* response.json.pipe(
+      Effect.mapError(
+        () => new PendingRequestUnusable({ reason: 'The token endpoint did not answer with JSON.' })
+      )
+    )
     const grant = yield* parseTokenResponse(body)
     return Option.some(sessionFrom(grant, pending))
   })

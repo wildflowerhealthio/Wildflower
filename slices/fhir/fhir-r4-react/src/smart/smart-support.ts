@@ -1,8 +1,11 @@
+import { HttpClient } from '@effect/platform'
 import {
   insecureTargetReason,
   normalizeServerUrl,
   type PendingRequestUnusable,
   type PkceUnavailable,
+  SignInPage,
+  type SignInServices,
   smartIssuerFrom,
   type SmartIssuer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
@@ -61,42 +64,38 @@ const decodeSmartConfiguration = Schema.decodeUnknown(NamesAuthorizationEndpoint
  * Probe `{fhirBaseUrl}/.well-known/smart-configuration` to decide how to sign in.
  *
  * @remarks
- * Every outcome is a {@link SmartSupport}, so the Effect never fails.
- * `fetchFn` is a parameter (default `globalThis.fetch`) so a test can drive the
- * outcomes over a stub without a real wire — the same transport-is-a-parameter
- * philosophy as the SMART runtime's `HttpClient`. `pageIsSecure` (default: read
- * from `window.location`) is what decides whether a plain-http endpoint off
- * loopback is `Unusable`.
+ * Every outcome is a {@link SmartSupport}, so the Effect never fails. The
+ * probe goes through the context's `HttpClient`, sending no trace headers so
+ * the request stays a CORS-simple one, and the `SignInPage` decides whether a
+ * plain-http endpoint off loopback is `Unusable`.
  *
  * @param fhirBaseUrl - The FHIR server base the well-known path is appended to
- * @param fetchFn - The `fetch` to probe with; defaults to `globalThis.fetch`
- * @param pageIsSecure - Whether this page is served over https
  */
 const detectSmartSupport = (
-  fhirBaseUrl: FhirBaseUrl,
-  fetchFn: typeof fetch = globalThis.fetch,
-  pageIsSecure: boolean = window.location.protocol === 'https:'
-): Effect.Effect<SmartSupport> =>
+  fhirBaseUrl: FhirBaseUrl
+): Effect.Effect<SmartSupport, never, HttpClient.HttpClient | SignInPage> =>
   Effect.gen(function* () {
-    // A rejected fetch is network-or-CORS and the two are indistinguishable
-    // here — surface it, never degrade to `Open`.
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        fetchFn(`${fhirBaseUrl}/.well-known/smart-configuration`, {
-          headers: { Accept: 'application/json' },
-        }),
-      catch: (error) => SmartSupport.Unreachable({ reason: unknownErrorToString(error) }),
-    })
+    const client = (yield* HttpClient.HttpClient).pipe(HttpClient.withTracerPropagation(false))
+    const page = yield* SignInPage
+    // A request that gets no response is network-or-CORS and the two are
+    // indistinguishable here — surface it, never degrade to `Open`.
+    const response = yield* client
+      .get(`${fhirBaseUrl}/.well-known/smart-configuration`, { acceptJson: true })
+      .pipe(
+        Effect.mapError((error) =>
+          SmartSupport.Unreachable({ reason: unknownErrorToString(error.cause) })
+        )
+      )
     // A real HTTP answer that isn't ok (404, 500, …) is a server with no SMART
     // config → Open. Only a config that names an authorization endpoint is
     // SMART, and only when its endpoints are usable from this page.
-    if (!response.ok) return SmartSupport.Open()
-    const config = yield* Effect.tryPromise((): Promise<unknown> => response.json()).pipe(
+    if (response.status < 200 || response.status >= 300) return SmartSupport.Open()
+    const config = yield* response.json.pipe(
       // Checked, not narrowed: `smartIssuerFrom` reads the whole configuration.
       Effect.tap(decodeSmartConfiguration),
       Effect.mapError(() => SmartSupport.Open())
     )
-    return Either.match(smartIssuerFrom(fhirBaseUrl, config, { pageIsSecure }), {
+    return Either.match(smartIssuerFrom(fhirBaseUrl, config, { pageIsSecure: page.isSecure }), {
       onLeft: (failed) => SmartSupport.Unusable({ reason: failed.reason }),
       onRight: (discovered) => SmartSupport.Smart({ discovered }),
     })
@@ -121,17 +120,15 @@ const detectSmartSupport = (
  * @param config - The server plus the app's client id, scope, and redirect
  *   target
  * @param launch - The EHR's launch token, `undefined` for a standalone launch
- * @param fetchFn - The `fetch` the probe uses; defaults to `globalThis.fetch`
  * @returns The probe outcome. `Smart`/`Open` are returned only in the (unusual)
  *   case the redirect does not navigate the page away; `Unreachable` and
  *   `Unusable` always are.
  */
 const redirectToSignIn = (
   config: SmartLaunchConfig,
-  launch: string | undefined,
-  fetchFn: typeof fetch = globalThis.fetch
-): Effect.Effect<SmartSupport, PkceUnavailable | PendingRequestUnusable> =>
-  detectSmartSupport(config.fhirBaseUrl, fetchFn).pipe(
+  launch: string | undefined
+): Effect.Effect<SmartSupport, PkceUnavailable | PendingRequestUnusable, SignInServices> =>
+  detectSmartSupport(config.fhirBaseUrl).pipe(
     Effect.tap(
       Match.type<SmartSupport>().pipe(
         Match.tag('Smart', ({ discovered }) => redirectToSignInAt(discovered, config, launch)),

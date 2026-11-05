@@ -10,7 +10,7 @@
  * one it cares about in its place.
  */
 
-import type { HttpClient } from '@effect/platform'
+import { HttpClient } from '@effect/platform'
 import {
   removeStorageItem,
   setStorageItem,
@@ -180,6 +180,15 @@ class SignInPage extends Context.Tag('authorization-core/SignInPage')<
     Layer.sync(SignInPage, () => ({ isSecure: location.protocol === 'https:' }))
 }
 
+/**
+ * The context's `HttpClient`, sending no trace headers. Discovery and the
+ * token request go cross-origin, where a `traceparent` header would turn each
+ * into a CORS preflight the server may refuse; without one, both stay simple
+ * requests.
+ */
+const signInHttpClient: Effect.Effect<HttpClient.HttpClient, never, HttpClient.HttpClient> =
+  Effect.map(HttpClient.HttpClient, HttpClient.withTracerPropagation(false))
+
 /** Every service a whole sign-in, both halves, runs against. */
 type SignInServices = HttpClient.HttpClient | SignInCrypto | RetainedSignInRequestStore | SignInPage
 
@@ -189,5 +198,6 @@ export {
   RetainedSignInRequestStore,
   SignInCrypto,
   SignInPage,
+  signInHttpClient,
 }
 export type { RetainedRequestStorage, SignInServices }

@@ -22,7 +22,10 @@
  * whose `reason` the header bar renders verbatim.
  */
 
+import type { HttpClient } from '@effect/platform'
 import { Data, Effect, Either, Option, Schema } from 'effect'
+
+import { SignInPage, signInHttpClient } from './sign-in-services.ts'
 
 /** Raised when the chosen target cannot be signed in to, with the reason why. */
 class DiscoveryFailed extends Data.TaggedError('DiscoveryFailed')<{
@@ -285,20 +288,22 @@ const smartIssuerFrom = (
  * {@link DiscoveryFailed} naming the URL.
  */
 const discoverSmartEndpoints = (
-  serverUrl: string,
-  options: { readonly fetch: typeof globalThis.fetch; readonly pageIsSecure: boolean }
-): Effect.Effect<SmartIssuer, DiscoveryFailed> =>
+  serverUrl: string
+): Effect.Effect<SmartIssuer, DiscoveryFailed, HttpClient.HttpClient | SignInPage> =>
   Effect.gen(function* () {
     const url = smartConfigurationUrl(serverUrl)
-    const response = yield* Effect.tryPromise({
-      try: () => options.fetch(url, { headers: { Accept: 'application/json' } }),
+    const client = yield* signInHttpClient
+    const page = yield* SignInPage
+    const response = yield* client.get(url, { acceptJson: true }).pipe(
       // A network-level failure is indistinguishable from a CORS rejection to
       // the page, so name both possibilities instead of guessing.
-      catch: () =>
-        new DiscoveryFailed({
-          reason: `Could not reach ${url}. The server may be down, or the browser may have blocked the request.`,
-        }),
-    })
+      Effect.mapError(
+        () =>
+          new DiscoveryFailed({
+            reason: `Could not reach ${url}. The server may be down, or the browser may have blocked the request.`,
+          })
+      )
+    )
     if (response.status === 404) {
       return yield* new DiscoveryFailed({
         reason:
@@ -306,19 +311,20 @@ const discoverSmartEndpoints = (
           'Enter a Wildflower server’s address, or a SMART on FHIR server’s FHIR base URL.',
       })
     }
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       return yield* new DiscoveryFailed({
         reason: `${url} answered ${String(response.status)}. Is this a Wildflower server?`,
       })
     }
-    const document = yield* Effect.tryPromise({
-      try: (): Promise<unknown> => response.json(),
-      catch: () =>
-        new DiscoveryFailed({
-          reason: `${url} did not answer with JSON. Is this a Wildflower server?`,
-        }),
-    })
-    return yield* smartIssuerFrom(serverUrl, document, { pageIsSecure: options.pageIsSecure })
+    const document = yield* response.json.pipe(
+      Effect.mapError(
+        () =>
+          new DiscoveryFailed({
+            reason: `${url} did not answer with JSON. Is this a Wildflower server?`,
+          })
+      )
+    )
+    return yield* smartIssuerFrom(serverUrl, document, { pageIsSecure: page.isSecure })
   })
 
 export {
