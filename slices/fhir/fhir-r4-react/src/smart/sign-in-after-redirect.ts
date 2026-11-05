@@ -32,31 +32,40 @@ const connectionOf = (session: Session): SmartConnection =>
   })
 
 /**
+ * The page came back from a sign-in it holds no request for: nothing was
+ * retained for a self-addressed return, or `completeSignIn` found no return
+ * to complete.
+ */
+class NoSignInInProgress extends Data.TaggedError('NoSignInInProgress')<{
+  readonly reason: string
+}> {}
+
+/** What {@link NoSignInInProgress} tells the person to do. */
+const NO_SIGN_IN_IN_PROGRESS_REASON =
+  'This page has no sign-in in progress to complete. Connect again.'
+
+/**
  * Redeem the code `signInReturn` carries for the sign-in `environment`
  * started.
  *
  * @remarks
  * `completeSignIn` reads the return from a query string, so the arrival is
- * written back as one. A return that carries a code always completes or
- * fails, so its `None` (no return at all) cannot happen here.
+ * written back as one. Its `None`, no return to complete, fails as
+ * {@link NoSignInInProgress}.
  */
 const redeemSignIn = (
   { code, state }: Data.TaggedEnum.Value<RootArrival, 'SignInReturn'>,
   environment: SignInEnvironment
-): Effect.Effect<SmartConnection, SignInError> =>
+): Effect.Effect<SmartConnection, SignInError | NoSignInInProgress> =>
   completeSignIn(`?${new URLSearchParams({ code, state }).toString()}`, environment).pipe(
     Effect.flatMap(
       Option.match({
-        onNone: () => Effect.dieMessage('A sign-in return with a code completed to no session'),
+        onNone: () =>
+          Effect.fail(new NoSignInInProgress({ reason: NO_SIGN_IN_IN_PROGRESS_REASON })),
         onSome: (session) => Effect.succeed(connectionOf(session)),
       })
     )
   )
-
-/** The page came back from a self-addressed sign-in it holds no request for. */
-class NoSignInInProgress extends Data.TaggedError('NoSignInInProgress')<{
-  readonly reason: string
-}> {}
 
 /**
  * A self-addressed sign-in came back with a `state` other than the one its
@@ -83,9 +92,7 @@ const completeSelfAddressedSignIn = (
 > =>
   Effect.gen(function* () {
     if (Option.isNone(retained)) {
-      return yield* new NoSignInInProgress({
-        reason: 'This page has no sign-in in progress to complete. Connect again.',
-      })
+      return yield* new NoSignInInProgress({ reason: NO_SIGN_IN_IN_PROGRESS_REASON })
     }
     const request = decodeRetainedSelfAddressedSignInRequest(retained.value)
     if (Option.isNone(request)) {

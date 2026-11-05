@@ -47,8 +47,20 @@ interface StubFhirServer {
 const prefixOf = (key: string): string => Either.merge(addressedUnderFhirBase(key, STUB_FHIR_BASE))
 
 /**
+ * A request the stub server has no answer for, failed as a transport error
+ * whose cause names `why`: the test forgot an answer.
+ */
+const unanswered = (
+  request: HttpClientRequest.HttpClientRequest,
+  why: string
+): Effect.Effect<never, HttpClientError.RequestError> =>
+  Effect.fail(
+    new HttpClientError.RequestError({ request, reason: 'Transport', cause: new Error(why) })
+  )
+
+/**
  * A stub FHIR server answering from `answers`, the longest matching prefix
- * winning. A request no key matches dies: the test forgot an answer.
+ * winning. A request no key matches fails {@link unanswered}.
  */
 const stubFhirServer = (answers: StubAnswers): StubFhirServer => {
   const requests: HttpClientRequest.HttpClientRequest[] = []
@@ -64,7 +76,7 @@ const stubFhirServer = (answers: StubAnswers): StubFhirServer => {
         urls.push(request.url)
         const matched = prefixed.find(({ prefix }) => request.url.startsWith(prefix))
         return matched === undefined
-          ? Effect.dieMessage(`unexpected request ${request.url}`)
+          ? unanswered(request, `unexpected request ${request.url}`)
           : matched.answer(request)
       })
     )
@@ -140,14 +152,17 @@ const neverAnswer: StubAnswer = () => Effect.never
 
 /**
  * Each call answered by the next of `answers`, the last one repeating: a
- * server that fails and then recovers. With no answers, every request dies.
+ * server that fails and then recovers. With no answers, every request fails
+ * {@link unanswered}.
  */
 const answerInTurn = (...answers: readonly StubAnswer[]): StubAnswer => {
   let calls = 0
   return (request) => {
     const answer = answers[Math.min(calls, answers.length - 1)]
     calls += 1
-    return answer === undefined ? Effect.dieMessage('answerInTurn has no answers') : answer(request)
+    return answer === undefined
+      ? unanswered(request, `answerInTurn has no answers for ${request.url}`)
+      : answer(request)
   }
 }
 

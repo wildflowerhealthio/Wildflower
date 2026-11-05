@@ -1,4 +1,5 @@
-import { Effect, Match, Option } from 'effect'
+import type { PendingRequestUnusable } from '@wildflowerhealthio/authorization-core/smart-client'
+import { Data, Effect, Match, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY } from './retained-sign-in-requests.ts'
@@ -54,8 +55,13 @@ const completeHere = (appRootRedirectUri?: string): Promise<SmartConnection> =>
 const failureHere = (): Promise<SignInAfterRedirectError> =>
   Effect.runPromise(Effect.flip(completeSignInAfterRedirectHere(landingHere())))
 
+/** The page arrived as something other than the sign-in a test set up. */
+class UnexpectedArrival extends Data.TaggedError('UnexpectedArrival')<{
+  readonly reason: string
+}> {}
+
 /** Discard the refused sign-in the page landed on. */
-const discardHere = (): ReturnType<typeof discardRefusedSignInAfterRedirectHere> =>
+const discardHere = (): Effect.Effect<void, PendingRequestUnusable | UnexpectedArrival> =>
   Match.value(rootArrivalFrom(window.location.search)).pipe(
     Match.tag('SignInRefused', (refused) =>
       discardRefusedSignInAfterRedirectHere(refused, {
@@ -63,7 +69,9 @@ const discardHere = (): ReturnType<typeof discardRefusedSignInAfterRedirectHere>
         appRootRedirectUri: APP_ROOT,
       })
     ),
-    Match.orElse((arrival) => Effect.dieMessage(`the page arrived as ${arrival._tag}`))
+    Match.orElse((arrival) =>
+      Effect.fail(new UnexpectedArrival({ reason: `the page arrived as ${arrival._tag}` }))
+    )
   )
 
 describe('completeSignInAfterRedirectHere', () => {
