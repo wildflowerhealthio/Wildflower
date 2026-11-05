@@ -5,7 +5,14 @@ import {
   extractJson,
   recognizePortal,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { Array as Arr, Effect, type ParseResult, RegExp as EffectRegExp, Schema } from 'effect'
+import {
+  Array as Arr,
+  Effect,
+  Option,
+  type ParseResult,
+  RegExp as EffectRegExp,
+  Schema,
+} from 'effect'
 
 import { DecodableEntries, MalformedAsAbsent } from '../lenient-schemas.ts'
 import { portalGetMatcher, SHOPPERS_API_BASE_URL } from '../portal-url.ts'
@@ -46,10 +53,11 @@ type SourcePatient = typeof SourcePatient.Type
 /**
  * Just-enough schema for one bespoke (non-FHIR) customers payload: the people
  * the account manages, and the account's contact email and phone. The
- * account's other fields (its `pcid`, name and address) are not read: an
- * account is not a person, and every person it manages, the holder included,
- * is one of `patients`. The email and phone read as absent when `null` or
- * malformed, as {@link SourcePatient}'s fields do. `patients` decodes entry by
+ * account's other fields (its `pcid`, which the kind reads from the URL
+ * instead, name and address) are not read: an account is not a person, and
+ * every person it manages, the holder included, is one of `patients`. The
+ * email and phone read as absent when `null` or malformed, as
+ * {@link SourcePatient}'s fields do. `patients` decodes entry by
  * entry ({@link DecodableEntries}): an entry that is not a
  * {@link SourcePatient} (no `id`, an `id` that is not a string, or not an
  * object at all) is counted, not decoded, and never fails the payload.
@@ -131,14 +139,26 @@ const telecomWire = (
 }
 
 /**
+ * What an account that manages just one person shares with them: its contact
+ * details, and its `pcid` (`None` when the URL's does not decode).
+ */
+interface AccountOfOne {
+  readonly contact: SourceContact
+  readonly pcid: Option.Option<string>
+}
+
+/**
  * The detached demographic `Patient` **wire** for one managed person, keyed
  * by the person's `patientId` in `ShoppersIdentifierSystem.PatientId` (the
- * key `subject` references name), and reached at their own phone and then at
- * each of `alsoReachedAt`.
+ * key `subject` references name), and reached at their own phone. When the
+ * account manages only them (`accountOfOne`), they are also reached at its
+ * contact details, and identified, after their key, by its `pcid` under
+ * `ShoppersIdentifierSystem.CustomerId`: the id the history feed's fills name
+ * the account by, so those fills resolve to this person.
  */
 const patientWire = (
   patient: SourcePatient,
-  alsoReachedAt: readonly SourceContact[]
+  accountOfOne: Option.Option<AccountOfOne>
 ): Record<string, unknown> => {
   const wire: Record<string, unknown> = {
     resourceType: 'Patient',
@@ -147,44 +167,70 @@ const patientWire = (
         system: ShoppersIdentifierSystem.PatientId,
         value: patient.id,
       }),
+      ...accountOfOne.pipe(
+        Option.flatMap(({ pcid }) => pcid),
+        Option.map((pcid) => ({ system: ShoppersIdentifierSystem.CustomerId, value: pcid })),
+        Option.toArray
+      ),
     ],
   }
   const name = nameWire(patient)
   if (name != null) wire['name'] = name
-  const telecom = telecomWire([{ phoneNumber: patient.phoneNumber }, ...alsoReachedAt])
+  const telecom = telecomWire([
+    { phoneNumber: patient.phoneNumber },
+    ...accountOfOne.pipe(
+      Option.map(({ contact }) => contact),
+      Option.toArray
+    ),
+  ])
   if (telecom != null) wire['telecom'] = telecom
   const address = addressWire(patient.address)
   if (address != null) wire['address'] = address
   return wire
 }
 
-/** The demographic `Patient` for one managed person, also reached at each of `alsoReachedAt`. */
+/** The demographic `Patient` for one managed person ({@link patientWire}). */
 const demographicPatientOf = (
   patient: SourcePatient,
-  alsoReachedAt: readonly SourceContact[]
+  accountOfOne: Option.Option<AccountOfOne>
 ): Effect.Effect<DetachedResource.Detached<typeof Patient.Schema.Type>, ParseResult.ParseError> =>
-  decodePatient(patientWire(patient, alsoReachedAt))
+  decodePatient(patientWire(patient, accountOfOne))
 
 /**
  * The exact customers XHR URL (`customerUrlOf`), anchored and pinned to
  * {@link SHOPPERS_API_BASE_URL} + full path with an optional query;
- * `[^/?#]+(?:\?|$)` keeps the uuid a single segment (so `…/pcid/<uuid>/toasts`
- * is rejected). Disjoint from the sibling kinds.
+ * `([^/?#]+)(?:\?|$)` keeps the uuid a single segment (so `…/pcid/<uuid>/toasts`
+ * is rejected) and captures it, the account's `pcid`. Disjoint from the
+ * sibling kinds.
  */
 const customerUrl = new RegExp(
-  `^${EffectRegExp.escape(SHOPPERS_API_BASE_URL)}/customers/pcid/[^/?#]+(?:\\?|$)`
+  `^${EffectRegExp.escape(SHOPPERS_API_BASE_URL)}/customers/pcid/([^/?#]+)(?:\\?|$)`
 )
+
+const decodeUriComponent = Option.liftThrowable(decodeURIComponent)
+
+/**
+ * The account a customers XHR is for: the `pcid` its URL names, the same id
+ * the account's history XHR names as `customerId`. `None` when its
+ * percent-encoding does not decode.
+ */
+const pcidOf = (url: string): Option.Option<string> =>
+  Option.fromNullable(customerUrl.exec(url)?.[1]).pipe(Option.flatMap(decodeUriComponent))
 
 /**
  * Entity for the Shoppers customers XHR: one bespoke JSON object carrying the
  * account and the people it manages, synthesized into a demographic `Patient`
  * per `customer.patients[]` entry and nothing else: the account is not a
  * person, so it is no Patient. When `patients` lists exactly one entry, and it
- * is a person, the account's email and phone are theirs too and join their
- * `telecom`; with any other entry beside them, nothing says whose they are, so
- * they are dropped. This entity — not {@link PrescriptionResponseKind} — owns
- * the subject Patient records, so a run where this XHR fails leaves those
- * `subject` references dangling (tolerated; not FK-enforced). A patient entry that does not decode as a
+ * is a person, the account is theirs alone: its email and phone join their
+ * `telecom`, and its `pcid` is their second identifier, under
+ * `ShoppersIdentifierSystem.CustomerId`, so the history feed's fills, which
+ * name the account by it, are filed on them at import. With any other entry
+ * beside them, nothing says whose the account's details and fills are, so the
+ * contacts are dropped and no Patient carries the `pcid`. This entity — not
+ * {@link PrescriptionResponseKind} — owns the subject Patient records, so a
+ * run where this XHR fails leaves those `subject` references dangling
+ * (tolerated; not FK-enforced). A patient entry that does not decode as a
  * {@link SourcePatient} (one with no string `id`, or not an object)
  * drops-and-counts via `Effect.logInfo`; a malformed optional field only drops
  * that field.
@@ -201,11 +247,13 @@ const CustomerResponseKind: HttpResponseKind.HttpResponseKind<DetachedResource.T
           decoded: [],
           undecodable: 0,
         }
-        // The account's contact details are surely a person's only when it lists just them.
-        const accountContacts: readonly SourceContact[] =
-          sourcePatients.length === 1 && undecodable === 0 ? [customer] : []
+        // The account's details and fills are surely a person's only when it lists just them.
+        const accountOfOne: Option.Option<AccountOfOne> =
+          sourcePatients.length === 1 && undecodable === 0
+            ? Option.some({ contact: customer, pcid: pcidOf(response.url) })
+            : Option.none()
         const patients = yield* Effect.forEach(sourcePatients, (patient) =>
-          demographicPatientOf(patient, accountContacts)
+          demographicPatientOf(patient, accountOfOne)
         )
         if (undecodable > 0) {
           yield* Effect.logInfo(
