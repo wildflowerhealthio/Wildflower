@@ -175,20 +175,48 @@ describe('RetainedSignInRequestStore.sessionStorageBackedLayer', () => {
     )
   })
 
+  /** Every call a store answers, each as the effect a test runs on a page. */
+  const everyStoreCall = [
+    Effect.flatMap(RetainedSignInRequestStore, (store) => store.retain('a-request')),
+    Effect.flatMap(RetainedSignInRequestStore, (store) => store.read),
+    Effect.flatMap(RetainedSignInRequestStore, (store) => store.take),
+    Effect.flatMap(RetainedSignInRequestStore, (store) => store.forget),
+  ]
+
   it('fails every call on a blocked storage with RetainedRequestUnusable', async () => {
     // Arrange
     const page = pageAt('https://x.test/', { sessionStorage: throwingStore() })
-    const calls = [
-      Effect.flatMap(RetainedSignInRequestStore, (store) => store.retain('a-request')),
-      Effect.flatMap(RetainedSignInRequestStore, (store) => store.read),
-      Effect.flatMap(RetainedSignInRequestStore, (store) => store.forget),
-    ]
 
     // Act
-    const results = await Promise.all(calls.map((call) => runOn(page, call)))
+    const results = await Promise.all(everyStoreCall.map((call) => runOn(page, call)))
 
     // Assert
     expect(results.map((result) => Either.isLeft(result) && result.left._tag)).toEqual([
+      'RetainedRequestUnusable',
+      'RetainedRequestUnusable',
+      'RetainedRequestUnusable',
+      'RetainedRequestUnusable',
+    ])
+  })
+
+  it('fails every call, and not the layer, when the sessionStorage getter itself throws', async () => {
+    // Arrange — a browser that blocks storage can throw `SecurityError` on the
+    // `window.sessionStorage` read, before any method is called on it.
+    const page: SignInWindow = {
+      ...pageAt('https://x.test/'),
+      get sessionStorage(): SignInWindow['sessionStorage'] {
+        throw new DOMException('The operation is insecure.', 'SecurityError')
+      },
+    }
+
+    // Act
+    const layer = BrowserSignIn.layerFromWindow(page, RETAINED_REQUEST_KEY)
+    const results = await Promise.all(everyStoreCall.map((call) => runOn(page, call)))
+
+    // Assert
+    expect(layer).toBeDefined()
+    expect(results.map((result) => Either.isLeft(result) && result.left._tag)).toEqual([
+      'RetainedRequestUnusable',
       'RetainedRequestUnusable',
       'RetainedRequestUnusable',
       'RetainedRequestUnusable',
