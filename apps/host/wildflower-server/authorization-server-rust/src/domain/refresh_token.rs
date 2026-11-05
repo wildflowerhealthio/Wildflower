@@ -39,8 +39,10 @@ pub struct RefreshTokenFamily {
     /// started it. Revoking the client refuses every family issued before
     /// that moment.
     pub issued_at: DateTime<Utc>,
-    /// Absolute deadline for the whole family — rotation never extends it;
-    /// past this the client must re-run the authorization flow. Ending the
+    /// When the family ends if nothing refreshes it: the earliest of its
+    /// client's refresh-policy limits as of its last rotation, and the
+    /// ceiling. Each rotation moves it; past it the client must re-run the
+    /// authorization flow, even if its policy is loosened later. Ending the
     /// family (a replay, a revocation) moves it to the moment it ended,
     /// rather than deleting the row; the retention sweep removes it later.
     pub expires_at: DateTime<Utc>,
@@ -79,7 +81,8 @@ pub struct RefreshToken {
     pub token_hash: String,
     /// The [`RefreshTokenFamily`] this token belongs to.
     pub family_id: String,
-    /// When this token was minted.
+    /// When this token was minted. The live token's is the family's last
+    /// rotation, from which its client's idle limit runs.
     pub issued_at: DateTime<Utc>,
     /// Set when this token is redeemed. `None` means this is the family's
     /// single live token.

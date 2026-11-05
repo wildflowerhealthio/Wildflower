@@ -17,13 +17,14 @@ use crate::domain::grant_store::{
 };
 use crate::domain::GrantStore;
 
-/// How long a refresh-token family (and its tokens) is kept past its absolute
-/// deadline. Deliberately equal to
-/// [`REFRESH_TOKEN_FAMILY_TTL`](crate::domain::refresh_token::REFRESH_TOKEN_FAMILY_TTL) —
-/// a lineage stays auditable for its own lifetime again after it dies. A
-/// family that runs its full course is readable for twice its lifetime, a
-/// quarter's history: the horizon over which "what happened to this device's
-/// session" is still a live question.
+/// How long a refresh-token family (and its tokens) is kept past its
+/// `expires_at`: the deadline its client's refresh policy set at its last
+/// rotation, the ceiling, or the moment it was revoked. A quarter's history,
+/// the horizon over which "what happened to this device's session" is still a
+/// live question, whether the family lasted half an hour or a year. A family
+/// whose client's policy was tightened after its last rotation is refused
+/// from its next refresh, but is kept from the deadline it stored, which is
+/// later; never earlier, so nothing live is ever in range.
 pub const REFRESH_TOKEN_FAMILY_RETENTION: Duration = Duration::days(90);
 
 /// How long an expired authorization request or code is kept — a generous audit

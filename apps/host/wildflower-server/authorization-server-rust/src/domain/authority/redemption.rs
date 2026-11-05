@@ -643,6 +643,17 @@ impl ValidatedRefreshToken {
     pub(crate) fn presented_hash(&self) -> &str {
         &self.presented_hash
     }
+
+    /// When the family ends if it is rotated at `rotated_at` and then left
+    /// alone: the earliest of the client's limits from there, and the
+    /// ceiling. Rotation moves the family's `expires_at` to it.
+    pub(crate) fn family_deadline_once_rotated_at(
+        &self,
+        rotated_at: DateTime<Utc>,
+    ) -> DateTime<Utc> {
+        self.refresh_policy
+            .family_deadline(self.family.issued_at, rotated_at)
+    }
 }
 
 /// Why the consumed `code` may not be redeemed by `authenticated_client`

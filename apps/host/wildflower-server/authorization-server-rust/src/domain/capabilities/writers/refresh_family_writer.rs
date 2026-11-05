@@ -10,9 +10,9 @@ use uuid::Uuid;
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
 use crate::domain::authority::{GrantRedemption, ValidatedRefreshToken};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client::RefreshPolicy;
 use crate::domain::refresh_token::{
     consume_refresh_token, RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily,
-    REFRESH_TOKEN_FAMILY_TTL,
 };
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
 use crate::domain::GrantTx;
@@ -39,7 +39,9 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
     /// first. The family records the redemption's scopes and patient
     /// verbatim, the code it consumed (so a replay of that code can revoke
     /// the lineage), the standing grant behind it, and the browser session it
-    /// was made under (so revoking that session ends it).
+    /// was made under (so revoking that session ends it). Its deadline is the
+    /// earliest of the client's `refresh_policy` limits from `now`, and the
+    /// ceiling.
     ///
     /// # Errors
     ///
@@ -47,6 +49,7 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
     pub(crate) fn start_family(
         &mut self,
         redemption: GrantRedemption<'_>,
+        refresh_policy: &RefreshPolicy,
         now: DateTime<Utc>,
     ) -> Result<String, AuthorizationServerError> {
         let plaintext = generate_refresh_token();
@@ -56,7 +59,7 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
             scopes: redemption.granted_scopes().to_vec(),
             patient: redemption.patient().map(str::to_owned),
             issued_at: now,
-            expires_at: now + REFRESH_TOKEN_FAMILY_TTL,
+            expires_at: refresh_policy.family_deadline(now, now),
             authorization_code_hash: redemption.authorization_code().map(token_storage_hash),
             grant_id: redemption.grant_id().map(str::to_owned),
             sid: redemption.sid().map(str::to_owned),
@@ -73,7 +76,9 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
     }
 
     /// Consume the presented token and, only if that consume won, insert its
-    /// successor and return the successor's plaintext. A family made under a
+    /// successor, move the family's deadline to where the client's refresh
+    /// policy puts it from `now` (an idle limit slides with each rotation),
+    /// and return the successor's plaintext. A family made under a
     /// browser session moves that session's `last_seen_at` to `now`: an app
     /// refreshing is the session in use. A family a device grant earned
     /// stamps that grant's `last_used_at` with `now`: a device refreshing is
@@ -104,6 +109,10 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
                     issued_at: now,
                     consumed_at: None,
                 })?;
+                self.tx.set_refresh_token_family_expires_at(
+                    family_id,
+                    validated_refresh_token.family_deadline_once_rotated_at(now),
+                )?;
                 if let Some(sid) = validated_refresh_token.sid() {
                     self.tx.touch_browser_session_last_seen(sid, now, now)?;
                 }
