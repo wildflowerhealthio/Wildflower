@@ -164,43 +164,57 @@ It stays inside the `-core` layering rule by reading every impure part of the
 page from the Effect context, as four services (`sign-in-services.ts`):
 `@effect/platform`'s `HttpClient`, which discovery and the token request go
 through with trace propagation off, so each stays a CORS-simple request;
-`SignInCrypto`, the random bytes and SHA-256 digest PKCE needs;
+`SignInCrypto`, the `randomBytes` and SHA-256 `digest` PKCE needs;
 `RetainedSignInRequestStore`, which keeps the `RetainedSignInRequest` across the
-redirect; and `SignInPage`, whether the page is served over https. The store's
-`sessionStorage` layer takes the key the request lives at. The key is the app's
-to choose. `sessionStorage` is per origin and per tab, and each Wildflower app
-is served from its own origin, so the key only has to tell apart the sign-in
-flows one app runs in a tab: one key per flow. Its `inMemory` layer is for
-tests.
+redirect; and `PageSecurity`, whether the page is served over https, shaped as
+the `{ pageIsSecure }` options the endpoint checks take. The store's
+`sessionStorageBackedLayer` takes the key the request lives at. The key is the
+app's to choose. `sessionStorage` is per origin and per tab, and each Wildflower
+app is served from its own origin, so the key only has to tell apart the sign-in
+flows one app runs in a tab: one key per flow. Its `memoryBackedLayer` is for
+tests. Both are built from a store implementation the package exports
+(`sessionStorageBackedRetainedRequestStore`, `memoryBackedRetainedRequestStore`,
+of `RetainedRequestStoreShape`), so a page that retains a request of its own
+across the redirect keeps it under a tag of its own the same way, as
+fhir-r4-react's self-addressed sign-in does. The store's `read` leaves the
+request in place, for `peekRetainedSignInRequest`: a page reads which server a
+return leg was for before `completeSignIn` takes the request.
 
-What each page supplies, it supplies once. `BrowserSignIn.layer(page, key)`
-provides all four services from a browser page — including calling `fetch` as a
-method, since an unbound `Window.fetch` throws `Illegal invocation` — and takes
-`page` structurally (`SignInWindow`), so a test passes a plain object instead of
-a `Window`, or provides only the service it is about. `STANDALONE_LAUNCH_SCOPES`
-is the requested `scope` for the server-docs console's seeded public client
-(migration 0007).
+What each page supplies, it supplies once.
+`BrowserSignIn.layerFromWindow(page, key)` provides all four services from a
+browser page — including calling `fetch` as a method, since an unbound `Window.fetch` throws `Illegal invocation` — and
+takes `page` structurally (`SignInWindow`), so a test passes a plain object
+instead of a `Window`, or provides only the service it is about.
+`BrowserSignIn.discoveryLayerFromWindow(page)` is its discovery half, the
+`HttpClient` and `PageSecurity` alone, for a page that reads a server's SMART
+configuration without signing in to it. `STANDALONE_LAUNCH_SCOPES` is the
+requested `scope` for the server-docs console's seeded public client (migration
+0007).
 
 The server URL a sign-in starts from is its FHIR base — the SMART `iss`, which
 the authorization request also names as its `aud`: a Wildflower server serves
-FHIR at its root (or at the root of the path prefix it is published behind),
-and a plain SMART server's URL is its FHIR base (the SmartHealthIT demo's).
-`discoverSmartEndpoints(serverUrl)` reads
-`{serverUrl}/.well-known/smart-configuration`, and the document says which kind
-of server it is: a Wildflower server lists `WILDFLOWER_SERVER_CAPABILITY`
-(`wildflower-server`, advertised by `fhir-r4-rust`'s discovery override) among
-its `capabilities`. Any failure — unreachable, blocked by CORS, a 404 or another
-status — is reported as it is. It returns the `SmartServer` the document
-describes — `WildflowerServer` or `PlainSmartServer`, each carrying its
-`fhirBaseUrl` — with the endpoints, and `beginSignIn` names that base as the
-`aud`. `beginSignIn` is `discoverSmartEndpoints` followed by `beginSignInAt`,
-which starts a sign-in at a `DiscoveredSmartServer` the caller already holds, so
-a page that probed the configuration itself fetches it once. The discovered
-token endpoint and the `SmartServer` ride the retained request, so the return
-leg is the same either way, and the redeemed `Session` says which kind of server
-it signed in to and, in its `smartServer.fhirBaseUrl`, which server that is. The
-`Session` also carries the token response's `patient`, the launch context a
-plain SMART server names once the reader picks a patient.
+FHIR at its root (or at the root of the path prefix it is published behind), and
+a plain SMART server's URL is its FHIR base (the SmartHealthIT demo's).
+`discoverSmartServer(serverUrl)` reads
+`{serverUrl}/.well-known/smart-configuration`, fetched by
+`fetchSmartConfiguration`, which says what came back (`Unreachable`, `NotOk`,
+`NotJson` or the `Document`) and leaves its reading to the caller;
+fhir-r4-react's SMART probe reads the same fetch its own way. The document says
+which kind of server it is: a Wildflower server lists
+`WILDFLOWER_SERVER_CAPABILITY` (`wildflower-server`, advertised by
+`fhir-r4-rust`'s discovery override) among its `capabilities`. Any failure —
+unreachable, blocked by CORS, a 404 or another status — is reported as it is. It
+returns the `SmartServer` the document describes — `WildflowerServer` or
+`PlainSmartServer`, each carrying its `fhirBaseUrl` — with the endpoints, and
+`beginSignIn` names that base as the `aud`. `beginSignIn` is
+`discoverSmartServer` followed by `beginSignInAt`, which starts a sign-in at a
+`DiscoveredSmartServer` the caller already holds, so a page that probed the
+configuration itself fetches it once. The discovered token endpoint and the
+`SmartServer` ride the retained request, so the return leg is the same either
+way, and the redeemed `Session` says which kind of server it signed in to and,
+in its `smartServer.fhirBaseUrl`, which server that is. The `Session` also
+carries the token response's `patient`, the launch context a plain SMART server
+names once the reader picks a patient.
 
 Any authorization-response parameter (`code`, `state`, `error`, …) makes a page
 load a return leg, and `completeSignIn(search, registration)` takes the
@@ -294,7 +308,9 @@ The React SMART apps sign in through this client too, by way of
 `completeSignInAfterRedirectHere` runs `completeSignIn` on the redirect
 target, under the app's own registration, which the app root's
 `SignInLanding` hands it, and on the sign-in services the page's edges provide
-(`smartSignInLayer`, `BrowserSignIn.layer` at the package's own key). What it adds is what the apps need beyond a token:
+(`smartSignInLayer`: `BrowserSignIn.layerFromWindow` at the package's own key,
+and a store of its own for the self-addressed request). What it adds is what
+the apps need beyond a token:
 
 - **Open servers.** A FHIR server whose SMART configuration names no
   authorization endpoint is signed in to by a self-addressed redirect: the

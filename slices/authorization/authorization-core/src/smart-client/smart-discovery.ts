@@ -16,7 +16,8 @@
  * the target's root.
  *
  * The validation is pure and returns an `Either`; the request is the async
- * edge, sent through the context's `HttpClient`, and returns an `Effect`
+ * edge, {@link fetchSmartConfiguration}, sent through the context's
+ * `HttpClient`, and discovery reads what it got back into an `Effect`
  * failing with {@link DiscoveryFailed}. Every failure a
  * reader can actually hit — target that is not a Wildflower server, server
  * down, blocked by CORS or mixed content — arrives as that one tagged error,

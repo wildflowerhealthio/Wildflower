@@ -27,7 +27,7 @@ that.
   server.
 - **Configured from discovery.** `src/sign-in.ts` reads the server's SMART
   configuration (`authorization-core/smart-client`'s
-  `discoverSmartEndpoints`) before a sign-in starts and again once it is
+  `discoverSmartServer`) before a sign-in starts and again once it is
   redeemed. A document without the `wildflower-server` capability gets "This
   isn't a Wildflower server" and no sign-in. The API's requests go to the
   `wildflower_authorization_api` it advertises
@@ -36,7 +36,8 @@ that.
   launch with PKCE (`authorization-core/smart-client`), as the launcher's is,
   under the app's own client (`src/config.ts`, seeded by the authorization
   server migration `0031_seed_authorization_web_client`) and its own
-  `sessionStorage` key for the pending record, which holds no credential. The
+  `sessionStorage` key for the retained sign-in request, which holds no
+  credential. The
   redeemed token is held by the signed-in tree alone; a reload signs in
   again.
 - **The client's scopes are pinned.** `AUTHORIZATION_SCOPE` in

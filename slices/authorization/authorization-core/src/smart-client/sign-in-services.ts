@@ -7,7 +7,9 @@
  * token request go through, is `@effect/platform`'s own.
  *
  * `browser-sign-in.ts` wires all four to a browser page; a test provides the
- * one it cares about in its place.
+ * one it cares about in its place. The store is built from a
+ * {@link RetainedRequestStoreShape} implementation that a page can use for a
+ * request of its own under a tag of its own.
  */
 
 import { HttpClient } from '@effect/platform'
@@ -64,8 +66,8 @@ interface RetainedRequestStorage {
 
 /**
  * Why a sign-in whose request `blocked` storage would not keep or give back
- * cannot be completed: the one wording for every sign-in request a page
- * retains across the redirect, this module's and an app's own.
+ * cannot be completed: the one wording for every request a page retains
+ * across the redirect in a store built here.
  */
 const retainedRequestUnusableFrom = (blocked: StorageBlocked): RetainedRequestUnusable =>
   new RetainedRequestUnusable({

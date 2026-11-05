@@ -70,7 +70,7 @@ The target lives in the URL:
   unmounts the reference and shows the connect choices. It is disabled while a
   sign-in is on its way out, as **Sign in** is.
 - A failed or cancelled sign-in comes back to the server it was started for,
-  read from the pending record, with the reason on the status line.
+  read from the retained sign-in request, with the reason on the status line.
 - Only absolute `http:` / `https:` URLs are accepted. A `?server=` carrying
   anything else — `javascript:`, `data:`, protocol-relative `//host`, a bare
   hostname — names no server.
@@ -173,8 +173,9 @@ second copy of this bundle inside the popup; and it generates `state` with
 `authorization-flow.ts`, `sign-in.ts`), all unit-tested there and shared with the
 hosted launcher, and it puts one token into all five documents through Scalar's
 `authentication` configuration block. This console supplies the app-specific
-half — client id, scopes and the `sessionStorage` key the pending record is
-namespaced under — from `src/smart-client.ts`, and derives its redirect URI.
+half — client id, scopes and the `sessionStorage` key the retained sign-in
+request is namespaced under — from `src/smart-client.ts`, and derives its
+redirect URI.
 
 ### Opened with a launch
 
@@ -197,11 +198,12 @@ asserted off in `configuration.test.ts`. Signing out drops the variable; closing
 the tab does the same. The spirit is the embedded store's in
 [Auth Token Storage Explanation](../../slices/authorization/docs/Auth%20Token%20Storage%20Explanation.md).
 
-The one thing that does touch `sessionStorage` is the pending request — the PKCE
-verifier, the `state` and the target server — because a full-page redirect
-leaves nowhere else to keep it. It holds no credential, and it is deleted the
-moment the console comes back, before the code is redeemed. Any refresh token
-the server returns is discarded: there is no session to refresh into.
+The one thing that does touch `sessionStorage` is the retained sign-in request —
+the PKCE verifier, the `state` and the target server — because a full-page
+redirect leaves nowhere else to keep it. It holds no credential, and it is
+deleted the moment the console comes back, before the code is redeemed. Any
+refresh token the server returns is discarded: there is no session to refresh
+into.
 
 ### Sign-in works from wherever the console is served
 
@@ -234,8 +236,8 @@ Two properties make the derivation safe to rely on, both pinned by tests in
   because the flow puts an access token in the browser.
 
 Because the derived redirect URI carries no query string, `?server=` cannot ride
-back in the URL: it travels in the stashed pending record and is restored when
-the console returns.
+back in the URL: it travels in the retained sign-in request and is restored
+when the console returns.
 
 One consequence worth knowing when using a preview: a page served over https
 pointed at a plaintext non-loopback server does not sign in, and the status
