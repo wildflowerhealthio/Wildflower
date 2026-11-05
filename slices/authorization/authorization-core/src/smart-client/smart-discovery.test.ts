@@ -1,10 +1,14 @@
 import { readFileSync } from 'node:fs'
 
+import type { HttpClient } from '@effect/platform'
+
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Either, Match, Option } from 'effect'
+import { Effect, Either, Layer, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { SignInPage } from './sign-in-services.ts'
+import { jsonResponse, stubTransport, type StubAnswer } from './sign-in.test-helpers.ts'
 import {
   discoverSmartEndpoints,
   endpointUrlFrom,
@@ -12,7 +16,7 @@ import {
   PlainSmartServer,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
-  smartIssuerFrom,
+  discoveredSmartServerFrom,
   usableEndpointUrl,
   WILDFLOWER_SERVER_CAPABILITY,
   WildflowerServer,
@@ -172,13 +176,17 @@ describe('endpointUrlFrom', () => {
   })
 })
 
-describe('smartIssuerFrom', () => {
+describe('discoveredSmartServerFrom', () => {
   it('should read a Wildflower server and both its endpoints out of its discovery document', () => {
     // Arrange
     const document = wildflowerDiscoveryDocument('https://ruth.wildflowerhealth.io')
 
     // Act
-    const result = smartIssuerFrom('https://ruth.wildflowerhealth.io', document, onSecurePage)
+    const result = discoveredSmartServerFrom(
+      'https://ruth.wildflowerhealth.io',
+      document,
+      onSecurePage
+    )
 
     // Assert
     expect(result).toEqual(
@@ -202,7 +210,7 @@ describe('smartIssuerFrom', () => {
     const document = plainSmartDiscoveryDocument('https://launch.smarthealthit.org')
 
     // Act
-    const result = smartIssuerFrom(demo, document, onSecurePage)
+    const result = discoveredSmartServerFrom(demo, document, onSecurePage)
 
     // Assert
     expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
@@ -216,7 +224,7 @@ describe('smartIssuerFrom', () => {
       wildflowerDiscoveryDocument('https://example.test')
 
     // Act
-    const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+    const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
     // Assert
     expect(Either.map(result, (issuer) => issuer.smartServer._tag)).toEqual(
@@ -238,7 +246,11 @@ describe('smartIssuerFrom', () => {
     )
 
     // Act
-    const result = smartIssuerFrom('https://ruth.wildflowerhealth.io', servedDocument, onSecurePage)
+    const result = discoveredSmartServerFrom(
+      'https://ruth.wildflowerhealth.io',
+      servedDocument,
+      onSecurePage
+    )
 
     // Assert
     expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
@@ -259,7 +271,11 @@ describe('smartIssuerFrom', () => {
     )
 
     // Act
-    const result = smartIssuerFrom('https://ruth.wildflowerhealth.io', servedDocument, onSecurePage)
+    const result = discoveredSmartServerFrom(
+      'https://ruth.wildflowerhealth.io',
+      servedDocument,
+      onSecurePage
+    )
 
     // Assert
     expect(
@@ -282,7 +298,7 @@ describe('smartIssuerFrom', () => {
     const document = plainSmartDiscoveryDocument('https://example.test')
 
     // Act
-    const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+    const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
     // Assert
     expect(
@@ -307,7 +323,7 @@ describe('smartIssuerFrom', () => {
           }
 
           // Act
-          const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+          const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
           // Assert
           expect(Either.map(result, (issuer) => issuer.wildflowerAuthorizationApi)).toEqual(
@@ -329,7 +345,7 @@ describe('smartIssuerFrom', () => {
         }
 
         // Act
-        const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+        const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
         // Assert
         expect(Either.map(result, (issuer) => issuer.smartServer._tag)).toEqual(
@@ -351,7 +367,7 @@ describe('smartIssuerFrom', () => {
         ),
         (document) => {
           // Act
-          const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+          const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
           // Assert
           expect(Either.isLeft(result)).toBe(true)
@@ -374,7 +390,7 @@ describe('smartIssuerFrom', () => {
           }
 
           // Act
-          const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+          const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
           // Assert
           expect(Either.isLeft(result)).toBe(true)
@@ -390,7 +406,7 @@ describe('smartIssuerFrom', () => {
         fc.oneof(fc.string(), fc.integer(), fc.constant(null), fc.array(fc.jsonValue())),
         (document) => {
           // Act
-          const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+          const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
           // Assert
           expect(Either.isLeft(result)).toBe(true)
@@ -408,7 +424,7 @@ describe('smartIssuerFrom', () => {
     }
 
     // Act
-    const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+    const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
     // Assert
     if (Either.isRight(result)) throw new Error('expected a plain-only server to be refused')
@@ -422,7 +438,7 @@ describe('smartIssuerFrom', () => {
       wildflowerDiscoveryDocument('https://example.test')
 
     // Act
-    const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+    const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
     // Assert
     expect(Either.isRight(result)).toBe(true)
@@ -440,10 +456,8 @@ describe('discoverSmartEndpoints', () => {
 
     // Act
     const result = await runToEither(
-      discoverSmartEndpoints('https://ruth.wildflowerhealth.io', {
-        fetch: fetchStub,
-        pageIsSecure: true,
-      })
+      discoverSmartEndpoints('https://ruth.wildflowerhealth.io'),
+      discoveryServices(fetchStub)
     )
 
     // Assert
@@ -461,9 +475,7 @@ describe('discoverSmartEndpoints', () => {
     )
 
     // Act
-    const result = await runToEither(
-      discoverSmartEndpoints(demo, { fetch: fetchStub, pageIsSecure: true })
-    )
+    const result = await runToEither(discoverSmartEndpoints(demo), discoveryServices(fetchStub))
 
     // Assert
     expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
@@ -477,7 +489,8 @@ describe('discoverSmartEndpoints', () => {
 
     // Act
     const result = await runToEither(
-      discoverSmartEndpoints('https://nothing.test/base', { fetch: fetchStub, pageIsSecure: true })
+      discoverSmartEndpoints('https://nothing.test/base'),
+      discoveryServices(fetchStub)
     )
 
     // Assert
@@ -495,7 +508,8 @@ describe('discoverSmartEndpoints', () => {
 
     // Act
     const result = await runToEither(
-      discoverSmartEndpoints('https://down.test', { fetch: fetchStub, pageIsSecure: true })
+      discoverSmartEndpoints('https://down.test'),
+      discoveryServices(fetchStub)
     )
 
     // Assert
@@ -512,10 +526,8 @@ describe('discoverSmartEndpoints', () => {
 
         // Act
         const result = await runToEither(
-          discoverSmartEndpoints('https://not-wildflower.test', {
-            fetch: fetchStub,
-            pageIsSecure: true,
-          })
+          discoverSmartEndpoints('https://not-wildflower.test'),
+          discoveryServices(fetchStub)
         )
 
         // Assert
@@ -532,10 +544,8 @@ describe('discoverSmartEndpoints', () => {
 
     // Act
     const result = await runToEither(
-      discoverSmartEndpoints('https://marketing-site.test', {
-        fetch: fetchStub,
-        pageIsSecure: true,
-      })
+      discoverSmartEndpoints('https://marketing-site.test'),
+      discoveryServices(fetchStub)
     )
 
     // Assert
@@ -600,28 +610,25 @@ describe('insecureTargetReason', () => {
 
 // Helpers
 
-/** Run a discovery Effect to its `Either`, so both channels are assertable. */
-const runToEither = <A, E>(effect: Effect.Effect<A, E>): Promise<Either.Either<A, E>> =>
-  Effect.runPromise(Effect.either(effect))
+/**
+ * Run a discovery Effect against `services` to its `Either`, so both channels
+ * are assertable.
+ */
+const runToEither = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  services: Layer.Layer<R>
+): Promise<Either.Either<A, E>> =>
+  Effect.runPromise(Effect.either(Effect.provide(effect, services)))
 
-/** The URL a `fetch` argument names, in any of the three forms it can take. */
-const requestUrl = Match.type<Parameters<typeof globalThis.fetch>[0]>().pipe(
-  Match.withReturnType<string>(),
-  Match.when(Match.string, (s) => s),
-  Match.when({ href: Match.string }, (u) => u.href),
-  Match.when({ url: Match.string }, (r) => r.url),
-  Match.exhaustive
-)
+/** What discovery runs against: `answer` behind the `HttpClient`, on a page that is secure or not. */
+const discoveryServices = (
+  answer: StubAnswer,
+  pageIsSecure = true
+): Layer.Layer<HttpClient.HttpClient | SignInPage> =>
+  Layer.mergeAll(stubTransport(answer), Layer.succeed(SignInPage, { isSecure: pageIsSecure }))
 
-/** A `fetch` stub built from a per-URL responder. */
+/** A stub answer built from a per-URL responder. */
 const respondingWith =
-  (respond: (url: string) => Response): typeof globalThis.fetch =>
-  (input) =>
-    Promise.resolve(respond(requestUrl(input)))
-
-/** A 200 JSON response carrying `body`. */
-const jsonResponse = (body: unknown): Response =>
-  new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  })
+  (respond: (url: string) => Response): StubAnswer =>
+  (request) =>
+    Promise.resolve(respond(request.url))

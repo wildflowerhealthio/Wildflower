@@ -7,20 +7,19 @@ import {
   authorizationRedirectOutcome,
   authorizationRequestUrl,
   isAuthorizationResponse,
-  parsePendingAuthorization,
+  parseRetainedSignInRequest,
   parseTokenResponse,
   searchWithoutAuthorizationResponse,
-  serializePendingAuthorization,
+  serializeRetainedSignInRequest,
   tokenRequestBody,
-  type PendingAuthorization,
+  type RetainedSignInRequest,
 } from './authorization-flow.ts'
 import { PlainSmartServer, WildflowerServer } from './smart-discovery.ts'
 
 /** A pending record shaped like the one a real sign-in stashes. */
-const pendingRecord: PendingAuthorization = {
+const pendingRecord: RetainedSignInRequest = {
   state: 'Zm9vYmFyYmF6cXV4',
   codeVerifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
-  serverUrl: 'https://ruth.wildflowerhealth.io',
   smartServer: WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io' }),
   tokenEndpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
   returnTo: '/settings/tunnel',
@@ -30,7 +29,6 @@ const pendingRecord: PendingAuthorization = {
 const pendingArbitrary = fc.record({
   state: fc.string({ minLength: 1 }),
   codeVerifier: fc.string({ minLength: 1 }),
-  serverUrl: fc.webUrl(),
   smartServer: fc.oneof(
     fc.webUrl().map((fhirBaseUrl) => WildflowerServer.make({ fhirBaseUrl })),
     fc.webUrl().map((fhirBaseUrl) => PlainSmartServer.make({ fhirBaseUrl }))
@@ -39,12 +37,12 @@ const pendingArbitrary = fc.record({
   returnTo: fc.option(fc.string({ minLength: 1 }), { nil: undefined }),
 })
 
-describe('serializePendingAuthorization / parsePendingAuthorization', () => {
+describe('serializeRetainedSignInRequest / parseRetainedSignInRequest', () => {
   it('round-trips a pending record through the string form storage holds', () => {
     fc.assert(
       fc.property(pendingArbitrary, (pending) => {
         // Act
-        const parsed = parsePendingAuthorization(serializePendingAuthorization(pending))
+        const parsed = parseRetainedSignInRequest(serializeRetainedSignInRequest(pending))
 
         // Assert
         expect(parsed).toEqual(Option.some(pending))
@@ -55,21 +53,21 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
 
   it('reads an absent record as None, which is not a failure', () => {
     // Act / Assert
-    expect(parsePendingAuthorization(null)).toEqual(Option.none())
+    expect(parseRetainedSignInRequest(null)).toEqual(Option.none())
   })
 
   it('refuses a record missing any field the exchange needs', () => {
     fc.assert(
       fc.property(
         pendingArbitrary,
-        fc.constantFrom('state', 'codeVerifier', 'serverUrl', 'smartServer', 'tokenEndpoint'),
+        fc.constantFrom('state', 'codeVerifier', 'smartServer', 'tokenEndpoint'),
         (pending, dropped) => {
           // Arrange
           const partial: Record<string, unknown> = { ...pending }
           delete partial[dropped]
 
           // Act / Assert
-          expect(parsePendingAuthorization(JSON.stringify(partial))).toEqual(Option.none())
+          expect(parseRetainedSignInRequest(JSON.stringify(partial))).toEqual(Option.none())
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -91,7 +89,7 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
           const raw = JSON.stringify({ ...pending, smartServer })
 
           // Act / Assert
-          expect(parsePendingAuthorization(raw)).toEqual(Option.none())
+          expect(parseRetainedSignInRequest(raw)).toEqual(Option.none())
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -114,7 +112,7 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
           const raw = JSON.stringify({ ...pending, returnTo })
 
           // Act / Assert
-          expect(parsePendingAuthorization(raw)).toEqual(Option.none())
+          expect(parseRetainedSignInRequest(raw)).toEqual(Option.none())
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -130,14 +128,13 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
         ),
         (raw) => {
           // Act
-          const parsed = parsePendingAuthorization(raw)
+          const parsed = parseRetainedSignInRequest(raw)
 
           // Assert — only a complete record parses, and this arbitrary makes none.
           if (Option.isSome(parsed)) {
             expect(Object.keys(parsed.value).toSorted()).toEqual([
               'codeVerifier',
               'returnTo',
-              'serverUrl',
               'smartServer',
               'state',
               'tokenEndpoint',
@@ -250,7 +247,7 @@ describe('authorizationRedirectOutcome', () => {
     )
 
     // Assert
-    expect(outcome).toEqual(Either.right(Option.some({ code: 'abc123', pending: pendingRecord })))
+    expect(outcome).toEqual(Either.right(Option.some({ code: 'abc123', retained: pendingRecord })))
   })
 
   it('never redeems a code whose state differs from the stashed one', () => {
