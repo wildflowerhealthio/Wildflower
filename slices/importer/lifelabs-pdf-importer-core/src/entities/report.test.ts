@@ -13,8 +13,8 @@ import * as Report from './report.ts'
  * The dialect is pinned as the inverse of the printed layout: any report the
  * print can carry, laid out and parsed back, is the same report. The example
  * tests below then document the layout facts the property leans on — the
- * page break inside a section, the shared footer line, the masked lab numbers
- * an anonymized export prints, the page that prints no lab number — and the
+ * page break inside a section, the shared footer line, the pages of one lab
+ * number printed apart, the page that prints no lab number — and the
  * one failure: a document that isn't a LifeLabs report at all.
  */
 
@@ -143,16 +143,23 @@ const withoutPages = (report: Report.Type): Omit<Report.Type, 'pageNumbers'> => 
 describe('Report.tryFromDocument', () => {
   it('property: is the inverse of the printed layout, report by report', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 3 }), (reports) => {
-        const { reports: parsed, pagesWithoutLabNo } = read(layoutDocument(reports))
+      fc.property(
+        fc.uniqueArray(reportArbitrary, {
+          minLength: 1,
+          maxLength: 3,
+          selector: (report) => report.labNo,
+        }),
+        (reports) => {
+          const { reports: parsed, pagesWithoutLabNo } = read(layoutDocument(reports))
 
-        expect(parsed.map(withoutPages)).toEqual(reports.map(withoutPages))
-        expect(pagesWithoutLabNo).toEqual([])
-        // Pages are numbered consecutively across the document, none skipped.
-        expect(parsed.flatMap((report) => report.pageNumbers)).toEqual(
-          Array.from({ length: parsed.flatMap((r) => r.pageNumbers).length }, (_, i) => i + 1)
-        )
-      }),
+          expect(parsed.map(withoutPages)).toEqual(reports.map(withoutPages))
+          expect(pagesWithoutLabNo).toEqual([])
+          // Pages are numbered consecutively across the document, none skipped.
+          expect(parsed.flatMap((report) => report.pageNumbers)).toEqual(
+            Array.from({ length: parsed.flatMap((r) => r.pageNumbers).length }, (_, i) => i + 1)
+          )
+        }
+      ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
@@ -191,17 +198,27 @@ describe('Report.tryFromDocument', () => {
     expect(report?.sections).toEqual(long.sections)
   })
 
-  it('splits reports whose lab numbers an anonymizer masked to the same digits, by the page footer', () => {
-    const masked = { ...sample, labNo: LabNumber.make('0000-XX0000000') }
-    const first = { ...masked, dateOfService: 'May 20 2026 13:25' }
-    const second = { ...masked, dateOfService: 'Oct 10 2025 12:34' }
+  it('reads every page printing one lab number as one report, wherever each is printed', () => {
+    const [hematology, chemistry] = sample.sections
+    if (hematology === undefined || chemistry === undefined) {
+      throw new Error('the sample prints two sections')
+    }
+    const other = { ...sample, labNo: LabNumber.make('2024-JJ0000001') }
+    // Each laid-out report numbers its own pages from `Page 1 of N`, so the
+    // second run of the sample's lab number restarts the page footer too.
+    const reports = run(
+      layoutDocument([
+        { ...sample, sections: [hematology] },
+        other,
+        { ...sample, sections: [chemistry] },
+      ])
+    )
 
-    const reports = run(layoutDocument([first, second]))
-
-    expect(reports.map((report) => report.dateOfService)).toEqual([
-      'May 20 2026 13:25',
-      'Oct 10 2025 12:34',
+    expect(reports.map((report) => [report.labNo, report.pageNumbers])).toEqual([
+      [sample.labNo, [1, 3]],
+      [other.labNo, [2]],
     ])
+    expect(reports[0]?.sections).toEqual(sample.sections)
   })
 
   it('keeps a left-column value out of the laboratory block sharing its line', () => {

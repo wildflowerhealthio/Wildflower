@@ -72,8 +72,8 @@ const entryOf = (
  * @remarks
  * Every report is its own `DiagnosticReport`, keyed by the `Lab No` it
  * prints, and each of its rows an `Observation` keyed under that `Lab No`.
- * The reports handed in print distinct `Lab No`s — `decodedReportsOf` keeps
- * one printing of each — so every record has its own key and `fullUrl`.
+ * The reports handed in print distinct `Lab No`s — the parse reads one report
+ * per `Lab No` — so every record has its own key and `fullUrl`.
  */
 const toFhirResources = (
   reports: readonly Report.Type[],

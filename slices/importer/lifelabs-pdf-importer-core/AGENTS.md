@@ -27,8 +27,7 @@ that hands back a hand-written positioned-text document.
   column bands by `x` (section 0 · group ~14 · test name ~28 · flag ~255 ·
   result/comment ~283 · reference range ~391 · unit ~485 · lab licence ~586);
   `page-header.ts` is the per-page header shape, its `get` accessor, and
-  `fromLines`; `page-footer.ts` reads the `Page n of N` index, status line, and
-  footer notes; `page-parts.ts` (`split`) cuts one page into header / grid body
+  `fromLines`; `page-footer.ts` reads the status line and footer notes; `page-parts.ts` (`split`) cuts one page into header / grid body
   / footer; `grid.ts` (`Grid`) is the mutable per-report grid accumulator
   (`create` / `read` / `freeze`, opaque state) fed line by line (section →
   group → row → comment); `printed-text.ts` holds the shared `fast-check` text
@@ -41,8 +40,9 @@ that hands back a hand-written positioned-text document.
   `LabNumber.make`, which refuses a blank one, is how a caller building a
   report itself spells one.
   `Report` additionally owns **`tryFromDocument`**, the parse of a whole
-  positioned-text document into `DocumentReports`: one `Report.Type` per run
-  of pages sharing a `Lab No` (the orchestration over `document/`), beside
+  positioned-text document into `DocumentReports`: one `Report.Type` per
+  `Lab No`, every page printing it wherever it is in the document (the
+  orchestration over `document/`), beside
   `pagesWithoutLabNo`, the pages it skipped for printing none. It is an
   `Effect` that fails with `UnrecognizedLifeLabsDocument` when a non-empty
   document carries no `Lab No` or grid heading on any page, and otherwise reads
@@ -73,10 +73,6 @@ that hands back a hand-written positioned-text document.
   `wire/patient.ts`, `wire/practitioner.ts`, `wire/observation.ts`,
   `wire/diagnostic-report.ts`, with shared helpers (`timingWire`,
   `reportStatus`, `performerWire`, `quantityWire`) in `wire/shared.ts`.
-  `printings.ts` picks the printing of a `Lab No` the synthesis keeps when a
-  file prints it more than once (`latestPrintingOf`: the latest
-  `Reported on:`, else the one printed later in the file) and words the note
-  (`keptPrintingNote`).
   Supporting modules: `dates.ts` (printed timestamps to FHIR `date` /
   `dateTime`), `reference-range.ts` (printed reference range to bounds),
   `result-value.ts` (printed result to quantity or text), `printed-number.ts`
@@ -111,9 +107,7 @@ that hands back a hand-written positioned-text document.
 - `src/synthesis.ts` — **the FHIR synthesis without the PDF decoder**,
   exported as the `/synthesis` subpath: the `Report` model's types and
   `LabNumber`, `toFhirResources`, **`decodedReportsOf`**
-  (the reports as the decode yields them: only the latest printing of each
-  `Lab No`, in the order each `Lab No` is first printed, with a note naming
-  each `Lab No` printed more than once and the printing kept; the synthesis,
+  (the reports as the decode yields them, one per `Lab No`: the synthesis,
   its records written
   detached and keyed by what the report prints, one section per
   report titled by **`reportSectionTitle`** (the report's `Lab No`, and its
@@ -193,14 +187,12 @@ and must stay out of the production bundle. Never imports `har-importer-core`,
   included: each is a line the report prints, and deciding some are metadata
   would drop them silently.
 - **A masked field is absent, not invented.** The anonymizer's `Xxx 00 0000`
-  reads as no date of birth; a masked lab number that repeats is told apart by
-  the page footer (each report starts at its own `Page 1 of N`), so reports
-  that share a lab number stay separate reports in the parse.
-- **One `Lab No`, one report.** A page that prints no `Lab No` is skipped in
-  the parse, and noted. Reports printing one `Lab No` are printings of one
-  report, and the synthesis keeps only the latest, whole, noting which; a
-  masked export, every lab number masked to the same digits, keeps one
-  report. So every record of a LifeLabs file set has its own key and
+  reads as no date of birth.
+- **One `Lab No`, one report.** Every page printing a `Lab No` is a page of
+  its report, wherever in the document it is and whatever its `Page n of N`
+  footer says. A page that prints no `Lab No` is skipped in the parse, and
+  noted. A masked export, every lab number masked to the same digits, reads
+  as one report. So every record of a LifeLabs file set has its own key and
   `fullUrl`.
 - **A key is a real identifier, never a digest.** What the report prints,
   in a system named for it, or a Wildflower-minted system over printed text
