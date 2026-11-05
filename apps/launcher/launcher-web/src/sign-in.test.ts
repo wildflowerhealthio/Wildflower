@@ -1,7 +1,7 @@
 import {
-  type PendingStore,
+  type RetainedRequestStorage,
   type Session,
-  type SignInPage,
+  type SignInWindow,
   PlainSmartServer,
   WILDFLOWER_SERVER_CAPABILITY,
   WildflowerServer,
@@ -27,27 +27,27 @@ import {
   CLIENT_ID,
   finishSignIn,
   LAUNCHER_SCOPE,
-  PENDING_AUTHORIZATION_KEY,
+  RETAINED_SIGN_IN_REQUEST_KEY,
   postSignInUrl,
   REGISTERED_REDIRECT_URI,
   promptOnPage,
   returnToOnPage,
   scheduleExpiry,
   serverKindForSession,
-  signInEnvironment,
+  signInRegistration,
   startSignIn,
   unsentEhrLaunch,
 } from './sign-in.ts'
 import { SIGNED_IN_SERVER_KEY } from './web-entry.ts'
 
-describe('signInEnvironment', () => {
+describe('signInRegistration', () => {
   it('returns to the app root, not to the section the reader signed in from', () => {
     // Arrange / Act — the same build reached from three of its sections. A
     // directory-derived URI (what the server-docs console uses) would give
     // three different values here and only one could be the registered entry.
-    const fromRoot = signInEnvironment(pageAt('https://wildflowerhealth.io/'))
-    const fromSection = signInEnvironment(pageAt('https://wildflowerhealth.io/settings/requests'))
-    const fromDev = signInEnvironment(pageAt('http://127.0.0.1:5173/authorization/grants'))
+    const fromRoot = signInRegistration('https://wildflowerhealth.io/')
+    const fromSection = signInRegistration('https://wildflowerhealth.io/settings/requests')
+    const fromDev = signInRegistration('http://127.0.0.1:5173/authorization/grants')
 
     // Assert
     expect(fromRoot.redirectUri).toBe('https://wildflowerhealth.io/')
@@ -59,11 +59,8 @@ describe('signInEnvironment', () => {
     // Arrange / Act — the hosted build runs at the root of its own origin in
     // production and under a PR preview's `/pr-<n>/`; the
     // caller passes that served base.
-    const production = signInEnvironment(pageAt('https://launcher.wildflowerhealth.io/'), '/')
-    const preview = signInEnvironment(
-      pageAt('https://launcher.wildflowerhealth.io/pr-719/'),
-      '/pr-719/'
-    )
+    const production = signInRegistration('https://launcher.wildflowerhealth.io/', '/')
+    const preview = signInRegistration('https://launcher.wildflowerhealth.io/pr-719/', '/pr-719/')
 
     // Assert — production derives exactly the seeded row (so the sign-in returns
     // silently); the preview derives its own base, correct for where it is served.
@@ -74,12 +71,10 @@ describe('signInEnvironment', () => {
   it('falls back to the published URI from an address a sign-in must not return to', () => {
     // Arrange / Act — plaintext off loopback is refused the derivation, and the
     // published value is harmless from a page that can never receive it.
-    const environment = signInEnvironment(
-      pageAt('http://preview.example/home', { protocol: 'http:' })
-    )
+    const registration = signInRegistration('http://preview.example/home')
 
     // Assert
-    expect(environment.redirectUri).toBe(REGISTERED_REDIRECT_URI)
+    expect(registration.redirectUri).toBe(REGISTERED_REDIRECT_URI)
   })
 
   it('names the published app root', () => {
@@ -91,13 +86,13 @@ describe('signInEnvironment', () => {
 
   it('asks for exactly the scopes the launcher uses', () => {
     // Arrange / Act
-    const environment = signInEnvironment(pageAt('https://wildflowerhealth.io/'))
+    const registration = signInRegistration('https://wildflowerhealth.io/')
 
     // Assert — the wire form is the space-delimited list, in order.
     // authorization-server-rust's `clients.rs` pins the seeded row to
     // `LAUNCHER_SCOPE`; this pins the list itself.
-    expect(environment.scope).toBe(LAUNCHER_SCOPE)
-    expect(environment.scope.split(' ')).toEqual([
+    expect(registration.scope).toBe(LAUNCHER_SCOPE)
+    expect(registration.scope.split(' ')).toEqual([
       'launch',
       'launch/patient',
       'wildflower/launch',
@@ -105,24 +100,15 @@ describe('signInEnvironment', () => {
       'wildflower/*.cruds',
     ])
     // The id the authorization server migration `0026_rekey_launcher_client` seeds.
-    expect(environment.clientId).toBe('03a513940b52f8c2649a5366d1a26d19')
+    expect(registration.clientId).toBe('03a513940b52f8c2649a5366d1a26d19')
   })
 
-  it('namespaces its pending record to this app', () => {
+  it('namespaces its retained sign-in request to this app', () => {
     // The server-docs console runs the same flow from the same origin, so an
     // un-namespaced key would be one key for both and one tab's return leg
     // could consume a record the other was waiting on. The namespace is the
     // package name: the client id is a random string.
-    expect(PENDING_AUTHORIZATION_KEY.startsWith('launcher-web.')).toBe(true)
-  })
-
-  it('reports the page as secure only on https', () => {
-    // Arrange / Act / Assert — this decides whether a plaintext target is
-    // reachable at all, so it must follow the page and not a build flag.
-    expect(signInEnvironment(pageAt('https://wildflowerhealth.io/')).pageIsSecure).toBe(true)
-    expect(
-      signInEnvironment(pageAt('http://127.0.0.1:5173/', { protocol: 'http:' })).pageIsSecure
-    ).toBe(false)
+    expect(RETAINED_SIGN_IN_REQUEST_KEY.startsWith('launcher-web.')).toBe(true)
   })
 })
 
@@ -135,7 +121,7 @@ describe('startSignIn', () => {
     })
 
     // Act
-    const started = await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
+    const started = await startSignIn(SERVER_URL, page, '/')
 
     // Assert
     expect(started.tag).toBe('Ok')
@@ -156,10 +142,8 @@ describe('startSignIn', () => {
     })
 
     // Act
-    const launched = await startSignIn(SERVER_URL, undefined, signInEnvironment(page), {
-      launch: 'nonce-1',
-    })
-    const standalone = await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
+    const launched = await startSignIn(SERVER_URL, page, '/', { launch: 'nonce-1' })
+    const standalone = await startSignIn(SERVER_URL, page, '/')
 
     // Assert
     expect(launched.tag === 'Ok' && new URL(launched.value).searchParams.get('launch')).toBe(
@@ -170,7 +154,7 @@ describe('startSignIn', () => {
     )
   })
 
-  it('writes the pending record before it yields, under this app’s key', async () => {
+  it('writes the retained sign-in request before it yields, under this app’s key', async () => {
     // A caller navigates the moment it has the URL, so a record written after
     // would be a flow whose verifier never survived the redirect.
     const store = memoryStore()
@@ -181,10 +165,10 @@ describe('startSignIn', () => {
     })
 
     // Act
-    await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
+    await startSignIn(SERVER_URL, page, '/')
 
     // Assert
-    expect(store.getItem(PENDING_AUTHORIZATION_KEY)).not.toBeNull()
+    expect(store.getItem(RETAINED_SIGN_IN_REQUEST_KEY)).not.toBeNull()
   })
 
   it('reports an unreachable server as a reason, not a rejection', async () => {
@@ -196,7 +180,7 @@ describe('startSignIn', () => {
     })
 
     // Act
-    const started = await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
+    const started = await startSignIn(SERVER_URL, page, '/')
 
     // Assert
     expect(started.tag).toBe('Failed')
@@ -227,14 +211,13 @@ describe('finishSignIn', () => {
       fetch: discoveryAndToken(),
       sessionStorage: store,
     })
-    const environment = signInEnvironment(page)
-    const started = await startSignIn(SERVER_URL, '/settings/requests', environment)
+    const started = await startSignIn(SERVER_URL, page, '/', { returnTo: '/settings/requests' })
     expect(started.tag).toBe('Ok')
     if (started.tag !== 'Ok') return
     const state = new URL(started.value).searchParams.get('state') ?? ''
 
     // Act — the callback lands on the app root with the code and state.
-    const completed = await finishSignIn(`?code=the-code&state=${state}`, environment)
+    const completed = await finishSignIn(`?code=the-code&state=${state}`, page, '/')
 
     // Assert — the return path the sign-in started with rides back on the
     // session, since the callback URL carries no query of its own.
@@ -243,7 +226,6 @@ describe('finishSignIn', () => {
     expect(Option.getOrUndefined(completed.value)).toEqual({
       accessToken: 'tok_hosted',
       scope: 'system/*.cruds',
-      serverUrl: SERVER_URL,
       smartServer: WildflowerServer.make({ fhirBaseUrl: SERVER_URL }),
       expiresInSeconds: 3600,
       patient: undefined,
@@ -251,18 +233,16 @@ describe('finishSignIn', () => {
     })
     // Single-use: the record is gone, so a replayed callback cannot look
     // legitimate.
-    expect(store.getItem(PENDING_AUTHORIZATION_KEY)).toBeNull()
+    expect(store.getItem(RETAINED_SIGN_IN_REQUEST_KEY)).toBeNull()
   })
 
   it('reads an ordinary page load as “not a return leg”', async () => {
     // Arrange — every load asks, because a return leg looks like any other one
-    // until the query is read. A load with no pending record must not fail.
+    // until the query is read. A load with no retained sign-in request must not fail.
     const page = pageAt('https://wildflowerhealth.io/', { fetch: neverCalled })
 
     // Act
-    const completed = await finishSignIn('?server=https%3A%2F%2Fx.test', {
-      ...signInEnvironment(page),
-    })
+    const completed = await finishSignIn('?server=https%3A%2F%2Fx.test', page, '/')
 
     // Assert
     expect(completed.tag).toBe('Ok')
@@ -275,10 +255,7 @@ describe('finishSignIn', () => {
     const page = pageAt('https://wildflowerhealth.io/', { fetch: neverCalled })
 
     // Act — the authorization server bounced the request back as an error.
-    const completed = await finishSignIn(
-      '?error=access_denied&state=whatever',
-      signInEnvironment(page)
-    )
+    const completed = await finishSignIn('?error=access_denied&state=whatever', page, '/')
 
     // Assert
     expect(completed.tag).toBe('Failed')
@@ -300,15 +277,16 @@ describe('finishSignIn', () => {
             })
           )
         : discoveryAndToken()(input, init)
-    const environment = signInEnvironment(
-      pageAt('https://wildflowerhealth.io/', { fetch: refusingToken, sessionStorage: store })
-    )
-    const started = await startSignIn(SERVER_URL, undefined, environment)
+    const page = pageAt('https://wildflowerhealth.io/', {
+      fetch: refusingToken,
+      sessionStorage: store,
+    })
+    const started = await startSignIn(SERVER_URL, page, '/')
     if (started.tag !== 'Ok') throw new Error(started.reason)
     const state = new URL(started.value).searchParams.get('state') ?? ''
 
     // Act
-    const completed = await finishSignIn(`?code=the-code&state=${state}`, environment)
+    const completed = await finishSignIn(`?code=the-code&state=${state}`, page, '/')
 
     // Assert
     expect(completed.tag).toBe('Failed')
@@ -317,11 +295,11 @@ describe('finishSignIn', () => {
   })
 
   it('names no server when there was no sign-in to fail', async () => {
-    // Arrange — an error return with no pending record in this tab.
+    // Arrange — an error return with no retained sign-in request in this tab.
     const page = pageAt('https://wildflowerhealth.io/', { fetch: neverCalled })
 
     // Act
-    const completed = await finishSignIn('?error=access_denied&state=x', signInEnvironment(page))
+    const completed = await finishSignIn('?error=access_denied&state=x', page, '/')
 
     // Assert
     expect(completed.tag).toBe('Failed')
@@ -388,7 +366,6 @@ describe('serverKindForSession', () => {
         // Act
         const serverKind = serverKindForSession({
           ...sessionWith(3600),
-          serverUrl: fhirBaseUrl,
           smartServer: PlainSmartServer.make({ fhirBaseUrl }),
           patient,
         })
@@ -537,7 +514,6 @@ const SERVER_URL = 'http://127.0.0.1:8080'
 const sessionWith = (expiresInSeconds: number | undefined): Session => ({
   accessToken: 'tok_hosted',
   scope: 'system/*.cruds',
-  serverUrl: SERVER_URL,
   smartServer: WildflowerServer.make({ fhirBaseUrl: SERVER_URL }),
   expiresInSeconds,
   patient: undefined,
@@ -545,7 +521,7 @@ const sessionWith = (expiresInSeconds: number | undefined): Session => ({
 })
 
 /** A `sessionStorage` stand-in with no browser behind it. */
-const memoryStore = (): PendingStore => {
+const memoryStore = (): RetainedRequestStorage => {
   const entries = new Map<string, string>()
   return {
     getItem: (key) => entries.get(key) ?? null,
@@ -603,15 +579,15 @@ const discoveryAndToken = (): typeof globalThis.fetch => (input, init) => {
   return discoveryOnly()(input, init)
 }
 
-/** A {@link SignInPage} served at `href`, with the impure edges stubbed. */
+/** A {@link SignInWindow} served at `href`, with the impure edges stubbed. */
 const pageAt = (
   href: string,
   overrides: {
     readonly protocol?: string
     readonly fetch?: typeof globalThis.fetch
-    readonly sessionStorage?: PendingStore
+    readonly sessionStorage?: RetainedRequestStorage
   } = {}
-): SignInPage => ({
+): SignInWindow => ({
   fetch: overrides.fetch ?? neverCalled,
   // The real Web Crypto: PKCE's verifier and S256 challenge are the subject's
   // own contract with the server, so stubbing them would only weaken the test.

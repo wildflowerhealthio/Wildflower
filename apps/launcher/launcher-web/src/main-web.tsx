@@ -29,7 +29,6 @@ import {
   postSignInUrl,
   scheduleExpiry,
   serverKindForSession,
-  signInEnvironment,
   unsentEhrLaunch,
 } from './sign-in.ts'
 import {
@@ -94,7 +93,7 @@ const settleUrlAfterSignIn = (returnTo: string): void => {
  * only). A router mounted before the exchange settled would run that gate
  * against an empty store and redirect to `/` while the token was still in
  * flight, so the sign-in would appear to fail every time. An ordinary load pays
- * a microtask for this: with no pending record, `completeSignIn` resolves to
+ * a microtask for this: with no retained sign-in request, `completeSignIn` resolves to
  * `None` without touching the network.
  *
  * `ConsentedEntryRoot` calls this once the visitor has answered the telemetry
@@ -104,7 +103,7 @@ const bootApp = async (): Promise<JSX.Element> => {
   const returnSearch = window.location.search
   // The same `basepath` the router gets, so the callback re-derives the exact
   // `redirect_uri` the outbound leg sent from the app root — see `sign-in.ts`.
-  const completed = await finishSignIn(returnSearch, signInEnvironment(window, basepath))
+  const completed = await finishSignIn(returnSearch, window, basepath)
   const session = completed.tag === 'Ok' ? Option.getOrUndefined(completed.value) : undefined
   // The page's session: the server a sign-in signed in to, kept in the tab's
   // `sessionStorage` for a reload or the expiry bounce back to the landing,
@@ -116,13 +115,16 @@ const bootApp = async (): Promise<JSX.Element> => {
     // second: the store publishes nothing on a write, because a token response
     // that reported no lifetime has no honest `exp`. See
     // `authStateForSession`.
-    bearerStore.writeSession({ serverUrl: session.serverUrl, bearer: session.accessToken })
+    bearerStore.writeSession({
+      serverUrl: session.smartServer.fhirBaseUrl,
+      bearer: session.accessToken,
+    })
     bearerStore.setAuthState(authStateForSession(session, Math.floor(Date.now() / 1000)))
     // Drop the session back to `Unauthed` when the reported lifetime lapses, so
     // the next authed request redirects to the landing rather than 401-looping.
     scheduleExpiry(bearerStore.setAuthState, session.expiresInSeconds)
     // Honour the gate's `?returnTo=`, carried across the redirect in the
-    // pending record, sanitised against an open redirect.
+    // retained sign-in request, sanitised against an open redirect.
     settleUrlAfterSignIn(sanitizeReturnTo(session.returnTo ?? null))
   } else if (isAuthorizationResponse(returnSearch)) {
     // A return leg that resolved to nothing usable: the response still has to
@@ -154,7 +156,7 @@ const bootApp = async (): Promise<JSX.Element> => {
   // the one the landing is pointed at. The landing redacts any other it signs
   // in to.
   for (const serverUrl of [
-    session?.serverUrl,
+    session?.smartServer.fhirBaseUrl,
     completed.tag === 'Failed' ? completed.problem.serverUrl : undefined,
     arrivingEhrLaunch?.serverUrl,
     chosenServerUrl(window.location.search, window.sessionStorage),

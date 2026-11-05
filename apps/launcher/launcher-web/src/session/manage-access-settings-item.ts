@@ -1,20 +1,28 @@
+import type { HttpClient } from '@effect/platform'
 import { queryOptions, skipToken, useQuery, type UseQueryOptions } from '@tanstack/react-query'
-import { discoverSmartEndpoints } from '@wildflowerhealthio/authorization-core/smart-client'
+import {
+  BrowserSignIn,
+  discoverSmartServer,
+  type PageSecurity,
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
-import { Effect, Option } from 'effect'
+import { Effect, type Layer, Option } from 'effect'
 import { createContext, useContext } from 'react'
 
 /**
  * Where the settings screen's "Manage access" row finds the session's server
- * and reads its SMART configuration from: the page's own `fetch`, and whether
- * the page is served over https (discovery refuses a plaintext endpoint from a
- * secure page). `buildAppTree` provides it over the page's bearer store.
+ * and reads its SMART configuration from. `buildAppTree` provides it over the
+ * page's bearer store.
  */
 interface ManageAccessSource {
   /** The server this tab signed in to, read when the row renders. */
   readonly serverUrl: () => string | undefined
-  readonly fetch: typeof globalThis.fetch
-  readonly pageIsSecure: boolean
+  /**
+   * What discovery runs against: the page's own `fetch`, and whether the page
+   * is served over https (discovery refuses a plaintext endpoint from a secure
+   * page). `BrowserSignIn.discoveryLayerFromWindow(window)` in the browser.
+   */
+  readonly discovery: Layer.Layer<HttpClient.HttpClient | PageSecurity>
 }
 
 /**
@@ -24,8 +32,7 @@ interface ManageAccessSource {
  */
 const ManageAccessSourceContext = createContext<ManageAccessSource>({
   serverUrl: () => undefined,
-  fetch: (...args) => globalThis.fetch(...args),
-  pageIsSecure: false,
+  discovery: BrowserSignIn.discoveryLayerFromWindow(globalThis),
 })
 
 /**
@@ -38,7 +45,7 @@ const ManageAccessSourceContext = createContext<ManageAccessSource>({
  */
 const managementEndpointQueryOptions = (
   serverUrl: string | undefined,
-  source: Pick<ManageAccessSource, 'fetch' | 'pageIsSecure'>
+  source: Pick<ManageAccessSource, 'discovery'>
 ): UseQueryOptions<
   string | null,
   Error,
@@ -51,10 +58,10 @@ const managementEndpointQueryOptions = (
       serverUrl === undefined
         ? skipToken
         : () =>
-            Effect.runPromise(
-              discoverSmartEndpoints(serverUrl, source).pipe(
-                Effect.map((issuer) => Option.getOrNull(issuer.managementEndpoint))
-              )
+            discoverSmartServer(serverUrl).pipe(
+              Effect.map((discovered) => Option.getOrNull(discovered.managementEndpoint)),
+              Effect.provide(source.discovery),
+              Effect.runPromise
             ),
     staleTime: Infinity,
   })

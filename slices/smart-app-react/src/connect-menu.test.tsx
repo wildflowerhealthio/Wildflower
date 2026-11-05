@@ -4,8 +4,8 @@ import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
-  PendingRequestUnusable,
-  type SmartIssuer,
+  type DiscoveredSmartServer,
+  RetainedRequestUnusable,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import type * as Smart from '@wildflowerhealthio/fhir-r4-react/smart'
 import { SmartSupport } from '@wildflowerhealthio/fhir-r4-react/smart'
@@ -45,7 +45,7 @@ const WILDFLOWER_PROPS = {
 } as const
 
 /** What a probe of a SMART server discovered, which the menu only forwards. */
-const DISCOVERED: SmartIssuer = {
+const DISCOVERED: DiscoveredSmartServer = {
   smartServer: { _tag: 'PlainSmartServer', fhirBaseUrl: 'https://ehr.example/fhir' },
   endpoints: {
     authorizationEndpoint: 'https://ehr.example/authorize',
@@ -265,7 +265,7 @@ describe('ConnectMenu', () => {
       'The server’s authorization endpoint is not one this app will go to. ' +
       'It carries a user name or password.'
     redirectToSignInMock.mockReturnValue(
-      Effect.fail(new PendingRequestUnusable({ reason: refusal }))
+      Effect.fail(new RetainedRequestUnusable({ reason: refusal }))
     )
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)

@@ -1,3 +1,4 @@
+// oxlint-disable import/max-dependencies -- the settings screen mounts every row, each with its own source
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -7,6 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { BrowserSignIn } from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   authorizationLogoutSettingsItem,
   makeBearerAuthStateStore,
@@ -362,11 +364,13 @@ describe('the settings route’s Manage access row', () => {
     const requested: string[] = []
     renderWithSource({
       serverUrl: () => 'https://ruth.wildflowerhealth.io',
-      fetch: (input) => {
-        requested.push(input instanceof Request ? input.url : input.toString())
-        return Promise.resolve(Response.json(smartConfiguration))
-      },
-      pageIsSecure: true,
+      discovery: BrowserSignIn.discoveryLayerFromWindow({
+        fetch: (input) => {
+          requested.push(input instanceof Request ? input.url : input.toString())
+          return Promise.resolve(Response.json(smartConfiguration))
+        },
+        location: { protocol: 'https:' },
+      }),
     })
 
     // Act
@@ -383,7 +387,13 @@ describe('the settings route’s Manage access row', () => {
     const fetch = vi.fn<typeof globalThis.fetch>()
 
     // Act
-    renderWithSource({ serverUrl: () => undefined, fetch, pageIsSecure: true })
+    renderWithSource({
+      serverUrl: () => undefined,
+      discovery: BrowserSignIn.discoveryLayerFromWindow({
+        fetch,
+        location: { protocol: 'https:' },
+      }),
+    })
 
     // Assert
     await findSettingsHeading()

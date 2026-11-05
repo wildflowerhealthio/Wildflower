@@ -1,5 +1,7 @@
 import {
   arrivingSmartLaunchFrom,
+  BrowserSignIn,
+  type DiscoveryWindow,
   normalizeServerUrl,
   searchWithoutAuthorizationResponse,
   searchWithServerUrl,
@@ -12,6 +14,7 @@ import {
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import { Option } from 'effect'
 
+import type { ManageAccessSource } from './session/manage-access-settings-item.ts'
 import type { EhrLaunch } from './sign-in.ts'
 
 /**
@@ -21,7 +24,7 @@ import type { EhrLaunch } from './sign-in.ts'
  * reload, or the expiry bounce back to the landing, would otherwise have
  * forgotten which server the tab was using. A sign-in writes it with the
  * bearer (`BearerAuthStateStore.writeSession`) and logout clears it. It holds
- * no credential, and is namespaced like the pending record because the
+ * no credential, and is namespaced like the retained sign-in request because the
  * server-docs console shares this origin.
  */
 const SIGNED_IN_SERVER_KEY = 'launcher-web.signed-in-server'
@@ -63,7 +66,7 @@ const ehrLaunchIn = (search: string): EhrLaunch | undefined =>
  * The query a return leg settles on: the authorization response taken out
  * (`searchWithoutAuthorizationResponse`, which takes the authorization
  * server's RFC 9207 `iss` with it, so it never reads as a SMART launch) and,
- * when the sign-in failed and its pending record named the server it was to,
+ * when the sign-in failed and its retained sign-in request named the server it was to,
  * `?server=` pointed back at that server. The registered redirect carries no
  * query, so without it the landing would no longer offer the server the
  * reader was signing in to.
@@ -100,7 +103,7 @@ const underBasepath = (basepath: string, route: string): string =>
  * The settings screen's Logout row: the authorization server's, over `bearerStore`. It
  * forgets the bearer, revokes it at the session's server's `/authorization/logout`,
  * clears the tab's `sessionStorage` (the session's server and any
- * half-finished sign-in's pending record), and reloads the bare landing page
+ * half-finished sign-in's retained sign-in request), and reloads the bare landing page
  * at `basepath`. Nothing then names a server, so the reader picks one rather
  * than being signed straight back in.
  *
@@ -125,10 +128,23 @@ const logoutSettingsItem = (
     },
   })
 
+/**
+ * Where the settings screen's "Manage access" row reads from: the server
+ * `bearerStore` signed in to, and discovery wired to `page`.
+ */
+const manageAccessSource = (
+  page: DiscoveryWindow,
+  bearerStore: Pick<BearerAuthStateStore, 'serverUrl'>
+): ManageAccessSource => ({
+  serverUrl: () => bearerStore.serverUrl(),
+  discovery: BrowserSignIn.discoveryLayerFromWindow(page),
+})
+
 export {
   chosenServerUrl,
   ehrLaunchIn,
   logoutSettingsItem,
+  manageAccessSource,
   searchAfterReturnLeg,
   SIGNED_IN_SERVER_KEY,
   underBasepath,

@@ -8,6 +8,7 @@ export { pad2 } from './pad2.ts'
 export { partitionPoint } from './partition-point.ts'
 export { sentenceJoin } from './sentence-join.ts'
 export {
+  getStorageItem,
   removeStorageItem,
   setStorageItem,
   StorageBlocked,

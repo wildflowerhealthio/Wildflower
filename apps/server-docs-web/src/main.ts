@@ -8,25 +8,23 @@ import './styles.css'
 import {
   arrivingSmartLaunchFrom,
   beginSignIn,
-  browserSignInEnvironment,
+  BrowserSignIn,
   completeSignIn,
   insecureTargetReason,
   isAuthorizationResponse,
   normalizeServerUrl,
+  peekRetainedSignInRequest,
   redirectUriForPage,
   searchWithServerUrl,
   serverUrlFromSearch,
   standaloneLaunchScopeParameter,
+  type ClientRegistration,
   type Session,
-  type SignInEnvironment,
   type SignInError,
+  type SignInServices,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 
-import {
-  pendingSignInServerUrl,
-  resetAuthControlsOnBackForwardRestore,
-  searchSettledFrom,
-} from './arrival.ts'
+import { resetAuthControlsOnBackForwardRestore, searchSettledFrom } from './arrival.ts'
 import { consoleConfiguration } from './configuration.ts'
 import {
   CONNECT_CHOICES,
@@ -34,7 +32,7 @@ import {
   type ServerEntryChoice,
   type WithoutServerChoice,
 } from './connect-choices.ts'
-import { PENDING_AUTHORIZATION_KEY, CLIENT_ID, REGISTERED_REDIRECT_URI } from './smart-client.ts'
+import { RETAINED_SIGN_IN_REQUEST_KEY, CLIENT_ID, REGISTERED_REDIRECT_URI } from './smart-client.ts'
 
 /**
  * Boots the static Wildflower server-docs console: a Scalar API reference over
@@ -112,17 +110,19 @@ let session: Session | undefined
  */
 const redirectUri = redirectUriForPage(window.location.href) ?? REGISTERED_REDIRECT_URI
 
-/**
- * The impure edges the sign-in flow runs against in the browser, wired by
- * `authorization-core/smart-client` so this console and the `launcher-web`
- * page share one reading of `window` rather than a copy each.
- */
-const signInEnvironment: SignInEnvironment = browserSignInEnvironment(window, {
+/** What the console is registered as, returning to {@link redirectUri}. */
+const signInRegistration: ClientRegistration = {
   clientId: CLIENT_ID,
-  pendingKey: PENDING_AUTHORIZATION_KEY,
   scope: standaloneLaunchScopeParameter(),
   redirectUri,
-})
+}
+
+/**
+ * The sign-in services of this page, wired by `authorization-core/smart-client`
+ * so this console and the `launcher-web` page share one reading of `window`
+ * rather than a copy each.
+ */
+const signInLayer = BrowserSignIn.layerFromWindow(window, RETAINED_SIGN_IN_REQUEST_KEY)
 
 /** Show `message` on the status line, or clear it when `undefined`. */
 const showStatus = (message: string | undefined, kind: 'ok' | 'problem' = 'ok'): void => {
@@ -146,7 +146,7 @@ const currentServerUrl = (): string | undefined => serverUrlFromSearch(window.lo
  * the server the sign-in was for there, since success never will).
  */
 const runSignInEffect = <A>(
-  effect: Effect.Effect<A, SignInError>,
+  effect: Effect.Effect<A, SignInError, SignInServices>,
   onSuccess: (value: A) => void,
   onFailure?: (error: SignInError) => void
 ): void => {
@@ -160,7 +160,8 @@ const runSignInEffect = <A>(
           showStatus(error.reason, 'problem')
           onFailure?.(error)
         },
-      })
+      }),
+      Effect.provide(signInLayer)
     )
   )
 }
@@ -190,7 +191,9 @@ const render = (serverUrl: string | undefined): void => {
   serverTargetUrl.textContent = serverUrl ?? 'None'
   if (choosing) return
   const accessToken =
-    serverUrl !== undefined && session?.serverUrl === serverUrl ? session.accessToken : undefined
+    serverUrl !== undefined && session?.smartServer.fhirBaseUrl === serverUrl
+      ? session.accessToken
+      : undefined
   reference = createApiReference(
     referenceContainer,
     consoleConfiguration(serverUrl, { prefersDarkMode, accessToken })
@@ -223,9 +226,9 @@ const renderAuthControls = (serverUrl: string | undefined): void => {
   signInButton.title = 'Forget the access token this tab is holding'
   const scope = session.scope === '' ? 'no scopes reported' : session.scope
   showStatus(
-    session.serverUrl === serverUrl
-      ? `Signed in to ${session.serverUrl}. Granted: ${scope}.`
-      : `Signed in to ${session.serverUrl}, which is not the server shown — requests go unauthenticated.`
+    session.smartServer.fhirBaseUrl === serverUrl
+      ? `Signed in to ${session.smartServer.fhirBaseUrl}. Granted: ${scope}.`
+      : `Signed in to ${session.smartServer.fhirBaseUrl}, which is not the server shown — requests go unauthenticated.`
   )
 }
 
@@ -270,7 +273,7 @@ const scheduleExpiryNotice = (current: Session): void => {
       render(serverUrl)
       renderAuthControls(serverUrl)
       showStatus(
-        `The access token from ${current.serverUrl} has expired. Sign in again to keep sending authorised requests.`,
+        `The access token from ${current.smartServer.fhirBaseUrl} has expired. Sign in again to keep sending authorised requests.`,
         'problem'
       )
     },
@@ -307,12 +310,9 @@ const startSigningIn = (serverUrl: string, launch?: string): void => {
   changeServerButton.disabled = true
   showStatus(`Asking ${serverUrl} how to sign in…`)
   // The console is one page, so there is nowhere in particular to return to.
-  runSignInEffect(
-    beginSignIn(serverUrl, undefined, signInEnvironment, { launch }),
-    (authorizationUrl) => {
-      window.location.assign(authorizationUrl)
-    }
-  )
+  runSignInEffect(beginSignIn(serverUrl, signInRegistration, { launch }), (authorizationUrl) => {
+    window.location.assign(authorizationUrl)
+  })
 }
 
 /**
@@ -472,10 +472,18 @@ const initialServerUrl = currentServerUrl()
 renderAuthControls(initialServerUrl)
 
 // The server a return leg's sign-in was for. Read now: `completeSignIn` drops
-// the pending record it is read from.
-const pendingServerUrl = returningFromAuthorization
-  ? pendingSignInServerUrl(signInEnvironment.store, signInEnvironment.pendingKey)
-  : undefined
+// the retained sign-in request it is read from. The redirect URI carries no
+// `?server=`, so this is how a failed or cancelled return gets back to the
+// server the reader picked. A store that refuses to be read names none.
+const retainedServerUrl: Option.Option<string> = returningFromAuthorization
+  ? Effect.runSync(
+      peekRetainedSignInRequest.pipe(
+        Effect.map(Option.map((retained) => retained.smartServer.fhirBaseUrl)),
+        Effect.orElseSucceed(Option.none),
+        Effect.provide(signInLayer)
+      )
+    )
+  : Option.none()
 
 // Mount the reference now on an ordinary load. On a return leg, defer it: a
 // successful sign-in re-targets the reference at the signed-in server, so mounting
@@ -486,18 +494,22 @@ if (!returningFromAuthorization) render(initialServerUrl)
 
 /**
  * Mount a return leg that brought no session back against the server its
- * sign-in was for, or the page's own target when no pending record names one.
+ * sign-in was for, or the page's own target when no retained sign-in request names one.
  */
 const returnWithoutSession = (): void => {
-  if (pendingServerUrl === undefined) render(initialServerUrl)
-  else applyServerUrl(pendingServerUrl)
+  Option.match(retainedServerUrl, {
+    onNone: () => {
+      render(initialServerUrl)
+    },
+    onSome: applyServerUrl,
+  })
 }
 
 // A return leg from `/oauth/authorize` looks like any other load until the query
-// string is read, so every load asks. `?server=` is restored from the pending
-// record rather than the URL: the registered redirect URI carries no query.
+// string is read, so every load asks. `?server=` is restored from the retained
+// sign-in request rather than the URL: the registered redirect URI carries no query.
 runSignInEffect(
-  completeSignIn(returnSearch, signInEnvironment),
+  completeSignIn(returnSearch, signInRegistration),
   (result) => {
     if (Option.isNone(result)) {
       if (returningFromAuthorization) returnWithoutSession()
@@ -505,7 +517,7 @@ runSignInEffect(
     }
     session = result.value
     scheduleExpiryNotice(result.value)
-    applyServerUrl(result.value.serverUrl)
+    applyServerUrl(result.value.smartServer.fhirBaseUrl)
   },
   (error) => {
     if (!returningFromAuthorization) return

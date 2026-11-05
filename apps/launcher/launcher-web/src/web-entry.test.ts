@@ -1,18 +1,21 @@
+import { HttpClient } from '@effect/platform'
 import {
   arrivingSmartLaunchFrom,
   normalizeServerUrl,
+  PageSecurity,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { makeBearerAuthStateStore } from '@wildflowerhealthio/authorization-react'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Option } from 'effect'
+import { Effect, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { PENDING_AUTHORIZATION_KEY } from './sign-in.ts'
+import { RETAINED_SIGN_IN_REQUEST_KEY } from './sign-in.ts'
 import {
   chosenServerUrl,
   ehrLaunchIn,
   logoutSettingsItem,
+  manageAccessSource,
   searchAfterReturnLeg,
   SIGNED_IN_SERVER_KEY,
 } from './web-entry.ts'
@@ -134,7 +137,7 @@ describe('logoutSettingsItem', () => {
     const page = stubPage()
     const bearerStore = makeBearerAuthStateStore(page.sessionStorage, SIGNED_IN_SERVER_KEY)
     bearerStore.writeSession({ serverUrl: RUTH_SERVER_URL, bearer: 'eyJ.owner.token' })
-    page.sessionStorage.setItem(PENDING_AUTHORIZATION_KEY, '{"state":"abc"}')
+    page.sessionStorage.setItem(RETAINED_SIGN_IN_REQUEST_KEY, '{"state":"abc"}')
     const logout = logoutSettingsItem(page, '/pr-7/', bearerStore)
 
     // Act
@@ -147,7 +150,46 @@ describe('logoutSettingsItem', () => {
     // the tab, to sign back in to, and nothing else left behind.
     expect(await page.assigned).toBe('/pr-7/')
     expect(page.sessionStorage.getItem(SIGNED_IN_SERVER_KEY)).toBeNull()
-    expect(page.sessionStorage.getItem(PENDING_AUTHORIZATION_KEY)).toBeNull()
+    expect(page.sessionStorage.getItem(RETAINED_SIGN_IN_REQUEST_KEY)).toBeNull()
+  })
+})
+
+describe('manageAccessSource', () => {
+  it('should read the server the store signed in to when the row renders, not before', () => {
+    // Arrange
+    const store = memoryStore()
+    const source = manageAccessSource(
+      discoveryPage([]),
+      makeBearerAuthStateStore(store, SIGNED_IN_SERVER_KEY)
+    )
+
+    // Act
+    signInTo(store, RUTH_SERVER_URL)
+
+    // Assert
+    expect(source.serverUrl()).toBe(RUTH_SERVER_URL)
+  })
+
+  it('should run discovery on the page’s fetch and scheme', async () => {
+    // Arrange
+    const sent: string[] = []
+    const source = manageAccessSource(
+      discoveryPage(sent),
+      makeBearerAuthStateStore(memoryStore(), SIGNED_IN_SERVER_KEY)
+    )
+
+    // Act
+    const pageSecurity = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* HttpClient.HttpClient
+        yield* client.get('https://example.test/.well-known/smart-configuration')
+        return yield* PageSecurity
+      }).pipe(Effect.provide(source.discovery))
+    )
+
+    // Assert
+    expect(pageSecurity).toEqual({ pageIsSecure: true })
+    expect(sent).toEqual(['https://example.test/.well-known/smart-configuration'])
   })
 })
 
@@ -197,3 +239,12 @@ const stubPage = (): Parameters<typeof logoutSettingsItem>[0] & {
     sessionStorage: memoryStore(),
   }
 }
+
+/** An https page whose `fetch` records each URL it is sent to in `sent` and answers `{}`. */
+const discoveryPage = (sent: string[]): Parameters<typeof manageAccessSource>[0] => ({
+  fetch: (input) => {
+    sent.push(input instanceof Request ? input.url : String(input))
+    return Promise.resolve(new Response('{}'))
+  },
+  location: { protocol: 'https:' },
+})

@@ -1,23 +1,17 @@
 import {
   isAuthorizationResponse,
   searchWithoutAuthorizationResponse,
-  type SignInPage,
+  type SignInWindow,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Option } from 'effect'
 
 import type { LandingProps, LandingSignIn } from './landing.tsx'
 import { searchWithServerUrl, serverUrlFromSearch } from './server-param.ts'
-import {
-  finishSignIn,
-  inAppReturnPath,
-  signInEnvironment,
-  startSignIn,
-  type ServerSession,
-} from './sign-in.ts'
+import { finishSignIn, inAppReturnPath, startSignIn, type ServerSession } from './sign-in.ts'
 
 /** The slice of `window` the boot reads and rewrites; a real `Window` satisfies it. */
-interface BootPage extends SignInPage {
-  readonly location: SignInPage['location'] & Pick<Location, 'pathname' | 'search' | 'assign'>
+interface BootPage extends SignInWindow {
+  readonly location: SignInWindow['location'] & Pick<Location, 'pathname' | 'search' | 'assign'>
   readonly history: Pick<History, 'replaceState'>
 }
 
@@ -48,14 +42,14 @@ const deepRouteOf = (pathname: string, basepath: string): string | undefined => 
 
 /**
  * The browser's {@link LandingSignIn}: a sign-in from the landing returns to
- * the app root under `basepath`, carrying `returnTo` in the pending record.
+ * the app root under `basepath`, carrying `returnTo` in the retained sign-in request.
  */
 const browserLandingSignIn = (
   page: BootPage,
   basepath: string,
   returnTo: string | undefined
 ): LandingSignIn => ({
-  start: (serverUrl) => startSignIn(serverUrl, returnTo, signInEnvironment(page, basepath)),
+  start: (serverUrl) => startSignIn(serverUrl, page, basepath, { returnTo }),
   rememberServer: (serverUrl) => {
     page.history.replaceState(
       null,
@@ -83,7 +77,7 @@ const browserLandingSignIn = (
  */
 const browserBoot = async (page: BootPage, basepath: string): Promise<Boot> => {
   const returnSearch = page.location.search
-  const finished = await finishSignIn(returnSearch, signInEnvironment(page, basepath))
+  const finished = await finishSignIn(returnSearch, page, basepath)
   if (finished.tag === 'Ok' && Option.isSome(finished.value)) {
     const session = finished.value.value
     page.history.replaceState(

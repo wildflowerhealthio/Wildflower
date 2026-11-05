@@ -2,7 +2,11 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import type * as SmartClientModule from '@wildflowerhealthio/authorization-core/smart-client'
 import { PlainSmartServer, type Session } from '@wildflowerhealthio/authorization-core/smart-client'
 import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
-import { decodeFhirBaseUrl, redirectToSignIn } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  decodeFhirBaseUrl,
+  redirectToSignIn,
+  smartSignInLayer,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
 import { writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
@@ -44,7 +48,6 @@ const EHR_LAUNCH = `?iss=${encodeURIComponent(FHIR_SERVER_URL)}&launch=xyz`
 const SESSION: Session = {
   accessToken: 'token',
   scope: smartRegistration.scope,
-  serverUrl: FHIR_SERVER_URL,
   smartServer: PlainSmartServer.make({ fhirBaseUrl: FHIR_SERVER_URL }),
   expiresInSeconds: undefined,
   patient: 'p1',
@@ -91,13 +94,16 @@ const letAuthorizeThrough = (): void => {
 const startSignIn = async (): Promise<void> => {
   letAuthorizeThrough()
   await Effect.runPromise(
-    redirectToSignIn(
-      {
-        ...smartRegistration,
-        redirectUri: `${window.location.origin}${BASEPATH}`,
-        fhirBaseUrl: decodeFhirBaseUrl(FHIR_SERVER_URL),
-      },
-      'xyz'
+    Effect.provide(
+      redirectToSignIn(
+        {
+          ...smartRegistration,
+          redirectUri: `${window.location.origin}${BASEPATH}`,
+          fhirBaseUrl: decodeFhirBaseUrl(FHIR_SERVER_URL),
+        },
+        'xyz'
+      ),
+      smartSignInLayer(window)
     )
   )
 }
@@ -144,7 +150,7 @@ describe('AppRoot over the address bar', () => {
     await waitFor(() => {
       expect(beginSignInAtMock).toHaveBeenCalledTimes(1)
     })
-    expect(beginSignInAtMock.mock.calls[0]?.[2].redirectUri).toBe(
+    expect(beginSignInAtMock.mock.calls[0]?.[1].redirectUri).toBe(
       `${window.location.origin}${BASEPATH}`
     )
     expect(addressBar()).toBe(launchUrl)

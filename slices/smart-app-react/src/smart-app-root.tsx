@@ -24,6 +24,7 @@ import {
   launchError,
   type RootArrival,
   rootArrivalFrom,
+  smartSignInLayer,
   type SignInLanding,
   type SmartConnection,
   type SmartRegistration,
@@ -340,10 +341,8 @@ function SmartAppRoot({
     Match.value(arrival).pipe(
       Match.tag('SignInRefused', (refused) => {
         clearReturnRoute(window.sessionStorage)
-        discardRefusedSignInAfterRedirectHere(refused, {
-          registration,
-          appRootRedirectUri: redirectUri,
-        }).pipe(
+        discardRefusedSignInAfterRedirectHere(refused).pipe(
+          Effect.provide(smartSignInLayer(window)),
           Effect.tapError((discardError) =>
             Effect.sync(() => {
               Sentry.captureException(discardError, { tags: { source: 'pending-connection' } })
@@ -357,7 +356,7 @@ function SmartAppRoot({
       }),
       Match.orElse(() => undefined)
     )
-  }, [arrival, registration, redirectUri])
+  }, [arrival])
 
   // A failed launch lands back here carrying its reason — our own `?launchError`
   // from the launch page or the token exchange, or the authorization server's

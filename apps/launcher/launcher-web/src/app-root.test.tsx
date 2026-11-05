@@ -118,7 +118,8 @@ describe('a 401', () => {
     await waitFor(() => {
       expect(startSignIn).toHaveBeenCalledOnce()
     })
-    expect(startSignIn).toHaveBeenCalledWith(SERVER_URL, DENIED_PATH, expect.anything(), {
+    expect(startSignIn).toHaveBeenCalledWith(SERVER_URL, expect.anything(), expect.anything(), {
+      returnTo: DENIED_PATH,
       launch: undefined,
       prompt: undefined,
     })

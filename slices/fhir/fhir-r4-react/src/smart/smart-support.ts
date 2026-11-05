@@ -1,14 +1,17 @@
+import type { HttpClient } from '@effect/platform'
 import {
+  fetchSmartConfiguration,
   insecureTargetReason,
   normalizeServerUrl,
-  type PendingRequestUnusable,
+  type RetainedRequestUnusable,
   type PkceUnavailable,
-  smartIssuerFrom,
-  type SmartIssuer,
+  PageSecurity,
+  discoveredSmartServerFrom,
+  type DiscoveredSmartServer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
 import { Data, Effect, Either, Match, Schema } from 'effect'
 
+import type { SmartSignInServices } from './retained-sign-in-requests.ts'
 import {
   redirectToSelfAddressedSignInReturn,
   redirectToSignInAt,
@@ -21,21 +24,23 @@ import type { FhirBaseUrl } from './smart-connection.ts'
  * how to sign in to it.
  *
  * @remarks
- * Four outcomes. A CORS-blocked probe rejects identically to a down server —
- * the browser gives no way to tell them apart — so a rejected probe is
+ * Four outcomes. A CORS-blocked probe gets no response, as a down server's
+ * does — the browser gives no way to tell them apart — so a probe with no
+ * response is
  * `Unreachable`, surfaced to the user, **never** silently treated as `Open`.
  * Treating it as open would fire unauthenticated resource reads at a server
  * that may well require auth, producing misleading 401s. A real HTTP answer
  * (even a 404, or non-JSON) is `Open`: the server responded, it just has no
  * SMART config. A config that names an `authorization_endpoint` is `Smart`,
- * carrying what `authorization-core`'s `smartIssuerFrom` `discovered` in it,
- * when `smartIssuerFrom` accepts it for this page, and `Unusable`, with its
+ * carrying what `authorization-core`'s `discoveredSmartServerFrom`
+ * `discovered` in it, when `discoveredSmartServerFrom` accepts it for this
+ * page, and `Unusable`, with its
  * `DiscoveryFailed` reason, when it does not (an endpoint that is not https
  * or loopback, a missing `token_endpoint`, no S256).
  */
 type SmartSupport = Data.TaggedEnum<{
   /** A config whose endpoints are usable from this page. */
-  readonly Smart: { readonly discovered: SmartIssuer }
+  readonly Smart: { readonly discovered: DiscoveredSmartServer }
   /** An HTTP answer that is not ok, or JSON without an `authorization_endpoint`. */
   // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
   readonly Open: Record<never, never>
@@ -55,52 +60,48 @@ const SmartSupport = Data.taggedEnum<SmartSupport>()
 const NamesAuthorizationEndpoint = Schema.Struct({ authorization_endpoint: Schema.String })
 
 /** Whether a configuration names an `authorization_endpoint`, as a SMART server's does. */
-const decodeSmartConfiguration = Schema.decodeUnknown(NamesAuthorizationEndpoint)
+const namesAuthorizationEndpoint = Schema.is(NamesAuthorizationEndpoint)
 
 /**
  * Probe `{fhirBaseUrl}/.well-known/smart-configuration` to decide how to sign in.
  *
  * @remarks
- * Every outcome is a {@link SmartSupport}, so the Effect never fails.
- * `fetchFn` is a parameter (default `globalThis.fetch`) so a test can drive the
- * outcomes over a stub without a real wire — the same transport-is-a-parameter
- * philosophy as the SMART runtime's `HttpClient`. `pageIsSecure` (default: read
- * from `window.location`) is what decides whether a plain-http endpoint off
- * loopback is `Unusable`.
+ * Every outcome is a {@link SmartSupport}, so the Effect never fails. The
+ * probe is `authorization-core`'s `fetchSmartConfiguration`, the one fetch
+ * discovery makes too, read here as support rather than as a server to sign
+ * in to; the `PageSecurity` decides whether a plain-http endpoint off loopback
+ * is `Unusable`.
  *
  * @param fhirBaseUrl - The FHIR server base the well-known path is appended to
- * @param fetchFn - The `fetch` to probe with; defaults to `globalThis.fetch`
- * @param pageIsSecure - Whether this page is served over https
  */
 const detectSmartSupport = (
-  fhirBaseUrl: FhirBaseUrl,
-  fetchFn: typeof fetch = globalThis.fetch,
-  pageIsSecure: boolean = window.location.protocol === 'https:'
-): Effect.Effect<SmartSupport> =>
+  fhirBaseUrl: FhirBaseUrl
+): Effect.Effect<SmartSupport, never, HttpClient.HttpClient | PageSecurity> =>
   Effect.gen(function* () {
-    // A rejected fetch is network-or-CORS and the two are indistinguishable
-    // here — surface it, never degrade to `Open`.
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        fetchFn(`${fhirBaseUrl}/.well-known/smart-configuration`, {
-          headers: { Accept: 'application/json' },
-        }),
-      catch: (error) => SmartSupport.Unreachable({ reason: unknownErrorToString(error) }),
-    })
-    // A real HTTP answer that isn't ok (404, 500, …) is a server with no SMART
-    // config → Open. Only a config that names an authorization endpoint is
-    // SMART, and only when its endpoints are usable from this page.
-    if (!response.ok) return SmartSupport.Open()
-    const config = yield* Effect.tryPromise((): Promise<unknown> => response.json()).pipe(
-      // Checked, not narrowed: `smartIssuerFrom` reads the whole configuration.
-      Effect.tap(decodeSmartConfiguration),
-      Effect.mapError(() => SmartSupport.Open())
+    const fetched = yield* fetchSmartConfiguration(fhirBaseUrl)
+    const pageSecurity = yield* PageSecurity
+    return Match.value(fetched).pipe(
+      Match.tagsExhaustive({
+        // A request that gets no response is network-or-CORS and the two are
+        // indistinguishable here — surface it, never degrade to `Open`.
+        Unreachable: ({ reason }) => SmartSupport.Unreachable({ reason }),
+        // A real HTTP answer that isn't ok (404, 500, …), or isn't JSON, is a
+        // server with no SMART config → Open.
+        NotOk: () => SmartSupport.Open(),
+        NotJson: () => SmartSupport.Open(),
+        // Only a config that names an authorization endpoint is SMART, and
+        // only when its endpoints are usable from this page. Checked, not
+        // narrowed: `discoveredSmartServerFrom` reads the whole configuration.
+        Document: ({ document }) =>
+          namesAuthorizationEndpoint(document)
+            ? Either.match(discoveredSmartServerFrom(fhirBaseUrl, document, pageSecurity), {
+                onLeft: (failed) => SmartSupport.Unusable({ reason: failed.reason }),
+                onRight: (discovered) => SmartSupport.Smart({ discovered }),
+              })
+            : SmartSupport.Open(),
+      })
     )
-    return Either.match(smartIssuerFrom(fhirBaseUrl, config, { pageIsSecure }), {
-      onLeft: (failed) => SmartSupport.Unusable({ reason: failed.reason }),
-      onRight: (discovered) => SmartSupport.Smart({ discovered }),
-    })
-  }).pipe(Effect.merge)
+  })
 
 /**
  * Sign in to `config.fhirBaseUrl`, a server a reader picked or an EHR launch's
@@ -116,22 +117,21 @@ const detectSmartSupport = (
  * to send `launch` to. Either redirect usually takes the page away, and a
  * storage that will not retain the sign-in request fails this Effect.
  * `Unreachable` and `Unusable` redirect nowhere: the support is the result,
- * for the caller to show.
+ * for the caller to show. The caller provides the sign-in services
+ * (`smartSignInLayer`).
  *
  * @param config - The server plus the app's client id, scope, and redirect
  *   target
  * @param launch - The EHR's launch token, `undefined` for a standalone launch
- * @param fetchFn - The `fetch` the probe uses; defaults to `globalThis.fetch`
  * @returns The probe outcome. `Smart`/`Open` are returned only in the (unusual)
  *   case the redirect does not navigate the page away; `Unreachable` and
  *   `Unusable` always are.
  */
 const redirectToSignIn = (
   config: SmartLaunchConfig,
-  launch: string | undefined,
-  fetchFn: typeof fetch = globalThis.fetch
-): Effect.Effect<SmartSupport, PkceUnavailable | PendingRequestUnusable> =>
-  detectSmartSupport(config.fhirBaseUrl, fetchFn).pipe(
+  launch: string | undefined
+): Effect.Effect<SmartSupport, PkceUnavailable | RetainedRequestUnusable, SmartSignInServices> =>
+  detectSmartSupport(config.fhirBaseUrl).pipe(
     Effect.tap(
       Match.type<SmartSupport>().pipe(
         Match.tag('Smart', ({ discovered }) => redirectToSignInAt(discovered, config, launch)),

@@ -11,6 +11,7 @@
     "test": "vp test"
   },
   "dependencies": {
+    "@effect/platform": "catalog:",
     "@scalar/api-reference": "catalog:",
     "@wildflowerhealthio/authorization-core": "workspace:*",
     "@wildflowerhealthio/branding-core": "workspace:*",

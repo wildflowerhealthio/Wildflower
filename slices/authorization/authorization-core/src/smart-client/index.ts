@@ -11,17 +11,17 @@ export {
   authorizationRedirectOutcome,
   authorizationRequestUrl,
   isAuthorizationResponse,
-  parsePendingAuthorization,
+  parseRetainedSignInRequest,
   parseTokenResponse,
   searchWithoutAuthorizationResponse,
-  serializePendingAuthorization,
+  serializeRetainedSignInRequest,
   TokenExchangeFailed,
   tokenRequestBody,
 } from './authorization-flow.ts'
 export type {
   AccessGrant,
   AuthorizationRequestParameters,
-  PendingAuthorization,
+  RetainedSignInRequest,
   RedeemableCode,
 } from './authorization-flow.ts'
 
@@ -48,8 +48,22 @@ export { redirectUriForPage, redirectUriForRoute } from './redirect-target.ts'
 export { arrivingSmartLaunchFrom, SMART_LAUNCH_PARAMS } from './arriving-launch.ts'
 export type { ArrivingSmartLaunch } from './arriving-launch.ts'
 
-export { browserSignInEnvironment } from './browser-environment.ts'
-export type { ClientRegistration, SignInPage } from './browser-environment.ts'
+export { BrowserSignIn } from './browser-sign-in.ts'
+export type { DiscoveryWindow, SignInWindow } from './browser-sign-in.ts'
+
+export {
+  memoryBackedRetainedRequestStore,
+  RetainedRequestUnusable,
+  RetainedSignInRequestStore,
+  sessionStorageBackedRetainedRequestStore,
+  SignInCrypto,
+  PageSecurity,
+} from './sign-in-services.ts'
+export type {
+  RetainedRequestStorage,
+  RetainedRequestStoreShape,
+  SignInServices,
+} from './sign-in-services.ts'
 
 export {
   STANDALONE_LAUNCH_SCOPES,
@@ -60,33 +74,35 @@ export {
   beginSignIn,
   beginSignInAt,
   completeSignIn,
-  forgetPendingSignIn,
-  pendingRequestUnrecognisedFromAnotherVersion,
-  PendingRequestUnrecognised,
-  pendingRequestUnusableFrom,
-  PendingRequestUnusable,
+  forgetRetainedSignInRequest,
+  peekRetainedSignInRequest,
+  retainedRequestUnrecognisedFromAnotherVersion,
+  RetainedRequestUnrecognised,
+  TokenEndpointUnreachable,
 } from './sign-in.ts'
 export type {
   AuthorizationRequestExtras,
-  PendingStore,
+  ClientRegistration,
   Session,
-  SignInEnvironment,
   SignInError,
+  SignInOptions,
 } from './sign-in.ts'
 
 export {
-  discoverSmartEndpoints,
+  discoverSmartServer,
   DiscoveryFailed,
   endpointUrlFrom,
+  fetchSmartConfiguration,
   insecureTargetReason,
   isLoopbackHost,
   PlainSmartServer,
   SMART_CONFIGURATION_PATH,
+  SmartConfigurationFetch,
   smartConfigurationUrl,
-  smartIssuerFrom,
+  discoveredSmartServerFrom,
   UnusableEndpointUrl,
   usableEndpointUrl,
   WILDFLOWER_SERVER_CAPABILITY,
   WildflowerServer,
 } from './smart-discovery.ts'
-export type { SmartEndpoints, SmartIssuer, SmartServer } from './smart-discovery.ts'
+export type { SmartEndpoints, DiscoveredSmartServer, SmartServer } from './smart-discovery.ts'

@@ -5,12 +5,18 @@
  *
  * @packageDocumentation
  */
+import type {
+  RetainedRequestStorage,
+  SignInWindow,
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import { Effect, Match } from 'effect'
 import { vi } from 'vite-plus/test'
 
 import {
   RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
   RETAINED_SIGN_IN_REQUEST_KEY,
+  smartSignInLayer,
+  type SmartSignInServices,
 } from './retained-sign-in-requests.ts'
 import { rootArrivalFrom, type SignInArrival } from './root-arrival.ts'
 import { redirectToSelfAddressedSignInReturn, type SmartLaunchConfig } from './sign-in-redirect.ts'
@@ -101,24 +107,53 @@ const returnToRedirectTarget = (search: string): void => {
   window.history.replaceState(null, '', `/${search}`)
 }
 
+/**
+ * The storage the page's sign-in services keep their requests in: the page's
+ * own `sessionStorage` unless a test hands them one that refuses.
+ */
+let pageStorage: RetainedRequestStorage | undefined
+
 /** A fresh page at the app root, served over https, holding no retained request. */
 const resetPage = (): void => {
   vi.clearAllMocks()
   window.sessionStorage.clear()
+  pageStorage = undefined
   window.history.replaceState(null, '', '/')
   stubPageLocation('https:')
 }
 
+/**
+ * This page as the sign-in services see it: the page's own `fetch`, `crypto`
+ * and `location`, each read when used so a test's stubs apply, and the
+ * storage a test handed it, if any.
+ */
+const thisPage: SignInWindow = {
+  fetch: (input, init) => window.fetch(input, init),
+  get crypto() {
+    return window.crypto
+  },
+  get location() {
+    return window.location
+  },
+  get sessionStorage() {
+    return pageStorage ?? window.sessionStorage
+  },
+}
+
+/** `effect` on this page's sign-in services, as the app's edges provide them. */
+const onThisPage = <A, E>(effect: Effect.Effect<A, E, SmartSignInServices>): Effect.Effect<A, E> =>
+  Effect.provide(effect, smartSignInLayer(thisPage))
+
 /** Start a sign-in out of the page, returning the `state` it sent. */
 const signInOut = async (): Promise<string> => {
   stubServer()
-  await Effect.runPromise(redirectToSignIn(LAUNCH_CONFIG, 'launch-1'))
+  await Effect.runPromise(onThisPage(redirectToSignIn(LAUNCH_CONFIG, 'launch-1')))
   return assignedUrl().searchParams.get('state') ?? ''
 }
 
 /** Start a self-addressed sign-in out of the page, returning the `state` it sent. */
 const selfAddressedSignInOut = async (): Promise<string> => {
-  await Effect.runPromise(redirectToSelfAddressedSignInReturn(SELF_ADDRESSED_CONFIG))
+  await Effect.runPromise(onThisPage(redirectToSelfAddressedSignInReturn(SELF_ADDRESSED_CONFIG)))
   return assignedUrl().searchParams.get('state') ?? ''
 }
 
@@ -135,22 +170,25 @@ const blocked = (): never => {
   throw new DOMException('The operation is insecure.', 'SecurityError')
 }
 
-/** A `sessionStorage` whose every call throws, as a blocked one does. */
+/** Hand the page's sign-in services a storage whose every call throws, as a blocked one does. */
 const stubBlockedStorage = (): void => {
-  vi.stubGlobal('sessionStorage', { getItem: blocked, setItem: blocked, removeItem: blocked })
+  pageStorage = { getItem: blocked, setItem: blocked, removeItem: blocked }
 }
 
 /**
- * Stub the page's storage as one that holds what the real one does but throws
- * on every removal, and on a read of any key in `unreadableKeys`.
+ * Hand the page's sign-in services a storage that holds what the real one
+ * does but throws on every removal, and on a read of any key in
+ * `unreadableKeys`.
  */
 const stubStorageRefusing = (unreadableKeys: readonly string[] = []): void => {
   const store = window.sessionStorage
-  vi.stubGlobal('sessionStorage', {
-    getItem: (key: string) => (unreadableKeys.includes(key) ? blocked() : store.getItem(key)),
-    setItem: (key: string, value: string) => store.setItem(key, value),
+  pageStorage = {
+    getItem: (key) => (unreadableKeys.includes(key) ? blocked() : store.getItem(key)),
+    setItem: (key, value) => {
+      store.setItem(key, value)
+    },
     removeItem: blocked,
-  })
+  }
 }
 
 /** The sign-in arrival the page's own query string is; throws on any other. */
@@ -169,6 +207,7 @@ export {
   jsonResponse,
   LAUNCH_CONFIG,
   NO_RETAINED_REQUESTS,
+  onThisPage,
   REGISTRATION,
   resetPage,
   retainedRequests,

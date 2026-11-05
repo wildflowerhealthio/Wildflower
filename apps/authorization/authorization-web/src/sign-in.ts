@@ -14,30 +14,33 @@
  * The access token is never written anywhere by this module. It lives in the
  * {@link ServerSession} the page holds in memory and dies with the tab, the
  * policy `slices/authorization/docs/Auth Token Storage Explanation.md` sets for
- * a bearer a public page holds. Only the pending record, which carries no
+ * a bearer a public page holds. Only the retained sign-in request, which carries no
  * credential, reaches `sessionStorage`, under the app's own key.
  */
 
+import type { HttpClient } from '@effect/platform'
 import {
   beginSignIn,
-  browserSignInEnvironment,
+  BrowserSignIn,
   completeSignIn,
-  discoverSmartEndpoints,
-  parsePendingAuthorization,
+  discoverSmartServer,
+  peekRetainedSignInRequest,
   redirectUriForRoute,
+  type ClientRegistration,
   type DiscoveryFailed,
   type Session,
-  type SignInEnvironment,
   type SignInError,
-  type SignInPage,
-  type SmartIssuer,
+  type PageSecurity,
+  type SignInServices,
+  type SignInWindow,
+  type DiscoveredSmartServer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { Data, Effect, Option } from 'effect'
+import { Data, Effect, type Layer, Option } from 'effect'
 
 import {
   AUTHORIZATION_CLIENT_ID,
   AUTHORIZATION_SCOPE,
-  PENDING_AUTHORIZATION_KEY,
+  RETAINED_SIGN_IN_REQUEST_KEY,
   REGISTERED_REDIRECT_URI,
 } from './config.ts'
 
@@ -88,7 +91,7 @@ type SignInStep<A> =
 
 /**
  * A sign-in that failed on its way back, before the page's tree existed: why,
- * and the server it was to, when this tab's pending record still named one.
+ * and the server it was to, when this tab's retained sign-in request still named one.
  * The landing points `?iss=` back at that server and shows the reason.
  */
 interface SignInProblem {
@@ -102,95 +105,87 @@ type FinishedSignIn =
   | { readonly tag: 'Failed'; readonly problem: SignInProblem }
 
 /**
- * The impure edges, and the app's registered values, the flow runs against.
+ * The app's registration, returning to the page at `href`.
  *
  * `basePath` is the served directory (the router's basepath) a sign-in
  * returns to: the app root, `/` on the published site's own origin.
  * Both legs pass the same value, so the outbound `redirect_uri` and the one
  * re-derived on the callback match.
  */
-const signInEnvironment = (page: SignInPage, basePath: string): SignInEnvironment =>
-  browserSignInEnvironment(page, {
-    clientId: AUTHORIZATION_CLIENT_ID,
-    pendingKey: PENDING_AUTHORIZATION_KEY,
-    scope: AUTHORIZATION_SCOPE,
-    redirectUri: redirectUriForRoute(page.location.href, '/', basePath) ?? REGISTERED_REDIRECT_URI,
-  })
+const signInRegistration = (href: string, basePath: string): ClientRegistration => ({
+  clientId: AUTHORIZATION_CLIENT_ID,
+  scope: AUTHORIZATION_SCOPE,
+  redirectUri: redirectUriForRoute(href, '/', basePath) ?? REGISTERED_REDIRECT_URI,
+})
+
+/** The sign-in services of `page`, its retained sign-in request kept at the app's own key. */
+const signInLayer = (page: SignInWindow): Layer.Layer<SignInServices> =>
+  BrowserSignIn.layerFromWindow(page, RETAINED_SIGN_IN_REQUEST_KEY)
 
 /**
- * The base of the authorization API `issuer` advertises, when it is a
+ * The base of the authorization API the `discovered` server advertises, when it is a
  * Wildflower server that advertises one.
  */
-const authorizationApiOf = (issuer: SmartIssuer): Effect.Effect<string, NotAWildflowerServer> =>
-  issuer.smartServer._tag === 'WildflowerServer'
+const authorizationApiOf = (
+  discovered: DiscoveredSmartServer
+): Effect.Effect<string, NotAWildflowerServer> =>
+  discovered.smartServer._tag === 'WildflowerServer'
     ? Effect.orElseFail(
-        issuer.wildflowerAuthorizationApi,
+        discovered.wildflowerAuthorizationApi,
         () => new NotAWildflowerServer({ reason: NO_AUTHORIZATION_API })
       )
     : Effect.fail(new NotAWildflowerServer({ reason: NOT_A_WILDFLOWER_SERVER }))
 
 /** The authorization API of the Wildflower server at `serverUrl`, from its SMART configuration. */
 const discoverAuthorizationApi = (
-  serverUrl: string,
-  environment: SignInEnvironment
-): Effect.Effect<string, DiscoveryFailed | NotAWildflowerServer> =>
-  discoverSmartEndpoints(serverUrl, environment).pipe(Effect.flatMap(authorizationApiOf))
+  serverUrl: string
+): Effect.Effect<
+  string,
+  DiscoveryFailed | NotAWildflowerServer,
+  HttpClient.HttpClient | PageSecurity
+> => discoverSmartServer(serverUrl).pipe(Effect.flatMap(authorizationApiOf))
 
-/** Fold a sign-in Effect's failure channel into a {@link SignInStep}. */
-const runStep = <A>(
-  effect: Effect.Effect<A, SignInError | NotAWildflowerServer>
-): Promise<SignInStep<A>> =>
-  Effect.runPromise(
-    effect.pipe(
-      Effect.match({
-        onSuccess: (value): SignInStep<A> => ({ tag: 'Ok', value }),
-        onFailure: (error): SignInStep<A> => ({ tag: 'Failed', reason: error.reason }),
-      })
-    )
-  )
+/** A sign-in Effect's outcome as a {@link SignInStep}: its failure channel folded in. */
+const stepOf = <A, R>(
+  effect: Effect.Effect<A, SignInError | NotAWildflowerServer, R>
+): Effect.Effect<SignInStep<A>, never, R> =>
+  Effect.match(effect, {
+    onSuccess: (value): SignInStep<A> => ({ tag: 'Ok', value }),
+    onFailure: (error): SignInStep<A> => ({ tag: 'Failed', reason: error.reason }),
+  })
 
 /**
- * Start a sign-in to `serverUrl`, yielding the authorization URL to leave for,
- * or why it can't start: a server that isn't a Wildflower server is refused
- * here, before the reader is sent anywhere. `returnTo` rides the pending record
- * and comes back on the {@link ServerSession}.
+ * Start a sign-in to `serverUrl` from `page`, served under `basePath`,
+ * yielding the authorization URL to leave for, or why it can't start: a server
+ * that isn't a Wildflower server is refused here, before the reader is sent
+ * anywhere. `options.returnTo` rides the retained sign-in request and comes back on the
+ * {@link ServerSession}.
  */
 const startSignIn = (
   serverUrl: string,
-  returnTo: string | undefined,
-  environment: SignInEnvironment
+  page: SignInWindow,
+  basePath: string,
+  options: { readonly returnTo?: string | undefined } = {}
 ): Promise<SignInStep<string>> =>
-  runStep(
-    discoverAuthorizationApi(serverUrl, environment).pipe(
-      Effect.zipRight(beginSignIn(serverUrl, returnTo, environment))
-    )
-  )
-
-/**
- * The server the pending record in `environment`'s store names, if any. An
- * unreadable store is treated as an empty one, as `completeSignIn` treats it.
- */
-const pendingServerUrlIn = (environment: SignInEnvironment): string | undefined => {
-  try {
-    return Option.getOrUndefined(
-      Option.map(
-        parsePendingAuthorization(environment.store.getItem(environment.pendingKey)),
-        (pending) => pending.serverUrl
+  stepOf(
+    discoverAuthorizationApi(serverUrl).pipe(
+      Effect.zipRight(
+        beginSignIn(serverUrl, signInRegistration(page.location.href, basePath), options)
       )
     )
-  } catch {
-    return undefined
-  }
-}
+  ).pipe(Effect.provide(signInLayer(page)), Effect.runPromise)
 
 /** The {@link ServerSession} a redeemed `session` becomes, once its server's API is found. */
 const serverSessionFor = (
-  session: Session,
-  environment: SignInEnvironment
-): Effect.Effect<ServerSession, DiscoveryFailed | NotAWildflowerServer> =>
-  discoverAuthorizationApi(session.serverUrl, environment).pipe(
+  session: Session
+): Effect.Effect<
+  ServerSession,
+  DiscoveryFailed | NotAWildflowerServer,
+  HttpClient.HttpClient | PageSecurity
+> =>
+  discoverAuthorizationApi(session.smartServer.fhirBaseUrl).pipe(
     Effect.map((authorizationApiUrl) => ({
-      serverUrl: session.serverUrl,
+      serverUrl: session.smartServer.fhirBaseUrl,
       authorizationApiUrl,
       accessToken: session.accessToken,
       returnTo: session.returnTo,
@@ -202,31 +197,45 @@ const serverSessionFor = (
  * when the load is not a return from the authorization server, a
  * {@link ServerSession} when it is and the code redeemed, and a
  * {@link SignInProblem} naming the server when it failed. The server is read
- * before `completeSignIn` runs, since it drops the pending record as soon as it
+ * before `completeSignIn` runs, since it drops the retained sign-in request as soon as it
  * knows this is a return leg.
  */
-const finishSignIn = async (
+const finishSignIn = (
   search: string,
-  environment: SignInEnvironment
-): Promise<FinishedSignIn> => {
-  const serverUrl = pendingServerUrlIn(environment)
-  const step = await runStep(
-    completeSignIn(search, environment).pipe(
-      Effect.flatMap((redeemed) =>
-        Option.match(redeemed, {
-          onNone: () => Effect.succeedNone,
-          onSome: (session) => Effect.asSome(serverSessionFor(session, environment)),
-        })
+  page: SignInWindow,
+  basePath: string
+): Promise<FinishedSignIn> =>
+  Effect.gen(function* () {
+    // An unreadable store names no server, as `completeSignIn` treats it as
+    // an empty one.
+    const serverUrl = yield* peekRetainedSignInRequest.pipe(
+      Effect.map((retained) =>
+        retained.pipe(
+          Option.map((request) => request.smartServer.fhirBaseUrl),
+          Option.getOrUndefined
+        )
+      ),
+      Effect.orElseSucceed(() => undefined)
+    )
+    const step = yield* stepOf(
+      completeSignIn(search, signInRegistration(page.location.href, basePath)).pipe(
+        Effect.flatMap((redeemed) =>
+          Option.match(redeemed, {
+            onNone: () => Effect.succeedNone,
+            onSome: (session) => Effect.asSome(serverSessionFor(session)),
+          })
+        )
       )
     )
-  )
-  return step.tag === 'Ok' ? step : { tag: 'Failed', problem: { reason: step.reason, serverUrl } }
-}
+    return step.tag === 'Ok'
+      ? step
+      : ({ tag: 'Failed', problem: { reason: step.reason, serverUrl } } as const)
+  }).pipe(Effect.provide(signInLayer(page)), Effect.runPromise)
 
 /**
  * The in-app path to settle on after a sign-in: `returnTo` when it is a
  * same-origin absolute path, and the app root otherwise. `returnTo` rode a
- * query parameter's worth of trust (the pending record), so a
+ * query parameter's worth of trust (the retained sign-in request), so a
  * protocol-relative (`//evil.test`) or backslash-smuggled (`/\evil.test`)
  * form, which a browser resolves to another origin, falls back to the root.
  */
@@ -238,12 +247,5 @@ const inAppReturnPath = (returnTo: string | undefined): string =>
     ? '/'
     : returnTo
 
-export {
-  finishSignIn,
-  inAppReturnPath,
-  NOT_A_WILDFLOWER_SERVER,
-  NotAWildflowerServer,
-  signInEnvironment,
-  startSignIn,
-}
+export { finishSignIn, inAppReturnPath, NOT_A_WILDFLOWER_SERVER, NotAWildflowerServer, startSignIn }
 export type { FinishedSignIn, ServerSession, SignInProblem, SignInStep }

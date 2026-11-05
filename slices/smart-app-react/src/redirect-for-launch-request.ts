@@ -4,6 +4,7 @@ import {
   launchErrorBodyFor,
   launchErrorRedirect,
   redirectToSignIn,
+  smartSignInLayer,
   type RootArrival,
   type SmartRegistration,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
@@ -60,6 +61,7 @@ const redirectForLaunchRequest = (
     { ...registration, redirectUri, fhirBaseUrl: decodeFhirBaseUrl(launch.iss) },
     launch.launch
   ).pipe(
+    Effect.provide(smartSignInLayer(window)),
     Effect.match({
       onFailure: (failure) => Option.some(failure.reason),
       onSuccess: (support) => Option.fromNullable(signInProblem(launch.iss, support)),

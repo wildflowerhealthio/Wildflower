@@ -37,11 +37,13 @@ const AUTHORIZATION_SCOPE =
 const REGISTERED_REDIRECT_URI = 'https://authorization.wildflowerhealth.io/'
 
 /**
- * The `sessionStorage` key the pending sign-in record lives at, namespaced
+ * The `sessionStorage` key the retained sign-in request lives at, namespaced
  * because the launcher and the server-docs console run the same flow, so no
- * two of them could share a key wherever they are served.
+ * two of them could share a key wherever they are served. The stored key keeps its
+ * `pending-authorization` spelling, so a sign-in that is away across a deploy
+ * still finds its request when it comes back.
  */
-const PENDING_AUTHORIZATION_KEY = 'authorization-web.pending-authorization'
+const RETAINED_SIGN_IN_REQUEST_KEY = 'authorization-web.pending-authorization'
 
 /**
  * Where this app's telemetry goes once the visitor consents to it: its own
@@ -58,6 +60,6 @@ export {
   AUTHORIZATION_CLIENT_ID,
   AUTHORIZATION_SCOPE,
   authorizationWebTelemetry,
-  PENDING_AUTHORIZATION_KEY,
+  RETAINED_SIGN_IN_REQUEST_KEY,
   REGISTERED_REDIRECT_URI,
 }

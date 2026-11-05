@@ -13,6 +13,16 @@ class StorageBlocked extends Schema.TaggedError<StorageBlocked>()('StorageBlocke
   key: Schema.String,
 }) {}
 
+/** Read the item at `key` in `store`, leaving it there: `None` when there is none. */
+const getStorageItem = (
+  store: Pick<Storage, 'getItem'>,
+  key: string
+): Effect.Effect<Option.Option<string>, StorageBlocked> =>
+  Effect.try({
+    try: () => Option.fromNullable(store.getItem(key)),
+    catch: () => new StorageBlocked({ operation: 'read', key }),
+  })
+
 /**
  * Take the item at `key` out of `store`: read it, then remove it, so it is
  * read at most once. `None` when there is none, in which case nothing is
@@ -27,10 +37,7 @@ const takeStorageItem = (
   store: Pick<Storage, 'getItem' | 'removeItem'>,
   key: string
 ): Effect.Effect<Option.Option<string>, StorageBlocked> =>
-  Effect.try({
-    try: () => Option.fromNullable(store.getItem(key)),
-    catch: () => new StorageBlocked({ operation: 'read', key }),
-  }).pipe(
+  getStorageItem(store, key).pipe(
     Effect.tap(
       Option.match({
         onNone: () => Effect.void,
@@ -65,4 +72,4 @@ const removeStorageItem = (
     catch: () => new StorageBlocked({ operation: 'remove', key }),
   })
 
-export { removeStorageItem, setStorageItem, StorageBlocked, takeStorageItem }
+export { getStorageItem, removeStorageItem, setStorageItem, StorageBlocked, takeStorageItem }

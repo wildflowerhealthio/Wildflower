@@ -16,8 +16,9 @@
  *
  * What is left here is only what is this entry's own: the registered values
  * below, and the two thin wrappers that fold the flow's error channel into a
- * {@link SignInStep}. The impure wiring is `browserSignInEnvironment`'s; the
- * requested scopes are this entry's own, {@link LAUNCHER_SCOPE}.
+ * {@link SignInStep}. The impure wiring is `BrowserSignIn.layerFromWindow`'s
+ * ({@link signInLayer}); the requested scopes are this entry's own,
+ * {@link LAUNCHER_SCOPE}.
  *
  * Nothing here navigates or touches the DOM: {@link startSignIn} yields
  * the URL to leave for and {@link finishSignIn} reads a query string, so
@@ -30,23 +31,24 @@
  * The access token is never written anywhere by this module. It goes into the
  * in-memory `BearerAuthStateStore` and dies with the tab, the policy
  * `slices/authorization/docs/Auth Token Storage Explanation.md` sets for a bearer a
- * public page holds. The only thing that reaches `sessionStorage` is the pending
- * record, which carries no credential — and which is also how the auth gate's
+ * public page holds. The only thing that reaches `sessionStorage` is the
+ * retained sign-in request, which carries no credential — and which is also how the auth gate's
  * `?returnTo=` survives the round trip (see {@link returnToOnPage}).
  */
 
 import {
   beginSignIn,
-  browserSignInEnvironment,
+  BrowserSignIn,
   completeSignIn,
-  parsePendingAuthorization,
+  peekRetainedSignInRequest,
   redirectUriForRoute,
   SERVER_QUERY_PARAM,
-  type AuthorizationRequestExtras,
+  type ClientRegistration,
   type Session,
-  type SignInEnvironment,
   type SignInError,
-  type SignInPage,
+  type SignInOptions,
+  type SignInServices,
+  type SignInWindow,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   AuthedUntil,
@@ -54,7 +56,7 @@ import {
   AuthedExpiryUnknown,
   Unauthed,
 } from '@wildflowerhealthio/react-kitchen-sink'
-import { Effect, Option } from 'effect'
+import { Effect, type Layer, Option } from 'effect'
 
 import { ServerKind } from './session/server-kind.ts'
 
@@ -100,7 +102,7 @@ const LAUNCHER_SCOPE = 'launch launch/patient wildflower/launch system/*.cruds w
  * reader was in when they clicked sign in, and only one of those could ever be
  * the registered value. The root is also the one address every static host
  * serves as a real file, so the callback needs no 404 redirect to reach the app.
- * Where the reader was headed rides the pending record instead (see
+ * Where the reader was headed rides the retained sign-in request instead (see
  * {@link returnToOnPage}).
  *
  * `main-web.tsx` redeems the code **before** it mounts the router, then settles
@@ -109,7 +111,7 @@ const LAUNCHER_SCOPE = 'launch launch/patient wildflower/launch system/*.cruds w
  * while the token was in flight.
  *
  * Resolved under the **served base** the caller passes to {@link
- * signInEnvironment} (the router's basepath), not the bare origin: on a subpath
+ * signInRegistration} (the router's basepath), not the bare origin: on a subpath
  * deploy (a PR preview's `/pr-<n>/`) the route returns there
  * the same way the router resolves it — see {@link REGISTERED_REDIRECT_URI}.
  */
@@ -134,13 +136,15 @@ const POST_SIGN_IN_ROUTE = '/'
 const REGISTERED_REDIRECT_URI = 'https://launcher.wildflowerhealth.io/'
 
 /**
- * The `sessionStorage` key this entry's pending-authorization record lives at,
+ * The `sessionStorage` key this entry's retained sign-in request lives at,
  * namespaced because this build shares the flow with the server-docs console
  * and Wildflower Authorization. A key chosen without the namespace would be
  * one key for all of them on any origin that served two, and one tab's return
- * leg could consume a record the other was waiting on.
+ * leg could consume a request the other was waiting on. The stored key keeps
+ * its `pending-authorization` spelling, so a sign-in that is away across a
+ * deploy still finds its request when it comes back.
  */
-const PENDING_AUTHORIZATION_KEY = 'launcher-web.pending-authorization'
+const RETAINED_SIGN_IN_REQUEST_KEY = 'launcher-web.pending-authorization'
 
 /** The query parameter the auth gate preserves the originally-requested path in. */
 const RETURN_TO_PARAM = 'returnTo'
@@ -165,7 +169,7 @@ type SignInStep<A> =
   | { readonly tag: 'Failed'; readonly reason: string }
 
 /**
- * The impure edges — and this entry's registered values — the flow runs against.
+ * This entry's registration, returning to the page at `href`.
  *
  * `basePath` is the served base (the router's basepath) the redirect returns
  * under; it defaults to the origin root. Both legs must pass the same value, so
@@ -174,35 +178,37 @@ type SignInStep<A> =
  * landing on the way out; the base the 404 redirect lands on when the code
  * comes back). See {@link POST_SIGN_IN_ROUTE}.
  */
-const signInEnvironment = (page: SignInPage, basePath = '/'): SignInEnvironment =>
-  browserSignInEnvironment(page, {
-    clientId: CLIENT_ID,
-    pendingKey: PENDING_AUTHORIZATION_KEY,
-    scope: LAUNCHER_SCOPE,
-    redirectUri:
-      redirectUriForRoute(page.location.href, POST_SIGN_IN_ROUTE, basePath) ??
-      REGISTERED_REDIRECT_URI,
-  })
-
-/** Fold a sign-in Effect's failure channel into a {@link SignInStep}. */
-const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A>> =>
-  Effect.runPromise(
-    effect.pipe(
-      Effect.match({
-        onSuccess: (value): SignInStep<A> => ({ tag: 'Ok', value }),
-        onFailure: (error: SignInError): SignInStep<A> => ({ tag: 'Failed', reason: error.reason }),
-      })
-    )
-  )
+const signInRegistration = (href: string, basePath = '/'): ClientRegistration => ({
+  clientId: CLIENT_ID,
+  scope: LAUNCHER_SCOPE,
+  redirectUri: redirectUriForRoute(href, POST_SIGN_IN_ROUTE, basePath) ?? REGISTERED_REDIRECT_URI,
+})
 
 /**
- * Start a sign-in against `serverUrl`, yielding the authorization URL for the
- * caller to navigate to. `returnTo` (raw, from {@link returnToOnPage}) rides the
- * pending record and comes back as the redeemed session's `returnTo`.
- * `request.launch` is the {@link EhrLaunch}'s token when the sign-in is to the
+ * The sign-in services of `page`, its retained sign-in request kept at
+ * {@link RETAINED_SIGN_IN_REQUEST_KEY}.
+ */
+const signInLayer = (page: SignInWindow): Layer.Layer<SignInServices> =>
+  BrowserSignIn.layerFromWindow(page, RETAINED_SIGN_IN_REQUEST_KEY)
+
+/** A sign-in Effect's outcome as a {@link SignInStep}: its failure channel folded in. */
+const stepOf = <A, R>(
+  effect: Effect.Effect<A, SignInError, R>
+): Effect.Effect<SignInStep<A>, never, R> =>
+  Effect.match(effect, {
+    onSuccess: (value): SignInStep<A> => ({ tag: 'Ok', value }),
+    onFailure: (error: SignInError): SignInStep<A> => ({ tag: 'Failed', reason: error.reason }),
+  })
+
+/**
+ * Start a sign-in against `serverUrl` from `page`, served under `basePath`,
+ * yielding the authorization URL for the caller to navigate to.
+ * `options.returnTo` (raw, from {@link returnToOnPage}) rides the
+ * retained sign-in request and comes back as the redeemed session's `returnTo`.
+ * `options.launch` is the {@link EhrLaunch}'s token when the sign-in is to the
  * server the page was launched against; without it the sign-in is a standalone
- * launch. `request.prompt` (from {@link promptOnPage}) asks the server to show
- * its limited page again. The pending record is written before the URL comes
+ * launch. `options.prompt` (from {@link promptOnPage}) asks the server to show
+ * its limited page again. The retained sign-in request is written before the URL comes
  * back, so a caller cannot leave on a flow whose verifier was never saved.
  *
  * It discovers at `serverUrl`, the FHIR base for a Wildflower server and a
@@ -210,10 +216,14 @@ const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A
  */
 const startSignIn = (
   serverUrl: string,
-  returnTo: string | undefined,
-  environment: SignInEnvironment,
-  request: AuthorizationRequestExtras = {}
-): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment, request))
+  page: SignInWindow,
+  basePath: string,
+  options: SignInOptions = {}
+): Promise<SignInStep<string>> =>
+  stepOf(beginSignIn(serverUrl, signInRegistration(page.location.href, basePath), options)).pipe(
+    Effect.provide(signInLayer(page)),
+    Effect.runPromise
+  )
 
 /**
  * The SMART EHR launch this page load was opened with — by the base opening a
@@ -259,7 +269,7 @@ const unsentEhrLaunch = (ehrLaunch: EhrLaunch): UnsentEhrLaunch => {
 
 /**
  * A sign-in that failed on its way back, before the page's tree existed: why,
- * and the server it was signing in to, when this tab's pending record still
+ * and the server it was signing in to, when this tab's retained sign-in request still
  * named one. `main-web`'s boot points `?server=` back at that server, so the
  * landing offers it again; it is also the server the landing's Local Network
  * Access hint is about.
@@ -275,39 +285,37 @@ type FinishedSignIn =
   | { readonly tag: 'Failed'; readonly problem: SignInProblem }
 
 /**
- * The server the pending record in `environment`'s store names, if any. An
- * unreadable store is treated as an empty one, as `completeSignIn` treats it:
- * either way there is no server to name.
- */
-const pendingServerUrlIn = (environment: SignInEnvironment): string | undefined => {
-  try {
-    return Option.getOrUndefined(
-      Option.map(
-        parsePendingAuthorization(environment.store.getItem(environment.pendingKey)),
-        (pending) => pending.serverUrl
-      )
-    )
-  } catch {
-    return undefined
-  }
-}
-
-/**
  * Finish a sign-in from the query string this page load arrived on: `None` when
  * the load is not a return from the authorization server (the common case), a
  * {@link Session} when it is and the code redeemed, and a {@link SignInProblem}
  * naming the server when it failed. The server is read before `completeSignIn`
- * runs, since it drops the pending record as soon as it knows this is a return
- * leg.
+ * runs, since it drops the retained sign-in request as soon as it knows this is a return
+ * leg. `basePath` is the one {@link startSignIn} was given.
  */
-const finishSignIn = async (
+const finishSignIn = (
   search: string,
-  environment: SignInEnvironment
-): Promise<FinishedSignIn> => {
-  const serverUrl = pendingServerUrlIn(environment)
-  const step = await runStep(completeSignIn(search, environment))
-  return step.tag === 'Ok' ? step : { tag: 'Failed', problem: { reason: step.reason, serverUrl } }
-}
+  page: SignInWindow,
+  basePath: string
+): Promise<FinishedSignIn> =>
+  Effect.gen(function* () {
+    // An unreadable store names no server, as `completeSignIn` treats it as
+    // an empty one.
+    const serverUrl = yield* peekRetainedSignInRequest.pipe(
+      Effect.map((retained) =>
+        retained.pipe(
+          Option.map((request) => request.smartServer.fhirBaseUrl),
+          Option.getOrUndefined
+        )
+      ),
+      Effect.orElseSucceed(() => undefined)
+    )
+    const step = yield* stepOf(
+      completeSignIn(search, signInRegistration(page.location.href, basePath))
+    )
+    return step.tag === 'Ok'
+      ? step
+      : ({ tag: 'Failed', problem: { reason: step.reason, serverUrl } } as const)
+  }).pipe(Effect.provide(signInLayer(page)), Effect.runPromise)
 
 /**
  * The auth signal a redeemed `session` publishes, given the current time in unix
@@ -371,7 +379,7 @@ const scheduleExpiry = (
  * The `?returnTo=` the auth gate left on the page at `href` — where the reader
  * was headed when it bounced them to the landing — or `undefined` when it names
  * none. Raw: the SMART redirect returns to the app root with no query, so this
- * is handed to {@link startSignIn} to ride the pending record, and `main-web`
+ * is handed to {@link startSignIn} to ride the retained sign-in request, and `main-web`
  * sanitises what comes back before navigating.
  */
 const returnToOnPage = (href: string): string | undefined => {
@@ -413,7 +421,7 @@ export {
   CLIENT_ID,
   finishSignIn,
   LAUNCHER_SCOPE,
-  PENDING_AUTHORIZATION_KEY,
+  RETAINED_SIGN_IN_REQUEST_KEY,
   postSignInUrl,
   POST_SIGN_IN_ROUTE,
   PROMPT_PARAM,
@@ -423,7 +431,7 @@ export {
   returnToOnPage,
   scheduleExpiry,
   serverKindForSession,
-  signInEnvironment,
+  signInRegistration,
   startSignIn,
   unsentEhrLaunch,
 }

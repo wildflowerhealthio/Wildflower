@@ -6,7 +6,10 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { serverUrlFromSearch } from '@wildflowerhealthio/authorization-core/smart-client'
+import {
+  serverUrlFromSearch,
+  type SignInWindow,
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   makeBearerAuthStateStore,
   type BearerAuthStateStore,
@@ -19,7 +22,6 @@ import { StrictMode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import {
-  signInEnvironment,
   startSignIn,
   unsentEhrLaunch,
   type SignInProblem,
@@ -774,7 +776,7 @@ const discoveringStart = (): {
 } => {
   const requested: string[] = []
   const pending = new Map<string, string>()
-  const environment = signInEnvironment({
+  const page: SignInWindow = {
     fetch: (input) => {
       const url = input instanceof Request ? input.url : String(input)
       requested.push(url)
@@ -791,8 +793,8 @@ const discoveringStart = (): {
       },
     },
     location: { href: 'https://launcher.wildflowerhealth.io/', protocol: 'https:' },
-  })
-  return { start: (target) => startSignIn(target, undefined, environment), requested }
+  }
+  return { start: (target) => startSignIn(target, page, '/'), requested }
 }
 
 /**

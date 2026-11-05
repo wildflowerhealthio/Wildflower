@@ -13,7 +13,7 @@ import { buildAppQueryRuntime } from './client/app-query-runtime.ts'
 import type { RouterContext } from './router-context.ts'
 import { routeTree } from './routeTree.gen.ts'
 import { signInAgain } from './session/sign-in-again.ts'
-import { logoutSettingsItem } from './web-entry.ts'
+import { logoutSettingsItem, manageAccessSource } from './web-entry.ts'
 // The design-system stylesheet stack, fonts included — imported here so the
 // app picks it up. An entry that already imported part of it gets no second
 // copy: the bundler dedupes each stylesheet by module id.
@@ -265,11 +265,7 @@ const buildAppTree = ({
           <AppRootTree
             router={router}
             logoutSettingsItem={logoutSettingsItem(window, basepath, tokenStore)}
-            manageAccessSource={{
-              serverUrl: () => tokenStore.serverUrl(),
-              fetch: (input, init) => window.fetch(input, init),
-              pageIsSecure: window.location.protocol === 'https:',
-            }}
+            manageAccessSource={manageAccessSource(window, tokenStore)}
           />
         </AuthStateProvider>
       </QueryClientProvider>

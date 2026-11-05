@@ -1,15 +1,17 @@
 import {
   beginSignInAt,
   createState,
-  type PendingRequestUnusable,
+  type RetainedRequestUnusable,
   type PkceUnavailable,
-  type SmartIssuer,
+  type RetainedSignInRequestStore,
+  SignInCrypto,
+  type DiscoveredSmartServer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Effect } from 'effect'
 
 import {
+  type RetainedSelfAddressedSignInRequestStore,
   retainSelfAddressedSignInRequest,
-  signInEnvironmentFor,
   type SmartRegistration,
 } from './retained-sign-in-requests.ts'
 import type { FhirBaseUrl } from './smart-connection.ts'
@@ -26,7 +28,9 @@ interface SmartLaunchConfig extends SmartRegistration {
 }
 
 /** Run `beginning`, then send the browser to the authorization URL it yields. */
-const redirectToAuthorization = <E>(beginning: Effect.Effect<string, E>): Effect.Effect<void, E> =>
+const redirectToAuthorization = <E, R>(
+  beginning: Effect.Effect<string, E, R>
+): Effect.Effect<void, E, R> =>
   Effect.flatMap(beginning, (authorizeUrl) =>
     Effect.sync(() => {
       window.location.assign(authorizeUrl)
@@ -38,15 +42,20 @@ const redirectToAuthorization = <E>(beginning: Effect.Effect<string, E>): Effect
  * needs, and send the browser to its authorization endpoint. `launch` is the
  * EHR's launch token for an EHR launch, and `undefined` for a standalone
  * launch.
+ *
+ * It runs on the sign-in services the edge that runs it provides
+ * (`smartSignInLayer`), which keep the retained sign-in request at
+ * `RETAINED_SIGN_IN_REQUEST_KEY`.
  */
 const redirectToSignInAt = (
-  discovered: SmartIssuer,
+  discovered: DiscoveredSmartServer,
   config: Omit<SmartLaunchConfig, 'fhirBaseUrl'>,
   launch: string | undefined
-): Effect.Effect<void, PkceUnavailable | PendingRequestUnusable> =>
-  redirectToAuthorization(
-    beginSignInAt(discovered, undefined, signInEnvironmentFor(config), { launch })
-  )
+): Effect.Effect<
+  void,
+  PkceUnavailable | RetainedRequestUnusable,
+  SignInCrypto | RetainedSignInRequestStore
+> => redirectToAuthorization(beginSignInAt(discovered, config, { launch }))
 
 /**
  * Configuration for a self-addressed sign-in to an **open** FHIR server — one
@@ -69,13 +78,18 @@ interface SelfAddressedSignInConfig {
  * `expectedState` under `RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY`,
  * then redirects straight back here. On return the `state` must match, so a
  * link someone else crafted cannot make the app connect to a server they
- * chose.
+ * chose. The `state`'s random bytes come from the `SignInCrypto`, and the
+ * request is kept in the `RetainedSelfAddressedSignInRequestStore`.
  */
 const redirectToSelfAddressedSignInReturn = (
   config: SelfAddressedSignInConfig
-): Effect.Effect<void, PendingRequestUnusable> =>
+): Effect.Effect<
+  void,
+  RetainedRequestUnusable,
+  SignInCrypto | RetainedSelfAddressedSignInRequestStore
+> =>
   Effect.gen(function* () {
-    const expectedState = createState(window.crypto)
+    const expectedState = createState((yield* SignInCrypto).randomBytes)
     yield* retainSelfAddressedSignInRequest({ expectedState, fhirBaseUrl: config.fhirBaseUrl })
     const redirectTarget = new URL(config.redirectUri)
     redirectTarget.searchParams.set('state', expectedState)
