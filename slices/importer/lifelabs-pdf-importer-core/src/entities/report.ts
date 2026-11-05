@@ -1,9 +1,10 @@
 import type { Document } from '@wildflowerhealthio/positioned-text'
-import { Data, Effect } from 'effect'
+import { Data, Effect, Option, Schema } from 'effect'
 
 import * as Grid from '../document/grid.ts'
 import * as PageHeader from '../document/page-header.ts'
 import * as PageParts from '../document/page-parts.ts'
+import * as LabNumber from './lab-number.ts'
 import * as Lab from './lab.ts'
 import * as Patient from './patient.ts'
 import type * as Section from './section.ts'
@@ -17,9 +18,11 @@ import type * as Section from './section.ts'
  * Every field of a report is its own printed text; nothing here is interpreted
  * (a date of service is the printed `Aug 13 2026 13:02`). Interpretation
  * belongs to `fhir/`. `tryFromDocument` is the orchestration over the page
- * regions read by `document/` (`PageParts.split`, `Grid.read`): it groups the
- * run of pages sharing a `Lab No` into a report — a footer numbered
- * `Page 1 of N` starts a new one — and freezes the result.
+ * regions read by `document/` (`PageParts.split`, `Grid.read`): it groups
+ * every page printing one `Lab No` into one report, wherever in the document
+ * each page is, and freezes the result. A page that prints no `Lab No`
+ * belongs to no report: it is skipped, and its number returned beside the
+ * reports.
  *
  * The read of a recognized document is total — masked fields read as `''`, a
  * page with no grid yields a report with no sections, nothing partial-fails.
@@ -38,7 +41,7 @@ import type * as Section from './section.ts'
 /** One lab report — every page carrying the same `Lab No`. */
 interface Type {
   /** The `Lab No:` value (`2024-JJ6330780`). The report's identity. */
-  readonly labNo: string
+  readonly labNo: LabNumber.Type
   /** The `Reference #:` value, or `''`. */
   readonly referenceNumber: string
   /** The `Referring Site ID:` value, or `''`. */
@@ -60,6 +63,14 @@ interface Type {
   readonly sections: readonly Section.Type[]
 }
 
+/** What a document reads to: its reports, beside the pages it skipped. */
+interface DocumentReports {
+  /** One report per `Lab No`, in the order each is first printed. */
+  readonly reports: readonly Type[]
+  /** The 1-based numbers of the pages that print no `Lab No`, in page order. */
+  readonly pagesWithoutLabNo: readonly number[]
+}
+
 /**
  * The document handed in is not a LifeLabs "Reports" PDF: it has pages, but
  * none carries a `Lab No` or a results-grid heading.
@@ -75,7 +86,7 @@ class UnrecognizedLifeLabsDocument extends Data.TaggedError('UnrecognizedLifeLab
 }
 
 interface Builder {
-  readonly labNo: string
+  readonly labNo: LabNumber.Type
   readonly header: PageHeader.Type
   readonly grid: Grid.State
   readonly pageNumbers: number[]
@@ -100,53 +111,59 @@ const freeze = (report: Builder): Type => {
   }
 }
 
-/**
- * Whether `page` continues the open report: the same `Lab No`, and not a page
- * the footer numbers as the first of a new one.
- */
-const continues = (open: Builder | undefined, page: PageParts.Type, labNo: string): boolean =>
-  open !== undefined && open.labNo === labNo && page.pageIndex?.page !== 1
-
 /** A page carrying a signal that this is a LifeLabs report: a `Lab No` or a grid. */
 const isLifeLabsPage = (page: PageParts.Type): boolean =>
   page.hasGrid || PageHeader.get(page.header, 'Lab No:') !== ''
 
+/** The `Lab No` a page's header prints, or `None` when it prints none. */
+const labNumberIfPrinted = (page: PageParts.Type): Option.Option<LabNumber.Type> =>
+  Schema.decodeOption(LabNumber.Schema)(PageHeader.get(page.header, 'Lab No:'))
+
 /**
- * Assemble the reports from already-split pages: a page starts a new report
- * when its `Lab No` differs from the open report's or its footer numbers it
- * `Page 1 of N`; otherwise it continues the open report and its grid is read on
- * into the same sections. The header fields come from the report's first page
- * (every page repeats them).
+ * Assemble the reports from already-split pages: every page printing one
+ * `Lab No` is a page of that `Lab No`'s report, its grid read on into the
+ * report's sections in page order. The header fields come from the report's
+ * first page (every page repeats them). A page that prints no `Lab No` is
+ * skipped.
  */
-const assemble = (parts: readonly PageParts.Type[]): readonly Type[] => {
-  const reports: Builder[] = []
-  let open: Builder | undefined
+const assemble = (parts: readonly PageParts.Type[]): DocumentReports => {
+  const reports = new Map<LabNumber.Type, Builder>()
+  const pagesWithoutLabNo: number[] = []
   for (const page of parts) {
-    const labNo = PageHeader.get(page.header, 'Lab No:')
-    if (!continues(open, page, labNo)) {
-      open = { labNo, header: page.header, grid: Grid.create(), pageNumbers: [], status: '' }
-      reports.push(open)
+    const printedLabNo = labNumberIfPrinted(page)
+    if (Option.isNone(printedLabNo)) {
+      pagesWithoutLabNo.push(page.pageNumber)
+      continue
     }
-    if (open === undefined) throw new Error('unreachable: a report is open once a page is read')
-    open.pageNumbers.push(page.pageNumber)
-    if (page.status !== '') open.status = page.status
-    Grid.read(open.grid, page.body)
+    const labNo = printedLabNo.value
+    const report = reports.get(labNo) ?? {
+      labNo,
+      header: page.header,
+      grid: Grid.create(),
+      pageNumbers: [],
+      status: '',
+    }
+    reports.set(labNo, report)
+    report.pageNumbers.push(page.pageNumber)
+    if (page.status !== '') report.status = page.status
+    Grid.read(report.grid, page.body)
   }
-  return reports.map(freeze)
+  return { reports: [...reports.values()].map(freeze), pagesWithoutLabNo }
 }
 
 /**
  * Parse a LifeLabs positioned-text document into its lab reports.
  *
  * @param document - The positioned text of a LifeLabs "Reports" PDF
- * @returns One report per run of pages sharing a `Lab No`, in page order; a
- *   document with no pages succeeds with `[]`
+ * @returns One report per `Lab No`, in the order each is first printed,
+ *   beside the numbers of the pages that print no `Lab No`; a document with
+ *   no pages succeeds with neither
  * @throws Fails with {@link UnrecognizedLifeLabsDocument} when the document has
  *   pages but no LifeLabs structure on any of them
  */
 const tryFromDocument = (
   document: Document.Type
-): Effect.Effect<readonly Type[], UnrecognizedLifeLabsDocument> => {
+): Effect.Effect<DocumentReports, UnrecognizedLifeLabsDocument> => {
   const parts = [...document.pages]
     .toSorted((a, b) => a.pageNumber - b.pageNumber)
     .map(PageParts.split)
@@ -157,4 +174,4 @@ const tryFromDocument = (
 }
 
 export { tryFromDocument, UnrecognizedLifeLabsDocument }
-export type { Type }
+export type { DocumentReports, Type }

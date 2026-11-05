@@ -2,22 +2,14 @@ import { deepFreeze } from '@wildflowerhealthio/kitchen-sink'
 import type { Effect, Option, ParseResult } from 'effect'
 import type { HttpMethod } from './http-method.ts'
 import type { HttpResponse } from './http-response.ts'
-import type * as SystemFamily from './system-family.ts'
 
 /**
  * What a {@link HttpResponseKind.tryRecognize} match tells a router: how
- * specific the claim is, and (optionally) the identifier systems this
- * response's resources key under.
+ * specific the claim is.
  */
 interface RecognizedUrlData {
   /** The number routing ranks by, highest wins — see the `Specificity` tiers. */
   readonly specificity: number
-  /**
-   * The identifier systems this response's resources key under, per resource
-   * type ({@link SystemFamily}). Absent = recognized but mints no identity (a
-   * recorder records, it doesn't import).
-   */
-  readonly systemFamily?: SystemFamily.Type
 }
 
 /**

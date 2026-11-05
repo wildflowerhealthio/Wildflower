@@ -1,21 +1,23 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   DecodedFile,
   DecodedFileSet,
   type DecodeFunction,
   Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { fromSourceSectionsOf } from '@wildflowerhealthio/importer-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
-import { Effect, Either, Layer, ParseResult } from 'effect'
+import { Effect, Either, Layer, Option, ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { decodeLifeLabsPdf, decodeLifeLabsPdfDocument } from './decode.ts'
+import * as LabNumber from './entities/lab-number.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
-import { patientOriginalId, practitionerOriginalId } from './fhir/to-fhir.ts'
-import { LIFELABS_SYSTEM } from './source-system.ts'
-import { LIFELABS_SYSTEM_FAMILY, reportSectionTitle } from './synthesis.ts'
+import type * as Report from './entities/report.ts'
+import { patientKeyOf, practitionerKeyOf } from './fhir/to-fhir.ts'
+import { LifeLabsIdentifierSystem } from './source-system.ts'
+import { reportSectionTitle } from './synthesis.ts'
 import { layoutDocument } from './test-helpers.ts'
 
 /**
@@ -29,16 +31,48 @@ import { layoutDocument } from './test-helpers.ts'
 
 const SETTINGS = { timeZone: 'America/Vancouver' }
 
-/** Every record of a decode, each section `FromSource`. */
-const entriesOf = (
-  decoded: DecodeFunction.FileSetDecode
-): readonly DecodedFileSet.FromSourceEntry[] =>
-  fromSourceSectionsOf(decoded).flatMap(({ entries }) => entries)
+/** A one-page report with no results: its header is all a page-level test reads. */
+const headerOnly: Report.Type = {
+  labNo: LabNumber.make('2024-JJ6330780'),
+  referenceNumber: '',
+  referringSiteId: '',
+  patient: {
+    name: 'OKAFOR, DANA MARIE',
+    age: '45 years',
+    sex: 'F',
+    dateOfBirth: 'Aug 13 1981',
+    healthCardNumber: '',
+    phone: '',
+    patientId: '',
+  },
+  orderedBy: '',
+  copyTo: [],
+  dateOfService: 'Aug 13 2026 13:02',
+  reportedOn: 'Aug 14 2026 18:21',
+  lab: { addressLines: [], telephone: '', tollFree: '', fax: '' },
+  status: 'FINAL RESULTS',
+  pageNumbers: [1],
+  sections: [],
+}
+
+/** Every system the synthesis keys a record in. */
+const KEY_SYSTEMS: readonly string[] = Object.values(LifeLabsIdentifierSystem)
+
+/** Every record of a decode, detached. */
+const entriesOf = (decoded: DecodeFunction.FileSetDecode): readonly DecodedFileSet.Entry[] =>
+  decoded.sections.flatMap(({ entries }) => entries)
+
+/** One or two reports, each printing its own Lab No. */
+const reportsArbitrary = fc.uniqueArray(reportArbitrary, {
+  minLength: 1,
+  maxLength: 2,
+  selector: (report) => report.labNo,
+})
 
 describe('decodeLifeLabsPdfDocument', () => {
   it('property: a document with LifeLabs reports decodes to one titled section per report', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
@@ -53,57 +87,72 @@ describe('decodeLifeLabsPdfDocument', () => {
     )
   })
 
-  it('property: each row is keyed {resourceType}/{source id} and titled by the reference it is written under', () => {
+  it('property: each entry fullUrl is {resourceType}/{key value}, and its row titled by the reference it is written under', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
         const entries = entriesOf(decoded)
-        expect(entries.map(({ key }) => key)).toEqual(
-          entries.map(({ resource, sourceId }) => `${resource.resourceType}/${sourceId}`)
+        expect(entries.map(({ fullUrl }) => Option.some(fullUrl))).toEqual(
+          entries.map(({ resource }) =>
+            Option.map(
+              DetachedResource.keyOf(resource),
+              ({ value }) => `${resource.resourceType}/${value}`
+            )
+          )
         )
         const written = DecodedFile.resources(DecodedFileSet.adopt(decoded))
         expect(written.map(({ title }) => title)).toEqual(
-          written.map(({ resource }) => `${resource.resourceType}/${resource.id}`)
+          written.map(({ key, resource }) =>
+            Option.isSome(DetachedResource.keyOf({ ...resource, id: null }))
+              ? `${resource.resourceType}/${resource.id}`
+              : `${resource.resourceType} (${key})`
+          )
         )
       }),
       { numRuns: numRunsFor({ base: 30 }) }
     )
   })
 
-  it('property: each record is keyed by its own id in the LifeLabs system', () => {
+  it('property: each record is detached and keyed in a LifeLabs identifier system', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
-        for (const section of decoded.sections) {
-          expect(section).toMatchObject({ systemFamily: LIFELABS_SYSTEM_FAMILY })
+        for (const { resource } of entriesOf(decoded)) {
+          expect(resource.id).toBeNull()
+          const keySystem = Option.map(DetachedResource.keyOf(resource), ({ system }) => system)
+          expect(Option.isSome(keySystem) && KEY_SYSTEMS.includes(keySystem.value)).toBe(true)
         }
-        const entries = entriesOf(decoded)
-        expect(entries.map(({ system, sourceId }) => [system, sourceId])).toEqual(
-          entries.map(({ resource }) => [LIFELABS_SYSTEM, resource.id])
-        )
       }),
       { numRuns: numRunsFor({ base: 30 }) }
     )
   })
 
-  it('property: each record adopts under the LifeLabs system', () => {
+  it('property: each keyed record adopts under the id its key derives', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
+        const keyedReferences = entriesOf(decoded).flatMap(({ resource }) =>
+          Option.toArray(
+            Option.map(DetachedResource.keyOf(resource), (key) =>
+              DetachedResource.storedReferenceOf(resource.resourceType, key)
+            )
+          )
+        )
 
-        for (const { resource } of DecodedFile.resources(DecodedFileSet.adopt(decoded))) {
-          expect(resource.id).toMatch(/^wf-[0-9a-f]{32}$/)
-          if (resource.resourceType !== 'Binary') {
-            expect(String(resource.identifier[0]?.system)).toBe(LIFELABS_SYSTEM)
-          }
+        const adoptedReferences = DecodedFile.resources(DecodedFileSet.adopt(decoded)).map(
+          ({ resource }) => `${resource.resourceType}/${resource.id}`
+        )
+        for (const reference of keyedReferences) {
+          expect(reference).toMatch(/^[A-Za-z]+\/wf-[0-9a-f]{32}$/)
+          expect(adoptedReferences).toContain(reference)
         }
       }),
       { numRuns: numRunsFor({ base: 30 }) }
@@ -112,15 +161,25 @@ describe('decodeLifeLabsPdfDocument', () => {
 
   it('property: its referents are each Patient and each provider it names, with their resources', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const document = layoutDocument(reports)
         const providerNames = reports
           .flatMap((report) => [report.orderedBy, ...report.copyTo])
           .map((name) => name.trim())
           .filter((name) => name !== '')
         const expected = [
-          ...new Set(reports.map((report) => `Patient|${patientOriginalId(report.patient)}`)),
-          ...new Set(providerNames.map((name) => `Practitioner|${practitionerOriginalId(name)}`)),
+          ...new Set(
+            reports.map((report) => {
+              const { system, value } = patientKeyOf(report.patient)
+              return `Patient|${system}|${value}`
+            })
+          ),
+          ...new Set(
+            providerNames.map((name) => {
+              const { system, value } = practitionerKeyOf(name)
+              return `Practitioner|${system}|${value}`
+            })
+          ),
         ]
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
@@ -128,19 +187,39 @@ describe('decodeLifeLabsPdfDocument', () => {
 
         for (const referent of referents) {
           expect(referent._tag).toBe('AsResource')
-          expect(referent.logicalReference.identifier.system.href).toBe(LIFELABS_SYSTEM)
         }
         expect(
           referents
             .map(
               ({ logicalReference }) =>
-                `${logicalReference.type}|${logicalReference.identifier.value}`
+                `${logicalReference.type}|${logicalReference.identifier.system.href}|${logicalReference.identifier.value}`
             )
             .toSorted()
         ).toEqual(expected.toSorted())
       }),
       { numRuns: numRunsFor({ base: 30 }) }
     )
+  })
+
+  it('skips a page that prints no Lab No, with a note naming it', () => {
+    const secondLabNo = LabNumber.make('2024-JJ0000001')
+    const [first, second] = layoutDocument([
+      headerOnly,
+      { ...headerOnly, labNo: secondLabNo },
+    ]).pages
+    if (first === undefined || second === undefined) throw new Error('two one-page reports')
+    const unnumbered = {
+      ...second,
+      runs: second.runs.filter((printed) => printed.text !== secondLabNo),
+    }
+    const document = { ...layoutDocument([]), pages: [first, unnumbered] }
+
+    const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
+
+    expect(decoded.notes).toEqual(['Page 2 prints no Lab No, so it was skipped.'])
+    expect(decoded.sections.map(({ title }) => title)).toEqual([
+      'Lab No 2024-JJ6330780 — Aug 13 2026 13:02',
+    ])
   })
 
   it('fails with a ParseError for a document with no LifeLabs report markers', () => {
@@ -176,29 +255,16 @@ describe('decodeLifeLabsPdfDocument', () => {
 })
 
 describe('reportSectionTitle', () => {
-  it('should join the Lab No and date of service when both are printed', () => {
+  it('property: is the Lab No, joined to the date of service when the report prints one', () => {
     fc.assert(
       fc.property(reportArbitrary, (report) => {
-        const title = reportSectionTitle(report)
-
-        if (report.labNo.trim() !== '' && report.dateOfService.trim() !== '') {
-          expect(title).toBe(`Lab No ${report.labNo.trim()} — ${report.dateOfService.trim()}`)
-        } else {
-          expect(title.length).toBeGreaterThan(0)
-        }
+        expect(reportSectionTitle(report)).toBe(
+          report.dateOfService === ''
+            ? `Lab No ${report.labNo}`
+            : `Lab No ${report.labNo} — ${report.dateOfService}`
+        )
       }),
       { numRuns: numRunsFor({ base: 50 }) }
-    )
-  })
-
-  it('should fall back to a generic label when the report masks both fields', () => {
-    fc.assert(
-      fc.property(reportArbitrary, (report) => {
-        const masked = { ...report, labNo: '', dateOfService: '' }
-
-        expect(reportSectionTitle(masked)).toBe('LifeLabs report')
-      }),
-      { numRuns: numRunsFor({ base: 20 }) }
     )
   })
 })

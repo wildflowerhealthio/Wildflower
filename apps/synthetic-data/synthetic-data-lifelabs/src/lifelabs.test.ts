@@ -35,7 +35,7 @@ const RUNS = numRunsFor({ base: 25 })
 const pharmacyPatientArbitrary = fc
   .record({
     system: fc.constantFrom(
-      'https://wildflowerhealth.io/fhir/sid/rexall-carebook',
+      'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient',
       'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart'
     ),
     originalId: fc.uuid(),
@@ -273,9 +273,10 @@ describe('LifeLabs.reportsOf', () => {
         )
         const printed = layoutDocument(reports)
         const readBack = Effect.runSync(Report.tryFromDocument(printed))
-        expect(readBack.map((report) => ({ ...report, pageNumbers: [] }))).toEqual(
+        expect(readBack.reports.map((report) => ({ ...report, pageNumbers: [] }))).toEqual(
           reports.map((report) => ({ ...report, pageNumbers: [] }))
         )
+        expect(readBack.pagesWithoutLabNo).toEqual([])
 
         const decoded = Effect.runSync(
           decodeLifeLabsPdfDocument(printed, { timeZone: laboratory.timeZone })

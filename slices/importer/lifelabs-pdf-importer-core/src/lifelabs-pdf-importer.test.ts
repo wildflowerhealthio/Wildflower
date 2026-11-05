@@ -55,7 +55,7 @@ const extractorRefusing: Layer.Layer<PositionedTextExtractor> = Layer.succeed(
 )
 
 describe('lifeLabsPdfImporter decode', () => {
-  it('property: a picked file is one file set of records with source ids, keyed under the picked file', async () => {
+  it('property: a picked file is one file set of detached records, keyed under the picked file', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
@@ -77,10 +77,9 @@ describe('lifeLabsPdfImporter decode', () => {
             [{ pickedFile: file, identifiedAs: Option.none() }],
           ])
           const sections = decoded.fileSets.flatMap((fileSet) => fileSet.sections)
-          expect(sections.map((section) => section._tag)).toEqual(sections.map(() => 'FromSource'))
-          const keys = sections.flatMap((section) =>
-            section.entries.map((entry: { readonly key: string }) => entry.key)
-          )
+          const entries = sections.flatMap((section) => section.entries)
+          expect(entries.map(({ resource }) => resource.id)).toEqual(entries.map(() => null))
+          const keys = entries.map((entry) => entry.fullUrl)
           expect(keys.length).toBeGreaterThan(0)
           for (const key of keys) {
             expect(key.startsWith(FormatDecode.keyPrefix(file))).toBe(true)

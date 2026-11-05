@@ -1,12 +1,21 @@
-import { sourceId, type Wire } from './shared.ts'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 
-/** A practitioner is keyed by the name the report prints for them. */
-const practitionerOriginalId = (name: string): string => sourceId(['practitioner', name.trim()])
+import { LifeLabsIdentifierSystem } from '../../source-system.ts'
+import type { Wire } from './shared.ts'
+
+/**
+ * A practitioner is keyed by the name the report prints for them, trimmed and
+ * with inner whitespace collapsed.
+ */
+const practitionerKeyOf = (name: string): DetachedResource.Key => ({
+  system: LifeLabsIdentifierSystem.PractitionerName,
+  value: name.trim().replaceAll(/\s+/g, ' '),
+})
 
 const practitionerWire = (name: string): Wire => ({
   resourceType: 'Practitioner',
-  id: practitionerOriginalId(name),
+  identifier: [DetachedResource.keyIdentifierWire(practitionerKeyOf(name))],
   name: [{ text: name.trim() }],
 })
 
-export { practitionerOriginalId, practitionerWire }
+export { practitionerKeyOf, practitionerWire }

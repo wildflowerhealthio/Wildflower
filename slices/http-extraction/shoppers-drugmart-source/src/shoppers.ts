@@ -11,7 +11,11 @@
  *
  * @remarks
  * These system URIs are best-guess namespaces under the portal host, *not*
- * captured from a canonical registry. In particular:
+ * captured from a canonical registry. `PatientId`, `PrescriptionId` and
+ * `DispenseId` are the namespaces of the portal's own ids for the three types
+ * this source writes, so they are what its records are keyed in
+ * (`identifier[0]`): **persisted wire format**, the hash domain of every id
+ * a Shoppers import stores under. In particular:
  *
  * - `PatientId` names a person the account manages (a
  *   `customer.patients[].id`, the id a prescription's `patientId` references);
@@ -27,7 +31,15 @@
 /** Base URL every Shoppers identifier/coding system is built from. */
 const SYSTEM_BASE = 'https://mypharmacy.shoppersdrugmart.ca/fhir'
 
-/** Shoppers identifier systems for the ids the portal JSON carries. */
+/**
+ * Shoppers identifier systems for the ids the portal JSON carries.
+ *
+ * @remarks
+ * **Persisted wire format.** `PatientId`, `PrescriptionId` and `DispenseId`
+ * are the systems the kinds key a person, prescription and dispense in
+ * (`identifier[0]`), and so the hash domain of every id a Shoppers import
+ * stores under; changing one orphans everything already imported.
+ */
 const ShoppersIdentifierSystem = {
   /**
    * A managed person's `patientId` (a `customer.patients[].id`, the id a
@@ -43,6 +55,12 @@ const ShoppersIdentifierSystem = {
    * reviewer says the account's fills are for.
    */
   CustomerId: `${SYSTEM_BASE}/identifier/customer-id`,
+  /**
+   * A prescription's own id: the prescription-status payload's `id` (the
+   * `<uuid>` of its XHR path), which a history fill names as its
+   * `prescriptionId`.
+   */
+  PrescriptionId: `${SYSTEM_BASE}/identifier/prescription-id`,
   /** A prescription's human-facing `prescriptionNumber`. */
   PrescriptionNumber: `${SYSTEM_BASE}/identifier/prescription-number`,
   /** A dispense's `dispenseId`. */

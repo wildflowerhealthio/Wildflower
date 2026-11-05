@@ -1,3 +1,4 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { FhirString } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
@@ -5,7 +6,6 @@ import {
   MedicationRequest,
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   HttpResponseKind,
   extractJson,
@@ -32,7 +32,6 @@ import {
   shoppersStoreDisplay,
   shoppersStoreLocatorUrl,
 } from '../shoppers.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
 
 /** True for a value that is itself a dispense object (carries a `dispenseId`). */
@@ -122,8 +121,8 @@ const SourcePrescription = Schema.Struct({
 type SourcePrescription = typeof SourcePrescription.Type
 
 const decodePrescription = Schema.decode(Schema.parseJson(SourcePrescription))
-const decodeRequest = Schema.decodeUnknown(MedicationRequest.Schema)
-const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
+const decodeRequest = DetachedResource.decodeUnknown(MedicationRequest.Schema)
+const decodeDispense = DetachedResource.decodeUnknown(MedicationDispense.Schema)
 
 /** Map the portal dispense status onto the FHIR R4 `MedicationDispense.status` value set. */
 const dispenseStatus = (status: string | undefined): string => {
@@ -142,9 +141,12 @@ const dispenseStatus = (status: string | undefined): string => {
   }
 }
 
-/** `Patient/{id}` reference wire object. */
+/** The logical reference wire to the managed person keyed by `patientId`. */
 const patientReference = (patientId: string): Record<string, unknown> => ({
-  reference: `Patient/${patientId}`,
+  ...DetachedResource.logicalReferenceWire('Patient', {
+    system: ShoppersIdentifierSystem.PatientId,
+    value: patientId,
+  }),
 })
 
 /** UCUM, the code system FHIR quantities use for units of measure. */
@@ -255,7 +257,9 @@ const requesterWire = (
   prescriberName == null ? undefined : requesterWireOfName(prescriberName)
 
 /**
- * Build the R4 `MedicationRequest` **wire** from the decoded prescription; the
+ * Build the detached R4 `MedicationRequest` **wire** from the decoded
+ * prescription, keyed by its id in `ShoppersIdentifierSystem.PrescriptionId`
+ * and then carrying its prescription number; the
  * machine `status.type` / label ride `statusReason` and `note`, so nothing is
  * lost. Only slots the payload populates are emitted.
  */
@@ -265,18 +269,23 @@ const requestWire = (
 ): Record<string, unknown> => {
   const wire: Record<string, unknown> = {
     resourceType: 'MedicationRequest',
-    id: rx.id,
+    identifier: [
+      DetachedResource.keyIdentifierWire({
+        system: ShoppersIdentifierSystem.PrescriptionId,
+        value: rx.id,
+      }),
+      ...(rx.prescriptionNumber == null
+        ? []
+        : [
+            {
+              system: ShoppersIdentifierSystem.PrescriptionNumber,
+              value: String(rx.prescriptionNumber),
+            },
+          ]),
+    ],
     status: requestStatus(rx),
     intent: 'order',
     subject: patientReference(rx.patientId),
-  }
-  if (rx.prescriptionNumber != null) {
-    wire['identifier'] = [
-      {
-        system: ShoppersIdentifierSystem.PrescriptionNumber,
-        value: String(rx.prescriptionNumber),
-      },
-    ]
   }
   if (medication != null) wire['medicationCodeableConcept'] = medication
   const requester = requesterWire(rx.prescriberName)
@@ -292,7 +301,7 @@ const requestWire = (
   }
 
   // The prior rx's number as an identifier-only reference (its uuid is unknown;
-  // adoption leaves it untouched).
+  // it stays as written through import).
   if (rx.previousPrescription != null) {
     wire['priorPrescription'] = {
       identifier: {
@@ -314,8 +323,9 @@ const requestWire = (
 }
 
 /**
- * Build the R4 `MedicationDispense` **wire** for one dispense; `undefined` when
- * it has no `dispenseId` (so it drops-and-counts). `medication` is the
+ * Build the detached R4 `MedicationDispense` **wire** for one dispense, keyed
+ * by its `dispenseId` in `ShoppersIdentifierSystem.DispenseId`; `undefined`
+ * when it has no `dispenseId` (so it drops-and-counts). `medication` is the
  * prescription-level concept, built once by the caller and shared.
  */
 const dispenseWire = (
@@ -326,11 +336,20 @@ const dispenseWire = (
   if (dispense.dispenseId == null) return undefined
   const wire: Record<string, unknown> = {
     resourceType: 'MedicationDispense',
-    id: dispense.dispenseId,
-    identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: dispense.dispenseId }],
+    identifier: [
+      DetachedResource.keyIdentifierWire({
+        system: ShoppersIdentifierSystem.DispenseId,
+        value: dispense.dispenseId,
+      }),
+    ],
     status: dispenseStatus(dispense.status),
     subject: patientReference(rx.patientId),
-    authorizingPrescription: [{ reference: `MedicationRequest/${rx.id}` }],
+    authorizingPrescription: [
+      DetachedResource.logicalReferenceWire('MedicationRequest', {
+        system: ShoppersIdentifierSystem.PrescriptionId,
+        value: rx.id,
+      }),
+    ],
   }
   if (medication != null) wire['medicationCodeableConcept'] = medication
   if (dispense.quantityDispensed != null && Number.isFinite(dispense.quantityDispensed)) {
@@ -365,13 +384,10 @@ const prescriptionStatusUrl = new RegExp(
  * run where that XHR fails leaves these `subject` references dangling (tolerated;
  * not FK-enforced).
  */
-const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
+const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<DetachedResource.Type> =
   HttpResponseKind.make({
     name: 'PrescriptionResponseKind',
-    tryRecognize: recognizePortal(
-      portalGetMatcher(prescriptionStatusUrl),
-      SHOPPERS_DRUGMART_SYSTEM
-    ),
+    tryRecognize: recognizePortal(portalGetMatcher(prescriptionStatusUrl)),
     parse: (response) =>
       Effect.gen(function* () {
         const rx = yield* decodePrescription(extractJson(response.text()))

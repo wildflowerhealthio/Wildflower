@@ -1,13 +1,10 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   CanadianCodingSystem,
   CodeableConcept,
   WildflowerExtension,
 } from '@wildflowerhealthio/fhir-r4/data-types'
-import {
-  type HttpResponse,
-  Specificity,
-  SystemFamily,
-} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
@@ -16,13 +13,14 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { CarebookCodingSystem, CarebookExtension } from '../carebook.ts'
 import prescriptions from '../fixtures/prescriptions-searchset.json' with { type: 'json' }
-import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
-import {
-  MedicationListResponseKind,
-  type MedicationResource,
-} from './medication-list-response-kind.ts'
+import { REXALL_STU3_BASE_URL, REXALL_STU3_PATIENT_SYSTEM } from '../tunnel-url.ts'
+import { MedicationListResponseKind } from './medication-list-response-kind.ts'
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
+
+/** The carebook id `record` is keyed by, `null` for a keyless record. */
+const carebookIdOf = (record: DetachedResource.Type): string | null =>
+  Option.getOrNull(Option.map(DetachedResource.keyOf(record), ({ value }) => value))
 
 /** `medication[x]` is loosely typed on the decoded resource; read it as a concept. */
 const decodeConcept = Schema.decodeUnknownSync(Schema.typeSchema(CodeableConcept.Schema))
@@ -36,7 +34,7 @@ const makeResponse = (body: string, url = LIST_URL): HttpResponse.HttpResponse =
 
 const runParse = (
   r: HttpResponse.HttpResponse
-): Either.Either<readonly MedicationResource[], ParseResult.ParseError> =>
+): Either.Either<readonly DetachedResource.Type[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(MedicationListResponseKind.parse(r)))
 
 describe('MedicationListResponseKind', () => {
@@ -69,12 +67,9 @@ describe('MedicationListResponseKind', () => {
       )
     })
 
-    it('mints its system, fixed across resource types, at portal specificity', () => {
+    it('claims at portal specificity', () => {
       expect(MedicationListResponseKind.tryRecognize(LIST_URL, Option.some('GET'))).toStrictEqual(
-        Option.some({
-          specificity: Specificity.PORTAL,
-          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: REXALL_CAREBOOK_SYSTEM }),
-        })
+        Option.some({ specificity: Specificity.PORTAL })
       )
     })
   })
@@ -87,12 +82,33 @@ describe('MedicationListResponseKind', () => {
       // four medications survive; the Location / DocumentReference /
       // Immunization decode to null through the catch-all union member and are
       // dropped.
-      expectRightToEqual(result, [
-        expect.objectContaining({ resourceType: 'MedicationRequest', id: 'mr-0001' }),
-        expect.objectContaining({ resourceType: 'MedicationRequest', id: 'mr-0002' }),
-        expect.objectContaining({ resourceType: 'MedicationDispense', id: 'md-0001' }),
-        expect.objectContaining({ resourceType: 'MedicationDispense', id: 'md-0002' }),
+      if (result._tag !== 'Right') throw new Error('expected a successful parse')
+      expect(
+        result.right.map((record) => [record.resourceType, record.id, carebookIdOf(record)])
+      ).toEqual([
+        ['MedicationRequest', null, 'mr-0001'],
+        ['MedicationRequest', null, 'mr-0002'],
+        ['MedicationDispense', null, 'md-0001'],
+        ['MedicationDispense', null, 'md-0002'],
       ])
+    })
+
+    it("keys each record in its type's system under the STU3 base, and names its Patient there", () => {
+      const result = runParse(makeResponse(JSON.stringify(prescriptions)))
+      if (result._tag !== 'Right') throw new Error('expected a successful parse')
+      for (const record of result.right) {
+        expect(Option.map(DetachedResource.keyOf(record), ({ system }) => system)).toEqual(
+          Option.some(`${REXALL_STU3_BASE_URL}/${record.resourceType}`)
+        )
+      }
+      const request = result.right.find((r) => r.resourceType === 'MedicationRequest')
+      if (request?.resourceType !== 'MedicationRequest')
+        throw new Error('missing MedicationRequest')
+      expect(request.subject).toMatchObject({
+        reference: null,
+        type: 'Patient',
+        identifier: { system: new URL(REXALL_STU3_PATIENT_SYSTEM) },
+      })
     })
 
     it('decodes the carebook MedicationRequest straight to its fhir-r4 shape', () => {
@@ -103,14 +119,18 @@ describe('MedicationListResponseKind', () => {
       // R4FromStu3 transform ran (not a raw passthrough).
       if (request?.resourceType !== 'MedicationRequest')
         throw new Error('missing MedicationRequest')
-      expect(request.requester?.reference).toBe('Practitioner/dr-smith')
+      expect(request.requester).toMatchObject({
+        reference: null,
+        type: 'Practitioner',
+        identifier: { system: new URL(`${REXALL_STU3_BASE_URL}/Practitioner`), value: 'dr-smith' },
+      })
       expect(request.dispenseRequest?.numberOfRepeatsAllowed).toBe(3)
     })
 
     it('promotes the carebook extensions that have a conventional R4 home', () => {
       const result = runParse(makeResponse(JSON.stringify(prescriptions)))
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
-      const request = result.right.find((r) => r.id === 'mr-0001')
+      const request = result.right.find((r) => carebookIdOf(r) === 'mr-0001')
       if (request?.resourceType !== 'MedicationRequest')
         throw new Error('missing MedicationRequest')
 
@@ -138,7 +158,7 @@ describe('MedicationListResponseKind', () => {
     it('leaves the extensions with no conventional home in place', () => {
       const result = runParse(makeResponse(JSON.stringify(prescriptions)))
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
-      const request = result.right.find((r) => r.id === 'mr-0001')
+      const request = result.right.find((r) => carebookIdOf(r) === 'mr-0001')
       if (request?.resourceType !== 'MedicationRequest')
         throw new Error('missing MedicationRequest')
       const urls = request.extension.map((e) => e.url)
@@ -152,7 +172,7 @@ describe('MedicationListResponseKind', () => {
     it('lifts the DIN, store link and remaining repeats into conventional slots', () => {
       const result = runParse(makeResponse(JSON.stringify(prescriptions)))
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
-      const request = result.right.find((r) => r.id === 'mr-0001')
+      const request = result.right.find((r) => carebookIdOf(r) === 'mr-0001')
       if (request?.resourceType !== 'MedicationRequest')
         throw new Error('missing MedicationRequest')
 
@@ -187,7 +207,7 @@ describe('MedicationListResponseKind', () => {
     it('holds the store link on a fresh performer when no medication-processor named one', () => {
       const result = runParse(makeResponse(JSON.stringify(prescriptions)))
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
-      const request = result.right.find((r) => r.id === 'mr-0002')
+      const request = result.right.find((r) => carebookIdOf(r) === 'mr-0002')
       if (request?.resourceType !== 'MedicationRequest')
         throw new Error('missing MedicationRequest')
       expect(request.dispenseRequest?.performer?.reference).toBe(
@@ -199,7 +219,7 @@ describe('MedicationListResponseKind', () => {
     it('promotes the dispensing pharmacy onto MedicationDispense.location', () => {
       const result = runParse(makeResponse(JSON.stringify(prescriptions)))
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
-      const dispense = result.right.find((r) => r.id === 'md-0001')
+      const dispense = result.right.find((r) => carebookIdOf(r) === 'md-0001')
       if (dispense?.resourceType !== 'MedicationDispense')
         throw new Error('missing MedicationDispense')
       expect(dispense.location?.identifier?.value).toBe('pharmacy-4821')

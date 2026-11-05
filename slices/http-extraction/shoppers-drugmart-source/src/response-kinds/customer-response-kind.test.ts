@@ -1,10 +1,6 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  type HttpResponse,
-  Specificity,
-  SystemFamily,
-} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
@@ -12,7 +8,6 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { CustomerResponseKind } from './customer-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
@@ -28,12 +23,12 @@ const makeResponse = (body: string): HttpResponse.HttpResponse =>
     body,
   })
 
-const parse = (payload: unknown): readonly FhirResource[] =>
+const parse = (payload: unknown): readonly DetachedResource.Type[] =>
   Effect.runSync(CustomerResponseKind.parse(makeResponse(JSON.stringify(payload))))
 
 const runParse = (
   r: HttpResponse.HttpResponse
-): Either.Either<readonly FhirResource[], ParseResult.ParseError> =>
+): Either.Either<readonly DetachedResource.Type[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(CustomerResponseKind.parse(r)))
 
 /**
@@ -115,18 +110,13 @@ describe('CustomerResponseKind', () => {
       expect(Option.isSome(CustomerResponseKind.tryRecognize(url, Option.none()))).toBe(match)
     })
 
-    it('mints its system, fixed across resource types, at portal specificity', () => {
+    it('claims at portal specificity', () => {
       expect(
         CustomerResponseKind.tryRecognize(
           `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}`,
           Option.none()
         )
-      ).toStrictEqual(
-        Option.some({
-          specificity: Specificity.PORTAL,
-          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SHOPPERS_DRUGMART_SYSTEM }),
-        })
-      )
+      ).toStrictEqual(Option.some({ specificity: Specificity.PORTAL }))
     })
   })
 
@@ -140,7 +130,6 @@ describe('CustomerResponseKind', () => {
       expect(result).toStrictEqual([
         decodePatient({
           resourceType: 'Patient',
-          id: 'pt-uuid-1',
           identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
           name: [{ family: 'Okafor', given: ['Dana'], text: 'Dana Okafor' }],
           telecom: [{ system: 'phone', value: '4165550100' }],
@@ -148,7 +137,6 @@ describe('CustomerResponseKind', () => {
         }),
         decodePatient({
           resourceType: 'Patient',
-          id: 'pt-uuid-2',
           identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-2' }],
           name: [{ family: 'Okafor', given: ['Sam'], text: 'Sam Okafor' }],
           telecom: [{ system: 'phone', value: '6135550111' }],
@@ -191,7 +179,6 @@ describe('CustomerResponseKind', () => {
         expect(result).toStrictEqual([
           decodePatient({
             resourceType: 'Patient',
-            id: 'pt-uuid-1',
             identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
             name: [{ given: ['Dana'] }],
             telecom,
@@ -221,7 +208,6 @@ describe('CustomerResponseKind', () => {
       expect(result).toStrictEqual([
         decodePatient({
           resourceType: 'Patient',
-          id: 'pt-uuid-1',
           identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
           name: [{ family: 'Okafor', given: ['Dana'] }],
         }),
@@ -252,7 +238,6 @@ describe('CustomerResponseKind', () => {
       expect(result).toStrictEqual([
         decodePatient({
           resourceType: 'Patient',
-          id: 'pt-uuid-1',
           identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
           name: [{ given: ['Dana'] }],
           address: [{ line: ['12 Maple Ave'], state: 'ON' }],
@@ -272,7 +257,11 @@ describe('CustomerResponseKind', () => {
       const result = parse(payload)
 
       // Assert
-      expect(result.map((resource) => resource.id)).toStrictEqual(['pt-uuid-1'])
+      expect(
+        result.map((resource) =>
+          Option.getOrNull(Option.map(DetachedResource.keyOf(resource), ({ value }) => value))
+        )
+      ).toStrictEqual(['pt-uuid-1'])
     })
 
     it('emits nothing for a null or absent patients list', () => {

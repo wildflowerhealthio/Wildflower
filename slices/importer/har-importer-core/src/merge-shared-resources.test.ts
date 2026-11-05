@@ -1,5 +1,5 @@
-import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   HttpResponseKind,
   SourceDescriptor,
@@ -10,36 +10,52 @@ import { describe, expect, it } from 'vite-plus/test'
 import { mergeSharedResources } from './merge-shared-resources.ts'
 import type { PreviewedResponse } from './review.ts'
 
-const decodePatient = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))
+const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
 
-/** A Patient whose one given name says which copy it is. */
-const patientNamed = (id: string, given: string): FhirResourceWithId =>
-  decodePatient({ resourceType: 'Patient', id, name: [{ given: [given] }] })
+const detachSample = DetachedResource.fromServerRecord('https://example.org/fhir')
+
+/**
+ * A Patient its source calls `id`, or gave no id when `null`, detached, whose
+ * one given name says which copy it is.
+ */
+const patientNamed = (id: string | null, given: string): DetachedResource.Type =>
+  detachSample(
+    decodePatient({
+      resourceType: 'Patient',
+      ...(id === null ? {} : { id }),
+      name: [{ given: [given] }],
+    })
+  )
 
 /** A kind that only its name matters for: the fold matches a pick to its source by it. */
-const kindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResourceWithId> =>
+const kindNamed = (name: string): HttpResponseKind.HttpResponseKind<DetachedResource.Type> =>
   HttpResponseKind.make({
     name,
     tryRecognize: () => Option.none(),
     parse: () => Effect.succeed([]),
   })
 
+/** Whether `resource` is a Patient, keeping whatever else its type says of it. */
+const isPatient = (
+  resource: DetachedResource.Type
+): resource is DetachedResource.Detached<Patient.Type> => resource.resourceType === 'Patient'
+
 /** Joins the two copies' names, earlier first, so the result shows what merged. */
-const joinNames: SourceDescriptor.ResourceMerge<FhirResourceWithId> = (earlier, later) =>
-  earlier.resourceType === 'Patient' && later.resourceType === 'Patient'
+const joinNames: SourceDescriptor.ResourceMerge<DetachedResource.Type> = (earlier, later) =>
+  isPatient(earlier) && isPatient(later)
     ? { ...later, name: [...earlier.name, ...later.name] }
     : later
 
 const display = { title: 'Sample', description: 'A sample source.' }
 
-const mergingSource = SourceDescriptor.make<FhirResourceWithId>({
+const mergingSource = SourceDescriptor.make<DetachedResource.Type>({
   name: 'merging',
   display,
   responseKinds: [kindNamed('MergingKind')],
   mergeResources: joinNames,
 })
 
-const plainSource = SourceDescriptor.make<FhirResourceWithId>({
+const plainSource = SourceDescriptor.make<DetachedResource.Type>({
   name: 'plain',
   display,
   responseKinds: [kindNamed('PlainKind')],
@@ -49,8 +65,8 @@ const plainSource = SourceDescriptor.make<FhirResourceWithId>({
 const previewOf = (
   responseId: string,
   kindName: string,
-  resources: readonly FhirResourceWithId[]
-): PreviewedResponse<never, FhirResourceWithId> => {
+  resources: readonly DetachedResource.Type[]
+): PreviewedResponse<never, DetachedResource.Type> => {
   const ref = { id: responseId, url: `https://example.org/${responseId}` }
   return {
     ref,
@@ -65,7 +81,7 @@ const previewOf = (
 
 /** Each response's resources as `key given…` lines, to read a result at a glance. */
 const heldBy = (
-  previews: readonly PreviewedResponse<never, FhirResourceWithId>[]
+  previews: readonly PreviewedResponse<never, DetachedResource.Type>[]
 ): readonly (readonly string[])[] =>
   previews.map((preview) =>
     preview.outcome._tag === 'resources'
@@ -99,7 +115,33 @@ describe('mergeSharedResources', () => {
     expect(mergeSharedResources([mergingSource, plainSource], previews)).toEqual(previews)
   })
 
-  it("should never merge one source's resource with another's under the same id", () => {
+  it('should never merge two keyless records, which are each their own', () => {
+    const previews = [
+      previewOf('req-0', 'MergingKind', [patientNamed(null, 'first')]),
+      previewOf('req-1', 'MergingKind', [patientNamed(null, 'second')]),
+    ]
+
+    expect(heldBy(mergeSharedResources([mergingSource, plainSource], previews))).toEqual([
+      ['req-0:0 first'],
+      ['req-1:0 second'],
+    ])
+  })
+
+  it('should keep the merged record detached', () => {
+    const previews = [
+      previewOf('req-0', 'MergingKind', [patientNamed('p1', 'first')]),
+      previewOf('req-1', 'MergingKind', [patientNamed('p1', 'second')]),
+    ]
+    const [first] = mergeSharedResources([mergingSource], previews)
+
+    expect(
+      first?.outcome._tag === 'resources'
+        ? first.outcome.resources.map(({ resource }) => resource.id)
+        : []
+    ).toEqual([null])
+  })
+
+  it("should never merge one source's resource with another's under the same key", () => {
     const previews = [
       previewOf('req-0', 'MergingKind', [patientNamed('p1', 'merging')]),
       previewOf('req-1', 'PlainKind', [patientNamed('p1', 'plain')]),

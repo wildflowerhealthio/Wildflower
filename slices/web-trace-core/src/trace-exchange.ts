@@ -209,8 +209,7 @@ type TraceSessionId = typeof TraceSessionId.Type
  * The pair stays readable: the codec writes both halves as `Identifier` entries
  * and the decode side reads identifiers, never the id.
  *
- * This is the **one** site that mints a trace's id. A trace must never also be
- * routed through `adoptUnderRecognizedRoot` — that would hash this hash.
+ * This is the **one** site that mints a trace's id.
  *
  * **Not free** — two hash lanes, not a concatenation — so it belongs at a write
  * or a decode, never in a React render body.

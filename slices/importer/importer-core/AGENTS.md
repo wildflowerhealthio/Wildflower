@@ -44,10 +44,10 @@ package alone and a layer that provides those.
   `linkToSourceFiles`), and returns its `FormatDecode.Result`, never failing.
   Per file set it mints a source file for **every** picked file
   (`Schema.encode(PickedFile.FromDocumentReference)`), its `masterIdentifier`
-  what the picked file identified itself as; adopts its records with
-  `DecodedFileSet.adopt` (each `FromSource` section's under its key, their
-  references keyed in the section's system family, each `Adopted` section's
-  as they are); runs `linkSourceFile` over each source file with the
+  what the picked file identified itself as; adopts its detached records with
+  `DecodedFileSet.adopt` (a keyed record under the id its key derives, a
+  keyless one under a random id, each logical reference to a record of the set
+  resolved to a literal one); runs `linkSourceFile` over each source file with the
   set's adopted records, then `linkToSourceFiles` over every record with each
   picked file and its linked source file; stamps every record's `meta.source`
   with the set's **representative** — the picked file whose source file id is

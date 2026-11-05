@@ -103,7 +103,7 @@ namespace Config {
     const segments = config.segments.map(segmentPattern).join('')
     const end = endPattern(config.end ?? 'pathEnd')
     // Group 1 is the root: `https?://` (scheme required — a root must be a URL
-    // a `SystemFamily` builds systems on), the authority `[^/]+` (stops at the first
+    // a FHIR server's identifier systems are built on), the authority `[^/]+` (stops at the first
     // `/`, so a host is never mistaken for a segment), then an arbitrary base
     // path — FHIR servers commonly mount under `/baseR4`, `/fhir/R4`, etc.
     // Non-greedy so the SHORTEST base path that still lets the declared segments

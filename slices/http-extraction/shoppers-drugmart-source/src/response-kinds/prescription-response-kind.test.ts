@@ -14,11 +14,7 @@ import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import {
-  type HttpResponse,
-  Specificity,
-  SystemFamily,
-} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 
 import {
@@ -26,7 +22,6 @@ import {
   ShoppersIdentifierSystem,
   shoppersStoreLocatorUrl,
 } from '../shoppers.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { PrescriptionResponseKind } from './prescription-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
@@ -116,11 +111,16 @@ const prescriptionJson = (
 /** The MedicationRequest the base fixture is expected to synthesize. */
 const expectedRequest = decodeRequest({
   resourceType: 'MedicationRequest',
-  id: 'rx-uuid-1',
+  identifier: [
+    { system: ShoppersIdentifierSystem.PrescriptionId, value: 'rx-uuid-1' },
+    { system: ShoppersIdentifierSystem.PrescriptionNumber, value: '998877' },
+  ],
   status: 'active',
   intent: 'order',
-  subject: { reference: 'Patient/pt-uuid-1' },
-  identifier: [{ system: ShoppersIdentifierSystem.PrescriptionNumber, value: '998877' }],
+  subject: {
+    type: 'Patient',
+    identifier: { system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' },
+  },
   medicationCodeableConcept: {
     coding: [{ system: CanadianCodingSystem.Din, code: '02123456', display: 'atorvastatin 20mg' }],
     text: 'Atorvastatin',
@@ -154,11 +154,18 @@ const expectedRequest = decodeRequest({
 /** The MedicationDispense the base fixture's single dispense is expected to synthesize. */
 const expectedDispense = decodeDispense({
   resourceType: 'MedicationDispense',
-  id: 'disp-1',
   identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-1' }],
   status: 'completed',
-  subject: { reference: 'Patient/pt-uuid-1' },
-  authorizingPrescription: [{ reference: 'MedicationRequest/rx-uuid-1' }],
+  subject: {
+    type: 'Patient',
+    identifier: { system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' },
+  },
+  authorizingPrescription: [
+    {
+      type: 'MedicationRequest',
+      identifier: { system: ShoppersIdentifierSystem.PrescriptionId, value: 'rx-uuid-1' },
+    },
+  ],
   medicationCodeableConcept: {
     coding: [{ system: CanadianCodingSystem.Din, code: '02123456', display: 'atorvastatin 20mg' }],
     text: 'Atorvastatin',
@@ -206,12 +213,9 @@ describe('PrescriptionResponseKind', () => {
       expect(Option.isSome(PrescriptionResponseKind.tryRecognize(url, Option.none()))).toBe(match)
     })
 
-    it('mints its system, fixed across resource types, at portal specificity', () => {
+    it('claims at portal specificity', () => {
       expect(PrescriptionResponseKind.tryRecognize(STATUS_URL, Option.none())).toStrictEqual(
-        Option.some({
-          specificity: Specificity.PORTAL,
-          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SHOPPERS_DRUGMART_SYSTEM }),
-        })
+        Option.some({ specificity: Specificity.PORTAL })
       )
     })
   })
@@ -440,7 +444,10 @@ describe('PrescriptionResponseKind', () => {
           resourceType: 'MedicationRequest',
           status: 'active',
           intent: 'order',
-          subject: { reference: 'Patient/x' },
+          subject: {
+            type: 'Patient',
+            identifier: { system: ShoppersIdentifierSystem.PatientId, value: 'x' },
+          },
           dispenseRequest: {
             validityPeriod: { start: '2026-01-10T00:00:00Z', end: '2027-01-01T00:00:00Z' },
           },
@@ -460,7 +467,10 @@ describe('PrescriptionResponseKind', () => {
           resourceType: 'MedicationRequest',
           status: 'active',
           intent: 'order',
-          subject: { reference: 'Patient/x' },
+          subject: {
+            type: 'Patient',
+            identifier: { system: ShoppersIdentifierSystem.PatientId, value: 'x' },
+          },
           dispenseRequest: {
             validityPeriod: { start: '2026-01-10T00:00:00Z', end: '2026-03-15T00:00:00Z' },
           },

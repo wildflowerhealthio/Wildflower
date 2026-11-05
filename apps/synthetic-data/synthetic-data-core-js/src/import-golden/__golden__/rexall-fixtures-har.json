@@ -15,36 +15,36 @@
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall-fixtures.har/har-entry-0:0",
-      "resource": "Patient/wf-757c3442823f864760beb06ad98fce26",
-      "title": "Patient/wf-757c3442823f864760beb06ad98fce26"
+      "resource": "Patient/wf-b5e3aed2ae4ee96b118585bff8bc12a4",
+      "title": "Patient/wf-b5e3aed2ae4ee96b118585bff8bc12a4"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall-fixtures.har/har-entry-1:0",
-      "resource": "MedicationRequest/wf-a41c294c4e77ccaba5898b2a7fd10a8e",
-      "title": "MedicationRequest/wf-a41c294c4e77ccaba5898b2a7fd10a8e"
+      "resource": "MedicationRequest/wf-0df456d97bf9b4f1a35d8b7d217c313a",
+      "title": "MedicationRequest/wf-0df456d97bf9b4f1a35d8b7d217c313a"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall-fixtures.har/har-entry-1:1",
-      "resource": "MedicationRequest/wf-a41c2a4c4e77ce5ea5898a2a7fd108db",
-      "title": "MedicationRequest/wf-a41c2a4c4e77ce5ea5898a2a7fd108db"
+      "resource": "MedicationRequest/wf-0df453d97bf9afd8a35d8a7d217c2f87",
+      "title": "MedicationRequest/wf-0df453d97bf9afd8a35d8a7d217c2f87"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall-fixtures.har/har-entry-1:2",
-      "resource": "MedicationDispense/wf-82683e6343f42d7a8b6b6da716a9680d",
-      "title": "MedicationDispense/wf-82683e6343f42d7a8b6b6da716a9680d"
+      "resource": "MedicationDispense/wf-f8727e70b4eb7a3dbc79e7ee8fde967a",
+      "title": "MedicationDispense/wf-f8727e70b4eb7a3dbc79e7ee8fde967a"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall-fixtures.har/har-entry-1:3",
-      "resource": "MedicationDispense/wf-82683d6343f42bc78b6b6aa716a962f4",
-      "title": "MedicationDispense/wf-82683d6343f42bc78b6b6aa716a962f4"
+      "resource": "MedicationDispense/wf-f8727b70b4eb7524bc79e6ee8fde94c7",
+      "title": "MedicationDispense/wf-f8727b70b4eb7524bc79e6ee8fde94c7"
     }
   ],
   "sourceFileRePicks": [
@@ -135,11 +135,11 @@
           "valueBoolean": false
         }
       ],
-      "id": "wf-82683d6343f42bc78b6b6aa716a962f4",
+      "id": "wf-f8727b70b4eb7524bc79e6ee8fde94c7",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationDispense",
           "value": "md-0002"
         }
       ],
@@ -180,10 +180,11 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "uid-abc-123"
         },
-        "reference": "Patient/wf-757c3442823f864760beb06ad98fce26"
+        "reference": "Patient/wf-b5e3aed2ae4ee96b118585bff8bc12a4",
+        "type": "Patient"
       },
       "supportingInformation": [],
       "whenHandedOver": "2023-11-09T15:06:36.000Z"
@@ -197,7 +198,7 @@
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-order",
             "value": "mr-0001"
           },
-          "reference": "PrescriptionOrder/wf-05836fb054530d08fdb68b2c9b3fe75d"
+          "reference": "PrescriptionOrder/po-9001"
         },
         {
           "extension": [],
@@ -206,7 +207,7 @@
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-refill",
             "value": "mr-0001"
           },
-          "reference": "PrescriptionOrder/wf-05836fb054530d08fdb68b2c9b3fe75d"
+          "reference": "PrescriptionOrder/po-9001"
         }
       ],
       "contained": [],
@@ -254,11 +255,11 @@
           }
         }
       ],
-      "id": "wf-82683e6343f42d7a8b6b6da716a9680d",
+      "id": "wf-f8727e70b4eb7a3dbc79e7ee8fde967a",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationDispense",
           "value": "md-0001"
         },
         {
@@ -320,14 +321,139 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "uid-abc-123"
         },
-        "reference": "Patient/wf-757c3442823f864760beb06ad98fce26"
+        "reference": "Patient/wf-b5e3aed2ae4ee96b118585bff8bc12a4",
+        "type": "Patient"
       },
       "supportingInformation": [],
       "whenHandedOver": "2024-03-28T20:09:56.000Z",
       "whenPrepared": "2024-03-27T12:37:05.000Z"
+    },
+    {
+      "authoredOn": "2023-11-02T12:04:39.000Z",
+      "basedOn": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "fill",
+              "extension": [],
+              "system": "http://schemas.carebook.com/v1/fhir/coding/medicationrequest-request-type-code"
+            }
+          ],
+          "extension": []
+        }
+      ],
+      "contained": [
+        {
+          "code": {
+            "coding": [
+              {
+                "code": "00187444",
+                "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
+              },
+              {
+                "code": "00187444",
+                "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+              }
+            ],
+            "text": "Compounded cream"
+          },
+          "extension": [
+            {
+              "url": "http://schemas.carebook.com/v1/fhir/medication/extension/strength",
+              "valueString": "as directed"
+            }
+          ],
+          "id": "med-0002",
+          "manufacturer": {
+            "display": "Rexall"
+          },
+          "resourceType": "Medication",
+          "status": "active",
+          "text": {
+            "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">Compounded cream - apply topically</div>",
+            "status": "generated"
+          }
+        }
+      ],
+      "detectedIssue": [],
+      "dispenseRequest": {
+        "expectedSupplyDuration": {
+          "code": "wk",
+          "extension": [],
+          "unit": "week",
+          "value": 14
+        },
+        "extension": [],
+        "modifierExtension": [],
+        "numberOfRepeatsAllowed": 0,
+        "performer": {
+          "display": "Rexall (store 4821)",
+          "extension": [],
+          "reference": "https://www.rexall.ca/storelocator/store/4821"
+        },
+        "quantity": {
+          "extension": [],
+          "value": 1
+        }
+      },
+      "doNotPerform": true,
+      "dosageInstruction": [],
+      "eventHistory": [],
+      "extension": [],
+      "id": "wf-0df453d97bf9afd8a35d8a7d217c2f87",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest",
+          "value": "mr-0002"
+        }
+      ],
+      "instantiatesCanonical": [],
+      "instantiatesUri": [],
+      "insurance": [],
+      "intent": "order",
+      "medicationReference": {
+        "display": "Compounded cream",
+        "extension": [],
+        "reference": "#med-0002"
+      },
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-b08c3fdad1358dd40ec5c8d435a73be1",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "reasonCode": [],
+      "reasonReference": [],
+      "requester": {
+        "display": "DR PATEL",
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
+          "value": "DR PATEL"
+        },
+        "type": "Practitioner"
+      },
+      "resourceType": "MedicationRequest",
+      "status": "completed",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
+          "value": "uid-abc-123"
+        },
+        "reference": "Patient/wf-b5e3aed2ae4ee96b118585bff8bc12a4",
+        "type": "Patient"
+      },
+      "supportingInformation": []
     },
     {
       "authoredOn": "2024-02-11T05:43:18.000Z",
@@ -497,11 +623,11 @@
           "valueString": "should-not-fail-decode"
         }
       ],
-      "id": "wf-a41c294c4e77ccaba5898b2a7fd10a8e",
+      "id": "wf-0df456d97bf9b4f1a35d8b7d217c313a",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest",
           "value": "mr-0001"
         },
         {
@@ -546,10 +672,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
           "value": "dr-smith"
         },
-        "reference": "Practitioner/wf-c49cff78c3f6f9f6b511c3d60f65d35b"
+        "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
       "status": "active",
@@ -557,133 +683,11 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "uid-abc-123"
         },
-        "reference": "Patient/wf-757c3442823f864760beb06ad98fce26"
-      },
-      "supportingInformation": []
-    },
-    {
-      "authoredOn": "2023-11-02T12:04:39.000Z",
-      "basedOn": [],
-      "category": [
-        {
-          "coding": [
-            {
-              "code": "fill",
-              "extension": [],
-              "system": "http://schemas.carebook.com/v1/fhir/coding/medicationrequest-request-type-code"
-            }
-          ],
-          "extension": []
-        }
-      ],
-      "contained": [
-        {
-          "code": {
-            "coding": [
-              {
-                "code": "00187444",
-                "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
-              },
-              {
-                "code": "00187444",
-                "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
-              }
-            ],
-            "text": "Compounded cream"
-          },
-          "extension": [
-            {
-              "url": "http://schemas.carebook.com/v1/fhir/medication/extension/strength",
-              "valueString": "as directed"
-            }
-          ],
-          "id": "med-0002",
-          "manufacturer": {
-            "display": "Rexall"
-          },
-          "resourceType": "Medication",
-          "status": "active",
-          "text": {
-            "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">Compounded cream - apply topically</div>",
-            "status": "generated"
-          }
-        }
-      ],
-      "detectedIssue": [],
-      "dispenseRequest": {
-        "expectedSupplyDuration": {
-          "code": "wk",
-          "extension": [],
-          "unit": "week",
-          "value": 14
-        },
-        "extension": [],
-        "modifierExtension": [],
-        "numberOfRepeatsAllowed": 0,
-        "performer": {
-          "display": "Rexall (store 4821)",
-          "extension": [],
-          "reference": "https://www.rexall.ca/storelocator/store/4821"
-        },
-        "quantity": {
-          "extension": [],
-          "value": 1
-        }
-      },
-      "doNotPerform": true,
-      "dosageInstruction": [],
-      "eventHistory": [],
-      "extension": [],
-      "id": "wf-a41c2a4c4e77ce5ea5898a2a7fd108db",
-      "identifier": [
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "mr-0002"
-        }
-      ],
-      "instantiatesCanonical": [],
-      "instantiatesUri": [],
-      "insurance": [],
-      "intent": "order",
-      "medicationReference": {
-        "display": "Compounded cream",
-        "extension": [],
-        "reference": "#med-0002"
-      },
-      "meta": {
-        "profile": [],
-        "security": [],
-        "source": "DocumentReference/wf-b08c3fdad1358dd40ec5c8d435a73be1",
-        "tag": []
-      },
-      "modifierExtension": [],
-      "note": [],
-      "reasonCode": [],
-      "reasonReference": [],
-      "requester": {
-        "display": "DR PATEL",
-        "extension": [],
-        "identifier": {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
-          "value": "DR PATEL"
-        },
-        "type": "Practitioner"
-      },
-      "resourceType": "MedicationRequest",
-      "status": "completed",
-      "subject": {
-        "extension": [],
-        "identifier": {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "uid-abc-123"
-        },
-        "reference": "Patient/wf-757c3442823f864760beb06ad98fce26"
+        "reference": "Patient/wf-b5e3aed2ae4ee96b118585bff8bc12a4",
+        "type": "Patient"
       },
       "supportingInformation": []
     },
@@ -701,11 +705,11 @@
       "contained": [],
       "extension": [],
       "generalPractitioner": [],
-      "id": "wf-757c3442823f864760beb06ad98fce26",
+      "id": "wf-b5e3aed2ae4ee96b118585bff8bc12a4",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "uid-abc-123"
         },
         {

@@ -26,17 +26,22 @@ const asParseError = (
     issue: new ParseResult.Forbidden(Schema.Unknown.ast, undefined, e.message),
   })
 
+/** The note a page that prints no `Lab No` earns: it belongs to no report. */
+const pageWithoutLabNoNote = (pageNumber: number): string =>
+  `Page ${pageNumber} prints no Lab No, so it was skipped.`
+
 /**
- * Decode a positioned-text document into per-report sections of labeled FHIR
- * resources, each beside its source id — the pure "document → sections" leg
- * the outer decode wraps.
+ * Decode a positioned-text document into per-report sections of labeled,
+ * detached FHIR resources — the pure "document → sections" leg the outer
+ * decode wraps.
  *
  * @param document - The positioned-text document the
  *   {@link PositionedTextExtractor} produced from the PDF's bytes
  * @param settings - The import's settings (time zone for date interpretation)
  * @returns The document's reports as {@link decodedReportsOf} yields them:
- *   one `FromSource` section per report, titled by its `Lab No` and date of
- *   service, under `LIFELABS_SYSTEM_FAMILY`, no notes; fails only with a
+ *   one section per report, titled by its `Lab No` and date of service, its
+ *   records detached and keyed by what the report prints, with a note for
+ *   each page skipped for printing no `Lab No`; fails only with a
  *   `ParseError` when the document is not a recognized LifeLabs report;
  *   requires nothing
  *
@@ -45,7 +50,7 @@ const asParseError = (
  * printed inverse instead of going through an extractor.
  * `decodeLifeLabsPdf` is `decodeLifeLabsPdfDocument ∘ PositionedTextExtractor`.
  * A `Patient` or `Practitioner` shared across reports appears in the section
- * of the first report naming it — the synthesis deduplicates by id.
+ * of the first report naming it — the synthesis deduplicates by key.
  */
 const decodeLifeLabsPdfDocument = (
   document: Document.Type,
@@ -53,19 +58,22 @@ const decodeLifeLabsPdfDocument = (
 ): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
   Effect.gen(function* () {
     const timeZone = yield* checkTimeZone(settings.timeZone)
-    const reports = yield* Report.tryFromDocument(document).pipe(Effect.mapError(asParseError))
-    return yield* decodedReportsOf(reports, { timeZone })
+    const { reports, pagesWithoutLabNo } = yield* Report.tryFromDocument(document).pipe(
+      Effect.mapError(asParseError)
+    )
+    const decoded = yield* decodedReportsOf(reports, { timeZone })
+    return { ...decoded, notes: [...pagesWithoutLabNo.map(pageWithoutLabNoNote), ...decoded.notes] }
   })
 
 /**
- * Decode one picked LifeLabs report PDF into per-report sections of labeled
- * FHIR resources, each beside its source id — the one-file set the importer's
- * `decode` reads.
+ * Decode one picked LifeLabs report PDF into per-report sections of labeled,
+ * detached FHIR resources — the one-file set the importer's `decode` reads.
  *
  * @param file - The picked file, whose `bytes` are a LifeLabs "Reports" PDF
  *   exactly as the picker read them
  * @param settings - The import's settings (time zone for date interpretation)
- * @returns One `FromSource` section per report, no notes; fails only
+ * @returns One section per report, and a note per page skipped for printing
+ *   no `Lab No`; fails only
  *   with a `ParseError` when the bytes are not a PDF the extractor can open or
  *   the extracted text is not a recognized LifeLabs report; requires the
  *   {@link PositionedTextExtractor}

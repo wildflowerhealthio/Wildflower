@@ -1,3 +1,4 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   Bundle,
   MedicationDispense,
@@ -11,8 +12,11 @@ import {
 import { Effect, Predicate, RegExp as EffectRegExp, Schema } from 'effect'
 import { promoteMedicationDispense } from '../promote/medication-dispense.ts'
 import { promoteMedicationRequest } from '../promote/medication-request.ts'
-import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
-import { REXALL_PHARMACY_LOCATION_URL, tunnelGetMatcher } from '../tunnel-url.ts'
+import {
+  REXALL_PHARMACY_LOCATION_URL,
+  REXALL_STU3_BASE_URL,
+  tunnelGetMatcher,
+} from '../tunnel-url.ts'
 
 /** A decoded carebook medication: an fhir-r4 `MedicationRequest` or `MedicationDispense`. */
 type MedicationResource =
@@ -82,13 +86,19 @@ const medicationListUrl = new RegExp(`^${EffectRegExp.escape(REXALL_PHARMACY_LOC
  * Response kind for the Rexall prescriptions page's single XHR: one
  * heterogeneous carebook STU3 searchset (matched `Location` plus medication and
  * other `_revinclude`s). `parse` decodes it "as is", keeps only the
- * `MedicationRequest` / `MedicationDispense` resources, and drops-and-logs the
- * rest. List-only — no detail crawl (#339).
+ * `MedicationRequest` / `MedicationDispense` resources, and drops-and-logs
+ * the rest. List-only — no detail crawl (#339).
+ *
+ * Carebook is a FHIR server rooted at {@link REXALL_STU3_BASE_URL}, so each
+ * medication is detached from it: a `MedicationRequest` keyed in
+ * `<base>/MedicationRequest`, its `Patient/<uid>` subject naming the key in
+ * `<base>/Patient`. Carebook's non-R4 `PrescriptionOrder/<id>` literals pass
+ * through as carebook wrote them.
  */
-const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<MedicationResource> =
+const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<DetachedResource.Type> =
   HttpResponseKind.make({
     name: 'MedicationListResponseKind',
-    tryRecognize: recognizePortal(tunnelGetMatcher(medicationListUrl), REXALL_CAREBOOK_SYSTEM),
+    tryRecognize: recognizePortal(tunnelGetMatcher(medicationListUrl)),
     parse: (response) =>
       Effect.gen(function* () {
         const bundle = yield* decode(extractJson(response.text()))
@@ -97,6 +107,7 @@ const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<MedicationRe
           .map(({ resource }) => resource)
           .filter((resource) => isMedication(resource))
           .map(promote)
+          .map(DetachedResource.fromServerRecord(REXALL_STU3_BASE_URL))
         const droppedCount = allEntries.length - resources.length
         if (droppedCount > 0) {
           yield* Effect.logInfo(

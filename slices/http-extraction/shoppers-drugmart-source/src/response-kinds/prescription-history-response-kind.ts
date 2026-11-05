@@ -1,5 +1,5 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   HttpResponseKind,
   extractJson,
@@ -24,7 +24,6 @@ import {
   shoppersStoreDisplay,
   shoppersStoreLocatorUrl,
 } from '../shoppers.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
 
 /** The dispensing store as a history entry carries it (all parts optional; `null` reads as absent). */
@@ -67,7 +66,7 @@ const HistoryPayload = Schema.Struct({
 
 const decodeHistory = Schema.decode(Schema.parseJson(HistoryPayload))
 const decodeCustomerId = Schema.decodeUnknown(Schema.NonEmptyString)
-const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
+const decodeDispense = DetachedResource.decodeUnknown(MedicationDispense.Schema)
 
 /**
  * The account a history XHR is for: its `customerId` query parameter. A
@@ -90,30 +89,44 @@ const accountSubjectWire = (customerId: string): Record<string, unknown> => ({
 })
 
 /**
- * The `authorizingPrescription` wire linking a dispense to its request: a
- * relative `MedicationRequest/<prescriptionId>` reference carrying
- * `prescriptionNumber` as the reference's own `identifier`. `undefined` when
+ * The `authorizingPrescription` wire linking a dispense to its request: the
+ * logical reference to the `MedicationRequest` keyed by `prescriptionId`, else
+ * an identifier-only reference by `prescriptionNumber`. `undefined` when
  * neither is present.
+ *
+ * @remarks
+ * The slot holds one identifier, so a fill with a `prescriptionId` names the
+ * request by its key alone: the request carries its number itself.
  */
 const authorizingPrescriptionWire = (
   dispense: SourceHistoryDispense
 ): ReadonlyArray<Record<string, unknown>> | undefined => {
-  const wire: Record<string, unknown> = {}
   if (dispense.prescriptionId != null) {
-    wire['reference'] = `MedicationRequest/${dispense.prescriptionId}`
+    return [
+      {
+        ...DetachedResource.logicalReferenceWire('MedicationRequest', {
+          system: ShoppersIdentifierSystem.PrescriptionId,
+          value: dispense.prescriptionId,
+        }),
+      },
+    ]
   }
   if (dispense.prescriptionNumber != null) {
-    wire['identifier'] = {
-      system: ShoppersIdentifierSystem.PrescriptionNumber,
-      value: String(dispense.prescriptionNumber),
-    }
+    return [
+      {
+        identifier: {
+          system: ShoppersIdentifierSystem.PrescriptionNumber,
+          value: String(dispense.prescriptionNumber),
+        },
+      },
+    ]
   }
-  return Object.keys(wire).length > 0 ? [wire] : undefined
+  return undefined
 }
 
 /**
  * The `location` wire: a `Reference` to the public store-locator URL for the
- * store id (absolute, so adoption leaves it untouched), with the store name as
+ * store id (absolute, so import leaves it as it is), with the store name as
  * `display`, else one made from the store number. `undefined` when no store id
  * is present.
  */
@@ -134,8 +147,9 @@ const locationWire = (
 }
 
 /**
- * Build the R4 `MedicationDispense` **wire** for one history entry; `undefined`
- * when it has no `dispenseId` (so it drops-and-counts). `status` is a flat
+ * Build the detached R4 `MedicationDispense` **wire** for one history entry,
+ * keyed by its `dispenseId` in `ShoppersIdentifierSystem.DispenseId`;
+ * `undefined` when it has no `dispenseId` (so it drops-and-counts). `status` is a flat
  * `'completed'`, and the `subject` names the account the history is for, by
  * identifier alone — the payload carries no `patientId`.
  */
@@ -146,8 +160,12 @@ const dispenseWire = (
   if (dispense.dispenseId == null) return undefined
   const wire: Record<string, unknown> = {
     resourceType: 'MedicationDispense',
-    id: dispense.dispenseId,
-    identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: dispense.dispenseId }],
+    identifier: [
+      DetachedResource.keyIdentifierWire({
+        system: ShoppersIdentifierSystem.DispenseId,
+        value: dispense.dispenseId,
+      }),
+    ],
     status: 'completed',
     subject: accountSubjectWire(customerId),
   }
@@ -191,10 +209,10 @@ const historyUrl = new RegExp(
  * via `Effect.logInfo`; its siblings are still emitted. A URL with no
  * `customerId` fails the parse.
  */
-const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
+const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<DetachedResource.Type> =
   HttpResponseKind.make({
     name: 'PrescriptionHistoryResponseKind',
-    tryRecognize: recognizePortal(portalGetMatcher(historyUrl), SHOPPERS_DRUGMART_SYSTEM),
+    tryRecognize: recognizePortal(portalGetMatcher(historyUrl)),
     parse: (response) =>
       Effect.gen(function* () {
         const customerId = yield* customerIdOf(response.url)

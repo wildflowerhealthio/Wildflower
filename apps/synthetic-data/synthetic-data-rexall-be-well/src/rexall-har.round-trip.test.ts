@@ -20,7 +20,7 @@ import {
   repeatsAvailableOf,
   type MedicationRequestWithId,
 } from '@wildflowerhealthio/medication-core/fhir'
-import { REXALL_CAREBOOK_SYSTEM } from '@wildflowerhealthio/rexall-be-well-source'
+import { REXALL_STU3_BASE_URL } from '@wildflowerhealthio/rexall-be-well-source'
 import {
   ageOn,
   asOfArbitrary,
@@ -40,7 +40,8 @@ import { rexallAccountArbitrary } from './test-helpers.ts'
  * Generated stories' Rexall HARs through the real HAR importer
  * (`har-importer-core`'s `harImporter.decode`, which recognizes the traffic
  * through `rexall-be-well-source`, decodes the carebook STU3 dialect to R4,
- * promotes its extensions and adopts the resources), then read the way the
+ * promotes its extensions and detaches the resources) and the import stage
+ * (`importer-core`'s `importDecoded`, which adopts them), then read the way the
  * medication views read them (`medication-core`).
  *
  * @remarks
@@ -161,7 +162,8 @@ const dispensesAuthorizedBy = (
 ): readonly MedicationDispense.Type[] => {
   const carebookIds = new Set(
     request.identifier.flatMap((identifier) =>
-      identifier.system?.href === REXALL_CAREBOOK_SYSTEM && typeof identifier.value === 'string'
+      identifier.system?.href === `${REXALL_STU3_BASE_URL}/MedicationRequest` &&
+      typeof identifier.value === 'string'
         ? [identifier.value]
         : []
     )

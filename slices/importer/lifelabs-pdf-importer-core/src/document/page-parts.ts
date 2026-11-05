@@ -6,7 +6,7 @@ import * as Table from './table.ts'
 
 /**
  * One page cut into the three regions the dialect reads: the header block, the
- * results-grid body, and the footer (its `Page n of N` index and status).
+ * results-grid body, and the footer (its status).
  *
  * @remarks
  * {@link split} clusters the page's runs into lines ({@link Table.fromPage}),
@@ -26,7 +26,6 @@ interface Type {
   readonly pageNumber: number
   readonly header: PageHeader.Type
   readonly body: readonly Table.Line[]
-  readonly pageIndex: PageFooter.Type | undefined
   readonly status: string
   /** Whether the page carried a results-grid heading (`Test | Flag | Result | …`). */
   readonly hasGrid: boolean
@@ -51,7 +50,6 @@ const split = (page: Page.Type): Type => {
     pageNumber: page.pageNumber,
     header: PageHeader.fromLines(headerLines),
     body,
-    pageIndex: PageFooter.tryIndexFromLines(footer),
     status: PageFooter.statusFromLines(footer),
     hasGrid: headingIndex !== -1,
   }

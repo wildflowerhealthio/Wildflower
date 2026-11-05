@@ -1,5 +1,4 @@
-import { adoptUnderRecognizedRoot } from '@wildflowerhealthio/fhir-r4-adoption'
-import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { CustomerResponseKind } from './response-kinds/customer-response-kind.ts'
@@ -8,18 +7,14 @@ import { PrescriptionResponseKind } from './response-kinds/prescription-response
 
 /**
  * The three Shoppers Drug Mart response kinds — Customer, Prescription,
- * PrescriptionHistory — each adopted so its resources key under the root its own
- * `tryRecognize` mints. A module-level constant (stable by identity) the
- * archive importer consumes by reference; the three recognizers are disjoint
- * by construction (different path segments), so order is not load-bearing.
+ * PrescriptionHistory — each synthesizing detached resources keyed in the
+ * portal's own identifier systems (`ShoppersIdentifierSystem`), naming one
+ * another by logical reference. A module-level constant (stable by
+ * identity) the archive importer consumes by reference; the three recognizers
+ * are disjoint by construction (different path segments), so order is not
+ * load-bearing.
  */
-const unadopted: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = [
-  CustomerResponseKind,
-  PrescriptionResponseKind,
-  PrescriptionHistoryResponseKind,
-]
-
-const shoppersDrugMartResponseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResourceWithId>[] =
-  unadopted.map(adoptUnderRecognizedRoot)
+const shoppersDrugMartResponseKinds: readonly HttpResponseKind.HttpResponseKind<DetachedResource.Type>[] =
+  [CustomerResponseKind, PrescriptionResponseKind, PrescriptionHistoryResponseKind]
 
 export { shoppersDrugMartResponseKinds }

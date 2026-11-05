@@ -14,58 +14,58 @@
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "0:lifelabs-report.pdf/Practitioner/89cbf94afbd515b7",
-      "resource": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b",
-      "title": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b"
+      "key": "0:lifelabs-report.pdf/Practitioner/ROY DR. ANNE",
+      "resource": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba",
+      "title": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "0:lifelabs-report.pdf/Practitioner/aaaf66a1620d6aae",
-      "resource": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759",
-      "title": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759"
+      "key": "0:lifelabs-report.pdf/Practitioner/OSEI DR. KWAME",
+      "resource": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77",
+      "title": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "0:lifelabs-report.pdf/Patient/a5ff7f4bd78368a3",
-      "resource": "Patient/wf-929179822271976c1757d6f21670ddfd",
-      "title": "Patient/wf-929179822271976c1757d6f21670ddfd"
+      "key": "0:lifelabs-report.pdf/Patient/OKAFOR, AVERY, Sep 21 1974",
+      "resource": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
+      "title": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "0:lifelabs-report.pdf/Observation/d0a244442a06d3e0",
-      "resource": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404",
-      "title": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404"
+      "key": "0:lifelabs-report.pdf/Observation/2026-PF2780400/Chemistry/Sodium/0",
+      "resource": "Observation/wf-55898962516ff63010257b19082a04f9",
+      "title": "Observation/wf-55898962516ff63010257b19082a04f9"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "0:lifelabs-report.pdf/Observation/89a50a75b0a929da",
-      "resource": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684",
-      "title": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684"
+      "key": "0:lifelabs-report.pdf/Observation/2026-PF2780400/Chemistry/Potassium/1",
+      "resource": "Observation/wf-ff37617ab308f3a4c8df60851d8112bb",
+      "title": "Observation/wf-ff37617ab308f3a4c8df60851d8112bb"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "0:lifelabs-report.pdf/DiagnosticReport/1182b282c7978560",
-      "resource": "DiagnosticReport/wf-bfceff03e1708baeffb6156b2a7448e3",
-      "title": "DiagnosticReport/wf-bfceff03e1708baeffb6156b2a7448e3"
+      "key": "0:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400",
+      "resource": "DiagnosticReport/wf-489d0b0ef4d940bf67ed10a1ca5bc3ac",
+      "title": "DiagnosticReport/wf-489d0b0ef4d940bf67ed10a1ca5bc3ac"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "0:lifelabs-report.pdf/Observation/e707dfd6d358d4b1",
-      "resource": "Observation/wf-3a2491bf06f64c173c7e85ce78904780",
-      "title": "Observation/wf-3a2491bf06f64c173c7e85ce78904780"
+      "key": "0:lifelabs-report.pdf/Observation/2026-NN6198463/Chemistry/ALT/0",
+      "resource": "Observation/wf-475d03604c043bab5175cc5795e53040",
+      "title": "Observation/wf-475d03604c043bab5175cc5795e53040"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "0:lifelabs-report.pdf/DiagnosticReport/955b4a2e0deab847",
-      "resource": "DiagnosticReport/wf-35d65b4646cf3301647821030d22822c",
-      "title": "DiagnosticReport/wf-35d65b4646cf3301647821030d22822c"
+      "key": "0:lifelabs-report.pdf/DiagnosticReport/2026-NN6198463",
+      "resource": "DiagnosticReport/wf-6e6d2d373433481f7c09b7c537483184",
+      "title": "DiagnosticReport/wf-6e6d2d373433481f7c09b7c537483184"
     }
   ],
   "sourceFileRePicks": [
@@ -106,23 +106,18 @@
       },
       "conclusionCode": [],
       "contained": [],
-      "effectiveDateTime": "2026-10-21T12:26:00.000Z",
+      "effectiveDateTime": "2026-09-01T13:09:00.000Z",
       "extension": [],
-      "id": "wf-35d65b4646cf3301647821030d22822c",
+      "id": "wf-489d0b0ef4d940bf67ed10a1ca5bc3ac",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "955b4a2e0deab847"
-        },
-        {
-          "extension": [],
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/lab-number",
-          "value": "2026-NN6198463"
+          "value": "2026-PF2780400"
         }
       ],
       "imagingStudy": [],
-      "issued": "2026-10-21T17:52:00.000Z",
+      "issued": "2026-09-01T20:38:00.000Z",
       "media": [],
       "meta": {
         "profile": [],
@@ -144,10 +139,21 @@
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "e707dfd6d358d4b1"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
+            "value": "2026-PF2780400/Chemistry/Sodium/0"
           },
-          "reference": "Observation/wf-3a2491bf06f64c173c7e85ce78904780"
+          "reference": "Observation/wf-55898962516ff63010257b19082a04f9",
+          "type": "Observation"
+        },
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
+            "value": "2026-PF2780400/Chemistry/Potassium/1"
+          },
+          "reference": "Observation/wf-ff37617ab308f3a4c8df60851d8112bb",
+          "type": "Observation"
         }
       ],
       "resultsInterpreter": [
@@ -155,19 +161,21 @@
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "89cbf94afbd515b7"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+            "value": "ROY DR. ANNE"
           },
-          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b"
+          "reference": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba",
+          "type": "Practitioner"
         },
         {
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "aaaf66a1620d6aae"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+            "value": "OSEI DR. KWAME"
           },
-          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759"
+          "reference": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77",
+          "type": "Practitioner"
         }
       ],
       "specimen": [],
@@ -176,10 +184,11 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
+        "type": "Patient"
       }
     },
     {
@@ -211,23 +220,18 @@
       },
       "conclusionCode": [],
       "contained": [],
-      "effectiveDateTime": "2026-09-01T13:09:00.000Z",
+      "effectiveDateTime": "2026-10-21T12:26:00.000Z",
       "extension": [],
-      "id": "wf-bfceff03e1708baeffb6156b2a7448e3",
+      "id": "wf-6e6d2d373433481f7c09b7c537483184",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "1182b282c7978560"
-        },
-        {
-          "extension": [],
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/lab-number",
-          "value": "2026-PF2780400"
+          "value": "2026-NN6198463"
         }
       ],
       "imagingStudy": [],
-      "issued": "2026-09-01T20:38:00.000Z",
+      "issued": "2026-10-21T17:52:00.000Z",
       "media": [],
       "meta": {
         "profile": [],
@@ -249,19 +253,11 @@
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "d0a244442a06d3e0"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
+            "value": "2026-NN6198463/Chemistry/ALT/0"
           },
-          "reference": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404"
-        },
-        {
-          "extension": [],
-          "identifier": {
-            "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "89a50a75b0a929da"
-          },
-          "reference": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684"
+          "reference": "Observation/wf-475d03604c043bab5175cc5795e53040",
+          "type": "Observation"
         }
       ],
       "resultsInterpreter": [
@@ -269,19 +265,21 @@
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "89cbf94afbd515b7"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+            "value": "ROY DR. ANNE"
           },
-          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b"
+          "reference": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba",
+          "type": "Practitioner"
         },
         {
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "aaaf66a1620d6aae"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+            "value": "OSEI DR. KWAME"
           },
-          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759"
+          "reference": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77",
+          "type": "Practitioner"
         }
       ],
       "specimen": [],
@@ -290,10 +288,11 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
+        "type": "Patient"
       }
     },
     {
@@ -373,12 +372,12 @@
       "extension": [],
       "focus": [],
       "hasMember": [],
-      "id": "wf-3a2491bf06f64c173c7e85ce78904780",
+      "id": "wf-475d03604c043bab5175cc5795e53040",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "e707dfd6d358d4b1"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
+          "value": "2026-NN6198463/Chemistry/ALT/0"
         }
       ],
       "interpretation": [],
@@ -419,10 +418,11 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
+        "type": "Patient"
       },
       "valueQuantity": {
         "code": "U/L",
@@ -460,12 +460,12 @@
       "extension": [],
       "focus": [],
       "hasMember": [],
-      "id": "wf-9720aaee0f5f747b30b6b794b85cd404",
+      "id": "wf-55898962516ff63010257b19082a04f9",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "d0a244442a06d3e0"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
+          "value": "2026-PF2780400/Chemistry/Sodium/0"
         }
       ],
       "interpretation": [],
@@ -513,10 +513,11 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
+        "type": "Patient"
       },
       "valueQuantity": {
         "code": "mmol/L",
@@ -554,12 +555,12 @@
       "extension": [],
       "focus": [],
       "hasMember": [],
-      "id": "wf-d48dd6b6316eba1fb28f4f4c89396684",
+      "id": "wf-ff37617ab308f3a4c8df60851d8112bb",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "89a50a75b0a929da"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/observation",
+          "value": "2026-PF2780400/Chemistry/Potassium/1"
         }
       ],
       "interpretation": [
@@ -625,10 +626,11 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd"
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
+        "type": "Patient"
       },
       "valueQuantity": {
         "code": "mmol/L",
@@ -647,12 +649,12 @@
       "extension": [],
       "gender": "female",
       "generalPractitioner": [],
-      "id": "wf-929179822271976c1757d6f21670ddfd",
+      "id": "wf-a7fcdb93d5f9088a2c33aafff7629593",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
         },
         {
           "extension": [],
@@ -689,12 +691,12 @@
       "communication": [],
       "contained": [],
       "extension": [],
-      "id": "wf-137fa84b1bd8c50085270ab8338ec759",
+      "id": "wf-73e25200c0e79e7282a9d7a406660c77",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "aaaf66a1620d6aae"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+          "value": "OSEI DR. KWAME"
         },
         {
           "extension": [],
@@ -728,12 +730,12 @@
       "communication": [],
       "contained": [],
       "extension": [],
-      "id": "wf-d2f7e22f205a20ea746c212ca5a4a24b",
+      "id": "wf-80ba24ff7137298b01b47eb3d87d11ba",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "89cbf94afbd515b7"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+          "value": "ROY DR. ANNE"
         },
         {
           "extension": [],

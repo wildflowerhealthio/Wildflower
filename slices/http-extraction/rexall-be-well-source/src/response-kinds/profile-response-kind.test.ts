@@ -1,9 +1,6 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  type HttpResponse,
-  Specificity,
-  SystemFamily,
-} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult } from 'effect'
@@ -11,7 +8,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import profileMe from '../fixtures/profile-me.json' with { type: 'json' }
-import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
+import { REXALL_STU3_PATIENT_SYSTEM } from '../tunnel-url.ts'
 import { ProfileResponseKind } from './profile-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
@@ -23,8 +20,10 @@ const makeResponse = (body: string, url = PROFILE_URL): HttpResponse.HttpRespons
 
 const runParse = (
   r: HttpResponse.HttpResponse
-): Either.Either<readonly (typeof Patient.Schema.Type)[], ParseResult.ParseError> =>
-  Effect.runSync(Effect.either(ProfileResponseKind.parse(r)))
+): Either.Either<
+  readonly DetachedResource.Detached<typeof Patient.Schema.Type>[],
+  ParseResult.ParseError
+> => Effect.runSync(Effect.either(ProfileResponseKind.parse(r)))
 
 describe('ProfileResponseKind', () => {
   describe('tryRecognize', () => {
@@ -54,12 +53,9 @@ describe('ProfileResponseKind', () => {
       expect(Option.isSome(ProfileResponseKind.tryRecognize(url, Option.some('GET')))).toBe(match)
     })
 
-    it('mints its system, fixed across resource types, at portal specificity', () => {
+    it('claims at portal specificity', () => {
       expect(ProfileResponseKind.tryRecognize(PROFILE_URL, Option.some('GET'))).toStrictEqual(
-        Option.some({
-          specificity: Specificity.PORTAL,
-          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: REXALL_CAREBOOK_SYSTEM }),
-        })
+        Option.some({ specificity: Specificity.PORTAL })
       )
     })
   })
@@ -71,7 +67,10 @@ describe('ProfileResponseKind', () => {
       expect(result.right).toHaveLength(1)
       const patient = result.right[0]
       // id is the uid every medication's subject references.
-      expect(patient.id).toBe('uid-abc-123')
+      expect(patient.id).toBeNull()
+      expect(DetachedResource.keyOf(patient)).toEqual(
+        Option.some({ system: REXALL_STU3_PATIENT_SYSTEM, value: 'uid-abc-123' })
+      )
       expect(patient.birthDate).toBe('1985-07-14')
       expect(patient.name[0]?.family).toBe('Rivera')
       expect(patient.name[0]?.given).toEqual(['Jordan'])
@@ -88,7 +87,9 @@ describe('ProfileResponseKind', () => {
       )
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
       const patient = result.right[0]
-      expect(patient.id).toBe('uid-only')
+      expect(DetachedResource.keyOf(patient)).toEqual(
+        Option.some({ system: REXALL_STU3_PATIENT_SYSTEM, value: 'uid-only' })
+      )
       expect(patient.name).toEqual([])
       expect(patient.birthDate).toBeNull()
       expect(patient.telecom).toEqual([])
@@ -127,7 +128,9 @@ describe('ProfileResponseKind', () => {
       }
       const result = runParse(makeResponse(JSON.stringify(unreadFieldsOddlyShaped)))
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
-      expect(result.right[0]?.id).toBe('uid-1')
+      expect(result.right.map(DetachedResource.keyOf)).toEqual([
+        Option.some({ system: REXALL_STU3_PATIENT_SYSTEM, value: 'uid-1' }),
+      ])
     })
 
     it('fails with ParseError when the required uid is missing', () => {

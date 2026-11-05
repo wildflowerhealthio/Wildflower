@@ -22,7 +22,6 @@ import {
   type PickedFile,
   Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { fromSourceSectionsOf } from '@wildflowerhealthio/importer-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import type { Array as Arr } from 'effect'
 import { Effect, Either, Option, Schema } from 'effect'
@@ -30,7 +29,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { DicomHeader } from '@wildflowerhealthio/dicom'
-import { SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   decodeStudy,
   linkToPatientAndStudy,
@@ -93,11 +92,10 @@ const sample = (overrides: DicomTagMap = {}): Arr.NonEmptyReadonlyArray<PickedFi
   studyFile({ ...SAMPLE_TAGS, ...overrides }),
 ]
 
-/** A decode's records adopted as the import stage adopts them, each section `FromSource`. */
+/** A decode's records adopted as the import stage adopts them. */
 const adoptedOf = (
   decoded: Pick<DecodedFileSet.Type, 'sections' | 'notes'>
-): DecodedFile.DecodedFile =>
-  DecodedFileSet.adopt({ sections: fromSourceSectionsOf(decoded), notes: decoded.notes })
+): DecodedFile.DecodedFile => DecodedFileSet.adopt(decoded)
 
 describe('decodeStudy', () => {
   it('resolves ImagingStudy.started against the settings time zone', async () => {
@@ -149,16 +147,15 @@ describe('decodeStudy', () => {
     expect(study.series[0].instance[0].extension).toEqual([])
   })
 
-  it('keys each record by its own id in the DICOM system, for the import stage to adopt', async () => {
+  it('writes each record detached, keyed in the DICOM system', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-    const [section] = fromSourceSectionsOf(result)
+    const [section] = result.sections
     if (section === undefined) throw expect.fail('expected a section')
-    expect(section.systemFamily).toEqual(
-      SystemFamily.FixedAcrossResourceTypes({ system: DICOM_SYSTEM })
-    )
-    expect(section.entries.map(({ system, sourceId }) => [system, sourceId])).toEqual(
-      section.entries.map(({ resource }) => [DICOM_SYSTEM, resource.id])
-    )
+    for (const { resource } of section.entries) {
+      expect(resource.id).toBeNull()
+      const key = DetachedResource.keyOf(resource)
+      expect(Option.map(key, ({ system }) => system)).toEqual(Option.some(DICOM_SYSTEM))
+    }
   })
 
   it('section title includes modality, description, and date', async () => {

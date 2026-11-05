@@ -25,7 +25,6 @@ import type { ParseResult } from 'effect'
 import { Array as Arr, Effect, Either } from 'effect'
 
 import * as DecodedFileSet from './decoded-file-set.ts'
-import type * as DecodedFile from './decoded-file.ts'
 import * as FormatDecode from './format-decode.ts'
 import type * as PickedFile from './picked-file.ts'
 
@@ -44,9 +43,9 @@ type Type<in TSettings, TFormat extends string, out R = never> = (
 ) => Effect.Effect<FormatDecode.Decoded<TFormat>, never, R>
 
 /**
- * One set's decode as a format's `decodeFileSet` returns it: its sections,
- * each stating whether its records are already adopted or beside their source
- * ids, its notes, and what its picked files identify themselves as.
+ * One set's decode as a format's `decodeFileSet` returns it: its sections of
+ * detached records, its notes, and what its picked files identify themselves
+ * as.
  *
  * @remarks
  * `pickedFiles` is the set's picked files, in the order they were picked, each
@@ -60,18 +59,6 @@ interface FileSetDecode {
   readonly notes: readonly string[]
   readonly pickedFiles?: Arr.NonEmptyReadonlyArray<DecodedFileSet.PickedFileIdentity> | undefined
 }
-
-/**
- * A decode whose records are already adopted, as `Adopted` sections: what the
- * HAR decoders return. Deleted with the `Adopted` case once they return
- * `FromSource` sections.
- */
-const fromAdopted = (decoded: DecodedFile.DecodedFile): FileSetDecode => ({
-  sections: decoded.sections.map((section) =>
-    DecodedFileSet.Section.Adopted({ title: section.title, entries: section.resources })
-  ),
-  notes: decoded.notes,
-})
 
 /** What {@link make} needs of a format, `R` being what its `decodeFileSet` requires. */
 interface Config<TFormat extends string, TSettings, R = never> {
@@ -196,5 +183,5 @@ const make = <TFormat extends string, TSettings, R = never>(
   }
 }
 
-export { fromAdopted, make }
+export { make }
 export type { Config, FileSetDecode, Type }

@@ -1,5 +1,4 @@
-import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { HarFromJson, emitHar } from '@wildflowerhealthio/http-archive'
 import { type Extraction, SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
@@ -7,6 +6,7 @@ import {
   runExtraction,
 } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { REXALL_STU3_PATIENT_SYSTEM } from '@wildflowerhealthio/rexall-be-well-source'
 import { type TraceBody, type TraceExchange } from '@wildflowerhealthio/web-trace-core'
 import {
   CAPTURE_FLOOR,
@@ -14,7 +14,7 @@ import {
   jsonBody,
   traceExchange,
 } from '@wildflowerhealthio/web-trace-core/test-helpers'
-import { Effect, type ParseResult, Schema } from 'effect'
+import { Array as Arr, Effect, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it, test } from 'vite-plus/test'
 
@@ -25,7 +25,7 @@ import { defaultHarSettings } from './har-settings.ts'
 
 /**
  * Covers the HAR binding's read half: `decodeHar` in, the FHIR pool run over it
- * (`runExtraction`). Two fixture routes reach the same assertions — an `emitHar`
+ * (`runExtraction`), each resource keyed as the importer detaches it. Two fixture routes reach the same assertions — an `emitHar`
  * archive shaped like ours and a committed foreign Chrome DevTools export. Also
  * asserts the structural property that `decodeHar` requires no services (the
  * FHIR write client is unreachable from a decode), at the type level and at runtime.
@@ -88,7 +88,7 @@ const harBytesOf = (exchanges: readonly TraceExchange[]): Uint8Array =>
 const fhirPool = SourceDescriptor.poolOf(fhirSources)
 
 /** The five-way extraction of running the FHIR pool over a decoded HAR. */
-const extract = (harBytes: Uint8Array): ExtractionResult<FhirResource> =>
+const extract = (harBytes: Uint8Array): ExtractionResult<DetachedResource.Type> =>
   Effect.runSync(
     decodeHar(harBytes, defaultHarSettings).pipe(
       Effect.flatMap((inputs) => runExtraction(fhirPool, inputs))
@@ -97,16 +97,23 @@ const extract = (harBytes: Uint8Array): ExtractionResult<FhirResource> =>
 
 /** Every decoded resource of one `resourceType`, in batch order. */
 const ofType = (
-  extraction: ExtractionResult<FhirResource>,
+  extraction: ExtractionResult<DetachedResource.Type>,
   resourceType: string
-): readonly FhirResource[] =>
+): readonly DetachedResource.Type[] =>
   extraction.batches
     .flatMap((batch) => batch.resources)
     .filter((resource) => resource.resourceType === resourceType)
 
+/** The key of every decoded resource of one `resourceType`, in batch order. */
+const keysOfType = (
+  extraction: ExtractionResult<DetachedResource.Type>,
+  resourceType: string
+): readonly DetachedResource.Key[] =>
+  Arr.filterMap(ofType(extraction, resourceType), DetachedResource.keyOf)
+
 describe('decodeHar + runExtraction', () => {
   describe('a Patient read + Observation searchset', () => {
-    it('should decode re-keyed resources from an emitHar archive', () => {
+    it("should decode the server's resources from an emitHar archive, each keyed by its id", () => {
       const root = 'https://r4.example.org/baseR4'
       const extraction = extract(
         harBytesOf([
@@ -130,12 +137,12 @@ describe('decodeHar + runExtraction', () => {
       expect(extraction.unmatched).toHaveLength(0)
       expect(extraction.bodyAbsent).toHaveLength(0)
       expect(extraction.parseFailures).toEqual([])
-      expect(ofType(extraction, 'Patient').map((resource) => resource.id)).toEqual([
-        localResourceId(`${root}/Patient`, 'Patient', 'pat-7'),
+      expect(keysOfType(extraction, 'Patient')).toEqual([
+        { system: `${root}/Patient`, value: 'pat-7' },
       ])
-      expect(ofType(extraction, 'Observation').map((resource) => resource.id)).toEqual([
-        localResourceId(`${root}/Observation`, 'Observation', 'obs-1'),
-        localResourceId(`${root}/Observation`, 'Observation', 'obs-2'),
+      expect(keysOfType(extraction, 'Observation')).toEqual([
+        { system: `${root}/Observation`, value: 'obs-1' },
+        { system: `${root}/Observation`, value: 'obs-2' },
       ])
     })
 
@@ -170,18 +177,18 @@ describe('decodeHar + runExtraction', () => {
         ])
       )
 
-      // Each Patient is keyed in its own server's id space, so the two ids differ
+      // Each Patient is keyed in its own server's system, so the two keys differ
       // even though both are `pat-*` — no collision across servers.
-      expect(ofType(extraction, 'Patient').map((resource) => resource.id)).toEqual([
-        localResourceId(`${rootA}/Patient`, 'Patient', 'pat-7'),
-        localResourceId(`${rootB}/Patient`, 'Patient', 'pat-9'),
+      expect(keysOfType(extraction, 'Patient')).toEqual([
+        { system: `${rootA}/Patient`, value: 'pat-7' },
+        { system: `${rootB}/Patient`, value: 'pat-9' },
       ])
-      expect(ofType(extraction, 'Observation').map((resource) => resource.id)).toEqual([
-        localResourceId(`${rootB}/Observation`, 'Observation', 'obs-b1'),
+      expect(keysOfType(extraction, 'Observation')).toEqual([
+        { system: `${rootB}/Observation`, value: 'obs-b1' },
       ])
     })
 
-    it('should decode re-keyed resources from a committed Chrome DevTools export', () => {
+    it('should decode keyed resources from a committed Chrome DevTools export', () => {
       const root = 'https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4'
       const extraction = extract(bytesOf(JSON.stringify(chromeHar)))
 
@@ -190,12 +197,12 @@ describe('decodeHar + runExtraction', () => {
       expect(extraction.unmatched).toHaveLength(3)
       expect(extraction.bodyAbsent).toHaveLength(0)
       expect(extraction.parseFailures).toEqual([])
-      expect(ofType(extraction, 'Patient').map((resource) => resource.id)).toEqual([
-        localResourceId(`${root}/Patient`, 'Patient', 'eXYZ123'),
+      expect(keysOfType(extraction, 'Patient')).toEqual([
+        { system: `${root}/Patient`, value: 'eXYZ123' },
       ])
-      expect(ofType(extraction, 'Observation').map((resource) => resource.id)).toEqual([
-        localResourceId(`${root}/Observation`, 'Observation', 'obs-a'),
-        localResourceId(`${root}/Observation`, 'Observation', 'obs-b'),
+      expect(keysOfType(extraction, 'Observation')).toEqual([
+        { system: `${root}/Observation`, value: 'obs-a' },
+        { system: `${root}/Observation`, value: 'obs-b' },
       ])
     })
   })
@@ -203,7 +210,7 @@ describe('decodeHar + runExtraction', () => {
   describe('a Shoppers Drug Mart prescription-history archive', () => {
     // A hand-built history payload, not a real capture. Replace this synthetic
     // exchange with an anonymized `.har` fixture — see #562.
-    it('should decode re-keyed MedicationDispense resources from a portal capture', () => {
+    it("should decode MedicationDispense resources from a portal capture, keyed in the portal's dispense-id system", () => {
       const extraction = extract(
         harBytesOf([
           traceExchange({
@@ -234,22 +241,19 @@ describe('decodeHar + runExtraction', () => {
       expect(extraction.unmatched).toHaveLength(0)
       expect(extraction.bodyAbsent).toHaveLength(0)
       expect(extraction.parseFailures).toEqual([])
-      expect(ofType(extraction, 'MedicationDispense')).toHaveLength(1)
-      const [dispense] = ofType(extraction, 'MedicationDispense')
-      expect(dispense?.id).toBe(
-        localResourceId(
-          'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart',
-          'MedicationDispense',
-          'disp-1'
-        )
-      )
+      expect(keysOfType(extraction, 'MedicationDispense')).toEqual([
+        {
+          system: 'https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/dispense-id',
+          value: 'disp-1',
+        },
+      ])
     })
   })
 
   describe('a Rexall Be Well profile archive', () => {
     // A hand-built carebook profile payload, not a real capture. Replace this
     // synthetic exchange with an anonymized `.har` fixture — see #562.
-    it('should synthesize a re-keyed Patient from a carebook profile capture', () => {
+    it('should synthesize a keyed Patient from a carebook profile capture', () => {
       const extraction = extract(
         harBytesOf([
           traceExchange({
@@ -272,15 +276,9 @@ describe('decodeHar + runExtraction', () => {
       expect(extraction.unmatched).toHaveLength(0)
       expect(extraction.bodyAbsent).toHaveLength(0)
       expect(extraction.parseFailures).toEqual([])
-      expect(ofType(extraction, 'Patient')).toHaveLength(1)
-      const [synthesizedPatient] = ofType(extraction, 'Patient')
-      expect(synthesizedPatient?.id).toBe(
-        localResourceId(
-          'https://wildflowerhealth.io/fhir/sid/rexall-carebook',
-          'Patient',
-          'uid-abc-123'
-        )
-      )
+      expect(keysOfType(extraction, 'Patient')).toEqual([
+        { system: REXALL_STU3_PATIENT_SYSTEM, value: 'uid-abc-123' },
+      ])
     })
   })
 

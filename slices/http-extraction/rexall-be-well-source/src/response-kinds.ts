@@ -1,22 +1,18 @@
-import { adoptUnderRecognizedRoot } from '@wildflowerhealthio/fhir-r4-adoption'
-import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { MedicationListResponseKind } from './response-kinds/medication-list-response-kind.ts'
 import { ProfileResponseKind } from './response-kinds/profile-response-kind.ts'
 
 /**
- * The two Rexall response kinds — Profile, MedicationList — each adopted so its
- * resources key under the root its own `tryRecognize` mints. A module-level
+ * The two Rexall response kinds — Profile, MedicationList — each yielding
+ * detached records keyed under `REXALL_STU3_BASE_URL`: the profile's Patient
+ * written detached in `<base>/Patient`, carebook's medications detached from
+ * its searchset. A module-level
  * constant (stable by identity) the archive importer consumes by reference;
  * the two patterns are disjoint, so order is not load-bearing.
  */
-const unadopted: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = [
-  ProfileResponseKind,
-  MedicationListResponseKind,
-]
-
-const rexallBeWellResponseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResourceWithId>[] =
-  unadopted.map(adoptUnderRecognizedRoot)
+const rexallBeWellResponseKinds: readonly HttpResponseKind.HttpResponseKind<DetachedResource.Type>[] =
+  [ProfileResponseKind, MedicationListResponseKind]
 
 export { rexallBeWellResponseKinds }

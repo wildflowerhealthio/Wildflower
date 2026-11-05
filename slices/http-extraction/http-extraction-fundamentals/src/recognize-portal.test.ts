@@ -3,21 +3,15 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { recognizePortal } from './recognize-portal.ts'
 import { Specificity } from './specificity.ts'
-import * as SystemFamily from './system-family.ts'
 import * as UrlMatch from './url-match.ts'
-
-const SYSTEM = 'https://portal.example/system'
 
 describe('recognizePortal', () => {
   describe('over a RegExp', () => {
-    const tryRecognize = recognizePortal(/^https:\/\/portal\.example\/rx(?:\?|$)/, SYSTEM)
+    const tryRecognize = recognizePortal(/^https:\/\/portal\.example\/rx(?:\?|$)/)
 
-    it('claims a matching URL at the portal tier under the given system', () => {
+    it('claims a matching URL at the portal tier', () => {
       expect(tryRecognize('https://portal.example/rx', Option.some('GET'))).toEqual(
-        Option.some({
-          specificity: Specificity.PORTAL,
-          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SYSTEM }),
-        })
+        Option.some({ specificity: Specificity.PORTAL })
       )
     })
 
@@ -34,16 +28,12 @@ describe('recognizePortal', () => {
 
   describe('over a UrlMatcher', () => {
     const tryRecognize = recognizePortal(
-      UrlMatch.make({ verb: ['GET'], segments: [UrlMatch.literal('rx')] }),
-      SYSTEM
+      UrlMatch.make({ verb: ['GET'], segments: [UrlMatch.literal('rx')] })
     )
 
     it('claims a matching URL under a declared verb', () => {
       expect(tryRecognize('https://portal.example/rx', Option.some('GET'))).toEqual(
-        Option.some({
-          specificity: Specificity.PORTAL,
-          systemFamily: SystemFamily.FixedAcrossResourceTypes({ system: SYSTEM }),
-        })
+        Option.some({ specificity: Specificity.PORTAL })
       )
     })
 

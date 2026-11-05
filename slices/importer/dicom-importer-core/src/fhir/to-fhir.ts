@@ -1,13 +1,4 @@
 import type { DicomHeader, PersonName } from '@wildflowerhealthio/dicom'
-import { HumanName, type IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { joinIdComponents } from '@wildflowerhealthio/fhir-r4/identity'
-import {
-  ImagingStudy,
-  Patient,
-  Practitioner,
-  ServiceRequest,
-} from '@wildflowerhealthio/fhir-r4/resources'
-import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
 /**
  * Synthesize FHIR R4 resources from one study's parsed
  * {@link DicomHeader.Type}s: a `Patient`, optionally a `ServiceRequest` (when
@@ -22,15 +13,27 @@ import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
  * one study is `decode.ts`; what this module does with one is described on
  * {@link toFhirResources}.
  *
- * Ids are deterministic — the same tags produce the same ids — so re-importing
- * the same study overwrites rather than duplicates, and the order the files
- * were picked in changes nothing (see {@link compareInstances}). The
- * derivation mirrors `lifelabs-pdf-importer-core`'s wire-builder pattern: a
- * `sourceId` from `joinIdComponents` through `fnv1a64`, validated through the
- * `fhir-r4` schemas' `Schema.decodeUnknown`.
+ * Every record is written detached: keyed by a source id in `DICOM_SYSTEM`
+ * (`identifier[0]`), naming the others by logical reference. Source ids are
+ * deterministic — the same tags produce the same ids — so re-importing the
+ * same study overwrites rather than duplicates, and the order the files were
+ * picked in changes nothing (see {@link compareInstances}). The derivation
+ * mirrors `lifelabs-pdf-importer-core`'s wire-builder pattern: a `sourceId`
+ * from `joinIdComponents` through `fnv1a64`, validated through
+ * `fhir-r4-adoption`'s `DetachedResource.decodeUnknown`.
  *
  * @packageDocumentation
  */
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { HumanName, type IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { joinIdComponents } from '@wildflowerhealthio/fhir-r4/identity'
+import {
+  ImagingStudy,
+  Patient,
+  Practitioner,
+  ServiceRequest,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
 import {
   Array as Arr,
   DateTime,
@@ -38,7 +41,6 @@ import {
   Option,
   Order,
   type ParseResult,
-  Schema,
   String as Str,
 } from 'effect'
 
@@ -47,6 +49,16 @@ import { DICOM_SYSTEM } from '../source-system.ts'
 import { dicomCalendarDate, dicomInstant } from './dates.ts'
 
 type Wire = Record<string, unknown>
+
+/** The key identifier wire of the record the synthesis gave `id`: `identifier[0]`. */
+const keyWire = (id: string): Wire => ({
+  ...DetachedResource.keyIdentifierWire({ system: DICOM_SYSTEM, value: id }),
+})
+
+/** The logical reference wire to the record of `resourceType` the synthesis gave `id`. */
+const referenceWire = (resourceType: 'Patient' | 'ServiceRequest', id: string): Wire => ({
+  ...DetachedResource.logicalReferenceWire(resourceType, { system: DICOM_SYSTEM, value: id }),
+})
 
 const sourceId = (components: readonly string[]): string =>
   fnv1a64(joinIdComponents(components)).toString(16).padStart(16, '0')
@@ -150,9 +162,9 @@ const patientWire = (header: DicomHeader.Type): Wire | undefined => {
   const id = patientOriginalId(header)
   if (id === undefined) return undefined
 
-  const wire: Wire = { resourceType: 'Patient', id }
+  const wire: Wire = { resourceType: 'Patient' }
 
-  const identifier: Wire[] = []
+  const identifier: Wire[] = [keyWire(id)]
   if (header.patientId !== undefined && header.patientId !== '') {
     const patIdentifier: Wire = {
       system: DICOM_SYSTEM,
@@ -163,7 +175,7 @@ const patientWire = (header: DicomHeader.Type): Wire | undefined => {
     }
     identifier.push(patIdentifier)
   }
-  if (identifier.length > 0) wire['identifier'] = identifier
+  wire['identifier'] = identifier
 
   if (header.patientName !== undefined) wire['name'] = [humanNameWire(header.patientName)]
 
@@ -208,11 +220,10 @@ const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire |
   const id = serviceRequestOriginalId(header)
   const wire: Wire = {
     resourceType: 'ServiceRequest',
-    id,
     status: 'completed',
     intent: 'order',
-    subject: { reference: `Patient/${patientId}` },
-    identifier: [{ system: DICOM_SYSTEM, value: header.accessionNumber }],
+    subject: referenceWire('Patient', patientId),
+    identifier: [keyWire(id), { system: DICOM_SYSTEM, value: header.accessionNumber }],
   }
 
   const description = header.requestedProcedureDescription ?? header.studyDescription
@@ -443,10 +454,10 @@ const imagingStudyWire = (
 
   const wire: Wire = {
     resourceType: 'ImagingStudy',
-    id,
     status: 'available',
-    subject: { reference: `Patient/${patientId}` },
+    subject: referenceWire('Patient', patientId),
     identifier: [
+      keyWire(id),
       {
         system: DICOM_UID_SYSTEM,
         value: `urn:oid:${head.studyInstanceUid}`,
@@ -474,7 +485,7 @@ const imagingStudyWire = (
   if (Option.isSome(described)) wire['description'] = described.value.header.studyDescription
 
   if (serviceRequestId !== undefined) {
-    wire['basedOn'] = [{ reference: `ServiceRequest/${serviceRequestId}` }]
+    wire['basedOn'] = [referenceWire('ServiceRequest', serviceRequestId)]
   }
 
   return wire
@@ -484,14 +495,13 @@ const imagingStudyWire = (
 // Orchestration
 // ---------------------------------------------------------------------------
 
-const decodePatient = Schema.decodeUnknown(Patient.Schema)
-const decodeServiceRequest = Schema.decodeUnknown(ServiceRequest.Schema)
-const decodeImagingStudy = Schema.decodeUnknown(ImagingStudy.Schema)
+const decodePatient = DetachedResource.decodeUnknown(Patient.Schema)
+const decodeServiceRequest = DetachedResource.decodeUnknown(ServiceRequest.Schema)
+const decodeImagingStudy = DetachedResource.decodeUnknown(ImagingStudy.Schema)
 
-type DicomFhirResources =
-  | typeof Patient.Schema.Type
-  | typeof ServiceRequest.Schema.Type
-  | typeof ImagingStudy.Schema.Type
+type DicomFhirResources = DetachedResource.Detached<
+  typeof Patient.Schema.Type | typeof ServiceRequest.Schema.Type | typeof ImagingStudy.Schema.Type
+>
 
 /**
  * Synthesize FHIR resources from one study's files.

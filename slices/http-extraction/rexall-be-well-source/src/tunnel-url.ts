@@ -16,8 +16,26 @@ const REXALL_TUNNEL_ORIGIN = 'https://rexall-prd-tunnel.letsbewell.ca'
 /** The profile-identity XHR `ProfileResponseKind` recognizes. */
 const REXALL_PROFILE_URL = `${REXALL_TUNNEL_ORIGIN}/enduser/profile/v2/me`
 
-/** The carebook STU3 API's base: every searchset `fullUrl` is rooted here. */
+/**
+ * The carebook STU3 API's base: every searchset `fullUrl` is rooted here, and
+ * carebook's records are keyed under it as a FHIR server's are,
+ * `<base>/<Type>`.
+ */
 const REXALL_STU3_BASE_URL = `${REXALL_TUNNEL_ORIGIN}/enduser/health/v1/fhir/stu3`
+
+/**
+ * The system carebook's Patients are keyed in, `<base>/Patient`.
+ *
+ * @remarks
+ * The prescriptions list is fetched with `subject=Patient/<profileUid>`
+ * ({@link medicationListUrlOf}), so carebook's Patient id is the profile's
+ * `uid`: the profile kind keys its Patient by the `uid` in this system, which
+ * is the key the searchset's `Patient/<uid>` subjects name.
+ *
+ * **Persisted wire format.** The system of every Rexall Patient's key, and so
+ * part of the id it is stored under.
+ */
+const REXALL_STU3_PATIENT_SYSTEM = `${REXALL_STU3_BASE_URL}/Patient`
 
 /**
  * The pharmacy `Location` search the prescriptions page runs, without its
@@ -83,6 +101,7 @@ export {
   REXALL_PHARMACY_LOCATION_URL,
   REXALL_PROFILE_URL,
   REXALL_STU3_BASE_URL,
+  REXALL_STU3_PATIENT_SYSTEM,
   medicationListUrlOf,
   tunnelGetMatcher,
 }

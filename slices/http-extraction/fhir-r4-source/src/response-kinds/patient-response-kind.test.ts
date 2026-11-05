@@ -1,14 +1,13 @@
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type HttpMethod,
   type HttpResponse,
   Specificity,
-  SystemFamily,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 
@@ -42,7 +41,7 @@ const wrappedHtml = (rawJson: string): string => {
 /** Run `parse` (now Effect-returning) and convert to an Either for the `expectRight/LeftToEqual` helpers. */
 const runParse = (
   r: HttpResponse.HttpResponse
-): Either.Either<readonly (typeof Patient.Schema.Type)[], ParseResult.ParseError> =>
+): Either.Either<readonly DetachedResource.Type[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(PatientResponseKind.parse(r)))
 
 describe('PatientResponseKind', () => {
@@ -60,14 +59,9 @@ describe('PatientResponseKind', () => {
         url: 'https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Patient/eXYZ',
         root: 'https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4',
       },
-    ])('recognizes "$url" under root "$root"', ({ url, root }) => {
+    ])('recognizes "$url" under root "$root"', ({ url }) => {
       const recognized = PatientResponseKind.tryRecognize(url, GET)
-      expect(recognized).toStrictEqual(
-        Option.some({
-          specificity: Specificity.PROTOCOL,
-          systemFamily: SystemFamily.FhirStyleBaseUrl({ baseUrl: root }),
-        })
-      )
+      expect(recognized).toStrictEqual(Option.some({ specificity: Specificity.PROTOCOL }))
     })
 
     it.each([
@@ -95,7 +89,12 @@ describe('PatientResponseKind', () => {
     it('parses a minimal valid Patient JSON into a single-resource array', () => {
       expectRightToEqual(
         runParse(makeResponse(JSON.stringify({ resourceType: 'Patient', id: '42' }))),
-        [expect.objectContaining({ id: '42' })]
+        [
+          expect.objectContaining({
+            id: null,
+            identifier: [expect.objectContaining({ value: '42' })],
+          }),
+        ]
       )
     })
 
@@ -111,14 +110,30 @@ describe('PatientResponseKind', () => {
             })
           )
         ),
-        [expect.objectContaining({ id: '42', gender: 'male' })]
+        [
+          expect.objectContaining({
+            id: null,
+            identifier: [expect.objectContaining({ value: '42' })],
+            gender: 'male',
+          }),
+        ]
+      )
+    })
+
+    it('keeps a Patient the server sent with no id, keyless', () => {
+      expectRightToEqual(
+        runParse(makeResponse(JSON.stringify({ resourceType: 'Patient', gender: 'female' }))),
+        [expect.objectContaining({ id: null, identifier: [], gender: 'female' })]
       )
     })
 
     it('parses a Patient JSON wrapped in the WebView JSON-viewer HTML envelope', () => {
       const raw = JSON.stringify({ resourceType: 'Patient', id: '99' })
       expectRightToEqual(runParse(makeResponse(wrappedHtml(raw))), [
-        expect.objectContaining({ id: '99' }),
+        expect.objectContaining({
+          id: null,
+          identifier: [expect.objectContaining({ value: '99' })],
+        }),
       ])
     })
 

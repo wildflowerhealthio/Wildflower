@@ -1,5 +1,3 @@
-import { joinIdComponents } from '@wildflowerhealthio/fhir-r4/identity'
-import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
 import { DateTime, Option } from 'effect'
 
 import type * as Report from '../../entities/report.ts'
@@ -7,21 +5,6 @@ import { parsePrintedDateTime } from '../dates.ts'
 import { ucumCodeFor, UCUM_SYSTEM } from '../units.ts'
 
 type Wire = Record<string, unknown>
-
-/**
- * The source id for a resource, from the report facts that determine it: the
- * components folded the way `fhir-r4/identity` folds them (length-prefixed,
- * so no component can impersonate two) and digested to sixteen hex digits.
- *
- * @remarks
- * A digest rather than the joined text because a source id has to be a FHIR
- * `id` — `[A-Za-z0-9\-.]`, at most 64 characters — for the adoption's
- * reference rewrite to recognize `Observation/<id>`; a practitioner's printed
- * name or a joined lab-number-and-date is neither. The facts themselves stay
- * readable on the resource (identifiers, `name.text`), only the key is hashed.
- */
-const sourceId = (components: readonly string[]): string =>
-  fnv1a64(joinIdComponents(components)).toString(16).padStart(16, '0')
 
 const timingWire = (
   report: Report.Type,
@@ -64,5 +47,5 @@ const quantityWire = (value: number, unit: string): Wire => {
   return wire
 }
 
-export { performerWire, quantityWire, reportStatus, sourceId, timingWire }
+export { performerWire, quantityWire, reportStatus, timingWire }
 export type { Wire }

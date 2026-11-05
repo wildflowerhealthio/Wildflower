@@ -1,11 +1,9 @@
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import { HttpResponseKind, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { type HttpResponseKind, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Effect, Schema } from 'effect'
 
-import { extractJson } from '../extract-json.ts'
-import { recognizeFhirRoot } from '../recognize-fhir-root.ts'
-
-type PatientType = typeof Patient.Schema.Type
+import * as FhirServerResponseKind from '../fhir-server-response-kind.ts'
 
 const decode = Schema.decode(Schema.parseJson(Patient.Schema))
 
@@ -16,22 +14,15 @@ const patientUrl = UrlMatch.make({
 })
 
 /**
- * Entity for a single FHIR R4 `Patient` resource fetched at
- * `…/Patient/:id?…`. The response body the handler captures is either
- * the raw JSON (XHR intercept) or the mobile WebView's HTML JSON-viewer
- * wrapper around it; {@link extractJson} normalizes both. On a successful
- * decode it emits the resource as a single-element array; `parse` never
- * navigates.
+ * A FHIR R4 `Patient` read, `…/Patient/<id>`: the one Patient, keyless when
+ * the server sent it with no id.
  */
-const PatientResponseKind: HttpResponseKind.HttpResponseKind<PatientType> = HttpResponseKind.make({
+const PatientResponseKind: HttpResponseKind.HttpResponseKind<
+  DetachedResource.Detached<typeof Patient.Schema.Type>
+> = FhirServerResponseKind.make({
   name: 'PatientResponseKind',
-  tryRecognize: recognizeFhirRoot(patientUrl),
-  parse: (response) =>
-    Effect.map(decode(extractJson(response.text())), (patient) => {
-      if (patient.id === null) return []
-      const withId: PatientType = { ...patient, id: patient.id }
-      return [withId]
-    }),
+  url: patientUrl,
+  readRecords: (body) => Effect.map(decode(body), (patient) => [patient]),
 })
 
 export { PatientResponseKind }

@@ -1,17 +1,18 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   DiagnosticReport,
-  type FhirResource,
   Observation,
   Patient,
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, type ParseResult, Schema } from 'effect'
+import type { DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
+import { Array as Arr, Effect, type ParseResult } from 'effect'
 
 import type * as Report from '../entities/report.ts'
-import { diagnosticReportWire, reportOriginalId } from './wire/diagnostic-report.ts'
-import { observationOriginalId, observationWire } from './wire/observation.ts'
-import { patientOriginalId, patientWire } from './wire/patient.ts'
-import { practitionerOriginalId, practitionerWire } from './wire/practitioner.ts'
+import { diagnosticReportWire, reportKeyOf } from './wire/diagnostic-report.ts'
+import { observationKeyOf, observationWire } from './wire/observation.ts'
+import { patientKeyOf, patientWire } from './wire/patient.ts'
+import { practitionerKeyOf, practitionerWire } from './wire/practitioner.ts'
 import type { Wire } from './wire/shared.ts'
 
 /** The per-import inputs the synthesis needs beyond the reports themselves. */
@@ -26,20 +27,34 @@ interface SynthesisOptions {
  * built from.
  *
  * @remarks
- * A `Patient` or `Practitioner` several reports share appears once, in the
- * group of the first report that names it (each is deduplicated by id across
- * the whole document), so flattening the groups in order writes every
- * reference target before its referrer.
+ * Each resource is an entry whose `fullUrl` is its type and its key's value,
+ * `<Type>/<value>`, which a settings re-decode keeps. A `Patient` or
+ * `Practitioner` several reports share appears once, in the group of the
+ * first report that names it (each is deduplicated by key across the whole
+ * document), so flattening the groups in order writes every reference target
+ * before its referrer.
  */
 interface ReportResources {
   readonly report: Report.Type
-  readonly resources: readonly FhirResource[]
+  readonly entries: readonly DecodedFileSet.Entry[]
 }
 
-const decodePatient = Schema.decodeUnknown(Patient.Schema)
-const decodePractitioner = Schema.decodeUnknown(Practitioner.Schema)
-const decodeDiagnosticReport = Schema.decodeUnknown(DiagnosticReport.Schema)
-const decodeObservation = Schema.decodeUnknown(Observation.Schema)
+const decodePatient = DetachedResource.decodeUnknown(Patient.Schema)
+const decodePractitioner = DetachedResource.decodeUnknown(Practitioner.Schema)
+const decodeDiagnosticReport = DetachedResource.decodeUnknown(DiagnosticReport.Schema)
+const decodeObservation = DetachedResource.decodeUnknown(Observation.Schema)
+
+/** A key as one string, for telling keys apart: its system and value. */
+const keyText = ({ system, value }: DetachedResource.Key): string => `${system}|${value}`
+
+/** `resource`, minted keyed by `key`, as its entry: `fullUrl` `<Type>/<key value>`. */
+const entryOf = (
+  key: DetachedResource.Key,
+  resource: DetachedResource.Type
+): DecodedFileSet.Entry => ({
+  fullUrl: `${resource.resourceType}/${key.value}`,
+  resource,
+})
 
 /**
  * Synthesize the FHIR resources for a set of parsed LifeLabs reports, grouped
@@ -55,9 +70,10 @@ const decodeObservation = Schema.decodeUnknown(Observation.Schema)
  *   resource does not satisfy its `fhir-r4` schema
  *
  * @remarks
- * Every report is its own `DiagnosticReport`, even when two print the same
- * lab number and date of service: the later ones are keyed by their repeat
- * count as well, so no two reports' resources share an id.
+ * Every report is its own `DiagnosticReport`, keyed by the `Lab No` it
+ * prints, and each of its rows an `Observation` keyed under that `Lab No`.
+ * The reports handed in print distinct `Lab No`s — the parse reads one report
+ * per `Lab No` — so every record has its own key and `fullUrl`.
  */
 const toFhirResources = (
   reports: readonly Report.Type[],
@@ -67,74 +83,73 @@ const toFhirResources = (
     const { timeZone } = options
     const seenPatients = new Set<string>()
     const seenPractitioners = new Set<string>()
-    // How many reports so far print each lab-number-and-date key: the count
-    // tells a repeat of the key apart (see `reportOriginalId`).
-    const keyRepeats = new Map<string, number>()
     const groups: ReportResources[] = []
     for (const report of reports) {
-      const resources: FhirResource[] = []
+      const entries: DecodedFileSet.Entry[] = []
       // Every provider the report names — the ordering provider and each CC'd
       // provider — becomes a `resultsInterpreter` reference on this report's
-      // DiagnosticReport. The ids are collected per report (deduped within it),
-      // while the Practitioner resources they point at are minted once across
-      // the whole document, in the first group that names each.
+      // DiagnosticReport. The keys are collected per report (deduped within
+      // it), while the Practitioner resources they name are minted once
+      // across the whole document, in the first group that names each.
       const providerNames = [report.orderedBy, ...report.copyTo]
         .map((name) => name.trim())
         .filter((name) => name !== '')
-      const interpreterIds: string[] = []
+      const interpreterKeys: DetachedResource.Key[] = []
       const seenInReport = new Set<string>()
       for (const name of providerNames) {
-        const id = practitionerOriginalId(name)
-        if (!seenInReport.has(id)) {
-          seenInReport.add(id)
-          interpreterIds.push(id)
+        const key = practitionerKeyOf(name)
+        if (!seenInReport.has(keyText(key))) {
+          seenInReport.add(keyText(key))
+          interpreterKeys.push(key)
         }
-        if (seenPractitioners.has(id)) continue
-        seenPractitioners.add(id)
-        resources.push(yield* decodePractitioner(practitionerWire(name)))
+        if (seenPractitioners.has(keyText(key))) continue
+        seenPractitioners.add(keyText(key))
+        entries.push(entryOf(key, yield* decodePractitioner(practitionerWire(name))))
       }
-      const patientId = patientOriginalId(report.patient)
-      if (!seenPatients.has(patientId)) {
-        seenPatients.add(patientId)
-        resources.push(yield* decodePatient(patientWire(report)))
+      const patientKey = patientKeyOf(report.patient)
+      if (!seenPatients.has(keyText(patientKey))) {
+        seenPatients.add(keyText(patientKey))
+        entries.push(entryOf(patientKey, yield* decodePatient(patientWire(report))))
       }
 
-      const reportKey = reportOriginalId(report, 0)
-      const repeat = keyRepeats.get(reportKey) ?? 0
-      keyRepeats.set(reportKey, repeat + 1)
-      const reportId = repeat === 0 ? reportKey : reportOriginalId(report, repeat)
       const observations: Wire[] = []
-      const observationIds: string[] = []
+      const observationKeys: DetachedResource.Key[] = []
       let ordinal = 0
       for (const section of report.sections) {
         for (const group of section.groups) {
           for (const row of group.rows) {
-            const id = observationOriginalId(reportId, section.name, group.name, row, ordinal)
+            const key = observationKeyOf(report, section.name, row, ordinal)
             ordinal += 1
-            observationIds.push(id)
+            observationKeys.push(key)
             observations.push(
-              observationWire(report, patientId, section.name, group.name, row, id, timeZone)
+              observationWire({
+                report,
+                row,
+                section: section.name,
+                group: group.name,
+                key,
+                patientKey,
+                timeZone,
+              })
             )
           }
         }
       }
-      for (const wire of observations) resources.push(yield* decodeObservation(wire))
-      resources.push(
-        yield* decodeDiagnosticReport(
-          diagnosticReportWire(
-            report,
-            reportId,
-            patientId,
-            observationIds,
-            timeZone,
-            interpreterIds
+      for (const [key, wire] of Arr.zip(observationKeys, observations)) {
+        entries.push(entryOf(key, yield* decodeObservation(wire)))
+      }
+      entries.push(
+        entryOf(
+          reportKeyOf(report),
+          yield* decodeDiagnosticReport(
+            diagnosticReportWire(report, patientKey, observationKeys, timeZone, interpreterKeys)
           )
         )
       )
-      groups.push({ report, resources })
+      groups.push({ report, entries })
     }
     return groups
   })
 
-export { patientOriginalId, practitionerOriginalId, reportOriginalId, toFhirResources }
+export { observationKeyOf, patientKeyOf, practitionerKeyOf, reportKeyOf, toFhirResources }
 export type { ReportResources, SynthesisOptions }

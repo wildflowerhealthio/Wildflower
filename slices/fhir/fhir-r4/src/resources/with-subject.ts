@@ -35,7 +35,8 @@ const isFiledOnSubject = (resource: FhirResource): resource is FiledOnSubject =>
  *
  * @remarks
  * For resources one import made that belong on a Patient another import
- * made — a lab result or imaging study filed on the person's pharmacy Patient
+ * made — a lab result or imaging study filed on the person's pharmacy Patient,
+ * by the reference that import's adoption resolves the Patient's key to
  * (`fhir-r4-adoption`'s `adoptedReferenceOf`).
  */
 const withSubject =

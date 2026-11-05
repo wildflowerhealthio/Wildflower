@@ -19,7 +19,6 @@ export {
 export type { HarMethodValue, HttpMethod } from './http-method.ts'
 export * as HttpResponse from './http-response.ts'
 export * as SourceDescriptor from './source-descriptor.ts'
-export * as SystemFamily from './system-family.ts'
 export { extractJson } from './extract-json.ts'
 export { recognizePortal } from './recognize-portal.ts'
 export { contentTypeOf, isOmittedContentType } from './omitted-content-types.ts'

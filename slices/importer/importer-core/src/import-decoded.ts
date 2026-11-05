@@ -16,9 +16,10 @@ import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema
  * @remarks
  * Per set, {@link importFileSet} mints a source file for every picked file
  * (`PickedFile.FromDocumentReference`'s encode, its `masterIdentifier` what the
- * picked file identified itself as), adopts its records (`DecodedFileSet.adopt`:
- * each `FromSource` section's under its key, their references keyed in the
- * section's system family, each `Adopted` section's as they are), runs the format's `linkSourceFile` over every
+ * picked file identified itself as), adopts its detached records
+ * (`DecodedFileSet.adopt`: a keyed record under the id its key derives, a
+ * keyless one under a minted id, each logical reference to a record of the set
+ * resolved to a literal one), runs the format's `linkSourceFile` over every
  * source file and its `linkToSourceFiles` over every record, stamps every
  * record's `meta.source` with the set's representative source file, and leads
  * with the source files as the set's own section. Each set's records are keyed

@@ -57,33 +57,38 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 You write **one file set at a time**. `decodeFileSet(pickedFiles, settings)` takes
 the picked files that are decoded together — each a `PickedFile.Type`
 (`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) —
-and yields a `DecodeFunction.FileSetDecode`: titled `FromSource` sections of
-labeled resources as the source gave them, plus diagnostic notes.
+and yields a `DecodeFunction.FileSetDecode`: titled sections of labeled,
+**detached** resources, plus diagnostic notes.
 
 ```ts
-const MY_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: MY_SYSTEM })
-
 const decodeMyFormat = (
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: MySettings
 ): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> => …
 // each section:
-//   DecodedFileSet.fromSourceSection({
-//     systemFamily: MY_SYSTEM_FAMILY,
+//   {
 //     title,
-//     resources,
-//     labelOf: ({ system, sourceId, resource }) => ({ key, title }),
-//   })
+//     entries: resources.map((resource) => ({ fullUrl, resource })),
+//   }
 ```
 
-A section's `systemFamily` is the systems your source keys each resource type
-in (`SystemFamily`, from `fhir-r4-adoption`): a document format's own
-Wildflower-minted `sid` URI for every type, as LifeLabs and DICOM state.
-`DecodedFileSet.fromSourceSection` pairs each resource with its key
-(`fhir-r4-adoption`'s `withSourceId`): its own id in that system, or a digest
-of its content when it has none. `labelOf` gives each record's review key and
-title, with that key in hand. The decode never makes a `wf-` id; the import
-stage does.
+Write each resource detached (`fhir-r4-adoption`'s `DetachedResource`): no
+`id`, keyed by its `identifier[0]` (`DetachedResource.keyIdentifierWire`), and
+linked to your other resources by logical reference by their key
+(`DetachedResource.logicalReferenceWire`). Key a record by a real identifier
+the file prints, in that identifier's own system (LifeLabs keys a report by
+its `Lab No`, a Patient by its `Patient ID` or health card number); where the
+file prints none for a record that must be referenced, use a Wildflower-minted
+system with a readable value made of what it does print (LifeLabs' result rows
+and providers), never a digest (DICOM still keys by one; #1508 moves it to
+its files' issuers). A record nothing references may stay keyless.
+Decode each wire with `DetachedResource.decodeUnknown(<Type>.Schema)`, which
+fails a wire that carries an `id`. A section carries no source base URL or
+system: everything the import stage needs is on the records. An entry's `fullUrl` is its identity within the
+set, as in a FHIR transaction bundle, and must be stable across a settings
+re-decode. The import stage titles every row by the reference it will be
+written under (`DecodedFileSet.writtenReferenceTitle`), and makes every `wf-`
+id; the decode makes neither.
 
 A format whose files stand alone reads `pickedFiles[0]` and says nothing more:
 each picked file is its own set by default, in the order the files were picked.
@@ -94,7 +99,7 @@ manifest naming its siblings, a DICOM study — states a `groupBy` instead (see
 `DecodeFunction.make` lifts that into the batch `decode(files, settings)` the
 shell runs across every file the format claimed. That lifted decode:
 
-- **namespaces every review key** with the set's first picked file, so two sets
+- **namespaces every `fullUrl`** with the set's first picked file, so two sets
   cannot collide on a key (see the obligations below);
 - folds a `ParseError` into one `unreadableFiles` row per picked file of the
   failing set;
@@ -105,9 +110,11 @@ every format's `decode`) then, per set:
 
 - mints a source file for **every** picked file, its `masterIdentifier` what
   the picked file identified itself as (§1);
-- adopts each `FromSource` section's records under their keys
-  (`fhir-r4-adoption`'s `adoptUnderKey`, references keyed in the section's
-  family), so every record has its `wf-` id before the hooks below run;
+- adopts the set's records (`DecodedFileSet.adopt`): a keyed record under the
+  `wf-` id its key derives, a keyless one under a random id, and each logical
+  reference to a record of the set resolved to a literal one (a reference to
+  anything else stays logical, for the identity map), so every record has its id
+  before the hooks below run;
 - lets the format link each source file to what the set decoded to
   (`linkSourceFile`, §4) and each record to the source files it was read from
   (`linkToSourceFiles`, §4), and prepends the source files as their own

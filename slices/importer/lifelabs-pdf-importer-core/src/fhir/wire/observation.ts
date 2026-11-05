@@ -1,15 +1,11 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+
 import type * as Report from '../../entities/report.ts'
 import type * as TestTableRow from '../../entities/test-table-row.ts'
+import { LifeLabsIdentifierSystem } from '../../source-system.ts'
 import { parseReferenceRange } from '../reference-range.ts'
 import { parseResultValue } from '../result-value.ts'
-import {
-  performerWire,
-  quantityWire,
-  reportStatus,
-  sourceId,
-  timingWire,
-  type Wire,
-} from './shared.ts'
+import { performerWire, quantityWire, reportStatus, timingWire, type Wire } from './shared.ts'
 
 const OBSERVATION_CATEGORY_SYSTEM = 'http://terminology.hl7.org/CodeSystem/observation-category'
 const INTERPRETATION_SYSTEM = 'http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation'
@@ -22,13 +18,20 @@ const INTERPRETATIONS: Readonly<
   LO: { code: 'L', display: 'Low' },
 }
 
-const observationOriginalId = (
-  reportId: string,
+/**
+ * A result row is keyed by the report's `Lab No`, the row's section and test
+ * name, and its ordinal among the report's rows, read as printed:
+ * `<Lab No>/<section>/<test name>/<ordinal>`.
+ */
+const observationKeyOf = (
+  report: Report.Type,
   section: string,
-  group: string,
   row: TestTableRow.Type,
   ordinal: number
-): string => sourceId(['observation', reportId, section, group, row.name, String(ordinal)])
+): DetachedResource.Key => ({
+  system: LifeLabsIdentifierSystem.Observation,
+  value: [report.labNo, section, row.name, String(ordinal)].join('/'),
+})
 
 const referenceRangeWire = (row: TestTableRow.Type): Wire[] => {
   if (row.referenceRange === '') return []
@@ -55,21 +58,39 @@ const valueWire = (row: TestTableRow.Type): Wire => {
   return { valueQuantity: quantity }
 }
 
-const observationWire = (
-  report: Report.Type,
-  patientId: string,
-  section: string,
-  group: string,
-  row: TestTableRow.Type,
-  id: string,
-  timeZone: string
-): Wire => {
+/** What one result row's Observation is written from. */
+interface ObservationSource {
+  /** The report the row is printed on. */
+  readonly report: Report.Type
+  /** The printed result row. */
+  readonly row: TestTableRow.Type
+  /** The section heading the row is printed under, or `''`. */
+  readonly section: string
+  /** The group heading the row is printed under, or `''`. */
+  readonly group: string
+  /** The Observation's own key, its `identifier[0]`. */
+  readonly key: DetachedResource.Key
+  /** The key of the report's Patient, the Observation's subject. */
+  readonly patientKey: DetachedResource.Key
+  /** The IANA time zone the report's printed clock is in. */
+  readonly timeZone: string
+}
+
+const observationWire = ({
+  report,
+  row,
+  section,
+  group,
+  key,
+  patientKey,
+  timeZone,
+}: ObservationSource): Wire => {
   // A row printed before any section or group heading has neither; a FHIR
   // string is never empty, so the category then carries its coding alone.
   const categoryText = [section, group].filter((part) => part.length > 0).join(' · ')
   const wire: Wire = {
     resourceType: 'Observation',
-    id,
+    identifier: [DetachedResource.keyIdentifierWire(key)],
     status: reportStatus(report),
     category: [
       {
@@ -80,7 +101,7 @@ const observationWire = (
       },
     ],
     code: { text: row.name },
-    subject: { reference: `Patient/${patientId}` },
+    subject: DetachedResource.logicalReferenceWire('Patient', patientKey),
     ...timingWire(report, timeZone),
     ...valueWire(row),
   }
@@ -94,4 +115,4 @@ const observationWire = (
   return wire
 }
 
-export { observationOriginalId, observationWire }
+export { observationKeyOf, observationWire }

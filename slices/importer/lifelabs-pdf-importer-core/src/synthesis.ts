@@ -1,92 +1,68 @@
 /**
- * The FHIR synthesis on its own: the parsed `Report` model's types,
- * `toFhirResources`, and {@link decodedReportsOf} — the reports as the
- * LifeLabs decode yields them, one `FromSource` section per report, each
- * synthesized resource beside its source id under
- * {@link LIFELABS_SYSTEM_FAMILY} — without the PDF extraction the main entry's
- * decode requires.
+ * The FHIR synthesis on its own: the parsed `Report` model's types and the
+ * `LabNumber` a report is built with, `toFhirResources`, and
+ * {@link decodedReportsOf} — the reports as the
+ * LifeLabs decode yields them, one section per report, each synthesized
+ * resource detached and keyed by an identifier the report prints — without
+ * the PDF extraction the main entry's decode requires.
  *
  * @remarks
  * For callers that build `Report` values themselves rather than reading them
  * off a PDF, such as `synthetic-data-lifelabs`. Only the synthesis: the
  * importer's settings and source-system constants are the main entry's (and
- * `LIFELABS_SYSTEM` also `/source-file`'s).
+ * the source-file ones also `/source-file`'s).
  *
  * @packageDocumentation
  */
-import { type ResourceWithSourceId, SystemFamily } from '@wildflowerhealthio/fhir-r4-adoption'
-import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
-import { DecodedFileSet, type DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
+import type { DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, type ParseResult } from 'effect'
 
 import type * as Report from './entities/report.ts'
 import { type SynthesisOptions, toFhirResources } from './fhir/to-fhir.ts'
-import { LIFELABS_SYSTEM } from './source-system.ts'
-
-/** The systems LifeLabs keys its records in: `LIFELABS_SYSTEM`, whatever the type. */
-const LIFELABS_SYSTEM_FAMILY = SystemFamily.FixedAcrossResourceTypes({ system: LIFELABS_SYSTEM })
-
-/**
- * A record as its review row: keyed by its type and source id, which a
- * settings re-decode keeps, and titled by the reference it is written under,
- * `<Type>/<local id>`.
- */
-const reportRecordLabel = ({
-  system,
-  sourceId,
-  resource,
-}: ResourceWithSourceId): DecodedFileSet.ReviewLabel => ({
-  key: `${resource.resourceType}/${sourceId}`,
-  title: `${resource.resourceType}/${localResourceId(system, resource.resourceType, sourceId)}`,
-})
 
 /**
  * The section title one report's resources are reviewed under: the report's
- * own printed identity — its `Lab No` and date of service — with a generic
- * fallback when the report masks both.
+ * own printed identity — its `Lab No`, and its date of service when it
+ * prints one.
  */
 const reportSectionTitle = (report: Report.Type): string => {
-  const labNo = report.labNo.trim()
   const dateOfService = report.dateOfService.trim()
-  const parts = [labNo === '' ? '' : `Lab No ${labNo}`, dateOfService].filter((part) => part !== '')
-  return parts.length === 0 ? 'LifeLabs report' : parts.join(' — ')
+  return [`Lab No ${report.labNo}`, dateOfService].filter((part) => part !== '').join(' — ')
 }
 
 /**
- * The reports as the LifeLabs decode yields them: one `FromSource` section per
- * report, under {@link LIFELABS_SYSTEM_FAMILY}, each record keyed
- * `<Type>/<source id>` and titled by the reference it is written under, no
- * notes.
+ * The reports as the LifeLabs decode yields them: one section per report, its
+ * records detached and keyed by the identifiers the report prints, each
+ * entry's `fullUrl` `<Type>/<key value>`, no notes.
  *
- * @param reports - The parsed reports, in print order
+ * @param reports - The parsed reports, in print order, one per `Lab No`
  * @param options - The zone the reports' printed clock is in
  * @returns The set's decode, for the import stage to adopt; fails with a
  *   `ParseError` when a synthesized resource does not satisfy its `fhir-r4`
  *   schema
  *
  * @remarks
- * The decode's own last leg, after the PDF's text is read into reports. A
- * caller that builds reports itself, such as `synthetic-data-lifelabs`' render,
- * adopts this with `DecodedFileSet.adopt` to get the records an import of their
- * print writes.
+ * The decode's own last leg, after the PDF's text is read into reports, one
+ * per `Lab No` (`Report.tryFromDocument`), so every record of the set has its
+ * own key. A caller that builds reports itself, such as
+ * `synthetic-data-lifelabs`' render, gives each its own `Lab No` too, and
+ * adopts this with `DecodedFileSet.adopt` to get the records an import of
+ * their print writes.
  */
 const decodedReportsOf = (
   reports: readonly Report.Type[],
   options: SynthesisOptions
 ): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
   Effect.map(toFhirResources(reports, options), (groups) => ({
-    sections: groups.map((group) =>
-      DecodedFileSet.fromSourceSection({
-        systemFamily: LIFELABS_SYSTEM_FAMILY,
-        title: reportSectionTitle(group.report),
-        resources: group.resources,
-        labelOf: reportRecordLabel,
-      })
-    ),
+    sections: groups.map((group) => ({
+      title: reportSectionTitle(group.report),
+      entries: group.entries,
+    })),
     notes: [],
   }))
 
-export { decodedReportsOf, LIFELABS_SYSTEM_FAMILY, reportSectionTitle }
+export { decodedReportsOf, reportSectionTitle }
+export * as LabNumber from './entities/lab-number.ts'
 export type { Type as ReportGroup } from './entities/group.ts'
 export type { Type as ReportLab } from './entities/lab.ts'
 export type { Type as ReportPatient } from './entities/patient.ts'

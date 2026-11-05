@@ -507,7 +507,7 @@ describe('ImporterScreen', () => {
     // whatever settings control the reviewer was using — which is what made
     // the time-zone text field eject the cursor on every keystroke.
     expect(screen.queryByText(CHECKING_SERVER_MESSAGE)).toBeNull()
-    expect(screen.getByRole('heading', { name: /import/i })).toBeDefined()
+    expect(screen.getByRole('heading', { name: /to import/i })).toBeDefined()
     expect(document.activeElement).toBe(kindToggle)
 
     await waitFor(() => {
@@ -610,7 +610,9 @@ describe('ImporterScreen', () => {
     expect(writes()).toHaveLength(written)
   })
 
-  it('writes Observations a server sent with no id under ids of their content, and finds them unchanged on a re-import', async () => {
+  // Nothing names an Observation the server sent with no id, so each is
+  // stored under an id of its own, and a re-import of it is a new record.
+  it('writes Observations a server sent with no id under fresh ids, and writes them again on a re-import', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
@@ -622,26 +624,29 @@ describe('ImporterScreen', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Import 4 resources/ }))
     await screen.findByRole('heading', { name: /Import complete/ })
 
-    // Assert — each Observation was written under an id adoption minted, one apiece
-    const observationIds = writes()
-      .filter((write) => write.url.includes('/Observation/'))
-      .map((write) => idFromUrl(write.url))
-    expect(observationIds).toHaveLength(2)
-    expect(new Set(observationIds).size).toBe(2)
-    for (const id of observationIds) expect(id).toMatch(/^wf-[0-9a-f]{32}$/)
-    const written = writes().length
+    // Assert — each Observation was written under an id minted for it, one apiece
+    const observationIdsOf = (): readonly string[] =>
+      writes()
+        .filter((write) => write.url.includes('/Observation/'))
+        .map((write) => idFromUrl(write.url))
+    const firstIds = observationIdsOf()
+    expect(firstIds).toHaveLength(2)
+    expect(new Set(firstIds).size).toBe(2)
+    for (const id of firstIds) {
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    }
 
-    // Act — pick the same capture again
+    // Act — pick the same capture again, and import it
     await userEvent.click(screen.getByRole('button', { name: 'Import another archive' }))
     await userEvent.upload(screen.getByLabelText('Import file'), idLessHar())
+    await userEvent.click(await screen.findByRole('button', { name: /Import 2 resources/ }))
+    await screen.findByRole('heading', { name: /Import complete/ })
 
-    // Assert — the same content mints the same ids, so the diff finds every
-    // row on the server unchanged and nothing is written again
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Nothing to import/ })).toBeDefined()
-    })
-    expect(screen.getAllByText('Already on server')).toHaveLength(4)
-    expect(writes()).toHaveLength(written)
+    // Assert — the keyed Patient and the source file are found unchanged, and
+    // the two Observations are written again, under ids of their own
+    const allIds = observationIdsOf()
+    expect(allIds).toHaveLength(4)
+    expect(new Set(allIds).size).toBe(4)
   })
 
   it("drops an edit made on a Patient's row when the Patient is linked to another record", async () => {
