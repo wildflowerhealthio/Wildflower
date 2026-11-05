@@ -52,13 +52,19 @@ export { BrowserSignIn } from './browser-sign-in.ts'
 export type { SignInWindow } from './browser-sign-in.ts'
 
 export {
+  memoryBackedRetainedRequestStore,
   retainedRequestUnusableFrom,
   RetainedSignInRequestStore,
+  sessionStorageBackedRetainedRequestStore,
   SignInCrypto,
   SignInPage,
   signInHttpClient,
 } from './sign-in-services.ts'
-export type { RetainedRequestStorage, SignInServices } from './sign-in-services.ts'
+export type {
+  RetainedRequestStorage,
+  RetainedRequestStoreShape,
+  SignInServices,
+} from './sign-in-services.ts'
 
 export {
   STANDALONE_LAUNCH_SCOPES,

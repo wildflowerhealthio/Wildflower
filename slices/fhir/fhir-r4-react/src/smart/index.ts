@@ -3,8 +3,10 @@ export { appRootRedirectUri } from './app-root-redirect-uri.ts'
 export {
   RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
   RETAINED_SIGN_IN_REQUEST_KEY,
+  RetainedSelfAddressedSignInRequestStore,
   smartSignInLayer,
   type SmartRegistration,
+  type SmartSignInServices,
 } from './retained-sign-in-requests.ts'
 
 export {

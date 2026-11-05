@@ -1,14 +1,16 @@
 import {
   BrowserSignIn,
   forgetRetainedSignInRequest,
+  memoryBackedRetainedRequestStore,
+  type RetainedRequestStorage,
+  type RetainedRequestStoreShape,
   type RetainedRequestUnusable,
-  retainedRequestUnusableFrom,
   type RetainedSignInRequestStore,
+  sessionStorageBackedRetainedRequestStore,
   type SignInServices,
   type SignInWindow,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { setStorageItem, takeStorageItem } from '@wildflowerhealthio/kitchen-sink'
-import { Effect, type Layer, Option, Schema } from 'effect'
+import { Context, Effect, Layer, Option, type Ref, Schema } from 'effect'
 
 import type { RootArrival } from './root-arrival.ts'
 import { FhirBaseUrl } from './smart-connection.ts'
@@ -56,26 +58,60 @@ const decodeRetainedSelfAddressedSignInRequest = Schema.decodeUnknownOption(
 )
 
 /**
- * The sign-in services of a SMART app's `page`, its retained sign-in request
- * kept at {@link RETAINED_SIGN_IN_REQUEST_KEY}: what the edges that run a
- * sign-in Effect provide it with.
+ * Where the {@link RetainedSelfAddressedSignInRequest} a tab started is kept
+ * until the redirect target completes it, as its JSON. The same store
+ * `authorization-core` keeps its own retained sign-in request in, under a tag
+ * of its own, so the two requests never share a key.
  */
-const smartSignInLayer = (page: SignInWindow): Layer.Layer<SignInServices> =>
-  BrowserSignIn.layer(page, RETAINED_SIGN_IN_REQUEST_KEY)
+class RetainedSelfAddressedSignInRequestStore extends Context.Tag(
+  'fhir-r4-react/RetainedSelfAddressedSignInRequestStore'
+)<RetainedSelfAddressedSignInRequestStore, RetainedRequestStoreShape>() {
+  /** The store at `key` in `page`'s `sessionStorage`. */
+  static readonly sessionStorage = (
+    page: { readonly sessionStorage: RetainedRequestStorage },
+    key: string
+  ): Layer.Layer<RetainedSelfAddressedSignInRequestStore> =>
+    Layer.succeed(
+      RetainedSelfAddressedSignInRequestStore,
+      sessionStorageBackedRetainedRequestStore(page, key)
+    )
+
+  /** A store in `held`, which never refuses: for a test to read and seed. */
+  static readonly inMemory = (
+    held: Ref.Ref<Option.Option<string>>
+  ): Layer.Layer<RetainedSelfAddressedSignInRequestStore> =>
+    Layer.succeed(RetainedSelfAddressedSignInRequestStore, memoryBackedRetainedRequestStore(held))
+}
+
+/** Every service a SMART app's sign-in runs against, both kinds of sign-in. */
+type SmartSignInServices = SignInServices | RetainedSelfAddressedSignInRequestStore
+
+/**
+ * The sign-in services of a SMART app's `page`, its retained sign-in request
+ * kept at {@link RETAINED_SIGN_IN_REQUEST_KEY} and its retained self-addressed
+ * one at {@link RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY}: what the edges
+ * that run a sign-in Effect provide it with.
+ */
+const smartSignInLayer = (page: SignInWindow): Layer.Layer<SmartSignInServices> =>
+  Layer.merge(
+    BrowserSignIn.layer(page, RETAINED_SIGN_IN_REQUEST_KEY),
+    RetainedSelfAddressedSignInRequestStore.sessionStorage(
+      page,
+      RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY
+    )
+  )
 
 /** Retain `request` for the redirect's return, before the page leaves. */
 const retainSelfAddressedSignInRequest = (
   request: RetainedSelfAddressedSignInRequest
-): Effect.Effect<void, RetainedRequestUnusable> =>
-  setStorageItem(
-    window.sessionStorage,
-    RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
-    encodeRetainedSelfAddressedSignInRequest(request)
-  ).pipe(Effect.mapError(retainedRequestUnusableFrom))
+): Effect.Effect<void, RetainedRequestUnusable, RetainedSelfAddressedSignInRequestStore> =>
+  Effect.flatMap(RetainedSelfAddressedSignInRequestStore, (store) =>
+    store.retain(encodeRetainedSelfAddressedSignInRequest(request))
+  )
 
 /**
- * Take every retained sign-in request an arrival can complete out of
- * `sessionStorage`: the one rule every sign-in arrival at the app root
+ * Take every retained sign-in request an arrival can complete out of its
+ * store: the one rule every sign-in arrival at the app root
  * follows, before it decides what to show.
  *
  * @returns The retained self-addressed sign-in request as stored, `None` when
@@ -93,12 +129,16 @@ const retainSelfAddressedSignInRequest = (
  */
 const takeRetainedSignInRequests = (
   arrival: RootArrival
-): Effect.Effect<Option.Option<string>, RetainedRequestUnusable, RetainedSignInRequestStore> =>
+): Effect.Effect<
+  Option.Option<string>,
+  RetainedRequestUnusable,
+  RetainedSignInRequestStore | RetainedSelfAddressedSignInRequestStore
+> =>
   Effect.gen(function* () {
-    const takingSelfAddressed = takeStorageItem(
-      window.sessionStorage,
-      RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY
-    ).pipe(Effect.mapError(retainedRequestUnusableFrom))
+    const takingSelfAddressed = Effect.flatMap(
+      RetainedSelfAddressedSignInRequestStore,
+      (store) => store.take
+    )
     if (arrival._tag === 'SignInReturn') {
       return yield* takingSelfAddressed.pipe(Effect.orElseSucceed(Option.none))
     }
@@ -112,8 +152,10 @@ export {
   RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
   RETAINED_SIGN_IN_REQUEST_KEY,
   RetainedSelfAddressedSignInRequest,
+  RetainedSelfAddressedSignInRequestStore,
   retainSelfAddressedSignInRequest,
   smartSignInLayer,
   takeRetainedSignInRequests,
   type SmartRegistration,
+  type SmartSignInServices,
 }

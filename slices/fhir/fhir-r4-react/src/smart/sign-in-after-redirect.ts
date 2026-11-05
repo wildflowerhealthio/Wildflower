@@ -14,6 +14,7 @@ import { Data, Effect, Match, Option } from 'effect'
 
 import {
   decodeRetainedSelfAddressedSignInRequest,
+  type RetainedSelfAddressedSignInRequestStore,
   takeRetainedSignInRequests,
   type SmartRegistration,
 } from './retained-sign-in-requests.ts'
@@ -181,7 +182,7 @@ const completeSignInAfterRedirectHere = (
 ): Effect.Effect<
   SmartConnection,
   SignInAfterRedirectError,
-  HttpClient.HttpClient | RetainedSignInRequestStore
+  HttpClient.HttpClient | RetainedSignInRequestStore | RetainedSelfAddressedSignInRequestStore
 > =>
   Effect.gen(function* () {
     const retained = yield* takeRetainedSignInRequests(landing.arrival).pipe(
@@ -205,12 +206,15 @@ const completeSignInAfterRedirectHere = (
  * @remarks
  * The same rule {@link completeSignInAfterRedirectHere} takes the records by
  * ({@link takeRetainedSignInRequests}); it fails only when the storage throws.
- * The caller provides the retained-request store (`smartSignInLayer`).
+ * The caller provides the retained-request stores (`smartSignInLayer`).
  */
 const discardRefusedSignInAfterRedirectHere = (
   refused: Data.TaggedEnum.Value<RootArrival, 'SignInRefused'>
-): Effect.Effect<void, RetainedRequestUnusable, RetainedSignInRequestStore> =>
-  takeRetainedSignInRequests(refused).pipe(Effect.asVoid, scrubbingAuthorizationResponse)
+): Effect.Effect<
+  void,
+  RetainedRequestUnusable,
+  RetainedSignInRequestStore | RetainedSelfAddressedSignInRequestStore
+> => takeRetainedSignInRequests(refused).pipe(Effect.asVoid, scrubbingAuthorizationResponse)
 
 export {
   CallbackStateMismatch,

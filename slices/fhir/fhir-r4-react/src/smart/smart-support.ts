@@ -6,13 +6,13 @@ import {
   type PkceUnavailable,
   SignInPage,
   signInHttpClient,
-  type SignInServices,
   discoveredSmartServerFrom,
   type DiscoveredSmartServer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
 import { Data, Effect, Either, Match, Schema } from 'effect'
 
+import type { SmartSignInServices } from './retained-sign-in-requests.ts'
 import {
   redirectToSelfAddressedSignInReturn,
   redirectToSignInAt,
@@ -135,7 +135,7 @@ const detectSmartSupport = (
 const redirectToSignIn = (
   config: SmartLaunchConfig,
   launch: string | undefined
-): Effect.Effect<SmartSupport, PkceUnavailable | RetainedRequestUnusable, SignInServices> =>
+): Effect.Effect<SmartSupport, PkceUnavailable | RetainedRequestUnusable, SmartSignInServices> =>
   detectSmartSupport(config.fhirBaseUrl).pipe(
     Effect.tap(
       Match.type<SmartSupport>().pipe(

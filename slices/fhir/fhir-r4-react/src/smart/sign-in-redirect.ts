@@ -10,6 +10,7 @@ import {
 import { Effect } from 'effect'
 
 import {
+  type RetainedSelfAddressedSignInRequestStore,
   retainSelfAddressedSignInRequest,
   type SmartRegistration,
 } from './retained-sign-in-requests.ts'
@@ -77,12 +78,16 @@ interface SelfAddressedSignInConfig {
  * `expectedState` under `RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY`,
  * then redirects straight back here. On return the `state` must match, so a
  * link someone else crafted cannot make the app connect to a server they
- * chose. The `state`'s random bytes come from the `SignInCrypto`; the request
- * itself goes to `sessionStorage` directly, under its own key.
+ * chose. The `state`'s random bytes come from the `SignInCrypto`, and the
+ * request is kept in the `RetainedSelfAddressedSignInRequestStore`.
  */
 const redirectToSelfAddressedSignInReturn = (
   config: SelfAddressedSignInConfig
-): Effect.Effect<void, RetainedRequestUnusable, SignInCrypto> =>
+): Effect.Effect<
+  void,
+  RetainedRequestUnusable,
+  SignInCrypto | RetainedSelfAddressedSignInRequestStore
+> =>
   Effect.gen(function* () {
     const expectedState = createState((yield* SignInCrypto).random)
     yield* retainSelfAddressedSignInRequest({ expectedState, fhirBaseUrl: config.fhirBaseUrl })

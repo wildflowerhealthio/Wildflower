@@ -83,85 +83,104 @@ const retainedRequestUnusableFrom = (blocked: StorageBlocked): RetainedRequestUn
   })
 
 /**
+ * A store for one retained request, as the string its owner serialises it to:
+ * the shape of {@link RetainedSignInRequestStore}, and of any other request a
+ * page retains across a redirect under its own service.
+ */
+interface RetainedRequestStoreShape {
+  /** Keep `request`, replacing any request kept before it. */
+  readonly retain: (request: string) => Effect.Effect<void, RetainedRequestUnusable>
+  /**
+   * The kept request, `None` when there is none. It is left in place, for a
+   * page that needs to know what a flow is waiting on before the flow takes it.
+   */
+  readonly read: Effect.Effect<Option.Option<string>, RetainedRequestUnusable>
+  /**
+   * The kept request, dropped once read: `None` when there is none. Only a
+   * refused read fails; a request that was read is returned even if the
+   * store then refuses to drop it.
+   */
+  readonly take: Effect.Effect<Option.Option<string>, RetainedRequestUnusable>
+  /** Drop the kept request, if there is one. */
+  readonly forget: Effect.Effect<void, RetainedRequestUnusable>
+}
+
+/**
+ * The store at `key` in `page`'s `sessionStorage`, which is per origin and
+ * per tab. Each Wildflower app is served from its own origin, so the key
+ * only has to tell apart the flows one app runs in a tab: one key per flow.
+ *
+ * `page.sessionStorage` is read on every call, inside the Effect, since a
+ * browser that blocks storage can throw on the property read itself. Every
+ * throw fails with {@link RetainedRequestUnusable}.
+ */
+const sessionStorageBackedRetainedRequestStore = (
+  page: { readonly sessionStorage: RetainedRequestStorage },
+  key: string
+): RetainedRequestStoreShape => {
+  const storageFor = (
+    operation: StorageBlocked['operation']
+  ): Effect.Effect<RetainedRequestStorage, StorageBlocked> =>
+    Effect.try({
+      try: () => page.sessionStorage,
+      catch: () => new StorageBlocked({ operation, key }),
+    })
+  return {
+    retain: (request) =>
+      storageFor('write').pipe(
+        Effect.flatMap((storage) => setStorageItem(storage, key, request)),
+        Effect.mapError(retainedRequestUnusableFrom)
+      ),
+    read: storageFor('read').pipe(
+      Effect.flatMap((storage) =>
+        Effect.try({
+          try: () => Option.fromNullable(storage.getItem(key)),
+          catch: () => new StorageBlocked({ operation: 'read', key }),
+        })
+      ),
+      Effect.mapError(retainedRequestUnusableFrom)
+    ),
+    take: storageFor('read').pipe(
+      Effect.flatMap((storage) => takeStorageItem(storage, key)),
+      Effect.mapError(retainedRequestUnusableFrom)
+    ),
+    forget: storageFor('remove').pipe(
+      Effect.flatMap((storage) => removeStorageItem(storage, key)),
+      Effect.mapError(retainedRequestUnusableFrom)
+    ),
+  }
+}
+
+/** A store in `held`, which never refuses: for a test to read and seed. */
+const memoryBackedRetainedRequestStore = (
+  held: Ref.Ref<Option.Option<string>>
+): RetainedRequestStoreShape => ({
+  retain: (request) => Ref.set(held, Option.some(request)),
+  read: Ref.get(held),
+  take: Ref.getAndSet(held, Option.none()),
+  forget: Ref.set(held, Option.none()),
+})
+
+/**
  * Where the one sign-in request a flow has in progress is kept, from the
  * sign-in that starts it to the return leg that takes it, as the string
  * `sign-in.ts` serialises it to.
  */
 class RetainedSignInRequestStore extends Context.Tag(
   'authorization-core/RetainedSignInRequestStore'
-)<
-  RetainedSignInRequestStore,
-  {
-    /** Keep `request`, replacing any request kept before it. */
-    readonly retain: (request: string) => Effect.Effect<void, RetainedRequestUnusable>
-    /** The kept request, `None` when there is none. */
-    readonly read: Effect.Effect<Option.Option<string>, RetainedRequestUnusable>
-    /**
-     * The kept request, dropped once read: `None` when there is none. Only a
-     * refused read fails; a request that was read is returned even if the
-     * store then refuses to drop it.
-     */
-    readonly take: Effect.Effect<Option.Option<string>, RetainedRequestUnusable>
-    /** Drop the kept request, if there is one. */
-    readonly forget: Effect.Effect<void, RetainedRequestUnusable>
-  }
->() {
-  /**
-   * The store at `key` in `page`'s `sessionStorage`, which is per origin and
-   * per tab. Each Wildflower app is served from its own origin, so the key
-   * only has to tell apart the flows one app runs in a tab: one key per flow.
-   *
-   * `page.sessionStorage` is read on every call, inside the Effect, since a
-   * browser that blocks storage can throw on the property read itself. Every
-   * throw fails with {@link RetainedRequestUnusable}.
-   */
+)<RetainedSignInRequestStore, RetainedRequestStoreShape>() {
+  /** The store at `key` in `page`'s `sessionStorage` ({@link sessionStorageBackedRetainedRequestStore}). */
   static readonly sessionStorage = (
     page: { readonly sessionStorage: RetainedRequestStorage },
     key: string
-  ): Layer.Layer<RetainedSignInRequestStore> => {
-    const storageFor = (
-      operation: StorageBlocked['operation']
-    ): Effect.Effect<RetainedRequestStorage, StorageBlocked> =>
-      Effect.try({
-        try: () => page.sessionStorage,
-        catch: () => new StorageBlocked({ operation, key }),
-      })
-    return Layer.succeed(RetainedSignInRequestStore, {
-      retain: (request) =>
-        storageFor('write').pipe(
-          Effect.flatMap((storage) => setStorageItem(storage, key, request)),
-          Effect.mapError(retainedRequestUnusableFrom)
-        ),
-      read: storageFor('read').pipe(
-        Effect.flatMap((storage) =>
-          Effect.try({
-            try: () => Option.fromNullable(storage.getItem(key)),
-            catch: () => new StorageBlocked({ operation: 'read', key }),
-          })
-        ),
-        Effect.mapError(retainedRequestUnusableFrom)
-      ),
-      take: storageFor('read').pipe(
-        Effect.flatMap((storage) => takeStorageItem(storage, key)),
-        Effect.mapError(retainedRequestUnusableFrom)
-      ),
-      forget: storageFor('remove').pipe(
-        Effect.flatMap((storage) => removeStorageItem(storage, key)),
-        Effect.mapError(retainedRequestUnusableFrom)
-      ),
-    })
-  }
+  ): Layer.Layer<RetainedSignInRequestStore> =>
+    Layer.succeed(RetainedSignInRequestStore, sessionStorageBackedRetainedRequestStore(page, key))
 
   /** A store in `held`, which never refuses: for a test to read and seed. */
   static readonly inMemory = (
     held: Ref.Ref<Option.Option<string>>
   ): Layer.Layer<RetainedSignInRequestStore> =>
-    Layer.succeed(RetainedSignInRequestStore, {
-      retain: (request) => Ref.set(held, Option.some(request)),
-      read: Ref.get(held),
-      take: Ref.getAndSet(held, Option.none()),
-      forget: Ref.set(held, Option.none()),
-    })
+    Layer.succeed(RetainedSignInRequestStore, memoryBackedRetainedRequestStore(held))
 }
 
 /**
@@ -193,11 +212,13 @@ const signInHttpClient: Effect.Effect<HttpClient.HttpClient, never, HttpClient.H
 type SignInServices = HttpClient.HttpClient | SignInCrypto | RetainedSignInRequestStore | SignInPage
 
 export {
+  memoryBackedRetainedRequestStore,
   RetainedRequestUnusable,
   retainedRequestUnusableFrom,
   RetainedSignInRequestStore,
   SignInCrypto,
   SignInPage,
   signInHttpClient,
+  sessionStorageBackedRetainedRequestStore,
 }
-export type { RetainedRequestStorage, SignInServices }
+export type { RetainedRequestStorage, RetainedRequestStoreShape, SignInServices }
