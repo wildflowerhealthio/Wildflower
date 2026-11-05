@@ -9,6 +9,8 @@
 
 import { Schema } from 'effect'
 
+import * as RefreshPolicy from './refresh-policy.ts'
+
 /**
  * One client as `GET /authorization/clients` returns it.
  *
@@ -20,6 +22,8 @@ import { Schema } from 'effect'
  * - `essential` marks a client the Owner can't lose without being stuck — the
  *   Wildflower host app's and the browser-session client — which can't be
  *   disabled.
+ * - `refreshPolicy` is how long the client's sign-ins last once it has signed
+ *   in ({@link RefreshPolicy.Schema}).
  */
 const ClientSchema = Schema.Struct({
   clientId: Schema.String,
@@ -31,6 +35,7 @@ const ClientSchema = Schema.Struct({
   registeredAt: Schema.DateTimeUtc,
   disabledAt: Schema.NullOr(Schema.DateTimeUtc),
   essential: Schema.Boolean,
+  refreshPolicy: RefreshPolicy.Schema,
 })
 
 type ClientType = typeof ClientSchema.Type
