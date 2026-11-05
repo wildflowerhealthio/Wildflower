@@ -11,7 +11,7 @@ use super::list_all::ClientBody;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::Scoped;
 use crate::http::errors::{ClientNotFoundBody, EssentialClientBody};
-use crate::live_bindings::LiveClientsDisabler;
+use crate::live_bindings::LiveClientsUpdater;
 
 /// Body of `PATCH /authorization/clients/{clientId}` — the one client field the Owner
 /// can edit.
@@ -34,7 +34,7 @@ pub(crate) struct UpdateClientBody {
 /// `/oauth/authorize` and `/oauth/token`. Idempotent (a client that already
 /// has a `disabledAt` keeps it). Disabling an essential client — the host
 /// app's or the browser-session client — is refused with `409 EssentialClient`.
-/// Acquired through [`LiveClientsDisabler`] (scope `wildflower/Client.u`).
+/// Acquired through [`LiveClientsUpdater`] (scope `wildflower/Client.u`).
 #[utoipa::path(
     patch,
     tag = "Access management",
@@ -49,7 +49,7 @@ pub(crate) struct UpdateClientBody {
     ),
 )]
 pub(super) async fn handle_update_client(
-    clients: Scoped<LiveClientsDisabler>,
+    clients: Scoped<LiveClientsUpdater>,
     Path(client_id): Path<String>,
     Json(body): Json<UpdateClientBody>,
 ) -> Result<Json<ClientBody>, AuthorizationServerError> {
