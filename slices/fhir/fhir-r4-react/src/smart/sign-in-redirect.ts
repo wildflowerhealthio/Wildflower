@@ -89,7 +89,7 @@ const redirectToSelfAddressedSignInReturn = (
   SignInCrypto | RetainedSelfAddressedSignInRequestStore
 > =>
   Effect.gen(function* () {
-    const expectedState = createState((yield* SignInCrypto).random)
+    const expectedState = createState((yield* SignInCrypto).randomBytes)
     yield* retainSelfAddressedSignInRequest({ expectedState, fhirBaseUrl: config.fhirBaseUrl })
     const redirectTarget = new URL(config.redirectUri)
     redirectTarget.searchParams.set('state', expectedState)

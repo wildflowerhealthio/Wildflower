@@ -36,19 +36,23 @@ class SignInCrypto extends Context.Tag('authorization-core/SignInCrypto')<
   SignInCrypto,
   {
     /** Where the code verifier's and the `state`'s random bytes come from. */
-    readonly random: RandomBytesSource
+    readonly randomBytes: RandomBytesSource
     /** What hashes the code verifier into its S256 challenge. */
-    readonly subtle: DigestSource
+    readonly digest: DigestSource
   }
 >() {
   /**
-   * The {@link SignInCrypto} of a page's `crypto`. Its methods are called on
+   * The {@link SignInCrypto} of `page`'s `crypto`: the `crypto` itself for the
+   * random bytes, and its `subtle` for the digest. Their methods are called on
    * the objects they belong to, so a real `Crypto` keeps its receiver.
    */
-  static readonly layer = (
-    crypto: RandomBytesSource & { readonly subtle: DigestSource }
-  ): Layer.Layer<SignInCrypto> =>
-    Layer.sync(SignInCrypto, () => ({ random: crypto, subtle: crypto.subtle }))
+  static readonly layerFromWindow = (page: {
+    readonly crypto: RandomBytesSource & { readonly subtle: DigestSource }
+  }): Layer.Layer<SignInCrypto> =>
+    Layer.sync(SignInCrypto, () => ({
+      randomBytes: page.crypto,
+      digest: page.crypto.subtle,
+    }))
 }
 
 /** The `sessionStorage`-shaped slice the retained sign-in request is kept in. */

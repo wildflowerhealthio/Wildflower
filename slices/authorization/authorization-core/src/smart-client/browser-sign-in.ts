@@ -69,7 +69,7 @@ const BrowserSignIn = {
   layer: (page: SignInWindow, retainedRequestKey: string): Layer.Layer<SignInServices> =>
     Layer.mergeAll(
       discoveryLayerFromWindow(page),
-      SignInCrypto.layer(page.crypto),
+      SignInCrypto.layerFromWindow(page),
       RetainedSignInRequestStore.sessionStorage(page, retainedRequestKey)
     ),
 } as const

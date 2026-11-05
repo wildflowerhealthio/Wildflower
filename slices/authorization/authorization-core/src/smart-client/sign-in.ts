@@ -186,9 +186,9 @@ const beginSignInAt = (
     const { smartServer, endpoints } = discovered
     const crypto = yield* SignInCrypto
     const store = yield* RetainedSignInRequestStore
-    const codeVerifier = createCodeVerifier(crypto.random)
-    const state = createState(crypto.random)
-    const codeChallenge = yield* codeChallengeS256(codeVerifier, crypto.subtle)
+    const codeVerifier = createCodeVerifier(crypto.randomBytes)
+    const state = createState(crypto.randomBytes)
+    const codeChallenge = yield* codeChallengeS256(codeVerifier, crypto.digest)
 
     yield* store.retain(
       serializeRetainedSignInRequest({
