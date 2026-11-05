@@ -313,10 +313,10 @@ describe('toFhirResources', () => {
     const [, granulocytes] = ofType(synthesize([sample]), 'Observation')
 
     expect(idOf(granulocytes)).toBe(
-      `${LifeLabsIdentifierSystem.Result}|2024-JJ6330780/Hematology/Immature Granulocytes/1`
+      `${LifeLabsIdentifierSystem.Observation}|2024-JJ6330780/Hematology/Immature Granulocytes/1`
     )
     expect(observationKeyOf(sample, 'Hematology', hemoglobinRow, 0)).toEqual({
-      system: LifeLabsIdentifierSystem.Result,
+      system: LifeLabsIdentifierSystem.Observation,
       value: '2024-JJ6330780/Hematology/Hemoglobin/0',
     })
   })
