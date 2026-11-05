@@ -10,14 +10,14 @@ use crate::db::shared::JsonStrings;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant_store::RefreshTokensTx;
 
-/// Absolute lifetime of a refresh-token family, measured from the original
-/// authorization. Rotation swaps generations but never extends this
-/// deadline — past it the client re-runs the authorization flow.
-pub const REFRESH_TOKEN_FAMILY_TTL: Duration = Duration::days(90);
+/// The longest any refresh-token family lasts, measured from when it was
+/// issued, whatever its client's [`RefreshPolicy`](crate::domain::client::RefreshPolicy)
+/// says: past it the client re-runs the authorization flow.
+pub const REFRESH_TOKEN_FAMILY_CEILING: Duration = Duration::days(365);
 
 /// One authorization's refresh-token lineage (RFC 6749 §6). The family owns
 /// every fact shared by all the tokens rotated under it — client, scopes,
-/// patient context, and the absolute deadline — so those are stated exactly
+/// patient context, and the deadline — so those are stated exactly
 /// once. Tokens ([`RefreshToken`]) reference it by `family_id`.
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
 #[diesel(table_name = refresh_token_families)]
