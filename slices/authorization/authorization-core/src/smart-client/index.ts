@@ -48,9 +48,6 @@ export { redirectUriForPage, redirectUriForRoute } from './redirect-target.ts'
 export { arrivingSmartLaunchFrom, SMART_LAUNCH_PARAMS } from './arriving-launch.ts'
 export type { ArrivingSmartLaunch } from './arriving-launch.ts'
 
-export { browserSignInEnvironment } from './browser-environment.ts'
-export type { ClientRegistration } from './browser-environment.ts'
-
 export { BrowserSignIn } from './browser-sign-in.ts'
 export type { SignInWindow } from './browser-sign-in.ts'
 
@@ -78,10 +75,10 @@ export {
 } from './sign-in.ts'
 export type {
   AuthorizationRequestExtras,
-  PendingStore,
+  ClientRegistration,
   Session,
-  SignInEnvironment,
   SignInError,
+  SignInOptions,
 } from './sign-in.ts'
 
 export {
