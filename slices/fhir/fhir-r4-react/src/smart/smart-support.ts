@@ -103,33 +103,38 @@ const detectSmartSupport = (
   }).pipe(Effect.merge)
 
 /**
- * Sign in to the server a reader picked, `config.fhirBaseUrl`: probe it, then
- * redirect the way its {@link SmartSupport} says, or not at all.
+ * Sign in to `config.fhirBaseUrl`, a server a reader picked or an EHR launch's
+ * `iss`: probe it, then redirect the way its {@link SmartSupport} says, or not
+ * at all. `launch` is the EHR's launch token for an EHR launch, and
+ * `undefined` for a standalone launch.
  *
  * @remarks
  * A `Smart` server is signed in to at what the probe discovered
  * (`redirectToSignInAt`), so its SMART configuration is fetched once; an
  * `Open` one by a self-addressed sign-in
- * (`redirectToSelfAddressedSignInReturn`). Either redirect usually takes the
- * page away, and a storage that will not retain the sign-in request fails
- * this Effect. `Unreachable` and `Unusable` redirect nowhere: the support is
- * the result, for the caller to render with a retry.
+ * (`redirectToSelfAddressedSignInReturn`), which has no authorization server
+ * to send `launch` to. Either redirect usually takes the page away, and a
+ * storage that will not retain the sign-in request fails this Effect.
+ * `Unreachable` and `Unusable` redirect nowhere: the support is the result,
+ * for the caller to show.
  *
- * @param config - The picked server plus the app's client id, scope, and
- *   redirect target
+ * @param config - The server plus the app's client id, scope, and redirect
+ *   target
+ * @param launch - The EHR's launch token, `undefined` for a standalone launch
  * @param fetchFn - The `fetch` the probe uses; defaults to `globalThis.fetch`
  * @returns The probe outcome. `Smart`/`Open` are returned only in the (unusual)
  *   case the redirect does not navigate the page away; `Unreachable` and
  *   `Unusable` always are.
  */
-const redirectToPickedServerSignIn = (
+const redirectToSignIn = (
   config: SmartLaunchConfig,
+  launch: string | undefined,
   fetchFn: typeof fetch = globalThis.fetch
 ): Effect.Effect<SmartSupport, PkceUnavailable | PendingRequestUnusable> =>
   detectSmartSupport(config.fhirBaseUrl, fetchFn).pipe(
     Effect.tap(
       Match.type<SmartSupport>().pipe(
-        Match.tag('Smart', ({ discovered }) => redirectToSignInAt(discovered, config)),
+        Match.tag('Smart', ({ discovered }) => redirectToSignInAt(discovered, config, launch)),
         Match.tag('Open', () =>
           redirectToSelfAddressedSignInReturn({
             fhirBaseUrl: config.fhirBaseUrl,
@@ -156,6 +161,6 @@ export {
    * FHIR server base exactly as the docs console canonicalises `?server=`.
    */
   normalizeServerUrl,
-  redirectToPickedServerSignIn,
+  redirectToSignIn,
   SmartSupport,
 }

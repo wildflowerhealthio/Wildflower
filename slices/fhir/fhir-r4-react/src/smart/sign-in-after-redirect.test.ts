@@ -11,7 +11,6 @@ import {
   NoSignInInProgress,
   type SignInAfterRedirectError,
 } from './sign-in-after-redirect.ts'
-import { redirectToSignIn } from './sign-in-redirect.ts'
 import {
   APP_ROOT,
   assignedUrl,
@@ -31,6 +30,7 @@ import {
   stubServer,
 } from './sign-in.test-helpers.ts'
 import { SmartConnection } from './smart-connection.ts'
+import { redirectToSignIn } from './smart-support.ts'
 
 beforeEach(resetPage)
 

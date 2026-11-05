@@ -8,7 +8,6 @@ export {
 
 export {
   redirectToSelfAddressedSignInReturn,
-  redirectToSignIn,
   redirectToSignInAt,
   type SelfAddressedSignInConfig,
   type SmartLaunchConfig,
@@ -27,9 +26,9 @@ export {
   detectSmartSupport,
   insecureTargetReason,
   normalizeServerUrl,
-  redirectToPickedServerSignIn,
+  redirectToSignIn,
   SmartSupport,
-} from './picked-server-sign-in.ts'
+} from './smart-support.ts'
 
 export {
   arrivingSmartLaunchFrom,

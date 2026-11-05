@@ -560,8 +560,8 @@ describe('SmartAppRoot on a launch', () => {
         Option.some({
           error: 'AuthorizeFailed',
           message:
-            'Could not reach https://ruth.wildflowerhealth.io/.well-known/smart-configuration. ' +
-            'The server may be down, or the browser may have blocked the request.',
+            'Could not reach https://ruth.wildflowerhealth.io. Check the URL and that the ' +
+            'server allows this app. (Failed to fetch)',
           iss: 'https://ruth.wildflowerhealth.io',
         })
       )
@@ -613,8 +613,9 @@ describe('SmartAppRoot on a launch', () => {
 
         // Assert — the menu says why, with the retry right there
         expect(arrivalProblem()).toBe(
-          'Could not start the SMART launch. The server’s SMART configuration does not ' +
-            'advertise a usable authorization_endpoint and token_endpoint over https (or loopback).'
+          'Could not start the SMART launch. Cannot sign in to https://ruth.wildflowerhealth.io. ' +
+            'The server’s SMART configuration does not advertise a usable authorization_endpoint ' +
+            'and token_endpoint over https (or loopback).'
         )
       })
     })

@@ -14,17 +14,17 @@ import { smartRegistration } from './config.ts'
 import { BASEPATH, setUpEachAppTest } from './test-utils/app-fakes.ts'
 
 // The real app root, app and router over the real URL, with the sign-in's
-// two halves stubbed at `authorization-core`'s boundary: `beginSignIn` is the
+// two halves stubbed at `authorization-core`'s boundary: `beginSignInAt` is the
 // authorize a launch starts, `completeSignIn` the token exchange on the
 // callback. Pins that the router never touches a URL the launch or the
 // exchange still reads.
-const { beginSignInMock, completeSignInMock } = vi.hoisted(() => ({
-  beginSignInMock: vi.fn<typeof SmartClientModule.beginSignIn>(),
+const { beginSignInAtMock, completeSignInMock } = vi.hoisted(() => ({
+  beginSignInAtMock: vi.fn<typeof SmartClientModule.beginSignInAt>(),
   completeSignInMock: vi.fn<typeof SmartClientModule.completeSignIn>(),
 }))
 vi.mock('@wildflowerhealthio/authorization-core/smart-client', async (importOriginal) => ({
   ...(await importOriginal<typeof SmartClientModule>()),
-  beginSignIn: beginSignInMock,
+  beginSignInAt: beginSignInAtMock,
   completeSignIn: completeSignInMock,
 }))
 
@@ -51,26 +51,38 @@ const SESSION: Session = {
   returnTo: undefined,
 }
 
+/** The FHIR server's SMART configuration, which a sign-in probes before it authorizes. */
+const SMART_CONFIGURATION = {
+  authorization_endpoint: 'https://fhir.example/oauth/authorize',
+  token_endpoint: 'https://fhir.example/oauth/token',
+  code_challenge_methods_supported: ['S256'],
+}
+
 /**
- * The FHIR server's reads: the patient read answers the patient, and every
- * search an empty bundle.
+ * The FHIR server's answers: its SMART configuration, the patient read the
+ * patient, and every search an empty bundle.
  */
-const answerFhirRead = (input: RequestInfo | URL): Promise<Response> =>
-  Promise.resolve(
+const answerFhirRead = (input: RequestInfo | URL): Promise<Response> => {
+  const url = String(input instanceof Request ? input.url : input)
+  if (url.endsWith('/.well-known/smart-configuration')) {
+    return Promise.resolve(Response.json(SMART_CONFIGURATION))
+  }
+  return Promise.resolve(
     Response.json(
-      String(input instanceof Request ? input.url : input).startsWith(`${FHIR_SERVER_URL}/Patient/`)
+      url.startsWith(`${FHIR_SERVER_URL}/Patient/`)
         ? { resourceType: 'Patient', id: 'p1', name: [{ given: ['Ada'], family: 'Lovelace' }] }
         : { resourceType: 'Bundle', type: 'searchset', entry: [] }
     )
   )
+}
 
 /**
- * Let a launch's authorize through: `beginSignIn` yields an authorize URL on
+ * Let a launch's authorize through: `beginSignInAt` yields an authorize URL on
  * this page (a fragment, so jsdom does not navigate), and the launch keeps
  * what its callback needs.
  */
 const letAuthorizeThrough = (): void => {
-  beginSignInMock.mockImplementation(() =>
+  beginSignInAtMock.mockImplementation(() =>
     Effect.sync(() => `${window.location.href.split('#')[0] ?? ''}#authorize`)
   )
 }
@@ -121,7 +133,7 @@ beforeEach(() => {
 afterEach(() => {
   window.localStorage.clear()
   window.sessionStorage.clear()
-  beginSignInMock.mockReset()
+  beginSignInAtMock.mockReset()
   completeSignInMock.mockReset()
   vi.unstubAllGlobals()
 })
@@ -132,7 +144,7 @@ describe('AppRoot over the address bar', () => {
     { case: 'at a patient’s tab, two directories deep', route: 'patients/p1/calendar' },
   ])('should start a launch URL’s launch $case, returning to the app root', async ({ route }) => {
     // Arrange: the authorize URL never arrives, so the page never leaves.
-    beginSignInMock.mockReturnValue(Effect.never)
+    beginSignInAtMock.mockReturnValue(Effect.never)
     const launchUrl = `${BASEPATH}${route}${EHR_LAUNCH}`
     window.history.replaceState(null, '', launchUrl)
 
@@ -141,9 +153,9 @@ describe('AppRoot over the address bar', () => {
 
     // Assert
     await waitFor(() => {
-      expect(beginSignInMock).toHaveBeenCalledTimes(1)
+      expect(beginSignInAtMock).toHaveBeenCalledTimes(1)
     })
-    expect(beginSignInMock.mock.calls[0]?.[2].redirectUri).toBe(
+    expect(beginSignInAtMock.mock.calls[0]?.[2].redirectUri).toBe(
       `${window.location.origin}${BASEPATH}`
     )
     expect(addressBar()).toBe(launchUrl)

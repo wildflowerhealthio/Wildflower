@@ -1,28 +1,23 @@
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import {
-  DiscoveryFailed,
-  type SignInError,
-} from '@wildflowerhealthio/authorization-core/smart-client'
+import { PendingRequestUnusable } from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   decodeLaunchError,
   LAUNCH_ERROR_PARAM,
   launchError,
+  RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
   rootArrivalFrom,
+  SmartSupport,
   type RootArrival,
-  type SmartLaunchConfig,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import type * as Smart from '@wildflowerhealthio/fhir-r4-react/smart'
 import { type Data, Effect, Option } from 'effect'
 import { redirectForLaunchRequest } from './redirect-for-launch-request.ts'
 import { RETURN_ROUTE_STORAGE_KEY } from './return-route.ts'
 
-// Stub the one call that leaves the page: the sign-in's authorize redirect.
+// Stub the one call that leaves the page: the sign-in's redirect.
 const { redirectToSignInMock } = vi.hoisted(() => ({
-  redirectToSignInMock:
-    vi.fn<
-      (config: SmartLaunchConfig, launch: string | undefined) => Effect.Effect<void, SignInError>
-    >(),
+  redirectToSignInMock: vi.fn<typeof Smart.redirectToSignIn>(),
 }))
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
   ...(await importOriginal<typeof Smart>()),
@@ -50,9 +45,20 @@ const launchOf = (launchPageHref: string): Data.TaggedEnum.Value<RootArrival, 'L
 
 beforeEach(() => {
   redirectToSignInMock.mockReset()
-  redirectToSignInMock.mockReturnValue(Effect.void)
+  redirectToSignInMock.mockReturnValue(Effect.succeed(SmartSupport.Open()))
   window.sessionStorage.clear()
 })
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+/** The app-root banner's reading of the `?launchError` the failed launch was sent to. */
+const reportedLaunchError = (failure: Option.Option<string>): ReturnType<typeof launchError> => {
+  const target = new URL(Option.getOrThrow(failure))
+  expect(`${target.origin}${target.pathname}`).toBe('https://importer.wildflowerhealth.io/')
+  return launchError(decodeLaunchError(target.searchParams.get(LAUNCH_ERROR_PARAM) ?? ''))
+}
 
 describe('redirectForLaunchRequest', () => {
   it('should authorize with the app root as the redirect target', async () => {
@@ -87,23 +93,62 @@ describe('redirectForLaunchRequest', () => {
     )
   })
 
-  it('should send a failed sign-in back to the app root, naming the reason and the iss', async () => {
+  it('should send an unreachable iss back to the app root, naming the reason and the iss', async () => {
     // Arrange — an unreachable or CORS-blocked `iss`
     redirectToSignInMock.mockReturnValue(
-      Effect.fail(new DiscoveryFailed({ reason: 'Could not reach the server.' }))
+      Effect.succeed(SmartSupport.Unreachable({ reason: 'Failed to fetch' }))
     )
 
     // Act
     const failure = await redirectForLaunchRequest(LAUNCH, launchOf(LAUNCH_PAGE), LAUNCH_PAGE)
 
-    // Assert — the target is the app root, and the root's banner can decode it
-    const target = new URL(Option.getOrThrow(failure))
-    expect(`${target.origin}${target.pathname}`).toBe('https://importer.wildflowerhealth.io/')
-    const reported = launchError(
-      decodeLaunchError(target.searchParams.get(LAUNCH_ERROR_PARAM) ?? '')
-    )
-    expect(reported.message).toContain('Could not reach the server.')
+    // Assert — the root's banner reads it with the connect menu's wording
+    const reported = reportedLaunchError(failure)
+    expect(reported.message).toContain('Could not reach https://ehr.example/fhir.')
+    expect(reported.message).toContain('Failed to fetch')
     expect(reported).toHaveProperty('iss', 'https://ehr.example/fhir')
+  })
+
+  it('should send a sign-in that could not retain its request back to the app root', async () => {
+    // Arrange
+    redirectToSignInMock.mockReturnValue(
+      Effect.fail(new PendingRequestUnusable({ reason: 'session storage is blocked' }))
+    )
+
+    // Act
+    const failure = await redirectForLaunchRequest(LAUNCH, launchOf(LAUNCH_PAGE), LAUNCH_PAGE)
+
+    // Assert
+    expect(reportedLaunchError(failure).message).toContain('session storage is blocked')
+  })
+
+  it('should sign in to an open iss by a self-addressed redirect to the app root', async () => {
+    // Arrange — the real sign-in, against a server that serves no SMART configuration
+    const { redirectToSignIn } = await vi.importActual<typeof Smart>(
+      '@wildflowerhealthio/fhir-r4-react/smart'
+    )
+    redirectToSignInMock.mockImplementation(redirectToSignIn)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(() => Promise.resolve(new Response(null, { status: 404 })))
+    )
+    const assign = vi.fn<(url: string) => void>()
+    vi.stubGlobal('location', { protocol: 'https:', href: LAUNCH_PAGE, assign })
+    const lonePage = 'https://importer.wildflowerhealth.io/?iss=https%3A%2F%2Fehr.example%2Ffhir'
+
+    // Act
+    const failure = await redirectForLaunchRequest(LAUNCH, launchOf(lonePage), lonePage)
+
+    // Assert — back to the app root with the state it retained, for the open server
+    expect(failure).toEqual(Option.none())
+    const target = new URL(assign.mock.lastCall?.[0] ?? '')
+    expect(`${target.origin}${target.pathname}`).toBe('https://importer.wildflowerhealth.io/')
+    expect(
+      JSON.parse(window.sessionStorage.getItem(RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY) ?? '')
+    ).toEqual({
+      expectedState: target.searchParams.get('state'),
+      fhirBaseUrl: 'https://ehr.example/fhir',
+    })
   })
 
   it('should save the route the launch started on before the page leaves', async () => {
@@ -111,7 +156,7 @@ describe('redirectForLaunchRequest', () => {
     let savedAtAuthorize: string | null = null
     redirectToSignInMock.mockImplementation(() => {
       savedAtAuthorize = window.sessionStorage.getItem(RETURN_ROUTE_STORAGE_KEY)
-      return Effect.void
+      return Effect.succeed(SmartSupport.Open())
     })
 
     // Act

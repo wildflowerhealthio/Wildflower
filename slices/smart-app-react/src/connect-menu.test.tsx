@@ -19,11 +19,11 @@ import { ConnectMenu } from './connect-menu.tsx'
 
 // Stub only the launch seam; keep the real `normalizeServerUrl` so the
 // validation path under test is the production one, not a mock.
-const redirectToPickedServerSignInMock = vi.hoisted(() => vi.fn())
+const redirectToSignInMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
   const actual = await importOriginal<typeof Smart>()
-  return { ...actual, redirectToPickedServerSignIn: redirectToPickedServerSignInMock }
+  return { ...actual, redirectToSignIn: redirectToSignInMock }
 })
 
 const PROPS = {
@@ -70,7 +70,7 @@ const DEMO_PRESET = DEFAULT_SERVER_PRESETS[0] ?? {
 beforeEach(() => {
   vi.clearAllMocks()
   // Default: the SMART path, which in production redirects the page away.
-  redirectToPickedServerSignInMock.mockReturnValue(
+  redirectToSignInMock.mockReturnValue(
     Effect.succeed(SmartSupport.Smart({ discovered: DISCOVERED }))
   )
   connectMock.mockResolvedValue(undefined)
@@ -147,13 +147,16 @@ describe('ConnectMenu', () => {
     await user.click(screen.getByRole('button', { name: picked.label }))
 
     // Assert — the picked preset's URL is the iss, with the app's client/scope.
-    expect(redirectToPickedServerSignInMock).toHaveBeenCalledTimes(1)
-    expect(redirectToPickedServerSignInMock).toHaveBeenCalledWith({
-      fhirBaseUrl: picked.url,
-      clientId: '9769f8b274370708d0d3ebb2e3e59b7c',
-      scope: 'launch openid fhirUser',
-      redirectUri: 'https://app.example/',
-    })
+    expect(redirectToSignInMock).toHaveBeenCalledTimes(1)
+    expect(redirectToSignInMock).toHaveBeenCalledWith(
+      {
+        fhirBaseUrl: picked.url,
+        clientId: '9769f8b274370708d0d3ebb2e3e59b7c',
+        scope: 'launch openid fhirUser',
+        redirectUri: 'https://app.example/',
+      },
+      undefined
+    )
   })
 
   it.each([
@@ -201,9 +204,10 @@ describe('ConnectMenu', () => {
     await user.type(freeEntry.getByLabelText('FHIR base URL'), 'https://example.org/fhir/')
     await user.click(freeEntry.getByRole('button', { name: 'Connect' }))
 
-    expect(redirectToPickedServerSignInMock).toHaveBeenCalledTimes(1)
-    expect(redirectToPickedServerSignInMock).toHaveBeenCalledWith(
-      expect.objectContaining({ fhirBaseUrl: 'https://example.org/fhir' })
+    expect(redirectToSignInMock).toHaveBeenCalledTimes(1)
+    expect(redirectToSignInMock).toHaveBeenCalledWith(
+      expect.objectContaining({ fhirBaseUrl: 'https://example.org/fhir' }),
+      undefined
     )
   })
 
@@ -218,11 +222,11 @@ describe('ConnectMenu', () => {
 
     // Beside the form it is about, not in the banner at the foot of the menu.
     expect(freeEntry.getByText(/valid http\(s\) FHIR base URL/i)).toBeDefined()
-    expect(redirectToPickedServerSignInMock).not.toHaveBeenCalled()
+    expect(redirectToSignInMock).not.toHaveBeenCalled()
   })
 
   it('surfaces an unreachable probe as an error banner, still allowing a retry', async () => {
-    redirectToPickedServerSignInMock.mockReturnValue(
+    redirectToSignInMock.mockReturnValue(
       Effect.succeed(SmartSupport.Unreachable({ reason: 'Failed to fetch' }))
     )
     const user = userEvent.setup()
@@ -234,7 +238,7 @@ describe('ConnectMenu', () => {
       expect(screen.getByText(`Could not reach ${DEMO_PRESET.url}`, { exact: false })).toBeDefined()
     })
     // The menu is still there — the launch was attempted, and a retry is possible.
-    expect(redirectToPickedServerSignInMock).toHaveBeenCalledTimes(1)
+    expect(redirectToSignInMock).toHaveBeenCalledTimes(1)
     expect(demoPresetButton().hasAttribute('disabled')).toBe(false)
   })
 
@@ -242,9 +246,7 @@ describe('ConnectMenu', () => {
     const reason =
       'The server’s SMART configuration does not advertise a usable authorization_endpoint ' +
       'and token_endpoint over https (or loopback).'
-    redirectToPickedServerSignInMock.mockReturnValue(
-      Effect.succeed(SmartSupport.Unusable({ reason }))
-    )
+    redirectToSignInMock.mockReturnValue(Effect.succeed(SmartSupport.Unusable({ reason })))
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
@@ -262,7 +264,7 @@ describe('ConnectMenu', () => {
     const refusal =
       'The server’s authorization endpoint is not one this app will go to. ' +
       'It carries a user name or password.'
-    redirectToPickedServerSignInMock.mockReturnValue(
+    redirectToSignInMock.mockReturnValue(
       Effect.fail(new PendingRequestUnusable({ reason: refusal }))
     )
     const user = userEvent.setup()
@@ -282,9 +284,10 @@ describe('ConnectMenu', () => {
 
     await connectToRelayName(user, '  Ruth-Lab ')
 
-    expect(redirectToPickedServerSignInMock).toHaveBeenCalledTimes(1)
-    expect(redirectToPickedServerSignInMock).toHaveBeenCalledWith(
-      expect.objectContaining({ fhirBaseUrl: 'https://ruth-lab.relay.wildflowerhealth.io' })
+    expect(redirectToSignInMock).toHaveBeenCalledTimes(1)
+    expect(redirectToSignInMock).toHaveBeenCalledWith(
+      expect.objectContaining({ fhirBaseUrl: 'https://ruth-lab.relay.wildflowerhealth.io' }),
+      undefined
     )
   })
 
@@ -302,7 +305,7 @@ describe('ConnectMenu', () => {
       }
 
       expect(within(relayForm()).getByText(/Enter your server's relay name/)).toBeDefined()
-      expect(redirectToPickedServerSignInMock).not.toHaveBeenCalled()
+      expect(redirectToSignInMock).not.toHaveBeenCalled()
     }
   )
 
@@ -338,7 +341,7 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     await connectToRelayName(user, 'ruth')
 
     expect(connectMock).toHaveBeenCalledWith('https://ruth.relay.wildflowerhealth.io')
-    expect(redirectToPickedServerSignInMock).not.toHaveBeenCalled()
+    expect(redirectToSignInMock).not.toHaveBeenCalled()
   })
 
   it('signs in to the demo server at its FHIR base, under its notice', async () => {
@@ -618,7 +621,7 @@ describe('ConnectMenu, the Local Network Access hint', () => {
 
   it('follows an unreachable loopback server’s reason on the published site', async () => {
     onPublishedSite()
-    redirectToPickedServerSignInMock.mockReturnValue(
+    redirectToSignInMock.mockReturnValue(
       Effect.succeed(SmartSupport.Unreachable({ reason: 'Failed to fetch' }))
     )
     const user = userEvent.setup()
@@ -699,7 +702,7 @@ describe('ConnectMenu, a plain-http server from an https page', () => {
     await enterFreeUrl(user, 'Another FHIR R4 server', 'FHIR base URL', 'http://fhir.example/r4')
 
     expect(screen.getByText(/served over https.*http:\/\/fhir\.example\/r4/)).toBeDefined()
-    expect(redirectToPickedServerSignInMock).not.toHaveBeenCalled()
+    expect(redirectToSignInMock).not.toHaveBeenCalled()
     // Refused, not launching: the menu is ready for another pick.
     expect(demoPresetButton().hasAttribute('disabled')).toBe(false)
   })
@@ -736,8 +739,9 @@ describe('ConnectMenu, a plain-http server from an https page', () => {
 
     await enterFreeUrl(user, 'Another FHIR R4 server', 'FHIR base URL', 'http://fhir.example/r4')
 
-    expect(redirectToPickedServerSignInMock).toHaveBeenCalledWith(
-      expect.objectContaining({ fhirBaseUrl: 'http://fhir.example/r4' })
+    expect(redirectToSignInMock).toHaveBeenCalledWith(
+      expect.objectContaining({ fhirBaseUrl: 'http://fhir.example/r4' }),
+      undefined
     )
   })
 })

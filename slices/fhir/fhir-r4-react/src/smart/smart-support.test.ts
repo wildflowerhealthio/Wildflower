@@ -8,26 +8,27 @@ import {
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Effect, Match } from 'effect'
 
+import type { SelfAddressedSignInConfig, SmartLaunchConfig } from './sign-in-redirect.ts'
+import { decodeFhirBaseUrl } from './smart-connection.ts'
 import {
   detectSmartSupport,
   insecureTargetReason,
   normalizeServerUrl,
-  redirectToPickedServerSignIn,
+  redirectToSignIn,
   SmartSupport,
-} from './picked-server-sign-in.ts'
-import type { SelfAddressedSignInConfig, SmartLaunchConfig } from './sign-in-redirect.ts'
-import { decodeFhirBaseUrl } from './smart-connection.ts'
+} from './smart-support.ts'
 
-// `redirectToPickedServerSignIn` hands the sign-in to `sign-in-redirect.ts`,
-// whose own suite covers the sign-in and the navigation, so the module
-// boundary is where we stub. `detectSmartSupport`'s tests never touch it (they
+// `redirectToSignIn` hands the sign-in to `sign-in-redirect.ts`, whose own
+// suite covers the sign-in and the navigation, so the module boundary is where
+// we stub. `detectSmartSupport`'s tests never touch it (they
 // inject `fetchFn`).
 const { redirectToSignInAtMock, redirectToSelfAddressedSignInReturnMock } = vi.hoisted(() => ({
   redirectToSignInAtMock:
     vi.fn<
       (
         discovered: SmartIssuer,
-        config: Omit<SmartLaunchConfig, 'fhirBaseUrl'>
+        config: Omit<SmartLaunchConfig, 'fhirBaseUrl'>,
+        launch: string | undefined
       ) => Effect.Effect<void, PendingRequestUnusable>
     >(),
   redirectToSelfAddressedSignInReturnMock:
@@ -172,6 +173,22 @@ describe('detectSmartSupport', () => {
     expect(support).toMatchObject({ _tag: 'Smart' })
   })
 
+  it('is `Smart` for a loopback http endpoint from an https page', async () => {
+    // A desktop host's authorization server on this computer
+    const support = await supportOf(
+      'https://ehr.example/fhir',
+      fetchReturning(
+        jsonResponse({
+          ...SMART_CONFIGURATION,
+          authorization_endpoint: 'http://127.0.0.1:8080/oauth/authorize',
+          token_endpoint: 'http://127.0.0.1:8080/oauth/token',
+        })
+      ),
+      true
+    )
+    expect(support).toMatchObject({ _tag: 'Smart' })
+  })
+
   it('reads whether the page is secure off the page by default', async () => {
     // The https page stubbed above: a plain-http endpoint off loopback is unusable
     const support = await supportOf(
@@ -225,7 +242,7 @@ describe('detectSmartSupport', () => {
   })
 })
 
-describe('redirectToPickedServerSignIn', () => {
+describe('redirectToSignIn', () => {
   const config = {
     fhirBaseUrl: decodeFhirBaseUrl('https://ehr.example/fhir'),
     clientId: '9769f8b274370708d0d3ebb2e3e59b7c',
@@ -236,8 +253,9 @@ describe('redirectToPickedServerSignIn', () => {
   it('signs in at what the probe discovered, fetching its configuration once, when the probe is `Smart`', async () => {
     const seenUrls: string[] = []
     const support = await Effect.runPromise(
-      redirectToPickedServerSignIn(
+      redirectToSignIn(
         config,
+        'launch-1',
         fetchReturning(jsonResponse(SMART_CONFIGURATION), seenUrls)
       )
     )
@@ -245,14 +263,15 @@ describe('redirectToPickedServerSignIn', () => {
     expect(support).toMatchObject({ _tag: 'Smart', discovered: smartIssuerAt(config.fhirBaseUrl) })
     expect(redirectToSignInAtMock).toHaveBeenCalledExactlyOnceWith(
       SmartSupport.$is('Smart')(support) ? support.discovered : undefined,
-      config
+      config,
+      'launch-1'
     )
     expect(redirectToSelfAddressedSignInReturnMock).not.toHaveBeenCalled()
   })
 
-  it('signs in by a self-addressed redirect when the probe is `Open`', async () => {
+  it('signs in by a self-addressed redirect when the probe is `Open`, even for an EHR launch', async () => {
     const support = await Effect.runPromise(
-      redirectToPickedServerSignIn(config, fetchReturning(new Response(null, { status: 404 })))
+      redirectToSignIn(config, 'launch-1', fetchReturning(new Response(null, { status: 404 })))
     )
     expect(redirectToSelfAddressedSignInReturnMock).toHaveBeenCalledExactlyOnceWith({
       fhirBaseUrl: 'https://ehr.example/fhir',
@@ -264,8 +283,9 @@ describe('redirectToPickedServerSignIn', () => {
 
   it('does not redirect at all when the probe is `Unusable`, returning it for the UI', async () => {
     const support = await Effect.runPromise(
-      redirectToPickedServerSignIn(
+      redirectToSignIn(
         config,
+        undefined,
         fetchReturning(
           jsonResponse({ ...SMART_CONFIGURATION, authorization_endpoint: 'javascript:alert(1)' })
         )
@@ -283,7 +303,7 @@ describe('redirectToPickedServerSignIn', () => {
     await expect(
       Effect.runPromise(
         Effect.flip(
-          redirectToPickedServerSignIn(config, fetchReturning(jsonResponse(SMART_CONFIGURATION)))
+          redirectToSignIn(config, undefined, fetchReturning(jsonResponse(SMART_CONFIGURATION)))
         )
       )
     ).resolves.toBe(blocked)
@@ -291,7 +311,7 @@ describe('redirectToPickedServerSignIn', () => {
 
   it('does not redirect at all when the probe is `Unreachable`, returning it for the UI', async () => {
     const support = await Effect.runPromise(
-      redirectToPickedServerSignIn(config, fetchRejecting(new TypeError('Failed to fetch')))
+      redirectToSignIn(config, undefined, fetchRejecting(new TypeError('Failed to fetch')))
     )
     expect(redirectToSignInAtMock).not.toHaveBeenCalled()
     expect(redirectToSelfAddressedSignInReturnMock).not.toHaveBeenCalled()

@@ -13,12 +13,9 @@ import {
   RETAINED_SIGN_IN_REQUEST_KEY,
 } from './retained-sign-in-requests.ts'
 import { rootArrivalFrom, type SignInArrival } from './root-arrival.ts'
-import {
-  redirectToSelfAddressedSignInReturn,
-  redirectToSignIn,
-  type SmartLaunchConfig,
-} from './sign-in-redirect.ts'
+import { redirectToSelfAddressedSignInReturn, type SmartLaunchConfig } from './sign-in-redirect.ts'
 import { decodeFhirBaseUrl } from './smart-connection.ts'
+import { redirectToSignIn } from './smart-support.ts'
 
 /** The page's `location.assign`, recording where the page was sent. */
 const assignMock = vi.fn<(url: string) => void>()
@@ -155,7 +152,6 @@ const signInArrivalHere = (): SignInArrival =>
 export {
   APP_ROOT,
   assignedUrl,
-  assignMock,
   FHIR_BASE_URL,
   jsonResponse,
   LAUNCH_CONFIG,
@@ -170,6 +166,5 @@ export {
   signInOut,
   SMART_CONFIGURATION,
   stubBlockedStorage,
-  stubPageLocation,
   stubServer,
 }

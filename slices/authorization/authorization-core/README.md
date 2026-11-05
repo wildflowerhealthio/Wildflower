@@ -278,8 +278,8 @@ page drive a desktop host.
 
 The React SMART apps sign in through this client too, by way of
 `slices/fhir/fhir-r4-react/src/smart/*`. Its `redirectToSignIn` runs
-`beginSignIn` for an EHR launch, its picked-server sign-in runs
-`beginSignInAt` at the endpoints its probe discovered, and its
+`beginSignInAt` at the endpoints its probe discovered, for an EHR launch's
+`iss` and a picked server alike, and its
 `completeSignInAfterRedirectHere` runs `completeSignIn` on the redirect
 target, under the app's own registration, which the app root's
 `SignInLanding` hands it. What it adds is what the apps need beyond a token:

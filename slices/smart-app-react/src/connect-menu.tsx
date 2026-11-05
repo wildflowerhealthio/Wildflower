@@ -1,13 +1,12 @@
 import { ErrorBanner, TextField } from '@wildflowerhealthio/react-tundraish'
-import { Effect, Either, Match } from 'effect'
+import { Effect, Either } from 'effect'
 import { useEffect, useRef, useState, type JSX, type SubmitEvent } from 'react'
 
 import {
   decodeFhirBaseUrl,
   insecureTargetReason,
-  redirectToPickedServerSignIn,
+  redirectToSignIn,
   withLocalNetworkAccessHint,
-  type SmartSupport,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   DEFAULT_SERVER_PRESET_GROUPS,
@@ -22,6 +21,7 @@ import {
   type ServerPresetGroup,
 } from '@wildflowerhealthio/smart-app-core'
 
+import { signInProblem } from './sign-in-problem.ts'
 import styles from './connect-menu.module.css'
 
 /**
@@ -121,26 +121,6 @@ type ConnectState =
   | { readonly kind: 'error'; readonly message: string; readonly from: ConnectOrigin }
 
 /**
- * The problem to show for a standalone launch's probe outcome against
- * `serverUrl`, or `undefined` when there is none: `Smart`/`Open` redirect the
- * page away, so only `Unreachable` and `Unusable` are left to report.
- */
-const standaloneLaunchProblem =
-  (serverUrl: string) =>
-  (support: SmartSupport): string | undefined =>
-    Match.value(support).pipe(
-      Match.withReturnType<string | undefined>(),
-      Match.tag(
-        'Unreachable',
-        ({ reason }) =>
-          `Could not reach ${serverUrl}. Check the URL and that the server allows this app. (${reason})`
-      ),
-      Match.tag('Unusable', ({ reason }) => `Cannot sign in to ${serverUrl}. ${reason}`),
-      Match.tag('Smart', 'Open', () => undefined),
-      Match.exhaustive
-    )
-
-/**
  * The standalone connect menu: first a relay name entry for a server reached
  * through the official Wildflower relay, then buttons grouped under each known
  * server's name and address, then, last, a free-entry URL for any other
@@ -221,15 +201,18 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
    */
   const startConnecting = (serverUrl: string): Promise<string | undefined> =>
     props.target === 'fhir-r4'
-      ? redirectToPickedServerSignIn({
-          fhirBaseUrl: decodeFhirBaseUrl(serverUrl),
-          clientId: props.clientId,
-          scope: props.scope,
-          redirectUri: props.redirectUri,
-        }).pipe(
+      ? redirectToSignIn(
+          {
+            fhirBaseUrl: decodeFhirBaseUrl(serverUrl),
+            clientId: props.clientId,
+            scope: props.scope,
+            redirectUri: props.redirectUri,
+          },
+          undefined
+        ).pipe(
           Effect.match({
             onFailure: (failure) => failure.reason,
-            onSuccess: standaloneLaunchProblem(serverUrl),
+            onSuccess: (support) => signInProblem(serverUrl, support),
           }),
           Effect.runPromise
         )

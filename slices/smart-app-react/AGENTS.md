@@ -30,7 +30,7 @@ offers the same choices; this package re-exports its preset groups.
   when it leaves for the app root, and defaults to `window.location.replace`.
 - `ConnectMenu({ target, … })` and its `DEFAULT_SERVER_PRESET_GROUPS` — the
   standalone connect flow. `target: 'fhir-r4'` signs a SMART app in to a FHIR R4
-  base with `redirectToPickedServerSignIn`; `target: 'wildflower'` hands the Wildflower
+  base with `redirectToSignIn`; `target: 'wildflower'` hands the Wildflower
   launcher's own sign-in (`connect`) the picked URL (a Wildflower server's
   API base, or the demo server's FHIR base), and also runs the
   page's "Sign in to …" row (`chosenServer`) and sign-in on arrival
@@ -261,8 +261,13 @@ package, in an order that is load-bearing:
   hands the gate in its `SignInLanding`, so the bundle works at whatever
   origin and path it is served from, and no module reads `window` as a side
   effect of being imported.
-- **A failed launch goes to the app root, never a dead end.** A failed
-  `redirectToSignIn` on the launch page is handed to the app root, without
+- **A launch probes its `iss` as the menu probes a pick.** The launch page's
+  `redirectToSignIn` signs in to a SMART `iss` at its authorization server
+  and to an open one by a self-addressed sign-in, as `ConnectMenu` does.
+- **A failed launch goes to the app root, never a dead end.** A
+  `redirectToSignIn` on the launch page that fails, or finds the `iss`
+  `Unreachable` or `Unusable` (worded by `signInProblem`, as the menu words
+  them), is handed to the app root, without
   the launch, through `launchErrorRedirect` (`Effect.match` into its
   `?launchError`), where `SmartAppRoot` reads it as a `Visit`'s launch error
   and hands it to the `ConnectMenu` as its `arrivalProblem`; the contract is `fhir-r4-react/smart`'s
@@ -288,7 +293,7 @@ package, in an order that is load-bearing:
   of a plain-http server off loopback is refused before connecting, for either
   target, with `insecureTargetReason`'s explanation in the banner beside where
   the connect started (re-exported by `fhir-r4-react/smart`, like `normalizeServerUrl`; the scheme
-  read when the pick is made). `redirectToPickedServerSignIn`'s
+  read when the pick is made). `redirectToSignIn`'s
   `Unreachable` and `Unusable` outcomes, a sign-in it fails (one that cannot
   retain its request), and a problem the
   `wildflower` caller's `connect` reports, are shown as a retryable error

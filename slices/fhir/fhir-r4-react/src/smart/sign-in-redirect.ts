@@ -1,10 +1,8 @@
 import {
-  beginSignIn,
   beginSignInAt,
   createState,
   type PendingRequestUnusable,
   type PkceUnavailable,
-  type SignInError,
   type SmartIssuer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Effect } from 'effect'
@@ -36,39 +34,19 @@ const redirectToAuthorization = <E>(beginning: Effect.Effect<string, E>): Effect
   )
 
 /**
- * Sign in to `config.fhirBaseUrl`: discover its endpoints, retain what the
- * return needs, and send the browser to the authorization endpoint. `launch`
- * is the EHR's launch token for an EHR launch, and `undefined` for a
- * standalone launch.
- *
- * @remarks
- * `authorization-core`'s `beginSignIn` discovers the endpoints from
- * `{fhirBaseUrl}/.well-known/smart-configuration` and accepts the authorization
- * endpoint only when `endpointUrlFrom` does for this page: a `javascript:`
- * URL, one carrying userinfo or a fragment, and plain http off loopback from an
- * https page are each refused. Then it fails with discovery's reason and the
- * page stays where it is.
- */
-const redirectToSignIn = (
-  config: SmartLaunchConfig,
-  launch: string | undefined
-): Effect.Effect<void, SignInError> =>
-  redirectToAuthorization(
-    beginSignIn(config.fhirBaseUrl, undefined, signInEnvironmentFor(config), {
-      launch,
-    })
-  )
-
-/**
- * Sign in at the already-`discovered` SMART server, as {@link redirectToSignIn}
- * does once it has discovered one: the probe that discovered it is the one
- * fetch of its SMART configuration.
+ * Sign in at the already-`discovered` SMART server: retain what the return
+ * needs, and send the browser to its authorization endpoint. `launch` is the
+ * EHR's launch token for an EHR launch, and `undefined` for a standalone
+ * launch.
  */
 const redirectToSignInAt = (
   discovered: SmartIssuer,
-  config: Omit<SmartLaunchConfig, 'fhirBaseUrl'>
+  config: Omit<SmartLaunchConfig, 'fhirBaseUrl'>,
+  launch: string | undefined
 ): Effect.Effect<void, PkceUnavailable | PendingRequestUnusable> =>
-  redirectToAuthorization(beginSignInAt(discovered, undefined, signInEnvironmentFor(config)))
+  redirectToAuthorization(
+    beginSignInAt(discovered, undefined, signInEnvironmentFor(config), { launch })
+  )
 
 /**
  * Configuration for a self-addressed sign-in to an **open** FHIR server — one
@@ -106,7 +84,6 @@ const redirectToSelfAddressedSignInReturn = (
 
 export {
   redirectToSelfAddressedSignInReturn,
-  redirectToSignIn,
   redirectToSignInAt,
   type SelfAddressedSignInConfig,
   type SmartLaunchConfig,

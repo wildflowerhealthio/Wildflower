@@ -13,17 +13,17 @@ import { smartRegistration } from './config.ts'
 import { BASEPATH, pageAt, stubPageBrowserApis } from './importer-app.test-helpers.ts'
 
 // The real app root, app and router over the real URL, with the sign-in's
-// two halves stubbed at `authorization-core`'s boundary: `beginSignIn` is the
+// two halves stubbed at `authorization-core`'s boundary: `beginSignInAt` is the
 // authorize the sign-in starts, `completeSignIn` the token exchange on the
 // callback. Pins that the router never touches the callback URL the exchange
 // still reads.
-const { beginSignInMock, completeSignInMock } = vi.hoisted(() => ({
-  beginSignInMock: vi.fn<typeof SmartClientModule.beginSignIn>(),
+const { beginSignInAtMock, completeSignInMock } = vi.hoisted(() => ({
+  beginSignInAtMock: vi.fn<typeof SmartClientModule.beginSignInAt>(),
   completeSignInMock: vi.fn<typeof SmartClientModule.completeSignIn>(),
 }))
 vi.mock('@wildflowerhealthio/authorization-core/smart-client', async (importOriginal) => ({
   ...(await importOriginal<typeof SmartClientModule>()),
-  beginSignIn: beginSignInMock,
+  beginSignInAt: beginSignInAtMock,
   completeSignIn: completeSignInMock,
 }))
 
@@ -35,6 +35,13 @@ vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
 
 /** The FHIR server the completed exchange names. */
 const FHIR_SERVER_URL = 'https://fhir.example/r4'
+
+/** The FHIR server's SMART configuration, which a sign-in probes before it authorizes. */
+const SMART_CONFIGURATION = {
+  authorization_endpoint: 'https://fhir.example/oauth/authorize',
+  token_endpoint: 'https://fhir.example/oauth/token',
+  code_challenge_methods_supported: ['S256'],
+}
 
 /** The session a completed exchange redeems. */
 const SESSION: Session = {
@@ -49,11 +56,11 @@ const SESSION: Session = {
 
 /**
  * Start a sign-in as the connect menu does, so the callback has a connection
- * to complete: `beginSignIn` yields an authorize URL on this page (a
+ * to complete: `beginSignInAt` yields an authorize URL on this page (a
  * fragment, so jsdom does not navigate).
  */
 const startSignIn = async (): Promise<void> => {
-  beginSignInMock.mockImplementation(() =>
+  beginSignInAtMock.mockImplementation(() =>
     Effect.sync(() => `${window.location.href.split('#')[0] ?? ''}#authorize`)
   )
   await Effect.runPromise(
@@ -79,13 +86,18 @@ beforeEach(() => {
     performance: false,
     decidedAt: '2026-09-29T12:00:00.000Z',
   })
-  // The FHIR server holds no source files: every search is an empty bundle.
-  vi.stubGlobal('fetch', () =>
+  // The FHIR server serves its SMART configuration and holds no source files:
+  // every search is an empty bundle.
+  vi.stubGlobal('fetch', (input: RequestInfo | URL) =>
     Promise.resolve(
-      new Response(JSON.stringify({ resourceType: 'Bundle', type: 'searchset', entry: [] }), {
-        status: 200,
-        headers: { 'content-type': 'application/fhir+json' },
-      })
+      String(input instanceof Request ? input.url : input).endsWith(
+        '/.well-known/smart-configuration'
+      )
+        ? Response.json(SMART_CONFIGURATION)
+        : new Response(JSON.stringify({ resourceType: 'Bundle', type: 'searchset', entry: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/fhir+json' },
+          })
     )
   )
   return stubPageBrowserApis()
@@ -95,7 +107,7 @@ afterEach(() => {
   cleanup()
   window.localStorage.clear()
   window.sessionStorage.clear()
-  beginSignInMock.mockReset()
+  beginSignInAtMock.mockReset()
   completeSignInMock.mockReset()
 })
 
