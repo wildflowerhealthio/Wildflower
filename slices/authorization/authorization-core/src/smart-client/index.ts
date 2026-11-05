@@ -53,7 +53,7 @@ export type { DiscoveryWindow, SignInWindow } from './browser-sign-in.ts'
 
 export {
   memoryBackedRetainedRequestStore,
-  retainedRequestUnusableFrom,
+  RetainedRequestUnusable,
   RetainedSignInRequestStore,
   sessionStorageBackedRetainedRequestStore,
   SignInCrypto,
@@ -78,7 +78,6 @@ export {
   peekRetainedSignInRequest,
   retainedRequestUnrecognisedFromAnotherVersion,
   RetainedRequestUnrecognised,
-  RetainedRequestUnusable,
   TokenEndpointUnreachable,
 } from './sign-in.ts'
 export type {

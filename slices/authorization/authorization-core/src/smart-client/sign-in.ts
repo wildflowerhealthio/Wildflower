@@ -63,7 +63,7 @@ import {
 import { codeChallengeS256, createCodeVerifier, createState } from './pkce.ts'
 import type { PkceUnavailable } from './pkce.ts'
 import {
-  RetainedRequestUnusable,
+  type RetainedRequestUnusable,
   RetainedSignInRequestStore,
   SignInCrypto,
   signInHttpClient,
@@ -375,7 +375,6 @@ const sessionFrom = (grant: AccessGrant, retained: RetainedSignInRequest): Sessi
 
 export {
   RetainedRequestUnrecognised,
-  RetainedRequestUnusable,
   TokenEndpointUnreachable,
   beginSignIn,
   beginSignInAt,
