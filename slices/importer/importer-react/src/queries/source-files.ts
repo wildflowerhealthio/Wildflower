@@ -231,7 +231,9 @@ const useSourceFilesQuery = (): UseInfiniteQueryResult<
 /**
  * Fetches one source file whole and reads it back as named bytes.
  *
- * @param runAuthed - The authed runner from router context
+ * @param runAuthed - A runner that provides the typed FHIR client: the
+ *   source-file list passes the page's SMART runtime (`useRunSmart`), the one
+ *   its listing is read over
  * @param row - The row a selection or preview identified — its id and its
  *   classified format
  * @returns The stored file's own name and raw bytes

@@ -81,7 +81,10 @@ runtime:
 (`fhir-r4-react`'s `useRunAuthed`), which is how every consumer of that package's
 queries gets one. So this app's router supplies the same
 `RouterContextWith<FhirR4ResourcesHttpApiClient>` shape, rather than the slice
-package growing a second, prop-threaded way in. The router also carries the
+package growing a second, prop-threaded way in. Its source-file list alone
+reads the page's SMART runtime (`useRunSmart`), whose next-link read needs
+`SmartClient`, so `ImporterApp` also sits under the `SmartRuntimeContext`
+that `SmartHandshakeGate` provides. The router also carries the
 tabs, so the address bar names the open one. A link from outside the page
 still opens on Import: a visit with no callback in its URL goes through the
 launch, whose redirect URI is the app directory.

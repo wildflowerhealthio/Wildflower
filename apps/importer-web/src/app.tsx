@@ -21,7 +21,8 @@ type ImporterAppProps = AppProps & {
 }
 
 /**
- * The importer, mounted against an already-authenticated router context.
+ * The importer, mounted against an already-authenticated router context,
+ * under the `SmartRuntimeContext` the same runtime is provided by.
  *
  * @remarks
  * Split from {@link App} so the whole tree can be driven in a test over a stub
@@ -35,7 +36,9 @@ type ImporterAppProps = AppProps & {
  *
  * It also carries `importer-react`'s authed runner, which that package reads
  * out of route context (`fhir-r4-react`'s `useRunAuthed`), as every other
- * consumer of its queries does.
+ * consumer of its queries does. Its source-file list reads the runtime from
+ * `SmartRuntimeContext` instead (`useRunSmart`), so a test provides both, as
+ * `SmartHandshakeGate` does.
  *
  * Memoised on the context, so neither a re-render nor a tab switch (a
  * navigation inside this router) rebuilds it, and with it the mounted tree.

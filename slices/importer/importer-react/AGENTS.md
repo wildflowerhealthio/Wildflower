@@ -556,12 +556,15 @@ The importer has no HTTP wire union to derive, so there is no separate
   the same, named `aria-label="Import folder"`; `webkitdirectory` is set on it
   through a ref rather than as JSX, since React does not declare the attribute
   and writing it as a prop would need a cast.
-- **The authed runner comes from router context, one way.** `useSourceFilesQuery`,
-  the picker's row-select, and the preview modal's fetch all read
-  `useRunAuthed()`; the query also exposes
-  `sourceFilesInfiniteQueryOptions(runAuthed, options)` taking the runner as
-  its first argument, for a loader or a test that drives the query itself.
-  There is no prop-threaded second way in.
+- **The source-file list runs on the page's SMART runtime, one way.**
+  `useSourceFilesQuery`, the picker's row-select, and the preview modal's
+  fetch all read `useRunSmart()` (`SmartRuntimeContext`, which
+  `SmartHandshakeGate` provides), since the listing's next-link read needs
+  `SmartClient`, which the router context's `useRunAuthed()` runner is not
+  typed to provide; the query also exposes
+  `sourceFilesInfiniteQueryOptions(runSmart)` taking the runner, for a test
+  that drives the query itself. The rest of the slice reads
+  `useRunAuthed()`. There is no prop-threaded way in.
 
 ## Testing
 
@@ -571,8 +574,9 @@ behaviour to document — see
 and [React Testing Reference](../../../docs/Testing/React%20Testing%20Reference.md).
 Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
 
-- `sources/source-picker.test.tsx` mocks only the router seam
-  (`vi.mock('@wildflowerhealthio/fhir-r4-react', … useRunAuthed …)`) and drives the whole picker over
+- `sources/source-picker.test.tsx` mocks only the two runner seams
+  (`useRunAuthed` and `fhir-r4-react/smart`'s `useRunSmart`), both one real
+  SMART runtime, and drives the whole picker over
   a stub `HttpClient`; the runner is built through `fhir-r4-react/smart`'s
   `buildSmartRouterContext` so a bearer token rides the wire and the test can
   assert `Authorization: Bearer …` and the search URL against the recorded
