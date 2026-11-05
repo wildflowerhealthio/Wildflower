@@ -5,7 +5,7 @@
  *
  * @packageDocumentation
  */
-import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type HttpMethod,
@@ -89,7 +89,7 @@ const make = <TResource extends FhirResource>({
       Effect.gen(function* () {
         const root = yield* claimedRootOf(url, response)
         const served = yield* records(extractJson(response.text()))
-        return served.map(detach(root))
+        return served.map(DetachedResource.fromServerRecord(root))
       }),
   })
 

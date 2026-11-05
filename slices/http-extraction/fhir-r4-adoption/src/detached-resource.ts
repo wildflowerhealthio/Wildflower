@@ -5,9 +5,13 @@
  *
  * @packageDocumentation
  */
-import { IdentifierAndReference, type IdentifierType } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  IdentifierAndReference,
+  type IdentifierType,
+  type ReferenceType,
+} from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResource, ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   Array as Arr,
   Option,
@@ -17,6 +21,8 @@ import {
   Schema,
   type Effect,
 } from 'effect'
+
+import { identifierOf, mapReferences } from './reference-table.ts'
 
 /**
  * `TResource` with no logical id, distributed over a union so each variant
@@ -118,8 +124,8 @@ const logicalReferenceWire = (
  *
  * @remarks
  * Only `identifier[0]` is read: a decoder that knows a record's own id
- * writes it there ({@link keyIdentifierWire}, or `detach` for a server's
- * record), and a record whose source gave it no id is keyed by whatever
+ * writes it there ({@link keyIdentifierWire}, or {@link fromServerRecord}
+ * for a server's record), and a record whose source gave it no id is keyed by whatever
  * identifier the source wrote first. A record with no identifier, an
  * unqualified first one, or no `identifier` element at all (`Binary`) is
  * keyless, and is stored under an id minted for it.
@@ -167,8 +173,163 @@ const storedReferencesOf = (records: Iterable<Type>): ReadonlySet<string> =>
     )
   )
 
+/**
+ * FHIR R4's relative-reference grammar: a resource-type token, `/`, and a
+ * logical id.
+ *
+ * @remarks
+ * The only literal {@link fromServerRecord} reads a target's id from, and only when the
+ * token is an R4 resource type (`ResourceType.is`). Everything else is left
+ * verbatim — a `#fragment` contained reference, a `urn:uuid:`, a foreign
+ * absolute URL, a versioned `Type/id/_history/v`, any id carrying a character
+ * outside the spec's set (a space, a slash), and a token R4 does not define
+ * (carebook's `PrescriptionOrder`) all pass through untouched.
+ */
+const RELATIVE_REFERENCE = /^([A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})$/
+
+/**
+ * `new URL`, memoised for one {@link fromServerRecord}.
+ *
+ * @remarks
+ * `new URL` is the most expensive thing in this file, and a page of 250
+ * `Observation`s carries a few thousand references — so each system is parsed
+ * once. The one instance is written into every `Identifier.system` in that
+ * system, so they alias: **treat it as immutable**, and clone before mutating.
+ *
+ * A system that is not an absolute URI throws a `TypeError` here. That
+ * reaches the caller as a defect rather than as a failed parse, deliberately:
+ * it means the source is misconfigured, not that a response was bad.
+ */
+const memoisedUrlOf = (): ((url: string) => URL) => {
+  const urls = new Map<string, URL>()
+  return (url) => {
+    const known = urls.get(url)
+    if (known !== undefined) {
+      return known
+    }
+    const parsed = new URL(url)
+    urls.set(url, parsed)
+    return parsed
+  }
+}
+
+/**
+ * The system a FHIR server at `baseUrl` keys its records of `resourceType` in,
+ * `<baseUrl>/<Type>`: the `[base]/[type]` of its `[base]/[type]/[id]`, since
+ * a FHIR server's ids are unique per type.
+ */
+const serverSystemOf = (baseUrl: string, resourceType: string): string =>
+  `${baseUrl}/${resourceType}`
+
+/**
+ * A reference literal as the relative `Type/id` {@link fromServerRecord} reads a
+ * target's id from: a FHIR server at `baseUrl` may spell a reference to its own
+ * record absolutely, `<baseUrl>/Type/id`, which is the same target as
+ * `Type/id`, so that prefix is read back off. Any other literal as it is.
+ */
+const relativise = (baseUrl: string, reference: string): string =>
+  reference.startsWith(`${baseUrl}/`) ? reference.slice(baseUrl.length + 1) : reference
+
+/**
+ * A reference whose literal, relativised against `baseUrl`, is a relative
+ * `Type/id`, as the logical reference to its target: no literal, `type` the
+ * target's type, and `identifier` the target's key, `<baseUrl>/<Type>` and
+ * the id as its value. Every other reference exactly as it is.
+ *
+ * @remarks
+ * The literal is read through {@link relativise}, so a FHIR server's absolute
+ * `<baseUrl>/Type/id` detaches exactly as its `Type/id`. A literal that is
+ * still not a relative `Type/id` of an R4 resource type once relativised — a
+ * `#fragment`, a `urn:uuid:`, a foreign absolute URL, a versioned
+ * `Type/id/_history/v`, a search URL, an id past 64 characters, a base that is
+ * only a prefix of the server's, a type R4 does not define — is kept in its
+ * original spelling, absolute or not, its `identifier` included. A reference
+ * with no literal (an identifier-only or display-only one) is kept as the
+ * source wrote it.
+ *
+ * An `identifier` the server had also put on a reference it is turned
+ * logical is **replaced** by the target's key: the slot is 0..1, and the key
+ * is what names the target now that the literal is gone. A FHIR server may
+ * send both on one reference, so this is not a rule only one source needs.
+ * The target carries its own identifiers, so the server's are not lost when it
+ * was decoded too.
+ * `display` and `extension` are kept.
+ */
+const detachReference =
+  (baseUrl: string, urlOf: (url: string) => URL) =>
+  (reference: ReferenceType): ReferenceType => {
+    const match =
+      reference.reference === null
+        ? null
+        : RELATIVE_REFERENCE.exec(relativise(baseUrl, reference.reference))
+    const resourceType = match?.[1]
+    const id = match?.[2]
+    if (resourceType === undefined || id === undefined || !ResourceType.is(resourceType)) {
+      return reference
+    }
+    return {
+      ...reference,
+      reference: null,
+      type: resourceType,
+      identifier: identifierOf(urlOf(serverSystemOf(baseUrl, resourceType)), id),
+    }
+  }
+
+/**
+ * A record a FHIR server served, detached: the server's id becomes the key
+ * identifier in `<base>/<Type>`, and references to the server's own records
+ * become logical.
+ *
+ * @param baseUrl - The server's base URL, the `[base]` of its
+ *   `[base]/[type]/[id]`
+ * @returns A function from one served resource to its detached form, of the
+ *   same resource type
+ *
+ * @remarks
+ * For a response kind whose records really were a FHIR server's (a FHIR R4
+ * server's reads, carebook's STU3 searchset), as a private step of its
+ * `parse`. A decoder that synthesizes its records writes them detached
+ * instead ({@link keyIdentifierWire}, {@link logicalReferenceWire}).
+ *
+ * - `id` becomes `null`. When it was set and the type has an `identifier`
+ *   element, `{ system: <baseUrl>/<Type>, value: id }` is prepended as
+ *   `identifier[0]`, the record's key; every identifier the server wrote is
+ *   kept behind it. A `Binary` (no `identifier` element) and a record with no
+ *   `id` keep only what they had, so they are keyless unless the server's own
+ *   first identifier names them.
+ * - Every reference the per-type table ({@link mapReferences}) reaches is run
+ *   through {@link detachReference}.
+ *
+ * There is deliberately no "already keyed?" guard: a server that publishes
+ * its own id as an identifier in the same system yields a benign duplicate.
+ */
+const fromServerRecord = (baseUrl: string) => {
+  const urlOf = memoisedUrlOf()
+  const detachReferences = mapReferences(detachReference(baseUrl, urlOf))
+  return <TResource extends FhirResource>(resource: TResource): Detached<TResource> => {
+    const detached = detachReferences(resource)
+    const { id } = resource
+    const keyed: Type =
+      id !== null && hasIdentifier(detached)
+        ? {
+            ...detached,
+            id: null,
+            identifier: [
+              identifierOf(urlOf(serverSystemOf(baseUrl, detached.resourceType)), id),
+              ...detached.identifier,
+            ],
+          }
+        : { ...detached, id: null }
+    // `mapReferences` maps each variant to itself, so `keyed` is `resource`'s
+    // own type, detached; the type system cannot see that (see its remarks).
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return keyed as Detached<TResource>
+  }
+}
+
 export {
   decodeUnknown,
+  fromServerRecord,
   hasIdentifier,
   isDetached,
   keyedIdOf,

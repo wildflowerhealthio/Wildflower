@@ -1,4 +1,4 @@
-import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   HttpResponseKind,
@@ -12,7 +12,7 @@ import type { PreviewedResponse } from './review.ts'
 
 const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
 
-const detachSample = detach('https://example.org/fhir')
+const detachSample = DetachedResource.fromServerRecord('https://example.org/fhir')
 
 /**
  * A Patient its source calls `id`, or gave no id when `null`, detached, whose

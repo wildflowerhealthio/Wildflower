@@ -1,4 +1,4 @@
-import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   Binary,
@@ -19,7 +19,7 @@ import * as DecodedFile from './decoded-file.ts'
 
 const BASE_URL = 'https://source.example/fhir'
 
-const detachTest = detach(BASE_URL)
+const detachTest = DetachedResource.fromServerRecord(BASE_URL)
 
 const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
 const decodeObservation = Schema.decodeUnknownSync(Observation.Schema)

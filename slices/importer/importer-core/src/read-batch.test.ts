@@ -1,5 +1,5 @@
 import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
-import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodedFile,
@@ -61,7 +61,7 @@ const reviewKeys = (result: FormatDecode.Result<FormatKind>): readonly string[] 
 
 /** A Patient its source calls `id`, detached as a decoder hands it over. */
 const fakeResource = (id: string): DetachedResource.Type =>
-  detach('https://example.test/fhir')(
+  DetachedResource.fromServerRecord('https://example.test/fhir')(
     Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
   )
 

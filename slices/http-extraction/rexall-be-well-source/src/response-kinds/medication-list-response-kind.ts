@@ -1,4 +1,4 @@
-import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   Bundle,
   MedicationDispense,
@@ -76,15 +76,6 @@ const promote = (resource: MedicationResource): MedicationResource =>
     : promoteMedicationDispense(resource)
 
 /**
- * Detach a promoted carebook medication: carebook is a FHIR server, its
- * searchset rooted at {@link REXALL_STU3_BASE_URL}, so a `MedicationRequest`
- * is keyed in `<base>/MedicationRequest` and its `Patient/<uid>` subject
- * names the key in `<base>/Patient`. Carebook's non-R4
- * `PrescriptionOrder/<id>` literals pass through as carebook wrote them.
- */
-const detachCarebook = detach(REXALL_STU3_BASE_URL)
-
-/**
  * {@link REXALL_PHARMACY_LOCATION_URL} followed by a query: the
  * prescriptions-searchset XHR, anchored and pinned to host + `v1` + full path;
  * the trailing `?` requires a query. Disjoint from `ProfileResponseKind`.
@@ -95,8 +86,14 @@ const medicationListUrl = new RegExp(`^${EffectRegExp.escape(REXALL_PHARMACY_LOC
  * Response kind for the Rexall prescriptions page's single XHR: one
  * heterogeneous carebook STU3 searchset (matched `Location` plus medication and
  * other `_revinclude`s). `parse` decodes it "as is", keeps only the
- * `MedicationRequest` / `MedicationDispense` resources, detached, and
- * drops-and-logs the rest. List-only — no detail crawl (#339).
+ * `MedicationRequest` / `MedicationDispense` resources, and drops-and-logs
+ * the rest. List-only — no detail crawl (#339).
+ *
+ * Carebook is a FHIR server rooted at {@link REXALL_STU3_BASE_URL}, so each
+ * medication is detached from it: a `MedicationRequest` keyed in
+ * `<base>/MedicationRequest`, its `Patient/<uid>` subject naming the key in
+ * `<base>/Patient`. Carebook's non-R4 `PrescriptionOrder/<id>` literals pass
+ * through as carebook wrote them.
  */
 const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<DetachedResource.Type> =
   HttpResponseKind.make({
@@ -109,7 +106,8 @@ const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<DetachedReso
         const resources = allEntries
           .map(({ resource }) => resource)
           .filter((resource) => isMedication(resource))
-          .map((resource) => detachCarebook(promote(resource)))
+          .map(promote)
+          .map(DetachedResource.fromServerRecord(REXALL_STU3_BASE_URL))
         const droppedCount = allEntries.length - resources.length
         if (droppedCount > 0) {
           yield* Effect.logInfo(

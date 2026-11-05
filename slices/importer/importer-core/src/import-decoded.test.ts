@@ -1,4 +1,4 @@
-import { adopt, detach, DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { adopt, DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
@@ -36,7 +36,9 @@ const FAKE_BASE_URL = 'https://example.test/fhir'
 
 /** A Patient its source calls `id`, detached as a decoder hands it over. */
 const fakeResource = (id: string): DetachedResource.Type =>
-  detach(FAKE_BASE_URL)(Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id }))
+  DetachedResource.fromServerRecord(FAKE_BASE_URL)(
+    Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+  )
 
 /** The id the import stores {@link fakeResource}`(id)` under. */
 const fakeResourceId = (id: string): string =>
@@ -691,7 +693,7 @@ const importedSourceFileIds = async (
 
 describe('the records the import adopts', () => {
   it('adopts each detached record under the id its key derives, its references to records of the set resolved', async () => {
-    const detachSource = detach(SOURCE_BASE_URL)
+    const detachSource = DetachedResource.fromServerRecord(SOURCE_BASE_URL)
     const patient = detachSource(sourcePatient)
     const observation = detachSource(sourceObservation)
     const [sourceFileId] = await importedSourceFileIds(decodedOf([]))
@@ -731,11 +733,11 @@ describe('the records the import adopts', () => {
           entries: [
             {
               fullUrl: 'patient',
-              resource: detach(baseUrl)(sourcePatient),
+              resource: DetachedResource.fromServerRecord(baseUrl)(sourcePatient),
             },
             {
               fullUrl: 'observation',
-              resource: detach(baseUrl)(sourceObservation),
+              resource: DetachedResource.fromServerRecord(baseUrl)(sourceObservation),
             },
           ],
         },
@@ -749,7 +751,7 @@ describe('the records the import adopts', () => {
   // The source gave the Observation no id and no identifier, so nothing names
   // it: it is stored under an id of its own, a fresh one on every import.
   it('stores a keyless record under a fresh random id', async () => {
-    const detached = detach(SOURCE_BASE_URL)(sourceObservation)
+    const detached = DetachedResource.fromServerRecord(SOURCE_BASE_URL)(sourceObservation)
     expect(DetachedResource.keyOf(detached)).toEqual(Option.none())
     const imported = await Promise.all(
       [1, 2].map(() =>

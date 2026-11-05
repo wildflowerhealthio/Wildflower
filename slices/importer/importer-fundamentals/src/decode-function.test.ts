@@ -1,4 +1,4 @@
-import { detach, type DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
@@ -17,7 +17,9 @@ const BASE_URL = 'https://source.example/fhir'
 
 /** A Patient its source calls `id`, detached from {@link BASE_URL}. */
 const fakeResource = (id: string): DetachedResource.Type =>
-  detach(BASE_URL)(Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id }))
+  DetachedResource.fromServerRecord(BASE_URL)(
+    Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+  )
 
 const pickedFile = (index: number, fileName: string, bytes: number[]): PickedFile.Type => ({
   id: `${index}:${fileName}`,

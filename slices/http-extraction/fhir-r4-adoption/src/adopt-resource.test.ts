@@ -28,7 +28,7 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Effect, FastCheck as fc, Option, Schema, SchemaAST } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { adopt, adoptedReferenceOf, detach, originalIdOf } from './adopt-resource.ts'
+import { adopt, adoptedReferenceOf, originalIdOf } from './adopt-resource.ts'
 import * as DetachedResource from './detached-resource.ts'
 
 /**
@@ -60,8 +60,8 @@ const fhirSystem = (resourceType: string): string => `${BASE}/${resourceType}`
 /** A system no record here is keyed in. */
 const SYSTEM = 'https://wildflowerhealth.io/fhir/sid/example-portal'
 
-/** {@link BASE}'s detach. */
-const detachFhir = detach(BASE)
+/** {@link BASE}'s `fromServerRecord`. */
+const detachFhir = DetachedResource.fromServerRecord(BASE)
 
 /**
  * An adoption over `batch`, as the import stage runs one over a file set: its
@@ -638,7 +638,7 @@ const asObservation = (resource: FhirResource): typeof Observation.Schema.Type =
   return resource
 }
 
-describe('detach', () => {
+describe('DetachedResource.fromServerRecord', () => {
   for (const resource of resources) {
     const { resourceType } = resource
 
@@ -729,7 +729,7 @@ describe('detaching references', () => {
   })
 
   const subjectOf = (baseUrl: string, subject: ReferenceType): ReferenceType | null =>
-    asObservation(detach(baseUrl)(observationWith(subject))).subject
+    asObservation(DetachedResource.fromServerRecord(baseUrl)(observationWith(subject))).subject
 
   test('a literal reference becomes the logical reference to its target by its key', () => {
     expect(subjectOf(BASE, reference({ reference: 'Patient/pat-7', display: 'Avery' }))).toEqual(
@@ -1308,10 +1308,10 @@ describe('writing a record detached', () => {
   }
 
   // The parity a decoder that writes its records detached relies on: what it
-  // writes is what `detach` makes of the server-shaped record it stands for,
+  // writes is what `fromServerRecord` makes of the server-shaped record it stands for,
   // so the records it hands the import stage are stored exactly as before.
   // The wire is minimal on purpose: a sampled Observation carries literal
-  // references of its own, which `detach` rewrites and a direct write would
+  // references of its own, which `fromServerRecord` rewrites and a direct write would
   // have to spell too.
   test('property: a key identifier and a logical reference read as detach writes them', () => {
     fc.assert(
@@ -1393,8 +1393,10 @@ describe('adoptedReferenceOf', () => {
         fc.constantFrom<'Patient' | 'Practitioner'>('Patient', 'Practitioner'),
         fc.stringMatching(/^[A-Za-z0-9\-.]{1,64}$/),
         (baseUrl, resourceType, originalId) => {
-          const target = detach(baseUrl)(targetOf(resourceType, originalId))
-          const observation = detach(baseUrl)({
+          const target = DetachedResource.fromServerRecord(baseUrl)(
+            targetOf(resourceType, originalId)
+          )
+          const observation = DetachedResource.fromServerRecord(baseUrl)({
             ...sample(Observation.Schema, 13),
             id: 'obs-1',
             subject: reference({ reference: `${resourceType}/${originalId}` }),
