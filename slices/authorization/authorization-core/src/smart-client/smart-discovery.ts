@@ -24,7 +24,8 @@
  */
 
 import type { HttpClient } from '@effect/platform'
-import { Data, Effect, Either, Option, Schema } from 'effect'
+import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
+import { Data, Effect, Either, Match, Option, Schema } from 'effect'
 
 import { SignInPage, signInHttpClient } from './sign-in-services.ts'
 
@@ -279,13 +280,61 @@ const discoveredSmartServerFrom = (
 }
 
 /**
+ * What fetching a SMART configuration got back, before anyone reads it: no
+ * response at all, an answer that is not ok, an ok answer that is not JSON, or
+ * a JSON document. Each names the `url` it was fetched from.
+ */
+type SmartConfigurationFetch = Data.TaggedEnum<{
+  /**
+   * No response: the server is down, or the browser blocked the request (a
+   * CORS rejection looks the same to the page). `reason` is the transport's.
+   */
+  readonly Unreachable: { readonly url: string; readonly reason: string }
+  /** An HTTP answer whose status is not 2xx. */
+  readonly NotOk: { readonly url: string; readonly status: number }
+  /** A 2xx answer whose body is not JSON. */
+  readonly NotJson: { readonly url: string }
+  /** A 2xx JSON answer, not yet read as a configuration. */
+  readonly Document: { readonly url: string; readonly document: unknown }
+}>
+const SmartConfigurationFetch = Data.taggedEnum<SmartConfigurationFetch>()
+
+/**
+ * Fetch the SMART configuration under the FHIR base `fhirBaseUrl` (canonical:
+ * no trailing slash), through the context's `HttpClient` with no trace
+ * headers. Every outcome is a {@link SmartConfigurationFetch}, so the Effect
+ * never fails: each reader decides what an outcome means to it.
+ */
+const fetchSmartConfiguration = (
+  fhirBaseUrl: string
+): Effect.Effect<SmartConfigurationFetch, never, HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const url = smartConfigurationUrl(fhirBaseUrl)
+    const client = yield* signInHttpClient
+    const response = yield* client
+      .get(url, { acceptJson: true })
+      .pipe(
+        Effect.mapError((error) =>
+          SmartConfigurationFetch.Unreachable({ url, reason: unknownErrorToString(error.cause) })
+        )
+      )
+    if (response.status < 200 || response.status >= 300) {
+      return SmartConfigurationFetch.NotOk({ url, status: response.status })
+    }
+    return yield* response.json.pipe(
+      Effect.map((document) => SmartConfigurationFetch.Document({ url, document })),
+      Effect.mapError(() => SmartConfigurationFetch.NotJson({ url }))
+    )
+  }).pipe(Effect.merge)
+
+/**
  * Discover the SMART server at `serverUrl` (canonical: no trailing slash), a
  * FHIR base, and validate what it advertises. The {@link SmartServer} it
  * describes is returned with the endpoints: its FHIR base is the `aud` the
  * sign-in names, and its kind is what the signed-in app may offer. The
  * `SignInPage` decides whether a plain-http endpoint off loopback is usable.
  *
- * Every way the request can fail — unreachable, an error status (a 404
+ * Every way the fetch can fail — unreachable, an error status (a 404
  * included: there is no configuration there), a non-JSON body — is a
  * {@link DiscoveryFailed} naming the URL.
  */
@@ -293,40 +342,38 @@ const discoverSmartEndpoints = (
   serverUrl: string
 ): Effect.Effect<DiscoveredSmartServer, DiscoveryFailed, HttpClient.HttpClient | SignInPage> =>
   Effect.gen(function* () {
-    const url = smartConfigurationUrl(serverUrl)
-    const client = yield* signInHttpClient
+    const fetched = yield* fetchSmartConfiguration(serverUrl)
     const page = yield* SignInPage
-    const response = yield* client.get(url, { acceptJson: true }).pipe(
-      // A network-level failure is indistinguishable from a CORS rejection to
-      // the page, so name both possibilities instead of guessing.
-      Effect.mapError(
-        () =>
-          new DiscoveryFailed({
-            reason: `Could not reach ${url}. The server may be down, or the browser may have blocked the request.`,
-          })
-      )
-    )
-    if (response.status === 404) {
-      return yield* new DiscoveryFailed({
-        reason:
-          `${url} was not found (404). ` +
-          'Enter a Wildflower server’s address, or a SMART on FHIR server’s FHIR base URL.',
+    return yield* Match.value(fetched).pipe(
+      Match.tagsExhaustive({
+        // A network-level failure is indistinguishable from a CORS rejection
+        // to the page, so name both possibilities instead of guessing.
+        Unreachable: ({ url }) =>
+          Either.left(
+            new DiscoveryFailed({
+              reason: `Could not reach ${url}. The server may be down, or the browser may have blocked the request.`,
+            })
+          ),
+        NotOk: ({ url, status }) =>
+          Either.left(
+            new DiscoveryFailed({
+              reason:
+                status === 404
+                  ? `${url} was not found (404). ` +
+                    'Enter a Wildflower server’s address, or a SMART on FHIR server’s FHIR base URL.'
+                  : `${url} answered ${String(status)}. Is this a Wildflower server?`,
+            })
+          ),
+        NotJson: ({ url }) =>
+          Either.left(
+            new DiscoveryFailed({
+              reason: `${url} did not answer with JSON. Is this a Wildflower server?`,
+            })
+          ),
+        Document: ({ document }) =>
+          discoveredSmartServerFrom(serverUrl, document, { pageIsSecure: page.isSecure }),
       })
-    }
-    if (response.status < 200 || response.status >= 300) {
-      return yield* new DiscoveryFailed({
-        reason: `${url} answered ${String(response.status)}. Is this a Wildflower server?`,
-      })
-    }
-    const document = yield* response.json.pipe(
-      Effect.mapError(
-        () =>
-          new DiscoveryFailed({
-            reason: `${url} did not answer with JSON. Is this a Wildflower server?`,
-          })
-      )
     )
-    return yield* discoveredSmartServerFrom(serverUrl, document, { pageIsSecure: page.isSecure })
   })
 
 export {
@@ -343,6 +390,8 @@ export {
   insecureTargetReason,
   discoveredSmartServerFrom,
   discoverSmartEndpoints,
+  fetchSmartConfiguration,
+  SmartConfigurationFetch,
   WILDFLOWER_SERVER_CAPABILITY,
 }
 export type { SmartEndpoints, DiscoveredSmartServer }

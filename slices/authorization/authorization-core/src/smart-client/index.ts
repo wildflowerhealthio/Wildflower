@@ -58,7 +58,6 @@ export {
   sessionStorageBackedRetainedRequestStore,
   SignInCrypto,
   SignInPage,
-  signInHttpClient,
 } from './sign-in-services.ts'
 export type {
   RetainedRequestStorage,
@@ -93,10 +92,12 @@ export {
   discoverSmartEndpoints,
   DiscoveryFailed,
   endpointUrlFrom,
+  fetchSmartConfiguration,
   insecureTargetReason,
   isLoopbackHost,
   PlainSmartServer,
   SMART_CONFIGURATION_PATH,
+  SmartConfigurationFetch,
   smartConfigurationUrl,
   discoveredSmartServerFrom,
   UnusableEndpointUrl,

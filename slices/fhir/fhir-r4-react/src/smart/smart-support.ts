@@ -1,15 +1,14 @@
 import type { HttpClient } from '@effect/platform'
 import {
+  fetchSmartConfiguration,
   insecureTargetReason,
   normalizeServerUrl,
   type RetainedRequestUnusable,
   type PkceUnavailable,
   SignInPage,
-  signInHttpClient,
   discoveredSmartServerFrom,
   type DiscoveredSmartServer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
 import { Data, Effect, Either, Match, Schema } from 'effect'
 
 import type { SmartSignInServices } from './retained-sign-in-requests.ts'
@@ -61,17 +60,17 @@ const SmartSupport = Data.taggedEnum<SmartSupport>()
 const NamesAuthorizationEndpoint = Schema.Struct({ authorization_endpoint: Schema.String })
 
 /** Whether a configuration names an `authorization_endpoint`, as a SMART server's does. */
-const decodeSmartConfiguration = Schema.decodeUnknown(NamesAuthorizationEndpoint)
+const namesAuthorizationEndpoint = Schema.is(NamesAuthorizationEndpoint)
 
 /**
  * Probe `{fhirBaseUrl}/.well-known/smart-configuration` to decide how to sign in.
  *
  * @remarks
  * Every outcome is a {@link SmartSupport}, so the Effect never fails. The
- * probe goes through `authorization-core`'s `signInHttpClient`, the context's
- * `HttpClient` sending no trace headers, so the request stays a CORS-simple
- * one, and the `SignInPage` decides whether a
- * plain-http endpoint off loopback is `Unusable`.
+ * probe is `authorization-core`'s `fetchSmartConfiguration`, the one fetch
+ * discovery makes too, read here as support rather than as a server to sign
+ * in to; the `SignInPage` decides whether a plain-http endpoint off loopback
+ * is `Unusable`.
  *
  * @param fhirBaseUrl - The FHIR server base the well-known path is appended to
  */
@@ -79,34 +78,33 @@ const detectSmartSupport = (
   fhirBaseUrl: FhirBaseUrl
 ): Effect.Effect<SmartSupport, never, HttpClient.HttpClient | SignInPage> =>
   Effect.gen(function* () {
-    const client = yield* signInHttpClient
+    const fetched = yield* fetchSmartConfiguration(fhirBaseUrl)
     const page = yield* SignInPage
-    // A request that gets no response is network-or-CORS and the two are
-    // indistinguishable here — surface it, never degrade to `Open`.
-    const response = yield* client
-      .get(`${fhirBaseUrl}/.well-known/smart-configuration`, { acceptJson: true })
-      .pipe(
-        Effect.mapError((error) =>
-          SmartSupport.Unreachable({ reason: unknownErrorToString(error.cause) })
-        )
-      )
-    // A real HTTP answer that isn't ok (404, 500, …) is a server with no SMART
-    // config → Open. Only a config that names an authorization endpoint is
-    // SMART, and only when its endpoints are usable from this page.
-    if (response.status < 200 || response.status >= 300) return SmartSupport.Open()
-    const config = yield* response.json.pipe(
-      // Checked, not narrowed: `discoveredSmartServerFrom` reads the whole configuration.
-      Effect.tap(decodeSmartConfiguration),
-      Effect.mapError(() => SmartSupport.Open())
+    return Match.value(fetched).pipe(
+      Match.tagsExhaustive({
+        // A request that gets no response is network-or-CORS and the two are
+        // indistinguishable here — surface it, never degrade to `Open`.
+        Unreachable: ({ reason }) => SmartSupport.Unreachable({ reason }),
+        // A real HTTP answer that isn't ok (404, 500, …), or isn't JSON, is a
+        // server with no SMART config → Open.
+        NotOk: () => SmartSupport.Open(),
+        NotJson: () => SmartSupport.Open(),
+        // Only a config that names an authorization endpoint is SMART, and
+        // only when its endpoints are usable from this page. Checked, not
+        // narrowed: `discoveredSmartServerFrom` reads the whole configuration.
+        Document: ({ document }) =>
+          namesAuthorizationEndpoint(document)
+            ? Either.match(
+                discoveredSmartServerFrom(fhirBaseUrl, document, { pageIsSecure: page.isSecure }),
+                {
+                  onLeft: (failed) => SmartSupport.Unusable({ reason: failed.reason }),
+                  onRight: (discovered) => SmartSupport.Smart({ discovered }),
+                }
+              )
+            : SmartSupport.Open(),
+      })
     )
-    return Either.match(
-      discoveredSmartServerFrom(fhirBaseUrl, config, { pageIsSecure: page.isSecure }),
-      {
-        onLeft: (failed) => SmartSupport.Unusable({ reason: failed.reason }),
-        onRight: (discovered) => SmartSupport.Smart({ discovered }),
-      }
-    )
-  }).pipe(Effect.merge)
+  })
 
 /**
  * Sign in to `config.fhirBaseUrl`, a server a reader picked or an EHR launch's
