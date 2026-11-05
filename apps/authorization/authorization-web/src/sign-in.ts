@@ -120,7 +120,7 @@ const signInRegistration = (href: string, basePath: string): ClientRegistration 
 
 /** The sign-in services of `page`, its retained sign-in request kept at the app's own key. */
 const signInLayer = (page: SignInWindow): Layer.Layer<SignInServices> =>
-  BrowserSignIn.layer(page, RETAINED_SIGN_IN_REQUEST_KEY)
+  BrowserSignIn.layerFromWindow(page, RETAINED_SIGN_IN_REQUEST_KEY)
 
 /**
  * The base of the authorization API the `discovered` server advertises, when it is a

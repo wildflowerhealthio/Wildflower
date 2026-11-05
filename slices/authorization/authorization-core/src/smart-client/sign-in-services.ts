@@ -170,14 +170,14 @@ class RetainedSignInRequestStore extends Context.Tag(
   'authorization-core/RetainedSignInRequestStore'
 )<RetainedSignInRequestStore, RetainedRequestStoreShape>() {
   /** The store at `key` in `page`'s `sessionStorage` ({@link sessionStorageBackedRetainedRequestStore}). */
-  static readonly sessionStorage = (
+  static readonly sessionStorageBackedLayer = (
     page: { readonly sessionStorage: RetainedRequestStorage },
     key: string
   ): Layer.Layer<RetainedSignInRequestStore> =>
     Layer.succeed(RetainedSignInRequestStore, sessionStorageBackedRetainedRequestStore(page, key))
 
   /** A store in `held`, which never refuses: for a test to read and seed. */
-  static readonly inMemory = (
+  static readonly memoryBackedLayer = (
     held: Ref.Ref<Option.Option<string>>
   ): Layer.Layer<RetainedSignInRequestStore> =>
     Layer.succeed(RetainedSignInRequestStore, memoryBackedRetainedRequestStore(held))

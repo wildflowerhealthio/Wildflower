@@ -122,7 +122,7 @@ const signInRegistration: ClientRegistration = {
  * so this console and the `launcher-web` page share one reading of `window`
  * rather than a copy each.
  */
-const signInLayer = BrowserSignIn.layer(window, RETAINED_SIGN_IN_REQUEST_KEY)
+const signInLayer = BrowserSignIn.layerFromWindow(window, RETAINED_SIGN_IN_REQUEST_KEY)
 
 /** Show `message` on the status line, or clear it when `undefined`. */
 const showStatus = (message: string | undefined, kind: 'ok' | 'problem' = 'ok'): void => {

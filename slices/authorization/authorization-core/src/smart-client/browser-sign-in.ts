@@ -66,11 +66,11 @@ const BrowserSignIn = {
    * ({@link discoveryLayerFromWindow}), its `crypto`, and the retained
    * sign-in request at `retainedRequestKey` in its `sessionStorage`.
    */
-  layer: (page: SignInWindow, retainedRequestKey: string): Layer.Layer<SignInServices> =>
+  layerFromWindow: (page: SignInWindow, retainedRequestKey: string): Layer.Layer<SignInServices> =>
     Layer.mergeAll(
       discoveryLayerFromWindow(page),
       SignInCrypto.layerFromWindow(page),
-      RetainedSignInRequestStore.sessionStorage(page, retainedRequestKey)
+      RetainedSignInRequestStore.sessionStorageBackedLayer(page, retainedRequestKey)
     ),
 } as const
 

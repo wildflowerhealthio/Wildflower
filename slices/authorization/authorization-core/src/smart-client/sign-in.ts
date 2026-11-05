@@ -11,7 +11,7 @@
  * context: the `HttpClient` discovery and the token request go through, the
  * `SignInCrypto` the PKCE pair is minted from, the `RetainedSignInRequestStore`
  * that carries the retained request across the redirect, and the `PageSecurity`.
- * A browser provides all four with `BrowserSignIn.layer`, and a test provides
+ * A browser provides all four with `BrowserSignIn.layerFromWindow`, and a test provides
  * a stub transport, a store over a plain object, or whichever one it is about.
  *
  * Nothing here knows which app it is running for: the client id, the requested

@@ -67,7 +67,7 @@ class RetainedSelfAddressedSignInRequestStore extends Context.Tag(
   'fhir-r4-react/RetainedSelfAddressedSignInRequestStore'
 )<RetainedSelfAddressedSignInRequestStore, RetainedRequestStoreShape>() {
   /** The store at `key` in `page`'s `sessionStorage`. */
-  static readonly sessionStorage = (
+  static readonly sessionStorageBackedLayer = (
     page: { readonly sessionStorage: RetainedRequestStorage },
     key: string
   ): Layer.Layer<RetainedSelfAddressedSignInRequestStore> =>
@@ -77,7 +77,7 @@ class RetainedSelfAddressedSignInRequestStore extends Context.Tag(
     )
 
   /** A store in `held`, which never refuses: for a test to read and seed. */
-  static readonly inMemory = (
+  static readonly memoryBackedLayer = (
     held: Ref.Ref<Option.Option<string>>
   ): Layer.Layer<RetainedSelfAddressedSignInRequestStore> =>
     Layer.succeed(RetainedSelfAddressedSignInRequestStore, memoryBackedRetainedRequestStore(held))
@@ -94,8 +94,8 @@ type SmartSignInServices = SignInServices | RetainedSelfAddressedSignInRequestSt
  */
 const smartSignInLayer = (page: SignInWindow): Layer.Layer<SmartSignInServices> =>
   Layer.merge(
-    BrowserSignIn.layer(page, RETAINED_SIGN_IN_REQUEST_KEY),
-    RetainedSelfAddressedSignInRequestStore.sessionStorage(
+    BrowserSignIn.layerFromWindow(page, RETAINED_SIGN_IN_REQUEST_KEY),
+    RetainedSelfAddressedSignInRequestStore.sessionStorageBackedLayer(
       page,
       RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY
     )

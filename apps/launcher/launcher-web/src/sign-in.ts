@@ -16,7 +16,7 @@
  *
  * What is left here is only what is this entry's own: the registered values
  * below, and the two thin wrappers that fold the flow's error channel into a
- * {@link SignInStep}. The impure wiring is `BrowserSignIn.layer`'s
+ * {@link SignInStep}. The impure wiring is `BrowserSignIn.layerFromWindow`'s
  * ({@link signInLayer}); the requested scopes are this entry's own,
  * {@link LAUNCHER_SCOPE}.
  *
@@ -189,7 +189,7 @@ const signInRegistration = (href: string, basePath = '/'): ClientRegistration =>
  * {@link RETAINED_SIGN_IN_REQUEST_KEY}.
  */
 const signInLayer = (page: SignInWindow): Layer.Layer<SignInServices> =>
-  BrowserSignIn.layer(page, RETAINED_SIGN_IN_REQUEST_KEY)
+  BrowserSignIn.layerFromWindow(page, RETAINED_SIGN_IN_REQUEST_KEY)
 
 /** A sign-in Effect's outcome as a {@link SignInStep}: its failure channel folded in. */
 const stepOf = <A, R>(
