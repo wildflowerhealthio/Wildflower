@@ -13,15 +13,15 @@ beforeEach(() => {
 
 describe('useUrlSelection', () => {
   it('opens on the selection the URL carries, and leaves the URL alone until it changes', () => {
-    // Arrange — an OAuth callback's query, which must survive the mount
-    window.history.replaceState(null, '', `/health-viewer/?code=abc&r=1y&${SERIES_PARAM}=o:x`)
+    // Arrange — a link naming no view, which a write would add the default `v` to
+    window.history.replaceState(null, '', `/health-viewer/?patient=p1&r=1y&${SERIES_PARAM}=o:x`)
 
     // Act
     const { result } = renderHook(() => useUrlSelection())
 
     // Assert
     expect(result.current.selection.range).toBe('1y')
-    expect(window.location.search).toBe(`?code=abc&r=1y&${SERIES_PARAM}=o:x`)
+    expect(window.location.search).toBe(`?patient=p1&r=1y&${SERIES_PARAM}=o:x`)
   })
 
   it('lands both of two updates made before a re-render, and writes the result to the URL', () => {
