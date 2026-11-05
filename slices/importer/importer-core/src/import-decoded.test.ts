@@ -1,4 +1,4 @@
-import { adopt, DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { adopt, DetachedResource, ReferencePlan } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
@@ -14,9 +14,9 @@ import {
   DecodeFunction,
   FileImporter,
   FormatDecode,
-  IdPlan,
   MetaSource,
   PickedFile,
+  ResourcePlan,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
@@ -708,15 +708,25 @@ describe('the records the import adopts', () => {
     // The Observation is keyless, so the stage minted its id: the expectation
     // reuses it.
     const mintedObservationId = imported[1]?.id ?? ''
-    const plan = IdPlan.of([patientEntry, observationEntry], () => mintedObservationId)
-    const adoptRecord = adopt((resourceType, key) => IdPlan.referenceTo(plan, resourceType, key))
+    const patientPlan = ResourcePlan.of(patientEntry.resource, () => mintedObservationId)
+    const observationPlan = ResourcePlan.of(observationEntry.resource, () => mintedObservationId)
+    if (patientPlan._tag !== 'Derived') {
+      throw new Error('unreachable: the Patient is keyed by its source id')
+    }
+    const adoptRecord = adopt(
+      ReferencePlan.of([
+        {
+          resourceType: patientPlan.resourceType,
+          identifier: patientPlan.identifier,
+          literalReference: ResourcePlan.literalReference(patientPlan),
+        },
+      ])
+    )
     expect(imported).toEqual(
-      [patientEntry, observationEntry].map(({ fullUrl, resource }) =>
-        MetaSource.stamp(
-          adoptRecord(resource, IdPlan.idFor(plan, fullUrl).id),
-          MetaSource.makeReference(sourceFileId ?? '')
-        )
-      )
+      [
+        adoptRecord(patientEntry.resource, patientPlan.id),
+        adoptRecord(observationEntry.resource, observationPlan.id),
+      ].map((record) => MetaSource.stamp(record, MetaSource.makeReference(sourceFileId ?? '')))
     )
   })
 

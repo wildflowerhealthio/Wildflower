@@ -9,13 +9,14 @@ import {
   adopt as adoptRecord,
   type DetachedResource,
   randomResourceId,
+  ReferencePlan,
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type Array as Arr, Option } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
-import * as IdPlan from './id-plan.ts'
 import type * as PickedFile from './picked-file.ts'
+import * as ResourcePlan from './resource-plan.ts'
 
 /**
  * One record of a section: the record as its source gave it, detached
@@ -60,18 +61,18 @@ interface Section {
 
 /**
  * A record's review title, the one title every decoded record is reviewed
- * under, read off the set's id plan: for a keyed record, the reference the
+ * under, read off its plan: for a keyed record, the literal reference the
  * import stage writes it under, `<Type>/<id>`, its derived id; for a keyless
  * record, whose minted id changes on every re-decode, its type and its
  * `fullUrl`, `<Type> (<fullUrl>)`.
  *
- * @param plan - The id plan of the set `entry` is a record of
+ * @param plan - The plan of `entry`'s record
  * @param entry - The decoded record and its `fullUrl`
  */
-const writtenReferenceTitle = (plan: IdPlan.Type, { fullUrl, resource }: Entry): string =>
-  IdPlan.match(IdPlan.idFor(plan, fullUrl), {
-    Derived: ({ id }) => `${resource.resourceType}/${id}`,
-    Minted: () => `${resource.resourceType} (${fullUrl})`,
+const writtenReferenceTitle = (plan: ResourcePlan.Type, { fullUrl }: Entry): string =>
+  ResourcePlan.match(plan, {
+    Derived: ResourcePlan.literalReference,
+    Minted: ({ resourceType }) => `${resourceType} (${fullUrl})`,
   })
 
 /**
@@ -121,6 +122,23 @@ const namespaceKeys = (sections: readonly Section[], prefix: string): readonly S
   }))
 
 /**
+ * The entries a planned record gives its set's reference plan: a keyed
+ * record's key, resolving to the literal reference it is written under; none
+ * for a keyless record, which nothing names by key.
+ */
+const referencePlanEntriesOf = (plan: ResourcePlan.Type): readonly ReferencePlan.Entry[] =>
+  ResourcePlan.match(plan, {
+    Derived: (derived) => [
+      {
+        resourceType: derived.resourceType,
+        identifier: derived.identifier,
+        literalReference: ResourcePlan.literalReference(derived),
+      },
+    ],
+    Minted: () => [],
+  })
+
+/**
  * A decode's sections adopted beside its notes: how the import stage makes a
  * file set's records the device's own, before it mints source files, links
  * and stamps. Each adopted row is keyed by its entry's `fullUrl` and titled
@@ -130,29 +148,39 @@ const namespaceKeys = (sections: readonly Section[], prefix: string): readonly S
  * @param mintId - Mints the id of a keyless record; random outside tests
  *
  * @remarks
- * As a FHIR server processes one transaction bundle: the set's id plan
- * (`IdPlan.of`) first decides every record's id, a keyed record's derived
- * from its key and a keyless one's minted, then each record is adopted under
- * its planned id, a logical reference resolving when the record it names by
- * key is in the set, whichever section holds it. One that names a record the
- * set does not hold stays logical, for the identity map.
+ * As a FHIR server processes one transaction bundle: every record's plan
+ * (`ResourcePlan.of`) is decided first, a keyed record's id derived from its
+ * key and a keyless one's minted, in entry order; the set's reference plan is
+ * built from the keyed records' plans; then each record is adopted under its
+ * plan's id, a logical reference resolving when the record it names by key
+ * is in the set, whichever section holds it. One that names a record the set
+ * does not hold, or a keyless one, stays logical, for the identity map.
  */
 const adopt = (
   decoded: Pick<Type, 'sections' | 'notes'>,
   mintId: () => string = randomResourceId
 ): DecodedFile.DecodedFile => {
-  const plan = IdPlan.of(
-    decoded.sections.flatMap(({ entries }) => entries),
-    mintId
+  const plannedSections = decoded.sections.map(({ title, entries }) => ({
+    title,
+    plannedEntries: entries.map((entry) => ({
+      entry,
+      plan: ResourcePlan.of(entry.resource, mintId),
+    })),
+  }))
+  const adoptEntry = adoptRecord(
+    ReferencePlan.of(
+      plannedSections.flatMap(({ plannedEntries }) =>
+        plannedEntries.flatMap(({ plan }) => referencePlanEntriesOf(plan))
+      )
+    )
   )
-  const adoptEntry = adoptRecord((resourceType, key) => IdPlan.referenceTo(plan, resourceType, key))
   return {
-    sections: decoded.sections.map(({ title, entries }) => ({
+    sections: plannedSections.map(({ title, plannedEntries }) => ({
       title,
-      resources: entries.map((entry) => ({
+      resources: plannedEntries.map(({ entry, plan }) => ({
         key: entry.fullUrl,
         title: writtenReferenceTitle(plan, entry),
-        resource: adoptEntry(entry.resource, IdPlan.idFor(plan, entry.fullUrl).id),
+        resource: adoptEntry(entry.resource, plan.id),
       })),
     })),
     notes: decoded.notes,

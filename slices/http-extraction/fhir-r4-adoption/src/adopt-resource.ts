@@ -7,40 +7,28 @@ import {
 import { Option } from 'effect'
 
 import * as DetachedResource from './detached-resource.ts'
+import * as ReferencePlan from './reference-plan.ts'
 import { identifierOf, mapReferences } from './reference-table.ts'
 
 /** A fresh random id for a keyless record: a v4 UUID, a legal FHIR id. */
 const randomResourceId = (): string => crypto.randomUUID()
 
 /**
- * The literal reference the record of `resourceType` keyed by `key` is stored
- * under, when it is a record of the batch being adopted; `None` otherwise.
- *
- * @remarks
- * The batch's id plan answers it: the import stage decides every record's id
- * before it adopts any, so this is a lookup of an id already decided, not a
- * derivation.
- */
-type ReferenceTo = (resourceType: string, key: DetachedResource.Key) => Option.Option<string>
-
-/**
- * A logical reference to a record of the batch, as the literal reference
- * `referenceTo` gives that record, `type` and `identifier` kept; every other
+ * A logical reference the batch's reference plan resolves, as the literal
+ * reference the plan gives it, `type` and `identifier` kept; every other
  * reference exactly as it is.
  *
  * @remarks
  * As a FHIR server resolves a conditional reference against the transaction
  * bundle it processes: a reference with no literal, an R4 resource type as
  * its `type`, and an `identifier` with a `system` and `value` resolves when
- * the record of that type keyed by that identifier is in the batch. One that
- * matches no record of the batch — a target the source never served, an
- * account number, a provider's printed name — stays logical, for the
- * importer's identity map (and, later, a match against what the device
- * already holds). A reference whose target is keyless cannot name it, so it
- * stays logical too.
+ * the plan names a literal reference for that type and identifier. One the
+ * plan does not resolve — a target the source never served, an account
+ * number, a provider's printed name — stays logical, for the importer's
+ * identity map (and, later, a match against what the device already holds).
  */
 const adoptReference =
-  (referenceTo: ReferenceTo) =>
+  (referencePlan: ReferencePlan.Type) =>
   (reference: ReferenceType): ReferenceType => {
     const { identifier, type } = reference
     if (
@@ -52,36 +40,33 @@ const adoptReference =
     ) {
       return reference
     }
-    return Option.match(
-      referenceTo(type, { system: identifier.system.href, value: identifier.value }),
-      {
-        onSome: (stored) => ({ ...reference, reference: stored }),
-        onNone: () => reference,
-      }
-    )
+    return Option.match(ReferencePlan.literalReferenceFor(referencePlan, type, identifier), {
+      onSome: (literalReference) => ({ ...reference, reference: literalReference }),
+      onNone: () => reference,
+    })
   }
 
 /**
  * Adopt a detached record into the store: give it the id it is stored under,
- * and resolve each of its logical references to a record of the batch to a
- * literal one.
+ * and resolve each of its logical references the batch's reference plan
+ * resolves to a literal one.
  *
- * @param referenceTo - The literal reference each record of the batch is
- *   stored under, by type and key
+ * @param referencePlan - The literal reference each logical reference into
+ *   the batch resolves to
  * @returns A function from one detached record and the id it is stored under
  *   to its stored form
  *
  * @remarks
- * The id is decided before adoption, by the import stage's id plan: the id a
- * keyed record's key derives, so a re-import lands on the same id, or a
- * minted one for a keyless record. References resolve through
+ * The id and the reference plan are decided before adoption, by the import
+ * stage: the id a keyed record's key derives, so a re-import lands on the
+ * same id, or a minted one for a keyless record. References resolve through
  * {@link adoptReference}. Nothing else changes: the record's identifiers,
  * its key first, are written as they are.
  *
  * Takes no base URL: everything it needs is on the records.
  */
-const adopt = (referenceTo: ReferenceTo) => {
-  const adoptReferences = mapReferences(adoptReference(referenceTo))
+const adopt = (referencePlan: ReferencePlan.Type) => {
+  const adoptReferences = mapReferences(adoptReference(referencePlan))
   return (record: DetachedResource.Type, id: string): FhirResourceWithId => ({
     ...adoptReferences(record),
     id,
@@ -137,4 +122,3 @@ const adoptedReferenceOf = (
 })
 
 export { adopt, adoptedReferenceOf, originalIdOf, randomResourceId }
-export type { ReferenceTo }

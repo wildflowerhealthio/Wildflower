@@ -30,6 +30,7 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { adopt, adoptedReferenceOf, originalIdOf } from './adopt-resource.ts'
 import * as DetachedResource from './detached-resource.ts'
+import * as ReferencePlan from './reference-plan.ts'
 
 /**
  * Covers detaching a single resource from its source (no id, keyed by its
@@ -68,9 +69,9 @@ const KEYLESS_ID = 'keyless-1'
 
 /**
  * An adoption over `batch`, as the import stage runs one over a file set with
- * its id plan: a keyed record is stored under the id its key derives and a
- * keyless one under {@link KEYLESS_ID}, and a logical reference resolves when
- * `batch` holds the record of its type keyed by its identifier.
+ * its resource plans: a keyed record is stored under the id its key derives
+ * and a keyless one under {@link KEYLESS_ID}, and a logical reference
+ * resolves when `batch` holds the record of its type keyed by its identifier.
  */
 const adoptionOver = (
   batch: readonly DetachedResource.Type[]
@@ -80,18 +81,15 @@ const adoptionOver = (
       onSome: ({ system, value }) => localResourceId(system, record.resourceType, value),
       onNone: () => KEYLESS_ID,
     })
-  const adoptRecord = adopt((resourceType, key) =>
-    Option.map(
-      Arr.findFirst(
-        batch,
-        (record) =>
-          record.resourceType === resourceType &&
-          Option.exists(
-            DetachedResource.keyOf(record),
-            ({ system, value }) => system === key.system && value === key.value
-          )
-      ),
-      (record) => `${resourceType}/${idOf(record)}`
+  const adoptRecord = adopt(
+    ReferencePlan.of(
+      Arr.filterMap(batch, (record) =>
+        Option.map(DetachedResource.keyIdentifierOf(record), (identifier) => ({
+          resourceType: record.resourceType,
+          identifier,
+          literalReference: `${record.resourceType}/${idOf(record)}`,
+        }))
+      )
     )
   )
   return (record) => adoptRecord(record, idOf(record))
@@ -943,7 +941,7 @@ describe('adopt', () => {
   }
 
   test('stores a record under the id it is given, keyed or not', () => {
-    const adoptRecord = adopt(() => Option.none())
+    const adoptRecord = adopt(ReferencePlan.of([]))
     const keyed = detachFhir({ ...sample(Patient.Schema, 12), id: 'pat-7' })
     const keyless = detachFhir({ ...sample(Binary.Schema, 11), id: 'src-1' })
     expect(adoptRecord(keyed, 'planned-1').id).toBe('planned-1')

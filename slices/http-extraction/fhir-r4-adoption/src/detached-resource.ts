@@ -119,8 +119,8 @@ const logicalReferenceWire = (
 })
 
 /**
- * `record`'s key: its first identifier, when that identifier has both a
- * `system` and a `value`; `None` for a keyless record.
+ * The identifier `record` is keyed by: its first identifier, when that
+ * identifier has both a `system` and a `value`; `None` for a keyless record.
  *
  * @remarks
  * Only `identifier[0]` is read: a decoder that knows a record's own id
@@ -130,13 +130,18 @@ const logicalReferenceWire = (
  * unqualified first one, or no `identifier` element at all (`Binary`) is
  * keyless, and is stored under an id minted for it.
  */
-const keyOf = (record: Type): Option.Option<Key> =>
+const keyIdentifierOf = (
+  record: Type
+): Option.Option<IdentifierAndReference.QualifiedIdentifierType> =>
   pipe(
     Option.liftPredicate(record, hasIdentifier),
     Option.flatMap(({ identifier }) => Arr.head(identifier)),
-    Option.filter(IdentifierAndReference.isQualifiedIdentifier),
-    Option.map(({ system, value }) => ({ system: system.href, value }))
+    Option.filter(IdentifierAndReference.isQualifiedIdentifier)
   )
+
+/** `record`'s {@link Key}: the `system` and `value` of its {@link keyIdentifierOf}. */
+const keyOf = (record: Type): Option.Option<Key> =>
+  Option.map(keyIdentifierOf(record), ({ system, value }) => ({ system: system.href, value }))
 
 /**
  * The literal reference the import stage stores the record of `resourceType`
@@ -305,6 +310,7 @@ export {
   fromServerRecord,
   hasIdentifier,
   isDetached,
+  keyIdentifierOf,
   keyIdentifierWire,
   keyOf,
   logicalReferenceWire,
