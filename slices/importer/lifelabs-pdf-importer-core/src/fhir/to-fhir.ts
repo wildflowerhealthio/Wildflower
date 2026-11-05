@@ -71,9 +71,9 @@ const entryOf = (
  *
  * @remarks
  * Every report is its own `DiagnosticReport`, keyed by the `Lab No` it
- * prints. Two reports printing one `Lab No` share that key, and their rows
- * at the same ordinal under the same section and test name share theirs, so
- * the import stores each such pair as one record.
+ * prints, and each of its rows an `Observation` keyed under that `Lab No`.
+ * The reports handed in print distinct `Lab No`s — `decodedReportsOf` keeps
+ * one printing of each — so every record has its own key and `fullUrl`.
  */
 const toFhirResources = (
   reports: readonly Report.Type[],

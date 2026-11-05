@@ -14,8 +14,9 @@ const LABORATORY_REPORT_LOINC = { code: '11502-2', display: 'Laboratory report' 
  * A report is keyed by the `Lab No` it prints.
  *
  * @remarks
- * Two reports printing one `Lab No` (an anonymized export masks every lab
- * number to the same digits) are one key, and so one stored record.
+ * Two reports printing one `Lab No` are one report, of which the synthesis
+ * keeps only the latest printing. An anonymized export masks every lab number
+ * to the same digits, so only one of its reports is kept.
  */
 const reportKeyOf = (report: Report.Type): DetachedResource.Key => ({
   system: LifeLabsIdentifierSystem.LabNumber,

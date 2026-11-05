@@ -147,9 +147,6 @@ const sample: Report.Type = {
   ],
 }
 
-/** The lab number an anonymized export masks every report's to. */
-const MASKED_LAB_NO = LabNumber.make('0000-XX0000000')
-
 /** Arrays of reports, each printing its own lab number. */
 const reportsArbitrary = fc.uniqueArray(reportArbitrary, {
   minLength: 1,
@@ -217,23 +214,6 @@ describe('toFhirResources', () => {
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
-  })
-
-  // Accepted: the Lab No is the report's own identifier, so two reports
-  // printing one are one key, and the import stores them as one record.
-  it('keys two reports printing one lab number alike, and their rows alike', () => {
-    const masked = { ...sample, labNo: MASKED_LAB_NO }
-
-    const resources = synthesize([masked, { ...masked, dateOfService: 'Aug 20 2026 09:15' }])
-
-    const reports = ofType(resources, 'DiagnosticReport')
-    expect(reports.map(idOf)).toEqual([
-      `${LifeLabsIdentifierSystem.LabNumber}|${MASKED_LAB_NO}`,
-      `${LifeLabsIdentifierSystem.LabNumber}|${MASKED_LAB_NO}`,
-    ])
-    const observationKeys = ofType(resources, 'Observation').map(idOf)
-    expect(observationKeys).toHaveLength(6)
-    expect(new Set(observationKeys).size).toBe(3)
   })
 
   it('keys a report by the lab number it prints', () => {

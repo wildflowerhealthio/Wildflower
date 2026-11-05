@@ -62,10 +62,17 @@ const KEY_SYSTEMS: readonly string[] = Object.values(LifeLabsIdentifierSystem)
 const entriesOf = (decoded: DecodeFunction.FileSetDecode): readonly DecodedFileSet.Entry[] =>
   decoded.sections.flatMap(({ entries }) => entries)
 
+/** One or two reports, each printing its own Lab No. */
+const reportsArbitrary = fc.uniqueArray(reportArbitrary, {
+  minLength: 1,
+  maxLength: 2,
+  selector: (report) => report.labNo,
+})
+
 describe('decodeLifeLabsPdfDocument', () => {
   it('property: a document with LifeLabs reports decodes to one titled section per report', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
@@ -82,7 +89,7 @@ describe('decodeLifeLabsPdfDocument', () => {
 
   it('property: each entry fullUrl is {resourceType}/{key value}, and its row titled by the reference it is written under', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
@@ -111,7 +118,7 @@ describe('decodeLifeLabsPdfDocument', () => {
 
   it('property: each record is detached and keyed in a LifeLabs identifier system', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
@@ -128,7 +135,7 @@ describe('decodeLifeLabsPdfDocument', () => {
 
   it('property: each keyed record adopts under the id its key derives', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const document = layoutDocument(reports)
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
@@ -150,7 +157,7 @@ describe('decodeLifeLabsPdfDocument', () => {
 
   it('property: its referents are each Patient and each provider it names, with their resources', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const document = layoutDocument(reports)
         const providerNames = reports
           .flatMap((report) => [report.orderedBy, ...report.copyTo])

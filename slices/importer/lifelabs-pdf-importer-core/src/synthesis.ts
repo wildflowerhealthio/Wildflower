@@ -15,9 +15,10 @@
  * @packageDocumentation
  */
 import type { DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, type ParseResult } from 'effect'
+import { Array as Arr, Effect, type ParseResult } from 'effect'
 
 import type * as Report from './entities/report.ts'
+import { keptPrintingNote, latestPrintingOf, printingsByLabNo } from './fhir/printings.ts'
 import { type SynthesisOptions, toFhirResources } from './fhir/to-fhir.ts'
 
 /**
@@ -31,9 +32,11 @@ const reportSectionTitle = (report: Report.Type): string => {
 }
 
 /**
- * The reports as the LifeLabs decode yields them: one section per report, its
- * records detached and keyed by the identifiers the report prints, each
- * entry's `fullUrl` `<Type>/<key value>`, no notes.
+ * The reports as the LifeLabs decode yields them: one section per `Lab No`,
+ * in the order each is first printed, its records detached and keyed by the
+ * identifiers the report prints, each
+ * entry's `fullUrl` `<Type>/<key value>`, and a note for each `Lab No`
+ * printed more than once.
  *
  * @param reports - The parsed reports, in print order
  * @param options - The zone the reports' printed clock is in
@@ -43,21 +46,30 @@ const reportSectionTitle = (report: Report.Type): string => {
  *
  * @remarks
  * The decode's own last leg, after the PDF's text is read into reports. A
- * caller that builds reports itself, such as `synthetic-data-lifelabs`' render,
- * adopts this with `DecodedFileSet.adopt` to get the records an import of their
- * print writes.
+ * `Lab No` printed more than once is one report: only its latest printing
+ * (`latestPrintingOf`) is synthesized, so every record of the set has its own
+ * key. A caller that builds reports itself, such as `synthetic-data-lifelabs`'
+ * render, adopts this with `DecodedFileSet.adopt` to get the records an import
+ * of their print writes.
  */
 const decodedReportsOf = (
   reports: readonly Report.Type[],
   options: SynthesisOptions
-): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
-  Effect.map(toFhirResources(reports, options), (groups) => ({
+): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> => {
+  const printingsOfEachLabNo = printingsByLabNo(reports)
+  const latestPrintings = printingsOfEachLabNo.map((printings) =>
+    latestPrintingOf(printings, options.timeZone)
+  )
+  return Effect.map(toFhirResources(latestPrintings, options), (groups) => ({
     sections: groups.map((group) => ({
       title: reportSectionTitle(group.report),
       entries: group.entries,
     })),
-    notes: [],
+    notes: Arr.zip(printingsOfEachLabNo, latestPrintings)
+      .filter(([printings]) => printings.length > 1)
+      .map(([printings, latestPrinting]) => keptPrintingNote(printings, latestPrinting)),
   }))
+}
 
 export { decodedReportsOf, reportSectionTitle }
 export * as LabNumber from './entities/lab-number.ts'
