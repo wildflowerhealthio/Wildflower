@@ -38,6 +38,7 @@ use crate::domain::authorization_request::approval::Approval;
 use crate::domain::authorization_request::device::device_grant_name;
 use crate::domain::authorization_request::polled::{Polled as _, PolledState};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client::RefreshPolicy;
 use crate::domain::grant_store::{
     AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, GrantsTx, RefreshTokensTx,
 };
@@ -416,6 +417,9 @@ pub(crate) struct ValidatedRefreshToken {
     /// The storage hash of the token as presented, by which the refresh-family
     /// writer consumes it when it rotates the token into its successor.
     presented_hash: String,
+    /// The client's refresh policy the family was checked against, which
+    /// also sets its deadline when it rotates.
+    refresh_policy: RefreshPolicy,
     /// The family's scopes with each SMART scope's alternate spelling added:
     /// the token's `scope` claim.
     token_scopes: Vec<String>,
@@ -423,8 +427,9 @@ pub(crate) struct ValidatedRefreshToken {
 
 impl ValidatedRefreshToken {
     /// Resolve the presented token's family and require it to be this client's,
-    /// unexpired, not minted under a revoked browser session, and begun no
-    /// earlier than its client's revocation epoch. A valid token presented by
+    /// unexpired, not minted under a revoked browser session, within its
+    /// client's refresh policy, and begun no earlier than its client's
+    /// revocation epoch. A valid token presented by
     /// the wrong client is answered exactly like an unknown one so a stranger
     /// can't probe validity, and is refused before any consume so it can't
     /// burn the rightful client's token. A family begun at the epoch itself
@@ -497,16 +502,21 @@ impl ValidatedRefreshToken {
 
     /// The store-only half of validation: the family `presented_hash`
     /// belongs to, required to be `authenticated_client`'s, unexpired at
-    /// `now`, and not minted under a revoked browser session. A revoked family
-    /// is one whose deadline was pulled back to the revocation instant, so the
-    /// deadline check covers both.
+    /// `now`, not minted under a revoked browser session, and within the
+    /// client's [`RefreshPolicy`] as it stands. A revoked family is one whose
+    /// deadline was pulled back to the revocation instant, so the deadline
+    /// check covers both. A family that has passed a deadline stays ended
+    /// even if the policy is loosened afterwards; a tightened policy ends a
+    /// family on its next refresh.
     fn live_family(
         tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
         authenticated_client: &AuthenticatedClient,
         presented_hash: String,
         now: DateTime<Utc>,
     ) -> Result<Self, TokenExchangeError> {
-        let Some((_, family)) = tx.refresh_token_with_family_by_hash(&presented_hash)? else {
+        let Some((presented_token, family)) =
+            tx.refresh_token_with_family_by_hash(&presented_hash)?
+        else {
             return Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::RefreshTokenNotFound,
             ));
@@ -527,8 +537,9 @@ impl ValidatedRefreshToken {
                 InvalidGrantReason::RefreshTokenExpired,
             ));
         }
-        // Revoking a browser session ends every family minted under it. A
-        // family with no session (the device flow) has none to check.
+        // Revoking a browser session ends every family minted under it,
+        // whatever its client's policy says. A family with no session (the
+        // device flow) has none to check.
         if let Some(sid) = family.sid.as_deref() {
             if tx.is_browser_session_revoked(sid)? {
                 return Err(TokenExchangeError::InvalidGrant(
@@ -538,10 +549,49 @@ impl ValidatedRefreshToken {
                 ));
             }
         }
+        let refresh_policy = *authenticated_client.refresh_policy();
+        // The idle limit runs from the family's last rotation, which is when
+        // its live token was issued. A consumed token is a replay, and its
+        // older issue time would read a live family as idle and spare it the
+        // rotation that ends it, so the idle limit is checked on the live
+        // token only.
+        let is_live_token_idle = presented_token.consumed_at.is_none()
+            && refresh_policy.is_idle_limit_reached(presented_token.issued_at, now);
+        if is_live_token_idle {
+            return Err(TokenExchangeError::InvalidGrant(
+                InvalidGrantReason::RefreshTokenIdle {
+                    family_id: family.family_id,
+                },
+            ));
+        }
+        if refresh_policy.is_max_lifetime_reached(family.issued_at, now) {
+            return Err(TokenExchangeError::InvalidGrant(
+                InvalidGrantReason::RefreshTokenMaxLifetimeReached {
+                    family_id: family.family_id,
+                },
+            ));
+        }
+        if let Some(sid) = family
+            .sid
+            .as_deref()
+            .filter(|_| refresh_policy.ends_with_browser_session)
+        {
+            let session_expired = tx
+                .browser_session_by_sid(sid)?
+                .is_none_or(|session| session.expires_at <= now);
+            if session_expired {
+                return Err(TokenExchangeError::InvalidGrant(
+                    InvalidGrantReason::RefreshTokenSessionExpired {
+                        family_id: family.family_id,
+                    },
+                ));
+            }
+        }
         Ok(ValidatedRefreshToken {
             token_scopes: token_scope_spellings(&family.scopes),
             family,
             presented_hash,
+            refresh_policy,
         })
     }
 
