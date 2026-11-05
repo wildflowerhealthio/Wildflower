@@ -10,9 +10,9 @@ import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { Effect, type Either, Layer } from 'effect'
 
 import {
+  PageSecurity,
   RetainedSignInRequestStore,
   SignInCrypto,
-  SignInPage,
   type RetainedRequestStorage,
   type SignInServices,
 } from './sign-in-services.ts'
@@ -83,12 +83,12 @@ const testSignInLayer = (parts: {
 }): Layer.Layer<SignInServices> =>
   Layer.mergeAll(
     stubTransport(parts.answer),
-    SignInCrypto.layer(globalThis.crypto),
-    RetainedSignInRequestStore.sessionStorage(
+    SignInCrypto.layerFromWindow(globalThis),
+    RetainedSignInRequestStore.sessionStorageBackedLayer(
       { sessionStorage: parts.store },
       parts.retainedRequestKey
     ),
-    Layer.succeed(SignInPage, { isSecure: parts.pageIsSecure ?? true })
+    Layer.succeed(PageSecurity, { pageIsSecure: parts.pageIsSecure ?? true })
   )
 
 /**

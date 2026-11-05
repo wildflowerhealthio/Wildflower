@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { BrowserSignIn, type SignInWindow } from './browser-sign-in.ts'
 import {
+  PageSecurity,
   RetainedSignInRequestStore,
   SignInCrypto,
-  SignInPage,
   signInHttpClient,
 } from './sign-in-services.ts'
 import { memoryStore, throwingStore } from './sign-in.test-helpers.ts'
@@ -45,14 +45,14 @@ const runOn = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    HttpClient.HttpClient | SignInCrypto | RetainedSignInRequestStore | SignInPage
+    HttpClient.HttpClient | SignInCrypto | RetainedSignInRequestStore | PageSecurity
   >
 ): Promise<Either.Either<A, E>> =>
   Effect.runPromise(
-    Effect.either(Effect.provide(effect, BrowserSignIn.layer(page, RETAINED_REQUEST_KEY)))
+    Effect.either(Effect.provide(effect, BrowserSignIn.layerFromWindow(page, RETAINED_REQUEST_KEY)))
   )
 
-describe('BrowserSignIn.layer', () => {
+describe('BrowserSignIn.layerFromWindow', () => {
   it('calls the page’s fetch as a method, so a real Window keeps its receiver', async () => {
     // Arrange — the footgun this layer exists to hold: `fetch: page.fetch`
     // would hand the flow an unbound reference.
@@ -98,11 +98,11 @@ describe('BrowserSignIn.layer', () => {
   it('reports the page as secure only on https', async () => {
     // This decides whether a plaintext target is reachable at all, so it has to
     // follow the document and not a build flag.
-    const secure = await runOn(pageAt('https://x.test/'), SignInPage)
-    const plain = await runOn(pageAt('http://127.0.0.1:5173/', { protocol: 'http:' }), SignInPage)
+    const secure = await runOn(pageAt('https://x.test/'), PageSecurity)
+    const plain = await runOn(pageAt('http://127.0.0.1:5173/', { protocol: 'http:' }), PageSecurity)
 
-    expect(Either.map(secure, (page) => page.isSecure)).toEqual(Either.right(true))
-    expect(Either.map(plain, (page) => page.isSecure)).toEqual(Either.right(false))
+    expect(secure).toEqual(Either.right({ pageIsSecure: true }))
+    expect(plain).toEqual(Either.right({ pageIsSecure: false }))
   })
 
   it('reads random bytes and digests from the page’s crypto', async () => {
@@ -113,13 +113,38 @@ describe('BrowserSignIn.layer', () => {
     const crypto = await runOn(page, SignInCrypto)
 
     // Assert
-    expect(Either.map(crypto, ({ random, subtle }) => ({ random, subtle }))).toEqual(
-      Either.right({ random: page.crypto, subtle: page.crypto.subtle })
+    expect(Either.map(crypto, ({ randomBytes, digest }) => ({ randomBytes, digest }))).toEqual(
+      Either.right({ randomBytes: page.crypto, digest: page.crypto.subtle })
     )
   })
 })
 
-describe('RetainedSignInRequestStore.sessionStorage', () => {
+describe('BrowserSignIn.discoveryLayerFromWindow', () => {
+  it('wires discovery to a page that has only fetch and a location', async () => {
+    // Arrange — no crypto and no storage: discovery needs neither.
+    const sent: string[] = []
+    const page = pageAt('http://127.0.0.1:5173/', {
+      protocol: 'http:',
+      onFetch: (request) => sent.push(request.url),
+    })
+    const discoveryPage = { fetch: page.fetch, location: page.location }
+
+    // Act
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* HttpClient.HttpClient
+        yield* client.get('https://example.test/.well-known/smart-configuration')
+        return yield* PageSecurity
+      }).pipe(Effect.provide(BrowserSignIn.discoveryLayerFromWindow(discoveryPage)), Effect.either)
+    )
+
+    // Assert
+    expect(result).toEqual(Either.right({ pageIsSecure: false }))
+    expect(sent).toEqual(['https://example.test/.well-known/smart-configuration'])
+  })
+})
+
+describe('RetainedSignInRequestStore.sessionStorageBackedLayer', () => {
   it('property: keeps, reads and forgets the request at its key alone', async () => {
     await fc.assert(
       fc.asyncProperty(fc.string({ minLength: 1 }), async (request) => {
@@ -171,7 +196,7 @@ describe('RetainedSignInRequestStore.sessionStorage', () => {
   })
 })
 
-describe('RetainedSignInRequestStore.inMemory', () => {
+describe('RetainedSignInRequestStore.memoryBackedLayer', () => {
   it('keeps, reads and forgets the request in the Ref it was given', async () => {
     // Act
     const result = await Effect.runPromise(
@@ -179,7 +204,7 @@ describe('RetainedSignInRequestStore.inMemory', () => {
         const held = yield* Ref.make(Option.none<string>())
         const store = yield* Effect.provide(
           RetainedSignInRequestStore,
-          RetainedSignInRequestStore.inMemory(held)
+          RetainedSignInRequestStore.memoryBackedLayer(held)
         )
         yield* store.retain('a-request')
         const kept = yield* Ref.get(held)

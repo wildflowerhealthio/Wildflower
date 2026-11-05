@@ -7,14 +7,16 @@ import { Effect, Either, Layer, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { SignInPage } from './sign-in-services.ts'
+import { PageSecurity } from './sign-in-services.ts'
 import { jsonResponse, stubTransport, type StubAnswer } from './sign-in.test-helpers.ts'
 import {
-  discoverSmartEndpoints,
+  discoverSmartServer,
   endpointUrlFrom,
+  fetchSmartConfiguration,
   insecureTargetReason,
   PlainSmartServer,
   SMART_CONFIGURATION_PATH,
+  SmartConfigurationFetch,
   smartConfigurationUrl,
   discoveredSmartServerFrom,
   usableEndpointUrl,
@@ -213,7 +215,7 @@ describe('discoveredSmartServerFrom', () => {
     const result = discoveredSmartServerFrom(demo, document, onSecurePage)
 
     // Assert
-    expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
+    expect(Either.map(result, (discovered) => discovered.smartServer)).toEqual(
       Either.right(PlainSmartServer.make({ fhirBaseUrl: demo }))
     )
   })
@@ -227,7 +229,7 @@ describe('discoveredSmartServerFrom', () => {
     const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
     // Assert
-    expect(Either.map(result, (issuer) => issuer.smartServer._tag)).toEqual(
+    expect(Either.map(result, (discovered) => discovered.smartServer._tag)).toEqual(
       Either.right('PlainSmartServer')
     )
   })
@@ -253,7 +255,7 @@ describe('discoveredSmartServerFrom', () => {
     )
 
     // Assert
-    expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
+    expect(Either.map(result, (discovered) => discovered.smartServer)).toEqual(
       Either.right(WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io' }))
     )
   })
@@ -326,7 +328,7 @@ describe('discoveredSmartServerFrom', () => {
           const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
           // Assert
-          expect(Either.map(result, (issuer) => issuer.wildflowerAuthorizationApi)).toEqual(
+          expect(Either.map(result, (discovered) => discovered.wildflowerAuthorizationApi)).toEqual(
             Either.right(Option.none())
           )
         }
@@ -348,7 +350,7 @@ describe('discoveredSmartServerFrom', () => {
         const result = discoveredSmartServerFrom('https://example.test', document, onSecurePage)
 
         // Assert
-        expect(Either.map(result, (issuer) => issuer.smartServer._tag)).toEqual(
+        expect(Either.map(result, (discovered) => discovered.smartServer._tag)).toEqual(
           Either.right('WildflowerServer')
         )
       }),
@@ -445,7 +447,7 @@ describe('discoveredSmartServerFrom', () => {
   })
 })
 
-describe('discoverSmartEndpoints', () => {
+describe('discoverSmartServer', () => {
   it('should find a Wildflower server’s configuration at its origin, its FHIR base', async () => {
     // Arrange
     const requested: string[] = []
@@ -456,13 +458,13 @@ describe('discoverSmartEndpoints', () => {
 
     // Act
     const result = await runToEither(
-      discoverSmartEndpoints('https://ruth.wildflowerhealth.io'),
+      discoverSmartServer('https://ruth.wildflowerhealth.io'),
       discoveryServices(fetchStub)
     )
 
     // Assert
     expect(requested).toEqual(['https://ruth.wildflowerhealth.io/.well-known/smart-configuration'])
-    expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
+    expect(Either.map(result, (discovered) => discovered.smartServer)).toEqual(
       Either.right(WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io' }))
     )
   })
@@ -475,10 +477,10 @@ describe('discoverSmartEndpoints', () => {
     )
 
     // Act
-    const result = await runToEither(discoverSmartEndpoints(demo), discoveryServices(fetchStub))
+    const result = await runToEither(discoverSmartServer(demo), discoveryServices(fetchStub))
 
     // Assert
-    expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
+    expect(Either.map(result, (discovered) => discovered.smartServer)).toEqual(
       Either.right(PlainSmartServer.make({ fhirBaseUrl: demo }))
     )
   })
@@ -489,7 +491,7 @@ describe('discoverSmartEndpoints', () => {
 
     // Act
     const result = await runToEither(
-      discoverSmartEndpoints('https://nothing.test/base'),
+      discoverSmartServer('https://nothing.test/base'),
       discoveryServices(fetchStub)
     )
 
@@ -508,7 +510,7 @@ describe('discoverSmartEndpoints', () => {
 
     // Act
     const result = await runToEither(
-      discoverSmartEndpoints('https://down.test'),
+      discoverSmartServer('https://down.test'),
       discoveryServices(fetchStub)
     )
 
@@ -526,7 +528,7 @@ describe('discoverSmartEndpoints', () => {
 
         // Act
         const result = await runToEither(
-          discoverSmartEndpoints('https://not-wildflower.test'),
+          discoverSmartServer('https://not-wildflower.test'),
           discoveryServices(fetchStub)
         )
 
@@ -544,12 +546,76 @@ describe('discoverSmartEndpoints', () => {
 
     // Act
     const result = await runToEither(
-      discoverSmartEndpoints('https://marketing-site.test'),
+      discoverSmartServer('https://marketing-site.test'),
       discoveryServices(fetchStub)
     )
 
     // Assert
     expect(Either.isLeft(result)).toBe(true)
+  })
+})
+
+describe('fetchSmartConfiguration', () => {
+  const url = 'https://ruth.wildflowerhealth.io/.well-known/smart-configuration'
+
+  it('yields the document a 2xx JSON answer carries, unread', async () => {
+    // Arrange
+    const document = { anything: ['at', 'all'] }
+
+    // Act
+    const fetched = await Effect.runPromise(
+      Effect.provide(
+        fetchSmartConfiguration('https://ruth.wildflowerhealth.io'),
+        stubTransport(() => Promise.resolve(jsonResponse(document)))
+      )
+    )
+
+    // Assert
+    expect(fetched).toEqual(SmartConfigurationFetch.Document({ url, document }))
+  })
+
+  it('yields the status of an answer that is not ok', async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.integer({ min: 400, max: 599 }), async (status) => {
+        // Act
+        const fetched = await Effect.runPromise(
+          Effect.provide(
+            fetchSmartConfiguration('https://ruth.wildflowerhealth.io'),
+            stubTransport(() => Promise.resolve(new Response('nope', { status })))
+          )
+        )
+
+        // Assert
+        expect(fetched).toEqual(SmartConfigurationFetch.NotOk({ url, status }))
+      }),
+      { numRuns: numRunsFor({ base: 25 }) }
+    )
+  })
+
+  it('says an ok answer that is not JSON is not JSON', async () => {
+    // Act
+    const fetched = await Effect.runPromise(
+      Effect.provide(
+        fetchSmartConfiguration('https://ruth.wildflowerhealth.io'),
+        stubTransport(() => Promise.resolve(new Response('<html>hello</html>', { status: 200 })))
+      )
+    )
+
+    // Assert
+    expect(fetched).toEqual(SmartConfigurationFetch.NotJson({ url }))
+  })
+
+  it('yields no response as unreachable, with the transport’s reason', async () => {
+    // Act
+    const fetched = await Effect.runPromise(
+      Effect.provide(
+        fetchSmartConfiguration('https://ruth.wildflowerhealth.io'),
+        stubTransport(() => Promise.reject(new TypeError('Failed to fetch')))
+      )
+    )
+
+    // Assert
+    expect(fetched).toEqual(SmartConfigurationFetch.Unreachable({ url, reason: 'Failed to fetch' }))
   })
 })
 
@@ -624,8 +690,8 @@ const runToEither = <A, E, R>(
 const discoveryServices = (
   answer: StubAnswer,
   pageIsSecure = true
-): Layer.Layer<HttpClient.HttpClient | SignInPage> =>
-  Layer.mergeAll(stubTransport(answer), Layer.succeed(SignInPage, { isSecure: pageIsSecure }))
+): Layer.Layer<HttpClient.HttpClient | PageSecurity> =>
+  Layer.mergeAll(stubTransport(answer), Layer.succeed(PageSecurity, { pageIsSecure }))
 
 /** A stub answer built from a per-URL responder. */
 const respondingWith =

@@ -4,14 +4,17 @@ import {
   type DiscoveredSmartServer,
   insecureTargetReason as sharedInsecureTargetReason,
   normalizeServerUrl as sharedNormalizeServerUrl,
+  PageSecurity,
   RetainedRequestUnusable,
   RetainedSignInRequestStore,
   SignInCrypto,
-  SignInPage,
-  type SignInServices,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Option, Ref } from 'effect'
 
+import {
+  RetainedSelfAddressedSignInRequestStore,
+  type SmartSignInServices,
+} from './retained-sign-in-requests.ts'
 import type { SelfAddressedSignInConfig, SmartLaunchConfig } from './sign-in-redirect.ts'
 import { decodeFhirBaseUrl } from './smart-connection.ts'
 import {
@@ -68,14 +71,17 @@ beforeEach(() => {
 const servicesAnswering = (
   answer: StubAnswer,
   pageIsSecure = true
-): Pick<StubFhirServer, 'requests' | 'urls'> & { readonly layer: Layer.Layer<SignInServices> } => {
+): Pick<StubFhirServer, 'requests' | 'urls'> & {
+  readonly layer: Layer.Layer<SmartSignInServices>
+} => {
   const server = stubFhirServer(answerEveryRequest(answer))
   return {
     layer: Layer.mergeAll(
       server.transport,
-      Layer.succeed(SignInPage, { isSecure: pageIsSecure }),
-      SignInCrypto.layer(globalThis.crypto),
-      RetainedSignInRequestStore.sessionStorage(window, 'smart-support.test')
+      Layer.succeed(PageSecurity, { pageIsSecure }),
+      SignInCrypto.layerFromWindow(globalThis),
+      RetainedSignInRequestStore.memoryBackedLayer(Ref.unsafeMake(Option.none())),
+      RetainedSelfAddressedSignInRequestStore.memoryBackedLayer(Ref.unsafeMake(Option.none()))
     ),
     requests: server.requests,
     urls: server.urls,

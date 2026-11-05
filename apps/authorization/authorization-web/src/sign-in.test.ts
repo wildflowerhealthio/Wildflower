@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   AUTHORIZATION_CLIENT_ID,
   AUTHORIZATION_SCOPE,
-  PENDING_AUTHORIZATION_KEY,
+  RETAINED_SIGN_IN_REQUEST_KEY,
 } from './config.ts'
 import { finishSignIn, inAppReturnPath, NOT_A_WILDFLOWER_SERVER, startSignIn } from './sign-in.ts'
 
@@ -29,7 +29,7 @@ describe('startSignIn', () => {
       'https://authorization.wildflowerhealth.io/'
     )
     expect(authorizationUrl.searchParams.get('aud')).toBe(SERVER_URL)
-    expect(page.store.has(PENDING_AUTHORIZATION_KEY)).toBe(true)
+    expect(page.store.has(RETAINED_SIGN_IN_REQUEST_KEY)).toBe(true)
   })
 
   it('refuses a server that isn’t a Wildflower server before leaving', async () => {

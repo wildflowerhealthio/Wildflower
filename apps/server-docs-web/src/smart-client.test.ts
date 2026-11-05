@@ -4,7 +4,7 @@ import {
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { CLIENT_ID, PENDING_AUTHORIZATION_KEY, REGISTERED_REDIRECT_URI } from './smart-client.ts'
+import { CLIENT_ID, RETAINED_SIGN_IN_REQUEST_KEY, REGISTERED_REDIRECT_URI } from './smart-client.ts'
 
 describe('the seeded client registration', () => {
   it('is the public PKCE client the authorization server migration seeds', () => {
@@ -38,13 +38,13 @@ describe('the seeded client registration', () => {
   })
 })
 
-describe('PENDING_AUTHORIZATION_KEY', () => {
+describe('RETAINED_SIGN_IN_REQUEST_KEY', () => {
   it('is namespaced to this console, not to the shared flow', () => {
     // `authorization-core/smart-client` takes the key as a parameter precisely so
     // two Wildflower pages on `wildflowerhealth.io` cannot read each other's
-    // pending record. A key that dropped the app prefix would undo that. The
+    // retained sign-in request. A key that dropped the app prefix would undo that. The
     // prefix is the package's name, as the launcher's is: the client id is
     // random, so it names no app.
-    expect(PENDING_AUTHORIZATION_KEY).toBe('server-docs-web.pending-authorization')
+    expect(RETAINED_SIGN_IN_REQUEST_KEY).toBe('server-docs-web.pending-authorization')
   })
 })

@@ -26,6 +26,7 @@ import {
   beginSignInAt,
   completeSignIn,
   forgetRetainedSignInRequest,
+  peekRetainedSignInRequest,
   type ClientRegistration,
 } from './sign-in.ts'
 import {
@@ -152,7 +153,7 @@ describe('beginSignIn', () => {
       environment
     )
 
-    // Assert — the return leg needs only what the pending record carried: the
+    // Assert — the return leg needs only what the retained sign-in request carried: the
     // token endpoint discovery found, and the server the session is for, which
     // it names a plain SMART server, with the patient the token response named.
     expect(url.origin + url.pathname).toBe(`${DEMO_AUTH_ORIGIN}/auth/authorize`)
@@ -171,7 +172,7 @@ describe('beginSignIn', () => {
     )
   })
 
-  it('sends the EHR launch it was handed, and keeps it out of the pending record', async () => {
+  it('sends the EHR launch it was handed, and keeps it out of the retained sign-in request', async () => {
     // Arrange
     const store = memoryStore()
     const environment = testEnvironment({ store, fetch: discoveryOnly() })
@@ -318,11 +319,11 @@ describe('beginSignIn', () => {
 })
 
 describe('beginSignInAt', () => {
-  it('starts at the issuer it was handed, fetching nothing, and stashes its FHIR base', async () => {
+  it('starts at the server it was handed, fetching nothing, and stashes its FHIR base', async () => {
     // Arrange
     const store = memoryStore()
     const environment = testEnvironment({ store, fetch: refuseEveryRequest })
-    const issuer = {
+    const discovered = {
       smartServer: PlainSmartServer.make({ fhirBaseUrl: DEMO_FHIR_BASE }),
       endpoints: {
         authorizationEndpoint: `${DEMO_AUTH_ORIGIN}/auth/authorize`,
@@ -334,7 +335,7 @@ describe('beginSignInAt', () => {
 
     // Act
     const result = await runToEither(
-      beginSignInAt(issuer, REGISTRATION, { returnTo: '/home', launch: 'launch-1' }),
+      beginSignInAt(discovered, REGISTRATION, { returnTo: '/home', launch: 'launch-1' }),
       environment
     )
 
@@ -378,7 +379,7 @@ describe('completeSignIn', () => {
     expect(store.getItem(PENDING_KEY)).not.toBeNull()
   })
 
-  it('never redeems a code against another page’s pending record', async () => {
+  it('never redeems a code against another page’s retained sign-in request', async () => {
     // Two sign-in flows on one origin share the tab's `sessionStorage`. A
     // return leg must look only at its own key: reading a neighbour's record
     // would let one flow complete a sign-in the other started.
@@ -443,7 +444,7 @@ describe('completeSignIn', () => {
 
   it('hands back the returnTo the sign-in was started with', async () => {
     // The redirect URI carries no query, so the return path survives the round
-    // trip only through the pending record `beginSignIn` writes.
+    // trip only through the retained sign-in request `beginSignIn` writes.
     await fc.assert(
       fc.asyncProperty(
         fc.option(
@@ -513,7 +514,7 @@ describe('completeSignIn', () => {
     )
   })
 
-  it('consumes the pending record whatever the outcome', async () => {
+  it('consumes the retained sign-in request whatever the outcome', async () => {
     // A record left behind would make a later stray `?code=` look legitimate,
     // so a discarded flow must clear it just as a redeemed one does.
     await fc.assert(
@@ -544,7 +545,7 @@ describe('completeSignIn', () => {
     )
   })
 
-  it('clears the pending record when the server refuses the authorization', async () => {
+  it('clears the retained sign-in request when the server refuses the authorization', async () => {
     // Arrange
     const store = memoryStore()
     store.setItem(PENDING_KEY, serializeRetainedSignInRequest(stashedRequest()))
@@ -566,7 +567,7 @@ describe('completeSignIn', () => {
     // arrive on the Effect's error channel — surfaced as the tagged error, not
     // thrown and not swallowed. The whole flow's error handling rests on that, so
     // pin it directly rather than only inferring it from the state-mismatch case.
-    // Arrange — a server-refused return is the cleanest Left: no pending record
+    // Arrange — a server-refused return is the cleanest Left: no retained sign-in request
     // or state setup is needed to reach it.
     const store = memoryStore()
     store.setItem(PENDING_KEY, serializeRetainedSignInRequest(stashedRequest()))
@@ -675,8 +676,8 @@ describe('completeSignIn', () => {
   })
 })
 
-describe('completeSignIn and the pending record', () => {
-  it('takes the pending record on a return that carries no code', async () => {
+describe('completeSignIn and the retained sign-in request', () => {
+  it('takes the retained sign-in request on a return that carries no code', async () => {
     // Arrange — a `state` alone: another flow's return on the same page
     const store = memoryStore()
     store.setItem(PENDING_KEY, serializeRetainedSignInRequest(stashedRequest()))
@@ -716,7 +717,7 @@ describe('completeSignIn and the pending record', () => {
     expect(result.left.reason).toContain('session storage is blocked')
   })
 
-  it('redeems a pending record the store gives up but will not remove', async () => {
+  it('redeems a retained sign-in request the store gives up but will not remove', async () => {
     // Arrange — a store that reads, but throws on every removal
     const store = memoryStore()
     const pending = stashedRequest()
@@ -745,7 +746,7 @@ describe('completeSignIn and the pending record', () => {
     })
   })
 
-  it('reports, and drops, a pending record that does not read as one', async () => {
+  it('reports, and drops, a retained sign-in request that does not read as one', async () => {
     // Arrange — a record a different version of the page wrote
     const store = memoryStore()
     store.setItem(PENDING_KEY, '{"state":"a-stashed-state"}')
@@ -764,8 +765,65 @@ describe('completeSignIn and the pending record', () => {
   })
 })
 
+describe('peekRetainedSignInRequest', () => {
+  it('reads the retained sign-in request and leaves it for the return leg', async () => {
+    // Arrange
+    const store = memoryStore()
+    const retained = stashedRequest()
+    store.setItem(PENDING_KEY, serializeRetainedSignInRequest(retained))
+
+    // Act
+    const result = await runToEither(
+      peekRetainedSignInRequest,
+      testEnvironment({ store, fetch: refuseEveryRequest })
+    )
+
+    // Assert
+    expect(result).toEqual(Either.right(Option.some(retained)))
+    expect(store.getItem(PENDING_KEY)).not.toBeNull()
+  })
+
+  it('reads none when nothing is retained', async () => {
+    // Act
+    const result = await runToEither(
+      peekRetainedSignInRequest,
+      testEnvironment({ store: memoryStore(), fetch: refuseEveryRequest })
+    )
+
+    // Assert
+    expect(result).toEqual(Either.right(Option.none()))
+  })
+
+  it('reports a record that does not read as one, and leaves it', async () => {
+    // Arrange
+    const store = memoryStore()
+    store.setItem(PENDING_KEY, '{"state":"a-stashed-state"}')
+
+    // Act
+    const result = await runToEither(
+      peekRetainedSignInRequest,
+      testEnvironment({ store, fetch: refuseEveryRequest })
+    )
+
+    // Assert
+    expect(Either.isLeft(result) ? result.left._tag : 'read').toBe('RetainedRequestUnrecognised')
+    expect(store.getItem(PENDING_KEY)).not.toBeNull()
+  })
+
+  it('reports a store that refuses to be read', async () => {
+    // Act
+    const result = await runToEither(
+      peekRetainedSignInRequest,
+      testEnvironment({ store: throwingStore(), fetch: refuseEveryRequest })
+    )
+
+    // Assert
+    expect(Either.isLeft(result) ? result.left._tag : 'read').toBe('RetainedRequestUnusable')
+  })
+})
+
 describe('forgetRetainedSignInRequest', () => {
-  it('drops the pending record, leaving every other key', async () => {
+  it('drops the retained sign-in request, leaving every other key', async () => {
     // Arrange
     const store = memoryStore()
     store.setItem(PENDING_KEY, serializeRetainedSignInRequest(stashedRequest()))

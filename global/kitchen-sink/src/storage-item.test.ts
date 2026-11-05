@@ -1,7 +1,13 @@
 import { Effect, Option } from 'effect'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { removeStorageItem, setStorageItem, StorageBlocked, takeStorageItem } from './index.ts'
+import {
+  getStorageItem,
+  removeStorageItem,
+  setStorageItem,
+  StorageBlocked,
+  takeStorageItem,
+} from './index.ts'
 
 /** A store holding `items`, whose calls named in `refusing` throw as a blocked store's do. */
 const storeOf = (
@@ -31,6 +37,32 @@ const storeOf = (
     ),
   }
 }
+
+describe('getStorageItem', () => {
+  it('should read the item and leave it, so a second read finds it again', async () => {
+    const store = storeOf({ request: 'kept' })
+
+    const first = await Effect.runPromise(getStorageItem(store, 'request'))
+    const second = await Effect.runPromise(getStorageItem(store, 'request'))
+
+    expect([first, second]).toEqual([Option.some('kept'), Option.some('kept')])
+    expect(store.removeItem).not.toHaveBeenCalled()
+  })
+
+  it('should read none when there is no item', async () => {
+    const read = await Effect.runPromise(getStorageItem(storeOf({}), 'request'))
+
+    expect(read).toEqual(Option.none())
+  })
+
+  it('should fail naming the read when the store refuses it', async () => {
+    const failure = await Effect.runPromise(
+      Effect.flip(getStorageItem(storeOf({ request: 'kept' }, ['getItem']), 'request'))
+    )
+
+    expect(failure).toEqual(new StorageBlocked({ operation: 'read', key: 'request' }))
+  })
+})
 
 describe('takeStorageItem', () => {
   it('should read the item and remove it, so a second take finds none', async () => {

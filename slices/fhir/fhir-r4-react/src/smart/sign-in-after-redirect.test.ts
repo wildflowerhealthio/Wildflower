@@ -5,7 +5,10 @@ import type {
 import { Data, Effect, Match, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY } from './retained-sign-in-requests.ts'
+import {
+  RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
+  type RetainedSelfAddressedSignInRequestStore,
+} from './retained-sign-in-requests.ts'
 import { rootArrivalFrom } from './root-arrival.ts'
 import {
   CallbackStateMismatch,
@@ -69,7 +72,7 @@ class UnexpectedArrival extends Data.TaggedError('UnexpectedArrival')<{
 const discardHere = (): Effect.Effect<
   void,
   RetainedRequestUnusable | UnexpectedArrival,
-  RetainedSignInRequestStore
+  RetainedSignInRequestStore | RetainedSelfAddressedSignInRequestStore
 > =>
   Match.value(rootArrivalFrom(window.location.search)).pipe(
     Match.tag('SignInRefused', (refused) => discardRefusedSignInAfterRedirectHere(refused)),

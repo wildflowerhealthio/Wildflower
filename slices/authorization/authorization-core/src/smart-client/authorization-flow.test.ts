@@ -16,7 +16,7 @@ import {
 } from './authorization-flow.ts'
 import { PlainSmartServer, WildflowerServer } from './smart-discovery.ts'
 
-/** A pending record shaped like the one a real sign-in stashes. */
+/** A retained sign-in request shaped like the one a real sign-in stashes. */
 const pendingRecord: RetainedSignInRequest = {
   state: 'Zm9vYmFyYmF6cXV4',
   codeVerifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
@@ -25,7 +25,7 @@ const pendingRecord: RetainedSignInRequest = {
   returnTo: '/settings/tunnel',
 }
 
-/** Arbitrary pending records, for the round-trip properties. */
+/** Arbitrary retained sign-in requests, for the round-trip properties. */
 const pendingArbitrary = fc.record({
   state: fc.string({ minLength: 1 }),
   codeVerifier: fc.string({ minLength: 1 }),
@@ -38,7 +38,7 @@ const pendingArbitrary = fc.record({
 })
 
 describe('serializeRetainedSignInRequest / parseRetainedSignInRequest', () => {
-  it('round-trips a pending record through the string form storage holds', () => {
+  it('round-trips a retained sign-in request through the string form storage holds', () => {
     fc.assert(
       fc.property(pendingArbitrary, (pending) => {
         // Act

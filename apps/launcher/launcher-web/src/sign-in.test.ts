@@ -27,7 +27,7 @@ import {
   CLIENT_ID,
   finishSignIn,
   LAUNCHER_SCOPE,
-  PENDING_AUTHORIZATION_KEY,
+  RETAINED_SIGN_IN_REQUEST_KEY,
   postSignInUrl,
   REGISTERED_REDIRECT_URI,
   promptOnPage,
@@ -103,12 +103,12 @@ describe('signInRegistration', () => {
     expect(registration.clientId).toBe('03a513940b52f8c2649a5366d1a26d19')
   })
 
-  it('namespaces its pending record to this app', () => {
+  it('namespaces its retained sign-in request to this app', () => {
     // The server-docs console runs the same flow from the same origin, so an
     // un-namespaced key would be one key for both and one tab's return leg
     // could consume a record the other was waiting on. The namespace is the
     // package name: the client id is a random string.
-    expect(PENDING_AUTHORIZATION_KEY.startsWith('launcher-web.')).toBe(true)
+    expect(RETAINED_SIGN_IN_REQUEST_KEY.startsWith('launcher-web.')).toBe(true)
   })
 })
 
@@ -154,7 +154,7 @@ describe('startSignIn', () => {
     )
   })
 
-  it('writes the pending record before it yields, under this app’s key', async () => {
+  it('writes the retained sign-in request before it yields, under this app’s key', async () => {
     // A caller navigates the moment it has the URL, so a record written after
     // would be a flow whose verifier never survived the redirect.
     const store = memoryStore()
@@ -168,7 +168,7 @@ describe('startSignIn', () => {
     await startSignIn(SERVER_URL, page, '/')
 
     // Assert
-    expect(store.getItem(PENDING_AUTHORIZATION_KEY)).not.toBeNull()
+    expect(store.getItem(RETAINED_SIGN_IN_REQUEST_KEY)).not.toBeNull()
   })
 
   it('reports an unreachable server as a reason, not a rejection', async () => {
@@ -233,12 +233,12 @@ describe('finishSignIn', () => {
     })
     // Single-use: the record is gone, so a replayed callback cannot look
     // legitimate.
-    expect(store.getItem(PENDING_AUTHORIZATION_KEY)).toBeNull()
+    expect(store.getItem(RETAINED_SIGN_IN_REQUEST_KEY)).toBeNull()
   })
 
   it('reads an ordinary page load as “not a return leg”', async () => {
     // Arrange — every load asks, because a return leg looks like any other one
-    // until the query is read. A load with no pending record must not fail.
+    // until the query is read. A load with no retained sign-in request must not fail.
     const page = pageAt('https://wildflowerhealth.io/', { fetch: neverCalled })
 
     // Act
@@ -295,7 +295,7 @@ describe('finishSignIn', () => {
   })
 
   it('names no server when there was no sign-in to fail', async () => {
-    // Arrange — an error return with no pending record in this tab.
+    // Arrange — an error return with no retained sign-in request in this tab.
     const page = pageAt('https://wildflowerhealth.io/', { fetch: neverCalled })
 
     // Act
