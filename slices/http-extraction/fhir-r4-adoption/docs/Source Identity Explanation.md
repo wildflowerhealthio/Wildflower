@@ -103,8 +103,7 @@ they stand outside any server (`DetachedResource` in this package).
   `{ reference: null, type: '<TargetType>', identifier: { system, value } }`,
   the target named by its key.
 
-`DetachedResource.keyOf` reads a record's key; `keyedIdOf` is the id the
-import stage stores a keyed record under.
+`DetachedResource.keyOf` reads a record's key.
 
 ## Writing a record detached
 
@@ -196,14 +195,28 @@ stays on the request.
 ## Adopting a detached resource
 
 The import stage stores each detached record with `adopt`, which takes no
-base URL or system: everything it needs is on the records.
+base URL or system: everything it needs is on the records, the id each is
+stored under, and the batch's answer to which record a logical reference
+names.
+
+The batch is one file set, and before adopting any of its records the import
+stage decides the id every record is stored under: its **id plan**
+(`importer-fundamentals`' `IdPlan`, built by `DecodedFileSet.adopt` from every
+section of the set).
 
 - **A keyed record** is stored under
   `localResourceId(key.system, resourceType, key.value)`: the derivation
-  above, so a re-import of the same record lands on the same id.
+  above, so a re-import of the same record lands on the same id. The plan
+  derives it once.
 - **A keyless record** is stored under an id minted for it: a random UUID
   (`randomResourceId`, injected so a test can count). A re-import of it is a
   second record.
+
+`adopt(referenceTo)(record, id)` stores `record` under the id the plan gave
+it, and resolves each logical reference through `referenceTo`, the plan's
+lookup of the literal reference a record of the batch is stored under, by
+type and key:
+
 - **A logical reference to a record of the batch resolves** to the literal
   reference that record is stored under, its `type` and `identifier` kept:
 
@@ -214,12 +227,8 @@ that identifier            → reference := `${type}/${localResourceId(system, t
 otherwise                  → unchanged
 ```
 
-The batch is one file set (`importer-fundamentals`' `DecodedFileSet.adopt`
-builds one adoption over every section of it), and what it holds is the id
-each of its keyed records is stored under, by type and key
-(`DetachedResource.storedIdsOf`), each `localResourceId` derived once: a keyed
-record's own id is read from it, and a reference is looked up in it, so one
-whose target is not in the batch costs no hash.
+The lookup reads an id the plan already holds, so a reference whose target is
+not in the batch costs no hash.
 This is a FHIR server processing a transaction bundle: a conditional reference
 resolves against the bundle's own entries, and one that matches none of them
 stays as it is. So a reference to a record the source never served — a Rexall
@@ -235,8 +244,8 @@ resource: the value of its identifier in `system` (`<baseUrl>/<Type>` for a
 FHIR server's record, not the base). Anything that needs the source's id after
 import (to build a source-server URL, say) reads it there, never off
 `resource.id`. `adoptedReferenceOf(system, Type, id)` is the literal
-reference the import stores the record with that key under, in `adopt`'s own
-spelling, for a resource written outside that source that must point at what
+reference the import stores the record with that key under, spelled as the
+id plan resolves one, for a resource written outside that source that must point at what
 its import stores (a synthetic lab result filed on the Patient a
 pharmacy import made); `fhir-r4/resources`' `withSubject` files such a
 resource on it.

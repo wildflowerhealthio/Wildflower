@@ -16,13 +16,9 @@ vocabulary) stays FHIR-free and below it.
 
 - `src/detached-resource.ts` — `DetachedResource.Type`, `FhirResource`
   narrowed to `id: null`; `keyOf` (the qualified `identifier[0]`, `None` for a
-  keyless record, a `Binary` always), `keyedIdOf` (the id a keyed record is
-  stored under), `storedReferenceOf` (the one spelling of a keyed record's
-  stored reference, `<Type>/<localResourceId(…)>`), `storedIdsOf` (the
-  `StoredIds` of a batch: the id every keyed record of it is stored under, by
-  type and key, each derived once), `storedIdIfInBatch` and
-  `storedReferenceIfInBatch` (a lookup in it, `None` for a record the batch
-  does not hold), and `hasIdentifier` (whether the record's type has an `identifier`
+  keyless record, a `Binary` always), `storedReferenceOf` (a keyed record's
+  stored reference derived from its key, `<Type>/<localResourceId(…)>`), and
+  `hasIdentifier` (whether the record's type has an `identifier`
   element: every `fhir-r4` schema with one defaults it to `[]`, so the
   decoded record carries the property exactly then). How a decoder writes a
   record detached: `keyIdentifierWire(key)` for its `identifier[0]`,
@@ -40,14 +36,15 @@ vocabulary) stays FHIR-free and below it.
 - `src/reference-table.ts` — the per-type reference table (`mapReferences`,
   the one place a resource's references are walked), which
   `fromServerRecord` and `adopt` both rewrite through.
-- `src/adopt-resource.ts` — `adopt({ storedIds, mintId })` stores a
-  keyed record under `localResourceId(key.system, Type, key.value)`, read
-  from `storedIds` for a record of the batch, and a keyless one under
-  `mintId()` (`randomResourceId`, a UUID, outside tests), and resolves a
-  logical reference to its target's stored reference when its target is in
-  `storedIds`, keeping `type` and `identifier`, without hashing; one naming a
-  record the batch does not hold stays logical, for the importer's identity
-  map. `adoptedReferenceOf(system, Type, id)` is the literal reference the
+- `src/adopt-resource.ts` — `adopt(referenceTo)(record, id)` stores a
+  record under the id it is given (the import stage's id plan decides it:
+  `localResourceId(key.system, Type, key.value)` for a keyed record, a minted
+  one for a keyless record, `randomResourceId`, a UUID, outside tests), and
+  resolves a logical reference to the literal reference `referenceTo`
+  (`ReferenceTo`, by type and key) gives its target when its target is in the
+  batch, keeping `type` and `identifier`; one naming a record the batch does
+  not hold stays logical, for the importer's identity map.
+  `adoptedReferenceOf(system, Type, id)` is the literal reference the
   import stores the record with that key under, for a resource written
   outside that source; `originalIdOf(system, resource)` reads the value of a
   resource's identifier in `system` (`<baseUrl>/<Type>` for a FHIR server's
@@ -60,10 +57,12 @@ decoder writes its records with it: the source packages' response kinds
 (`fhir-r4-source` and Rexall's medication list detaching a FHIR server's
 records, the rest writing them detached) and the file importers
 (`dicom-importer-core`, `lifelabs-pdf-importer-core`).
-`importer-fundamentals`' `DecodedFileSet.adopt` adopts with it, and the
-synthetic-data generators spell references with it. It must never import from
-`slices/importer` or `http-extraction-fundamentals`. Nothing on the import side
-takes a base URL or a system: `adopt` reads everything off the records.
+`importer-fundamentals`' `IdPlan` keys a file set's records with it and
+`DecodedFileSet.adopt` adopts with it, and the synthetic-data generators spell
+references with it. It must never import from `slices/importer` or
+`http-extraction-fundamentals`, so `adopt` takes the id plan's answers as
+plain inputs (an id, and `referenceTo`). Nothing on the import side takes a
+base URL or a system: everything is read off the records.
 
 ## Traps
 
