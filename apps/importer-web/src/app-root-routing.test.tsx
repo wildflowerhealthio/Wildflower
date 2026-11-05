@@ -2,7 +2,11 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import type * as SmartClientModule from '@wildflowerhealthio/authorization-core/smart-client'
 import { PlainSmartServer, type Session } from '@wildflowerhealthio/authorization-core/smart-client'
 import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
-import { decodeFhirBaseUrl, redirectToSignIn } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  decodeFhirBaseUrl,
+  redirectToSignIn,
+  smartSignInLayer,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 import { writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { Effect, Option } from 'effect'
@@ -47,7 +51,6 @@ const SMART_CONFIGURATION = {
 const SESSION: Session = {
   accessToken: 'token',
   scope: smartRegistration.scope,
-  serverUrl: FHIR_SERVER_URL,
   smartServer: PlainSmartServer.make({ fhirBaseUrl: FHIR_SERVER_URL }),
   expiresInSeconds: undefined,
   patient: undefined,
@@ -64,13 +67,16 @@ const startSignIn = async (): Promise<void> => {
     Effect.sync(() => `${window.location.href.split('#')[0] ?? ''}#authorize`)
   )
   await Effect.runPromise(
-    redirectToSignIn(
-      {
-        ...smartRegistration,
-        redirectUri: `${window.location.origin}${BASEPATH}`,
-        fhirBaseUrl: decodeFhirBaseUrl(FHIR_SERVER_URL),
-      },
-      undefined
+    Effect.provide(
+      redirectToSignIn(
+        {
+          ...smartRegistration,
+          redirectUri: `${window.location.origin}${BASEPATH}`,
+          fhirBaseUrl: decodeFhirBaseUrl(FHIR_SERVER_URL),
+        },
+        undefined
+      ),
+      smartSignInLayer(window)
     )
   )
 }

@@ -1,4 +1,4 @@
-import type { SignInPage } from '@wildflowerhealthio/authorization-core/smart-client'
+import type { SignInWindow } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -7,13 +7,7 @@ import {
   AUTHORIZATION_SCOPE,
   PENDING_AUTHORIZATION_KEY,
 } from './config.ts'
-import {
-  finishSignIn,
-  inAppReturnPath,
-  NOT_A_WILDFLOWER_SERVER,
-  signInEnvironment,
-  startSignIn,
-} from './sign-in.ts'
+import { finishSignIn, inAppReturnPath, NOT_A_WILDFLOWER_SERVER, startSignIn } from './sign-in.ts'
 
 describe('startSignIn', () => {
   it('leaves for a Wildflower server’s authorization endpoint as the app’s own client', async () => {
@@ -21,7 +15,7 @@ describe('startSignIn', () => {
     const page = stubPage({ smartConfiguration: wildflowerConfiguration })
 
     // Act
-    const started = await startSignIn(SERVER_URL, undefined, signInEnvironment(page, '/'))
+    const started = await startSignIn(SERVER_URL, page, '/')
 
     // Assert
     expect(started.tag).toBe('Ok')
@@ -44,7 +38,7 @@ describe('startSignIn', () => {
     const page = stubPage({ smartConfiguration: plainSmartConfiguration })
 
     // Act
-    const started = await startSignIn(SERVER_URL, undefined, signInEnvironment(page, '/'))
+    const started = await startSignIn(SERVER_URL, page, '/')
 
     // Assert
     expect(started).toEqual({ tag: 'Failed', reason: NOT_A_WILDFLOWER_SERVER })
@@ -57,12 +51,11 @@ describe('finishSignIn', () => {
   it('redeems the code into a session with the server’s authorization API', async () => {
     // Arrange — a sign-in started from a deep link, now back with its code.
     const page = stubPage({ smartConfiguration: wildflowerConfiguration })
-    const environment = signInEnvironment(page, '/')
-    const started = await startSignIn(SERVER_URL, '/approved/grant-1', environment)
+    const started = await startSignIn(SERVER_URL, page, '/', { returnTo: '/approved/grant-1' })
     const state = new URL(started.tag === 'Ok' ? started.value : '').searchParams.get('state')
 
     // Act
-    const finished = await finishSignIn(`?code=code-1&state=${state ?? ''}`, environment)
+    const finished = await finishSignIn(`?code=code-1&state=${state ?? ''}`, page, '/')
 
     // Assert
     expect(finished).toEqual({
@@ -80,7 +73,7 @@ describe('finishSignIn', () => {
   it('is no sign-in on an ordinary load', async () => {
     const page = stubPage({ smartConfiguration: wildflowerConfiguration })
 
-    const finished = await finishSignIn('?iss=x', signInEnvironment(page, '/'))
+    const finished = await finishSignIn('?iss=x', page, '/')
 
     expect(finished).toEqual({ tag: 'Ok', value: Option.none() })
   })
@@ -88,11 +81,10 @@ describe('finishSignIn', () => {
   it('names the server a refused sign-in was to', async () => {
     // Arrange
     const page = stubPage({ smartConfiguration: wildflowerConfiguration })
-    const environment = signInEnvironment(page, '/')
-    await startSignIn(SERVER_URL, undefined, environment)
+    await startSignIn(SERVER_URL, page, '/')
 
     // Act
-    const finished = await finishSignIn('?error=access_denied', environment)
+    const finished = await finishSignIn('?error=access_denied', page, '/')
 
     // Assert
     expect(finished.tag === 'Failed' ? finished.problem.serverUrl : undefined).toBe(SERVER_URL)
@@ -145,7 +137,7 @@ const plainSmartConfiguration = {
  */
 const stubPage = (options: {
   readonly smartConfiguration: unknown
-}): SignInPage & { readonly store: Map<string, string> } => {
+}): SignInWindow & { readonly store: Map<string, string> } => {
   const store = new Map<string, string>()
   return {
     store,

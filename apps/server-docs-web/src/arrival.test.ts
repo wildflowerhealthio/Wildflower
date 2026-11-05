@@ -1,11 +1,13 @@
 import {
   arrivingSmartLaunchFrom,
   isAuthorizationResponse,
-  serializePendingAuthorization,
+  RetainedSignInRequestStore,
+  serializeRetainedSignInRequest,
+  type RetainedRequestStorage,
   WildflowerServer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Option } from 'effect'
+import { Effect, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
@@ -72,35 +74,35 @@ describe('pendingSignInServerUrl', () => {
     // Arrange
     const server = 'https://ruth.wildflowerhealth.io'
     const store = storeHolding(
-      serializePendingAuthorization({
+      serializeRetainedSignInRequest({
         state: 'a-state',
         codeVerifier: 'a-verifier',
-        serverUrl: server,
         smartServer: WildflowerServer.make({ fhirBaseUrl: server }),
         tokenEndpoint: `${server}/oauth/token`,
       })
     )
 
     // Act / Assert
-    expect(pendingSignInServerUrl(store, PENDING_KEY)).toBe(server)
+    expect(pendingServerIn(store)).toBe(server)
   })
 
   it('should read no server when there is no usable record', () => {
     // Act / Assert
-    expect(pendingSignInServerUrl(storeHolding(null), PENDING_KEY)).toBeUndefined()
-    expect(pendingSignInServerUrl(storeHolding('not a record'), PENDING_KEY)).toBeUndefined()
+    expect(pendingServerIn(storeHolding(null))).toBeUndefined()
+    expect(pendingServerIn(storeHolding('not a record'))).toBeUndefined()
   })
 
   it('should read no server when the storage refuses to be read', () => {
     // Arrange
     const refusing = {
+      ...storeHolding(null),
       getItem: (): string | null => {
         throw new Error('SecurityError')
       },
     }
 
     // Act / Assert
-    expect(pendingSignInServerUrl(refusing, PENDING_KEY)).toBeUndefined()
+    expect(pendingServerIn(refusing)).toBeUndefined()
   })
 })
 
@@ -137,9 +139,20 @@ describe('resetAuthControlsOnBackForwardRestore', () => {
 const PENDING_KEY = 'server-docs-web.pending-authorization'
 
 /** A store holding `raw` at {@link PENDING_KEY} and nothing anywhere else. */
-const storeHolding = (raw: string | null): { getItem: (key: string) => string | null } => ({
+const storeHolding = (raw: string | null): RetainedRequestStorage => ({
   getItem: (key) => (key === PENDING_KEY ? raw : null),
+  setItem: () => {},
+  removeItem: () => {},
 })
+
+/** The server `pendingSignInServerUrl` reads from the request `storage` keeps at {@link PENDING_KEY}. */
+const pendingServerIn = (storage: RetainedRequestStorage): string | undefined =>
+  Effect.runSync(
+    Effect.provide(
+      pendingSignInServerUrl,
+      RetainedSignInRequestStore.sessionStorage({ sessionStorage: storage }, PENDING_KEY)
+    )
+  )
 
 /** Every param a return leg (RFC 6749 §4.1.2, RFC 9207) or a SMART launch arrives with. */
 const ARRIVAL_PARAMS = ['code', 'state', 'error', 'error_description', 'error_uri', 'iss', 'launch']
