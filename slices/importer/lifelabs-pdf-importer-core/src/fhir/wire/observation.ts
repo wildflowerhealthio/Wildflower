@@ -58,15 +58,33 @@ const valueWire = (row: TestTableRow.Type): Wire => {
   return { valueQuantity: quantity }
 }
 
-const observationWire = (
-  report: Report.Type,
-  patientKey: DetachedResource.Key,
-  section: string,
-  group: string,
-  row: TestTableRow.Type,
-  key: DetachedResource.Key,
-  timeZone: string
-): Wire => {
+/** What one result row's Observation is written from. */
+interface ObservationSource {
+  /** The report the row is printed on. */
+  readonly report: Report.Type
+  /** The printed result row. */
+  readonly row: TestTableRow.Type
+  /** The section heading the row is printed under, or `''`. */
+  readonly section: string
+  /** The group heading the row is printed under, or `''`. */
+  readonly group: string
+  /** The Observation's own key, its `identifier[0]`. */
+  readonly key: DetachedResource.Key
+  /** The key of the report's Patient, the Observation's subject. */
+  readonly patientKey: DetachedResource.Key
+  /** The IANA time zone the report's printed clock is in. */
+  readonly timeZone: string
+}
+
+const observationWire = ({
+  report,
+  row,
+  section,
+  group,
+  key,
+  patientKey,
+  timeZone,
+}: ObservationSource): Wire => {
   // A row printed before any section or group heading has neither; a FHIR
   // string is never empty, so the category then carries its coding alone.
   const categoryText = [section, group].filter((part) => part.length > 0).join(' · ')

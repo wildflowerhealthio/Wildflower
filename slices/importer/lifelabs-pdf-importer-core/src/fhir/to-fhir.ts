@@ -110,7 +110,15 @@ const toFhirResources = (
             ordinal += 1
             observationKeys.push(key)
             observations.push(
-              observationWire(report, patientKey, section.name, group.name, row, key, timeZone)
+              observationWire({
+                report,
+                row,
+                section: section.name,
+                group: group.name,
+                key,
+                patientKey,
+                timeZone,
+              })
             )
           }
         }
