@@ -124,15 +124,19 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
       sections: [sectionOf('people', [patient('pat-7')])],
       notes: [],
     }).sections
-    expect(section?.resources.map(({ title }) => title)).toEqual(
-      section?.resources.map(({ resource }) => `Patient/${resource.id}`)
-    )
+    expect(section?.resources.map(({ title }) => title)).toEqual([
+      `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7')}`,
+    ])
   })
 
   it('names a keyless record by its type and its fullUrl, which a re-decode keeps', () => {
-    expect(
-      DecodedFileSet.writtenReferenceTitle({ fullUrl: 'har-entry-3:0', resource: patient(null) })
-    ).toBe('Patient (har-entry-3:0)')
+    const [section] = DecodedFileSet.adopt(
+      { sections: [sectionOf('people', [patient(null)])], notes: [] },
+      countingMinter()
+    ).sections
+    expect(section?.resources.map(({ title, resource }) => [title, resource.id])).toEqual([
+      ['Patient (people:0)', 'minted-1'],
+    ])
   })
 
   it('keys each adopted row by its entry fullUrl', () => {

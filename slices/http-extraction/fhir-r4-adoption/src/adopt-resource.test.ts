@@ -73,7 +73,7 @@ const adoptionOver = (
 ): ((record: DetachedResource.Type) => FhirResourceWithId) => {
   let minted = 0
   return adopt({
-    storedReferences: DetachedResource.storedReferencesOf(batch),
+    storedIds: DetachedResource.storedIdsOf(batch),
     mintId: () => {
       minted += 1
       return `minted-${minted}`

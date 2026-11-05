@@ -15,11 +15,11 @@ const randomResourceId = (): string => crypto.randomUUID()
 /** What one batch's adoption needs beyond each record. */
 interface Adoption {
   /**
-   * The literal reference every keyed record of the batch is stored under
-   * ({@link DetachedResource.storedReferencesOf}): what a logical reference
-   * resolves against.
+   * The id every keyed record of the batch is stored under
+   * ({@link DetachedResource.storedIdsOf}): what a keyed record's id is read
+   * from, and what a logical reference resolves against.
    */
-  readonly storedReferences: ReadonlySet<string>
+  readonly storedIds: DetachedResource.StoredIds
   /** Mints the id of a keyless record; {@link randomResourceId} outside tests. */
   readonly mintId: () => string
 }
@@ -33,15 +33,15 @@ interface Adoption {
  * As a FHIR server resolves a conditional reference against the transaction
  * bundle it processes: a reference with no literal, an R4 resource type as
  * its `type`, and an `identifier` with a `system` and `value` resolves when
- * the record of that type keyed by that identifier is in the batch, its
- * stored reference among `storedReferences`. One that matches no record of
- * the batch — a target the source never served, an account number, a
- * provider's printed name — stays logical, for the importer's identity map
+ * the record of that type keyed by that identifier is in the batch, its id
+ * among `storedIds`, which is looked up rather than derived. One that matches
+ * no record of the batch — a target the source never served, an account
+ * number, a provider's printed name — stays logical, for the importer's identity map
  * (and, later, a match against what the device already holds). A reference
  * whose target is keyless cannot name it, so it stays logical too.
  */
 const adoptReference =
-  (storedReferences: ReadonlySet<string>) =>
+  (storedIds: DetachedResource.StoredIds) =>
   (reference: ReferenceType): ReferenceType => {
     const { identifier, type } = reference
     if (
@@ -53,11 +53,16 @@ const adoptReference =
     ) {
       return reference
     }
-    const stored = DetachedResource.storedReferenceOf(type, {
-      system: identifier.system.href,
-      value: identifier.value,
-    })
-    return storedReferences.has(stored) ? { ...reference, reference: stored } : reference
+    return Option.match(
+      DetachedResource.storedReferenceIfInBatch(storedIds, type, {
+        system: identifier.system.href,
+        value: identifier.value,
+      }),
+      {
+        onSome: (stored) => ({ ...reference, reference: stored }),
+        onNone: () => reference,
+      }
+    )
   }
 
 /**
@@ -65,24 +70,31 @@ const adoptReference =
  * and resolve each of its logical references to a record of the batch to a
  * literal one.
  *
- * @param adoption - The batch's stored references and its keyless-id minter
+ * @param adoption - The batch's stored ids and its keyless-id minter
  * @returns A function from one detached record to its stored form
  *
  * @remarks
  * A keyed record's id is `localResourceId(key.system, Type, key.value)`
  * ({@link DetachedResource.keyedIdOf}), so a re-import of the same record
- * lands on the same id; a keyless one gets `adoption.mintId()`, so a
- * re-import of it is a second record. References resolve through
+ * lands on the same id: read from `adoption.storedIds` for a record of the
+ * batch, derived for one outside it. A keyless one gets `adoption.mintId()`,
+ * so a re-import of it is a second record. References resolve through
  * {@link adoptReference}. Nothing else changes: the record's identifiers,
  * its key first, are written as they are.
  *
  * Takes no base URL: everything it needs is on the records.
  */
-const adopt = ({ storedReferences, mintId }: Adoption) => {
-  const adoptReferences = mapReferences(adoptReference(storedReferences))
+const adopt = ({ storedIds, mintId }: Adoption) => {
+  const adoptReferences = mapReferences(adoptReference(storedIds))
   return (record: DetachedResource.Type): FhirResourceWithId => ({
     ...adoptReferences(record),
-    id: Option.getOrElse(DetachedResource.keyedIdOf(record), mintId),
+    id: DetachedResource.keyOf(record).pipe(
+      Option.flatMap((key) =>
+        DetachedResource.storedIdIfInBatch(storedIds, record.resourceType, key)
+      ),
+      Option.orElse(() => DetachedResource.keyedIdOf(record)),
+      Option.getOrElse(mintId)
+    ),
   })
 }
 

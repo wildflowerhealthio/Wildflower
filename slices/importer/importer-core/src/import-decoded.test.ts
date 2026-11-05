@@ -714,7 +714,7 @@ describe('the records the import adopts', () => {
     // reuses it.
     const mintedObservationId = imported[1]?.id ?? ''
     const adoptRecord = adopt({
-      storedReferences: DetachedResource.storedReferencesOf([patient, observation]),
+      storedIds: DetachedResource.storedIdsOf([patient, observation]),
       mintId: () => mintedObservationId,
     })
     expect(imported).toEqual(

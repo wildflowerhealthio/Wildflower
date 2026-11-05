@@ -11,6 +11,7 @@ import {
   randomResourceId,
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { type Array as Arr, Option } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
@@ -59,14 +60,17 @@ interface Section {
 
 /**
  * A record's review title, the one title every decoded record is reviewed
- * under: the reference the import stage writes it under, `<Type>/<id>`, the id
- * its key derives ({@link DetachedResource.keyedIdOf}); for a keyless record,
- * whose id is only minted at import, its type and its `fullUrl`,
+ * under: for a keyed record, the reference the import stage writes it under,
+ * `<Type>/<id>`, the id `adopted` is stored under; for a keyless record, whose
+ * minted id changes on every re-decode, its type and its `fullUrl`,
  * `<Type> (<fullUrl>)`.
+ *
+ * @param entry - The decoded record and its `fullUrl`
+ * @param adopted - The same record, adopted
  */
-const writtenReferenceTitle = ({ fullUrl, resource }: Entry): string =>
-  Option.match(DetachedResource.keyedIdOf(resource), {
-    onSome: (id) => `${resource.resourceType}/${id}`,
+const writtenReferenceTitle = ({ fullUrl, resource }: Entry, adopted: FhirResourceWithId): string =>
+  Option.match(DetachedResource.keyOf(resource), {
+    onSome: () => `${resource.resourceType}/${adopted.id}`,
     onNone: () => `${resource.resourceType} (${fullUrl})`,
   })
 
@@ -130,15 +134,16 @@ const namespaceKeys = (sections: readonly Section[], prefix: string): readonly S
  * as a FHIR server processes one transaction bundle: a keyed record lands on
  * the id its key derives and a keyless one on a minted id, and a logical
  * reference resolves when the record it names by key is in the set, whichever
- * section holds it (`DetachedResource.storedReferencesOf`). One that names a
- * record the set does not hold stays logical, for the identity map.
+ * section holds it (`DetachedResource.storedIdsOf`, each keyed record's id
+ * derived once). One that names a record the set does not hold stays logical,
+ * for the identity map.
  */
 const adopt = (
   decoded: Pick<Type, 'sections' | 'notes'>,
   mintId: () => string = randomResourceId
 ): DecodedFile.DecodedFile => {
   const adoptEntry = adoptRecord({
-    storedReferences: DetachedResource.storedReferencesOf(
+    storedIds: DetachedResource.storedIdsOf(
       decoded.sections.flatMap(({ entries }) => entries.map(({ resource }) => resource))
     ),
     mintId,
@@ -146,11 +151,14 @@ const adopt = (
   return {
     sections: decoded.sections.map(({ title, entries }) => ({
       title,
-      resources: entries.map((entry) => ({
-        key: entry.fullUrl,
-        title: writtenReferenceTitle(entry),
-        resource: adoptEntry(entry.resource),
-      })),
+      resources: entries.map((entry) => {
+        const adopted = adoptEntry(entry.resource)
+        return {
+          key: entry.fullUrl,
+          title: writtenReferenceTitle(entry, adopted),
+          resource: adopted,
+        }
+      }),
     })),
     notes: decoded.notes,
   }
