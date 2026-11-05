@@ -18,50 +18,50 @@
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall.har/har-entry-2:0",
-      "resource": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
-      "title": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81"
+      "resource": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
+      "title": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:0",
-      "resource": "MedicationRequest/wf-26b14ae3668b381726f68662768368aa",
-      "title": "MedicationRequest/wf-26b14ae3668b381726f68662768368aa"
+      "resource": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6",
+      "title": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:1",
-      "resource": "MedicationRequest/wf-4daec2d87787741afdb8e43a7808a45b",
-      "title": "MedicationRequest/wf-4daec2d87787741afdb8e43a7808a45b"
+      "resource": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7",
+      "title": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:2",
-      "resource": "MedicationRequest/wf-cb3eac73f06c6e20c059f6f65ce8ca61",
-      "title": "MedicationRequest/wf-cb3eac73f06c6e20c059f6f65ce8ca61"
+      "resource": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5",
+      "title": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:3",
-      "resource": "MedicationDispense/wf-034d416f23edb32c0ed2792611dda0a7",
-      "title": "MedicationDispense/wf-034d416f23edb32c0ed2792611dda0a7"
+      "resource": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c",
+      "title": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:4",
-      "resource": "MedicationDispense/wf-5e5325f08cbe781d72367d4dc2a7974a",
-      "title": "MedicationDispense/wf-5e5325f08cbe781d72367d4dc2a7974a"
+      "resource": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d",
+      "title": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:5",
-      "resource": "MedicationDispense/wf-5f01d3f2eac152db4e2863733e4c7810",
-      "title": "MedicationDispense/wf-5f01d3f2eac152db4e2863733e4c7810"
+      "resource": "MedicationDispense/wf-42402150c21db460736ca3b9469713db",
+      "title": "MedicationDispense/wf-42402150c21db460736ca3b9469713db"
     }
   ],
   "sourceFileRePicks": [
@@ -140,18 +140,18 @@
           "identifier": {
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-order",
-            "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
+            "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
           },
-          "reference": "PrescriptionOrder/ddee1205-f792-4b31-8565-24fb2fdc7cb9"
+          "reference": "PrescriptionOrder/e23cb27c-2050-40ea-90dd-926b866c886c"
         },
         {
           "extension": [],
           "identifier": {
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-refill",
-            "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
+            "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
           },
-          "reference": "PrescriptionOrder/ddee1205-f792-4b31-8565-24fb2fdc7cb9"
+          "reference": "PrescriptionOrder/e23cb27c-2050-40ea-90dd-926b866c886c"
         }
       ],
       "contained": [],
@@ -160,7 +160,7 @@
         "extension": [],
         "system": "http://unitsofmeasure.org",
         "unit": "day",
-        "value": 90
+        "value": 30
       },
       "detectedIssue": [],
       "dosageInstruction": [],
@@ -169,12 +169,12 @@
         {
           "extension": [],
           "url": "http://schemas.carebook.com/v1/fhir/medicationdispense/extension/when-requested",
-          "valueDateTime": "2026-10-05T18:39:36.000Z"
+          "valueDateTime": "2026-10-16T16:06:09.000Z"
         },
         {
           "extension": [],
           "url": "http://schemas.carebook.com/v1/fhir/medicationdispense/extension/estimated-pick-up",
-          "valueDateTime": "2026-10-05T21:16:30.000Z"
+          "valueDateTime": "2026-10-16T16:58:52.000Z"
         },
         {
           "extension": [],
@@ -199,22 +199,22 @@
           }
         }
       ],
-      "id": "wf-034d416f23edb32c0ed2792611dda0a7",
+      "id": "wf-42402150c21db460736ca3b9469713db",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationDispense",
+          "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
         },
         {
           "extension": [],
           "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
-          "value": "4033280"
+          "value": "9008381"
         },
         {
           "extension": [],
           "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id",
-          "value": "544348120"
+          "value": "218928746"
         }
       ],
       "location": {
@@ -229,26 +229,26 @@
       "medicationCodeableConcept": {
         "coding": [
           {
-            "code": "02345678",
+            "code": "00456790",
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
           },
           {
-            "code": "02345678",
+            "code": "00456790",
             "extension": [],
             "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
           }
         ],
         "extension": [],
-        "text": "Alvastatin 20 mg tablet"
+        "text": "Lumipril 10 mg tablet"
       },
       "meta": {
-        "lastUpdated": "2026-10-05T21:16:30.000Z",
+        "lastUpdated": "2026-10-16T16:58:52.000Z",
         "profile": [],
         "security": [],
         "source": "DocumentReference/wf-6f43dede19e181c370562894bdb79370",
         "tag": [],
-        "versionId": "5"
+        "versionId": "6"
       },
       "modifierExtension": [],
       "note": [],
@@ -256,7 +256,7 @@
       "performer": [],
       "quantity": {
         "extension": [],
-        "value": 90
+        "value": 30
       },
       "receiver": [],
       "resourceType": "MedicationDispense",
@@ -265,15 +265,15 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
         "type": "Patient"
       },
       "supportingInformation": [],
-      "whenHandedOver": "2026-10-05T21:16:30.000Z",
-      "whenPrepared": "2026-10-05T18:39:36.000Z"
+      "whenHandedOver": "2026-10-16T16:58:52.000Z",
+      "whenPrepared": "2026-10-16T16:06:09.000Z"
     },
     {
       "authorizingPrescription": [
@@ -341,11 +341,11 @@
           }
         }
       ],
-      "id": "wf-5e5325f08cbe781d72367d4dc2a7974a",
+      "id": "wf-d7d96e9b5617945a72bdf5b6e894391d",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationDispense",
           "value": "f6c0c793-b0be-4177-b852-6214a1559e5b"
         },
         {
@@ -407,10 +407,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
         "type": "Patient"
       },
       "supportingInformation": [],
@@ -424,18 +424,18 @@
           "identifier": {
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-order",
-            "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
+            "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
           },
-          "reference": "PrescriptionOrder/e23cb27c-2050-40ea-90dd-926b866c886c"
+          "reference": "PrescriptionOrder/ddee1205-f792-4b31-8565-24fb2fdc7cb9"
         },
         {
           "extension": [],
           "identifier": {
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-refill",
-            "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
+            "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
           },
-          "reference": "PrescriptionOrder/e23cb27c-2050-40ea-90dd-926b866c886c"
+          "reference": "PrescriptionOrder/ddee1205-f792-4b31-8565-24fb2fdc7cb9"
         }
       ],
       "contained": [],
@@ -444,7 +444,7 @@
         "extension": [],
         "system": "http://unitsofmeasure.org",
         "unit": "day",
-        "value": 30
+        "value": 90
       },
       "detectedIssue": [],
       "dosageInstruction": [],
@@ -453,12 +453,12 @@
         {
           "extension": [],
           "url": "http://schemas.carebook.com/v1/fhir/medicationdispense/extension/when-requested",
-          "valueDateTime": "2026-10-16T16:06:09.000Z"
+          "valueDateTime": "2026-10-05T18:39:36.000Z"
         },
         {
           "extension": [],
           "url": "http://schemas.carebook.com/v1/fhir/medicationdispense/extension/estimated-pick-up",
-          "valueDateTime": "2026-10-16T16:58:52.000Z"
+          "valueDateTime": "2026-10-05T21:16:30.000Z"
         },
         {
           "extension": [],
@@ -483,22 +483,22 @@
           }
         }
       ],
-      "id": "wf-5f01d3f2eac152db4e2863733e4c7810",
+      "id": "wf-eaacc6398e039cd717b811357fc3742c",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationDispense",
+          "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
         },
         {
           "extension": [],
           "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
-          "value": "9008381"
+          "value": "4033280"
         },
         {
           "extension": [],
           "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id",
-          "value": "218928746"
+          "value": "544348120"
         }
       ],
       "location": {
@@ -513,26 +513,26 @@
       "medicationCodeableConcept": {
         "coding": [
           {
-            "code": "00456790",
+            "code": "02345678",
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
           },
           {
-            "code": "00456790",
+            "code": "02345678",
             "extension": [],
             "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
           }
         ],
         "extension": [],
-        "text": "Lumipril 10 mg tablet"
+        "text": "Alvastatin 20 mg tablet"
       },
       "meta": {
-        "lastUpdated": "2026-10-16T16:58:52.000Z",
+        "lastUpdated": "2026-10-05T21:16:30.000Z",
         "profile": [],
         "security": [],
         "source": "DocumentReference/wf-6f43dede19e181c370562894bdb79370",
         "tag": [],
-        "versionId": "6"
+        "versionId": "5"
       },
       "modifierExtension": [],
       "note": [],
@@ -540,7 +540,7 @@
       "performer": [],
       "quantity": {
         "extension": [],
-        "value": 30
+        "value": 90
       },
       "receiver": [],
       "resourceType": "MedicationDispense",
@@ -549,15 +549,15 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
         "type": "Patient"
       },
       "supportingInformation": [],
-      "whenHandedOver": "2026-10-16T16:58:52.000Z",
-      "whenPrepared": "2026-10-16T16:06:09.000Z"
+      "whenHandedOver": "2026-10-05T21:16:30.000Z",
+      "whenPrepared": "2026-10-05T18:39:36.000Z"
     },
     {
       "authoredOn": "2026-01-04T14:19:33.000Z",
@@ -722,11 +722,11 @@
           }
         }
       ],
-      "id": "wf-26b14ae3668b381726f68662768368aa",
+      "id": "wf-522e02b6a9336219dd71d9d54c32d9e6",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest",
           "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
         },
         {
@@ -771,7 +771,7 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
           "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
         },
         "type": "Practitioner"
@@ -782,241 +782,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
-        "type": "Patient"
-      },
-      "supportingInformation": []
-    },
-    {
-      "authoredOn": "2026-04-14T13:14:08.000Z",
-      "basedOn": [],
-      "category": [
-        {
-          "coding": [
-            {
-              "code": "refill",
-              "extension": [],
-              "system": "http://schemas.carebook.com/v1/fhir/coding/medicationrequest-request-type-code"
-            }
-          ],
-          "extension": []
-        }
-      ],
-      "contained": [
-        {
-          "code": {
-            "coding": [
-              {
-                "code": "00456789",
-                "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
-              },
-              {
-                "code": "00456789",
-                "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
-              }
-            ],
-            "text": "Lumipril 5 mg tablet"
-          },
-          "extension": [],
-          "form": {
-            "coding": [
-              {
-                "code": "tablet",
-                "system": "http://schema.carebook.com/v1/fhir/coding/medication-form-code"
-              }
-            ]
-          },
-          "id": "de494ac3-a9b8-4c4c-93e7-765935d5a73a",
-          "ingredient": [
-            {
-              "itemCodeableConcept": {
-                "coding": [
-                  {
-                    "code": "00456789",
-                    "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
-                  },
-                  {
-                    "code": "00456789",
-                    "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
-                  }
-                ],
-                "text": "Lumipril 5 mg tablet"
-              },
-              "strength": {
-                "denominator": {
-                  "value": 1
-                },
-                "numerator": {
-                  "unit": "mg",
-                  "value": 5
-                }
-              }
-            }
-          ],
-          "manufacturer": {
-            "display": "Teva Canada Limited"
-          },
-          "meta": {
-            "lastUpdated": "2026-05-16T19:51:19+00:00",
-            "versionId": "3"
-          },
-          "resourceType": "Medication",
-          "status": "active",
-          "text": {
-            "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">5 mg - Teva-Lumipril</div>",
-            "status": "generated"
-          }
-        }
-      ],
-      "detectedIssue": [],
-      "dispenseRequest": {
-        "expectedSupplyDuration": {
-          "code": "d",
-          "extension": [],
-          "system": "http://unitsofmeasure.org",
-          "unit": "day",
-          "value": 30
-        },
-        "extension": [
-          {
-            "extension": [],
-            "url": "https://wildflowerhealth.io/fhir/StructureDefinition/repeats-available",
-            "valueInteger": 4
-          }
-        ],
-        "modifierExtension": [],
-        "numberOfRepeatsAllowed": 5,
-        "performer": {
-          "display": "Rexall (store 4821)",
-          "extension": [],
-          "identifier": {
-            "extension": [],
-            "value": "pharmacy-4821"
-          },
-          "reference": "https://www.rexall.ca/storelocator/store/4821"
-        },
-        "quantity": {
-          "extension": [],
-          "value": 30
-        }
-      },
-      "doNotPerform": false,
-      "dosageInstruction": [],
-      "eventHistory": [],
-      "extension": [
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/estimated-pick-up",
-          "valueDateTime": "2026-05-16T19:51:19.000Z"
-        },
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/common/extension/input-source",
-          "valueString": "Sync"
-        },
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/medicationrecord-processor",
-          "valueReference": {
-            "extension": [],
-            "identifier": {
-              "extension": [],
-              "value": "pharmacy-4821"
-            },
-            "reference": "rexall-pharmacy-location/pharmacy-4821"
-          }
-        },
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/renewable",
-          "valueBoolean": true
-        },
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/sort-order",
-          "valuePositiveInt": 2
-        },
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/prescription-order",
-          "valueReference": {
-            "display": "todo",
-            "extension": [],
-            "identifier": {
-              "extension": [],
-              "value": "null"
-            },
-            "reference": "PrescriptionOrder/null"
-          }
-        }
-      ],
-      "id": "wf-4daec2d87787741afdb8e43a7808a45b",
-      "identifier": [
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "f6c0c793-b0be-4177-b852-6214a1559e5b"
-        },
-        {
-          "extension": [],
-          "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
-          "value": "8772276"
-        },
-        {
-          "extension": [],
-          "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id",
-          "value": "999450659"
-        }
-      ],
-      "instantiatesCanonical": [],
-      "instantiatesUri": [],
-      "insurance": [],
-      "intent": "order",
-      "medicationReference": {
-        "display": "Lumipril 5 mg tablet",
-        "extension": [],
-        "reference": "#de494ac3-a9b8-4c4c-93e7-765935d5a73a"
-      },
-      "meta": {
-        "lastUpdated": "2026-05-16T19:51:19.000Z",
-        "profile": [],
-        "security": [],
-        "source": "DocumentReference/wf-6f43dede19e181c370562894bdb79370",
-        "tag": [],
-        "versionId": "3"
-      },
-      "modifierExtension": [],
-      "note": [
-        {
-          "extension": [],
-          "text": "TAKE 1 TABLET (=5MG) BY MOUTH ONCE DAILY IN THE MORNING"
-        }
-      ],
-      "reasonCode": [],
-      "reasonReference": [],
-      "requester": {
-        "display": "Dr. Lee Nguyen",
-        "extension": [],
-        "identifier": {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
-        },
-        "type": "Practitioner"
-      },
-      "resourceType": "MedicationRequest",
-      "status": "stopped",
-      "subject": {
-        "extension": [],
-        "identifier": {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
-        },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
         "type": "Patient"
       },
       "supportingInformation": []
@@ -1184,11 +953,11 @@
           }
         }
       ],
-      "id": "wf-cb3eac73f06c6e20c059f6f65ce8ca61",
+      "id": "wf-ec1eb2f83df5ebca00522ea9a5cd2fd5",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest",
           "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
         },
         {
@@ -1233,7 +1002,7 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
           "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
         },
         "type": "Practitioner"
@@ -1244,10 +1013,241 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
+        "type": "Patient"
+      },
+      "supportingInformation": []
+    },
+    {
+      "authoredOn": "2026-04-14T13:14:08.000Z",
+      "basedOn": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "refill",
+              "extension": [],
+              "system": "http://schemas.carebook.com/v1/fhir/coding/medicationrequest-request-type-code"
+            }
+          ],
+          "extension": []
+        }
+      ],
+      "contained": [
+        {
+          "code": {
+            "coding": [
+              {
+                "code": "00456789",
+                "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
+              },
+              {
+                "code": "00456789",
+                "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+              }
+            ],
+            "text": "Lumipril 5 mg tablet"
+          },
+          "extension": [],
+          "form": {
+            "coding": [
+              {
+                "code": "tablet",
+                "system": "http://schema.carebook.com/v1/fhir/coding/medication-form-code"
+              }
+            ]
+          },
+          "id": "de494ac3-a9b8-4c4c-93e7-765935d5a73a",
+          "ingredient": [
+            {
+              "itemCodeableConcept": {
+                "coding": [
+                  {
+                    "code": "00456789",
+                    "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
+                  },
+                  {
+                    "code": "00456789",
+                    "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+                  }
+                ],
+                "text": "Lumipril 5 mg tablet"
+              },
+              "strength": {
+                "denominator": {
+                  "value": 1
+                },
+                "numerator": {
+                  "unit": "mg",
+                  "value": 5
+                }
+              }
+            }
+          ],
+          "manufacturer": {
+            "display": "Teva Canada Limited"
+          },
+          "meta": {
+            "lastUpdated": "2026-05-16T19:51:19+00:00",
+            "versionId": "3"
+          },
+          "resourceType": "Medication",
+          "status": "active",
+          "text": {
+            "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">5 mg - Teva-Lumipril</div>",
+            "status": "generated"
+          }
+        }
+      ],
+      "detectedIssue": [],
+      "dispenseRequest": {
+        "expectedSupplyDuration": {
+          "code": "d",
+          "extension": [],
+          "system": "http://unitsofmeasure.org",
+          "unit": "day",
+          "value": 30
+        },
+        "extension": [
+          {
+            "extension": [],
+            "url": "https://wildflowerhealth.io/fhir/StructureDefinition/repeats-available",
+            "valueInteger": 4
+          }
+        ],
+        "modifierExtension": [],
+        "numberOfRepeatsAllowed": 5,
+        "performer": {
+          "display": "Rexall (store 4821)",
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "value": "pharmacy-4821"
+          },
+          "reference": "https://www.rexall.ca/storelocator/store/4821"
+        },
+        "quantity": {
+          "extension": [],
+          "value": 30
+        }
+      },
+      "doNotPerform": false,
+      "dosageInstruction": [],
+      "eventHistory": [],
+      "extension": [
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/estimated-pick-up",
+          "valueDateTime": "2026-05-16T19:51:19.000Z"
+        },
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/common/extension/input-source",
+          "valueString": "Sync"
+        },
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/medicationrecord-processor",
+          "valueReference": {
+            "extension": [],
+            "identifier": {
+              "extension": [],
+              "value": "pharmacy-4821"
+            },
+            "reference": "rexall-pharmacy-location/pharmacy-4821"
+          }
+        },
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/renewable",
+          "valueBoolean": true
+        },
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/sort-order",
+          "valuePositiveInt": 2
+        },
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/prescription-order",
+          "valueReference": {
+            "display": "todo",
+            "extension": [],
+            "identifier": {
+              "extension": [],
+              "value": "null"
+            },
+            "reference": "PrescriptionOrder/null"
+          }
+        }
+      ],
+      "id": "wf-efcc018fbef8bb2c57a6dad7598132d7",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest",
+          "value": "f6c0c793-b0be-4177-b852-6214a1559e5b"
+        },
+        {
+          "extension": [],
+          "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
+          "value": "8772276"
+        },
+        {
+          "extension": [],
+          "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id",
+          "value": "999450659"
+        }
+      ],
+      "instantiatesCanonical": [],
+      "instantiatesUri": [],
+      "insurance": [],
+      "intent": "order",
+      "medicationReference": {
+        "display": "Lumipril 5 mg tablet",
+        "extension": [],
+        "reference": "#de494ac3-a9b8-4c4c-93e7-765935d5a73a"
+      },
+      "meta": {
+        "lastUpdated": "2026-05-16T19:51:19.000Z",
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-6f43dede19e181c370562894bdb79370",
+        "tag": [],
+        "versionId": "3"
+      },
+      "modifierExtension": [],
+      "note": [
+        {
+          "extension": [],
+          "text": "TAKE 1 TABLET (=5MG) BY MOUTH ONCE DAILY IN THE MORNING"
+        }
+      ],
+      "reasonCode": [],
+      "reasonReference": [],
+      "requester": {
+        "display": "Dr. Lee Nguyen",
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
+          "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
+        },
+        "type": "Practitioner"
+      },
+      "resourceType": "MedicationRequest",
+      "status": "stopped",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
+          "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
+        },
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
         "type": "Patient"
       },
       "supportingInformation": []
@@ -1266,11 +1266,11 @@
       "contained": [],
       "extension": [],
       "generalPractitioner": [],
-      "id": "wf-2c8618630b3e50ee82b3f09d0502fc81",
+      "id": "wf-1cff30d9a05e8302ed25a3a2f466ce63",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
         {

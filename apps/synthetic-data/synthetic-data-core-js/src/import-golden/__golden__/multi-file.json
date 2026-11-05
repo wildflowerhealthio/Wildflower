@@ -100,50 +100,50 @@
       "disposition": "Superseded",
       "group": "har",
       "key": "0:rexall.har/har-entry-2:0",
-      "resource": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
-      "title": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81"
+      "resource": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
+      "title": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63"
     },
     {
       "disposition": "Superseded",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:0",
-      "resource": "MedicationRequest/wf-26b14ae3668b381726f68662768368aa",
-      "title": "MedicationRequest/wf-26b14ae3668b381726f68662768368aa"
+      "resource": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6",
+      "title": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6"
     },
     {
       "disposition": "Superseded",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:1",
-      "resource": "MedicationRequest/wf-4daec2d87787741afdb8e43a7808a45b",
-      "title": "MedicationRequest/wf-4daec2d87787741afdb8e43a7808a45b"
+      "resource": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7",
+      "title": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7"
     },
     {
       "disposition": "Superseded",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:2",
-      "resource": "MedicationRequest/wf-cb3eac73f06c6e20c059f6f65ce8ca61",
-      "title": "MedicationRequest/wf-cb3eac73f06c6e20c059f6f65ce8ca61"
+      "resource": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5",
+      "title": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5"
     },
     {
       "disposition": "Superseded",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:3",
-      "resource": "MedicationDispense/wf-034d416f23edb32c0ed2792611dda0a7",
-      "title": "MedicationDispense/wf-034d416f23edb32c0ed2792611dda0a7"
+      "resource": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c",
+      "title": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c"
     },
     {
       "disposition": "Superseded",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:4",
-      "resource": "MedicationDispense/wf-5e5325f08cbe781d72367d4dc2a7974a",
-      "title": "MedicationDispense/wf-5e5325f08cbe781d72367d4dc2a7974a"
+      "resource": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d",
+      "title": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d"
     },
     {
       "disposition": "Superseded",
       "group": "har",
       "key": "0:rexall.har/har-entry-3:5",
-      "resource": "MedicationDispense/wf-5f01d3f2eac152db4e2863733e4c7810",
-      "title": "MedicationDispense/wf-5f01d3f2eac152db4e2863733e4c7810"
+      "resource": "MedicationDispense/wf-42402150c21db460736ca3b9469713db",
+      "title": "MedicationDispense/wf-42402150c21db460736ca3b9469713db"
     },
     {
       "disposition": "Included",
@@ -156,50 +156,50 @@
       "disposition": "Included",
       "group": "har",
       "key": "1:rexall-later.har/har-entry-2:0",
-      "resource": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
-      "title": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81"
+      "resource": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
+      "title": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "1:rexall-later.har/har-entry-3:0",
-      "resource": "MedicationRequest/wf-26b14ae3668b381726f68662768368aa",
-      "title": "MedicationRequest/wf-26b14ae3668b381726f68662768368aa"
+      "resource": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6",
+      "title": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "1:rexall-later.har/har-entry-3:1",
-      "resource": "MedicationRequest/wf-4daec2d87787741afdb8e43a7808a45b",
-      "title": "MedicationRequest/wf-4daec2d87787741afdb8e43a7808a45b"
+      "resource": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7",
+      "title": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "1:rexall-later.har/har-entry-3:2",
-      "resource": "MedicationRequest/wf-cb3eac73f06c6e20c059f6f65ce8ca61",
-      "title": "MedicationRequest/wf-cb3eac73f06c6e20c059f6f65ce8ca61"
+      "resource": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5",
+      "title": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "1:rexall-later.har/har-entry-3:3",
-      "resource": "MedicationDispense/wf-034d416f23edb32c0ed2792611dda0a7",
-      "title": "MedicationDispense/wf-034d416f23edb32c0ed2792611dda0a7"
+      "resource": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c",
+      "title": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "1:rexall-later.har/har-entry-3:4",
-      "resource": "MedicationDispense/wf-5e5325f08cbe781d72367d4dc2a7974a",
-      "title": "MedicationDispense/wf-5e5325f08cbe781d72367d4dc2a7974a"
+      "resource": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d",
+      "title": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d"
     },
     {
       "disposition": "Included",
       "group": "har",
       "key": "1:rexall-later.har/har-entry-3:5",
-      "resource": "MedicationDispense/wf-5f01d3f2eac152db4e2863733e4c7810",
-      "title": "MedicationDispense/wf-5f01d3f2eac152db4e2863733e4c7810"
+      "resource": "MedicationDispense/wf-42402150c21db460736ca3b9469713db",
+      "title": "MedicationDispense/wf-42402150c21db460736ca3b9469713db"
     },
     {
       "disposition": "Included",
@@ -239,58 +239,58 @@
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Practitioner/89cbf94afbd515b7",
-      "resource": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b",
-      "title": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b"
+      "key": "3:lifelabs-report.pdf/Practitioner/ROY DR. ANNE",
+      "resource": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba",
+      "title": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Practitioner/aaaf66a1620d6aae",
-      "resource": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759",
-      "title": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759"
+      "key": "3:lifelabs-report.pdf/Practitioner/OSEI DR. KWAME",
+      "resource": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77",
+      "title": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Patient/a5ff7f4bd78368a3",
-      "resource": "Patient/wf-929179822271976c1757d6f21670ddfd",
-      "title": "Patient/wf-929179822271976c1757d6f21670ddfd"
+      "key": "3:lifelabs-report.pdf/Patient/OKAFOR, AVERY, Sep 21 1974",
+      "resource": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
+      "title": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Observation/d0a244442a06d3e0",
-      "resource": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404",
-      "title": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404"
+      "key": "3:lifelabs-report.pdf/Observation/2026-PF2780400/Chemistry/Sodium/0",
+      "resource": "Observation/wf-5ccc8258031e9bd21b31286dc4a9b811",
+      "title": "Observation/wf-5ccc8258031e9bd21b31286dc4a9b811"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Observation/89a50a75b0a929da",
-      "resource": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684",
-      "title": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684"
+      "key": "3:lifelabs-report.pdf/Observation/2026-PF2780400/Chemistry/Potassium/1",
+      "resource": "Observation/wf-14157b275c7c213e13dd30e14ea12063",
+      "title": "Observation/wf-14157b275c7c213e13dd30e14ea12063"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/DiagnosticReport/1182b282c7978560",
-      "resource": "DiagnosticReport/wf-bfceff03e1708baeffb6156b2a7448e3",
-      "title": "DiagnosticReport/wf-bfceff03e1708baeffb6156b2a7448e3"
+      "key": "3:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400",
+      "resource": "DiagnosticReport/wf-489d0b0ef4d940bf67ed10a1ca5bc3ac",
+      "title": "DiagnosticReport/wf-489d0b0ef4d940bf67ed10a1ca5bc3ac"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Observation/e707dfd6d358d4b1",
-      "resource": "Observation/wf-3a2491bf06f64c173c7e85ce78904780",
-      "title": "Observation/wf-3a2491bf06f64c173c7e85ce78904780"
+      "key": "3:lifelabs-report.pdf/Observation/2026-NN6198463/Chemistry/ALT/0",
+      "resource": "Observation/wf-87a74062cb4c281591c2defc20adc898",
+      "title": "Observation/wf-87a74062cb4c281591c2defc20adc898"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/DiagnosticReport/955b4a2e0deab847",
-      "resource": "DiagnosticReport/wf-35d65b4646cf3301647821030d22822c",
-      "title": "DiagnosticReport/wf-35d65b4646cf3301647821030d22822c"
+      "key": "3:lifelabs-report.pdf/DiagnosticReport/2026-NN6198463",
+      "resource": "DiagnosticReport/wf-6e6d2d373433481f7c09b7c537483184",
+      "title": "DiagnosticReport/wf-6e6d2d373433481f7c09b7c537483184"
     },
     {
       "disposition": "Included",
@@ -383,23 +383,18 @@
       },
       "conclusionCode": [],
       "contained": [],
-      "effectiveDateTime": "2026-10-21T12:26:00.000Z",
+      "effectiveDateTime": "2026-09-01T13:09:00.000Z",
       "extension": [],
-      "id": "wf-35d65b4646cf3301647821030d22822c",
+      "id": "wf-489d0b0ef4d940bf67ed10a1ca5bc3ac",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "955b4a2e0deab847"
-        },
-        {
-          "extension": [],
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/lab-number",
-          "value": "2026-NN6198463"
+          "value": "2026-PF2780400"
         }
       ],
       "imagingStudy": [],
-      "issued": "2026-10-21T17:52:00.000Z",
+      "issued": "2026-09-01T20:38:00.000Z",
       "media": [],
       "meta": {
         "profile": [],
@@ -421,10 +416,20 @@
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "e707dfd6d358d4b1"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
+            "value": "2026-PF2780400/Chemistry/Sodium/0"
           },
-          "reference": "Observation/wf-3a2491bf06f64c173c7e85ce78904780",
+          "reference": "Observation/wf-5ccc8258031e9bd21b31286dc4a9b811",
+          "type": "Observation"
+        },
+        {
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
+            "value": "2026-PF2780400/Chemistry/Potassium/1"
+          },
+          "reference": "Observation/wf-14157b275c7c213e13dd30e14ea12063",
           "type": "Observation"
         }
       ],
@@ -433,20 +438,20 @@
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "89cbf94afbd515b7"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+            "value": "ROY DR. ANNE"
           },
-          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b",
+          "reference": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba",
           "type": "Practitioner"
         },
         {
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "aaaf66a1620d6aae"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+            "value": "OSEI DR. KWAME"
           },
-          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759",
+          "reference": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77",
           "type": "Practitioner"
         }
       ],
@@ -456,10 +461,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
         "type": "Patient"
       }
     },
@@ -492,23 +497,18 @@
       },
       "conclusionCode": [],
       "contained": [],
-      "effectiveDateTime": "2026-09-01T13:09:00.000Z",
+      "effectiveDateTime": "2026-10-21T12:26:00.000Z",
       "extension": [],
-      "id": "wf-bfceff03e1708baeffb6156b2a7448e3",
+      "id": "wf-6e6d2d373433481f7c09b7c537483184",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "1182b282c7978560"
-        },
-        {
-          "extension": [],
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/lab-number",
-          "value": "2026-PF2780400"
+          "value": "2026-NN6198463"
         }
       ],
       "imagingStudy": [],
-      "issued": "2026-09-01T20:38:00.000Z",
+      "issued": "2026-10-21T17:52:00.000Z",
       "media": [],
       "meta": {
         "profile": [],
@@ -530,20 +530,10 @@
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "d0a244442a06d3e0"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
+            "value": "2026-NN6198463/Chemistry/ALT/0"
           },
-          "reference": "Observation/wf-9720aaee0f5f747b30b6b794b85cd404",
-          "type": "Observation"
-        },
-        {
-          "extension": [],
-          "identifier": {
-            "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "89a50a75b0a929da"
-          },
-          "reference": "Observation/wf-d48dd6b6316eba1fb28f4f4c89396684",
+          "reference": "Observation/wf-87a74062cb4c281591c2defc20adc898",
           "type": "Observation"
         }
       ],
@@ -552,20 +542,20 @@
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "89cbf94afbd515b7"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+            "value": "ROY DR. ANNE"
           },
-          "reference": "Practitioner/wf-d2f7e22f205a20ea746c212ca5a4a24b",
+          "reference": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba",
           "type": "Practitioner"
         },
         {
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-            "value": "aaaf66a1620d6aae"
+            "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+            "value": "OSEI DR. KWAME"
           },
-          "reference": "Practitioner/wf-137fa84b1bd8c50085270ab8338ec759",
+          "reference": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77",
           "type": "Practitioner"
         }
       ],
@@ -575,10 +565,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
         "type": "Patient"
       }
     },
@@ -993,18 +983,18 @@
           "identifier": {
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-order",
-            "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
+            "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
           },
-          "reference": "PrescriptionOrder/ddee1205-f792-4b31-8565-24fb2fdc7cb9"
+          "reference": "PrescriptionOrder/e23cb27c-2050-40ea-90dd-926b866c886c"
         },
         {
           "extension": [],
           "identifier": {
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-refill",
-            "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
+            "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
           },
-          "reference": "PrescriptionOrder/ddee1205-f792-4b31-8565-24fb2fdc7cb9"
+          "reference": "PrescriptionOrder/e23cb27c-2050-40ea-90dd-926b866c886c"
         }
       ],
       "contained": [],
@@ -1013,7 +1003,7 @@
         "extension": [],
         "system": "http://unitsofmeasure.org",
         "unit": "day",
-        "value": 90
+        "value": 30
       },
       "detectedIssue": [],
       "dosageInstruction": [],
@@ -1022,12 +1012,12 @@
         {
           "extension": [],
           "url": "http://schemas.carebook.com/v1/fhir/medicationdispense/extension/when-requested",
-          "valueDateTime": "2026-11-04T18:39:36.000Z"
+          "valueDateTime": "2026-11-15T16:06:09.000Z"
         },
         {
           "extension": [],
           "url": "http://schemas.carebook.com/v1/fhir/medicationdispense/extension/estimated-pick-up",
-          "valueDateTime": "2026-11-04T21:16:30.000Z"
+          "valueDateTime": "2026-11-15T16:58:52.000Z"
         },
         {
           "extension": [],
@@ -1052,22 +1042,22 @@
           }
         }
       ],
-      "id": "wf-034d416f23edb32c0ed2792611dda0a7",
+      "id": "wf-42402150c21db460736ca3b9469713db",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationDispense",
+          "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
         },
         {
           "extension": [],
           "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
-          "value": "4033280"
+          "value": "9008381"
         },
         {
           "extension": [],
           "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id",
-          "value": "544348120"
+          "value": "218928746"
         }
       ],
       "location": {
@@ -1082,26 +1072,26 @@
       "medicationCodeableConcept": {
         "coding": [
           {
-            "code": "02345678",
+            "code": "00456790",
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
           },
           {
-            "code": "02345678",
+            "code": "00456790",
             "extension": [],
             "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
           }
         ],
         "extension": [],
-        "text": "Alvastatin 20 mg tablet"
+        "text": "Lumipril 10 mg tablet"
       },
       "meta": {
-        "lastUpdated": "2026-11-04T21:16:30.000Z",
+        "lastUpdated": "2026-11-15T16:58:52.000Z",
         "profile": [],
         "security": [],
         "source": "DocumentReference/wf-ddca32cb38435ccf51b3f9ffa194acbc",
         "tag": [],
-        "versionId": "5"
+        "versionId": "6"
       },
       "modifierExtension": [],
       "note": [],
@@ -1109,7 +1099,7 @@
       "performer": [],
       "quantity": {
         "extension": [],
-        "value": 90
+        "value": 30
       },
       "receiver": [],
       "resourceType": "MedicationDispense",
@@ -1118,15 +1108,15 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
         "type": "Patient"
       },
       "supportingInformation": [],
-      "whenHandedOver": "2026-11-04T21:16:30.000Z",
-      "whenPrepared": "2026-11-04T18:39:36.000Z"
+      "whenHandedOver": "2026-11-15T16:58:52.000Z",
+      "whenPrepared": "2026-11-15T16:06:09.000Z"
     },
     {
       "authorizingPrescription": [
@@ -1194,11 +1184,11 @@
           }
         }
       ],
-      "id": "wf-5e5325f08cbe781d72367d4dc2a7974a",
+      "id": "wf-d7d96e9b5617945a72bdf5b6e894391d",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationDispense",
           "value": "f6c0c793-b0be-4177-b852-6214a1559e5b"
         },
         {
@@ -1260,10 +1250,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
         "type": "Patient"
       },
       "supportingInformation": [],
@@ -1277,18 +1267,18 @@
           "identifier": {
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-order",
-            "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
+            "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
           },
-          "reference": "PrescriptionOrder/e23cb27c-2050-40ea-90dd-926b866c886c"
+          "reference": "PrescriptionOrder/ddee1205-f792-4b31-8565-24fb2fdc7cb9"
         },
         {
           "extension": [],
           "identifier": {
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/identifier/medication-request-type-refill",
-            "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
+            "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
           },
-          "reference": "PrescriptionOrder/e23cb27c-2050-40ea-90dd-926b866c886c"
+          "reference": "PrescriptionOrder/ddee1205-f792-4b31-8565-24fb2fdc7cb9"
         }
       ],
       "contained": [],
@@ -1297,7 +1287,7 @@
         "extension": [],
         "system": "http://unitsofmeasure.org",
         "unit": "day",
-        "value": 30
+        "value": 90
       },
       "detectedIssue": [],
       "dosageInstruction": [],
@@ -1306,12 +1296,12 @@
         {
           "extension": [],
           "url": "http://schemas.carebook.com/v1/fhir/medicationdispense/extension/when-requested",
-          "valueDateTime": "2026-11-15T16:06:09.000Z"
+          "valueDateTime": "2026-11-04T18:39:36.000Z"
         },
         {
           "extension": [],
           "url": "http://schemas.carebook.com/v1/fhir/medicationdispense/extension/estimated-pick-up",
-          "valueDateTime": "2026-11-15T16:58:52.000Z"
+          "valueDateTime": "2026-11-04T21:16:30.000Z"
         },
         {
           "extension": [],
@@ -1336,22 +1326,22 @@
           }
         }
       ],
-      "id": "wf-5f01d3f2eac152db4e2863733e4c7810",
+      "id": "wf-eaacc6398e039cd717b811357fc3742c",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationDispense",
+          "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
         },
         {
           "extension": [],
           "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
-          "value": "9008381"
+          "value": "4033280"
         },
         {
           "extension": [],
           "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id",
-          "value": "218928746"
+          "value": "544348120"
         }
       ],
       "location": {
@@ -1366,26 +1356,26 @@
       "medicationCodeableConcept": {
         "coding": [
           {
-            "code": "00456790",
+            "code": "02345678",
             "extension": [],
             "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
           },
           {
-            "code": "00456790",
+            "code": "02345678",
             "extension": [],
             "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
           }
         ],
         "extension": [],
-        "text": "Lumipril 10 mg tablet"
+        "text": "Alvastatin 20 mg tablet"
       },
       "meta": {
-        "lastUpdated": "2026-11-15T16:58:52.000Z",
+        "lastUpdated": "2026-11-04T21:16:30.000Z",
         "profile": [],
         "security": [],
         "source": "DocumentReference/wf-ddca32cb38435ccf51b3f9ffa194acbc",
         "tag": [],
-        "versionId": "6"
+        "versionId": "5"
       },
       "modifierExtension": [],
       "note": [],
@@ -1393,7 +1383,7 @@
       "performer": [],
       "quantity": {
         "extension": [],
-        "value": 30
+        "value": 90
       },
       "receiver": [],
       "resourceType": "MedicationDispense",
@@ -1402,15 +1392,15 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
         "type": "Patient"
       },
       "supportingInformation": [],
-      "whenHandedOver": "2026-11-15T16:58:52.000Z",
-      "whenPrepared": "2026-11-15T16:06:09.000Z"
+      "whenHandedOver": "2026-11-04T21:16:30.000Z",
+      "whenPrepared": "2026-11-04T18:39:36.000Z"
     },
     {
       "authoredOn": "2026-02-03T14:19:33.000Z",
@@ -1575,11 +1565,11 @@
           }
         }
       ],
-      "id": "wf-26b14ae3668b381726f68662768368aa",
+      "id": "wf-522e02b6a9336219dd71d9d54c32d9e6",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest",
           "value": "833a7ade-b420-4501-bb77-584c11aa9e61"
         },
         {
@@ -1624,7 +1614,7 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
           "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
         },
         "type": "Practitioner"
@@ -1635,241 +1625,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
-        "type": "Patient"
-      },
-      "supportingInformation": []
-    },
-    {
-      "authoredOn": "2026-05-14T13:14:08.000Z",
-      "basedOn": [],
-      "category": [
-        {
-          "coding": [
-            {
-              "code": "refill",
-              "extension": [],
-              "system": "http://schemas.carebook.com/v1/fhir/coding/medicationrequest-request-type-code"
-            }
-          ],
-          "extension": []
-        }
-      ],
-      "contained": [
-        {
-          "code": {
-            "coding": [
-              {
-                "code": "00456789",
-                "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
-              },
-              {
-                "code": "00456789",
-                "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
-              }
-            ],
-            "text": "Lumipril 5 mg tablet"
-          },
-          "extension": [],
-          "form": {
-            "coding": [
-              {
-                "code": "tablet",
-                "system": "http://schema.carebook.com/v1/fhir/coding/medication-form-code"
-              }
-            ]
-          },
-          "id": "de494ac3-a9b8-4c4c-93e7-765935d5a73a",
-          "ingredient": [
-            {
-              "itemCodeableConcept": {
-                "coding": [
-                  {
-                    "code": "00456789",
-                    "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
-                  },
-                  {
-                    "code": "00456789",
-                    "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
-                  }
-                ],
-                "text": "Lumipril 5 mg tablet"
-              },
-              "strength": {
-                "denominator": {
-                  "value": 1
-                },
-                "numerator": {
-                  "unit": "mg",
-                  "value": 5
-                }
-              }
-            }
-          ],
-          "manufacturer": {
-            "display": "Teva Canada Limited"
-          },
-          "meta": {
-            "lastUpdated": "2026-06-15T19:51:19+00:00",
-            "versionId": "3"
-          },
-          "resourceType": "Medication",
-          "status": "active",
-          "text": {
-            "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">5 mg - Teva-Lumipril</div>",
-            "status": "generated"
-          }
-        }
-      ],
-      "detectedIssue": [],
-      "dispenseRequest": {
-        "expectedSupplyDuration": {
-          "code": "d",
-          "extension": [],
-          "system": "http://unitsofmeasure.org",
-          "unit": "day",
-          "value": 30
-        },
-        "extension": [
-          {
-            "extension": [],
-            "url": "https://wildflowerhealth.io/fhir/StructureDefinition/repeats-available",
-            "valueInteger": 4
-          }
-        ],
-        "modifierExtension": [],
-        "numberOfRepeatsAllowed": 5,
-        "performer": {
-          "display": "Rexall (store 4821)",
-          "extension": [],
-          "identifier": {
-            "extension": [],
-            "value": "pharmacy-4821"
-          },
-          "reference": "https://www.rexall.ca/storelocator/store/4821"
-        },
-        "quantity": {
-          "extension": [],
-          "value": 30
-        }
-      },
-      "doNotPerform": false,
-      "dosageInstruction": [],
-      "eventHistory": [],
-      "extension": [
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/estimated-pick-up",
-          "valueDateTime": "2026-06-15T19:51:19.000Z"
-        },
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/common/extension/input-source",
-          "valueString": "Sync"
-        },
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/medicationrecord-processor",
-          "valueReference": {
-            "extension": [],
-            "identifier": {
-              "extension": [],
-              "value": "pharmacy-4821"
-            },
-            "reference": "rexall-pharmacy-location/pharmacy-4821"
-          }
-        },
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/renewable",
-          "valueBoolean": true
-        },
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/sort-order",
-          "valuePositiveInt": 2
-        },
-        {
-          "extension": [],
-          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/prescription-order",
-          "valueReference": {
-            "display": "todo",
-            "extension": [],
-            "identifier": {
-              "extension": [],
-              "value": "null"
-            },
-            "reference": "PrescriptionOrder/null"
-          }
-        }
-      ],
-      "id": "wf-4daec2d87787741afdb8e43a7808a45b",
-      "identifier": [
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "f6c0c793-b0be-4177-b852-6214a1559e5b"
-        },
-        {
-          "extension": [],
-          "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
-          "value": "8772276"
-        },
-        {
-          "extension": [],
-          "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id",
-          "value": "999450659"
-        }
-      ],
-      "instantiatesCanonical": [],
-      "instantiatesUri": [],
-      "insurance": [],
-      "intent": "order",
-      "medicationReference": {
-        "display": "Lumipril 5 mg tablet",
-        "extension": [],
-        "reference": "#de494ac3-a9b8-4c4c-93e7-765935d5a73a"
-      },
-      "meta": {
-        "lastUpdated": "2026-06-15T19:51:19.000Z",
-        "profile": [],
-        "security": [],
-        "source": "DocumentReference/wf-ddca32cb38435ccf51b3f9ffa194acbc",
-        "tag": [],
-        "versionId": "3"
-      },
-      "modifierExtension": [],
-      "note": [
-        {
-          "extension": [],
-          "text": "TAKE 1 TABLET (=5MG) BY MOUTH ONCE DAILY IN THE MORNING"
-        }
-      ],
-      "reasonCode": [],
-      "reasonReference": [],
-      "requester": {
-        "display": "Dr. Lee Nguyen",
-        "extension": [],
-        "identifier": {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
-        },
-        "type": "Practitioner"
-      },
-      "resourceType": "MedicationRequest",
-      "status": "stopped",
-      "subject": {
-        "extension": [],
-        "identifier": {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
-          "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
-        },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
         "type": "Patient"
       },
       "supportingInformation": []
@@ -2037,11 +1796,11 @@
           }
         }
       ],
-      "id": "wf-cb3eac73f06c6e20c059f6f65ce8ca61",
+      "id": "wf-ec1eb2f83df5ebca00522ea9a5cd2fd5",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest",
           "value": "c7cf6d14-8422-44fa-ae89-8e176b49feeb"
         },
         {
@@ -2086,7 +1845,7 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
           "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
         },
         "type": "Practitioner"
@@ -2097,196 +1856,244 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-2c8618630b3e50ee82b3f09d0502fc81",
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
         "type": "Patient"
       },
       "supportingInformation": []
     },
     {
+      "authoredOn": "2026-05-14T13:14:08.000Z",
       "basedOn": [],
       "category": [
         {
           "coding": [
             {
-              "code": "laboratory",
-              "display": "Laboratory",
+              "code": "refill",
               "extension": [],
-              "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+              "system": "http://schemas.carebook.com/v1/fhir/coding/medicationrequest-request-type-code"
             }
           ],
-          "extension": [],
-          "text": "Chemistry · Liver Function"
-        }
-      ],
-      "code": {
-        "coding": [],
-        "extension": [],
-        "text": "ALT"
-      },
-      "component": [],
-      "contained": [],
-      "derivedFrom": [],
-      "effectiveDateTime": "2026-10-21T12:26:00.000Z",
-      "extension": [],
-      "focus": [],
-      "hasMember": [],
-      "id": "wf-3a2491bf06f64c173c7e85ce78904780",
-      "identifier": [
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "e707dfd6d358d4b1"
-        }
-      ],
-      "interpretation": [],
-      "issued": "2026-10-21T17:52:00.000Z",
-      "meta": {
-        "profile": [],
-        "security": [],
-        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
-        "tag": []
-      },
-      "modifierExtension": [],
-      "note": [],
-      "partOf": [],
-      "performer": [
-        {
-          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
           "extension": []
         }
       ],
-      "referenceRange": [
+      "contained": [
         {
-          "appliesTo": [],
-          "extension": [],
-          "high": {
-            "code": "U/L",
-            "extension": [],
-            "system": "http://unitsofmeasure.org",
-            "unit": "U/L",
-            "value": 41
+          "code": {
+            "coding": [
+              {
+                "code": "00456789",
+                "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
+              },
+              {
+                "code": "00456789",
+                "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+              }
+            ],
+            "text": "Lumipril 5 mg tablet"
           },
-          "modifierExtension": [],
-          "text": "<41"
-        }
-      ],
-      "resourceType": "Observation",
-      "status": "final",
-      "subject": {
-        "extension": [],
-        "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
-        },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
-        "type": "Patient"
-      },
-      "valueQuantity": {
-        "code": "U/L",
-        "extension": [],
-        "system": "http://unitsofmeasure.org",
-        "unit": "U/L",
-        "value": 22
-      }
-    },
-    {
-      "basedOn": [],
-      "category": [
-        {
-          "coding": [
+          "form": {
+            "coding": [
+              {
+                "code": "tablet",
+                "system": "http://schema.carebook.com/v1/fhir/coding/medication-form-code"
+              }
+            ]
+          },
+          "id": "de494ac3-a9b8-4c4c-93e7-765935d5a73a",
+          "ingredient": [
             {
-              "code": "laboratory",
-              "display": "Laboratory",
-              "extension": [],
-              "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+              "itemCodeableConcept": {
+                "coding": [
+                  {
+                    "code": "00456789",
+                    "system": "http://schema.carebook.com/v1/fhir/coding/medication-din-code"
+                  },
+                  {
+                    "code": "00456789",
+                    "system": "http://hl7.org/fhir/NamingSystem/ca-hc-din"
+                  }
+                ],
+                "text": "Lumipril 5 mg tablet"
+              },
+              "strength": {
+                "denominator": {
+                  "value": 1
+                },
+                "numerator": {
+                  "unit": "mg",
+                  "value": 5
+                }
+              }
             }
           ],
-          "extension": [],
-          "text": "Chemistry · Electrolytes"
+          "manufacturer": {
+            "display": "Teva Canada Limited"
+          },
+          "meta": {
+            "lastUpdated": "2026-06-15T19:51:19+00:00",
+            "versionId": "3"
+          },
+          "resourceType": "Medication",
+          "status": "active",
+          "text": {
+            "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">5 mg - Teva-Lumipril</div>",
+            "status": "generated"
+          }
         }
       ],
-      "code": {
-        "coding": [],
-        "extension": [],
-        "text": "Sodium"
+      "detectedIssue": [],
+      "dispenseRequest": {
+        "expectedSupplyDuration": {
+          "code": "d",
+          "extension": [],
+          "system": "http://unitsofmeasure.org",
+          "unit": "day",
+          "value": 30
+        },
+        "extension": [
+          {
+            "extension": [],
+            "url": "https://wildflowerhealth.io/fhir/StructureDefinition/repeats-available",
+            "valueInteger": 4
+          }
+        ],
+        "modifierExtension": [],
+        "numberOfRepeatsAllowed": 5,
+        "performer": {
+          "display": "Rexall (store 4821)",
+          "extension": [],
+          "identifier": {
+            "extension": [],
+            "value": "pharmacy-4821"
+          },
+          "reference": "https://www.rexall.ca/storelocator/store/4821"
+        },
+        "quantity": {
+          "extension": [],
+          "value": 30
+        }
       },
-      "component": [],
-      "contained": [],
-      "derivedFrom": [],
-      "effectiveDateTime": "2026-09-01T13:09:00.000Z",
-      "extension": [],
-      "focus": [],
-      "hasMember": [],
-      "id": "wf-9720aaee0f5f747b30b6b794b85cd404",
+      "doNotPerform": false,
+      "dosageInstruction": [],
+      "eventHistory": [],
+      "extension": [
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/estimated-pick-up",
+          "valueDateTime": "2026-06-15T19:51:19.000Z"
+        },
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/common/extension/input-source",
+          "valueString": "Sync"
+        },
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/medicationrecord-processor",
+          "valueReference": {
+            "extension": [],
+            "identifier": {
+              "extension": [],
+              "value": "pharmacy-4821"
+            },
+            "reference": "rexall-pharmacy-location/pharmacy-4821"
+          }
+        },
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/renewable",
+          "valueBoolean": true
+        },
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/sort-order",
+          "valuePositiveInt": 2
+        },
+        {
+          "extension": [],
+          "url": "http://schemas.carebook.com/v1/fhir/medicationrequest/extension/prescription-order",
+          "valueReference": {
+            "display": "todo",
+            "extension": [],
+            "identifier": {
+              "extension": [],
+              "value": "null"
+            },
+            "reference": "PrescriptionOrder/null"
+          }
+        }
+      ],
+      "id": "wf-efcc018fbef8bb2c57a6dad7598132d7",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "d0a244442a06d3e0"
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest",
+          "value": "f6c0c793-b0be-4177-b852-6214a1559e5b"
+        },
+        {
+          "extension": [],
+          "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
+          "value": "8772276"
+        },
+        {
+          "extension": [],
+          "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id",
+          "value": "999450659"
         }
       ],
-      "interpretation": [],
-      "issued": "2026-09-01T20:38:00.000Z",
+      "instantiatesCanonical": [],
+      "instantiatesUri": [],
+      "insurance": [],
+      "intent": "order",
+      "medicationReference": {
+        "display": "Lumipril 5 mg tablet",
+        "extension": [],
+        "reference": "#de494ac3-a9b8-4c4c-93e7-765935d5a73a"
+      },
       "meta": {
+        "lastUpdated": "2026-06-15T19:51:19.000Z",
         "profile": [],
         "security": [],
-        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
-        "tag": []
+        "source": "DocumentReference/wf-ddca32cb38435ccf51b3f9ffa194acbc",
+        "tag": [],
+        "versionId": "3"
       },
       "modifierExtension": [],
-      "note": [],
-      "partOf": [],
-      "performer": [
+      "note": [
         {
-          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
-          "extension": []
-        }
-      ],
-      "referenceRange": [
-        {
-          "appliesTo": [],
           "extension": [],
-          "high": {
-            "code": "mmol/L",
-            "extension": [],
-            "system": "http://unitsofmeasure.org",
-            "unit": "mmol/L",
-            "value": 145
-          },
-          "low": {
-            "code": "mmol/L",
-            "extension": [],
-            "system": "http://unitsofmeasure.org",
-            "unit": "mmol/L",
-            "value": 135
-          },
-          "modifierExtension": [],
-          "text": "135 - 145"
+          "text": "TAKE 1 TABLET (=5MG) BY MOUTH ONCE DAILY IN THE MORNING"
         }
       ],
-      "resourceType": "Observation",
-      "status": "final",
+      "reasonCode": [],
+      "reasonReference": [],
+      "requester": {
+        "display": "Dr. Lee Nguyen",
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
+          "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
+        },
+        "type": "Practitioner"
+      },
+      "resourceType": "MedicationRequest",
+      "status": "stopped",
       "subject": {
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
+          "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "reference": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
         "type": "Patient"
       },
-      "valueQuantity": {
-        "code": "mmol/L",
-        "extension": [],
-        "system": "http://unitsofmeasure.org",
-        "unit": "mmol/L",
-        "value": 139
-      }
+      "supportingInformation": []
     },
     {
       "basedOn": [],
@@ -2316,12 +2123,12 @@
       "extension": [],
       "focus": [],
       "hasMember": [],
-      "id": "wf-d48dd6b6316eba1fb28f4f4c89396684",
+      "id": "wf-14157b275c7c213e13dd30e14ea12063",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "89a50a75b0a929da"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
+          "value": "2026-PF2780400/Chemistry/Potassium/1"
         }
       ],
       "interpretation": [
@@ -2387,10 +2194,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
         },
-        "reference": "Patient/wf-929179822271976c1757d6f21670ddfd",
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
         "type": "Patient"
       },
       "valueQuantity": {
@@ -2399,6 +2206,189 @@
         "system": "http://unitsofmeasure.org",
         "unit": "mmol/L",
         "value": 5.4
+      }
+    },
+    {
+      "basedOn": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "laboratory",
+              "display": "Laboratory",
+              "extension": [],
+              "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+            }
+          ],
+          "extension": [],
+          "text": "Chemistry · Electrolytes"
+        }
+      ],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "Sodium"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "effectiveDateTime": "2026-09-01T13:09:00.000Z",
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-5ccc8258031e9bd21b31286dc4a9b811",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
+          "value": "2026-PF2780400/Chemistry/Sodium/0"
+        }
+      ],
+      "interpretation": [],
+      "issued": "2026-09-01T20:38:00.000Z",
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [
+        {
+          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
+          "extension": []
+        }
+      ],
+      "referenceRange": [
+        {
+          "appliesTo": [],
+          "extension": [],
+          "high": {
+            "code": "mmol/L",
+            "extension": [],
+            "system": "http://unitsofmeasure.org",
+            "unit": "mmol/L",
+            "value": 145
+          },
+          "low": {
+            "code": "mmol/L",
+            "extension": [],
+            "system": "http://unitsofmeasure.org",
+            "unit": "mmol/L",
+            "value": 135
+          },
+          "modifierExtension": [],
+          "text": "135 - 145"
+        }
+      ],
+      "resourceType": "Observation",
+      "status": "final",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
+        },
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
+        "type": "Patient"
+      },
+      "valueQuantity": {
+        "code": "mmol/L",
+        "extension": [],
+        "system": "http://unitsofmeasure.org",
+        "unit": "mmol/L",
+        "value": 139
+      }
+    },
+    {
+      "basedOn": [],
+      "category": [
+        {
+          "coding": [
+            {
+              "code": "laboratory",
+              "display": "Laboratory",
+              "extension": [],
+              "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+            }
+          ],
+          "extension": [],
+          "text": "Chemistry · Liver Function"
+        }
+      ],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "ALT"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "effectiveDateTime": "2026-10-21T12:26:00.000Z",
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-87a74062cb4c281591c2defc20adc898",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/result",
+          "value": "2026-NN6198463/Chemistry/ALT/0"
+        }
+      ],
+      "interpretation": [],
+      "issued": "2026-10-21T17:52:00.000Z",
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-3719d2ce1889d1105ae2b545ebb14f09",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [
+        {
+          "display": "Lab Lic. #5687 · 1 Example Blvd., Toronto, Ontario, Canada M0M 0M0",
+          "extension": []
+        }
+      ],
+      "referenceRange": [
+        {
+          "appliesTo": [],
+          "extension": [],
+          "high": {
+            "code": "U/L",
+            "extension": [],
+            "system": "http://unitsofmeasure.org",
+            "unit": "U/L",
+            "value": 41
+          },
+          "modifierExtension": [],
+          "text": "<41"
+        }
+      ],
+      "resourceType": "Observation",
+      "status": "final",
+      "subject": {
+        "extension": [],
+        "identifier": {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
+        },
+        "reference": "Patient/wf-a7fcdb93d5f9088a2c33aafff7629593",
+        "type": "Patient"
+      },
+      "valueQuantity": {
+        "code": "U/L",
+        "extension": [],
+        "system": "http://unitsofmeasure.org",
+        "unit": "U/L",
+        "value": 22
       }
     },
     {
@@ -2415,11 +2405,11 @@
       "contained": [],
       "extension": [],
       "generalPractitioner": [],
-      "id": "wf-2c8618630b3e50ee82b3f09d0502fc81",
+      "id": "wf-1cff30d9a05e8302ed25a3a2f466ce63",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/rexall-carebook",
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
         },
         {
@@ -2505,12 +2495,12 @@
       "extension": [],
       "gender": "female",
       "generalPractitioner": [],
-      "id": "wf-929179822271976c1757d6f21670ddfd",
+      "id": "wf-a7fcdb93d5f9088a2c33aafff7629593",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "a5ff7f4bd78368a3"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/patient-name-birth-date",
+          "value": "OKAFOR, AVERY, Sep 21 1974"
         },
         {
           "extension": [],
@@ -2598,12 +2588,12 @@
       "communication": [],
       "contained": [],
       "extension": [],
-      "id": "wf-137fa84b1bd8c50085270ab8338ec759",
+      "id": "wf-73e25200c0e79e7282a9d7a406660c77",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "aaaf66a1620d6aae"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+          "value": "OSEI DR. KWAME"
         },
         {
           "extension": [],
@@ -2637,12 +2627,12 @@
       "communication": [],
       "contained": [],
       "extension": [],
-      "id": "wf-d2f7e22f205a20ea746c212ca5a4a24b",
+      "id": "wf-80ba24ff7137298b01b47eb3d87d11ba",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs",
-          "value": "89cbf94afbd515b7"
+          "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
+          "value": "ROY DR. ANNE"
         },
         {
           "extension": [],
