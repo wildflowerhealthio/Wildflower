@@ -56,6 +56,7 @@ export {
   RetainedSignInRequestStore,
   SignInCrypto,
   SignInPage,
+  signInHttpClient,
 } from './sign-in-services.ts'
 export type { RetainedRequestStorage, SignInServices } from './sign-in-services.ts'
 

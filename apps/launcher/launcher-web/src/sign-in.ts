@@ -437,7 +437,6 @@ export {
   returnToOnPage,
   scheduleExpiry,
   serverKindForSession,
-  signInLayer,
   signInRegistration,
   startSignIn,
   unsentEhrLaunch,

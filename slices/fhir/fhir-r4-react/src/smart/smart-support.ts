@@ -1,10 +1,11 @@
-import { HttpClient } from '@effect/platform'
+import type { HttpClient } from '@effect/platform'
 import {
   insecureTargetReason,
   normalizeServerUrl,
   type RetainedRequestUnusable,
   type PkceUnavailable,
   SignInPage,
+  signInHttpClient,
   type SignInServices,
   discoveredSmartServerFrom,
   type DiscoveredSmartServer,
@@ -67,8 +68,9 @@ const decodeSmartConfiguration = Schema.decodeUnknown(NamesAuthorizationEndpoint
  *
  * @remarks
  * Every outcome is a {@link SmartSupport}, so the Effect never fails. The
- * probe goes through the context's `HttpClient`, sending no trace headers so
- * the request stays a CORS-simple one, and the `SignInPage` decides whether a
+ * probe goes through `authorization-core`'s `signInHttpClient`, the context's
+ * `HttpClient` sending no trace headers, so the request stays a CORS-simple
+ * one, and the `SignInPage` decides whether a
  * plain-http endpoint off loopback is `Unusable`.
  *
  * @param fhirBaseUrl - The FHIR server base the well-known path is appended to
@@ -77,7 +79,7 @@ const detectSmartSupport = (
   fhirBaseUrl: FhirBaseUrl
 ): Effect.Effect<SmartSupport, never, HttpClient.HttpClient | SignInPage> =>
   Effect.gen(function* () {
-    const client = (yield* HttpClient.HttpClient).pipe(HttpClient.withTracerPropagation(false))
+    const client = yield* signInHttpClient
     const page = yield* SignInPage
     // A request that gets no response is network-or-CORS and the two are
     // indistinguishable here — surface it, never degrade to `Open`.
