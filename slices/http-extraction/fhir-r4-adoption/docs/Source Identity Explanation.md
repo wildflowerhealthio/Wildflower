@@ -104,8 +104,7 @@ they stand outside any server (`DetachedResource` in this package).
   the target named by its key.
 
 `DetachedResource.keyOf` reads a record's key; `keyedIdOf` is the id the
-import stage stores a keyed record under, so a review row can be titled by
-the reference it will be written under before anything is adopted.
+import stage stores a keyed record under.
 
 ## Writing a record detached
 
@@ -120,13 +119,13 @@ portal's own namespace for it (`patient-id`, `prescription-id`,
 carebook's Patient system, `<REXALL_STU3_BASE_URL>/Patient`, the key
 carebook's searchset names it by. LifeLabs keys each record by a real
 identifier in a specific system, never a digest (`LifeLabsIdentifierSystem`):
-the Patient by its `Patient ID`, else its health card number, else its name
-and date of birth; the `DiagnosticReport` by its `Lab No`, keyless when it
-prints none; each result row and each provider in a Wildflower-minted system
-over the printed facts. Where a record has no printed identifier but must be
-referenced, the system is a fictitious Wildflower one with a readable value,
-and the collisions that brings (two reports printing one `Lab No`) are
-accepted: such records are one key. DICOM keys every type in its one
+the Patient by its `Patient ID`, else its health card number less its
+version code, else its name and date of birth; the `DiagnosticReport` by its
+`Lab No` (a page printing none is skipped, and of two reports printing one
+only the latest is kept); each result row and each provider in a
+Wildflower-minted system over the printed facts. Where a record has no
+printed identifier but must be referenced, the system is a fictitious
+Wildflower one with a readable value. DICOM keys every type in its one
 Wildflower-minted system (`DICOM_SYSTEM`).
 
 ## Detaching a server's record
@@ -216,9 +215,11 @@ otherwise                  → unchanged
 ```
 
 The batch is one file set (`importer-fundamentals`' `DecodedFileSet.adopt`
-builds one adoption over every section of it), and what it holds is the
-stored reference of each of its keyed records
-(`DetachedResource.storedReferencesOf`, each spelled by `storedReferenceOf`).
+builds one adoption over every section of it), and what it holds is the id
+each of its keyed records is stored under, by type and key
+(`DetachedResource.storedIdsOf`), each `localResourceId` derived once: a keyed
+record's own id is read from it, and a reference is looked up in it, so one
+whose target is not in the batch costs no hash.
 This is a FHIR server processing a transaction bundle: a conditional reference
 resolves against the bundle's own entries, and one that matches none of them
 stays as it is. So a reference to a record the source never served — a Rexall

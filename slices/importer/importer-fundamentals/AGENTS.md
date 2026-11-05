@@ -97,11 +97,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   separate type from `DecodedFile.Section`, the same records adopted: the two
   hold different records, and every reader of a decoded file reads
   `resources` off it. The "Source file(s)" section is the import stage's own,
-  never decoded. **`writtenReferenceTitle(entry)`** is every decoded record's
-  review title, the reference the import stage writes it under, `<Type>/<id>`
-  (the id its key derives), or `<Type> (<fullUrl>)` for a keyless record,
-  whose id is only minted at import; `adopt` titles each row with it, so no
-  decoder titles its records.
+  never decoded. **`writtenReferenceTitle(entry, adopted)`** is every
+  decoded record's review title: for a keyed record the reference the import
+  stage writes it under, `<Type>/<id>` (the adopted record's id), or
+  `<Type> (<fullUrl>)` for a keyless record, whose minted id changes on every
+  re-decode; `adopt` titles each row with it, so no decoder titles its
+  records.
   **`namespaceKeys(sections, prefix)`** prefixes every entry's `fullUrl`;
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
   **`adopt({ sections, notes }, mintId?)`** is how the import stage makes a

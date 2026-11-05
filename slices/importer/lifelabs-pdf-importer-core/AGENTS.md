@@ -34,11 +34,15 @@ that hands back a hand-written positioned-text document.
   group → row → comment); `printed-text.ts` holds the shared `fast-check` text
   primitives the entity arbitraries use.
 - `src/entities/` — **the report model, one namespace per shape** (`Patient`,
-  `Lab`, `TestTableRow`, `Group`, `Section`, `Report`). Each `<name>.ts` holds
-  its `Type` (the report's own text, nothing interpreted) and — for the
-  header-derived blocks — a `fromPageHeader` reader. `Report` additionally owns
-  **`tryFromDocument`**, the parse of a whole positioned-text document into one
-  `Report.Type` per `Lab No` (the orchestration over `document/`); it is an
+  `Lab`, `LabNumber`, `TestTableRow`, `Group`, `Section`, `Report`). Each
+  `<name>.ts` holds its `Type` (the report's own text, nothing interpreted)
+  and — for the header-derived blocks — a `fromPageHeader` reader.
+  `LabNumber` is a printed `Lab No`, a branded string that is never blank:
+  `LabNumber.make` is how a caller building a report itself spells one.
+  `Report` additionally owns **`tryFromDocument`**, the parse of a whole
+  positioned-text document into `DocumentReports`: one `Report.Type` per run
+  of pages sharing a `Lab No` (the orchestration over `document/`), beside
+  `pagesWithoutLabNo`, the pages it skipped for printing none. It is an
   `Effect` that fails with `UnrecognizedLifeLabsDocument` when a non-empty
   document carries no `Lab No` or grid heading on any page, and otherwise reads
   totally (masked fields → `''`, no grid → no sections). `TestTableRow` is a
@@ -52,20 +56,26 @@ that hands back a hand-written positioned-text document.
   it validates each wire object through the `fhir-r4` schema decoders and
   emits `Patient`, `Practitioner`, `DiagnosticReport`, and `Observation`
   resources detached, each keyed by a real identifier the report prints
-  (see `source-system.ts`), grouped as one `ReportResources` per report — a
+  (see `source-system.ts`), grouped as one `ReportResources` per report, each
+  resource an entry whose `fullUrl` is `<Type>/<key value>` — a
   `Patient` or `Practitioner` several reports share (one key) is minted once,
   in the group of the first report naming it, so flattening the groups in
   order writes every reference target before its referrer. The keys:
-  the Patient's printed `Patient ID`, else its health card number as printed,
-  else `<name>, <date of birth>` as printed (`patientKeyOf`, the other printed
-  identifiers behind the key); the `DiagnosticReport`'s `Lab No`, keyless
-  when the report prints none (`reportKeyOf`); a result row's
+  the Patient's printed `Patient ID`, else its health card number less its
+  version code (the letters after the number, so a reissued card keys the
+  same Patient), else `<name>, <date of birth>` as printed (`patientKeyOf`,
+  the other printed identifiers behind the key); the `DiagnosticReport`'s
+  `Lab No` (`reportKeyOf`); a result row's
   `<Lab No>/<section>/<test name>/<ordinal>` (`observationKeyOf`); a
   provider's printed name, inner whitespace collapsed (`practitionerKeyOf`).
   The per-resource wire builders live in `wire/`:
   `wire/patient.ts`, `wire/practitioner.ts`, `wire/observation.ts`,
   `wire/diagnostic-report.ts`, with shared helpers (`timingWire`,
   `reportStatus`, `performerWire`, `quantityWire`) in `wire/shared.ts`.
+  `printings.ts` picks the printing of a `Lab No` the synthesis keeps when a
+  file prints it more than once (`latestPrintingOf`: the latest
+  `Reported on:`, else the one printed later in the file) and words the note
+  (`keptPrintingNote`).
   Supporting modules: `dates.ts` (printed timestamps to FHIR `date` /
   `dateTime`), `reference-range.ts` (printed reference range to bounds),
   `result-value.ts` (printed result to quantity or text), `printed-number.ts`
@@ -76,7 +86,8 @@ that hands back a hand-written positioned-text document.
 - `src/source-system.ts` — **`LIFELABS_SYSTEM`** and
   **`LifeLabsIdentifierSystem`**: the source file's coding system, and the
   identifier systems the synthesis keys its records in — the printed
-  `Lab No`, `Patient ID` and Ontario health card number, and the
+  `Lab No`, `Patient ID` and Ontario health card number (less its version
+  code), and the
   Wildflower-minted name-and-birth-date, result and practitioner-name
   systems for what the report prints no number for. A leaf module so the
   importer and the FHIR synthesis import it without a cycle.
@@ -87,7 +98,9 @@ that hands back a hand-written positioned-text document.
   runs its `extract` on the picked file's bytes
   and hands the extracted `Document.Type` to `decodeLifeLabsPdfDocument`,
   which runs the
-  dialect, then `synthesis.ts`'s `decodedReportsOf`. The import stage
+  dialect, then `synthesis.ts`'s `decodedReportsOf`, and adds a note for each
+  page skipped for printing no `Lab No`
+  (`Page 3 prints no Lab No, so it was skipped.`). The import stage
   adopts the records.
   Both extraction failure (`UnreadablePdf`) and an unrecognized LifeLabs
   document surface as `ParseError` — the one error channel the batch decode folds into that file's
@@ -95,14 +108,16 @@ that hands back a hand-written positioned-text document.
   format derives no id from its source file, and the import stage does the
   `meta.source` stamping.
 - `src/synthesis.ts` — **the FHIR synthesis without the PDF decoder**,
-  exported as the `/synthesis` subpath: the `Report` model's types,
-  `toFhirResources`, **`decodedReportsOf`**
-  (the reports as the decode yields them: the synthesis, its records written
+  exported as the `/synthesis` subpath: the `Report` model's types and
+  `LabNumber`, `toFhirResources`, **`decodedReportsOf`**
+  (the reports as the decode yields them: only the latest printing of each
+  `Lab No`, in the order each `Lab No` is first printed, with a note naming
+  each `Lab No` printed more than once and the printing kept; the synthesis,
+  its records written
   detached and keyed by what the report prints, one section per
-  report titled by **`reportSectionTitle`** (the report's `Lab No` and date
-  of service, `'LifeLabs report'` when both are masked), each entry's
-  `fullUrl` `<Type>/<key value>` (`<Type>#<index>` for a keyless report),
-  and no notes)
+  report titled by **`reportSectionTitle`** (the report's `Lab No`, and its
+  date of service when it prints one), each entry's
+  `fullUrl` `<Type>/<key value>`)
   and the
   `ReportResources` / `SynthesisOptions` types, none of which requires an
   extractor. For callers that build reports themselves
@@ -180,10 +195,15 @@ and must stay out of the production bundle. Never imports `har-importer-core`,
   reads as no date of birth; a masked lab number that repeats is told apart by
   the page footer (each report starts at its own `Page 1 of N`), so reports
   that share a lab number stay separate reports in the parse.
-- **A key is a real identifier, never a digest.** Two reports printing one
-  `Lab No` (a masked export) are one key: their `DiagnosticReport`s, and the
-  rows at the same ordinal under the same section and test name, are stored
-  as one record. That collision is accepted.
+- **One `Lab No`, one report.** A page that prints no `Lab No` is skipped in
+  the parse, and noted. Reports printing one `Lab No` are printings of one
+  report, and the synthesis keeps only the latest, whole, noting which; a
+  masked export, every lab number masked to the same digits, keeps one
+  report. So every record of a LifeLabs file set has its own key and
+  `fullUrl`.
+- **A key is a real identifier, never a digest.** What the report prints,
+  in a system named for it, or a Wildflower-minted system over printed text
+  for what it prints no number for.
 - **Every key is persisted wire format.** The id a record is stored under
   derives from its key, so changing a system or how a value is spelled
   re-keys every LifeLabs record of that type already imported.
