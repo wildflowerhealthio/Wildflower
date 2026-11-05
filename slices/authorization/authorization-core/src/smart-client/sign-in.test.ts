@@ -1,3 +1,4 @@
+import { StorageBlocked } from '@wildflowerhealthio/kitchen-sink'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Either, Match, Option } from 'effect'
 import * as fc from 'fast-check'
@@ -14,6 +15,7 @@ import {
   beginSignInAt,
   completeSignIn,
   forgetPendingSignIn,
+  pendingRequestUnusableFrom,
   type PendingStore,
   type SignInEnvironment,
 } from './sign-in.ts'
@@ -865,3 +867,17 @@ const jsonResponse = (body: unknown): Response =>
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   })
+
+describe('pendingRequestUnusableFrom', () => {
+  it.each([
+    { operation: 'write', says: 'would not let the page remember the sign-in request' },
+    { operation: 'read', says: 'would not let the page use the sign-in request it kept' },
+    { operation: 'remove', says: 'would not let the page use the sign-in request it kept' },
+  ] as const)('should say what a blocked $operation stopped', ({ operation, says }) => {
+    const unusable = pendingRequestUnusableFrom(new StorageBlocked({ operation, key: 'pending' }))
+
+    expect(unusable._tag).toBe('PendingRequestUnusable')
+    expect(unusable.reason).toContain(says)
+    expect(unusable.reason).toContain('(session storage is blocked)')
+  })
+})

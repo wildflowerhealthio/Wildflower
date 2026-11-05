@@ -1,6 +1,7 @@
 import {
   completeSignIn,
-  PendingRequestUnrecognised,
+  pendingRequestUnrecognisedFromAnotherVersion,
+  type PendingRequestUnrecognised,
   type PendingRequestUnusable,
   searchWithoutAuthorizationResponse,
   type Session,
@@ -95,13 +96,7 @@ const completeSelfAddressedSignIn = (
       return yield* new NoSignInInProgress({ reason: NO_SIGN_IN_IN_PROGRESS_REASON })
     }
     const request = decodeRetainedSelfAddressedSignInRequest(retained.value)
-    if (Option.isNone(request)) {
-      return yield* new PendingRequestUnrecognised({
-        reason:
-          'The sign-in in progress was started by a different version of this page. ' +
-          'Connect again.',
-      })
-    }
+    if (Option.isNone(request)) return yield* pendingRequestUnrecognisedFromAnotherVersion()
     if (selfAddressedReturn.state !== request.value.expectedState) {
       return yield* new CallbackStateMismatch({
         reason: 'The sign-in came back with the wrong state parameter, so it was discarded.',

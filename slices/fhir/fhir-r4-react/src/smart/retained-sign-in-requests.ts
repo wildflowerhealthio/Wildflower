@@ -1,10 +1,12 @@
 import {
   browserSignInEnvironment,
   forgetPendingSignIn,
-  PendingRequestUnusable,
+  type PendingRequestUnusable,
+  pendingRequestUnusableFrom,
   type SignInEnvironment,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { Effect, Option, Schema } from 'effect'
+import { setStorageItem, takeStorageItem } from '@wildflowerhealthio/kitchen-sink'
+import { Effect, type Option, Schema } from 'effect'
 
 import type { RootArrival } from './root-arrival.ts'
 import { FhirBaseUrl } from './smart-connection.ts'
@@ -62,26 +64,15 @@ const signInEnvironmentFor = (
     redirectUri: registration.redirectUri,
   })
 
-/** Why the page cannot use the sign-in request it retained. */
-const blockedStorage = (): PendingRequestUnusable =>
-  new PendingRequestUnusable({
-    reason:
-      'This browser would not let the page use the sign-in request it kept ' +
-      '(session storage is blocked), so it cannot be completed.',
-  })
-
 /** Retain `request` for the redirect's return, before the page leaves. */
 const retainSelfAddressedSignInRequest = (
   request: RetainedSelfAddressedSignInRequest
 ): Effect.Effect<void, PendingRequestUnusable> =>
-  Effect.try({
-    try: () =>
-      window.sessionStorage.setItem(
-        RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
-        encodeRetainedSelfAddressedSignInRequest(request)
-      ),
-    catch: blockedStorage,
-  })
+  setStorageItem(
+    window.sessionStorage,
+    RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
+    encodeRetainedSelfAddressedSignInRequest(request)
+  ).pipe(Effect.mapError(pendingRequestUnusableFrom))
 
 /**
  * Take every retained sign-in request an arrival can complete out of
@@ -104,14 +95,10 @@ const takeRetainedSignInRequests = (
   environment: SignInEnvironment
 ): Effect.Effect<Option.Option<string>, PendingRequestUnusable> =>
   Effect.gen(function* () {
-    const retained = yield* Effect.try({
-      try: () => {
-        const stored = window.sessionStorage.getItem(RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY)
-        window.sessionStorage.removeItem(RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY)
-        return Option.fromNullable(stored)
-      },
-      catch: blockedStorage,
-    })
+    const retained = yield* takeStorageItem(
+      window.sessionStorage,
+      RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY
+    ).pipe(Effect.mapError(pendingRequestUnusableFrom))
     if (arrival._tag !== 'SignInReturn') yield* forgetPendingSignIn(environment)
     return retained
   })

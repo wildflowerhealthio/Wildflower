@@ -61,7 +61,9 @@ export {
   beginSignInAt,
   completeSignIn,
   forgetPendingSignIn,
+  pendingRequestUnrecognisedFromAnotherVersion,
   PendingRequestUnrecognised,
+  pendingRequestUnusableFrom,
   PendingRequestUnusable,
 } from './sign-in.ts'
 export type {

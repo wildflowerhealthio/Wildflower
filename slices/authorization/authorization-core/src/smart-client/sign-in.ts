@@ -37,7 +37,13 @@
  * deleted the instant the client returns, before the code is even redeemed.
  */
 
-import { Data, Effect, Option } from 'effect'
+import {
+  removeStorageItem,
+  setStorageItem,
+  type StorageBlocked,
+  takeStorageItem,
+} from '@wildflowerhealthio/kitchen-sink'
+import { Data, Effect, Match, Option } from 'effect'
 
 import {
   authorizationRedirectOutcome,
@@ -182,26 +188,18 @@ const beginSignInAt = (
     const state = createState(environment.random)
     const codeChallenge = yield* codeChallengeS256(codeVerifier, environment.subtle)
 
-    yield* Effect.try({
-      try: () =>
-        environment.store.setItem(
-          environment.pendingKey,
-          serializePendingAuthorization({
-            state,
-            codeVerifier,
-            serverUrl: smartServer.fhirBaseUrl,
-            smartServer,
-            tokenEndpoint: endpoints.tokenEndpoint,
-            returnTo,
-          })
-        ),
-      catch: () =>
-        new PendingRequestUnusable({
-          reason:
-            'This browser would not let the page remember the sign-in request ' +
-            '(session storage is blocked), so it cannot be completed.',
-        }),
-    })
+    yield* setStorageItem(
+      environment.store,
+      environment.pendingKey,
+      serializePendingAuthorization({
+        state,
+        codeVerifier,
+        serverUrl: smartServer.fhirBaseUrl,
+        smartServer,
+        tokenEndpoint: endpoints.tokenEndpoint,
+        returnTo,
+      })
+    ).pipe(Effect.mapError(pendingRequestUnusableFrom))
 
     return authorizationRequestUrl(endpoints.authorizationEndpoint, {
       clientId: environment.clientId,
@@ -286,12 +284,40 @@ const completeSignIn = (
     return Option.some(sessionFrom(grant, pending))
   })
 
-/** Why a pending record the page cannot reach cannot be completed. */
-const blockedStorage = (): PendingRequestUnusable =>
+/**
+ * Why a sign-in whose request `blocked` storage would not keep or give back
+ * cannot be completed: the one wording for every sign-in request a page
+ * retains across the redirect, this module's and an app's own.
+ */
+const pendingRequestUnusableFrom = (blocked: StorageBlocked): PendingRequestUnusable =>
   new PendingRequestUnusable({
+    reason: Match.value(blocked.operation).pipe(
+      Match.when(
+        'write',
+        () =>
+          'This browser would not let the page remember the sign-in request ' +
+          '(session storage is blocked), so it cannot be completed.'
+      ),
+      Match.whenOr(
+        'read',
+        'remove',
+        () =>
+          'This browser would not let the page use the sign-in request it kept ' +
+          '(session storage is blocked), so it cannot be completed.'
+      ),
+      Match.exhaustive
+    ),
+  })
+
+/**
+ * Why a retained sign-in request that does not read as one cannot be
+ * completed: the one wording for every sign-in request a page retains across
+ * the redirect, this module's and an app's own.
+ */
+const pendingRequestUnrecognisedFromAnotherVersion = (): PendingRequestUnrecognised =>
+  new PendingRequestUnrecognised({
     reason:
-      'This browser would not let the page use the sign-in request it kept ' +
-      '(session storage is blocked), so it cannot be completed.',
+      'The sign-in in progress was started by a different version of this page. Sign in again.',
   })
 
 /**
@@ -307,20 +333,12 @@ const takePendingRecord = (
   PendingRequestUnusable | PendingRequestUnrecognised
 > =>
   Effect.gen(function* () {
-    const stored = yield* Effect.try({
-      try: () => environment.store.getItem(environment.pendingKey),
-      catch: blockedStorage,
-    })
-    if (stored === null) return Option.none()
-    yield* forgetPendingSignIn(environment)
-    const pending = parsePendingAuthorization(stored)
-    if (Option.isNone(pending)) {
-      return yield* new PendingRequestUnrecognised({
-        reason:
-          'The sign-in in progress was started by a different version of this page. ' +
-          'Sign in again.',
-      })
-    }
+    const stored = yield* takeStorageItem(environment.store, environment.pendingKey).pipe(
+      Effect.mapError(pendingRequestUnusableFrom)
+    )
+    if (Option.isNone(stored)) return Option.none()
+    const pending = parsePendingAuthorization(stored.value)
+    if (Option.isNone(pending)) return yield* pendingRequestUnrecognisedFromAnotherVersion()
     return pending
   })
 
@@ -333,10 +351,9 @@ const takePendingRecord = (
 const forgetPendingSignIn = (
   environment: SignInEnvironment
 ): Effect.Effect<void, PendingRequestUnusable> =>
-  Effect.try({
-    try: () => environment.store.removeItem(environment.pendingKey),
-    catch: blockedStorage,
-  })
+  removeStorageItem(environment.store, environment.pendingKey).pipe(
+    Effect.mapError(pendingRequestUnusableFrom)
+  )
 
 /** The session a `grant` redeemed for the `pending` request becomes. */
 const sessionFrom = (grant: AccessGrant, pending: PendingAuthorization): Session => ({
@@ -356,5 +373,7 @@ export {
   beginSignInAt,
   completeSignIn,
   forgetPendingSignIn,
+  pendingRequestUnrecognisedFromAnotherVersion,
+  pendingRequestUnusableFrom,
 }
 export type { AuthorizationRequestExtras, SignInError, PendingStore, SignInEnvironment, Session }
