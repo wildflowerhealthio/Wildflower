@@ -20,7 +20,7 @@ import type { DigestSource, RandomBytesSource } from './pkce.ts'
 import {
   RetainedSignInRequestStore,
   SignInCrypto,
-  SignInPage,
+  PageSecurity,
   type RetainedRequestStorage,
   type SignInServices,
 } from './sign-in-services.ts'
@@ -48,13 +48,13 @@ interface SignInWindow extends DiscoveryWindow {
  */
 const discoveryLayerFromWindow = (
   page: DiscoveryWindow
-): Layer.Layer<HttpClient.HttpClient | SignInPage> =>
+): Layer.Layer<HttpClient.HttpClient | PageSecurity> =>
   Layer.mergeAll(
     FetchHttpClient.layer,
     // Called as a method so a real `Window.fetch` keeps its receiver; an
     // unbound reference throws `Illegal invocation` in a browser.
     Layer.succeed(FetchHttpClient.Fetch, (input, init) => page.fetch(input, init)),
-    SignInPage.layer(page.location)
+    PageSecurity.layerFromWindow(page)
   )
 
 /** The sign-in services of a browser page. */

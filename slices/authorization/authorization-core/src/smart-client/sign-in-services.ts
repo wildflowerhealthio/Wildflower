@@ -3,7 +3,7 @@
  * random bytes and digest PKCE needs ({@link SignInCrypto}), the storage that
  * carries the retained sign-in request across the redirect
  * ({@link RetainedSignInRequestStore}), and whether the page is secure
- * ({@link SignInPage}). The fourth, the `HttpClient` that discovery and the
+ * ({@link PageSecurity}). The fourth, the `HttpClient` that discovery and the
  * token request go through, is `@effect/platform`'s own.
  *
  * `browser-sign-in.ts` wires all four to a browser page; a test provides the
@@ -180,19 +180,23 @@ class RetainedSignInRequestStore extends Context.Tag(
 }
 
 /**
- * The page a sign-in runs on. A fact about the page, not the app: an `https:`
- * page refuses discovered endpoints that are plain http off loopback.
+ * Whether the page a sign-in runs on is secure. A fact about the page, not the
+ * app: an `https:` page refuses discovered endpoints that are plain http off
+ * loopback. Its shape is the options `endpointUrlFrom`, `insecureTargetReason`
+ * and `discoveredSmartServerFrom` take, so it is passed to them as it is.
  */
-class SignInPage extends Context.Tag('authorization-core/SignInPage')<
-  SignInPage,
+class PageSecurity extends Context.Tag('authorization-core/PageSecurity')<
+  PageSecurity,
   {
     /** Whether the page is served over `https:`. */
-    readonly isSecure: boolean
+    readonly pageIsSecure: boolean
   }
 >() {
-  /** The {@link SignInPage} served at `location`. */
-  static readonly layer = (location: { readonly protocol: string }): Layer.Layer<SignInPage> =>
-    Layer.sync(SignInPage, () => ({ isSecure: location.protocol === 'https:' }))
+  /** The {@link PageSecurity} of `page`, read from its `location`'s scheme. */
+  static readonly layerFromWindow = (page: {
+    readonly location: { readonly protocol: string }
+  }): Layer.Layer<PageSecurity> =>
+    Layer.sync(PageSecurity, () => ({ pageIsSecure: page.location.protocol === 'https:' }))
 }
 
 /**
@@ -205,7 +209,11 @@ const signInHttpClient: Effect.Effect<HttpClient.HttpClient, never, HttpClient.H
   Effect.map(HttpClient.HttpClient, HttpClient.withTracerPropagation(false))
 
 /** Every service a whole sign-in, both halves, runs against. */
-type SignInServices = HttpClient.HttpClient | SignInCrypto | RetainedSignInRequestStore | SignInPage
+type SignInServices =
+  | HttpClient.HttpClient
+  | SignInCrypto
+  | RetainedSignInRequestStore
+  | PageSecurity
 
 export {
   memoryBackedRetainedRequestStore,
@@ -213,7 +221,7 @@ export {
   retainedRequestUnusableFrom,
   RetainedSignInRequestStore,
   SignInCrypto,
-  SignInPage,
+  PageSecurity,
   signInHttpClient,
   sessionStorageBackedRetainedRequestStore,
 }

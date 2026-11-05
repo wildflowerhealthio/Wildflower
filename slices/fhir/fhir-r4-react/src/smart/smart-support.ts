@@ -5,7 +5,7 @@ import {
   normalizeServerUrl,
   type RetainedRequestUnusable,
   type PkceUnavailable,
-  SignInPage,
+  PageSecurity,
   discoveredSmartServerFrom,
   type DiscoveredSmartServer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
@@ -69,17 +69,17 @@ const namesAuthorizationEndpoint = Schema.is(NamesAuthorizationEndpoint)
  * Every outcome is a {@link SmartSupport}, so the Effect never fails. The
  * probe is `authorization-core`'s `fetchSmartConfiguration`, the one fetch
  * discovery makes too, read here as support rather than as a server to sign
- * in to; the `SignInPage` decides whether a plain-http endpoint off loopback
+ * in to; the `PageSecurity` decides whether a plain-http endpoint off loopback
  * is `Unusable`.
  *
  * @param fhirBaseUrl - The FHIR server base the well-known path is appended to
  */
 const detectSmartSupport = (
   fhirBaseUrl: FhirBaseUrl
-): Effect.Effect<SmartSupport, never, HttpClient.HttpClient | SignInPage> =>
+): Effect.Effect<SmartSupport, never, HttpClient.HttpClient | PageSecurity> =>
   Effect.gen(function* () {
     const fetched = yield* fetchSmartConfiguration(fhirBaseUrl)
-    const page = yield* SignInPage
+    const pageSecurity = yield* PageSecurity
     return Match.value(fetched).pipe(
       Match.tagsExhaustive({
         // A request that gets no response is network-or-CORS and the two are
@@ -94,13 +94,10 @@ const detectSmartSupport = (
         // narrowed: `discoveredSmartServerFrom` reads the whole configuration.
         Document: ({ document }) =>
           namesAuthorizationEndpoint(document)
-            ? Either.match(
-                discoveredSmartServerFrom(fhirBaseUrl, document, { pageIsSecure: page.isSecure }),
-                {
-                  onLeft: (failed) => SmartSupport.Unusable({ reason: failed.reason }),
-                  onRight: (discovered) => SmartSupport.Smart({ discovered }),
-                }
-              )
+            ? Either.match(discoveredSmartServerFrom(fhirBaseUrl, document, pageSecurity), {
+                onLeft: (failed) => SmartSupport.Unusable({ reason: failed.reason }),
+                onRight: (discovered) => SmartSupport.Smart({ discovered }),
+              })
             : SmartSupport.Open(),
       })
     )

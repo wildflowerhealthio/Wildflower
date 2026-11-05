@@ -10,7 +10,7 @@
  * URL for the app to assign. What is impure about the page comes from the
  * context: the `HttpClient` discovery and the token request go through, the
  * `SignInCrypto` the PKCE pair is minted from, the `RetainedSignInRequestStore`
- * that carries the retained request across the redirect, and the `SignInPage`.
+ * that carries the retained request across the redirect, and the `PageSecurity`.
  * A browser provides all four with `BrowserSignIn.layer`, and a test provides
  * a stub transport, a store over a plain object, or whichever one it is about.
  *

@@ -3,7 +3,7 @@ import { queryOptions, skipToken, useQuery, type UseQueryOptions } from '@tansta
 import {
   BrowserSignIn,
   discoverSmartEndpoints,
-  type SignInPage,
+  type PageSecurity,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import { Effect, type Layer, Option } from 'effect'
@@ -22,7 +22,7 @@ interface ManageAccessSource {
    * is served over https (discovery refuses a plaintext endpoint from a secure
    * page). `BrowserSignIn.discoveryLayerFromWindow(window)` in the browser.
    */
-  readonly discovery: Layer.Layer<HttpClient.HttpClient | SignInPage>
+  readonly discovery: Layer.Layer<HttpClient.HttpClient | PageSecurity>
 }
 
 /**

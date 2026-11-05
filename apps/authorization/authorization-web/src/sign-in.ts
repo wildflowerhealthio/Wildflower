@@ -30,7 +30,7 @@ import {
   type DiscoveryFailed,
   type Session,
   type SignInError,
-  type SignInPage,
+  type PageSecurity,
   type SignInServices,
   type SignInWindow,
   type DiscoveredSmartServer,
@@ -142,7 +142,7 @@ const discoverAuthorizationApi = (
 ): Effect.Effect<
   string,
   DiscoveryFailed | NotAWildflowerServer,
-  HttpClient.HttpClient | SignInPage
+  HttpClient.HttpClient | PageSecurity
 > => discoverSmartEndpoints(serverUrl).pipe(Effect.flatMap(authorizationApiOf))
 
 /** A sign-in Effect's outcome as a {@link SignInStep}: its failure channel folded in. */
@@ -181,7 +181,7 @@ const serverSessionFor = (
 ): Effect.Effect<
   ServerSession,
   DiscoveryFailed | NotAWildflowerServer,
-  HttpClient.HttpClient | SignInPage
+  HttpClient.HttpClient | PageSecurity
 > =>
   discoverAuthorizationApi(session.smartServer.fhirBaseUrl).pipe(
     Effect.map((authorizationApiUrl) => ({

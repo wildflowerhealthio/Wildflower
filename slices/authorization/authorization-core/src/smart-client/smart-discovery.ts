@@ -27,7 +27,7 @@ import type { HttpClient } from '@effect/platform'
 import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
 import { Data, Effect, Either, Match, Option, Schema } from 'effect'
 
-import { SignInPage, signInHttpClient } from './sign-in-services.ts'
+import { PageSecurity, signInHttpClient } from './sign-in-services.ts'
 
 /** Raised when the chosen target cannot be signed in to, with the reason why. */
 class DiscoveryFailed extends Data.TaggedError('DiscoveryFailed')<{
@@ -332,7 +332,7 @@ const fetchSmartConfiguration = (
  * FHIR base, and validate what it advertises. The {@link SmartServer} it
  * describes is returned with the endpoints: its FHIR base is the `aud` the
  * sign-in names, and its kind is what the signed-in app may offer. The
- * `SignInPage` decides whether a plain-http endpoint off loopback is usable.
+ * `PageSecurity` decides whether a plain-http endpoint off loopback is usable.
  *
  * Every way the fetch can fail — unreachable, an error status (a 404
  * included: there is no configuration there), a non-JSON body — is a
@@ -340,10 +340,10 @@ const fetchSmartConfiguration = (
  */
 const discoverSmartEndpoints = (
   serverUrl: string
-): Effect.Effect<DiscoveredSmartServer, DiscoveryFailed, HttpClient.HttpClient | SignInPage> =>
+): Effect.Effect<DiscoveredSmartServer, DiscoveryFailed, HttpClient.HttpClient | PageSecurity> =>
   Effect.gen(function* () {
     const fetched = yield* fetchSmartConfiguration(serverUrl)
-    const page = yield* SignInPage
+    const pageSecurity = yield* PageSecurity
     return yield* Match.value(fetched).pipe(
       Match.tagsExhaustive({
         // A network-level failure is indistinguishable from a CORS rejection
@@ -370,8 +370,7 @@ const discoverSmartEndpoints = (
               reason: `${url} did not answer with JSON. Is this a Wildflower server?`,
             })
           ),
-        Document: ({ document }) =>
-          discoveredSmartServerFrom(serverUrl, document, { pageIsSecure: page.isSecure }),
+        Document: ({ document }) => discoveredSmartServerFrom(serverUrl, document, pageSecurity),
       })
     )
   })
