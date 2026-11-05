@@ -1,4 +1,7 @@
-import type { PendingRequestUnusable } from '@wildflowerhealthio/authorization-core/smart-client'
+import type {
+  RetainedRequestUnusable,
+  RetainedSignInRequestStore,
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import { Data, Effect, Match, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -17,6 +20,7 @@ import {
   FHIR_BASE_URL,
   LAUNCH_CONFIG,
   NO_RETAINED_REQUESTS,
+  onThisPage,
   REGISTRATION,
   resetPage,
   retainedRequests,
@@ -50,11 +54,11 @@ const landingHere = (
 
 /** Complete the sign-in the page landed on. */
 const completeHere = (appRootRedirectUri?: string): Promise<SmartConnection> =>
-  Effect.runPromise(completeSignInAfterRedirectHere(landingHere(appRootRedirectUri)))
+  Effect.runPromise(onThisPage(completeSignInAfterRedirectHere(landingHere(appRootRedirectUri))))
 
 /** Why completing the sign-in the page landed on fails. */
 const failureHere = (): Promise<SignInAfterRedirectError> =>
-  Effect.runPromise(Effect.flip(completeSignInAfterRedirectHere(landingHere())))
+  Effect.runPromise(onThisPage(Effect.flip(completeSignInAfterRedirectHere(landingHere()))))
 
 /** The page arrived as something other than the sign-in a test set up. */
 class UnexpectedArrival extends Data.TaggedError('UnexpectedArrival')<{
@@ -62,14 +66,13 @@ class UnexpectedArrival extends Data.TaggedError('UnexpectedArrival')<{
 }> {}
 
 /** Discard the refused sign-in the page landed on. */
-const discardHere = (): Effect.Effect<void, PendingRequestUnusable | UnexpectedArrival> =>
+const discardHere = (): Effect.Effect<
+  void,
+  RetainedRequestUnusable | UnexpectedArrival,
+  RetainedSignInRequestStore
+> =>
   Match.value(rootArrivalFrom(window.location.search)).pipe(
-    Match.tag('SignInRefused', (refused) =>
-      discardRefusedSignInAfterRedirectHere(refused, {
-        registration: REGISTRATION,
-        appRootRedirectUri: APP_ROOT,
-      })
-    ),
+    Match.tag('SignInRefused', (refused) => discardRefusedSignInAfterRedirectHere(refused)),
     Match.orElse((arrival) =>
       Effect.fail(new UnexpectedArrival({ reason: `the page arrived as ${arrival._tag}` }))
     )
@@ -107,7 +110,7 @@ describe('completeSignInAfterRedirectHere', () => {
     stubServer()
     const servedRoot = new URL('/pr-7/', APP_ROOT).href
     await Effect.runPromise(
-      redirectToSignIn({ ...LAUNCH_CONFIG, redirectUri: servedRoot }, undefined)
+      onThisPage(redirectToSignIn({ ...LAUNCH_CONFIG, redirectUri: servedRoot }, undefined))
     )
     const state = assignedUrl().searchParams.get('state') ?? ''
     vi.unstubAllGlobals()
@@ -235,7 +238,7 @@ describe('completeSignInAfterRedirectHere', () => {
     const failure = await failureHere()
 
     // Assert
-    expect(failure).toMatchObject({ _tag: 'PendingRequestUnusable' })
+    expect(failure).toMatchObject({ _tag: 'RetainedRequestUnusable' })
     expect(failure.reason).toContain('session storage is blocked')
   })
 
@@ -289,7 +292,7 @@ describe('discardRefusedSignInAfterRedirectHere', () => {
     returnToRedirectTarget(`?error=access_denied&error_description=No&state=${state}&utm=kept`)
 
     // Act
-    await Effect.runPromise(discardHere())
+    await Effect.runPromise(onThisPage(discardHere()))
 
     // Assert
     expect(retainedRequests()).toEqual(NO_RETAINED_REQUESTS)
@@ -302,7 +305,7 @@ describe('discardRefusedSignInAfterRedirectHere', () => {
     stubBlockedStorage()
 
     // Act
-    const failure = await Effect.runPromise(Effect.flip(discardHere()))
+    const failure = await Effect.runPromise(onThisPage(Effect.flip(discardHere())))
 
     // Assert
     expect(failure.reason).toContain('session storage is blocked')

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { PendingRequestUnusable } from '@wildflowerhealthio/authorization-core/smart-client'
+import { RetainedRequestUnusable } from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   decodeLaunchError,
   LAUNCH_ERROR_PARAM,
@@ -112,7 +112,7 @@ describe('redirectForLaunchRequest', () => {
   it('should send a sign-in that could not retain its request back to the app root', async () => {
     // Arrange
     redirectToSignInMock.mockReturnValue(
-      Effect.fail(new PendingRequestUnusable({ reason: 'session storage is blocked' }))
+      Effect.fail(new RetainedRequestUnusable({ reason: 'session storage is blocked' }))
     )
 
     // Act

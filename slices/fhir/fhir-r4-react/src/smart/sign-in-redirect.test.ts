@@ -1,4 +1,4 @@
-import type { SmartIssuer } from '@wildflowerhealthio/authorization-core/smart-client'
+import type { DiscoveredSmartServer } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Effect, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -8,6 +8,7 @@ import {
 } from './retained-sign-in-requests.ts'
 import { redirectToSelfAddressedSignInReturn, redirectToSignInAt } from './sign-in-redirect.ts'
 import {
+  onThisPage,
   APP_ROOT,
   assignedUrl,
   FHIR_BASE_URL,
@@ -25,7 +26,7 @@ afterEach(() => {
 })
 
 /** The SMART server {@link SMART_CONFIGURATION} describes, as its probe discovered it. */
-const DISCOVERED: SmartIssuer = {
+const DISCOVERED: DiscoveredSmartServer = {
   smartServer: { _tag: 'PlainSmartServer', fhirBaseUrl: FHIR_BASE_URL },
   endpoints: {
     authorizationEndpoint: SMART_CONFIGURATION.authorization_endpoint,
@@ -42,7 +43,9 @@ describe('redirectToSignInAt', () => {
 
     // Act
     await Effect.runPromise(
-      redirectToSignInAt(DISCOVERED, { ...REGISTRATION, redirectUri: APP_ROOT }, 'launch-1')
+      onThisPage(
+        redirectToSignInAt(DISCOVERED, { ...REGISTRATION, redirectUri: APP_ROOT }, 'launch-1')
+      )
     )
 
     // Assert — nothing discovered again, and the request retained for the return
@@ -66,7 +69,9 @@ describe('redirectToSignInAt', () => {
   it('should send no launch for a standalone launch', async () => {
     // Act
     await Effect.runPromise(
-      redirectToSignInAt(DISCOVERED, { ...REGISTRATION, redirectUri: APP_ROOT }, undefined)
+      onThisPage(
+        redirectToSignInAt(DISCOVERED, { ...REGISTRATION, redirectUri: APP_ROOT }, undefined)
+      )
     )
 
     // Assert
@@ -78,10 +83,12 @@ describe('redirectToSelfAddressedSignInReturn', () => {
   it('should send the page straight back to itself, carrying the state it retained', async () => {
     // Act
     await Effect.runPromise(
-      redirectToSelfAddressedSignInReturn({
-        fhirBaseUrl: decodeFhirBaseUrl('https://open.example/fhir/'),
-        redirectUri: 'https://app.example/',
-      })
+      onThisPage(
+        redirectToSelfAddressedSignInReturn({
+          fhirBaseUrl: decodeFhirBaseUrl('https://open.example/fhir/'),
+          redirectUri: 'https://app.example/',
+        })
+      )
     )
 
     // Assert

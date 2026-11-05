@@ -1,12 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
+  type DiscoveredSmartServer,
   insecureTargetReason as sharedInsecureTargetReason,
   normalizeServerUrl as sharedNormalizeServerUrl,
-  PendingRequestUnusable,
-  type SmartIssuer,
+  RetainedRequestUnusable,
+  RetainedSignInRequestStore,
+  SignInCrypto,
+  SignInPage,
+  type SignInServices,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { Effect, Match } from 'effect'
+import { Effect, Layer } from 'effect'
 
 import type { SelfAddressedSignInConfig, SmartLaunchConfig } from './sign-in-redirect.ts'
 import { decodeFhirBaseUrl } from './smart-connection.ts'
@@ -17,19 +21,29 @@ import {
   redirectToSignIn,
   SmartSupport,
 } from './smart-support.ts'
+import {
+  answerEveryRequest,
+  answerJson,
+  answerStatus,
+  answerText,
+  dropRequest,
+  stubFhirServer,
+  type StubAnswer,
+  type StubFhirServer,
+} from './test-helpers.ts'
 
 // `redirectToSignIn` hands the sign-in to `sign-in-redirect.ts`, whose own
 // suite covers the sign-in and the navigation, so the module boundary is where
-// we stub. `detectSmartSupport`'s tests never touch it (they
-// inject `fetchFn`).
+// we stub. `detectSmartSupport`'s tests never touch it (they answer over a
+// stub `HttpClient`).
 const { redirectToSignInAtMock, redirectToSelfAddressedSignInReturnMock } = vi.hoisted(() => ({
   redirectToSignInAtMock:
     vi.fn<
       (
-        discovered: SmartIssuer,
+        discovered: DiscoveredSmartServer,
         config: Omit<SmartLaunchConfig, 'fhirBaseUrl'>,
         launch: string | undefined
-      ) => Effect.Effect<void, PendingRequestUnusable>
+      ) => Effect.Effect<void, RetainedRequestUnusable>
     >(),
   redirectToSelfAddressedSignInReturnMock:
     vi.fn<(config: SelfAddressedSignInConfig) => Effect.Effect<void>>(),
@@ -44,42 +58,50 @@ beforeEach(() => {
   vi.clearAllMocks()
   redirectToSignInAtMock.mockReturnValue(Effect.void)
   redirectToSelfAddressedSignInReturnMock.mockReturnValue(Effect.void)
-  vi.stubGlobal('location', { protocol: 'https:' })
 })
 
-/** The support `fhirBaseUrl` gives, probed through `fetchFn`. */
+/**
+ * The sign-in services over a stub server answering every request with
+ * `answer`, on a page that is secure unless `pageIsSecure` says not, with the
+ * record of what the server was sent.
+ */
+const servicesAnswering = (
+  answer: StubAnswer,
+  pageIsSecure = true
+): Pick<StubFhirServer, 'requests' | 'urls'> & { readonly layer: Layer.Layer<SignInServices> } => {
+  const server = stubFhirServer(answerEveryRequest(answer))
+  return {
+    layer: Layer.mergeAll(
+      server.transport,
+      Layer.succeed(SignInPage, { isSecure: pageIsSecure }),
+      SignInCrypto.layer(globalThis.crypto),
+      RetainedSignInRequestStore.sessionStorage(window, 'smart-support.test')
+    ),
+    requests: server.requests,
+    urls: server.urls,
+  }
+}
+
+/** The support `fhirBaseUrl` gives, probed over a stub server answering `answer`. */
 const supportOf = (
   fhirBaseUrl: string,
-  fetchFn: typeof fetch,
+  answer: StubAnswer,
   pageIsSecure?: boolean
 ): Promise<SmartSupport> =>
-  Effect.runPromise(detectSmartSupport(decodeFhirBaseUrl(fhirBaseUrl), fetchFn, pageIsSecure))
+  Effect.runPromise(
+    Effect.provide(
+      detectSmartSupport(decodeFhirBaseUrl(fhirBaseUrl)),
+      servicesAnswering(answer, pageIsSecure).layer
+    )
+  )
 
-afterEach(() => {
-  vi.unstubAllGlobals()
-})
-
-// Helpers
-
-/** The URL string of a `fetch` first argument, in each of its three shapes. */
-const urlOf = Match.type<RequestInfo | URL>().pipe(
-  Match.withReturnType<string>(),
-  Match.when({ href: Match.string }, (url) => url.href),
-  Match.when({ url: Match.string }, (req) => req.url),
-  Match.when(Match.string, (str) => str),
-  Match.exhaustive
-)
-
-/** A `fetch` stub that records each URL it was called with and answers `body`. */
-const fetchReturning = (body: Response, seenUrls: string[] = []): typeof fetch =>
-  vi.fn<typeof fetch>((input) => {
-    seenUrls.push(urlOf(input))
-    return Promise.resolve(body)
-  })
-
-/** A `fetch` stub that rejects — the network/CORS-failure shape. */
-const fetchRejecting = (error: unknown): typeof fetch =>
-  vi.fn<typeof fetch>(() => Promise.reject(error))
+/** `redirectToSignIn(config, launch)` over `services`. */
+const signIn = (
+  config: SmartLaunchConfig,
+  launch: string | undefined,
+  services: ReturnType<typeof servicesAnswering>
+): Effect.Effect<SmartSupport, unknown> =>
+  Effect.provide(redirectToSignIn(config, launch), services.layer)
 
 /**
  * A SMART configuration whose endpoints are usable from an https page, shaped
@@ -91,8 +113,8 @@ const SMART_CONFIGURATION = {
   code_challenge_methods_supported: ['S256'],
 }
 
-/** The issuer {@link SMART_CONFIGURATION} describes, served at `fhirBaseUrl`. */
-const smartIssuerAt = (fhirBaseUrl: string): Partial<SmartIssuer> => ({
+/** The server {@link SMART_CONFIGURATION} describes, served at `fhirBaseUrl`. */
+const discoveredAt = (fhirBaseUrl: string): Partial<DiscoveredSmartServer> => ({
   smartServer: { _tag: 'PlainSmartServer', fhirBaseUrl },
   endpoints: {
     authorizationEndpoint: SMART_CONFIGURATION.authorization_endpoint,
@@ -100,22 +122,12 @@ const smartIssuerAt = (fhirBaseUrl: string): Partial<SmartIssuer> => ({
   },
 })
 
-const jsonResponse = (body: unknown, init?: ResponseInit): Response =>
-  new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-    ...init,
-  })
-
 describe('detectSmartSupport', () => {
-  it('is `Smart`, carrying the issuer it read, when the config names usable endpoints', async () => {
-    const support = await supportOf(
-      'https://ehr.example/fhir',
-      fetchReturning(jsonResponse(SMART_CONFIGURATION))
-    )
+  it('is `Smart`, carrying the server it discovered, when the config names usable endpoints', async () => {
+    const support = await supportOf('https://ehr.example/fhir', answerJson(SMART_CONFIGURATION))
     expect(support).toMatchObject({
       _tag: 'Smart',
-      discovered: smartIssuerAt('https://ehr.example/fhir'),
+      discovered: discoveredAt('https://ehr.example/fhir'),
     })
   })
 
@@ -136,11 +148,7 @@ describe('detectSmartSupport', () => {
       configuration: { ...SMART_CONFIGURATION, token_endpoint: 'http://ehr.example/token' },
     },
   ])('is `Unusable`, with the discovery reason, for $case', async ({ configuration }) => {
-    const support = await supportOf(
-      'https://ehr.example/fhir',
-      fetchReturning(jsonResponse(configuration)),
-      true
-    )
+    const support = await supportOf('https://ehr.example/fhir', answerJson(configuration), true)
     expect(support).toEqual({
       _tag: 'Unusable',
       reason:
@@ -152,92 +160,81 @@ describe('detectSmartSupport', () => {
   it('is `Unusable` when the config names an authorization_endpoint but no token_endpoint', async () => {
     const support = await supportOf(
       'https://ehr.example/fhir',
-      fetchReturning(jsonResponse({ authorization_endpoint: 'https://ehr.example/authorize' })),
+      answerJson({ authorization_endpoint: 'https://ehr.example/authorize' }),
       true
     )
     expect(support).toMatchObject({ _tag: 'Unusable' })
-  })
-
-  it('is `Smart` for a plain-http endpoint when the page is itself http', async () => {
-    const support = await supportOf(
-      'http://ehr.example/fhir',
-      fetchReturning(
-        jsonResponse({
-          ...SMART_CONFIGURATION,
-          authorization_endpoint: 'http://ehr.example/authorize',
-          token_endpoint: 'http://ehr.example/token',
-        })
-      ),
-      false
-    )
-    expect(support).toMatchObject({ _tag: 'Smart' })
   })
 
   it('is `Smart` for a loopback http endpoint from an https page', async () => {
     // A desktop host's authorization server on this computer
     const support = await supportOf(
       'https://ehr.example/fhir',
-      fetchReturning(
-        jsonResponse({
-          ...SMART_CONFIGURATION,
-          authorization_endpoint: 'http://127.0.0.1:8080/oauth/authorize',
-          token_endpoint: 'http://127.0.0.1:8080/oauth/token',
-        })
-      ),
+      answerJson({
+        ...SMART_CONFIGURATION,
+        authorization_endpoint: 'http://127.0.0.1:8080/oauth/authorize',
+        token_endpoint: 'http://127.0.0.1:8080/oauth/token',
+      }),
       true
     )
     expect(support).toMatchObject({ _tag: 'Smart' })
   })
 
-  it('reads whether the page is secure off the page by default', async () => {
-    // The https page stubbed above: a plain-http endpoint off loopback is unusable
+  it('is `Smart` for a plain-http endpoint when the page is itself http', async () => {
     const support = await supportOf(
-      'https://ehr.example/fhir',
-      fetchReturning(
-        jsonResponse({ ...SMART_CONFIGURATION, authorization_endpoint: 'http://ehr.example/a' })
-      )
+      'http://ehr.example/fhir',
+      answerJson({
+        ...SMART_CONFIGURATION,
+        authorization_endpoint: 'http://ehr.example/authorize',
+        token_endpoint: 'http://ehr.example/token',
+      }),
+      false
     )
-    expect(support).toMatchObject({ _tag: 'Unusable' })
+    expect(support).toMatchObject({ _tag: 'Smart' })
   })
 
   it('probes the well-known path under the decoded FHIR base, its trailing slash trimmed', async () => {
-    const seenUrls: string[] = []
-    await supportOf(
-      'https://ehr.example/fhir/',
-      fetchReturning(jsonResponse(SMART_CONFIGURATION), seenUrls)
+    const services = servicesAnswering(answerJson(SMART_CONFIGURATION))
+    await Effect.runPromise(
+      Effect.provide(
+        detectSmartSupport(decodeFhirBaseUrl('https://ehr.example/fhir/')),
+        services.layer
+      )
     )
-    expect(seenUrls).toEqual(['https://ehr.example/fhir/.well-known/smart-configuration'])
+    expect(services.urls).toEqual(['https://ehr.example/fhir/.well-known/smart-configuration'])
+  })
+
+  it('sends the probe with no trace headers, so it stays a CORS-simple request', async () => {
+    const services = servicesAnswering(answerJson(SMART_CONFIGURATION))
+    await Effect.runPromise(
+      Effect.provide(
+        detectSmartSupport(decodeFhirBaseUrl('https://ehr.example/fhir')),
+        services.layer
+      )
+    )
+    expect(services.requests.map((request) => Object.keys(request.headers))).toEqual([['accept']])
   })
 
   it('is `Open` on a non-ok HTTP answer (the server has no SMART config)', async () => {
-    const support = await supportOf(
-      'https://open.example/fhir',
-      fetchReturning(new Response(null, { status: 404 }))
-    )
+    const support = await supportOf('https://open.example/fhir', answerStatus(404))
     expect(support).toEqual(SmartSupport.Open())
   })
 
   it('is `Open` when the config carries no authorization_endpoint', async () => {
     const support = await supportOf(
       'https://open.example/fhir',
-      fetchReturning(jsonResponse({ token_endpoint: 'https://open.example/token' }))
+      answerJson({ token_endpoint: 'https://open.example/token' })
     )
     expect(support).toEqual(SmartSupport.Open())
   })
 
   it('is `Open` when the ok response is not JSON', async () => {
-    const support = await supportOf(
-      'https://open.example/fhir',
-      fetchReturning(new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } }))
-    )
+    const support = await supportOf('https://open.example/fhir', answerText('<!doctype html>'))
     expect(support).toEqual(SmartSupport.Open())
   })
 
-  it('is `Unreachable` (not `Open`) when the probe rejects — a CORS/down server is not open access', async () => {
-    const support = await supportOf(
-      'https://blocked.example/fhir',
-      fetchRejecting(new TypeError('Failed to fetch'))
-    )
+  it('is `Unreachable` (not `Open`) when the probe gets no response — a CORS/down server is not open access', async () => {
+    const support = await supportOf('https://blocked.example/fhir', dropRequest)
     expect(support).toEqual(SmartSupport.Unreachable({ reason: 'Failed to fetch' }))
   })
 })
@@ -251,16 +248,10 @@ describe('redirectToSignIn', () => {
   }
 
   it('signs in at what the probe discovered, fetching its configuration once, when the probe is `Smart`', async () => {
-    const seenUrls: string[] = []
-    const support = await Effect.runPromise(
-      redirectToSignIn(
-        config,
-        'launch-1',
-        fetchReturning(jsonResponse(SMART_CONFIGURATION), seenUrls)
-      )
-    )
-    expect(seenUrls).toEqual(['https://ehr.example/fhir/.well-known/smart-configuration'])
-    expect(support).toMatchObject({ _tag: 'Smart', discovered: smartIssuerAt(config.fhirBaseUrl) })
+    const services = servicesAnswering(answerJson(SMART_CONFIGURATION))
+    const support = await Effect.runPromise(signIn(config, 'launch-1', services))
+    expect(services.urls).toEqual(['https://ehr.example/fhir/.well-known/smart-configuration'])
+    expect(support).toMatchObject({ _tag: 'Smart', discovered: discoveredAt(config.fhirBaseUrl) })
     expect(redirectToSignInAtMock).toHaveBeenCalledExactlyOnceWith(
       SmartSupport.$is('Smart')(support) ? support.discovered : undefined,
       config,
@@ -271,7 +262,7 @@ describe('redirectToSignIn', () => {
 
   it('signs in by a self-addressed redirect when the probe is `Open`, even for an EHR launch', async () => {
     const support = await Effect.runPromise(
-      redirectToSignIn(config, 'launch-1', fetchReturning(new Response(null, { status: 404 })))
+      signIn(config, 'launch-1', servicesAnswering(answerStatus(404)))
     )
     expect(redirectToSelfAddressedSignInReturnMock).toHaveBeenCalledExactlyOnceWith({
       fhirBaseUrl: 'https://ehr.example/fhir',
@@ -283,11 +274,11 @@ describe('redirectToSignIn', () => {
 
   it('does not redirect at all when the probe is `Unusable`, returning it for the UI', async () => {
     const support = await Effect.runPromise(
-      redirectToSignIn(
+      signIn(
         config,
         undefined,
-        fetchReturning(
-          jsonResponse({ ...SMART_CONFIGURATION, authorization_endpoint: 'javascript:alert(1)' })
+        servicesAnswering(
+          answerJson({ ...SMART_CONFIGURATION, authorization_endpoint: 'javascript:alert(1)' })
         )
       )
     )
@@ -298,20 +289,18 @@ describe('redirectToSignIn', () => {
 
   it('fails with the sign-in’s own failure', async () => {
     // The probe saw a clean configuration; the sign-in could not retain its request.
-    const blocked = new PendingRequestUnusable({ reason: 'session storage is blocked' })
+    const blocked = new RetainedRequestUnusable({ reason: 'session storage is blocked' })
     redirectToSignInAtMock.mockReturnValue(Effect.fail(blocked))
     await expect(
       Effect.runPromise(
-        Effect.flip(
-          redirectToSignIn(config, undefined, fetchReturning(jsonResponse(SMART_CONFIGURATION)))
-        )
+        Effect.flip(signIn(config, undefined, servicesAnswering(answerJson(SMART_CONFIGURATION))))
       )
     ).resolves.toBe(blocked)
   })
 
   it('does not redirect at all when the probe is `Unreachable`, returning it for the UI', async () => {
     const support = await Effect.runPromise(
-      redirectToSignIn(config, undefined, fetchRejecting(new TypeError('Failed to fetch')))
+      signIn(config, undefined, servicesAnswering(dropRequest))
     )
     expect(redirectToSignInAtMock).not.toHaveBeenCalled()
     expect(redirectToSelfAddressedSignInReturnMock).not.toHaveBeenCalled()

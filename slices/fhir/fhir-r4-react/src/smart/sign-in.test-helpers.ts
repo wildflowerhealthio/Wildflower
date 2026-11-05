@@ -5,12 +5,14 @@
  *
  * @packageDocumentation
  */
+import type { SignInServices } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Effect, Match } from 'effect'
 import { vi } from 'vite-plus/test'
 
 import {
   RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
   RETAINED_SIGN_IN_REQUEST_KEY,
+  smartSignInLayer,
 } from './retained-sign-in-requests.ts'
 import { rootArrivalFrom, type SignInArrival } from './root-arrival.ts'
 import { redirectToSelfAddressedSignInReturn, type SmartLaunchConfig } from './sign-in-redirect.ts'
@@ -109,16 +111,20 @@ const resetPage = (): void => {
   stubPageLocation('https:')
 }
 
+/** `effect` on this page's sign-in services, as the app's edges provide them. */
+const onThisPage = <A, E>(effect: Effect.Effect<A, E, SignInServices>): Effect.Effect<A, E> =>
+  Effect.provide(effect, smartSignInLayer(window))
+
 /** Start a sign-in out of the page, returning the `state` it sent. */
 const signInOut = async (): Promise<string> => {
   stubServer()
-  await Effect.runPromise(redirectToSignIn(LAUNCH_CONFIG, 'launch-1'))
+  await Effect.runPromise(onThisPage(redirectToSignIn(LAUNCH_CONFIG, 'launch-1')))
   return assignedUrl().searchParams.get('state') ?? ''
 }
 
 /** Start a self-addressed sign-in out of the page, returning the `state` it sent. */
 const selfAddressedSignInOut = async (): Promise<string> => {
-  await Effect.runPromise(redirectToSelfAddressedSignInReturn(SELF_ADDRESSED_CONFIG))
+  await Effect.runPromise(onThisPage(redirectToSelfAddressedSignInReturn(SELF_ADDRESSED_CONFIG)))
   return assignedUrl().searchParams.get('state') ?? ''
 }
 
@@ -169,6 +175,7 @@ export {
   jsonResponse,
   LAUNCH_CONFIG,
   NO_RETAINED_REQUESTS,
+  onThisPage,
   REGISTRATION,
   resetPage,
   retainedRequests,

@@ -17,6 +17,7 @@ import {
   decodeLaunchError,
   encodeLaunchError,
   redirectToSignIn,
+  smartSignInLayer,
   RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
   RETAINED_SIGN_IN_REQUEST_KEY,
   rootArrivalFrom,
@@ -1151,13 +1152,16 @@ async function arriveFromSignIn(serverUrl: string): Promise<void> {
   const assign = vi.fn<(url: string) => void>()
   vi.stubGlobal('location', Object.assign(new URL(window.location.href), { assign }))
   await Effect.runPromise(
-    redirectToSignIn(
-      {
-        ...REGISTRATION,
-        fhirBaseUrl: decodeFhirBaseUrl(serverUrl),
-        redirectUri: `${window.location.origin}/`,
-      },
-      undefined
+    Effect.provide(
+      redirectToSignIn(
+        {
+          ...REGISTRATION,
+          fhirBaseUrl: decodeFhirBaseUrl(serverUrl),
+          redirectUri: `${window.location.origin}/`,
+        },
+        undefined
+      ),
+      smartSignInLayer(window)
     )
   )
   vi.unstubAllGlobals()
