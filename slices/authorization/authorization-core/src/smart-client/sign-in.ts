@@ -52,7 +52,7 @@ import {
   type AuthorizationRejected,
   type AuthorizationRequestParameters,
   type RetainedSignInRequest,
-  type TokenExchangeFailed,
+  TokenExchangeFailed,
 } from './authorization-flow.ts'
 import { codeChallengeS256, createCodeVerifier, createState } from './pkce.ts'
 import type { PkceUnavailable } from './pkce.ts'
@@ -78,6 +78,15 @@ class RetainedRequestUnrecognised extends Data.TaggedError('RetainedRequestUnrec
   readonly reason: string
 }> {}
 
+/**
+ * Raised when the token request gets no response at all: the token endpoint
+ * is down, or the browser blocked the request (the two look the same to the
+ * page).
+ */
+class TokenEndpointUnreachable extends Data.TaggedError('TokenEndpointUnreachable')<{
+  readonly reason: string
+}> {}
+
 /** Everything a sign-in can fail with, whichever half it fails in. */
 type SignInError =
   | DiscoveryFailed
@@ -85,6 +94,7 @@ type SignInError =
   | RetainedRequestUnusable
   | RetainedRequestUnrecognised
   | AuthorizationRejected
+  | TokenEndpointUnreachable
   | TokenExchangeFailed
 
 /**
@@ -262,14 +272,14 @@ const completeSignIn = (
       .pipe(
         Effect.mapError(
           () =>
-            new RetainedRequestUnusable({
+            new TokenEndpointUnreachable({
               reason: `Could not reach the token endpoint at ${retained.tokenEndpoint}.`,
             })
         )
       )
     const body = yield* response.json.pipe(
       Effect.mapError(
-        () => new RetainedRequestUnusable({ reason: 'The token endpoint did not answer with JSON.' })
+        () => new TokenExchangeFailed({ reason: 'The token endpoint did not answer with JSON.' })
       )
     )
     const grant = yield* parseTokenResponse(body)
@@ -313,8 +323,11 @@ const takeRetainedSignInRequest: Effect.Effect<
  * must not leave this one's record behind. A store that refuses removal fails
  * with {@link RetainedRequestUnusable}.
  */
-const forgetRetainedSignInRequest: Effect.Effect<void, RetainedRequestUnusable, RetainedSignInRequestStore> =
-  Effect.flatMap(RetainedSignInRequestStore, (store) => store.forget)
+const forgetRetainedSignInRequest: Effect.Effect<
+  void,
+  RetainedRequestUnusable,
+  RetainedSignInRequestStore
+> = Effect.flatMap(RetainedSignInRequestStore, (store) => store.forget)
 
 /** The session a `grant` redeemed for the `retained` request becomes. */
 const sessionFrom = (grant: AccessGrant, retained: RetainedSignInRequest): Session => ({
@@ -329,6 +342,7 @@ const sessionFrom = (grant: AccessGrant, retained: RetainedSignInRequest): Sessi
 export {
   RetainedRequestUnrecognised,
   RetainedRequestUnusable,
+  TokenEndpointUnreachable,
   beginSignIn,
   beginSignInAt,
   completeSignIn,

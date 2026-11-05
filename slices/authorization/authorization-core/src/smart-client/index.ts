@@ -72,6 +72,7 @@ export {
   retainedRequestUnrecognisedFromAnotherVersion,
   RetainedRequestUnrecognised,
   RetainedRequestUnusable,
+  TokenEndpointUnreachable,
 } from './sign-in.ts'
 export type {
   AuthorizationRequestExtras,
