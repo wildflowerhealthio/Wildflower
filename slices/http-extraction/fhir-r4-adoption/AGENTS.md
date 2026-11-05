@@ -15,8 +15,9 @@ vocabulary) stays FHIR-free and below it.
 ## Shape
 
 - `src/detached-resource.ts` — `DetachedResource.Type`, `FhirResource`
-  narrowed to `id: null`; `keyOf` (the qualified `identifier[0]`, `None` for a
-  keyless record, a `Binary` always), `storedReferenceOf` (a keyed record's
+  narrowed to `id: null`; `keyIdentifierOf` (the qualified `identifier[0]`,
+  `None` for a keyless record, a `Binary` always) and `keyOf` (its `system`
+  and `value` as a `Key`), `storedReferenceOf` (a keyed record's
   stored reference derived from its key, `<Type>/<localResourceId(…)>`), and
   `hasIdentifier` (whether the record's type has an `identifier`
   element: every `fhir-r4` schema with one defaults it to `[]`, so the
@@ -36,14 +37,25 @@ vocabulary) stays FHIR-free and below it.
 - `src/reference-table.ts` — the per-type reference table (`mapReferences`,
   the one place a resource's references are walked), which
   `fromServerRecord` and `adopt` both rewrite through.
-- `src/adopt-resource.ts` — `adopt(referenceTo)(record, id)` stores a
-  record under the id it is given (the import stage's id plan decides it:
-  `localResourceId(key.system, Type, key.value)` for a keyed record, a minted
-  one for a keyless record, `randomResourceId`, a UUID, outside tests), and
-  resolves a logical reference to the literal reference `referenceTo`
-  (`ReferenceTo`, by type and key) gives its target when its target is in the
-  batch, keeping `type` and `identifier`; one naming a record the batch does
-  not hold stays logical, for the importer's identity map.
+- `src/reference-plan.ts` — the **`ReferencePlan`** namespace, a plain data
+  structure: for each resource type and qualified identifier, the literal
+  reference a logical reference by them resolves to. **`of(entries)`** holds
+  each `{ resourceType, identifier, literalReference }` it is given and
+  decides nothing about which identifiers go in; its builder does.
+  **`literalReferenceFor(plan, Type, identifier)`** matches on the type and
+  the identifier's `system` and `value` alone (spelled as JSON, so no
+  separator inside either can make two collide), and is `None` for one the
+  plan does not hold or holds with two different literal references: as a
+  FHIR conditional reference matching several records, it is ambiguous, so
+  the reference stays logical (the same entry given twice is no clash).
+- `src/adopt-resource.ts` — `adopt(referencePlan)(record, id)` stores a
+  record under the id it is given (the import stage's resource plan decides
+  it: `localResourceId(key.system, Type, key.value)` for a keyed record, a
+  minted one for a keyless record, `randomResourceId`, a UUID, outside
+  tests), and resolves a logical reference to the literal reference
+  `ReferencePlan.literalReferenceFor` gives its type and own qualified
+  identifier, keeping `type` and `identifier`; one the plan does not resolve
+  stays logical, for the importer's identity map.
   `adoptedReferenceOf(system, Type, id)` is the literal reference the
   import stores the record with that key under, for a resource written
   outside that source; `originalIdOf(system, resource)` reads the value of a
@@ -57,12 +69,13 @@ decoder writes its records with it: the source packages' response kinds
 (`fhir-r4-source` and Rexall's medication list detaching a FHIR server's
 records, the rest writing them detached) and the file importers
 (`dicom-importer-core`, `lifelabs-pdf-importer-core`).
-`importer-fundamentals`' `IdPlan` keys a file set's records with it and
-`DecodedFileSet.adopt` adopts with it, and the synthetic-data generators spell
-references with it. It must never import from `slices/importer` or
-`http-extraction-fundamentals`, so `adopt` takes the id plan's answers as
-plain inputs (an id, and `referenceTo`). Nothing on the import side takes a
-base URL or a system: everything is read off the records.
+`importer-fundamentals`' `ResourcePlan` keys a file set's records with it and
+`DecodedFileSet.adopt` builds the set's `ReferencePlan` and adopts with it, and
+the synthetic-data generators spell references with it. It must never import
+from `slices/importer` or `http-extraction-fundamentals`, so `adopt` takes the
+import stage's decisions as plain inputs (an id, and a `ReferencePlan` of
+plain entries). Nothing on the import side takes a base URL or a system:
+everything is read off the records.
 
 ## Traps
 

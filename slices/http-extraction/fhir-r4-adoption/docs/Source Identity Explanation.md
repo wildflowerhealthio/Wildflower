@@ -196,39 +196,53 @@ stays on the request.
 
 The import stage stores each detached record with `adopt`, which takes no
 base URL or system: everything it needs is on the records, the id each is
-stored under, and the batch's answer to which record a logical reference
-names.
+stored under, and the batch's reference plan.
 
 The batch is one file set, and before adopting any of its records the import
-stage decides the id every record is stored under: its **id plan**
-(`importer-fundamentals`' `IdPlan`, built by `DecodedFileSet.adopt` from every
-section of the set).
+stage (`importer-fundamentals`' `DecodedFileSet.adopt`) plans each one where
+it is written: its **resource plan** (`importer-fundamentals`'
+`ResourcePlan`), kept beside its entry.
 
-- **A keyed record** is stored under
-  `localResourceId(key.system, resourceType, key.value)`: the derivation
-  above, so a re-import of the same record lands on the same id. The plan
-  derives it once.
-- **A keyless record** is stored under an id minted for it: a random UUID
-  (`randomResourceId`, injected so a test can count). A re-import of it is a
-  second record.
+- **A keyed record** is `Derived`: stored under
+  `localResourceId(key.system, resourceType, key.value)`, the derivation
+  above, so a re-import of the same record lands on the same id. Its plan
+  derives it once, and carries the key as a qualified identifier.
+- **A keyless record** is `Minted`: stored under an id minted for it, a random
+  UUID (`randomResourceId`, injected so a test can count). A re-import of it
+  is a second record.
 
-`adopt(referenceTo)(record, id)` stores `record` under the id the plan gave
-it, and resolves each logical reference through `referenceTo`, the plan's
-lookup of the literal reference a record of the batch is stored under, by
-type and key:
+From those plans it builds the batch's **reference plan** (`ReferencePlan`,
+here): for each resource type and qualified identifier, the literal reference
+a logical reference by them resolves to. The reference plan is a plain data
+structure that holds what it is given; which identifiers go in is the import
+stage's choice, and it puts in each keyed record's key, resolving to the
+literal reference its record is written under. A keyless record is named by
+no key, so it puts nothing in for one.
 
-- **A logical reference to a record of the batch resolves** to the literal
-  reference that record is stored under, its `type` and `identifier` kept:
+`adopt(referencePlan)(record, id)` stores `record` under the id its resource
+plan gave it, and resolves each logical reference through the reference plan,
+by the reference's type and its own qualified identifier:
+
+- **A logical reference the reference plan resolves** becomes the literal
+  reference the plan gives it, its `type` and `identifier` kept:
 
 ```text
 reference.reference is null, type is an R4 resource type, identifier has a
-system and a value, and the batch holds the record of that type keyed by
-that identifier            → reference := `${type}/${localResourceId(system, type, value)}`
-otherwise                  → unchanged
+system and a value, and the reference plan names exactly one literal
+reference for that type, system and value → reference := that literal reference
+otherwise                                 → unchanged
 ```
 
-The lookup reads an id the plan already holds, so a reference whose target is
-not in the batch costs no hash.
+The reference plan matches on the type and the identifier's `system` and
+`value` alone; `use`, `type`, `period` and the rest do not name what an
+identifier identifies. It reads a literal reference it already holds, so a
+reference whose target is not in the batch costs no hash. Two entries for one
+type and identifier with different literal references make that identifier
+**ambiguous**, and it resolves to nothing: as a FHIR conditional reference
+that matches several records is an error, except that here the reference
+stays logical rather than failing the import. The same entry given twice is
+not ambiguous.
+
 This is a FHIR server processing a transaction bundle: a conditional reference
 resolves against the bundle's own entries, and one that matches none of them
 stays as it is. So a reference to a record the source never served — a Rexall
@@ -244,8 +258,8 @@ resource: the value of its identifier in `system` (`<baseUrl>/<Type>` for a
 FHIR server's record, not the base). Anything that needs the source's id after
 import (to build a source-server URL, say) reads it there, never off
 `resource.id`. `adoptedReferenceOf(system, Type, id)` is the literal
-reference the import stores the record with that key under, spelled as the
-id plan resolves one, for a resource written outside that source that must point at what
+reference the import stores the record with that key under, spelled as
+`adopt` resolves one, for a resource written outside that source that must point at what
 its import stores (a synthetic lab result filed on the Patient a
 pharmacy import made); `fhir-r4/resources`' `withSubject` files such a
 resource on it.

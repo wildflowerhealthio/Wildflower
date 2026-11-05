@@ -98,38 +98,38 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   hold different records, and every reader of a decoded file reads
   `resources` off it. The "Source file(s)" section is the import stage's own,
   never decoded. **`writtenReferenceTitle(plan, entry)`** is every
-  decoded record's review title, read off the set's `IdPlan`: for a record
-  whose id is `Derived` the reference the import stage writes it under,
-  `<Type>/<id>`, or `<Type> (<fullUrl>)` for one whose id is `Minted`, which
+  decoded record's review title, read off the entry's `ResourcePlan`: for a
+  `Derived` plan the literal reference the import stage writes it under,
+  `<Type>/<id>`, or `<Type> (<fullUrl>)` for a `Minted` one, whose id
   changes on every re-decode; `adopt` titles each row with it, so no decoder
   titles its records.
   **`namespaceKeys(sections, prefix)`** prefixes every entry's `fullUrl`;
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
   **`adopt({ sections, notes }, mintId?)`** is how the import stage makes a
-  decode's records the device's own, as a `DecodedFile`: it builds the set's
-  `IdPlan` from every section's entries, then runs `fhir-r4-adoption`'s
-  `adopt` over each record with its planned id and the plan's `referenceTo`,
-  so a keyed record lands on the id its key derives, a keyless one on an id
-  `mintId` mints (a random UUID unless a test injects one), and a logical
-  reference resolves when the set holds the record it names by key,
-  whichever section holds it, as a FHIR server resolves a conditional
-  reference against a transaction bundle; one naming a record the set does
-  not hold stays logical, for the identity map. The format decode tests adopt
-  through it too.
-- `src/id-plan.ts` — the **`IdPlan`** namespace: a file set's **id plan**,
-  the id every record is stored under, decided before any is adopted, as a
-  FHIR server decides each transaction entry's id before rewriting the
-  references between them. **`of(entries, mintId)`** builds it once per set:
-  each record's **`PlannedId`** by its entry's `fullUrl`, **`Derived`** (a
-  keyed record's `localResourceId(key.system, Type, key.value)`, derived
-  once) or **`Minted`** (`mintId()`, one per keyless record, in entry order).
-  **`idFor(plan, fullUrl)`** reads a record's planned id, throwing for a
-  `fullUrl` the plan was not built from. **`referenceTo(plan, Type, key)`** is
-  the literal reference `<Type>/<id>` the record of that type keyed by `key`
-  is stored under, when the set holds it: a lookup of a derived id, so an
-  unresolvable reference costs no hash, and never a keyless record. The
-  lookup spells a type and key as JSON, so no separator inside a system or
-  value can make two keys collide.
+  decode's records the device's own, as a `DecodedFile`: it plans every
+  entry (`ResourcePlan.of`), keeping each plan beside its entry, builds the
+  set's `fhir-r4-adoption` `ReferencePlan` from the `Derived` plans (each
+  keyed record's type and key, resolving to its plan's literal reference: the
+  one place that decides which identifiers resolve), then runs
+  `fhir-r4-adoption`'s `adopt` over each record with that reference plan and
+  its plan's `id`. So a keyed record lands on the id its key derives, a
+  keyless one on an id `mintId` mints (a random UUID unless a test injects
+  one), in entry order, and a logical reference resolves when the set holds
+  the record it names by key, whichever section holds it, as a FHIR server
+  resolves a conditional reference against a transaction bundle; one naming
+  a record the set does not hold, or a keyless one, stays logical, for the
+  identity map. The format decode tests adopt through it too.
+- `src/resource-plan.ts` — the **`ResourcePlan`** namespace: where one
+  decoded record is written, decided before any record of its set is
+  adopted, as a FHIR server decides each transaction entry's id before
+  rewriting the references between them. **`Type`** is **`Derived`**
+  (`{ resourceType, id, identifier }`: a keyed record, the same location on
+  every import, its `id` `localResourceId(key.system, Type, key.value)` and
+  its `identifier` the key, its `identifier[0]` as a `QualifiedIdentifier`)
+  or **`Minted`** (`{ resourceType, id }`: a keyless record, a new location
+  every import), matched with `ResourcePlan.match`. **`of(resource,
+  mintId)`** plans one record, deriving a keyed record's id there, once, or
+  minting a keyless one's; **`literalReference(plan)`** is `<Type>/<id>`.
 - `src/decode-function.ts` — the **`DecodeFunction`** namespace: the batch
   decode's signature **and the one constructor that builds it**. **`Type`** is
   the signature a `FileImporter` exposes (files and settings in, one
@@ -470,8 +470,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 ## Layering
 
 Depends on `effect` (and `kitchen-sink` in tests), `fhir-r4-adoption` for
-`DetachedResource` and `adopt` alone (a `DecodedFileSet.Section`'s records,
-`IdPlan`'s keys and `DecodedFileSet.adopt`; it depends on no importer package), plus `fhir-r4` for the
+`DetachedResource`, `ReferencePlan` and `adopt` alone (a
+`DecodedFileSet.Section`'s records, `ResourcePlan`'s keys and
+`DecodedFileSet.adopt`; it depends on no importer package), plus `fhir-r4` for the
 `DocumentReference` schema and the `Identifier` a picked file identifies itself
 as, `fhir-r4/resources` for
 `FhirResourceWithId` (`decoded-file.ts` and `staged-import.ts` are concrete over
