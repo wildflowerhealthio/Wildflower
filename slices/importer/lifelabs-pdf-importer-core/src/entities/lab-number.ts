@@ -5,16 +5,16 @@ import { Schema } from 'effect'
  * never blank.
  *
  * @remarks
- * Never blank by construction: `Report.tryFromDocument` skips a page that
- * prints no `Lab No`, and a caller building a report itself goes through
- * {@link make}, which refuses a blank one. Nothing is read into the value: a
+ * `Report.tryFromDocument` skips a page that prints no `Lab No`, and a
+ * caller building a report itself goes through {@link make}, which refuses a
+ * blank one. Nothing is read into the value: a
  * masked `0000-XX0000000` is a Lab No like any other.
  *
  * @packageDocumentation
  */
 
 /** A printed `Lab No`: trimmed text, never blank. */
-const LabNumberSchema = Schema.NonEmptyTrimmedString.pipe(Schema.brand('LifeLabsLabNumber'))
+const LabNumberSchema = Schema.NonEmptyTrimmedString
 
 /** A report's `Lab No` as printed, never blank. */
 type Type = typeof LabNumberSchema.Type

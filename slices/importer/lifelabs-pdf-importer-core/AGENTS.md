@@ -37,8 +37,9 @@ that hands back a hand-written positioned-text document.
   `Lab`, `LabNumber`, `TestTableRow`, `Group`, `Section`, `Report`). Each
   `<name>.ts` holds its `Type` (the report's own text, nothing interpreted)
   and — for the header-derived blocks — a `fromPageHeader` reader.
-  `LabNumber` is a printed `Lab No`, a branded string that is never blank:
-  `LabNumber.make` is how a caller building a report itself spells one.
+  `LabNumber` is a printed `Lab No`, a string that is never blank:
+  `LabNumber.make`, which refuses a blank one, is how a caller building a
+  report itself spells one.
   `Report` additionally owns **`tryFromDocument`**, the parse of a whole
   positioned-text document into `DocumentReports`: one `Report.Type` per run
   of pages sharing a `Lab No` (the orchestration over `document/`), beside
