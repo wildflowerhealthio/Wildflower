@@ -215,9 +215,11 @@ From those plans it builds the batch's **reference plan** (`ReferencePlan`,
 here): for each resource type and qualified identifier, the literal reference
 a logical reference by them resolves to. The reference plan is a plain data
 structure that holds what it is given; which identifiers go in is the import
-stage's choice, and it puts in each keyed record's key, resolving to the
-literal reference its record is written under. A keyless record is named by
-no key, so it puts nothing in for one.
+stage's choice, and it puts in every qualified identifier of each keyed
+record, its key and every other, each resolving to the literal reference its
+record is written under, as a FHIR conditional reference matches a record by
+any of its identifiers. A keyless record's id is minted at import, so it puts
+nothing in for one, whatever identifiers it carries.
 
 `adopt(referencePlan)(record, id)` stores `record` under the id its resource
 plan gave it, and resolves each logical reference through the reference plan,
@@ -247,11 +249,12 @@ This is a FHIR server processing a transaction bundle: a conditional reference
 resolves against the bundle's own entries, and one that matches none of them
 stays as it is. So a reference to a record the source never served — a Rexall
 request's `Practitioner/<id>`, a FHIR `Observation`'s `Encounter/1` — stays
-logical, and so does a logical reference by an identifier no record is keyed
-by (an account number, a provider's printed name, a prescription number). They
+logical, and so does a logical reference by an identifier no keyed record of
+the batch carries (an account number, a provider's printed name, a
+prescription number), or by one two of its records share. They
 are left for the importer's identity map (below), and nothing is written that
 points at an id nothing is stored under. A reference to a **keyless** record
-cannot name it by a key, so it stays logical too.
+stays logical too, whichever of its identifiers it names it by.
 
 `originalIdOf(system, resource)` reads the source's id back off a stored
 resource: the value of its identifier in `system` (`<baseUrl>/<Type>` for a
