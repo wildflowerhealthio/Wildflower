@@ -259,11 +259,11 @@ describe('toFhirResources', () => {
     })
     expect(patient?.gender).toBe('female')
     expect(patient?.birthDate).toBe('1981-08-13')
-    // The health card number is the key, written once.
+    // The health card number, less its version code, is the key, written once.
     expect(patient?.identifier).toEqual([
       expect.objectContaining({
         system: new URL(LifeLabsIdentifierSystem.OntarioHealthCardNumber),
-        value: '1234567890 AB',
+        value: '1234567890',
       }),
     ])
     expect(patient?.telecom[0]).toMatchObject({ system: 'phone', value: '(416) 555-0100' })
@@ -273,14 +273,14 @@ describe('toFhirResources', () => {
     expect(patient?.generalPractitioner).toEqual([])
   })
 
-  it('keys a patient by Patient ID first, then health card number, then name and birth date, as printed', () => {
+  it('keys a patient by Patient ID first, then health card number, then name and birth date', () => {
     expect(patientKeyOf({ ...sample.patient, patientId: 'P-77' })).toEqual({
       system: LifeLabsIdentifierSystem.PatientId,
       value: 'P-77',
     })
     expect(patientKeyOf(sample.patient)).toEqual({
       system: LifeLabsIdentifierSystem.OntarioHealthCardNumber,
-      value: '1234567890 AB',
+      value: '1234567890',
     })
     expect(
       patientKeyOf({ ...sample.patient, name: ' OKAFOR, DANA MARIE ', healthCardNumber: '' })
@@ -298,8 +298,28 @@ describe('toFhirResources', () => {
 
     expect(patient?.identifier.map(identifierText)).toEqual([
       `${LifeLabsIdentifierSystem.PatientId}|P-77`,
-      `${LifeLabsIdentifierSystem.OntarioHealthCardNumber}|1234567890 AB`,
+      `${LifeLabsIdentifierSystem.OntarioHealthCardNumber}|1234567890`,
     ])
+  })
+
+  it('keys one Patient for two version codes of one health card number, the rest as printed', () => {
+    const reissued = { ...sample.patient, healthCardNumber: '1234567890AC' }
+    const resources = synthesize([
+      sample,
+      { ...sample, labNo: '2024-JJ0000001', patient: reissued },
+    ])
+
+    expect(patientKeyOf(reissued)).toEqual(patientKeyOf(sample.patient))
+    expect(ofType(resources, 'Patient')).toHaveLength(1)
+    expect(ofType(resources, 'DiagnosticReport').map((report) => targetOf(report.subject))).toEqual(
+      [
+        `${LifeLabsIdentifierSystem.OntarioHealthCardNumber}|1234567890`,
+        `${LifeLabsIdentifierSystem.OntarioHealthCardNumber}|1234567890`,
+      ]
+    )
+    expect(patientKeyOf({ ...sample.patient, healthCardNumber: '1234-567-890 A' }).value).toBe(
+      '1234-567-890'
+    )
   })
 
   it('keys a practitioner by the printed name, inner whitespace collapsed', () => {

@@ -6,7 +6,23 @@ import { LifeLabsIdentifierSystem } from '../../source-system.ts'
 import { parsePrintedDate } from '../dates.ts'
 import type { Wire } from './shared.ts'
 
-/** The identifiers the report prints for its patient, as printed: `Patient ID`, then `HC #`. */
+/**
+ * A printed Ontario health card number less its version code: the one or two
+ * letters after the number, and any whitespace before them (`1234567890 AB` →
+ * `1234567890`).
+ *
+ * @remarks
+ * The version code changes when a card is reissued, and the number names the
+ * person, so two reports printing one number under different version codes
+ * key one Patient. The rest is kept as printed.
+ */
+const healthCardNumberWithoutVersionCode = (printed: string): string =>
+  printed.replace(/(?<=\d)\s*[A-Za-z]{1,2}$/, '')
+
+/**
+ * The identifiers the report prints for its patient: `Patient ID` as printed,
+ * then `HC #` less its version code.
+ */
 const printedIdentifiersOf = (patient: Report.Type['patient']): DetachedResource.Key[] => [
   ...(patient.patientId === ''
     ? []
@@ -16,15 +32,15 @@ const printedIdentifiersOf = (patient: Report.Type['patient']): DetachedResource
     : [
         {
           system: LifeLabsIdentifierSystem.OntarioHealthCardNumber,
-          value: patient.healthCardNumber,
+          value: healthCardNumberWithoutVersionCode(patient.healthCardNumber),
         },
       ]),
 ]
 
 /**
  * The key the report gives its patient: the printed `Patient ID`, else the
- * health card number as printed, else the name and date of birth as printed,
- * `<name>, <date of birth>`.
+ * health card number less its version code, else the name and date of birth
+ * as printed, `<name>, <date of birth>`.
  */
 const patientKeyOf = (patient: Report.Type['patient']): DetachedResource.Key =>
   Option.getOrElse(Arr.head(printedIdentifiersOf(patient)), () => ({

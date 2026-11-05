@@ -25,8 +25,8 @@ const LifeLabsIdentifierSystem = {
   /** The report's `Patient ID`, when it prints one, in a Wildflower-minted system. */
   PatientId: 'https://wildflowerhealth.io/fhir/sid/lifelabs/patient-id',
   /**
-   * The Ontario health card number the report prints as `HC #` — Canada
-   * Health Infoway's naming system for it.
+   * The Ontario health card number the report prints as `HC #`, less its
+   * version code — Canada Health Infoway's naming system for it.
    */
   OntarioHealthCardNumber: 'https://fhir.infoway-inforoute.ca/NamingSystem/ca-on-patient-hcn',
   /**
