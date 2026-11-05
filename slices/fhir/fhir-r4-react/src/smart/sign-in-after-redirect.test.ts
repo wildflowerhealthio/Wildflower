@@ -28,6 +28,7 @@ import {
   SMART_CONFIGURATION,
   stubBlockedStorage,
   stubServer,
+  stubStorageRefusing,
 } from './sign-in.test-helpers.ts'
 import { SmartConnection } from './smart-connection.ts'
 import { redirectToSignIn } from './smart-support.ts'
@@ -236,6 +237,34 @@ describe('completeSignInAfterRedirectHere', () => {
     // Assert
     expect(failure).toMatchObject({ _tag: 'PendingRequestUnusable' })
     expect(failure.reason).toContain('session storage is blocked')
+  })
+
+  it('should redeem a sign-in return whose requests the storage reads but will not remove', async () => {
+    // Arrange
+    const state = await signInOut()
+    returnToRedirectTarget(`?code=code-1&state=${state}`)
+    stubServer()
+    stubStorageRefusing()
+
+    // Act
+    const connection = await completeHere()
+
+    // Assert
+    expect(connection.accessToken).toEqual(Option.some('token-1'))
+  })
+
+  it('should redeem a sign-in return when only the self-addressed request cannot be read', async () => {
+    // Arrange
+    const state = await signInOut()
+    returnToRedirectTarget(`?code=code-1&state=${state}`)
+    stubServer()
+    stubStorageRefusing([RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY])
+
+    // Act
+    const connection = await completeHere()
+
+    // Assert
+    expect(connection.accessToken).toEqual(Option.some('token-1'))
   })
 
   it('should refuse a retained request a different version of the page wrote', async () => {

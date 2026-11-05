@@ -700,6 +700,37 @@ describe('completeSignIn and the pending record', () => {
     expect(result.left.reason).toContain('session storage is blocked')
   })
 
+  it('redeems a pending record the store gives up but will not remove', async () => {
+    // Arrange — a store that reads, but throws on every removal
+    const store = memoryStore()
+    const pending = stashedRequest()
+    store.setItem(PENDING_KEY, serializePendingAuthorization(pending))
+    const refusingRemoval: PendingStore = {
+      ...store,
+      removeItem: () => {
+        throw new DOMException('The operation is insecure.', 'SecurityError')
+      },
+    }
+    const answerToken: typeof globalThis.fetch = () =>
+      Promise.resolve(
+        jsonResponse({ access_token: 'header.payload.signature', token_type: 'Bearer' })
+      )
+
+    // Act
+    const result = await runToEither(
+      completeSignIn(
+        `?code=the-code&state=${pending.state}`,
+        testEnvironment({ store: refusingRemoval, fetch: answerToken })
+      )
+    )
+
+    // Assert
+    expect(result).toMatchObject({
+      _tag: 'Right',
+      right: { _tag: 'Some', value: { accessToken: 'header.payload.signature' } },
+    })
+  })
+
   it('reports, and drops, a pending record that does not read as one', async () => {
     // Arrange — a record a different version of the page wrote
     const store = memoryStore()

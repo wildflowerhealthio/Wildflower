@@ -6,7 +6,7 @@ import {
   type SignInEnvironment,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { setStorageItem, takeStorageItem } from '@wildflowerhealthio/kitchen-sink'
-import { Effect, type Option, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 
 import type { RootArrival } from './root-arrival.ts'
 import { FhirBaseUrl } from './smart-connection.ts'
@@ -88,18 +88,24 @@ const retainSelfAddressedSignInRequest = (
  * arrival forgets it. The self-addressed request is taken either way, and
  * decoded only by the arrival that completes it
  * ({@link completeSelfAddressedSignIn}). A storage that throws fails with
- * `PendingRequestUnusable`.
+ * `PendingRequestUnusable`, except on a `SignInReturn` taking the
+ * self-addressed request, which is not that arrival's to complete: it returns
+ * `None` instead.
  */
 const takeRetainedSignInRequests = (
   arrival: RootArrival,
   environment: SignInEnvironment
 ): Effect.Effect<Option.Option<string>, PendingRequestUnusable> =>
   Effect.gen(function* () {
-    const retained = yield* takeStorageItem(
+    const takingSelfAddressed = takeStorageItem(
       window.sessionStorage,
       RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY
     ).pipe(Effect.mapError(pendingRequestUnusableFrom))
-    if (arrival._tag !== 'SignInReturn') yield* forgetPendingSignIn(environment)
+    if (arrival._tag === 'SignInReturn') {
+      return yield* takingSelfAddressed.pipe(Effect.orElseSucceed(Option.none))
+    }
+    const retained = yield* takingSelfAddressed
+    yield* forgetPendingSignIn(environment)
     return retained
   })
 

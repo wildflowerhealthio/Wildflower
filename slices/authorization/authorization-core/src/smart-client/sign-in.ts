@@ -322,9 +322,10 @@ const pendingRequestUnrecognisedFromAnotherVersion = (): PendingRequestUnrecogni
 
 /**
  * Take the pending record out of `environment`'s store: read it and drop it.
- * `None` only when there is none; a store that refuses to be read or written
- * fails with {@link PendingRequestUnusable}, and a record that does not read
- * as one with {@link PendingRequestUnrecognised}.
+ * `None` only when there is none; a store that refuses the read fails with
+ * {@link PendingRequestUnusable} (one that refuses only the removal does not:
+ * the record was read), and a record that does not read as one with
+ * {@link PendingRequestUnrecognised}.
  */
 const takePendingRecord = (
   environment: SignInEnvironment

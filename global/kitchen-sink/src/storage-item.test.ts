@@ -58,12 +58,12 @@ describe('takeStorageItem', () => {
     expect(failure).toEqual(new StorageBlocked({ operation: 'read', key: 'request' }))
   })
 
-  it('should fail naming the removal when the store refuses it', async () => {
-    const failure = await Effect.runPromise(
-      Effect.flip(takeStorageItem(storeOf({ request: 'kept' }, ['removeItem']), 'request'))
+  it('should still yield the item it read when the store refuses its removal', async () => {
+    const taken = await Effect.runPromise(
+      takeStorageItem(storeOf({ request: 'kept' }, ['removeItem']), 'request')
     )
 
-    expect(failure).toEqual(new StorageBlocked({ operation: 'remove', key: 'request' }))
+    expect(taken).toEqual(Option.some('kept'))
   })
 })
 

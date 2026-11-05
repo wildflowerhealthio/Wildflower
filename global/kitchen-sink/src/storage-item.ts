@@ -17,6 +17,11 @@ class StorageBlocked extends Schema.TaggedError<StorageBlocked>()('StorageBlocke
  * Take the item at `key` out of `store`: read it, then remove it, so it is
  * read at most once. `None` when there is none, in which case nothing is
  * removed.
+ *
+ * @remarks
+ * Only a refused read fails the take. Once the item has been read, a store
+ * that refuses its removal does not take the read away: the item is still
+ * returned, and the refusal is logged as a warning.
  */
 const takeStorageItem = (
   store: Pick<Storage, 'getItem' | 'removeItem'>,
@@ -27,7 +32,15 @@ const takeStorageItem = (
     catch: () => new StorageBlocked({ operation: 'read', key }),
   }).pipe(
     Effect.tap(
-      Option.match({ onNone: () => Effect.void, onSome: () => removeStorageItem(store, key) })
+      Option.match({
+        onNone: () => Effect.void,
+        onSome: () =>
+          removeStorageItem(store, key).pipe(
+            Effect.catchAll((blocked) =>
+              Effect.logWarning('Read a storage item but could not remove it', blocked)
+            )
+          ),
+      })
     )
   )
 

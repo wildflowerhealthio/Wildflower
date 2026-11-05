@@ -140,6 +140,19 @@ const stubBlockedStorage = (): void => {
   vi.stubGlobal('sessionStorage', { getItem: blocked, setItem: blocked, removeItem: blocked })
 }
 
+/**
+ * Stub the page's storage as one that holds what the real one does but throws
+ * on every removal, and on a read of any key in `unreadableKeys`.
+ */
+const stubStorageRefusing = (unreadableKeys: readonly string[] = []): void => {
+  const store = window.sessionStorage
+  vi.stubGlobal('sessionStorage', {
+    getItem: (key: string) => (unreadableKeys.includes(key) ? blocked() : store.getItem(key)),
+    setItem: (key: string, value: string) => store.setItem(key, value),
+    removeItem: blocked,
+  })
+}
+
 /** The sign-in arrival the page's own query string is; throws on any other. */
 const signInArrivalHere = (): SignInArrival =>
   Match.value(rootArrivalFrom(window.location.search)).pipe(
@@ -167,4 +180,5 @@ export {
   SMART_CONFIGURATION,
   stubBlockedStorage,
   stubServer,
+  stubStorageRefusing,
 }
