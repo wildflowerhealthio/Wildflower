@@ -261,14 +261,17 @@ describe('fetchResourcePage', () => {
           )
 
           expect(firstPageQuery).toHaveBeenCalledWith(first)
-          expect(urls).toEqual([`${STUB_FHIR_BASE}/${resourceType}?${paramName}=${first}`])
+          // As the URL parser reads it, as `fetch` would: a space is `%20`.
+          expect(urls).toEqual([
+            new URL(`${STUB_FHIR_BASE}/${resourceType}?${paramName}=${first}`).href,
+          ])
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
-  test('property: a later page is requested by its cursor URL verbatim', async () => {
+  test('property: a later page is requested by its cursor URL', async () => {
     await fc.assert(
       fc.asyncProperty(fc.webUrl(), async (pageUrl) => {
         const firstPageQuery = vi.fn((patientId: string): string => patientId)
@@ -280,9 +283,10 @@ describe('fetchResourcePage', () => {
           )
         )
 
-        // The server's own `next` link is used as-is — no re-derivation of
-        // scope, sort or page size, so the first-page query is never consulted.
-        expect(urls).toEqual([pageUrl])
+        // The server's own `next` link is used as the URL parser reads it — no
+        // re-derivation of scope, sort or page size, so the first-page query is
+        // never consulted.
+        expect(urls).toEqual([new URL(pageUrl).href])
         expect(firstPageQuery).not.toHaveBeenCalled()
       }),
       { numRuns: numRunsFor({ base: 100 }) }

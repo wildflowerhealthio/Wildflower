@@ -111,18 +111,23 @@ describe('fetchPatient', () => {
 
   test('property: any patient id survives the read path as itself', async () => {
     await fc.assert(
-      fc.asyncProperty(fc.string(), async (id) => {
-        const { runtime, urls } = smartRuntimeAnswering(patientWire('pat-1'))
+      // `.` and `..` are dot segments to the URL parser, and so to `fetch`: no
+      // path can address them, encoded or not.
+      fc.asyncProperty(
+        fc.string().filter((id) => id !== '.' && id !== '..'),
+        async (id) => {
+          const { runtime, urls } = smartRuntimeAnswering(patientWire('pat-1'))
 
-        await Effect.runPromise(fetchPatient(id).pipe(Effect.provide(runtime.runtimeLayer)))
+          await Effect.runPromise(fetchPatient(id).pipe(Effect.provide(runtime.runtimeLayer)))
 
-        // Parsed back rather than string-compared: an id carrying `/`, `?` or a
-        // space must stay one path segment instead of reshaping the request.
-        const [url = ''] = urls
-        const patientPath = `${STUB_FHIR_BASE}/Patient/`
-        expect(url.startsWith(patientPath)).toBe(true)
-        expect(decodeURIComponent(url.slice(patientPath.length))).toBe(id)
-      }),
+          // Parsed back rather than string-compared: an id carrying `/`, `?` or a
+          // space must stay one path segment instead of reshaping the request.
+          const [url = ''] = urls
+          const patientPath = `${STUB_FHIR_BASE}/Patient/`
+          expect(url.startsWith(patientPath)).toBe(true)
+          expect(decodeURIComponent(url.slice(patientPath.length))).toBe(id)
+        }
+      ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })

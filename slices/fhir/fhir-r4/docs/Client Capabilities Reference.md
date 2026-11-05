@@ -16,7 +16,7 @@ The typed client emits **base-relative** paths (`/Patient`, `/DocumentReference/
 
 - **The launcher** (`apps/launcher/launcher-web`'s `runtime-layer.ts`) sends the FHIR slice's requests through the same API transport as every other slice: a Wildflower server serves FHIR at its root, so `{origin}/Patient` is its FHIR API.
 - **OpenAPI generation** (`http-api-definition/openapi-drift.test.ts`) writes the paths as the `HttpApi` declares them, so the committed `fhir-r4/openapi/fhir-r4.openapi.json` — the source of the FHIR R4 group in the published [server-docs console](../../../../apps/server-docs-web/README.md) — shows the root paths a Wildflower server serves.
-- **SMART apps** (`fhir-r4-react/smart`'s `smartHttpClientLayer`) prepend the `iss`/picked server URL verbatim.
+- **SMART apps** (`fhir-r4-react/smart`'s `smartHttpClientLayer`) resolve the paths under the `iss`/picked server URL.
 
 ## Choice element at-most-one rule
 

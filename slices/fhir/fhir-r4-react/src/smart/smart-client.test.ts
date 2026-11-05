@@ -1,5 +1,5 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Exit, Option } from 'effect'
+import { Effect, Either, Exit, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -7,8 +7,7 @@ import {
   FhirHttpError,
   FhirRequestDropped,
   FhirResponseNotJson,
-  RequestTarget,
-  requestTargetOf,
+  addressedUnderFhirBase,
   SmartClient,
   type FhirRequestError,
 } from './smart-client.ts'
@@ -71,18 +70,37 @@ describe('SmartClient.layer', () => {
   })
 })
 
-describe('requestTargetOf', () => {
+describe('addressedUnderFhirBase', () => {
   const fhirBaseUrl = decodeFhirBaseUrl('https://fhir.example/r4')
 
   test.each([
-    { url: '/Patient?_count=200', target: RequestTarget.Relative({ path: 'Patient?_count=200' }) },
-    { url: 'Patient/p1', target: RequestTarget.Relative({ path: 'Patient/p1' }) },
-    { url: 'https://fhir.example/r4', target: RequestTarget.UnderFhirBase() },
-    { url: 'https://fhir.example/r4/Patient', target: RequestTarget.UnderFhirBase() },
-    { url: 'https://fhir.example/r4-admin/Patient', target: RequestTarget.Elsewhere() },
-    { url: 'https://elsewhere.example/r4/Patient', target: RequestTarget.Elsewhere() },
-  ])('reads $url as $target._tag', ({ url, target }) => {
-    expect(requestTargetOf(url, fhirBaseUrl)).toEqual(target)
+    { url: '/Patient?_count=200', resolved: 'https://fhir.example/r4/Patient?_count=200' },
+    { url: 'Patient/p1', resolved: 'https://fhir.example/r4/Patient/p1' },
+    { url: 'https://fhir.example/r4', resolved: 'https://fhir.example/r4' },
+    { url: 'https://fhir.example/r4/Patient', resolved: 'https://fhir.example/r4/Patient' },
+    { url: 'Patient/../Observation', resolved: 'https://fhir.example/r4/Observation' },
+  ])('resolves $url under the FHIR base', ({ url, resolved }) => {
+    expect(addressedUnderFhirBase(url, fhirBaseUrl)).toEqual(Either.right(resolved))
+  })
+
+  test.each([
+    { url: '../r4-admin/Patient', resolved: 'https://fhir.example/r4-admin/Patient' },
+    { url: '%2e%2e/r4-admin/Patient', resolved: 'https://fhir.example/r4-admin/Patient' },
+    { url: '/../r4-admin/Patient', resolved: 'https://fhir.example/r4-admin/Patient' },
+    {
+      url: 'https://fhir.example/r4/../r4-admin/Patient',
+      resolved: 'https://fhir.example/r4-admin/Patient',
+    },
+    {
+      url: 'https://fhir.example/r4-admin/Patient',
+      resolved: 'https://fhir.example/r4-admin/Patient',
+    },
+    {
+      url: 'https://elsewhere.example/r4/Patient',
+      resolved: 'https://elsewhere.example/r4/Patient',
+    },
+  ])('resolves $url outside the FHIR base', ({ url, resolved }) => {
+    expect(addressedUnderFhirBase(url, fhirBaseUrl)).toEqual(Either.left(resolved))
   })
 })
 
@@ -126,6 +144,19 @@ describe('SmartClient.request', () => {
     await Effect.runPromise(requestThrough(server, url))
 
     expect(server.urls).toEqual([url])
+    expect(authorizationsOf(server)).toEqual([undefined])
+  })
+
+  test.each([
+    { case: 'a relative path', url: '../r4-admin/Patient' },
+    { case: 'a percent-encoded relative path', url: '%2e%2e/r4-admin/Patient' },
+    { case: 'an absolute URL', url: 'https://fhir.example/r4/../r4-admin/Patient' },
+  ])('sends no bearer token to $case whose dot segments leave the FHIR base', async ({ url }) => {
+    const server = serverAnswering()
+
+    await Effect.runPromise(requestThrough(server, url))
+
+    expect(server.urls).toEqual(['https://fhir.example/r4-admin/Patient'])
     expect(authorizationsOf(server)).toEqual([undefined])
   })
 

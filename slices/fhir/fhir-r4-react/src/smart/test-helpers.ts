@@ -12,9 +12,9 @@ import {
   HttpClientResponse,
   type HttpClientRequest,
 } from '@effect/platform'
-import { Effect, Layer, Match, Option } from 'effect'
+import { Effect, Either, Layer, Option } from 'effect'
 
-import { requestTargetOf } from './smart-client.ts'
+import { addressedUnderFhirBase } from './smart-client.ts'
 import { decodeFhirBaseUrl, SmartConnection } from './smart-connection.ts'
 import { smartRuntimeFor, type SmartRuntime } from './smart-runtime.ts'
 
@@ -44,11 +44,7 @@ interface StubFhirServer {
 }
 
 /** The absolute URL prefix the answer key `key` matches. */
-const prefixOf = (key: string): string =>
-  Match.value(requestTargetOf(key, STUB_FHIR_BASE)).pipe(
-    Match.tag('Relative', ({ path }) => `${STUB_FHIR_BASE}/${path}`),
-    Match.orElse(() => key)
-  )
+const prefixOf = (key: string): string => Either.merge(addressedUnderFhirBase(key, STUB_FHIR_BASE))
 
 /**
  * A stub FHIR server answering from `answers`, the longest matching prefix

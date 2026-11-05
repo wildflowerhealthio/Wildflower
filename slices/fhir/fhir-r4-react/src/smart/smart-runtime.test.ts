@@ -78,7 +78,7 @@ describe('smartHttpClientLayer', () => {
     expect(sent.url).toBe('https://launch.smarthealthit.org/v/r4/fhir/Patient')
   })
 
-  test('property: any server base is prepended verbatim to a relative path', async () => {
+  test('property: any server base is prepended to a relative path', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.webUrl({ withQueryParameters: false, withFragments: false }),
@@ -86,13 +86,13 @@ describe('smartHttpClientLayer', () => {
         async (origin: string, extraSlashes: number) => {
           const base = origin.replace(/\/+$/u, '')
           // A trailing-slash-carrying `serverUrl` must address identically: only
-          // trailing slashes are trimmed, nothing else about the base is touched.
+          // trailing slashes are trimmed before the URL parser reads the base.
           const serverUrl = `${base}${'/'.repeat(extraSlashes)}`
           const sent = await sendThrough(
             { fhirBaseUrl: serverUrl, accessToken: undefined },
             HttpClientRequest.get('/Patient')
           )
-          expect(sent.url).toBe(`${base}/Patient`)
+          expect(sent.url).toBe(new URL(`${base}/Patient`).href)
         }
       ),
       { numRuns: numRunsFor({ base: 40 }) }
