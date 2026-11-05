@@ -31,11 +31,13 @@ const CLIENT_ID = '664a01e8614050cd82ffe90350b81413'
 const REGISTERED_REDIRECT_URI = 'https://server-docs.wildflowerhealth.io/'
 
 /**
- * The `sessionStorage` key this console's pending-authorization record lives at,
+ * The `sessionStorage` key this console's retained sign-in request lives at,
  * namespaced because the console shares the flow in
  * `authorization-core/smart-client` with the hosted launcher and Wildflower
  * Authorization, so no two of them could share a key wherever they are served.
+ * The stored key keeps its `pending-authorization` spelling, so a sign-in that
+ * is away across a deploy still finds its request when it comes back.
  */
-const PENDING_AUTHORIZATION_KEY = 'server-docs-web.pending-authorization'
+const RETAINED_SIGN_IN_REQUEST_KEY = 'server-docs-web.pending-authorization'
 
-export { CLIENT_ID, PENDING_AUTHORIZATION_KEY, REGISTERED_REDIRECT_URI }
+export { CLIENT_ID, RETAINED_SIGN_IN_REQUEST_KEY, REGISTERED_REDIRECT_URI }

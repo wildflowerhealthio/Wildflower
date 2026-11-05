@@ -32,7 +32,7 @@ import {
   type ServerEntryChoice,
   type WithoutServerChoice,
 } from './connect-choices.ts'
-import { PENDING_AUTHORIZATION_KEY, CLIENT_ID, REGISTERED_REDIRECT_URI } from './smart-client.ts'
+import { RETAINED_SIGN_IN_REQUEST_KEY, CLIENT_ID, REGISTERED_REDIRECT_URI } from './smart-client.ts'
 
 /**
  * Boots the static Wildflower server-docs console: a Scalar API reference over
@@ -122,7 +122,7 @@ const signInRegistration: ClientRegistration = {
  * so this console and the `launcher-web` page share one reading of `window`
  * rather than a copy each.
  */
-const signInLayer = BrowserSignIn.layer(window, PENDING_AUTHORIZATION_KEY)
+const signInLayer = BrowserSignIn.layer(window, RETAINED_SIGN_IN_REQUEST_KEY)
 
 /** Show `message` on the status line, or clear it when `undefined`. */
 const showStatus = (message: string | undefined, kind: 'ok' | 'problem' = 'ok'): void => {
@@ -494,7 +494,7 @@ if (!returningFromAuthorization) render(initialServerUrl)
 
 /**
  * Mount a return leg that brought no session back against the server its
- * sign-in was for, or the page's own target when no pending record names one.
+ * sign-in was for, or the page's own target when no retained sign-in request names one.
  */
 const returnWithoutSession = (): void => {
   Option.match(retainedServerUrl, {
@@ -506,8 +506,8 @@ const returnWithoutSession = (): void => {
 }
 
 // A return leg from `/oauth/authorize` looks like any other load until the query
-// string is read, so every load asks. `?server=` is restored from the pending
-// record rather than the URL: the registered redirect URI carries no query.
+// string is read, so every load asks. `?server=` is restored from the retained
+// sign-in request rather than the URL: the registered redirect URI carries no query.
 runSignInEffect(
   completeSignIn(returnSearch, signInRegistration),
   (result) => {

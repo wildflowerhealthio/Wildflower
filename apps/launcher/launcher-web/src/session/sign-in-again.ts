@@ -24,7 +24,7 @@ interface LandingTarget {
  * rides along as `?prompt=consent`, so the server shows its limited page again
  * when this browser's session holds less than the launcher asks for. The landing signs in to the session's server
  * on arrival (`sign-in.ts`'s `startSignIn`, as this app's own client),
- * `returnTo` rides the pending record, and a sign-in that cannot start shows
+ * `returnTo` rides the retained sign-in request, and a sign-in that cannot start shows
  * its reason beside a "Sign in to …" for that server. `Unauthed` goes first:
  * the landing sends a signed-in reader on to `/home`.
  */

@@ -42,7 +42,7 @@ const deepRouteOf = (pathname: string, basepath: string): string | undefined => 
 
 /**
  * The browser's {@link LandingSignIn}: a sign-in from the landing returns to
- * the app root under `basepath`, carrying `returnTo` in the pending record.
+ * the app root under `basepath`, carrying `returnTo` in the retained sign-in request.
  */
 const browserLandingSignIn = (
   page: BootPage,

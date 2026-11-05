@@ -159,8 +159,8 @@ const beginSignIn = (
  * URL to navigate to.
  *
  * Its FHIR base is the server the retained request and the
- * {@link Session} name. Only the endpoints discovered there ride the pending
- * record, so the return leg needs nothing more.
+ * {@link Session} name. Only the endpoints discovered there ride the
+ * retained request, so the return leg needs nothing more.
  *
  * `options` carries what this sign-in alone adds (see {@link SignInOptions}).
  * `returnTo` rides the retained request. `launch` and `prompt` go into the

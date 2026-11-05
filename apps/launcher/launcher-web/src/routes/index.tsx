@@ -90,7 +90,7 @@ interface LandingSignIn {
  * The real {@link LandingSignIn}. Sign-in only starts from this landing, which
  * sits at the app root, so the page's own directory is the served base — the
  * same value `main-web` hands the router and the callback re-derives (see
- * `sign-in.ts`). The gate's `?returnTo=` rides the pending record, because the
+ * `sign-in.ts`). The gate's `?returnTo=` rides the retained sign-in request, because the
  * registered redirect URI drops it. Request access's `?prompt=consent` rides
  * the authorization request, to show the server's limited page again.
  */
@@ -215,7 +215,7 @@ function Landing({
    * start, or `undefined` once the page is leaving. The reader comes back to
    * the app root with a code, which `main-web`'s boot redeems before the router
    * mounts, then settles on the gate's `returnTo` (`/home` by default). Nothing
-   * is held here across the redirect but the pending record in
+   * is held here across the redirect but the retained sign-in request in
    * `sessionStorage`, which carries no credential.
    *
    * The problem goes back bare: the menu adds the Local Network Access hint

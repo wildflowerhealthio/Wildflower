@@ -93,7 +93,7 @@ const settleUrlAfterSignIn = (returnTo: string): void => {
  * only). A router mounted before the exchange settled would run that gate
  * against an empty store and redirect to `/` while the token was still in
  * flight, so the sign-in would appear to fail every time. An ordinary load pays
- * a microtask for this: with no pending record, `completeSignIn` resolves to
+ * a microtask for this: with no retained sign-in request, `completeSignIn` resolves to
  * `None` without touching the network.
  *
  * `ConsentedEntryRoot` calls this once the visitor has answered the telemetry
@@ -124,7 +124,7 @@ const bootApp = async (): Promise<JSX.Element> => {
     // the next authed request redirects to the landing rather than 401-looping.
     scheduleExpiry(bearerStore.setAuthState, session.expiresInSeconds)
     // Honour the gate's `?returnTo=`, carried across the redirect in the
-    // pending record, sanitised against an open redirect.
+    // retained sign-in request, sanitised against an open redirect.
     settleUrlAfterSignIn(sanitizeReturnTo(session.returnTo ?? null))
   } else if (isAuthorizationResponse(returnSearch)) {
     // A return leg that resolved to nothing usable: the response still has to
