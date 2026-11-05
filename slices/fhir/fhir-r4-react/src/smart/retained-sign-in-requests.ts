@@ -1,8 +1,8 @@
 import {
   BrowserSignIn,
-  forgetPendingSignIn,
-  type PendingRequestUnusable,
-  pendingRequestUnusableFrom,
+  forgetRetainedSignInRequest,
+  type RetainedRequestUnusable,
+  retainedRequestUnusableFrom,
   type RetainedSignInRequestStore,
   type SignInServices,
   type SignInWindow,
@@ -66,12 +66,12 @@ const smartSignInLayer = (page: SignInWindow): Layer.Layer<SignInServices> =>
 /** Retain `request` for the redirect's return, before the page leaves. */
 const retainSelfAddressedSignInRequest = (
   request: RetainedSelfAddressedSignInRequest
-): Effect.Effect<void, PendingRequestUnusable> =>
+): Effect.Effect<void, RetainedRequestUnusable> =>
   setStorageItem(
     window.sessionStorage,
     RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY,
     encodeRetainedSelfAddressedSignInRequest(request)
-  ).pipe(Effect.mapError(pendingRequestUnusableFrom))
+  ).pipe(Effect.mapError(retainedRequestUnusableFrom))
 
 /**
  * Take every retained sign-in request an arrival can complete out of
@@ -87,23 +87,23 @@ const retainSelfAddressedSignInRequest = (
  * arrival forgets it. The self-addressed request is taken either way, and
  * decoded only by the arrival that completes it
  * ({@link completeSelfAddressedSignIn}). A storage that throws fails with
- * `PendingRequestUnusable`, except on a `SignInReturn` taking the
+ * `RetainedRequestUnusable`, except on a `SignInReturn` taking the
  * self-addressed request, which is not that arrival's to complete: it returns
  * `None` instead.
  */
 const takeRetainedSignInRequests = (
   arrival: RootArrival
-): Effect.Effect<Option.Option<string>, PendingRequestUnusable, RetainedSignInRequestStore> =>
+): Effect.Effect<Option.Option<string>, RetainedRequestUnusable, RetainedSignInRequestStore> =>
   Effect.gen(function* () {
     const takingSelfAddressed = takeStorageItem(
       window.sessionStorage,
       RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY
-    ).pipe(Effect.mapError(pendingRequestUnusableFrom))
+    ).pipe(Effect.mapError(retainedRequestUnusableFrom))
     if (arrival._tag === 'SignInReturn') {
       return yield* takingSelfAddressed.pipe(Effect.orElseSucceed(Option.none))
     }
     const retained = yield* takingSelfAddressed
-    yield* forgetPendingSignIn
+    yield* forgetRetainedSignInRequest
     return retained
   })
 

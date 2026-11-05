@@ -19,8 +19,8 @@
  *
  * Every way a sign-in can fail is a tagged error in {@link SignInError}, raised
  * where it happens: {@link PkceUnavailable} and {@link DiscoveryFailed} from the
- * modules that own those steps, {@link PendingRequestUnusable} and
- * {@link PendingRequestUnrecognised} from the storage round trip here, {@link AuthorizationRejected} and
+ * modules that own those steps, {@link RetainedRequestUnusable} and
+ * {@link RetainedRequestUnrecognised} from the storage round trip here, {@link AuthorizationRejected} and
  * {@link TokenExchangeFailed} from the flow's pure validation. Nothing throws
  * and nothing returns an ad-hoc `{ ok }` union; the app runs the Effect at one
  * boundary and renders `error.reason` wherever it shows status.
@@ -44,20 +44,20 @@ import {
   authorizationRedirectOutcome,
   authorizationRequestUrl,
   isAuthorizationResponse,
-  parsePendingAuthorization,
+  parseRetainedSignInRequest,
   parseTokenResponse,
-  serializePendingAuthorization,
+  serializeRetainedSignInRequest,
   tokenRequestBody,
   type AccessGrant,
   type AuthorizationRejected,
   type AuthorizationRequestParameters,
-  type PendingAuthorization,
+  type RetainedSignInRequest,
   type TokenExchangeFailed,
 } from './authorization-flow.ts'
 import { codeChallengeS256, createCodeVerifier, createState } from './pkce.ts'
 import type { PkceUnavailable } from './pkce.ts'
 import {
-  PendingRequestUnusable,
+  RetainedRequestUnusable,
   RetainedSignInRequestStore,
   SignInCrypto,
   signInHttpClient,
@@ -66,7 +66,7 @@ import {
 import {
   discoverSmartEndpoints,
   type DiscoveryFailed,
-  type SmartIssuer,
+  type DiscoveredSmartServer,
   type SmartServer,
 } from './smart-discovery.ts'
 
@@ -74,7 +74,7 @@ import {
  * Raised when the storage holds a pending record that does not read as one:
  * a record a different version of the page wrote, or one edited by hand.
  */
-class PendingRequestUnrecognised extends Data.TaggedError('PendingRequestUnrecognised')<{
+class RetainedRequestUnrecognised extends Data.TaggedError('RetainedRequestUnrecognised')<{
   readonly reason: string
 }> {}
 
@@ -82,8 +82,8 @@ class PendingRequestUnrecognised extends Data.TaggedError('PendingRequestUnrecog
 type SignInError =
   | DiscoveryFailed
   | PkceUnavailable
-  | PendingRequestUnusable
-  | PendingRequestUnrecognised
+  | RetainedRequestUnusable
+  | RetainedRequestUnrecognised
   | AuthorizationRejected
   | TokenExchangeFailed
 
@@ -134,7 +134,7 @@ const beginSignIn = (
   options: SignInOptions = {}
 ): Effect.Effect<string, SignInError, SignInServices> =>
   discoverSmartEndpoints(serverUrl).pipe(
-    Effect.flatMap((issuer) => beginSignInAt(issuer, registration, options))
+    Effect.flatMap((discovered) => beginSignInAt(discovered, registration, options))
   )
 
 /**
@@ -158,16 +158,16 @@ const beginSignIn = (
  * cannot navigate away from a flow whose verifier was never saved.
  */
 const beginSignInAt = (
-  issuer: SmartIssuer,
+  discovered: DiscoveredSmartServer,
   registration: ClientRegistration,
   { returnTo, ...request }: SignInOptions = {}
 ): Effect.Effect<
   string,
-  PkceUnavailable | PendingRequestUnusable,
+  PkceUnavailable | RetainedRequestUnusable,
   SignInCrypto | RetainedSignInRequestStore
 > =>
   Effect.gen(function* () {
-    const { smartServer, endpoints } = issuer
+    const { smartServer, endpoints } = discovered
     const crypto = yield* SignInCrypto
     const store = yield* RetainedSignInRequestStore
     const codeVerifier = createCodeVerifier(crypto.random)
@@ -175,7 +175,7 @@ const beginSignInAt = (
     const codeChallenge = yield* codeChallengeS256(codeVerifier, crypto.subtle)
 
     yield* store.retain(
-      serializePendingAuthorization({
+      serializeRetainedSignInRequest({
         state,
         codeVerifier,
         smartServer,
@@ -238,20 +238,20 @@ const completeSignIn = (
 > =>
   Effect.gen(function* () {
     if (!isAuthorizationResponse(search)) return Option.none()
-    const stored = yield* takePendingRecord
+    const stored = yield* takeRetainedSignInRequest
     const returning = yield* authorizationRedirectOutcome(search, stored)
     if (Option.isNone(returning)) return Option.none()
-    const { code, pending } = returning.value
+    const { code, retained } = returning.value
 
     const client = yield* signInHttpClient
     const response = yield* client
       .execute(
-        HttpClientRequest.post(pending.tokenEndpoint).pipe(
+        HttpClientRequest.post(retained.tokenEndpoint).pipe(
           HttpClientRequest.acceptJson,
           HttpClientRequest.bodyText(
             tokenRequestBody({
               code,
-              codeVerifier: pending.codeVerifier,
+              codeVerifier: retained.codeVerifier,
               redirectUri: registration.redirectUri,
               clientId: registration.clientId,
             }),
@@ -262,18 +262,18 @@ const completeSignIn = (
       .pipe(
         Effect.mapError(
           () =>
-            new PendingRequestUnusable({
-              reason: `Could not reach the token endpoint at ${pending.tokenEndpoint}.`,
+            new RetainedRequestUnusable({
+              reason: `Could not reach the token endpoint at ${retained.tokenEndpoint}.`,
             })
         )
       )
     const body = yield* response.json.pipe(
       Effect.mapError(
-        () => new PendingRequestUnusable({ reason: 'The token endpoint did not answer with JSON.' })
+        () => new RetainedRequestUnusable({ reason: 'The token endpoint did not answer with JSON.' })
       )
     )
     const grant = yield* parseTokenResponse(body)
-    return Option.some(sessionFrom(grant, pending))
+    return Option.some(sessionFrom(grant, retained))
   })
 
 /**
@@ -281,8 +281,8 @@ const completeSignIn = (
  * completed: the one wording for every sign-in request a page retains across
  * the redirect, this module's and an app's own.
  */
-const pendingRequestUnrecognisedFromAnotherVersion = (): PendingRequestUnrecognised =>
-  new PendingRequestUnrecognised({
+const retainedRequestUnrecognisedFromAnotherVersion = (): RetainedRequestUnrecognised =>
+  new RetainedRequestUnrecognised({
     reason:
       'The sign-in in progress was started by a different version of this page. Sign in again.',
   })
@@ -290,49 +290,49 @@ const pendingRequestUnrecognisedFromAnotherVersion = (): PendingRequestUnrecogni
 /**
  * Take the pending record out of the {@link RetainedSignInRequestStore}: read
  * it and drop it. `None` only when there is none; a store that refuses the
- * read fails with {@link PendingRequestUnusable} (one that refuses only the
+ * read fails with {@link RetainedRequestUnusable} (one that refuses only the
  * removal does not: the record was read), and a record that does not read as
- * one with {@link PendingRequestUnrecognised}.
+ * one with {@link RetainedRequestUnrecognised}.
  */
-const takePendingRecord: Effect.Effect<
-  Option.Option<PendingAuthorization>,
-  PendingRequestUnusable | PendingRequestUnrecognised,
+const takeRetainedSignInRequest: Effect.Effect<
+  Option.Option<RetainedSignInRequest>,
+  RetainedRequestUnusable | RetainedRequestUnrecognised,
   RetainedSignInRequestStore
 > = Effect.gen(function* () {
   const store = yield* RetainedSignInRequestStore
   const stored = yield* store.take
   if (Option.isNone(stored)) return Option.none()
-  const pending = parsePendingAuthorization(stored.value)
-  if (Option.isNone(pending)) return yield* pendingRequestUnrecognisedFromAnotherVersion()
-  return pending
+  const retained = parseRetainedSignInRequest(stored.value)
+  if (Option.isNone(retained)) return yield* retainedRequestUnrecognisedFromAnotherVersion()
+  return retained
 })
 
 /**
  * Drop the sign-in the {@link RetainedSignInRequestStore} holds, without
  * reading it: for a page that completes some other flow on its return leg and
  * must not leave this one's record behind. A store that refuses removal fails
- * with {@link PendingRequestUnusable}.
+ * with {@link RetainedRequestUnusable}.
  */
-const forgetPendingSignIn: Effect.Effect<void, PendingRequestUnusable, RetainedSignInRequestStore> =
+const forgetRetainedSignInRequest: Effect.Effect<void, RetainedRequestUnusable, RetainedSignInRequestStore> =
   Effect.flatMap(RetainedSignInRequestStore, (store) => store.forget)
 
-/** The session a `grant` redeemed for the `pending` request becomes. */
-const sessionFrom = (grant: AccessGrant, pending: PendingAuthorization): Session => ({
+/** The session a `grant` redeemed for the `retained` request becomes. */
+const sessionFrom = (grant: AccessGrant, retained: RetainedSignInRequest): Session => ({
   accessToken: grant.accessToken,
   scope: grant.scope,
-  smartServer: pending.smartServer,
+  smartServer: retained.smartServer,
   expiresInSeconds: grant.expiresInSeconds,
   patient: grant.patient,
-  returnTo: pending.returnTo,
+  returnTo: retained.returnTo,
 })
 
 export {
-  PendingRequestUnrecognised,
-  PendingRequestUnusable,
+  RetainedRequestUnrecognised,
+  RetainedRequestUnusable,
   beginSignIn,
   beginSignInAt,
   completeSignIn,
-  forgetPendingSignIn,
-  pendingRequestUnrecognisedFromAnotherVersion,
+  forgetRetainedSignInRequest,
+  retainedRequestUnrecognisedFromAnotherVersion,
 }
 export type { AuthorizationRequestExtras, ClientRegistration, SignInError, SignInOptions, Session }

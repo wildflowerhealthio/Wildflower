@@ -26,7 +26,7 @@ import type { DigestSource, RandomBytesSource } from './pkce.ts'
  * the redirect: Safari's private mode throws on `setItem`, and a blocked
  * storage throws on every read.
  */
-class PendingRequestUnusable extends Data.TaggedError('PendingRequestUnusable')<{
+class RetainedRequestUnusable extends Data.TaggedError('RetainedRequestUnusable')<{
   readonly reason: string
 }> {}
 
@@ -62,8 +62,8 @@ interface RetainedRequestStorage {
  * cannot be completed: the one wording for every sign-in request a page
  * retains across the redirect, this module's and an app's own.
  */
-const pendingRequestUnusableFrom = (blocked: StorageBlocked): PendingRequestUnusable =>
-  new PendingRequestUnusable({
+const retainedRequestUnusableFrom = (blocked: StorageBlocked): RetainedRequestUnusable =>
+  new RetainedRequestUnusable({
     reason: Match.value(blocked.operation).pipe(
       Match.when(
         'write',
@@ -93,17 +93,17 @@ class RetainedSignInRequestStore extends Context.Tag(
   RetainedSignInRequestStore,
   {
     /** Keep `request`, replacing any request kept before it. */
-    readonly retain: (request: string) => Effect.Effect<void, PendingRequestUnusable>
+    readonly retain: (request: string) => Effect.Effect<void, RetainedRequestUnusable>
     /** The kept request, `None` when there is none. */
-    readonly read: Effect.Effect<Option.Option<string>, PendingRequestUnusable>
+    readonly read: Effect.Effect<Option.Option<string>, RetainedRequestUnusable>
     /**
      * The kept request, dropped once read: `None` when there is none. Only a
      * refused read fails; a request that was read is returned even if the
      * store then refuses to drop it.
      */
-    readonly take: Effect.Effect<Option.Option<string>, PendingRequestUnusable>
+    readonly take: Effect.Effect<Option.Option<string>, RetainedRequestUnusable>
     /** Drop the kept request, if there is one. */
-    readonly forget: Effect.Effect<void, PendingRequestUnusable>
+    readonly forget: Effect.Effect<void, RetainedRequestUnusable>
   }
 >() {
   /**
@@ -113,7 +113,7 @@ class RetainedSignInRequestStore extends Context.Tag(
    *
    * `page.sessionStorage` is read on every call, inside the Effect, since a
    * browser that blocks storage can throw on the property read itself. Every
-   * throw fails with {@link PendingRequestUnusable}.
+   * throw fails with {@link RetainedRequestUnusable}.
    */
   static readonly sessionStorage = (
     page: { readonly sessionStorage: RetainedRequestStorage },
@@ -130,7 +130,7 @@ class RetainedSignInRequestStore extends Context.Tag(
       retain: (request) =>
         storageFor('write').pipe(
           Effect.flatMap((storage) => setStorageItem(storage, key, request)),
-          Effect.mapError(pendingRequestUnusableFrom)
+          Effect.mapError(retainedRequestUnusableFrom)
         ),
       read: storageFor('read').pipe(
         Effect.flatMap((storage) =>
@@ -139,15 +139,15 @@ class RetainedSignInRequestStore extends Context.Tag(
             catch: () => new StorageBlocked({ operation: 'read', key }),
           })
         ),
-        Effect.mapError(pendingRequestUnusableFrom)
+        Effect.mapError(retainedRequestUnusableFrom)
       ),
       take: storageFor('read').pipe(
         Effect.flatMap((storage) => takeStorageItem(storage, key)),
-        Effect.mapError(pendingRequestUnusableFrom)
+        Effect.mapError(retainedRequestUnusableFrom)
       ),
       forget: storageFor('remove').pipe(
         Effect.flatMap((storage) => removeStorageItem(storage, key)),
-        Effect.mapError(pendingRequestUnusableFrom)
+        Effect.mapError(retainedRequestUnusableFrom)
       ),
     })
   }
@@ -193,8 +193,8 @@ const signInHttpClient: Effect.Effect<HttpClient.HttpClient, never, HttpClient.H
 type SignInServices = HttpClient.HttpClient | SignInCrypto | RetainedSignInRequestStore | SignInPage
 
 export {
-  PendingRequestUnusable,
-  pendingRequestUnusableFrom,
+  RetainedRequestUnusable,
+  retainedRequestUnusableFrom,
   RetainedSignInRequestStore,
   SignInCrypto,
   SignInPage,

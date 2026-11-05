@@ -39,7 +39,7 @@ import {
   beginSignIn,
   BrowserSignIn,
   completeSignIn,
-  parsePendingAuthorization,
+  parseRetainedSignInRequest,
   redirectUriForRoute,
   RetainedSignInRequestStore,
   SERVER_QUERY_PARAM,
@@ -290,7 +290,7 @@ const pendingServerUrl: Effect.Effect<string | undefined, never, RetainedSignInR
   Effect.flatMap(RetainedSignInRequestStore, (store) => store.read).pipe(
     Effect.map((stored) =>
       stored.pipe(
-        Option.flatMap(parsePendingAuthorization),
+        Option.flatMap(parseRetainedSignInRequest),
         Option.map((pending) => pending.smartServer.fhirBaseUrl),
         Option.getOrUndefined
       )

@@ -24,7 +24,7 @@ import {
   BrowserSignIn,
   completeSignIn,
   discoverSmartEndpoints,
-  parsePendingAuthorization,
+  parseRetainedSignInRequest,
   redirectUriForRoute,
   RetainedSignInRequestStore,
   type ClientRegistration,
@@ -34,7 +34,7 @@ import {
   type SignInPage,
   type SignInServices,
   type SignInWindow,
-  type SmartIssuer,
+  type DiscoveredSmartServer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Data, Effect, type Layer, Option } from 'effect'
 
@@ -127,7 +127,9 @@ const signInLayer = (page: SignInWindow): Layer.Layer<SignInServices> =>
  * The base of the authorization API `issuer` advertises, when it is a
  * Wildflower server that advertises one.
  */
-const authorizationApiOf = (issuer: SmartIssuer): Effect.Effect<string, NotAWildflowerServer> =>
+const authorizationApiOf = (
+  issuer: DiscoveredSmartServer
+): Effect.Effect<string, NotAWildflowerServer> =>
   issuer.smartServer._tag === 'WildflowerServer'
     ? Effect.orElseFail(
         issuer.wildflowerAuthorizationApi,
@@ -182,7 +184,7 @@ const pendingServerUrl: Effect.Effect<string | undefined, never, RetainedSignInR
   Effect.flatMap(RetainedSignInRequestStore, (store) => store.read).pipe(
     Effect.map((stored) =>
       stored.pipe(
-        Option.flatMap(parsePendingAuthorization),
+        Option.flatMap(parseRetainedSignInRequest),
         Option.map((pending) => pending.smartServer.fhirBaseUrl),
         Option.getOrUndefined
       )

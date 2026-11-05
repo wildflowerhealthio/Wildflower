@@ -2,9 +2,9 @@ import type { HttpClient } from '@effect/platform'
 import {
   type ClientRegistration,
   completeSignIn,
-  pendingRequestUnrecognisedFromAnotherVersion,
-  type PendingRequestUnrecognised,
-  type PendingRequestUnusable,
+  retainedRequestUnrecognisedFromAnotherVersion,
+  type RetainedRequestUnrecognised,
+  type RetainedRequestUnusable,
   type RetainedSignInRequestStore,
   searchWithoutAuthorizationResponse,
   type Session,
@@ -94,14 +94,14 @@ const completeSelfAddressedSignIn = (
   retained: Option.Option<string>
 ): Effect.Effect<
   SmartConnection,
-  NoSignInInProgress | PendingRequestUnrecognised | CallbackStateMismatch
+  NoSignInInProgress | RetainedRequestUnrecognised | CallbackStateMismatch
 > =>
   Effect.gen(function* () {
     if (Option.isNone(retained)) {
       return yield* new NoSignInInProgress({ reason: NO_SIGN_IN_IN_PROGRESS_REASON })
     }
     const request = decodeRetainedSelfAddressedSignInRequest(retained.value)
-    if (Option.isNone(request)) return yield* pendingRequestUnrecognisedFromAnotherVersion()
+    if (Option.isNone(request)) return yield* retainedRequestUnrecognisedFromAnotherVersion()
     if (selfAddressedReturn.state !== request.value.expectedState) {
       return yield* new CallbackStateMismatch({
         reason: 'The sign-in came back with the wrong state parameter, so it was discarded.',
@@ -134,8 +134,7 @@ const scrubAuthorizationResponse = (): void => {
  */
 const scrubbingAuthorizationResponse = <A, E, R>(
   taking: Effect.Effect<A, E, R>
-): Effect.Effect<A, E, R> =>
-  Effect.ensuring(taking, Effect.sync(scrubAuthorizationResponse))
+): Effect.Effect<A, E, R> => Effect.ensuring(taking, Effect.sync(scrubAuthorizationResponse))
 
 /**
  * The sign-in a page landed on after its redirect, and what the page needs
@@ -208,7 +207,7 @@ const completeSignInAfterRedirectHere = (
  */
 const discardRefusedSignInAfterRedirectHere = (
   refused: Data.TaggedEnum.Value<RootArrival, 'SignInRefused'>
-): Effect.Effect<void, PendingRequestUnusable, RetainedSignInRequestStore> =>
+): Effect.Effect<void, RetainedRequestUnusable, RetainedSignInRequestStore> =>
   takeRetainedSignInRequests(refused).pipe(Effect.asVoid, scrubbingAuthorizationResponse)
 
 export {

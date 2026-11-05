@@ -11,17 +11,17 @@ export {
   authorizationRedirectOutcome,
   authorizationRequestUrl,
   isAuthorizationResponse,
-  parsePendingAuthorization,
+  parseRetainedSignInRequest,
   parseTokenResponse,
   searchWithoutAuthorizationResponse,
-  serializePendingAuthorization,
+  serializeRetainedSignInRequest,
   TokenExchangeFailed,
   tokenRequestBody,
 } from './authorization-flow.ts'
 export type {
   AccessGrant,
   AuthorizationRequestParameters,
-  PendingAuthorization,
+  RetainedSignInRequest,
   RedeemableCode,
 } from './authorization-flow.ts'
 
@@ -52,7 +52,7 @@ export { BrowserSignIn } from './browser-sign-in.ts'
 export type { SignInWindow } from './browser-sign-in.ts'
 
 export {
-  pendingRequestUnusableFrom,
+  retainedRequestUnusableFrom,
   RetainedSignInRequestStore,
   SignInCrypto,
   SignInPage,
@@ -68,10 +68,10 @@ export {
   beginSignIn,
   beginSignInAt,
   completeSignIn,
-  forgetPendingSignIn,
-  pendingRequestUnrecognisedFromAnotherVersion,
-  PendingRequestUnrecognised,
-  PendingRequestUnusable,
+  forgetRetainedSignInRequest,
+  retainedRequestUnrecognisedFromAnotherVersion,
+  RetainedRequestUnrecognised,
+  RetainedRequestUnusable,
 } from './sign-in.ts'
 export type {
   AuthorizationRequestExtras,
@@ -90,10 +90,10 @@ export {
   PlainSmartServer,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
-  smartIssuerFrom,
+  discoveredSmartServerFrom,
   UnusableEndpointUrl,
   usableEndpointUrl,
   WILDFLOWER_SERVER_CAPABILITY,
   WildflowerServer,
 } from './smart-discovery.ts'
-export type { SmartEndpoints, SmartIssuer, SmartServer } from './smart-discovery.ts'
+export type { SmartEndpoints, DiscoveredSmartServer, SmartServer } from './smart-discovery.ts'

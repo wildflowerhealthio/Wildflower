@@ -1,11 +1,11 @@
 import {
   beginSignInAt,
   createState,
-  type PendingRequestUnusable,
+  type RetainedRequestUnusable,
   type PkceUnavailable,
   type RetainedSignInRequestStore,
   SignInCrypto,
-  type SmartIssuer,
+  type DiscoveredSmartServer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Effect } from 'effect'
 
@@ -43,12 +43,12 @@ const redirectToAuthorization = <E, R>(
  * launch.
  */
 const redirectToSignInAt = (
-  discovered: SmartIssuer,
+  discovered: DiscoveredSmartServer,
   config: Omit<SmartLaunchConfig, 'fhirBaseUrl'>,
   launch: string | undefined
 ): Effect.Effect<
   void,
-  PkceUnavailable | PendingRequestUnusable,
+  PkceUnavailable | RetainedRequestUnusable,
   SignInCrypto | RetainedSignInRequestStore
 > => redirectToAuthorization(beginSignInAt(discovered, config, { launch }))
 
@@ -77,7 +77,7 @@ interface SelfAddressedSignInConfig {
  */
 const redirectToSelfAddressedSignInReturn = (
   config: SelfAddressedSignInConfig
-): Effect.Effect<void, PendingRequestUnusable, SignInCrypto> =>
+): Effect.Effect<void, RetainedRequestUnusable, SignInCrypto> =>
   Effect.gen(function* () {
     const expectedState = createState((yield* SignInCrypto).random)
     yield* retainSelfAddressedSignInRequest({ expectedState, fhirBaseUrl: config.fhirBaseUrl })

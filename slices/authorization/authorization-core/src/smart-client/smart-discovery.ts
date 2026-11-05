@@ -89,7 +89,7 @@ type SmartServer = Schema.Schema.Type<typeof SmartServer>
  * authorization JSON API, which a plain SMART server doesn't advertise. Each is
  * `None` when the document omits it or doesn't name a usable URL.
  */
-interface SmartIssuer {
+interface DiscoveredSmartServer {
   readonly smartServer: SmartServer
   readonly endpoints: SmartEndpoints
   readonly managementEndpoint: Option.Option<string>
@@ -229,11 +229,11 @@ const decodeSmartConfiguration = Schema.decodeUnknownEither(SmartConfiguration)
  * a document that omits the field is given the benefit of the doubt rather than
  * blocked on a hint.
  */
-const smartIssuerFrom = (
+const discoveredSmartServerFrom = (
   fhirBaseUrl: string,
   document: unknown,
   options: { readonly pageIsSecure: boolean }
-): Either.Either<SmartIssuer, DiscoveryFailed> => {
+): Either.Either<DiscoveredSmartServer, DiscoveryFailed> => {
   const decoded = decodeSmartConfiguration(document)
   if (Either.isLeft(decoded)) {
     return Either.left(
@@ -289,7 +289,7 @@ const smartIssuerFrom = (
  */
 const discoverSmartEndpoints = (
   serverUrl: string
-): Effect.Effect<SmartIssuer, DiscoveryFailed, HttpClient.HttpClient | SignInPage> =>
+): Effect.Effect<DiscoveredSmartServer, DiscoveryFailed, HttpClient.HttpClient | SignInPage> =>
   Effect.gen(function* () {
     const url = smartConfigurationUrl(serverUrl)
     const client = yield* signInHttpClient
@@ -324,7 +324,7 @@ const discoverSmartEndpoints = (
           })
       )
     )
-    return yield* smartIssuerFrom(serverUrl, document, { pageIsSecure: page.isSecure })
+    return yield* discoveredSmartServerFrom(serverUrl, document, { pageIsSecure: page.isSecure })
   })
 
 export {
@@ -339,8 +339,8 @@ export {
   UnusableEndpointUrl,
   usableEndpointUrl,
   insecureTargetReason,
-  smartIssuerFrom,
+  discoveredSmartServerFrom,
   discoverSmartEndpoints,
   WILDFLOWER_SERVER_CAPABILITY,
 }
-export type { SmartEndpoints, SmartIssuer }
+export type { SmartEndpoints, DiscoveredSmartServer }

@@ -9,7 +9,7 @@
 
 import {
   isAuthorizationResponse,
-  parsePendingAuthorization,
+  parseRetainedSignInRequest,
   RetainedSignInRequestStore,
   searchAfterArrivingLaunch,
   searchWithoutAuthorizationResponse,
@@ -42,20 +42,17 @@ const searchSettledFrom = (arrivalSearch: string): string =>
  * redirect URI carries no `?server=`, so this is how a failed or cancelled
  * return gets back to the server the reader picked.
  */
-const pendingSignInServerUrl: Effect.Effect<
-  string | undefined,
-  never,
-  RetainedSignInRequestStore
-> = Effect.flatMap(RetainedSignInRequestStore, (store) => store.read).pipe(
-  Effect.map((stored) =>
-    stored.pipe(
-      Option.flatMap(parsePendingAuthorization),
-      Option.map((pending) => pending.smartServer.fhirBaseUrl),
-      Option.getOrUndefined
-    )
-  ),
-  Effect.orElseSucceed(() => undefined)
-)
+const pendingSignInServerUrl: Effect.Effect<string | undefined, never, RetainedSignInRequestStore> =
+  Effect.flatMap(RetainedSignInRequestStore, (store) => store.read).pipe(
+    Effect.map((stored) =>
+      stored.pipe(
+        Option.flatMap(parseRetainedSignInRequest),
+        Option.map((pending) => pending.smartServer.fhirBaseUrl),
+        Option.getOrUndefined
+      )
+    ),
+    Effect.orElseSucceed(() => undefined)
+  )
 
 /**
  * Run `resetAuthControls` whenever `page` is restored from the back-forward

@@ -55,7 +55,7 @@ class TokenExchangeFailed extends Data.TaggedError('TokenExchangeFailed')<{
  * record cannot complete a sign-in, and treating it as one would send a request
  * with `undefined` in it.
  */
-const PendingAuthorization = Schema.Struct({
+const RetainedSignInRequest = Schema.Struct({
   state: Schema.NonEmptyString,
   codeVerifier: Schema.NonEmptyString,
   /**
@@ -72,17 +72,17 @@ const PendingAuthorization = Schema.Struct({
    */
   returnTo: Schema.optional(Schema.NonEmptyString),
 })
-type PendingAuthorization = Schema.Schema.Type<typeof PendingAuthorization>
+type RetainedSignInRequest = Schema.Schema.Type<typeof RetainedSignInRequest>
 
 /**
  * The pending record as the string form stored under the `sessionStorage` key
  * the app names in its `SignInEnvironment` (`sign-in.ts`).
  */
-const serializePendingAuthorization = (pending: PendingAuthorization): string =>
-  JSON.stringify(pending)
+const serializeRetainedSignInRequest = (retained: RetainedSignInRequest): string =>
+  JSON.stringify(retained)
 
-const decodePendingAuthorization = Schema.decodeUnknownOption(
-  Schema.parseJson(PendingAuthorization)
+const decodeRetainedSignInRequest = Schema.decodeUnknownOption(
+  Schema.parseJson(RetainedSignInRequest)
 )
 
 /**
@@ -90,8 +90,8 @@ const decodePendingAuthorization = Schema.decodeUnknownOption(
  * Absence is not an error here — most page loads have no record — so the caller
  * decides whether a missing one matters.
  */
-const parsePendingAuthorization = (raw: string | null): Option.Option<PendingAuthorization> =>
-  Option.flatMap(Option.fromNullable(raw), decodePendingAuthorization)
+const parseRetainedSignInRequest = (raw: string | null): Option.Option<RetainedSignInRequest> =>
+  Option.flatMap(Option.fromNullable(raw), decodeRetainedSignInRequest)
 
 /**
  * An OAuth error: what the authorization server redirects back with instead of
@@ -190,7 +190,7 @@ const decodeReturnedCode = Schema.decodeUnknownOption(ReturnedCode)
 /** A code that passed the `state` check, with the request it belongs to. */
 interface RedeemableCode {
   readonly code: string
-  readonly pending: PendingAuthorization
+  readonly retained: RetainedSignInRequest
 }
 
 /**
@@ -205,7 +205,7 @@ interface RedeemableCode {
  */
 const authorizationRedirectOutcome = (
   search: string,
-  pending: Option.Option<PendingAuthorization>
+  retained: Option.Option<RetainedSignInRequest>
 ): Either.Either<Option.Option<RedeemableCode>, AuthorizationRejected> => {
   const params = Object.fromEntries(new URLSearchParams(search))
   const refusal = decodeOAuthError(params)
@@ -218,7 +218,7 @@ const authorizationRedirectOutcome = (
   }
   const returned = decodeReturnedCode(params)
   if (Option.isNone(returned)) return Either.right(Option.none())
-  if (Option.isNone(pending)) {
+  if (Option.isNone(retained)) {
     return Either.left(
       new AuthorizationRejected({
         reason:
@@ -227,14 +227,14 @@ const authorizationRedirectOutcome = (
       })
     )
   }
-  if (returned.value.state !== pending.value.state) {
+  if (returned.value.state !== retained.value.state) {
     return Either.left(
       new AuthorizationRejected({
         reason: 'The sign-in came back with the wrong state parameter, so it was discarded.',
       })
     )
   }
-  return Either.right(Option.some({ code: returned.value.code, pending: pending.value }))
+  return Either.right(Option.some({ code: returned.value.code, retained: retained.value }))
 }
 
 /**
@@ -370,8 +370,8 @@ const parseTokenResponse = (body: unknown): Either.Either<AccessGrant, TokenExch
 export {
   AuthorizationRejected,
   TokenExchangeFailed,
-  serializePendingAuthorization,
-  parsePendingAuthorization,
+  serializeRetainedSignInRequest,
+  parseRetainedSignInRequest,
   authorizationRequestUrl,
   authorizationRedirectOutcome,
   searchWithoutAuthorizationResponse,
@@ -379,4 +379,4 @@ export {
   tokenRequestBody,
   parseTokenResponse,
 }
-export type { PendingAuthorization, AuthorizationRequestParameters, RedeemableCode, AccessGrant }
+export type { RetainedSignInRequest, AuthorizationRequestParameters, RedeemableCode, AccessGrant }

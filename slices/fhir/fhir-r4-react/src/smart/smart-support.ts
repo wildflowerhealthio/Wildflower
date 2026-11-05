@@ -2,12 +2,12 @@ import { HttpClient } from '@effect/platform'
 import {
   insecureTargetReason,
   normalizeServerUrl,
-  type PendingRequestUnusable,
+  type RetainedRequestUnusable,
   type PkceUnavailable,
   SignInPage,
   type SignInServices,
-  smartIssuerFrom,
-  type SmartIssuer,
+  discoveredSmartServerFrom,
+  type DiscoveredSmartServer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
 import { Data, Effect, Either, Match, Schema } from 'effect'
@@ -31,14 +31,14 @@ import type { FhirBaseUrl } from './smart-connection.ts'
  * that may well require auth, producing misleading 401s. A real HTTP answer
  * (even a 404, or non-JSON) is `Open`: the server responded, it just has no
  * SMART config. A config that names an `authorization_endpoint` is `Smart`,
- * carrying what `authorization-core`'s `smartIssuerFrom` `discovered` in it,
- * when `smartIssuerFrom` accepts it for this page, and `Unusable`, with its
+ * carrying what `authorization-core`'s `discoveredSmartServerFrom` `discovered` in it,
+ * when `discoveredSmartServerFrom` accepts it for this page, and `Unusable`, with its
  * `DiscoveryFailed` reason, when it does not (an endpoint that is not https
  * or loopback, a missing `token_endpoint`, no S256).
  */
 type SmartSupport = Data.TaggedEnum<{
   /** A config whose endpoints are usable from this page. */
-  readonly Smart: { readonly discovered: SmartIssuer }
+  readonly Smart: { readonly discovered: DiscoveredSmartServer }
   /** An HTTP answer that is not ok, or JSON without an `authorization_endpoint`. */
   // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
   readonly Open: Record<never, never>
@@ -91,14 +91,17 @@ const detectSmartSupport = (
     // SMART, and only when its endpoints are usable from this page.
     if (response.status < 200 || response.status >= 300) return SmartSupport.Open()
     const config = yield* response.json.pipe(
-      // Checked, not narrowed: `smartIssuerFrom` reads the whole configuration.
+      // Checked, not narrowed: `discoveredSmartServerFrom` reads the whole configuration.
       Effect.tap(decodeSmartConfiguration),
       Effect.mapError(() => SmartSupport.Open())
     )
-    return Either.match(smartIssuerFrom(fhirBaseUrl, config, { pageIsSecure: page.isSecure }), {
-      onLeft: (failed) => SmartSupport.Unusable({ reason: failed.reason }),
-      onRight: (discovered) => SmartSupport.Smart({ discovered }),
-    })
+    return Either.match(
+      discoveredSmartServerFrom(fhirBaseUrl, config, { pageIsSecure: page.isSecure }),
+      {
+        onLeft: (failed) => SmartSupport.Unusable({ reason: failed.reason }),
+        onRight: (discovered) => SmartSupport.Smart({ discovered }),
+      }
+    )
   }).pipe(Effect.merge)
 
 /**
@@ -127,7 +130,7 @@ const detectSmartSupport = (
 const redirectToSignIn = (
   config: SmartLaunchConfig,
   launch: string | undefined
-): Effect.Effect<SmartSupport, PkceUnavailable | PendingRequestUnusable, SignInServices> =>
+): Effect.Effect<SmartSupport, PkceUnavailable | RetainedRequestUnusable, SignInServices> =>
   detectSmartSupport(config.fhirBaseUrl).pipe(
     Effect.tap(
       Match.type<SmartSupport>().pipe(
