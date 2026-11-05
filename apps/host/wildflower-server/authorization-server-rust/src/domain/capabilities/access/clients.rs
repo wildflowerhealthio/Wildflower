@@ -1,15 +1,15 @@
 //! Client capabilities — the `wildflower/Client.*` capabilities behind
-//! `/authorization/clients[/{clientId}]`: list every registered client and set one's
-//! `disabled_at`. What disabling does (and leaves
-//! alone) is described under "Client" in `slices/authorization/docs/Jargon
-//! Explanation.md`.
+//! `/authorization/clients[/{clientId}]`: list every registered client, and
+//! set one's `disabled_at` or its refresh policy. What disabling does (and
+//! leaves alone) and what a refresh policy limits are described under
+//! "Client" in `slices/authorization/docs/Jargon Explanation.md`.
 
 use chrono::{DateTime, Utc};
 
 use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::client::Client;
+use crate::domain::client::{Client, RefreshPolicy};
 use crate::domain::essential_client::is_essential_client;
 use crate::domain::grant_store::ClientsTx as _;
 use crate::domain::GrantStore;
@@ -25,8 +25,8 @@ pub(crate) fn clients_reader_scopes() -> Vec<Scope> {
     )]
 }
 
-/// The scope gating [`ClientsUpdater`] — `wildflower/Client.u`: disabling and
-/// re-enabling edit the client row's `disabled_at` in place.
+/// The scope gating [`ClientsUpdater`] — `wildflower/Client.u`: disabling,
+/// re-enabling and changing the refresh policy edit the client row in place.
 pub(crate) fn clients_updater_scopes() -> Vec<Scope> {
     vec![Scope::wildflower(
         WildflowerResource::Client,
@@ -74,10 +74,10 @@ impl<S: GrantStore> ClientsReader<S> {
     }
 }
 
-/// Disable or re-enable a client by writing its `disabled_at` —
-/// `PATCH /authorization/clients/{clientId}`. Idempotent: repeating a request leaves
-/// the row as the first one left it (a repeated disable keeps the original
-/// `disabled_at`).
+/// Edit a registered client — `PATCH /authorization/clients/{clientId}`:
+/// disable or re-enable it by writing its `disabled_at`, or replace its
+/// refresh policy. Idempotent: repeating a request leaves the row as the
+/// first one left it (a repeated disable keeps the original `disabled_at`).
 pub(crate) struct ClientsUpdater<S: GrantStore> {
     /// The store holding the client rows the updater edits.
     store: S,
@@ -140,6 +140,36 @@ impl<S: GrantStore> ClientsUpdater<S> {
             }
         })?;
         Ok(ClientView { client, essential })
+    }
+
+    /// Replace `client_id`'s refresh policy in one write scope and return the
+    /// row as stored. Its families pick the policy up on their next refresh:
+    /// a tighter one refuses a family that is past it, and a looser one moves
+    /// a family's deadline out when it next rotates, but never revives a
+    /// family that already ended. An essential client's policy may be
+    /// changed like any other.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::ClientNotFound`] when no such client exists.
+    pub(crate) fn set_refresh_policy(
+        &self,
+        client_id: &str,
+        refresh_policy: RefreshPolicy,
+    ) -> Result<ClientView, AuthorizationServerError> {
+        let not_found = || AuthorizationServerError::ClientNotFound {
+            client_id: client_id.to_owned(),
+        };
+        let client = self.store.write(|tx| {
+            if !tx.set_client_refresh_policy(client_id, &refresh_policy)? {
+                return Err(not_found());
+            }
+            tx.client_by_id(client_id)?.ok_or_else(not_found)
+        })?;
+        Ok(ClientView {
+            client,
+            essential: is_essential_client(client_id),
+        })
     }
 }
 
