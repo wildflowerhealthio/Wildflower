@@ -49,7 +49,18 @@ export { arrivingSmartLaunchFrom, SMART_LAUNCH_PARAMS } from './arriving-launch.
 export type { ArrivingSmartLaunch } from './arriving-launch.ts'
 
 export { browserSignInEnvironment } from './browser-environment.ts'
-export type { ClientRegistration, SignInPage } from './browser-environment.ts'
+export type { ClientRegistration } from './browser-environment.ts'
+
+export { BrowserSignIn } from './browser-sign-in.ts'
+export type { SignInWindow } from './browser-sign-in.ts'
+
+export {
+  pendingRequestUnusableFrom,
+  RetainedSignInRequestStore,
+  SignInCrypto,
+  SignInPage,
+} from './sign-in-services.ts'
+export type { RetainedRequestStorage, SignInServices } from './sign-in-services.ts'
 
 export {
   STANDALONE_LAUNCH_SCOPES,
@@ -63,7 +74,6 @@ export {
   forgetPendingSignIn,
   pendingRequestUnrecognisedFromAnotherVersion,
   PendingRequestUnrecognised,
-  pendingRequestUnusableFrom,
   PendingRequestUnusable,
 } from './sign-in.ts'
 export type {

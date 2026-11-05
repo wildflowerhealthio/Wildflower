@@ -40,10 +40,9 @@
 import {
   removeStorageItem,
   setStorageItem,
-  type StorageBlocked,
   takeStorageItem,
 } from '@wildflowerhealthio/kitchen-sink'
-import { Data, Effect, Match, Option } from 'effect'
+import { Data, Effect, Option } from 'effect'
 
 import {
   authorizationRedirectOutcome,
@@ -61,22 +60,13 @@ import {
 } from './authorization-flow.ts'
 import { codeChallengeS256, createCodeVerifier, createState } from './pkce.ts'
 import type { DigestSource, PkceUnavailable, RandomBytesSource } from './pkce.ts'
+import { PendingRequestUnusable, pendingRequestUnusableFrom } from './sign-in-services.ts'
 import {
   discoverSmartEndpoints,
   type DiscoveryFailed,
   type SmartIssuer,
   type SmartServer,
 } from './smart-discovery.ts'
-
-/**
- * Raised when the browser will not carry the pending request across the
- * redirect (Safari's private mode throws on `setItem`, and a blocked storage
- * throws on every read), or when the token endpoint cannot be reached to
- * redeem the code.
- */
-class PendingRequestUnusable extends Data.TaggedError('PendingRequestUnusable')<{
-  readonly reason: string
-}> {}
 
 /**
  * Raised when the storage holds a pending record that does not read as one:
@@ -285,31 +275,6 @@ const completeSignIn = (
   })
 
 /**
- * Why a sign-in whose request `blocked` storage would not keep or give back
- * cannot be completed: the one wording for every sign-in request a page
- * retains across the redirect, this module's and an app's own.
- */
-const pendingRequestUnusableFrom = (blocked: StorageBlocked): PendingRequestUnusable =>
-  new PendingRequestUnusable({
-    reason: Match.value(blocked.operation).pipe(
-      Match.when(
-        'write',
-        () =>
-          'This browser would not let the page remember the sign-in request ' +
-          '(session storage is blocked), so it cannot be completed.'
-      ),
-      Match.whenOr(
-        'read',
-        'remove',
-        () =>
-          'This browser would not let the page use the sign-in request it kept ' +
-          '(session storage is blocked), so it cannot be completed.'
-      ),
-      Match.exhaustive
-    ),
-  })
-
-/**
  * Why a retained sign-in request that does not read as one cannot be
  * completed: the one wording for every sign-in request a page retains across
  * the redirect, this module's and an app's own.
@@ -375,6 +340,5 @@ export {
   completeSignIn,
   forgetPendingSignIn,
   pendingRequestUnrecognisedFromAnotherVersion,
-  pendingRequestUnusableFrom,
 }
 export type { AuthorizationRequestExtras, SignInError, PendingStore, SignInEnvironment, Session }

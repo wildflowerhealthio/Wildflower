@@ -10,12 +10,12 @@ import {
   type PendingAuthorization,
 } from './authorization-flow.ts'
 import { codeChallengeS256 } from './pkce.ts'
+import { pendingRequestUnusableFrom } from './sign-in-services.ts'
 import {
   beginSignIn,
   beginSignInAt,
   completeSignIn,
   forgetPendingSignIn,
-  pendingRequestUnusableFrom,
   type PendingStore,
   type SignInEnvironment,
 } from './sign-in.ts'
