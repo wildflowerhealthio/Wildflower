@@ -126,6 +126,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 - [Threat Model Explanation](./docs/Security/Threat%20Model%20Explanation.md) — Assets, parties, trust boundaries, what Wildflower defends against and what it doesn't; links the relay, host, authorization server and server models
 - [Bridge Explanation](./docs/Messaging/Bridge%20Explanation.md) — The webview ↔ host bridge; [Wire Pinning How-To](./docs/Messaging/Wire%20Pinning%20How-To.md) for TS ⇄ Rust wire shapes
 - [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) — Why the pnpm `overrides:` exist and when to add/remove one
+- [Rust Dependency Alerts Explanation](./docs/Dependencies/Rust%20Dependency%20Alerts%20Explanation.md) — cargo-deny vs Dependabot alerts, the helios `serde` pin, and which open alerts it blocks
 - [Required Check Explanation](./docs/CI/Required%20Check%20Explanation.md) — Why every PR's checks funnel into one required `Required` check; [Adding a Check Area How-To](./docs/CI/Adding%20a%20Check%20Area%20How-To.md) to add one
 - [CI Build Cache Explanation](./docs/Rust/CI%20Build%20Cache%20Explanation.md) — The Rust cache keys CI jobs share, what forks them, and the cached Tauri system packages
 - [TypeScript Versions Reference](./docs/TypeScript/Versions%20Reference.md) — Which tool runs on TypeScript 5 (`typescript`) and which on TypeScript 7 (`typescript-7`)

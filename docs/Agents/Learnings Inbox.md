@@ -524,12 +524,6 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Learning**: In Tauri 2.11, `PluginManager.load` (`mobile/ios-api/Sources/Tauri/Tauri.swift`) registers a plugin during setup with no webview and defers `load(webview:)` to `onWebviewCreated`, but `run_mobile_plugin` commands reach the instance before that. Setup work a command depends on, such as `BGTaskScheduler.register`, belongs in the plugin's `@_cdecl("init_plugin_…")` entry point, not `load(webview:)`. Also, iOS calls `BGTask.expirationHandler` on a background queue even when the task was registered `using: .main`, because that queue covers only the launch handler.
 **Suggested destination**: a Tauri plugin How-To, or the background-service fork's `docs/ios.md`
 
-## helios pins `serde` and `serde_json` exactly, which freezes them workspace-wide
-
-**Discovered during**: ruthmarks/rust-security-advisories
-**Learning**: helios (HFS) 0.2.x declares `serde = "=1.0.224"` and `serde_json = "=1.0.144"` in its workspace dependencies, so `cargo update` holds both crates, and every crate that needs a newer one, at a version they accept. That blocked the patched `jsonwebtoken` 10.3+ (needs `serde ^1.0.228`) and `serde_with` 3.21+ (needs `serde_core ^1.0.225`). When `cargo update -p <crate>` reports `Locking 0 packages` with a newer version available, try `--precise <version>` to see which pin blocks it.
-**Suggested destination**: a Rust dependencies How-To
-
 ## `packaging {}` inside a Gradle build type sets it for every variant
 
 **Discovered during**: claude/beautiful-tesla-gcvjkk (Android bundle with no native symbol table)
