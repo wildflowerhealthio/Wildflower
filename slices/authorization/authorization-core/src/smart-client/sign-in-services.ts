@@ -12,6 +12,7 @@
 
 import { HttpClient } from '@effect/platform'
 import {
+  getStorageItem,
   removeStorageItem,
   setStorageItem,
   StorageBlocked,
@@ -132,12 +133,7 @@ const sessionStorageBackedRetainedRequestStore = (
         Effect.mapError(retainedRequestUnusableFrom)
       ),
     read: storageFor('read').pipe(
-      Effect.flatMap((storage) =>
-        Effect.try({
-          try: () => Option.fromNullable(storage.getItem(key)),
-          catch: () => new StorageBlocked({ operation: 'read', key }),
-        })
-      ),
+      Effect.flatMap((storage) => getStorageItem(storage, key)),
       Effect.mapError(retainedRequestUnusableFrom)
     ),
     take: storageFor('read').pipe(
