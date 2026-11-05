@@ -26,7 +26,7 @@ import { decodeFhirBaseUrl, SmartConnection } from './smart-connection.ts'
  */
 const connectionOf = (session: Session): SmartConnection =>
   new SmartConnection({
-    fhirBaseUrl: decodeFhirBaseUrl(session.serverUrl),
+    fhirBaseUrl: decodeFhirBaseUrl(session.smartServer.fhirBaseUrl),
     accessToken: Option.some(session.accessToken),
     launchPatientId: Option.fromNullable(session.patient).pipe(
       Option.filter((patientId) => patientId !== '')

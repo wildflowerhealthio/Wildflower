@@ -115,7 +115,10 @@ const bootApp = async (): Promise<JSX.Element> => {
     // second: the store publishes nothing on a write, because a token response
     // that reported no lifetime has no honest `exp`. See
     // `authStateForSession`.
-    bearerStore.writeSession({ serverUrl: session.serverUrl, bearer: session.accessToken })
+    bearerStore.writeSession({
+      serverUrl: session.smartServer.fhirBaseUrl,
+      bearer: session.accessToken,
+    })
     bearerStore.setAuthState(authStateForSession(session, Math.floor(Date.now() / 1000)))
     // Drop the session back to `Unauthed` when the reported lifetime lapses, so
     // the next authed request redirects to the landing rather than 401-looping.
@@ -153,7 +156,7 @@ const bootApp = async (): Promise<JSX.Element> => {
   // the one the landing is pointed at. The landing redacts any other it signs
   // in to.
   for (const serverUrl of [
-    session?.serverUrl,
+    session?.smartServer.fhirBaseUrl,
     completed.tag === 'Failed' ? completed.problem.serverUrl : undefined,
     arrivingEhrLaunch?.serverUrl,
     chosenServerUrl(window.location.search, window.sessionStorage),

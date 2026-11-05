@@ -178,7 +178,6 @@ const beginSignInAt = (
       serializePendingAuthorization({
         state,
         codeVerifier,
-        serverUrl: smartServer.fhirBaseUrl,
         smartServer,
         tokenEndpoint: endpoints.tokenEndpoint,
         returnTo,
@@ -201,9 +200,10 @@ interface Session {
   readonly accessToken: string
   /** The scopes the Owner actually granted. */
   readonly scope: string
-  /** The server the token was issued by, which requests must go to. */
-  readonly serverUrl: string
-  /** Which kind of server `serverUrl` is, and the FHIR base the token is for. */
+  /**
+   * Which kind of server the token was issued by, and its FHIR base: the
+   * server the token is for, which requests must go to.
+   */
   readonly smartServer: SmartServer
   readonly expiresInSeconds: number | undefined
   /** The patient in context, when the token response named one. */
@@ -320,7 +320,6 @@ const forgetPendingSignIn: Effect.Effect<void, PendingRequestUnusable, RetainedS
 const sessionFrom = (grant: AccessGrant, pending: PendingAuthorization): Session => ({
   accessToken: grant.accessToken,
   scope: grant.scope,
-  serverUrl: pending.serverUrl,
   smartServer: pending.smartServer,
   expiresInSeconds: grant.expiresInSeconds,
   patient: grant.patient,

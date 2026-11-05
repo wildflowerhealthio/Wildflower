@@ -194,7 +194,9 @@ const render = (serverUrl: string | undefined): void => {
   serverTargetUrl.textContent = serverUrl ?? 'None'
   if (choosing) return
   const accessToken =
-    serverUrl !== undefined && session?.serverUrl === serverUrl ? session.accessToken : undefined
+    serverUrl !== undefined && session?.smartServer.fhirBaseUrl === serverUrl
+      ? session.accessToken
+      : undefined
   reference = createApiReference(
     referenceContainer,
     consoleConfiguration(serverUrl, { prefersDarkMode, accessToken })
@@ -227,9 +229,9 @@ const renderAuthControls = (serverUrl: string | undefined): void => {
   signInButton.title = 'Forget the access token this tab is holding'
   const scope = session.scope === '' ? 'no scopes reported' : session.scope
   showStatus(
-    session.serverUrl === serverUrl
-      ? `Signed in to ${session.serverUrl}. Granted: ${scope}.`
-      : `Signed in to ${session.serverUrl}, which is not the server shown — requests go unauthenticated.`
+    session.smartServer.fhirBaseUrl === serverUrl
+      ? `Signed in to ${session.smartServer.fhirBaseUrl}. Granted: ${scope}.`
+      : `Signed in to ${session.smartServer.fhirBaseUrl}, which is not the server shown — requests go unauthenticated.`
   )
 }
 
@@ -274,7 +276,7 @@ const scheduleExpiryNotice = (current: Session): void => {
       render(serverUrl)
       renderAuthControls(serverUrl)
       showStatus(
-        `The access token from ${current.serverUrl} has expired. Sign in again to keep sending authorised requests.`,
+        `The access token from ${current.smartServer.fhirBaseUrl} has expired. Sign in again to keep sending authorised requests.`,
         'problem'
       )
     },
@@ -311,12 +313,9 @@ const startSigningIn = (serverUrl: string, launch?: string): void => {
   changeServerButton.disabled = true
   showStatus(`Asking ${serverUrl} how to sign in…`)
   // The console is one page, so there is nowhere in particular to return to.
-  runSignInEffect(
-    beginSignIn(serverUrl, signInRegistration, { launch }),
-    (authorizationUrl) => {
-      window.location.assign(authorizationUrl)
-    }
-  )
+  runSignInEffect(beginSignIn(serverUrl, signInRegistration, { launch }), (authorizationUrl) => {
+    window.location.assign(authorizationUrl)
+  })
 }
 
 /**
@@ -509,7 +508,7 @@ runSignInEffect(
     }
     session = result.value
     scheduleExpiryNotice(result.value)
-    applyServerUrl(result.value.serverUrl)
+    applyServerUrl(result.value.smartServer.fhirBaseUrl)
   },
   (error) => {
     if (!returningFromAuthorization) return

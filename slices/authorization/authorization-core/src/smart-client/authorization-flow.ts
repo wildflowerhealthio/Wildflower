@@ -58,10 +58,10 @@ class TokenExchangeFailed extends Data.TaggedError('TokenExchangeFailed')<{
 const PendingAuthorization = Schema.Struct({
   state: Schema.NonEmptyString,
   codeVerifier: Schema.NonEmptyString,
-  serverUrl: Schema.NonEmptyString,
   /**
-   * The kind of server discovery found at `serverUrl`, and its FHIR base: the
-   * return leg hands it to the `Session`, since only the outbound leg asked.
+   * The kind of server discovery found where the sign-in started, and its
+   * FHIR base: the return leg hands it to the `Session`, since only the
+   * outbound leg asked.
    */
   smartServer: SmartServer,
   tokenEndpoint: Schema.NonEmptyString,

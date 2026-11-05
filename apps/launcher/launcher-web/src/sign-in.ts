@@ -291,7 +291,7 @@ const pendingServerUrl: Effect.Effect<string | undefined, never, RetainedSignInR
     Effect.map((stored) =>
       stored.pipe(
         Option.flatMap(parsePendingAuthorization),
-        Option.map((pending) => pending.serverUrl),
+        Option.map((pending) => pending.smartServer.fhirBaseUrl),
         Option.getOrUndefined
       )
     ),

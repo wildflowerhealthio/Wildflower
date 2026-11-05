@@ -183,7 +183,7 @@ const pendingServerUrl: Effect.Effect<string | undefined, never, RetainedSignInR
     Effect.map((stored) =>
       stored.pipe(
         Option.flatMap(parsePendingAuthorization),
-        Option.map((pending) => pending.serverUrl),
+        Option.map((pending) => pending.smartServer.fhirBaseUrl),
         Option.getOrUndefined
       )
     ),
@@ -198,9 +198,9 @@ const serverSessionFor = (
   DiscoveryFailed | NotAWildflowerServer,
   HttpClient.HttpClient | SignInPage
 > =>
-  discoverAuthorizationApi(session.serverUrl).pipe(
+  discoverAuthorizationApi(session.smartServer.fhirBaseUrl).pipe(
     Effect.map((authorizationApiUrl) => ({
-      serverUrl: session.serverUrl,
+      serverUrl: session.smartServer.fhirBaseUrl,
       authorizationApiUrl,
       accessToken: session.accessToken,
       returnTo: session.returnTo,
