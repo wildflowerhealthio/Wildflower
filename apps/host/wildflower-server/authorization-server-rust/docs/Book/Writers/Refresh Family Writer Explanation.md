@@ -24,14 +24,14 @@ The rotation tests validate their tokens with the [refresh-family fixture](<Test
 
 #### `start_family`
 
-**A family comes only with `offline_access`**: the token exchange asks the redemption's [`is_refresh_token_earned`](<../Authority/Redemption Explanation.md#item-GrantRedemption--is_refresh_token_earned>) first, and the writer itself doesn't ask. The family's deadline is [`REFRESH_TOKEN_FAMILY_TTL`](<../Domain/Refresh Token Explanation.md#item-REFRESH_TOKEN_FAMILY_TTL>) from now, and rotation never extends it.
+**A family comes only with `offline_access`**: the token exchange asks the redemption's [`is_refresh_token_earned`](<../Authority/Redemption Explanation.md#item-GrantRedemption--is_refresh_token_earned>) first, and the writer itself doesn't ask. The family's deadline is its app's [refresh policy](<../Domain/Client Explanation.md#item-RefreshPolicy>) applied from now: the earliest of its limits and the [ceiling](<../Domain/Refresh Token Explanation.md#item-REFRESH_TOKEN_FAMILY_CEILING>).
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs RefreshFamilyWriter::start_family tests="tests::only_offline_access_earns_a_refresh_token tests::start_family_records_the_redemption"}}
 
 #### `rotate`
 
-The consume is the single-use claim ([`consume_refresh_token`](<../Domain/Refresh Token Explanation.md#item-consume_refresh_token>)).
+The consume is the single-use claim ([`consume_refresh_token`](<../Domain/Refresh Token Explanation.md#item-consume_refresh_token>)). A won consume moves the family's deadline to where the app's policy, as validated, puts it from the rotation.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs RefreshFamilyWriter::rotate tests="tests::rotate_consumes_then_replay_expires_the_family tests::rotate_marks_the_family_s_browser_session_seen tests::rotate_stamps_the_device_grant_that_earned_the_family"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs RefreshFamilyWriter::rotate tests="tests::rotate_consumes_then_replay_expires_the_family tests::rotate_marks_the_family_s_browser_session_seen tests::rotate_stamps_the_device_grant_that_earned_the_family tests::rotate_moves_the_deadline_by_the_client_s_policy"}}
 
 End to end, the [Device Code](<../Integration Tests/Device Code Explanation.md>) and [Client Auth](<../Integration Tests/Client Auth Explanation.md>) tests hold rotation at `/oauth/token`, and that a device approval's grant is linked to the family it earns.
