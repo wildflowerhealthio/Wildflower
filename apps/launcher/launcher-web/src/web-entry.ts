@@ -1,5 +1,7 @@
 import {
   arrivingSmartLaunchFrom,
+  BrowserSignIn,
+  type DiscoveryWindow,
   normalizeServerUrl,
   searchWithoutAuthorizationResponse,
   searchWithServerUrl,
@@ -12,6 +14,7 @@ import {
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import { Option } from 'effect'
 
+import type { ManageAccessSource } from './session/manage-access-settings-item.ts'
 import type { EhrLaunch } from './sign-in.ts'
 
 /**
@@ -125,10 +128,23 @@ const logoutSettingsItem = (
     },
   })
 
+/**
+ * Where the settings screen's "Manage access" row reads from: the server
+ * `bearerStore` signed in to, and discovery wired to `page`.
+ */
+const manageAccessSource = (
+  page: DiscoveryWindow,
+  bearerStore: Pick<BearerAuthStateStore, 'serverUrl'>
+): ManageAccessSource => ({
+  serverUrl: () => bearerStore.serverUrl(),
+  discovery: BrowserSignIn.discoveryLayerFromWindow(page),
+})
+
 export {
   chosenServerUrl,
   ehrLaunchIn,
   logoutSettingsItem,
+  manageAccessSource,
   searchAfterReturnLeg,
   SIGNED_IN_SERVER_KEY,
   underBasepath,

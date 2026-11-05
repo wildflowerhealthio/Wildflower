@@ -49,7 +49,7 @@ export { arrivingSmartLaunchFrom, SMART_LAUNCH_PARAMS } from './arriving-launch.
 export type { ArrivingSmartLaunch } from './arriving-launch.ts'
 
 export { BrowserSignIn } from './browser-sign-in.ts'
-export type { SignInWindow } from './browser-sign-in.ts'
+export type { DiscoveryWindow, SignInWindow } from './browser-sign-in.ts'
 
 export {
   memoryBackedRetainedRequestStore,
