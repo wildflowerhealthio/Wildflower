@@ -132,7 +132,7 @@ codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
   takes a write client.
 - **Records arrive detached.** Each kind detaches or writes its own records,
   so nothing here, the sections and the import stage included, carries a
-  system family.
+  source base URL or system.
 - **Per-URL, not per-archive.** Recognition against `fhirPool` is per response
   (highest specificity wins), so a mixed source file extracts every recognized
   URL, and every record from one URL lands in that URL's one section.

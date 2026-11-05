@@ -25,9 +25,10 @@ persistence, HAR, files, or apps.
 - **`fhir-r4-adoption`** — the FHIR R4 side of extraction, above `fhir-r4`:
   `DetachedResource`, the shape every response kind yields (no id, keyed by
   its first identifier, its references logical) and how a kind writes one;
-  `detach(family)`, which takes a server's record (its ids and literal
-  references as the server spelled them) to a detached one, for the kinds
-  whose responses are a server's; and `adopt`, which stores a detached record
+  `DetachedResource.fromServerRecord(baseUrl)`, which takes a FHIR server's
+  record (its ids and literal references as the server spelled them) to a
+  detached one keyed in `<baseUrl>/<Type>`, for the kinds whose responses are
+  a FHIR server's; and `adopt`, which stores a detached record
   under the id its key derives, or a minted one when it has no key. See its
   [AGENTS.md](./fhir-r4-adoption/AGENTS.md).
 - **`fhir-r4-source`** — the first per-source package: `fhirR4Source`, a

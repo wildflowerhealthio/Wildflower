@@ -19,8 +19,13 @@ rather than a copy, and what it writes is what the response kinds read.
   `https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?…`
   → R4 `MedicationRequest` + `MedicationDispense` resources.
 - `src/tunnel-url.ts` — the tunnel's URLs: `REXALL_PROFILE_URL`,
-  `REXALL_STU3_BASE_URL` (the root of every searchset `fullUrl`) and
-  `medicationListUrlOf`, the prescriptions-page searchset URL for an account.
+  `REXALL_STU3_BASE_URL` (the root of every searchset `fullUrl`, and the base
+  carebook's records are keyed under, `<base>/<Type>`),
+  `REXALL_STU3_PATIENT_SYSTEM` (`<base>/Patient`, the system carebook's
+  Patients are keyed in: the list is fetched with
+  `subject=Patient/<profileUid>`, so carebook's Patient id is the profile's
+  `uid`) and `medicationListUrlOf`, the prescriptions-page searchset URL for
+  an account.
   Both response kinds build their matchers from these, through
   `tunnelGetMatcher` (no known verb but `GET` — the SPA's CORS preflight
   `OPTIONS` to the same URL is not claimed, while the Recorder's `UNKNOWN`
@@ -42,17 +47,17 @@ rather than a copy, and what it writes is what the response kinds read.
 - `src/bundle.ts` — the carebook STU3 searchset Bundle schemas. `MedicationBundle`
   and `MedicationResource` are exported, for a producer to type its searchset as
   `typeof MedicationBundle.Encoded`.
-- `src/source-system.ts` — `REXALL_CAREBOOK_SYSTEM`, the Wildflower-minted
-  `sid` URI every carebook id belongs to, whatever the type. Carebook writes no identifier of its own
-  for a resource's id (its `medicationrequest-external-id` is another number),
-  so a record's key is its carebook id in this system.
 - `src/response-kinds.ts` — `rexallBeWellResponseKinds` (internal): the kinds,
   as `HttpResponseKind<DetachedResource.Type>`, stable by identity at module
-  scope. The profile kind writes its Patient detached, keyed by its `uid` in
-  `REXALL_CAREBOOK_SYSTEM`; the medication-list kind's searchset is carebook's
-  own server response, so it detaches each promoted medication
-  (`fhir-r4-adoption`'s `detach`, `FixedAcrossResourceTypes` over
-  `REXALL_CAREBOOK_SYSTEM`).
+  scope. Carebook is a FHIR server rooted at `REXALL_STU3_BASE_URL`. The
+  profile kind writes its Patient detached, keyed by its `uid` in
+  `REXALL_STU3_PATIENT_SYSTEM`; the medication-list kind's searchset is
+  carebook's own server response, so it detaches each promoted medication
+  with `fhir-r4-adoption`'s
+  `DetachedResource.fromServerRecord(REXALL_STU3_BASE_URL)`: a
+  `MedicationRequest` keyed in `<base>/MedicationRequest`, its
+  `Patient/<uid>` subject naming the profile's Patient by key. Carebook's own
+  `medicationrequest-external-id` identifiers stay behind the key.
 - `src/source.ts` — `rexallBeWellSource`, the package's primary export.
 - `src/fixtures/` — anonymized `web-trace` capture fixtures the bundle,
   promotion, and response-kind suites decode against (`prescriptions-searchset.json`,
@@ -323,8 +328,8 @@ Observed, not acted on — worth knowing before trusting a field:
 
 - A `MedicationRequest` and its `MedicationDispense` **share the same `id`** and
   the same identifier pair. Anything keying on id alone rather than
-  (resourceType, id) collapses the two — which is why a record's stored id
-  derives from its type as well as its key.
+  (resourceType, id) collapses the two; detached, each is keyed in its own
+  type's system, `<base>/MedicationRequest` and `<base>/MedicationDispense`.
 - `authorizingPrescription[].reference` does **not** resolve to any bundle
   entry (it names a `PrescriptionOrder` carebook does not serve); the working
   link is `identifier.value`, the request's id. The two entries are the same
@@ -341,8 +346,9 @@ Observed, not acted on — worth knowing before trusting a field:
   left in `note` for now.
 - A request's `requester` can be a literal `Practitioner/<id>` to a
   practitioner carebook does not serve. It detaches to the logical reference by
-  that id's key, and since no record of the import holds that key it stays
-  logical: the importer's identity map offers it as a provider to link.
+  that id's key in `<base>/Practitioner`, and since no record of the import
+  holds that key it stays logical: the importer's identity map offers it as a
+  provider to link.
 - `requester.agent.reference` and `subject.display` arrive as empty strings
   where the field should simply be absent.
 

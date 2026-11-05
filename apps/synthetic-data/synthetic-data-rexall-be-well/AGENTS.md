@@ -19,7 +19,7 @@ The root entry exports `RexallHar`, the `RexallAccount` type and
   location id, and the `StoryDay`s the account was created and last updated.
   `rexallPatientReferenceOf` is the reference to the Patient the Rexall
   import makes of the profile (`fhir-r4-adoption`'s `adoptedReferenceOf`
-  under `REXALL_CAREBOOK_SYSTEM`), for a result from another source to be
+  under `REXALL_STU3_PATIENT_SYSTEM`), for a result from another source to be
   filed on.
 - `src/carebook-profile.ts` — `profileOf`: the `…/enduser/profile/v2/me` body
   as a `typeof CarebookProfile.Encoded`, from the story's `Person` and the

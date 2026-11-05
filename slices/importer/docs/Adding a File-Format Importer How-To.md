@@ -73,14 +73,17 @@ const decodeMyFormat = (
 ```
 
 Write each resource detached (`fhir-r4-adoption`'s `DetachedResource`): no
-`id`, keyed by a source id made from what the file says about it as its
-`identifier[0]` (`DetachedResource.keyIdentifierWire`) in your format's own
-Wildflower-minted `sid` URI, as LifeLabs and DICOM do, and linked to your other
-resources by logical reference by their key
-(`DetachedResource.logicalReferenceWire`). Decode each wire with
-`DetachedResource.decodeUnknown(<Type>.Schema)`, which fails a wire that
-carries an `id`. A section carries no system family: everything the import
-stage needs is on the records. An entry's `fullUrl` is its identity within the
+`id`, keyed by its `identifier[0]` (`DetachedResource.keyIdentifierWire`), and
+linked to your other resources by logical reference by their key
+(`DetachedResource.logicalReferenceWire`). Key a record by a real identifier
+the file prints, in that identifier's own system (LifeLabs keys a report by
+its `Lab No`, a Patient by its `Patient ID` or health card number); where the
+file prints none for a record that must be referenced, use a Wildflower-minted
+system with a readable value made of what it does print (LifeLabs' result rows
+and providers), never a digest. A record nothing references may stay keyless.
+Decode each wire with `DetachedResource.decodeUnknown(<Type>.Schema)`, which
+fails a wire that carries an `id`. A section carries no source base URL or
+system: everything the import stage needs is on the records. An entry's `fullUrl` is its identity within the
 set, as in a FHIR transaction bundle, and must be stable across a settings
 re-decode. The import stage titles every row by the reference it will be
 written under (`DecodedFileSet.writtenReferenceTitle`), and makes every `wf-`

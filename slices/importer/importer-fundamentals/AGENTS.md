@@ -93,7 +93,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   in a transaction, what the review tracks a choice by) and its record **detached** (`fhir-r4-adoption`'s `DetachedResource`: no
   id, keyed by its first identifier, naming every other decoded record by a
   logical reference). A decoder writes or detaches its own records, so a
-  section carries no system family. It is a
+  section carries no source base URL or system. It is a
   separate type from `DecodedFile.Section`, the same records adopted: the two
   hold different records, and every reader of a decoded file reads
   `resources` off it. The "Source file(s)" section is the import stage's own,

@@ -51,13 +51,20 @@ that hands back a hand-written positioned-text document.
   standard resources. `to-fhir.ts` (`toFhirResources`) is the orchestrator:
   it validates each wire object through the `fhir-r4` schema decoders and
   emits `Patient`, `Practitioner`, `DiagnosticReport`, and `Observation`
-  resources with deterministic ids (FNV-1a 64-bit hashes of length-prefixed
-  identity components), grouped as one `ReportResources` per report — a
-  `Patient` or `Practitioner` several reports share is minted once, in the
-  group of the first report naming it, so flattening the groups in order
-  writes every reference target before its referrer. The per-resource wire builders live in `wire/`:
+  resources detached, each keyed by a real identifier the report prints
+  (see `source-system.ts`), grouped as one `ReportResources` per report — a
+  `Patient` or `Practitioner` several reports share (one key) is minted once,
+  in the group of the first report naming it, so flattening the groups in
+  order writes every reference target before its referrer. The keys:
+  the Patient's printed `Patient ID`, else its health card number as printed,
+  else `<name>, <date of birth>` as printed (`patientKeyOf`, the other printed
+  identifiers behind the key); the `DiagnosticReport`'s `Lab No`, keyless
+  when the report prints none (`reportKeyOf`); a result row's
+  `<Lab No>/<section>/<test name>/<ordinal>` (`observationKeyOf`); a
+  provider's printed name, inner whitespace collapsed (`practitionerKeyOf`).
+  The per-resource wire builders live in `wire/`:
   `wire/patient.ts`, `wire/practitioner.ts`, `wire/observation.ts`,
-  `wire/diagnostic-report.ts`, with shared helpers (`sourceId`, `timingWire`,
+  `wire/diagnostic-report.ts`, with shared helpers (`timingWire`,
   `reportStatus`, `performerWire`, `quantityWire`) in `wire/shared.ts`.
   Supporting modules: `dates.ts` (printed timestamps to FHIR `date` /
   `dateTime`), `reference-range.ts` (printed reference range to bounds),
@@ -67,10 +74,12 @@ that hands back a hand-written positioned-text document.
   `Quantity.system` / `Quantity.code` beside the printed spelling; a spelling
   not in the table is carried as `unit` alone rather than guessing a code).
 - `src/source-system.ts` — **`LIFELABS_SYSTEM`** and
-  **`LifeLabsIdentifierSystem`**: the source-system URI and the identifier
-  systems the synthesis writes beside the report's own numbers. A leaf module
-  so the importer, the response kind, and the FHIR synthesis import it
-  without a cycle.
+  **`LifeLabsIdentifierSystem`**: the source file's coding system, and the
+  identifier systems the synthesis keys its records in — the printed
+  `Lab No`, `Patient ID` and Ontario health card number, and the
+  Wildflower-minted name-and-birth-date, result and practitioner-name
+  systems for what the report prints no number for. A leaf module so the
+  importer and the FHIR synthesis import it without a cycle.
 - `src/decode.ts` — **`decodeLifeLabsPdf`** (the `decodeFileSet` the format's
   importer lifts into its batch `decode`) and **`decodeLifeLabsPdfDocument`** (the pure
   "document ↦ sections" leg tests drive directly).
@@ -89,10 +98,11 @@ that hands back a hand-written positioned-text document.
   exported as the `/synthesis` subpath: the `Report` model's types,
   `toFhirResources`, **`decodedReportsOf`**
   (the reports as the decode yields them: the synthesis, its records written
-  detached and keyed in `LIFELABS_SYSTEM`, one section per
+  detached and keyed by what the report prints, one section per
   report titled by **`reportSectionTitle`** (the report's `Lab No` and date
   of service, `'LifeLabs report'` when both are masked), each entry's
-  `fullUrl` `<Type>/<source id>`, and no notes)
+  `fullUrl` `<Type>/<key value>` (`<Type>#<index>` for a keyless report),
+  and no notes)
   and the
   `ReportResources` / `SynthesisOptions` types, none of which requires an
   extractor. For callers that build reports themselves
@@ -147,11 +157,10 @@ A `-core`: pure, `lib: ["es2024"]` with no DOM, and no adapter among its
 dependencies, directly or through other packages. Depends on
 `positioned-text` (the positioned-text schema, the neutral seam between
 extraction and the dialect, and the `PositionedTextExtractor` service the
-decode requires), `fhir-r4` (resource schemas, `joinIdComponents`,
-`localResourceId`), `fhir-r4-adoption` (`DetachedResource`),
+decode requires), `fhir-r4` (resource schemas), `fhir-r4-adoption` (`DetachedResource`),
 `importer-fundamentals` (`DecodeFunction.make`, `DecodedFileSet`, `PickedFile`),
 `kitchen-sink`
-(`fnv1a64` for deterministic id hashing, `numRunsFor` in tests), and `effect`
+(`checkTimeZone`, `numRunsFor` in tests), and `effect`
 (peer; `Report.tryFromDocument` returns an `Effect`). `fast-check` is a
 test-only `devDependency`, reached only from the `*-arbitrary.ts` modules,
 and must stay out of the production bundle. Never imports `har-importer-core`,
@@ -169,9 +178,15 @@ and must stay out of the production bundle. Never imports `har-importer-core`,
   would drop them silently.
 - **A masked field is absent, not invented.** The anonymizer's `Xxx 00 0000`
   reads as no date of birth; a masked lab number that repeats is told apart by
-  the page footer (each report starts at its own `Page 1 of N`). Reports that
-  share a lab number and date of service stay separate reports, never merged:
-  the later ones' ids add their repeat count (`reportOriginalId`).
+  the page footer (each report starts at its own `Page 1 of N`), so reports
+  that share a lab number stay separate reports in the parse.
+- **A key is a real identifier, never a digest.** Two reports printing one
+  `Lab No` (a masked export) are one key: their `DiagnosticReport`s, and the
+  rows at the same ordinal under the same section and test name, are stored
+  as one record. That collision is accepted.
+- **Every key is persisted wire format.** The id a record is stored under
+  derives from its key, so changing a system or how a value is spelled
+  re-keys every LifeLabs record of that type already imported.
 
 ## References
 

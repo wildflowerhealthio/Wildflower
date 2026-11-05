@@ -116,33 +116,35 @@ format's) writes them detached directly, keyed in its own system:
 and `DetachedResource.decodeUnknown(schema)` decodes the wire as a detached
 record, failing one that carries an `id`. Shoppers keys each type in the
 portal's own namespace for it (`patient-id`, `prescription-id`,
-`dispense-id`); Rexall's profile, LifeLabs and DICOM key every type in one
-Wildflower-minted system (`REXALL_CAREBOOK_SYSTEM`, `LIFELABS_SYSTEM`,
-`DICOM_SYSTEM`).
+`dispense-id`); Rexall's profile keys its Patient by the profile `uid` in
+carebook's Patient system, `<REXALL_STU3_BASE_URL>/Patient`, the key
+carebook's searchset names it by. LifeLabs keys each record by a real
+identifier in a specific system, never a digest (`LifeLabsIdentifierSystem`):
+the Patient by its `Patient ID`, else its health card number, else its name
+and date of birth; the `DiagnosticReport` by its `Lab No`, keyless when it
+prints none; each result row and each provider in a Wildflower-minted system
+over the printed facts. Where a record has no printed identifier but must be
+referenced, the system is a fictitious Wildflower one with a readable value,
+and the collisions that brings (two reports printing one `Lab No`) are
+accepted: such records are one key. DICOM keys every type in its one
+Wildflower-minted system (`DICOM_SYSTEM`).
 
 ## Detaching a server's record
 
-Only a record that really was a server's, with that server's ids and literal
-references, is detached, with `detach(family)`, where the **system family**
-(`SystemFamily`) says which namespace the server's ids belong to for each
-type, two kinds:
-
-- **Fixed across resource types** (`FixedAcrossResourceTypes { system }`):
-  the one system whatever the type. Carebook's searchset, under
-  `REXALL_CAREBOOK_SYSTEM`: carebook publishes no namespace of its own for
-  its ids.
-- **FHIR style** (`FhirStyleBaseUrl { baseUrl }`): the type appended to a
-  base URL, `<baseUrl>/<Type>` (`https://example.com/fhir/Patient`), since a
-  FHIR server's ids are unique per type. The server may also spell a
-  reference to its own record absolutely, `<baseUrl>/Type/id`, which
-  `SystemFamily.relativise` reads as the relative `Type/id`.
-
-`SystemFamily.systemFor(family, Type)` is the system a family gives `Type`.
-`detach(family)` turns one resource into a detached one:
+Only a record that really was a FHIR server's, with that server's ids and
+literal references, is detached, with
+`DetachedResource.fromServerRecord(baseUrl)`: the server's id becomes the key
+identifier in `<baseUrl>/<Type>` (`https://example.com/fhir/Patient`), since a
+FHIR server's ids are unique per type, and references to the server's own
+records become logical. The server may also spell a reference to its own
+record absolutely, `<baseUrl>/Type/id`, which reads as the relative
+`Type/id`. Carebook is such a server, rooted at its STU3 base
+`REXALL_STU3_BASE_URL`. `fromServerRecord(baseUrl)` turns one resource into a
+detached one of the same type:
 
 1. **Drops the `id`.**
 2. **Keys it by that id.** When the `id` was set and the type has an
-   `identifier` element, `{ system: systemFor(family, Type), value: id }` is
+   `identifier` element, `{ system: <baseUrl>/<Type>, value: id }` is
    prepended as `identifier[0]`. Every identifier the source already wrote is
    kept behind it. There is deliberately no "already keyed?" guard: a source
    that publishes its own ids as identifiers in the same system yields a
@@ -154,23 +156,19 @@ type, two kinds:
 
 ### The detach reference rule
 
-A reference's target is named in the system the family gives **its own
-type**, not the referring record's: a FHIR server's `Observation.subject` of
-`Patient/abc` names `(<baseUrl>/Patient, Patient, abc)`. For one `Reference`:
+A reference's target is named in the system of **its own type**, not the
+referring record's: a FHIR server's `Observation.subject` of `Patient/abc`
+names `(<baseUrl>/Patient, Patient, abc)`. For one `Reference`:
 
 ```text
 reference.reference is null                                        → unchanged
-relativise(family)(reference.reference) does not match
+the literal, less a leading `<baseUrl>/`, does not match
   `^[A-Za-z]+/[A-Za-z0-9\-.]{1,64}$`                               → unchanged
 the type token is not an R4 resource type                          → unchanged
 otherwise → reference  := null
             type       := Type
-            identifier := { system: systemFor(family, Type), value: id }
+            identifier := { system: <baseUrl>/<Type>, value: id }
 ```
-
-Under FHIR-style systems, `relativise` reads a literal under `<baseUrl>/` as
-the rest of it, so a server's absolute `<baseUrl>/Type/id` detaches exactly as
-its `Type/id`. Under the other families it reads every literal as it is.
 
 The grammar and type checks are what leave alone, and an unchanged reference
 keeps its original spelling, absolute or relative, its `identifier` included:
@@ -199,7 +197,7 @@ stays on the request.
 ## Adopting a detached resource
 
 The import stage stores each detached record with `adopt`, which takes no
-system family: everything it needs is on the records.
+base URL or system: everything it needs is on the records.
 
 - **A keyed record** is stored under
   `localResourceId(key.system, resourceType, key.value)`: the derivation
@@ -233,7 +231,7 @@ cannot name it by a key, so it stays logical too.
 
 `originalIdOf(system, resource)` reads the source's id back off a stored
 resource: the value of its identifier in `system` (`<baseUrl>/<Type>` for a
-FHIR-style source, not the base). Anything that needs the source's id after
+FHIR server's record, not the base). Anything that needs the source's id after
 import (to build a source-server URL, say) reads it there, never off
 `resource.id`. `adoptedReferenceOf(system, Type, id)` is the literal
 reference the import stores the record with that key under, in `adopt`'s own
@@ -244,8 +242,8 @@ resource on it.
 
 ### Reference field table
 
-`detach` and `adopt` walk a resource's references through one per-type table,
-`mapReferences`:
+`fromServerRecord` and `adopt` walk a resource's references through one
+per-type table, `mapReferences`:
 
 | Resource             | Fields walked                                                                                                                                                                                                                                                                                                                                                             |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -272,7 +270,8 @@ The list is explicit rather than a structural walk, so what gets rewritten is
 readable and reviewable. `adopt-resource.test.ts` guards it from both sides:
 
 - It diffs the _complement_ of this table on generated resources, through
-  both `detach` and `adopt`, so a field touched **outside** it fails.
+  both `fromServerRecord` and `adopt`, so a field touched **outside** it
+  fails.
 - It walks each resource schema's own AST for every path that declares a
   `Reference`, and asserts that set is exactly the walked paths. So a
   `Reference` field missing from **both** the implementation and the table fails
@@ -307,23 +306,24 @@ different variant would compile. That is stated on the function.
 ## Where a record becomes detached
 
 Every response kind yields detached records, so a record is detached inside
-the decoder that read it, and nothing downstream carries a system family:
+the decoder that read it, and nothing downstream carries a source's base URL
+or systems:
 
 - **HAR sources.** The source packages' kinds are
   `HttpResponseKind<DetachedResource.Type>`; `har-importer-core`'s preview
   routes and parses, and holds what the kind yields.
-  - **FHIR** — `fhir-r4-source`'s kinds detach in `parse`
-    (`detachUnderFhirRoot`), under `FhirStyleBaseUrl` of the root the kind's
-    own `UrlMatch` captures off the response's URL, so a record keys in
-    `<baseUrl>/<Type>` of the URL it arrived on.
-  - **Rexall** — the medication-list kind detaches carebook's searchset under
-    `FixedAcrossResourceTypes { system: REXALL_CAREBOOK_SYSTEM }`; the profile
-    kind writes its Patient detached.
+  - **FHIR** — `fhir-r4-source`'s kinds are `FhirServerResponseKind.make`
+    declarations, whose `parse` detaches each record under the root the
+    kind's own `UrlMatch` captures off the response's URL, so a record keys
+    in `<baseUrl>/<Type>` of the URL it arrived on.
+  - **Rexall** — the medication-list kind detaches carebook's searchset from
+    `REXALL_STU3_BASE_URL`; the profile kind writes its Patient detached in
+    `REXALL_STU3_PATIENT_SYSTEM`, the system the searchset's subjects name.
   - **Shoppers** — every kind writes its records detached, in the portal's
     own systems (`ShoppersIdentifierSystem`).
 - **File formats.** `lifelabs-pdf-importer-core` and `dicom-importer-core`
-  synthesize their records detached, keyed by ids made from what the file
-  prints and naming one another by logical reference.
+  synthesize their records detached, keyed by what the file prints and naming
+  one another by logical reference.
 
 `importer-core`'s import stage then adopts every record of a file set
 (`DecodedFileSet.adopt`), knowing nothing of any source.

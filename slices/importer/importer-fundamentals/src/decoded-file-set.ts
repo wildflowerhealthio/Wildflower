@@ -41,8 +41,9 @@ interface Entry {
  * @remarks
  * A decoder builds one per batch it reads: LifeLabs one per report, DICOM one
  * per study, the HAR importer one per response URL. Each decoder writes or
- * detaches its records itself, so a section carries no system family:
- * everything the import stage needs to adopt a record is on the record.
+ * detaches its records itself, so a section carries no source base URL or
+ * system: everything the import stage needs to adopt a record is on the
+ * record.
  *
  * A separate type from `DecodedFile.Section`, the same records adopted: the
  * two differ in what their records are, and every reader of a decoded file

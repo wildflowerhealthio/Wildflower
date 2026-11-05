@@ -26,26 +26,19 @@ vocabulary) stays FHIR-free and below it.
   record detached: `keyIdentifierWire(key)` for its `identifier[0]`,
   `logicalReferenceWire(Type, key)` for a reference to another record, and
   `decodeUnknown(schema)` to decode that wire as a detached record, failing
-  one that carries an `id`.
-- `src/system-family.ts` — `SystemFamily`, the identifier systems a server's
-  ids belong to, for `detach`: `FixedAcrossResourceTypes { system }` (one
-  system whatever the type, carebook's) or `FhirStyleBaseUrl { baseUrl }`
-  (the type appended to a FHIR server's root, `<baseUrl>/Patient`).
-  `systemFor(family, Type)` is the system it gives `Type`; `relativise(family)`
-  reads a FHIR server's absolute spelling of its own record, `<baseUrl>/Type/id`,
-  back to the relative `Type/id`.
-- `src/adopt-resource.ts` — the per-type reference table (`mapReferences`,
-  the one place a resource's references are walked) and the two directions
-  through it. `detach(family)`, for a kind whose response is a server's
-  records, drops a resource's `id`, prepends
-  `{ system: SystemFamily.systemFor(family, Type), value: id }` as
-  `identifier[0]` when it had one and the type has an `identifier` element,
-  and turns each reference whose literal relativises
-  (`SystemFamily.relativise`) to a `Type/id` of an R4 resource type
-  (`fhir-r4`'s `ResourceType`) into the logical reference to its target by
-  key, replacing any identifier the source had put on it; any other reference
+  one that carries an `id`. How a kind whose response is a FHIR server's
+  records detaches one: `fromServerRecord(baseUrl)` drops its `id`, prepends
+  `{ system: <baseUrl>/<Type>, value: id }` as `identifier[0]` when it had one
+  and the type has an `identifier` element, and turns each reference whose
+  literal is a `Type/id` of an R4 resource type (`fhir-r4`'s `ResourceType`),
+  relative or under `<baseUrl>/`, into the logical reference to its target by
+  key, replacing any identifier the server had put on it; any other reference
   (a non-R4 token like carebook's `PrescriptionOrder` included) keeps its
-  spelling and identifier. `adopt({ storedReferences, mintId })` stores a
+  spelling and identifier. It keeps the resource's own type.
+- `src/reference-table.ts` — the per-type reference table (`mapReferences`,
+  the one place a resource's references are walked), which
+  `fromServerRecord` and `adopt` both rewrite through.
+- `src/adopt-resource.ts` — `adopt({ storedReferences, mintId })` stores a
   keyed record under `localResourceId(key.system, Type, key.value)` and a
   keyless one under `mintId()` (`randomResourceId`, a UUID, outside tests),
   and resolves a logical reference to its target's stored reference when that
@@ -54,25 +47,27 @@ vocabulary) stays FHIR-free and below it.
   map. `adoptedReferenceOf(system, Type, id)` is the literal reference the
   import stores the record with that key under, for a resource written
   outside that source; `originalIdOf(system, resource)` reads the value of a
-  resource's identifier in `system`.
+  resource's identifier in `system` (`<baseUrl>/<Type>` for a FHIR server's
+  record).
 
 ## Layering
 
 Pure: no DOM, no `fs`, no React. Depends on `fhir-r4` and `effect`. Every
 decoder writes its records with it: the source packages' response kinds
-(`fhir-r4-source` and Rexall's medication list detaching a server's records,
-the rest writing them detached) and the file importers
+(`fhir-r4-source` and Rexall's medication list detaching a FHIR server's
+records, the rest writing them detached) and the file importers
 (`dicom-importer-core`, `lifelabs-pdf-importer-core`).
 `importer-fundamentals`' `DecodedFileSet.adopt` adopts with it, and the
 synthetic-data generators spell references with it. It must never import from
 `slices/importer` or `http-extraction-fundamentals`. Nothing on the import side
-takes a `SystemFamily`: `adopt` reads everything off the records.
+takes a base URL or a system: `adopt` reads everything off the records.
 
 ## Traps
 
 - **Every derived id is persisted wire format.** Ids come from `fhir-r4`'s
-  `localResourceId` over a record's key, so changing the system a family gives
-  a type re-keys every record of that type from that source.
+  `localResourceId` over a record's key, so changing the system a source keys
+  a type in (a FHIR server's base URL included) re-keys every record of that
+  type from that source.
 - **A keyless record gets a fresh id on every import.** Nothing names it, so a
   re-import is a second record, and a reference to it stays logical.
 - **A logical reference only resolves against its batch.** One naming a record
@@ -80,7 +75,8 @@ takes a `SystemFamily`: `adopt` reads everything off the records.
   the id it would derive, and the identity map resolves it against what the
   device holds.
 - **Each `mapReferences` row maps a variant to itself by construction, not by
-  the type system.** A row returning a different variant would compile.
+  the type system.** A row returning a different variant would compile, and
+  `fromServerRecord`'s one cast back to the resource's own type would lie.
 
 ## References
 
