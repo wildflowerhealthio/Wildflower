@@ -15,7 +15,7 @@ whose `responseKinds` an archive import (`har-importer-core`) extracts with. It 
   `Observation`s of a searchset `Bundle`, dropping-and-counting entries that
   carry no resource.
 - `src/fhir-server-response-kind.ts` — `FhirServerResponseKind.make({ name,
-  url, records })`, the one way a kind here is built: it declares its
+  url, readRecords })`, the one way a kind here is built: it declares its
   `UrlMatch.UrlMatcher` and how it reads the server's records off a body.
   `tryRecognize` is a `PROTOCOL`-tier claim on whatever the matcher claims;
   `parse` is one linear `Effect`: the root the same matcher yields for the
