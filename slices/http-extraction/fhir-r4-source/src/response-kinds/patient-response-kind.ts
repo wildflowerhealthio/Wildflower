@@ -1,7 +1,7 @@
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { type HttpResponseKind, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { Array as Arr, Effect, flow, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import * as FhirServerResponseKind from '../fhir-server-response-kind.ts'
 
@@ -22,7 +22,7 @@ const PatientResponseKind: HttpResponseKind.HttpResponseKind<
 > = FhirServerResponseKind.make({
   name: 'PatientResponseKind',
   url: patientUrl,
-  records: flow(decode, Effect.map(Arr.of)),
+  readRecords: (body) => Effect.map(decode(body), (patient) => [patient]),
 })
 
 export { PatientResponseKind }

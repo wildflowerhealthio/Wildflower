@@ -32,7 +32,7 @@ const ObservationListResponseKind: HttpResponseKind.HttpResponseKind<
 > = FhirServerResponseKind.make({
   name: 'ObservationListResponseKind',
   url: observationListUrl,
-  records: (body) =>
+  readRecords: (body) =>
     Effect.gen(function* () {
       const bundle = yield* decode(body)
       const allEntries = bundle.entry ?? []

@@ -1,7 +1,7 @@
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import { type HttpResponseKind, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { Array as Arr, Effect, flow, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import * as FhirServerResponseKind from '../fhir-server-response-kind.ts'
 
@@ -19,7 +19,7 @@ const ObservationResponseKind: HttpResponseKind.HttpResponseKind<
 > = FhirServerResponseKind.make({
   name: 'ObservationResponseKind',
   url: observationUrl,
-  records: flow(decode, Effect.map(Arr.of)),
+  readRecords: (body) => Effect.map(decode(body), (observation) => [observation]),
 })
 
 export { ObservationResponseKind }

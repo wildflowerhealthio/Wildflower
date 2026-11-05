@@ -25,8 +25,10 @@ interface Definition<TResource extends FhirResource> {
   readonly name: string
   /** The URLs the kind claims, each yielding the server's root. */
   readonly url: UrlMatch.UrlMatcher
-  /** The server's records in a response body, as the server wrote them. */
-  readonly records: (body: string) => Effect.Effect<readonly TResource[], ParseResult.ParseError>
+  /** Read the server's records off a response body, as the server wrote them. */
+  readonly readRecords: (
+    body: string
+  ) => Effect.Effect<readonly TResource[], ParseResult.ParseError>
 }
 
 /**
@@ -71,14 +73,14 @@ const claimedRootOf = (
 
 /**
  * The response kind a {@link Definition} declares: it claims what `url`
- * matches, and parses a response into its `records`, each detached under the
- * root `url` yields for the response's URL (`<root>/<Type>` keys, references
- * to the server's own records logical).
+ * matches, and parses a response into the records `readRecords` reads off
+ * its body, each detached under the root `url` yields for the response's URL
+ * (`<root>/<Type>` keys, references to the server's own records logical).
  */
 const make = <TResource extends FhirResource>({
   name,
   url,
-  records,
+  readRecords,
 }: Definition<TResource>): HttpResponseKind.HttpResponseKind<
   DetachedResource.Detached<TResource>
 > =>
@@ -87,8 +89,11 @@ const make = <TResource extends FhirResource>({
     tryRecognize: recognizeFhirRoot(url),
     parse: (response) =>
       Effect.gen(function* () {
+        // Which server: the root the kind's URL yields for this response.
         const root = yield* claimedRootOf(url, response)
-        const served = yield* records(extractJson(response.text()))
+        // What it served: the body's records, as the server wrote them.
+        const served = yield* readRecords(extractJson(response.text()))
+        // Each record detached under that root.
         return served.map(DetachedResource.fromServerRecord(root))
       }),
   })
