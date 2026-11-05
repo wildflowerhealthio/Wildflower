@@ -16,8 +16,9 @@
  *
  * What is left here is only what is this entry's own: the registered values
  * below, and the two thin wrappers that fold the flow's error channel into a
- * {@link SignInStep}. The impure wiring is `browserSignInEnvironment`'s; the
- * requested scopes are this entry's own, {@link LAUNCHER_SCOPE}.
+ * {@link SignInStep}. The impure wiring is `BrowserSignIn.layer`'s
+ * ({@link signInLayer}); the requested scopes are this entry's own,
+ * {@link LAUNCHER_SCOPE}.
  *
  * Nothing here navigates or touches the DOM: {@link startSignIn} yields
  * the URL to leave for and {@link finishSignIn} reads a query string, so
@@ -111,7 +112,7 @@ const LAUNCHER_SCOPE = 'launch launch/patient wildflower/launch system/*.cruds w
  * while the token was in flight.
  *
  * Resolved under the **served base** the caller passes to {@link
- * signInEnvironment} (the router's basepath), not the bare origin: on a subpath
+ * signInRegistration} (the router's basepath), not the bare origin: on a subpath
  * deploy (a PR preview's `/pr-<n>/`) the route returns there
  * the same way the router resolves it — see {@link REGISTERED_REDIRECT_URI}.
  */
@@ -199,12 +200,13 @@ const stepOf = <A, R>(
   })
 
 /**
- * Start a sign-in against `serverUrl`, yielding the authorization URL for the
- * caller to navigate to. `returnTo` (raw, from {@link returnToOnPage}) rides the
- * pending record and comes back as the redeemed session's `returnTo`.
- * `request.launch` is the {@link EhrLaunch}'s token when the sign-in is to the
+ * Start a sign-in against `serverUrl` from `page`, served under `basePath`,
+ * yielding the authorization URL for the caller to navigate to.
+ * `options.returnTo` (raw, from {@link returnToOnPage}) rides the pending
+ * record and comes back as the redeemed session's `returnTo`.
+ * `options.launch` is the {@link EhrLaunch}'s token when the sign-in is to the
  * server the page was launched against; without it the sign-in is a standalone
- * launch. `request.prompt` (from {@link promptOnPage}) asks the server to show
+ * launch. `options.prompt` (from {@link promptOnPage}) asks the server to show
  * its limited page again. The pending record is written before the URL comes
  * back, so a caller cannot leave on a flow whose verifier was never saved.
  *

@@ -24,15 +24,17 @@ import type { FhirBaseUrl } from './smart-connection.ts'
  * how to sign in to it.
  *
  * @remarks
- * Four outcomes. A CORS-blocked probe rejects identically to a down server —
- * the browser gives no way to tell them apart — so a rejected probe is
+ * Four outcomes. A CORS-blocked probe gets no response, as a down server's
+ * does — the browser gives no way to tell them apart — so a probe with no
+ * response is
  * `Unreachable`, surfaced to the user, **never** silently treated as `Open`.
  * Treating it as open would fire unauthenticated resource reads at a server
  * that may well require auth, producing misleading 401s. A real HTTP answer
  * (even a 404, or non-JSON) is `Open`: the server responded, it just has no
  * SMART config. A config that names an `authorization_endpoint` is `Smart`,
- * carrying what `authorization-core`'s `discoveredSmartServerFrom` `discovered` in it,
- * when `discoveredSmartServerFrom` accepts it for this page, and `Unusable`, with its
+ * carrying what `authorization-core`'s `discoveredSmartServerFrom`
+ * `discovered` in it, when `discoveredSmartServerFrom` accepts it for this
+ * page, and `Unusable`, with its
  * `DiscoveryFailed` reason, when it does not (an endpoint that is not https
  * or loopback, a missing `token_endpoint`, no S256).
  */
@@ -118,7 +120,8 @@ const detectSmartSupport = (
  * to send `launch` to. Either redirect usually takes the page away, and a
  * storage that will not retain the sign-in request fails this Effect.
  * `Unreachable` and `Unusable` redirect nowhere: the support is the result,
- * for the caller to show.
+ * for the caller to show. The caller provides the sign-in services
+ * (`smartSignInLayer`).
  *
  * @param config - The server plus the app's client id, scope, and redirect
  *   target

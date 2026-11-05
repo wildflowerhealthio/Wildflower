@@ -27,7 +27,7 @@ const STANDALONE_LAUNCH_SCOPES: readonly string[] = [
 
 /**
  * The space-delimited `scope` parameter form of {@link STANDALONE_LAUNCH_SCOPES}
- * (RFC 6749 §3.3), ready for a {@link SignInEnvironment}'s `scope`.
+ * (RFC 6749 §3.3), ready for a `ClientRegistration`'s `scope`.
  */
 const standaloneLaunchScopeParameter = (): string => STANDALONE_LAUNCH_SCOPES.join(' ')
 

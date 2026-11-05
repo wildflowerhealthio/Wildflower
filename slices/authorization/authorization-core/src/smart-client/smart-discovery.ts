@@ -15,8 +15,9 @@
  * URLs are what the client uses; it never assumes `/oauth/authorize` sits at
  * the target's root.
  *
- * The validation is pure and returns an `Either`; the fetch is the async edge
- * and returns an `Effect` failing with {@link DiscoveryFailed}. Every failure a
+ * The validation is pure and returns an `Either`; the request is the async
+ * edge, sent through the context's `HttpClient`, and returns an `Effect`
+ * failing with {@link DiscoveryFailed}. Every failure a
  * reader can actually hit — target that is not a Wildflower server, server
  * down, blocked by CORS or mixed content — arrives as that one tagged error,
  * whose `reason` the header bar renders verbatim.
@@ -73,14 +74,14 @@ const PlainSmartServer = Schema.TaggedStruct('PlainSmartServer', {
 /**
  * Which kind of server discovery found at a server URL, and the FHIR base that
  * served its configuration — the `iss`, and the `aud` a sign-in names. A Schema
- * because it rides the pending record across the redirect and comes back on the
+ * because it rides the retained request across the redirect and comes back on the
  * `Session`.
  */
 const SmartServer = Schema.Union(WildflowerServer, PlainSmartServer)
 type SmartServer = Schema.Schema.Type<typeof SmartServer>
 
 /**
- * A server's SMART issuer as discovery found it: the {@link SmartServer} that
+ * A server as discovery found it: the {@link SmartServer} that
  * served the configuration and the endpoints it advertised.
  *
  * `managementEndpoint` is SMART's page where the reader manages what they have
@@ -179,7 +180,7 @@ const usableEndpointUrl = (
  * Why a page cannot reach `serverUrl`, or `undefined` when it can.
  *
  * States when the target is chosen what {@link usableEndpointUrl} enforces
- * after the fetch, so the reader gets the real reason rather than a discovery
+ * after discovery, so the reader gets the real reason rather than a discovery
  * failure that reads as "the server is down". Loopback is deliberately not a
  * failure, for the reason {@link isLoopbackHost} gives.
  */
@@ -219,7 +220,7 @@ const SmartConfiguration = Schema.Struct({
 const decodeSmartConfiguration = Schema.decodeUnknownEither(SmartConfiguration)
 
 /**
- * The issuer the configuration `document` served under the FHIR base
+ * The server the configuration `document` served under the FHIR base
  * `fhirBaseUrl` describes — which kind of server it is and the endpoints it
  * advertises — or the reason it is unusable.
  *
@@ -278,10 +279,11 @@ const discoveredSmartServerFrom = (
 }
 
 /**
- * Find the SMART issuer at `serverUrl` (canonical: no trailing slash), a FHIR
- * base, and validate what it advertises. The {@link SmartServer} it describes
- * is returned with the endpoints: its FHIR base is the `aud` the sign-in names,
- * and its kind is what the signed-in app may offer.
+ * Discover the SMART server at `serverUrl` (canonical: no trailing slash), a
+ * FHIR base, and validate what it advertises. The {@link SmartServer} it
+ * describes is returned with the endpoints: its FHIR base is the `aud` the
+ * sign-in names, and its kind is what the signed-in app may offer. The
+ * `SignInPage` decides whether a plain-http endpoint off loopback is usable.
  *
  * Every way the request can fail — unreachable, an error status (a 404
  * included: there is no configuration there), a non-JSON body — is a

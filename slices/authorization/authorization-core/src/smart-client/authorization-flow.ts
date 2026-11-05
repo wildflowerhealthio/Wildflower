@@ -75,8 +75,8 @@ const RetainedSignInRequest = Schema.Struct({
 type RetainedSignInRequest = Schema.Schema.Type<typeof RetainedSignInRequest>
 
 /**
- * The pending record as the string form stored under the `sessionStorage` key
- * the app names in its `SignInEnvironment` (`sign-in.ts`).
+ * The retained request as the string form the `RetainedSignInRequestStore`
+ * keeps (`sign-in-services.ts`).
  */
 const serializeRetainedSignInRequest = (retained: RetainedSignInRequest): string =>
   JSON.stringify(retained)
@@ -86,7 +86,7 @@ const decodeRetainedSignInRequest = Schema.decodeUnknownOption(
 )
 
 /**
- * `raw` read back as a pending record, or `None` when it is absent or not one.
+ * `raw` read back as a retained request, or `None` when it is absent or not one.
  * Absence is not an error here — most page loads have no record — so the caller
  * decides whether a missing one matters.
  */

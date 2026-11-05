@@ -1,27 +1,33 @@
 /**
- * The two halves of a sign-in, each written as one `Effect` over an injected
- * environment: {@link beginSignIn} discovers the target's OAuth endpoints and
+ * The two halves of a sign-in, each written as one `Effect` over the sign-in
+ * services (`sign-in-services.ts`): {@link beginSignIn} discovers the target's OAuth endpoints and
  * builds the URL to leave for (a standalone launch, or an EHR launch when the
  * app hands it one) — {@link beginSignInAt} when the caller has already
  * discovered them — and {@link completeSignIn} picks the flow back up when the
  * browser comes back and redeems the code.
  *
  * Neither navigates and neither touches the DOM — `beginSignIn` *yields* the
- * URL for the app to assign — so both are drivable from tests with a stub
- * fetch, fixed random bytes and a plain object standing in for
- * `sessionStorage`.
+ * URL for the app to assign. What is impure about the page comes from the
+ * context: the `HttpClient` discovery and the token request go through, the
+ * `SignInCrypto` the PKCE pair is minted from, the `RetainedSignInRequestStore`
+ * that carries the retained request across the redirect, and the `SignInPage`.
+ * A browser provides all four with `BrowserSignIn.layer`, and a test provides
+ * a stub transport, a store over a plain object, or whichever one it is about.
  *
  * Nothing here knows which app it is running for: the client id, the requested
- * scopes, the redirect URI and the `sessionStorage` key all arrive in the
- * {@link SignInEnvironment}.
+ * scopes and the redirect URI arrive as the {@link ClientRegistration}, and the
+ * `sessionStorage` key with the store's layer.
  *
  * ## The error channel
  *
  * Every way a sign-in can fail is a tagged error in {@link SignInError}, raised
  * where it happens: {@link PkceUnavailable} and {@link DiscoveryFailed} from the
  * modules that own those steps, {@link RetainedRequestUnusable} and
- * {@link RetainedRequestUnrecognised} from the storage round trip here, {@link AuthorizationRejected} and
- * {@link TokenExchangeFailed} from the flow's pure validation. Nothing throws
+ * {@link RetainedRequestUnrecognised} from the storage round trip,
+ * {@link TokenEndpointUnreachable} from the token request here, and
+ * {@link AuthorizationRejected} and {@link TokenExchangeFailed} from the flow's
+ * pure validation (a token endpoint that answers with no JSON is a
+ * `TokenExchangeFailed` too). Nothing throws
  * and nothing returns an ad-hoc `{ ok }` union; the app runs the Effect at one
  * boundary and renders `error.reason` wherever it shows status.
  *
@@ -33,7 +39,7 @@
  * in one in-memory binding that dies with the tab — the same policy
  * `makeBearerAuthStateStore` follows for the same reason
  * (`slices/authorization/docs/Auth Token Storage Explanation.md`). The only thing
- * that does reach `sessionStorage` is the pending record — no credential, and
+ * that does reach `sessionStorage` is the retained request — no credential, and
  * deleted the instant the client returns, before the code is even redeemed.
  */
 
@@ -71,7 +77,7 @@ import {
 } from './smart-discovery.ts'
 
 /**
- * Raised when the storage holds a pending record that does not read as one:
+ * Raised when the storage holds a retained request that does not read as one:
  * a record a different version of the page wrote, or one edited by hand.
  */
 class RetainedRequestUnrecognised extends Data.TaggedError('RetainedRequestUnrecognised')<{
@@ -121,7 +127,7 @@ type AuthorizationRequestExtras = Pick<AuthorizationRequestParameters, 'launch' 
 /**
  * What one sign-in carries beyond the app's registration: the
  * {@link AuthorizationRequestExtras}, and `returnTo`, the in-app path the app
- * wants to land on once signed in. `returnTo` rides the pending record and
+ * wants to land on once signed in. `returnTo` rides the retained request and
  * comes back as {@link Session.returnTo}, because the registered redirect URI
  * can't carry it; absent when the app has nowhere particular to go.
  */
@@ -148,23 +154,23 @@ const beginSignIn = (
   )
 
 /**
- * Start a sign-in at the already-discovered `issuer`: mint the PKCE pair and
+ * Start a sign-in at the already-`discovered` server: mint the PKCE pair and
  * the `state`, retain what the return leg needs, and yield the authorization
  * URL to navigate to.
  *
- * The issuer's FHIR base is the server the pending record and the
+ * Its FHIR base is the server the retained request and the
  * {@link Session} name. Only the endpoints discovered there ride the pending
  * record, so the return leg needs nothing more.
  *
  * `options` carries what this sign-in alone adds (see {@link SignInOptions}).
- * `returnTo` rides the pending record. `launch` and `prompt` go into the
+ * `returnTo` rides the retained request. `launch` and `prompt` go into the
  * authorization request only, since the return leg needs neither: `launch`,
  * the SMART EHR launch the app was opened with, sent so the server can tie the
  * sign-in to it (without one, or with an empty one, the request is a
  * standalone launch); and `prompt`, sent to show the server's limited page
  * again.
  *
- * The pending record is written **before** the URL is yielded, so a caller
+ * The retained request is written **before** the URL is yielded, so a caller
  * cannot navigate away from a flow whose verifier was never saved.
  */
 const beginSignInAt = (
@@ -232,7 +238,7 @@ interface Session {
  * it carries one and the code redeemed.
  *
  * Any authorization-response parameter (`code`, `state`, `error`, …) makes the
- * load a return leg, and a return leg takes the pending record: it is
+ * load a return leg, and a return leg takes the retained request: it is
  * single-use, so it is dropped before the code is redeemed, and on the rejected
  * paths too, so a discarded flow cannot leave a record behind that makes a later
  * stray `?code=` look legitimate. A load that is no return leg leaves storage
@@ -298,7 +304,7 @@ const retainedRequestUnrecognisedFromAnotherVersion = (): RetainedRequestUnrecog
   })
 
 /**
- * Take the pending record out of the {@link RetainedSignInRequestStore}: read
+ * Take the retained request out of the {@link RetainedSignInRequestStore}: read
  * it and drop it. `None` only when there is none; a store that refuses the
  * read fails with {@link RetainedRequestUnusable} (one that refuses only the
  * removal does not: the record was read), and a record that does not read as

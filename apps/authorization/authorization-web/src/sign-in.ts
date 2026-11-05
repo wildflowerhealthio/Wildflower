@@ -156,10 +156,11 @@ const stepOf = <A, R>(
   })
 
 /**
- * Start a sign-in to `serverUrl`, yielding the authorization URL to leave for,
- * or why it can't start: a server that isn't a Wildflower server is refused
- * here, before the reader is sent anywhere. `returnTo` rides the pending record
- * and comes back on the {@link ServerSession}.
+ * Start a sign-in to `serverUrl` from `page`, served under `basePath`,
+ * yielding the authorization URL to leave for, or why it can't start: a server
+ * that isn't a Wildflower server is refused here, before the reader is sent
+ * anywhere. `options.returnTo` rides the pending record and comes back on the
+ * {@link ServerSession}.
  */
 const startSignIn = (
   serverUrl: string,

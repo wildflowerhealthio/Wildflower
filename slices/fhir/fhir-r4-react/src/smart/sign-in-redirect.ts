@@ -41,6 +41,10 @@ const redirectToAuthorization = <E, R>(
  * needs, and send the browser to its authorization endpoint. `launch` is the
  * EHR's launch token for an EHR launch, and `undefined` for a standalone
  * launch.
+ *
+ * It runs on the sign-in services the edge that runs it provides
+ * (`smartSignInLayer`), which keep the retained sign-in request at
+ * `RETAINED_SIGN_IN_REQUEST_KEY`.
  */
 const redirectToSignInAt = (
   discovered: DiscoveredSmartServer,
@@ -73,7 +77,8 @@ interface SelfAddressedSignInConfig {
  * `expectedState` under `RETAINED_SELF_ADDRESSED_SIGN_IN_REQUEST_KEY`,
  * then redirects straight back here. On return the `state` must match, so a
  * link someone else crafted cannot make the app connect to a server they
- * chose.
+ * chose. The `state`'s random bytes come from the `SignInCrypto`; the request
+ * itself goes to `sessionStorage` directly, under its own key.
  */
 const redirectToSelfAddressedSignInReturn = (
   config: SelfAddressedSignInConfig

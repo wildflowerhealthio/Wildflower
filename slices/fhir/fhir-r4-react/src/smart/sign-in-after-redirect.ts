@@ -173,7 +173,8 @@ const landingRegistration = (
  * ({@link takeRetainedSignInRequests}), so a second completion (a reload, a
  * remount) finds nothing to complete and fails, as a page with no sign-in in
  * progress does, and the callback leaves the address bar whichever way the
- * sign-in settles.
+ * sign-in settles. The caller provides the sign-in services
+ * (`smartSignInLayer`); the handshake query does.
  */
 const completeSignInAfterRedirectHere = (
   landing: Pick<SignInLanding, 'arrival' | 'registration' | 'appRootRedirectUri'>
@@ -204,6 +205,7 @@ const completeSignInAfterRedirectHere = (
  * @remarks
  * The same rule {@link completeSignInAfterRedirectHere} takes the records by
  * ({@link takeRetainedSignInRequests}); it fails only when the storage throws.
+ * The caller provides the retained-request store (`smartSignInLayer`).
  */
 const discardRefusedSignInAfterRedirectHere = (
   refused: Data.TaggedEnum.Value<RootArrival, 'SignInRefused'>
