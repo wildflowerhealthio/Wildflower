@@ -5,7 +5,8 @@ import {
   Patient,
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, type ParseResult } from 'effect'
+import type { DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
+import { Array as Arr, Effect, type ParseResult } from 'effect'
 
 import type * as Report from '../entities/report.ts'
 import { diagnosticReportWire, reportKeyOf } from './wire/diagnostic-report.ts'
@@ -26,14 +27,16 @@ interface SynthesisOptions {
  * built from.
  *
  * @remarks
- * A `Patient` or `Practitioner` several reports share appears once, in the
- * group of the first report that names it (each is deduplicated by key across
- * the whole document), so flattening the groups in order writes every
- * reference target before its referrer.
+ * Each resource is an entry whose `fullUrl` is its type and its key's value,
+ * `<Type>/<value>`, which a settings re-decode keeps. A `Patient` or
+ * `Practitioner` several reports share appears once, in the group of the
+ * first report that names it (each is deduplicated by key across the whole
+ * document), so flattening the groups in order writes every reference target
+ * before its referrer.
  */
 interface ReportResources {
   readonly report: Report.Type
-  readonly resources: readonly DetachedResource.Type[]
+  readonly entries: readonly DecodedFileSet.Entry[]
 }
 
 const decodePatient = DetachedResource.decodeUnknown(Patient.Schema)
@@ -43,6 +46,15 @@ const decodeObservation = DetachedResource.decodeUnknown(Observation.Schema)
 
 /** A key as one string, for telling keys apart: its system and value. */
 const keyText = ({ system, value }: DetachedResource.Key): string => `${system}|${value}`
+
+/** `resource`, minted keyed by `key`, as its entry: `fullUrl` `<Type>/<key value>`. */
+const entryOf = (
+  key: DetachedResource.Key,
+  resource: DetachedResource.Type
+): DecodedFileSet.Entry => ({
+  fullUrl: `${resource.resourceType}/${key.value}`,
+  resource,
+})
 
 /**
  * Synthesize the FHIR resources for a set of parsed LifeLabs reports, grouped
@@ -73,7 +85,7 @@ const toFhirResources = (
     const seenPractitioners = new Set<string>()
     const groups: ReportResources[] = []
     for (const report of reports) {
-      const resources: DetachedResource.Type[] = []
+      const entries: DecodedFileSet.Entry[] = []
       // Every provider the report names — the ordering provider and each CC'd
       // provider — becomes a `resultsInterpreter` reference on this report's
       // DiagnosticReport. The keys are collected per report (deduped within
@@ -92,12 +104,12 @@ const toFhirResources = (
         }
         if (seenPractitioners.has(keyText(key))) continue
         seenPractitioners.add(keyText(key))
-        resources.push(yield* decodePractitioner(practitionerWire(name)))
+        entries.push(entryOf(key, yield* decodePractitioner(practitionerWire(name))))
       }
       const patientKey = patientKeyOf(report.patient)
       if (!seenPatients.has(keyText(patientKey))) {
         seenPatients.add(keyText(patientKey))
-        resources.push(yield* decodePatient(patientWire(report)))
+        entries.push(entryOf(patientKey, yield* decodePatient(patientWire(report))))
       }
 
       const observations: Wire[] = []
@@ -123,13 +135,18 @@ const toFhirResources = (
           }
         }
       }
-      for (const wire of observations) resources.push(yield* decodeObservation(wire))
-      resources.push(
-        yield* decodeDiagnosticReport(
-          diagnosticReportWire(report, patientKey, observationKeys, timeZone, interpreterKeys)
+      for (const [key, wire] of Arr.zip(observationKeys, observations)) {
+        entries.push(entryOf(key, yield* decodeObservation(wire)))
+      }
+      entries.push(
+        entryOf(
+          reportKeyOf(report),
+          yield* decodeDiagnosticReport(
+            diagnosticReportWire(report, patientKey, observationKeys, timeZone, interpreterKeys)
+          )
         )
       )
-      groups.push({ report, resources })
+      groups.push({ report, entries })
     }
     return groups
   })

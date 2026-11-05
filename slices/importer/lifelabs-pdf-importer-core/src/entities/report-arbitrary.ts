@@ -2,6 +2,7 @@ import * as fc from 'fast-check'
 
 import { optionalText, text } from '../document/printed-text.ts'
 import { arbitrary as labArbitrary } from './lab-arbitrary.ts'
+import * as LabNumber from './lab-number.ts'
 import { arbitrary as patientArbitrary } from './patient-arbitrary.ts'
 import type * as Report from './report.ts'
 import { arbitrary as sectionArbitrary } from './section-arbitrary.ts'
@@ -78,7 +79,7 @@ const arbitrary: fc.Arbitrary<Report.Type> = licencePlans.chain(
     fc
       .tuple(
         fc.record({
-          labNo: text(14),
+          labNo: text(14).map(LabNumber.make),
           referenceNumber: optionalText(14),
           referringSiteId: optionalText(14),
           patient: patientArbitrary,

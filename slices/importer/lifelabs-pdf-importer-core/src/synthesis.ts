@@ -1,6 +1,7 @@
 /**
- * The FHIR synthesis on its own: the parsed `Report` model's types,
- * `toFhirResources`, and {@link decodedReportsOf} — the reports as the
+ * The FHIR synthesis on its own: the parsed `Report` model's types and the
+ * `LabNumber` a report is built with, `toFhirResources`, and
+ * {@link decodedReportsOf} — the reports as the
  * LifeLabs decode yields them, one section per report, each synthesized
  * resource detached and keyed by an identifier the report prints — without
  * the PDF extraction the main entry's decode requires.
@@ -13,40 +14,20 @@
  *
  * @packageDocumentation
  */
-import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import { type DecodedFileSet, type DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, Option, type ParseResult } from 'effect'
+import type { DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
+import { Effect, type ParseResult } from 'effect'
 
 import type * as Report from './entities/report.ts'
 import { type SynthesisOptions, toFhirResources } from './fhir/to-fhir.ts'
 
 /**
- * A detached record as its section entry: its `fullUrl` its type and its key's
- * value, `<Type>/<value>`, which a settings re-decode keeps.
- *
- * @remarks
- * A keyless record (a `DiagnosticReport` whose report prints no `Lab No`) is
- * identified by its type and its position in the report, `<Type>#<index>`,
- * which a re-decode of the same print also keeps.
- */
-const reportEntryOf = (resource: DetachedResource.Type, index: number): DecodedFileSet.Entry => ({
-  fullUrl: Option.match(DetachedResource.keyOf(resource), {
-    onSome: ({ value }) => `${resource.resourceType}/${value}`,
-    onNone: () => `${resource.resourceType}#${index}`,
-  }),
-  resource,
-})
-
-/**
  * The section title one report's resources are reviewed under: the report's
- * own printed identity — its `Lab No` and date of service — with a generic
- * fallback when the report masks both.
+ * own printed identity — its `Lab No`, and its date of service when it
+ * prints one.
  */
 const reportSectionTitle = (report: Report.Type): string => {
-  const labNo = report.labNo.trim()
   const dateOfService = report.dateOfService.trim()
-  const parts = [labNo === '' ? '' : `Lab No ${labNo}`, dateOfService].filter((part) => part !== '')
-  return parts.length === 0 ? 'LifeLabs report' : parts.join(' — ')
+  return [`Lab No ${report.labNo}`, dateOfService].filter((part) => part !== '').join(' — ')
 }
 
 /**
@@ -73,12 +54,13 @@ const decodedReportsOf = (
   Effect.map(toFhirResources(reports, options), (groups) => ({
     sections: groups.map((group) => ({
       title: reportSectionTitle(group.report),
-      entries: group.resources.map(reportEntryOf),
+      entries: group.entries,
     })),
     notes: [],
   }))
 
 export { decodedReportsOf, reportSectionTitle }
+export * as LabNumber from './entities/lab-number.ts'
 export type { Type as ReportGroup } from './entities/group.ts'
 export type { Type as ReportLab } from './entities/lab.ts'
 export type { Type as ReportPatient } from './entities/patient.ts'

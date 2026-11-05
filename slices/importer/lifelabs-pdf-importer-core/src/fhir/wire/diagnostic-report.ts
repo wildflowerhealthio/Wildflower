@@ -1,5 +1,4 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import { Option, String as Str } from 'effect'
 
 import type * as Report from '../../entities/report.ts'
 import { LifeLabsIdentifierSystem } from '../../source-system.ts'
@@ -12,18 +11,16 @@ const LOINC_SYSTEM = 'http://loinc.org'
 const LABORATORY_REPORT_LOINC = { code: '11502-2', display: 'Laboratory report' }
 
 /**
- * A report is keyed by the `Lab No` it prints; `None` for a report that
- * prints none, which nothing references, so it is keyless.
+ * A report is keyed by the `Lab No` it prints.
  *
  * @remarks
  * Two reports printing one `Lab No` (an anonymized export masks every lab
  * number to the same digits) are one key, and so one stored record.
  */
-const reportKeyOf = (report: Report.Type): Option.Option<DetachedResource.Key> =>
-  Option.map(Option.liftPredicate(report.labNo, Str.isNonEmpty), (labNo) => ({
-    system: LifeLabsIdentifierSystem.LabNumber,
-    value: labNo,
-  }))
+const reportKeyOf = (report: Report.Type): DetachedResource.Key => ({
+  system: LifeLabsIdentifierSystem.LabNumber,
+  value: report.labNo,
+})
 
 const diagnosticReportWire = (
   report: Report.Type,
@@ -35,7 +32,7 @@ const diagnosticReportWire = (
   const sections = report.sections.map((section) => section.name).filter((name) => name !== '')
   const wire: Wire = {
     resourceType: 'DiagnosticReport',
-    identifier: Option.toArray(Option.map(reportKeyOf(report), DetachedResource.keyIdentifierWire)),
+    identifier: [DetachedResource.keyIdentifierWire(reportKeyOf(report))],
     status: reportStatus(report),
     category: [
       { coding: [{ system: REPORT_CATEGORY_SYSTEM, code: 'LAB', display: 'Laboratory' }] },

@@ -3,6 +3,7 @@ import { type FhirResource, withSubject } from '@wildflowerhealthio/fhir-r4/reso
 import { DecodedFile, DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
 import {
   decodedReportsOf,
+  LabNumber,
   type LifeLabsReport,
   type ReportPatient,
   type ReportRow,
@@ -135,12 +136,16 @@ const printedUnitOf = (unit: string | null): string =>
   unit === null ? '' : unit.replaceAll('µ', 'u')
 
 /** The `Lab No` of the draws on `day`: the year of service, two letters and seven digits. */
-const labNumberOf = (asOf: DateTime.Utc, person: Person.Person, day: StoryDay.StoryDay): string => {
+const labNumberOf = (
+  asOf: DateTime.Utc,
+  person: Person.Person,
+  day: StoryDay.StoryDay
+): LabNumber.Type => {
   const keys = [person.key, 'lifelabs', 'lab-no', String(day)]
   const letters = Seeding.integerOf([...keys, 'letters'], 0, 26 * 26 - 1)
   const prefix = String.fromCodePoint(65 + Math.floor(letters / 26), 65 + (letters % 26))
   const { year } = DateTime.toPartsUtc(StoryDay.toDateTime(asOf, day))
-  return `${year}-${prefix}${Seeding.digitsOf(keys, 7)}`
+  return LabNumber.make(`${year}-${prefix}${Seeding.digitsOf(keys, 7)}`)
 }
 
 /**

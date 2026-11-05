@@ -12,7 +12,9 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { decodeLifeLabsPdf, decodeLifeLabsPdfDocument } from './decode.ts'
+import * as LabNumber from './entities/lab-number.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
+import type * as Report from './entities/report.ts'
 import { patientKeyOf, practitionerKeyOf } from './fhir/to-fhir.ts'
 import { LifeLabsIdentifierSystem } from './source-system.ts'
 import { reportSectionTitle } from './synthesis.ts'
@@ -28,6 +30,30 @@ import { layoutDocument } from './test-helpers.ts'
  */
 
 const SETTINGS = { timeZone: 'America/Vancouver' }
+
+/** A one-page report with no results: its header is all a page-level test reads. */
+const headerOnly: Report.Type = {
+  labNo: LabNumber.make('2024-JJ6330780'),
+  referenceNumber: '',
+  referringSiteId: '',
+  patient: {
+    name: 'OKAFOR, DANA MARIE',
+    age: '45 years',
+    sex: 'F',
+    dateOfBirth: 'Aug 13 1981',
+    healthCardNumber: '',
+    phone: '',
+    patientId: '',
+  },
+  orderedBy: '',
+  copyTo: [],
+  dateOfService: 'Aug 13 2026 13:02',
+  reportedOn: 'Aug 14 2026 18:21',
+  lab: { addressLines: [], telephone: '', tollFree: '', fax: '' },
+  status: 'FINAL RESULTS',
+  pageNumbers: [1],
+  sections: [],
+}
 
 /** Every system the synthesis keys a record in. */
 const KEY_SYSTEMS: readonly string[] = Object.values(LifeLabsIdentifierSystem)
@@ -61,16 +87,15 @@ describe('decodeLifeLabsPdfDocument', () => {
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
-        for (const { entries } of decoded.sections) {
-          expect(entries.map(({ fullUrl }) => fullUrl)).toEqual(
-            entries.map(({ resource }, index) =>
-              Option.match(DetachedResource.keyOf(resource), {
-                onSome: ({ value }) => `${resource.resourceType}/${value}`,
-                onNone: () => `${resource.resourceType}#${index}`,
-              })
+        const entries = entriesOf(decoded)
+        expect(entries.map(({ fullUrl }) => Option.some(fullUrl))).toEqual(
+          entries.map(({ resource }) =>
+            Option.map(
+              DetachedResource.keyOf(resource),
+              ({ value }) => `${resource.resourceType}/${value}`
             )
           )
-        }
+        )
         const written = DecodedFile.resources(DecodedFileSet.adopt(decoded))
         expect(written.map(({ title }) => title)).toEqual(
           written.map(({ key, resource }) =>
@@ -84,7 +109,7 @@ describe('decodeLifeLabsPdfDocument', () => {
     )
   })
 
-  it('property: each record is detached, keyed in a LifeLabs identifier system, or a report printing no Lab No keyless', () => {
+  it('property: each record is detached and keyed in a LifeLabs identifier system', () => {
     fc.assert(
       fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
         const document = layoutDocument(reports)
@@ -93,10 +118,8 @@ describe('decodeLifeLabsPdfDocument', () => {
 
         for (const { resource } of entriesOf(decoded)) {
           expect(resource.id).toBeNull()
-          Option.match(DetachedResource.keyOf(resource), {
-            onSome: ({ system }) => expect(KEY_SYSTEMS).toContain(system),
-            onNone: () => expect(resource.resourceType).toBe('DiagnosticReport'),
-          })
+          const keySystem = Option.map(DetachedResource.keyOf(resource), ({ system }) => system)
+          expect(Option.isSome(keySystem) && KEY_SYSTEMS.includes(keySystem.value)).toBe(true)
         }
       }),
       { numRuns: numRunsFor({ base: 30 }) }
@@ -167,6 +190,27 @@ describe('decodeLifeLabsPdfDocument', () => {
     )
   })
 
+  it('skips a page that prints no Lab No, with a note naming it', () => {
+    const secondLabNo = LabNumber.make('2024-JJ0000001')
+    const [first, second] = layoutDocument([
+      headerOnly,
+      { ...headerOnly, labNo: secondLabNo },
+    ]).pages
+    if (first === undefined || second === undefined) throw new Error('two one-page reports')
+    const unnumbered = {
+      ...second,
+      runs: second.runs.filter((printed) => printed.text !== secondLabNo),
+    }
+    const document = { ...layoutDocument([]), pages: [first, unnumbered] }
+
+    const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
+
+    expect(decoded.notes).toEqual(['Page 2 prints no Lab No, so it was skipped.'])
+    expect(decoded.sections.map(({ title }) => title)).toEqual([
+      'Lab No 2024-JJ6330780 — Aug 13 2026 13:02',
+    ])
+  })
+
   it('fails with a ParseError for a document with no LifeLabs report markers', () => {
     // A well-formed positioned-text document with no page runs — no `Lab No`,
     // no grid heading — is rejected as an unrecognized LifeLabs document.
@@ -200,29 +244,16 @@ describe('decodeLifeLabsPdfDocument', () => {
 })
 
 describe('reportSectionTitle', () => {
-  it('should join the Lab No and date of service when both are printed', () => {
+  it('property: is the Lab No, joined to the date of service when the report prints one', () => {
     fc.assert(
       fc.property(reportArbitrary, (report) => {
-        const title = reportSectionTitle(report)
-
-        if (report.labNo.trim() !== '' && report.dateOfService.trim() !== '') {
-          expect(title).toBe(`Lab No ${report.labNo.trim()} — ${report.dateOfService.trim()}`)
-        } else {
-          expect(title.length).toBeGreaterThan(0)
-        }
+        expect(reportSectionTitle(report)).toBe(
+          report.dateOfService === ''
+            ? `Lab No ${report.labNo}`
+            : `Lab No ${report.labNo} — ${report.dateOfService}`
+        )
       }),
       { numRuns: numRunsFor({ base: 50 }) }
-    )
-  })
-
-  it('should fall back to a generic label when the report masks both fields', () => {
-    fc.assert(
-      fc.property(reportArbitrary, (report) => {
-        const masked = { ...report, labNo: '', dateOfService: '' }
-
-        expect(reportSectionTitle(masked)).toBe('LifeLabs report')
-      }),
-      { numRuns: numRunsFor({ base: 20 }) }
     )
   })
 })

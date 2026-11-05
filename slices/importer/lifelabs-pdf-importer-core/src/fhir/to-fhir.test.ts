@@ -5,6 +5,7 @@ import { Effect, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as LabNumber from '../entities/lab-number.ts'
 import { arbitrary as reportArbitrary } from '../entities/report-arbitrary.ts'
 import type * as Report from '../entities/report.ts'
 import type * as TestTableRow from '../entities/test-table-row.ts'
@@ -14,17 +15,20 @@ import {
   patientKeyOf,
   practitionerKeyOf,
   reportKeyOf,
+  type ReportResources,
   toFhirResources,
 } from './to-fhir.ts'
 import { UCUM_SYSTEM } from './units.ts'
 
 const TIME_ZONE = 'America/Toronto'
 
+/** A group's resources, in order; none for no group. */
+const resourcesOf = (group: ReportResources | undefined): readonly FhirResource[] =>
+  group?.entries.map(({ resource }) => resource) ?? []
+
 /** The synthesized groups flattened in order — most assertions read the whole set. */
 const synthesize = (reports: readonly Report.Type[]): readonly FhirResource[] =>
-  Effect.runSync(toFhirResources(reports, { timeZone: TIME_ZONE })).flatMap(
-    (group) => group.resources
-  )
+  Effect.runSync(toFhirResources(reports, { timeZone: TIME_ZONE })).flatMap(resourcesOf)
 
 const ofType = <T extends FhirResource['resourceType']>(
   resources: readonly FhirResource[],
@@ -71,7 +75,7 @@ const hemoglobinRow: TestTableRow.Type = {
 }
 
 const sample: Report.Type = {
-  labNo: '2024-JJ6330780',
+  labNo: LabNumber.make('2024-JJ6330780'),
   referenceNumber: '',
   referringSiteId: '',
   patient: {
@@ -144,7 +148,7 @@ const sample: Report.Type = {
 }
 
 /** The lab number an anonymized export masks every report's to. */
-const MASKED_LAB_NO = '0000-XX0000000'
+const MASKED_LAB_NO = LabNumber.make('0000-XX0000000')
 
 /** Arrays of reports, each printing its own lab number. */
 const reportsArbitrary = fc.uniqueArray(reportArbitrary, {
@@ -232,12 +236,15 @@ describe('toFhirResources', () => {
     expect(new Set(observationKeys).size).toBe(3)
   })
 
-  it('leaves a report that prints no lab number keyless', () => {
-    expect(reportKeyOf({ ...sample, labNo: '' })).toEqual(Option.none())
+  it('keys a report by the lab number it prints', () => {
+    expect(reportKeyOf(sample)).toEqual({
+      system: LifeLabsIdentifierSystem.LabNumber,
+      value: '2024-JJ6330780',
+    })
   })
 
   it('emits each practitioner and patient once across reports that share them', () => {
-    const resources = synthesize([sample, { ...sample, labNo: '2024-JJ0000001' }])
+    const resources = synthesize([sample, { ...sample, labNo: LabNumber.make('2024-JJ0000001') }])
 
     expect(ofType(resources, 'Patient')).toHaveLength(1)
     expect(ofType(resources, 'Practitioner').map((p) => p.name[0]?.text)).toEqual([
@@ -306,7 +313,7 @@ describe('toFhirResources', () => {
     const reissued = { ...sample.patient, healthCardNumber: '1234567890AC' }
     const resources = synthesize([
       sample,
-      { ...sample, labNo: '2024-JJ0000001', patient: reissued },
+      { ...sample, labNo: LabNumber.make('2024-JJ0000001'), patient: reissued },
     ])
 
     expect(patientKeyOf(reissued)).toEqual(patientKeyOf(sample.patient))
@@ -501,19 +508,14 @@ describe('toFhirResources', () => {
     expect(report?.issued).toBeNull()
   })
 
-  it("leaves an unprinted lab number off the DiagnosticReport and an unheaded row's category without text", () => {
+  it("leaves an unheaded row's category without text", () => {
     const unheaded: Report.Type = {
       ...sample,
-      labNo: '',
       sections: [{ name: '', comments: [], groups: [{ name: '', rows: [hemoglobinRow] }] }],
     }
 
-    const resources = synthesize([unheaded])
-    const [report] = ofType(resources, 'DiagnosticReport')
-    const [observation] = ofType(resources, 'Observation')
+    const [observation] = ofType(synthesize([unheaded]), 'Observation')
 
-    // No lab number, so no key.
-    expect(report?.identifier).toEqual([])
     expect(observation?.category[0]?.coding[0]?.code).toBe('laboratory')
     expect(observation?.category[0]?.text).toBeNull()
   })
@@ -562,7 +564,7 @@ describe('toFhirResources', () => {
   })
 
   it('groups each report with its own resources, minting a shared Patient in the first group only', () => {
-    const second = { ...sample, labNo: '2024-JJ0000001' }
+    const second = { ...sample, labNo: LabNumber.make('2024-JJ0000001') }
 
     const groups = Effect.runSync(toFhirResources([sample, second], { timeZone: TIME_ZONE }))
 
@@ -570,11 +572,11 @@ describe('toFhirResources', () => {
     const [first, again] = groups
     // The two reports name the same patient and practitioners — deduplicated
     // by key, they appear in the first group and never again.
-    expect(ofType(first?.resources ?? [], 'Patient')).toHaveLength(1)
-    expect(ofType(again?.resources ?? [], 'Patient')).toHaveLength(0)
-    expect(ofType(again?.resources ?? [], 'Practitioner')).toHaveLength(0)
+    expect(ofType(resourcesOf(first), 'Patient')).toHaveLength(1)
+    expect(ofType(resourcesOf(again), 'Patient')).toHaveLength(0)
+    expect(ofType(resourcesOf(again), 'Practitioner')).toHaveLength(0)
     // Each group still carries its own DiagnosticReport and Observations.
-    expect(ofType(first?.resources ?? [], 'DiagnosticReport')).toHaveLength(1)
-    expect(ofType(again?.resources ?? [], 'DiagnosticReport')).toHaveLength(1)
+    expect(ofType(resourcesOf(first), 'DiagnosticReport')).toHaveLength(1)
+    expect(ofType(resourcesOf(again), 'DiagnosticReport')).toHaveLength(1)
   })
 })

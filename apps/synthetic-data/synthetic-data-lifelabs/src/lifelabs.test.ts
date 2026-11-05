@@ -273,9 +273,10 @@ describe('LifeLabs.reportsOf', () => {
         )
         const printed = layoutDocument(reports)
         const readBack = Effect.runSync(Report.tryFromDocument(printed))
-        expect(readBack.map((report) => ({ ...report, pageNumbers: [] }))).toEqual(
+        expect(readBack.reports.map((report) => ({ ...report, pageNumbers: [] }))).toEqual(
           reports.map((report) => ({ ...report, pageNumbers: [] }))
         )
+        expect(readBack.pagesWithoutLabNo).toEqual([])
 
         const decoded = Effect.runSync(
           decodeLifeLabsPdfDocument(printed, { timeZone: laboratory.timeZone })

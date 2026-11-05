@@ -1,10 +1,11 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import type { Document, Run } from '@wildflowerhealthio/positioned-text'
+import type { Document, Page, Run } from '@wildflowerhealthio/positioned-text'
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { layoutDocument, layoutReport } from '../test-helpers.ts'
+import * as LabNumber from './lab-number.ts'
 import { arbitrary as reportArbitrary } from './report-arbitrary.ts'
 import * as Report from './report.ts'
 
@@ -13,8 +14,8 @@ import * as Report from './report.ts'
  * print can carry, laid out and parsed back, is the same report. The example
  * tests below then document the layout facts the property leans on — the
  * page break inside a section, the shared footer line, the masked lab numbers
- * an anonymized export prints — and the one failure: a document that isn't a
- * LifeLabs report at all.
+ * an anonymized export prints, the page that prints no lab number — and the
+ * one failure: a document that isn't a LifeLabs report at all.
  */
 
 const document = (pages: Document.Type['pages']): Document.Type => ({
@@ -24,13 +25,22 @@ const document = (pages: Document.Type['pages']): Document.Type => ({
   pages,
 })
 
-/** Run the parse of a recognized document, surfacing the reports. */
-const run = (doc: Document.Type): readonly Report.Type[] =>
+/** Run the parse of a recognized document, surfacing the reports and the pages skipped. */
+const read = (doc: Document.Type): Report.DocumentReports =>
   Effect.runSync(Report.tryFromDocument(doc))
+
+/** Run the parse of a recognized document, surfacing the reports. */
+const run = (doc: Document.Type): readonly Report.Type[] => read(doc).reports
+
+/** `page` with the `Lab No` value `labNo` left unprinted. */
+const withoutLabNo = (page: Page.Type, labNo: string): Page.Type => ({
+  ...page,
+  runs: page.runs.filter((printed) => printed.text !== labNo),
+})
 
 /** A report with everything filled in, for the example tests. */
 const sample: Report.Type = {
-  labNo: '2024-JJ6330780',
+  labNo: LabNumber.make('2024-JJ6330780'),
   referenceNumber: '',
   referringSiteId: '',
   patient: {
@@ -134,9 +144,10 @@ describe('Report.tryFromDocument', () => {
   it('property: is the inverse of the printed layout, report by report', () => {
     fc.assert(
       fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 3 }), (reports) => {
-        const parsed = run(layoutDocument(reports))
+        const { reports: parsed, pagesWithoutLabNo } = read(layoutDocument(reports))
 
         expect(parsed.map(withoutPages)).toEqual(reports.map(withoutPages))
+        expect(pagesWithoutLabNo).toEqual([])
         // Pages are numbered consecutively across the document, none skipped.
         expect(parsed.flatMap((report) => report.pageNumbers)).toEqual(
           Array.from({ length: parsed.flatMap((r) => r.pageNumbers).length }, (_, i) => i + 1)
@@ -181,7 +192,7 @@ describe('Report.tryFromDocument', () => {
   })
 
   it('splits reports whose lab numbers an anonymizer masked to the same digits, by the page footer', () => {
-    const masked = { ...sample, labNo: '0000-XX0000000' }
+    const masked = { ...sample, labNo: LabNumber.make('0000-XX0000000') }
     const first = { ...masked, dateOfService: 'May 20 2026 13:25' }
     const second = { ...masked, dateOfService: 'Oct 10 2025 12:34' }
 
@@ -219,6 +230,41 @@ describe('Report.tryFromDocument', () => {
 
     expect(run(document(headerOnly))[0]?.sections).toEqual([])
     expect(run(document([]))).toEqual([])
+  })
+
+  it('skips a page that prints no lab number, keeping the report open across it', () => {
+    const padding = Array.from({ length: 100 }, (_, i) => ({
+      name: `Analyte ${i}`,
+      flag: '',
+      result: String(i),
+      referenceRange: '',
+      unit: '',
+      labLicence: '#5687',
+      comments: [],
+    }))
+    const long: Report.Type = {
+      ...sample,
+      sections: [{ name: 'Hematology', comments: [], groups: [{ name: '', rows: padding }] }],
+    }
+    const [first, second, third, ...rest] = layoutReport(long)
+    if (first === undefined || second === undefined || third === undefined) {
+      throw new Error('the long report prints on three pages')
+    }
+
+    const { reports, pagesWithoutLabNo } = read(
+      document([first, withoutLabNo(second, long.labNo), third, ...rest])
+    )
+
+    expect(pagesWithoutLabNo).toEqual([2])
+    expect(reports.map((report) => report.pageNumbers)).toEqual([
+      [1, 3, ...rest.map((page) => page.pageNumber)],
+    ])
+  })
+
+  it('reads a document whose every page prints no lab number to no reports, every page skipped', () => {
+    const pages = layoutReport(sample).map((page) => withoutLabNo(page, sample.labNo))
+
+    expect(read(document(pages))).toEqual({ reports: [], pagesWithoutLabNo: [1] })
   })
 
   it('fails when the document has pages but no LifeLabs structure at all', () => {
