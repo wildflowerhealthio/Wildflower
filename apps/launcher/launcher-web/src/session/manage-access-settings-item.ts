@@ -1,7 +1,11 @@
+import { FetchHttpClient } from '@effect/platform'
 import { queryOptions, skipToken, useQuery, type UseQueryOptions } from '@tanstack/react-query'
-import { discoverSmartEndpoints } from '@wildflowerhealthio/authorization-core/smart-client'
+import {
+  discoverSmartEndpoints,
+  SignInPage,
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
-import { Effect, Option } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 import { createContext, useContext } from 'react'
 
 /**
@@ -51,10 +55,16 @@ const managementEndpointQueryOptions = (
       serverUrl === undefined
         ? skipToken
         : () =>
-            Effect.runPromise(
-              discoverSmartEndpoints(serverUrl, source).pipe(
-                Effect.map((issuer) => Option.getOrNull(issuer.managementEndpoint))
-              )
+            discoverSmartEndpoints(serverUrl).pipe(
+              Effect.map((issuer) => Option.getOrNull(issuer.managementEndpoint)),
+              Effect.provide(
+                Layer.mergeAll(
+                  FetchHttpClient.layer,
+                  Layer.succeed(FetchHttpClient.Fetch, source.fetch),
+                  Layer.succeed(SignInPage, { isSecure: source.pageIsSecure })
+                )
+              ),
+              Effect.runPromise
             ),
     staleTime: Infinity,
   })

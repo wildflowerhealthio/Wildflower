@@ -1,12 +1,14 @@
 import {
-  browserSignInEnvironment,
+  BrowserSignIn,
   forgetPendingSignIn,
   type PendingRequestUnusable,
   pendingRequestUnusableFrom,
-  type SignInEnvironment,
+  type RetainedSignInRequestStore,
+  type SignInServices,
+  type SignInWindow,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { setStorageItem, takeStorageItem } from '@wildflowerhealthio/kitchen-sink'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, type Layer, Option, Schema } from 'effect'
 
 import type { RootArrival } from './root-arrival.ts'
 import { FhirBaseUrl } from './smart-connection.ts'
@@ -53,16 +55,13 @@ const decodeRetainedSelfAddressedSignInRequest = Schema.decodeUnknownOption(
   RetainedSelfAddressedSignInRequestJson
 )
 
-/** The sign-in environment for `registration`, wired to this page. */
-const signInEnvironmentFor = (
-  registration: SmartRegistration & { readonly redirectUri: string }
-): SignInEnvironment =>
-  browserSignInEnvironment(window, {
-    clientId: registration.clientId,
-    pendingKey: RETAINED_SIGN_IN_REQUEST_KEY,
-    scope: registration.scope,
-    redirectUri: registration.redirectUri,
-  })
+/**
+ * The sign-in services of a SMART app's `page`, its retained sign-in request
+ * kept at {@link RETAINED_SIGN_IN_REQUEST_KEY}: what the edges that run a
+ * sign-in Effect provide it with.
+ */
+const smartSignInLayer = (page: SignInWindow): Layer.Layer<SignInServices> =>
+  BrowserSignIn.layer(page, RETAINED_SIGN_IN_REQUEST_KEY)
 
 /** Retain `request` for the redirect's return, before the page leaves. */
 const retainSelfAddressedSignInRequest = (
@@ -93,9 +92,8 @@ const retainSelfAddressedSignInRequest = (
  * `None` instead.
  */
 const takeRetainedSignInRequests = (
-  arrival: RootArrival,
-  environment: SignInEnvironment
-): Effect.Effect<Option.Option<string>, PendingRequestUnusable> =>
+  arrival: RootArrival
+): Effect.Effect<Option.Option<string>, PendingRequestUnusable, RetainedSignInRequestStore> =>
   Effect.gen(function* () {
     const takingSelfAddressed = takeStorageItem(
       window.sessionStorage,
@@ -105,7 +103,7 @@ const takeRetainedSignInRequests = (
       return yield* takingSelfAddressed.pipe(Effect.orElseSucceed(Option.none))
     }
     const retained = yield* takingSelfAddressed
-    yield* forgetPendingSignIn(environment)
+    yield* forgetPendingSignIn
     return retained
   })
 
@@ -115,7 +113,7 @@ export {
   RETAINED_SIGN_IN_REQUEST_KEY,
   RetainedSelfAddressedSignInRequest,
   retainSelfAddressedSignInRequest,
-  signInEnvironmentFor,
+  smartSignInLayer,
   takeRetainedSignInRequests,
   type SmartRegistration,
 }

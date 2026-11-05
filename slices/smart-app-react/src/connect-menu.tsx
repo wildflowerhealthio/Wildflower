@@ -6,6 +6,7 @@ import {
   decodeFhirBaseUrl,
   insecureTargetReason,
   redirectToSignIn,
+  smartSignInLayer,
   withLocalNetworkAccessHint,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
@@ -210,6 +211,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
           },
           undefined
         ).pipe(
+          Effect.provide(smartSignInLayer(window)),
           Effect.match({
             onFailure: (failure) => failure.reason,
             onSuccess: (support) => signInProblem(serverUrl, support),

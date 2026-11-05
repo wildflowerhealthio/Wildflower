@@ -3,6 +3,7 @@ import { Data, Effect, Either, Match } from 'effect'
 import { useEffect, useMemo } from 'react'
 
 import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'
+import { smartSignInLayer } from './retained-sign-in-requests.ts'
 import {
   completeSignInAfterRedirectHere,
   type SignInAfterRedirectError,
@@ -82,7 +83,12 @@ const useSmartHandshake = (
 ): SmartHandshake => {
   const { data } = useQuery({
     ...smartHandshakeQueryBase,
-    queryFn: () => Effect.runPromise(Effect.either(completeSignInAfterRedirectHere(landing))),
+    queryFn: () =>
+      completeSignInAfterRedirectHere(landing).pipe(
+        Effect.either,
+        Effect.provide(smartSignInLayer(window)),
+        Effect.runPromise
+      ),
   })
   // Memoised on the outcome, so an effect keyed on the handshake runs once it settles.
   return useMemo(

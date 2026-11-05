@@ -19,7 +19,6 @@ import type { RouterContext } from '../router-context.ts'
 import {
   promptOnPage,
   returnToOnPage,
-  signInEnvironment,
   startSignIn,
   type SignInProblem,
   type SignInStep,
@@ -97,12 +96,11 @@ interface LandingSignIn {
  */
 const browserSignIn: LandingSignIn = {
   start: (target, launch) =>
-    startSignIn(
-      target,
-      returnToOnPage(window.location.href),
-      signInEnvironment(window, basenameOf(window.location.pathname)),
-      { launch, prompt: promptOnPage(window.location.href) }
-    ),
+    startSignIn(target, window, basenameOf(window.location.pathname), {
+      returnTo: returnToOnPage(window.location.href),
+      launch,
+      prompt: promptOnPage(window.location.href),
+    }),
   leave: (authorizationUrl) => {
     window.location.assign(authorizationUrl)
   },

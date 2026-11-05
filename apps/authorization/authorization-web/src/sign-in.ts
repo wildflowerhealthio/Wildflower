@@ -18,21 +18,25 @@
  * credential, reaches `sessionStorage`, under the app's own key.
  */
 
+import type { HttpClient } from '@effect/platform'
 import {
   beginSignIn,
-  browserSignInEnvironment,
+  BrowserSignIn,
   completeSignIn,
   discoverSmartEndpoints,
   parsePendingAuthorization,
   redirectUriForRoute,
+  RetainedSignInRequestStore,
+  type ClientRegistration,
   type DiscoveryFailed,
   type Session,
-  type SignInEnvironment,
   type SignInError,
   type SignInPage,
+  type SignInServices,
+  type SignInWindow,
   type SmartIssuer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { Data, Effect, Option } from 'effect'
+import { Data, Effect, type Layer, Option } from 'effect'
 
 import {
   AUTHORIZATION_CLIENT_ID,
@@ -102,20 +106,22 @@ type FinishedSignIn =
   | { readonly tag: 'Failed'; readonly problem: SignInProblem }
 
 /**
- * The impure edges, and the app's registered values, the flow runs against.
+ * The app's registration, returning to the page at `href`.
  *
  * `basePath` is the served directory (the router's basepath) a sign-in
  * returns to: the app root, `/` on the published site's own origin.
  * Both legs pass the same value, so the outbound `redirect_uri` and the one
  * re-derived on the callback match.
  */
-const signInEnvironment = (page: SignInPage, basePath: string): SignInEnvironment =>
-  browserSignInEnvironment(page, {
-    clientId: AUTHORIZATION_CLIENT_ID,
-    pendingKey: PENDING_AUTHORIZATION_KEY,
-    scope: AUTHORIZATION_SCOPE,
-    redirectUri: redirectUriForRoute(page.location.href, '/', basePath) ?? REGISTERED_REDIRECT_URI,
-  })
+const signInRegistration = (href: string, basePath: string): ClientRegistration => ({
+  clientId: AUTHORIZATION_CLIENT_ID,
+  scope: AUTHORIZATION_SCOPE,
+  redirectUri: redirectUriForRoute(href, '/', basePath) ?? REGISTERED_REDIRECT_URI,
+})
+
+/** The sign-in services of `page`, its pending record kept at the app's own key. */
+const signInLayer = (page: SignInWindow): Layer.Layer<SignInServices> =>
+  BrowserSignIn.layer(page, PENDING_AUTHORIZATION_KEY)
 
 /**
  * The base of the authorization API `issuer` advertises, when it is a
@@ -131,23 +137,21 @@ const authorizationApiOf = (issuer: SmartIssuer): Effect.Effect<string, NotAWild
 
 /** The authorization API of the Wildflower server at `serverUrl`, from its SMART configuration. */
 const discoverAuthorizationApi = (
-  serverUrl: string,
-  environment: SignInEnvironment
-): Effect.Effect<string, DiscoveryFailed | NotAWildflowerServer> =>
-  discoverSmartEndpoints(serverUrl, environment).pipe(Effect.flatMap(authorizationApiOf))
+  serverUrl: string
+): Effect.Effect<
+  string,
+  DiscoveryFailed | NotAWildflowerServer,
+  HttpClient.HttpClient | SignInPage
+> => discoverSmartEndpoints(serverUrl).pipe(Effect.flatMap(authorizationApiOf))
 
-/** Fold a sign-in Effect's failure channel into a {@link SignInStep}. */
-const runStep = <A>(
-  effect: Effect.Effect<A, SignInError | NotAWildflowerServer>
-): Promise<SignInStep<A>> =>
-  Effect.runPromise(
-    effect.pipe(
-      Effect.match({
-        onSuccess: (value): SignInStep<A> => ({ tag: 'Ok', value }),
-        onFailure: (error): SignInStep<A> => ({ tag: 'Failed', reason: error.reason }),
-      })
-    )
-  )
+/** A sign-in Effect's outcome as a {@link SignInStep}: its failure channel folded in. */
+const stepOf = <A, R>(
+  effect: Effect.Effect<A, SignInError | NotAWildflowerServer, R>
+): Effect.Effect<SignInStep<A>, never, R> =>
+  Effect.match(effect, {
+    onSuccess: (value): SignInStep<A> => ({ tag: 'Ok', value }),
+    onFailure: (error): SignInStep<A> => ({ tag: 'Failed', reason: error.reason }),
+  })
 
 /**
  * Start a sign-in to `serverUrl`, yielding the authorization URL to leave for,
@@ -157,38 +161,44 @@ const runStep = <A>(
  */
 const startSignIn = (
   serverUrl: string,
-  returnTo: string | undefined,
-  environment: SignInEnvironment
+  page: SignInWindow,
+  basePath: string,
+  options: { readonly returnTo?: string | undefined } = {}
 ): Promise<SignInStep<string>> =>
-  runStep(
-    discoverAuthorizationApi(serverUrl, environment).pipe(
-      Effect.zipRight(beginSignIn(serverUrl, returnTo, environment))
-    )
-  )
-
-/**
- * The server the pending record in `environment`'s store names, if any. An
- * unreadable store is treated as an empty one, as `completeSignIn` treats it.
- */
-const pendingServerUrlIn = (environment: SignInEnvironment): string | undefined => {
-  try {
-    return Option.getOrUndefined(
-      Option.map(
-        parsePendingAuthorization(environment.store.getItem(environment.pendingKey)),
-        (pending) => pending.serverUrl
+  stepOf(
+    discoverAuthorizationApi(serverUrl).pipe(
+      Effect.zipRight(
+        beginSignIn(serverUrl, signInRegistration(page.location.href, basePath), options)
       )
     )
-  } catch {
-    return undefined
-  }
-}
+  ).pipe(Effect.provide(signInLayer(page)), Effect.runPromise)
+
+/**
+ * The server the pending record in the {@link RetainedSignInRequestStore}
+ * names, if any. An unreadable store is treated as an empty one, as
+ * `completeSignIn` treats it.
+ */
+const pendingServerUrl: Effect.Effect<string | undefined, never, RetainedSignInRequestStore> =
+  Effect.flatMap(RetainedSignInRequestStore, (store) => store.read).pipe(
+    Effect.map((stored) =>
+      stored.pipe(
+        Option.flatMap(parsePendingAuthorization),
+        Option.map((pending) => pending.serverUrl),
+        Option.getOrUndefined
+      )
+    ),
+    Effect.orElseSucceed(() => undefined)
+  )
 
 /** The {@link ServerSession} a redeemed `session` becomes, once its server's API is found. */
 const serverSessionFor = (
-  session: Session,
-  environment: SignInEnvironment
-): Effect.Effect<ServerSession, DiscoveryFailed | NotAWildflowerServer> =>
-  discoverAuthorizationApi(session.serverUrl, environment).pipe(
+  session: Session
+): Effect.Effect<
+  ServerSession,
+  DiscoveryFailed | NotAWildflowerServer,
+  HttpClient.HttpClient | SignInPage
+> =>
+  discoverAuthorizationApi(session.serverUrl).pipe(
     Effect.map((authorizationApiUrl) => ({
       serverUrl: session.serverUrl,
       authorizationApiUrl,
@@ -205,23 +215,27 @@ const serverSessionFor = (
  * before `completeSignIn` runs, since it drops the pending record as soon as it
  * knows this is a return leg.
  */
-const finishSignIn = async (
+const finishSignIn = (
   search: string,
-  environment: SignInEnvironment
-): Promise<FinishedSignIn> => {
-  const serverUrl = pendingServerUrlIn(environment)
-  const step = await runStep(
-    completeSignIn(search, environment).pipe(
-      Effect.flatMap((redeemed) =>
-        Option.match(redeemed, {
-          onNone: () => Effect.succeedNone,
-          onSome: (session) => Effect.asSome(serverSessionFor(session, environment)),
-        })
+  page: SignInWindow,
+  basePath: string
+): Promise<FinishedSignIn> =>
+  Effect.gen(function* () {
+    const serverUrl = yield* pendingServerUrl
+    const step = yield* stepOf(
+      completeSignIn(search, signInRegistration(page.location.href, basePath)).pipe(
+        Effect.flatMap((redeemed) =>
+          Option.match(redeemed, {
+            onNone: () => Effect.succeedNone,
+            onSome: (session) => Effect.asSome(serverSessionFor(session)),
+          })
+        )
       )
     )
-  )
-  return step.tag === 'Ok' ? step : { tag: 'Failed', problem: { reason: step.reason, serverUrl } }
-}
+    return step.tag === 'Ok'
+      ? step
+      : ({ tag: 'Failed', problem: { reason: step.reason, serverUrl } } as const)
+  }).pipe(Effect.provide(signInLayer(page)), Effect.runPromise)
 
 /**
  * The in-app path to settle on after a sign-in: `returnTo` when it is a
@@ -243,7 +257,8 @@ export {
   inAppReturnPath,
   NOT_A_WILDFLOWER_SERVER,
   NotAWildflowerServer,
-  signInEnvironment,
+  signInLayer,
+  signInRegistration,
   startSignIn,
 }
 export type { FinishedSignIn, ServerSession, SignInProblem, SignInStep }

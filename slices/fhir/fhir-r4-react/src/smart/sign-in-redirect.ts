@@ -3,13 +3,14 @@ import {
   createState,
   type PendingRequestUnusable,
   type PkceUnavailable,
+  type RetainedSignInRequestStore,
+  SignInCrypto,
   type SmartIssuer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Effect } from 'effect'
 
 import {
   retainSelfAddressedSignInRequest,
-  signInEnvironmentFor,
   type SmartRegistration,
 } from './retained-sign-in-requests.ts'
 import type { FhirBaseUrl } from './smart-connection.ts'
@@ -26,7 +27,9 @@ interface SmartLaunchConfig extends SmartRegistration {
 }
 
 /** Run `beginning`, then send the browser to the authorization URL it yields. */
-const redirectToAuthorization = <E>(beginning: Effect.Effect<string, E>): Effect.Effect<void, E> =>
+const redirectToAuthorization = <E, R>(
+  beginning: Effect.Effect<string, E, R>
+): Effect.Effect<void, E, R> =>
   Effect.flatMap(beginning, (authorizeUrl) =>
     Effect.sync(() => {
       window.location.assign(authorizeUrl)
@@ -43,10 +46,11 @@ const redirectToSignInAt = (
   discovered: SmartIssuer,
   config: Omit<SmartLaunchConfig, 'fhirBaseUrl'>,
   launch: string | undefined
-): Effect.Effect<void, PkceUnavailable | PendingRequestUnusable> =>
-  redirectToAuthorization(
-    beginSignInAt(discovered, undefined, signInEnvironmentFor(config), { launch })
-  )
+): Effect.Effect<
+  void,
+  PkceUnavailable | PendingRequestUnusable,
+  SignInCrypto | RetainedSignInRequestStore
+> => redirectToAuthorization(beginSignInAt(discovered, config, { launch }))
 
 /**
  * Configuration for a self-addressed sign-in to an **open** FHIR server — one
@@ -73,9 +77,9 @@ interface SelfAddressedSignInConfig {
  */
 const redirectToSelfAddressedSignInReturn = (
   config: SelfAddressedSignInConfig
-): Effect.Effect<void, PendingRequestUnusable> =>
+): Effect.Effect<void, PendingRequestUnusable, SignInCrypto> =>
   Effect.gen(function* () {
-    const expectedState = createState(window.crypto)
+    const expectedState = createState((yield* SignInCrypto).random)
     yield* retainSelfAddressedSignInRequest({ expectedState, fhirBaseUrl: config.fhirBaseUrl })
     const redirectTarget = new URL(config.redirectUri)
     redirectTarget.searchParams.set('state', expectedState)

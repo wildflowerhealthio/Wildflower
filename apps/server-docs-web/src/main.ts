@@ -8,7 +8,7 @@ import './styles.css'
 import {
   arrivingSmartLaunchFrom,
   beginSignIn,
-  browserSignInEnvironment,
+  BrowserSignIn,
   completeSignIn,
   insecureTargetReason,
   isAuthorizationResponse,
@@ -17,9 +17,10 @@ import {
   searchWithServerUrl,
   serverUrlFromSearch,
   standaloneLaunchScopeParameter,
+  type ClientRegistration,
   type Session,
-  type SignInEnvironment,
   type SignInError,
+  type SignInServices,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 
 import {
@@ -112,17 +113,19 @@ let session: Session | undefined
  */
 const redirectUri = redirectUriForPage(window.location.href) ?? REGISTERED_REDIRECT_URI
 
-/**
- * The impure edges the sign-in flow runs against in the browser, wired by
- * `authorization-core/smart-client` so this console and the `launcher-web`
- * page share one reading of `window` rather than a copy each.
- */
-const signInEnvironment: SignInEnvironment = browserSignInEnvironment(window, {
+/** What the console is registered as, returning to {@link redirectUri}. */
+const signInRegistration: ClientRegistration = {
   clientId: CLIENT_ID,
-  pendingKey: PENDING_AUTHORIZATION_KEY,
   scope: standaloneLaunchScopeParameter(),
   redirectUri,
-})
+}
+
+/**
+ * The sign-in services of this page, wired by `authorization-core/smart-client`
+ * so this console and the `launcher-web` page share one reading of `window`
+ * rather than a copy each.
+ */
+const signInLayer = BrowserSignIn.layer(window, PENDING_AUTHORIZATION_KEY)
 
 /** Show `message` on the status line, or clear it when `undefined`. */
 const showStatus = (message: string | undefined, kind: 'ok' | 'problem' = 'ok'): void => {
@@ -146,7 +149,7 @@ const currentServerUrl = (): string | undefined => serverUrlFromSearch(window.lo
  * the server the sign-in was for there, since success never will).
  */
 const runSignInEffect = <A>(
-  effect: Effect.Effect<A, SignInError>,
+  effect: Effect.Effect<A, SignInError, SignInServices>,
   onSuccess: (value: A) => void,
   onFailure?: (error: SignInError) => void
 ): void => {
@@ -160,7 +163,8 @@ const runSignInEffect = <A>(
           showStatus(error.reason, 'problem')
           onFailure?.(error)
         },
-      })
+      }),
+      Effect.provide(signInLayer)
     )
   )
 }
@@ -308,7 +312,7 @@ const startSigningIn = (serverUrl: string, launch?: string): void => {
   showStatus(`Asking ${serverUrl} how to sign in…`)
   // The console is one page, so there is nowhere in particular to return to.
   runSignInEffect(
-    beginSignIn(serverUrl, undefined, signInEnvironment, { launch }),
+    beginSignIn(serverUrl, signInRegistration, { launch }),
     (authorizationUrl) => {
       window.location.assign(authorizationUrl)
     }
@@ -474,7 +478,7 @@ renderAuthControls(initialServerUrl)
 // The server a return leg's sign-in was for. Read now: `completeSignIn` drops
 // the pending record it is read from.
 const pendingServerUrl = returningFromAuthorization
-  ? pendingSignInServerUrl(signInEnvironment.store, signInEnvironment.pendingKey)
+  ? Effect.runSync(pendingSignInServerUrl.pipe(Effect.provide(signInLayer)))
   : undefined
 
 // Mount the reference now on an ordinary load. On a return leg, defer it: a
@@ -497,7 +501,7 @@ const returnWithoutSession = (): void => {
 // string is read, so every load asks. `?server=` is restored from the pending
 // record rather than the URL: the registered redirect URI carries no query.
 runSignInEffect(
-  completeSignIn(returnSearch, signInEnvironment),
+  completeSignIn(returnSearch, signInRegistration),
   (result) => {
     if (Option.isNone(result)) {
       if (returningFromAuthorization) returnWithoutSession()

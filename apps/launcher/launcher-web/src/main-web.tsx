@@ -29,7 +29,6 @@ import {
   postSignInUrl,
   scheduleExpiry,
   serverKindForSession,
-  signInEnvironment,
   unsentEhrLaunch,
 } from './sign-in.ts'
 import {
@@ -104,7 +103,7 @@ const bootApp = async (): Promise<JSX.Element> => {
   const returnSearch = window.location.search
   // The same `basepath` the router gets, so the callback re-derives the exact
   // `redirect_uri` the outbound leg sent from the app root — see `sign-in.ts`.
-  const completed = await finishSignIn(returnSearch, signInEnvironment(window, basepath))
+  const completed = await finishSignIn(returnSearch, window, basepath)
   const session = completed.tag === 'Ok' ? Option.getOrUndefined(completed.value) : undefined
   // The page's session: the server a sign-in signed in to, kept in the tab's
   // `sessionStorage` for a reload or the expiry bounce back to the landing,

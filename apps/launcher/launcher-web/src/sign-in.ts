@@ -37,16 +37,18 @@
 
 import {
   beginSignIn,
-  browserSignInEnvironment,
+  BrowserSignIn,
   completeSignIn,
   parsePendingAuthorization,
   redirectUriForRoute,
+  RetainedSignInRequestStore,
   SERVER_QUERY_PARAM,
-  type AuthorizationRequestExtras,
+  type ClientRegistration,
   type Session,
-  type SignInEnvironment,
   type SignInError,
-  type SignInPage,
+  type SignInOptions,
+  type SignInServices,
+  type SignInWindow,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   AuthedUntil,
@@ -54,7 +56,7 @@ import {
   AuthedExpiryUnknown,
   Unauthed,
 } from '@wildflowerhealthio/react-kitchen-sink'
-import { Effect, Option } from 'effect'
+import { Effect, type Layer, Option } from 'effect'
 
 import { ServerKind } from './session/server-kind.ts'
 
@@ -165,7 +167,7 @@ type SignInStep<A> =
   | { readonly tag: 'Failed'; readonly reason: string }
 
 /**
- * The impure edges — and this entry's registered values — the flow runs against.
+ * This entry's registration, returning to the page at `href`.
  *
  * `basePath` is the served base (the router's basepath) the redirect returns
  * under; it defaults to the origin root. Both legs must pass the same value, so
@@ -174,26 +176,27 @@ type SignInStep<A> =
  * landing on the way out; the base the 404 redirect lands on when the code
  * comes back). See {@link POST_SIGN_IN_ROUTE}.
  */
-const signInEnvironment = (page: SignInPage, basePath = '/'): SignInEnvironment =>
-  browserSignInEnvironment(page, {
-    clientId: CLIENT_ID,
-    pendingKey: PENDING_AUTHORIZATION_KEY,
-    scope: LAUNCHER_SCOPE,
-    redirectUri:
-      redirectUriForRoute(page.location.href, POST_SIGN_IN_ROUTE, basePath) ??
-      REGISTERED_REDIRECT_URI,
-  })
+const signInRegistration = (href: string, basePath = '/'): ClientRegistration => ({
+  clientId: CLIENT_ID,
+  scope: LAUNCHER_SCOPE,
+  redirectUri: redirectUriForRoute(href, POST_SIGN_IN_ROUTE, basePath) ?? REGISTERED_REDIRECT_URI,
+})
 
-/** Fold a sign-in Effect's failure channel into a {@link SignInStep}. */
-const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A>> =>
-  Effect.runPromise(
-    effect.pipe(
-      Effect.match({
-        onSuccess: (value): SignInStep<A> => ({ tag: 'Ok', value }),
-        onFailure: (error: SignInError): SignInStep<A> => ({ tag: 'Failed', reason: error.reason }),
-      })
-    )
-  )
+/**
+ * The sign-in services of `page`, its pending record kept at
+ * {@link PENDING_AUTHORIZATION_KEY}.
+ */
+const signInLayer = (page: SignInWindow): Layer.Layer<SignInServices> =>
+  BrowserSignIn.layer(page, PENDING_AUTHORIZATION_KEY)
+
+/** A sign-in Effect's outcome as a {@link SignInStep}: its failure channel folded in. */
+const stepOf = <A, R>(
+  effect: Effect.Effect<A, SignInError, R>
+): Effect.Effect<SignInStep<A>, never, R> =>
+  Effect.match(effect, {
+    onSuccess: (value): SignInStep<A> => ({ tag: 'Ok', value }),
+    onFailure: (error: SignInError): SignInStep<A> => ({ tag: 'Failed', reason: error.reason }),
+  })
 
 /**
  * Start a sign-in against `serverUrl`, yielding the authorization URL for the
@@ -210,10 +213,14 @@ const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A
  */
 const startSignIn = (
   serverUrl: string,
-  returnTo: string | undefined,
-  environment: SignInEnvironment,
-  request: AuthorizationRequestExtras = {}
-): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment, request))
+  page: SignInWindow,
+  basePath: string,
+  options: SignInOptions = {}
+): Promise<SignInStep<string>> =>
+  stepOf(beginSignIn(serverUrl, signInRegistration(page.location.href, basePath), options)).pipe(
+    Effect.provide(signInLayer(page)),
+    Effect.runPromise
+  )
 
 /**
  * The SMART EHR launch this page load was opened with — by the base opening a
@@ -275,22 +282,21 @@ type FinishedSignIn =
   | { readonly tag: 'Failed'; readonly problem: SignInProblem }
 
 /**
- * The server the pending record in `environment`'s store names, if any. An
- * unreadable store is treated as an empty one, as `completeSignIn` treats it:
- * either way there is no server to name.
+ * The server the pending record in the {@link RetainedSignInRequestStore}
+ * names, if any. An unreadable store is treated as an empty one, as
+ * `completeSignIn` treats it: either way there is no server to name.
  */
-const pendingServerUrlIn = (environment: SignInEnvironment): string | undefined => {
-  try {
-    return Option.getOrUndefined(
-      Option.map(
-        parsePendingAuthorization(environment.store.getItem(environment.pendingKey)),
-        (pending) => pending.serverUrl
+const pendingServerUrl: Effect.Effect<string | undefined, never, RetainedSignInRequestStore> =
+  Effect.flatMap(RetainedSignInRequestStore, (store) => store.read).pipe(
+    Effect.map((stored) =>
+      stored.pipe(
+        Option.flatMap(parsePendingAuthorization),
+        Option.map((pending) => pending.serverUrl),
+        Option.getOrUndefined
       )
-    )
-  } catch {
-    return undefined
-  }
-}
+    ),
+    Effect.orElseSucceed(() => undefined)
+  )
 
 /**
  * Finish a sign-in from the query string this page load arrived on: `None` when
@@ -298,16 +304,22 @@ const pendingServerUrlIn = (environment: SignInEnvironment): string | undefined 
  * {@link Session} when it is and the code redeemed, and a {@link SignInProblem}
  * naming the server when it failed. The server is read before `completeSignIn`
  * runs, since it drops the pending record as soon as it knows this is a return
- * leg.
+ * leg. `basePath` is the one {@link startSignIn} was given.
  */
-const finishSignIn = async (
+const finishSignIn = (
   search: string,
-  environment: SignInEnvironment
-): Promise<FinishedSignIn> => {
-  const serverUrl = pendingServerUrlIn(environment)
-  const step = await runStep(completeSignIn(search, environment))
-  return step.tag === 'Ok' ? step : { tag: 'Failed', problem: { reason: step.reason, serverUrl } }
-}
+  page: SignInWindow,
+  basePath: string
+): Promise<FinishedSignIn> =>
+  Effect.gen(function* () {
+    const serverUrl = yield* pendingServerUrl
+    const step = yield* stepOf(
+      completeSignIn(search, signInRegistration(page.location.href, basePath))
+    )
+    return step.tag === 'Ok'
+      ? step
+      : ({ tag: 'Failed', problem: { reason: step.reason, serverUrl } } as const)
+  }).pipe(Effect.provide(signInLayer(page)), Effect.runPromise)
 
 /**
  * The auth signal a redeemed `session` publishes, given the current time in unix
@@ -423,7 +435,8 @@ export {
   returnToOnPage,
   scheduleExpiry,
   serverKindForSession,
-  signInEnvironment,
+  signInLayer,
+  signInRegistration,
   startSignIn,
   unsentEhrLaunch,
 }

@@ -1,18 +1,19 @@
+import type { HttpClient } from '@effect/platform'
 import {
+  type ClientRegistration,
   completeSignIn,
   pendingRequestUnrecognisedFromAnotherVersion,
   type PendingRequestUnrecognised,
   type PendingRequestUnusable,
+  type RetainedSignInRequestStore,
   searchWithoutAuthorizationResponse,
   type Session,
-  type SignInEnvironment,
   type SignInError,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Data, Effect, Match, Option } from 'effect'
 
 import {
   decodeRetainedSelfAddressedSignInRequest,
-  signInEnvironmentFor,
   takeRetainedSignInRequests,
   type SmartRegistration,
 } from './retained-sign-in-requests.ts'
@@ -46,8 +47,8 @@ const NO_SIGN_IN_IN_PROGRESS_REASON =
   'This page has no sign-in in progress to complete. Connect again.'
 
 /**
- * Redeem the code `signInReturn` carries for the sign-in `environment`
- * started.
+ * Redeem the code `signInReturn` carries for the sign-in the app at
+ * `registration` started.
  *
  * @remarks
  * `completeSignIn` reads the return from a query string, so the arrival is
@@ -56,9 +57,13 @@ const NO_SIGN_IN_IN_PROGRESS_REASON =
  */
 const redeemSignIn = (
   { code, state }: Data.TaggedEnum.Value<RootArrival, 'SignInReturn'>,
-  environment: SignInEnvironment
-): Effect.Effect<SmartConnection, SignInError | NoSignInInProgress> =>
-  completeSignIn(`?${new URLSearchParams({ code, state }).toString()}`, environment).pipe(
+  registration: ClientRegistration
+): Effect.Effect<
+  SmartConnection,
+  SignInError | NoSignInInProgress,
+  HttpClient.HttpClient | RetainedSignInRequestStore
+> =>
+  completeSignIn(`?${new URLSearchParams({ code, state }).toString()}`, registration).pipe(
     Effect.flatMap(
       Option.match({
         onNone: () =>
@@ -127,7 +132,9 @@ const scrubAuthorizationResponse = (): void => {
  * once it settles, whichever way: the callback leaves the URL as soon as the
  * retained sign-in requests are taken.
  */
-const scrubbingAuthorizationResponse = <A, E>(taking: Effect.Effect<A, E>): Effect.Effect<A, E> =>
+const scrubbingAuthorizationResponse = <A, E, R>(
+  taking: Effect.Effect<A, E, R>
+): Effect.Effect<A, E, R> =>
   Effect.ensuring(taking, Effect.sync(scrubAuthorizationResponse))
 
 /**
@@ -149,11 +156,10 @@ interface SignInLanding {
   readonly onSignedIn: (connection: SmartConnection) => void
 }
 
-/** The sign-in environment of the app at `landing`. */
-const landingEnvironment = (
+/** The registration of the app at `landing`, redirected back to its root. */
+const landingRegistration = (
   landing: Pick<SignInLanding, 'registration' | 'appRootRedirectUri'>
-): SignInEnvironment =>
-  signInEnvironmentFor({ ...landing.registration, redirectUri: landing.appRootRedirectUri })
+): ClientRegistration => ({ ...landing.registration, redirectUri: landing.appRootRedirectUri })
 
 /**
  * Complete the sign-in the page landed on after its redirect: redeem the code
@@ -172,15 +178,18 @@ const landingEnvironment = (
  */
 const completeSignInAfterRedirectHere = (
   landing: Pick<SignInLanding, 'arrival' | 'registration' | 'appRootRedirectUri'>
-): Effect.Effect<SmartConnection, SignInAfterRedirectError> =>
+): Effect.Effect<
+  SmartConnection,
+  SignInAfterRedirectError,
+  HttpClient.HttpClient | RetainedSignInRequestStore
+> =>
   Effect.gen(function* () {
-    const environment = landingEnvironment(landing)
-    const retained = yield* takeRetainedSignInRequests(landing.arrival, environment).pipe(
+    const retained = yield* takeRetainedSignInRequests(landing.arrival).pipe(
       scrubbingAuthorizationResponse
     )
     return yield* Match.value(landing.arrival).pipe(
       Match.tagsExhaustive({
-        SignInReturn: (signInReturn) => redeemSignIn(signInReturn, environment),
+        SignInReturn: (signInReturn) => redeemSignIn(signInReturn, landingRegistration(landing)),
         SelfAddressedSignInReturn: (selfAddressedReturn) =>
           completeSelfAddressedSignIn(selfAddressedReturn, retained),
       })
@@ -192,22 +201,15 @@ const completeSignInAfterRedirectHere = (
  * authorization server's refusal, which the root shows on the connect menu.
  *
  * @param refused - The refusal the page landed on
- * @param landing - The registration and redirect URI of the app at the root
  *
  * @remarks
  * The same rule {@link completeSignInAfterRedirectHere} takes the records by
  * ({@link takeRetainedSignInRequests}); it fails only when the storage throws.
  */
 const discardRefusedSignInAfterRedirectHere = (
-  refused: Data.TaggedEnum.Value<RootArrival, 'SignInRefused'>,
-  landing: Pick<SignInLanding, 'registration' | 'appRootRedirectUri'>
-): Effect.Effect<void, PendingRequestUnusable> =>
-  Effect.suspend(() =>
-    takeRetainedSignInRequests(refused, landingEnvironment(landing)).pipe(
-      Effect.asVoid,
-      scrubbingAuthorizationResponse
-    )
-  )
+  refused: Data.TaggedEnum.Value<RootArrival, 'SignInRefused'>
+): Effect.Effect<void, PendingRequestUnusable, RetainedSignInRequestStore> =>
+  takeRetainedSignInRequests(refused).pipe(Effect.asVoid, scrubbingAuthorizationResponse)
 
 export {
   CallbackStateMismatch,

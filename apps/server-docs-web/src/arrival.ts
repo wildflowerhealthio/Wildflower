@@ -10,11 +10,11 @@
 import {
   isAuthorizationResponse,
   parsePendingAuthorization,
+  RetainedSignInRequestStore,
   searchAfterArrivingLaunch,
   searchWithoutAuthorizationResponse,
-  type PendingStore,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { Option } from 'effect'
+import { Effect, Option } from 'effect'
 
 /**
  * The query string a load arriving with `arrivalSearch` settles on, once what
@@ -35,26 +35,27 @@ const searchSettledFrom = (arrivalSearch: string): string =>
 
 /**
  * The server the sign-in this tab is waiting on was started for, from its
- * pending record in `store` at `key`; `undefined` when there is none, or the
- * storage refuses to be read.
+ * pending record in the {@link RetainedSignInRequestStore}; `undefined` when
+ * there is none, or the storage refuses to be read.
  *
  * Read before `completeSignIn`, which drops the record on a return leg: the
  * redirect URI carries no `?server=`, so this is how a failed or cancelled
  * return gets back to the server the reader picked.
  */
-const pendingSignInServerUrl = (
-  store: Pick<PendingStore, 'getItem'>,
-  key: string
-): string | undefined => {
-  try {
-    return parsePendingAuthorization(store.getItem(key)).pipe(
+const pendingSignInServerUrl: Effect.Effect<
+  string | undefined,
+  never,
+  RetainedSignInRequestStore
+> = Effect.flatMap(RetainedSignInRequestStore, (store) => store.read).pipe(
+  Effect.map((stored) =>
+    stored.pipe(
+      Option.flatMap(parsePendingAuthorization),
       Option.map((pending) => pending.serverUrl),
       Option.getOrUndefined
     )
-  } catch {
-    return undefined
-  }
-}
+  ),
+  Effect.orElseSucceed(() => undefined)
+)
 
 /**
  * Run `resetAuthControls` whenever `page` is restored from the back-forward
