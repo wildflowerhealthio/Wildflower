@@ -130,3 +130,93 @@ pub fn refresh_limit_from_seconds(seconds: i64) -> Option<Duration> {
     Duration::try_seconds(seconds)
         .filter(|limit| *limit > Duration::zero() && *limit <= REFRESH_TOKEN_FAMILY_CEILING)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// The instant `seconds` after the Unix epoch.
+    fn at(seconds: i64) -> DateTime<Utc> {
+        DateTime::from_timestamp(seconds, 0).expect("in-range timestamp")
+    }
+
+    /// Any `wildflower/` scope ties a first-use client to its browser session
+    /// with a two-hour idle limit; any other scope set gets a day idle and a
+    /// week at most.
+    #[test]
+    fn a_first_use_client_s_policy_follows_its_scopes() {
+        let scopes = |scopes: &[&str]| scopes.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            RefreshPolicy::trusted_on_first_use(&scopes(&["openid", "wildflower/Grant.r"])),
+            RefreshPolicy {
+                idle_ttl: Some(Duration::hours(2)),
+                max_ttl: None,
+                ends_with_browser_session: true,
+            }
+        );
+        assert_eq!(
+            RefreshPolicy::trusted_on_first_use(&scopes(&["openid", "patient/*.rs"])),
+            RefreshPolicy {
+                idle_ttl: Some(Duration::days(1)),
+                max_ttl: Some(Duration::days(7)),
+                ends_with_browser_session: false,
+            }
+        );
+        assert_eq!(
+            RefreshPolicy::trusted_on_first_use(&[]),
+            DATA_SCOPED_FIRST_USE_POLICY
+        );
+    }
+
+    /// A limit is a positive number of seconds no longer than the ceiling.
+    #[test]
+    fn a_refresh_limit_is_positive_and_within_the_ceiling() {
+        let ceiling_seconds = REFRESH_TOKEN_FAMILY_CEILING.num_seconds();
+        assert_eq!(refresh_limit_from_seconds(1), Some(Duration::seconds(1)));
+        assert_eq!(
+            refresh_limit_from_seconds(ceiling_seconds),
+            Some(REFRESH_TOKEN_FAMILY_CEILING)
+        );
+        assert_eq!(refresh_limit_from_seconds(0), None);
+        assert_eq!(refresh_limit_from_seconds(-1), None);
+        assert_eq!(refresh_limit_from_seconds(ceiling_seconds + 1), None);
+        assert_eq!(refresh_limit_from_seconds(i64::MAX), None);
+    }
+
+    /// A limit given as hours, between an hour and a year.
+    fn arb_limit() -> impl Strategy<Value = Option<Duration>> {
+        prop::option::of((1..=365 * 24i64).prop_map(Duration::hours))
+    }
+
+    proptest! {
+        /// The deadline is the earliest limit: never past the ceiling or a
+        /// limit the policy has, and equal to one of them. At the deadline
+        /// the family has reached a limit or the ceiling; a second before it,
+        /// neither.
+        #[test]
+        fn the_deadline_is_the_earliest_limit(
+            idle_ttl in arb_limit(),
+            max_ttl in arb_limit(),
+            issued in 0..1_000_000i64,
+            rotated_after in 0..10_000_000i64,
+        ) {
+            let policy = RefreshPolicy { idle_ttl, max_ttl, ends_with_browser_session: false };
+            let issued_at = at(issued);
+            let last_rotated_at = at(issued + rotated_after);
+            let deadline = policy.family_deadline(issued_at, last_rotated_at);
+            let ceiling = issued_at + REFRESH_TOKEN_FAMILY_CEILING;
+            let limits = [Some(ceiling), idle_ttl.map(|t| last_rotated_at + t), max_ttl.map(|t| issued_at + t)];
+            prop_assert!(limits.iter().flatten().all(|limit| deadline <= *limit));
+            prop_assert!(limits.iter().flatten().any(|limit| deadline == *limit));
+
+            let reached = |now| {
+                policy.is_idle_limit_reached(last_rotated_at, now)
+                    || policy.is_max_lifetime_reached(issued_at, now)
+                    || ceiling <= now
+            };
+            prop_assert!(reached(deadline));
+            prop_assert!(!reached(deadline - Duration::seconds(1)));
+        }
+    }
+}

@@ -401,4 +401,43 @@ mod tests {
             prop_assert_eq!(updater.store.tx().list_clients().unwrap().len(), registered.len());
         }
     }
+
+    /// Setting a refresh policy replaces only the policy, an essential
+    /// client's included, and answers with the row as stored; an unknown
+    /// client is `ClientNotFound` and gets no row.
+    #[test]
+    fn set_refresh_policy_replaces_only_the_policy() {
+        use chrono::Duration;
+
+        let registered = client("app", &["openid"]);
+        let essential_client = client(HOST, &["openid"]);
+        let updater = updater_with(&[registered.clone(), essential_client.clone()]);
+        let refresh_policy = RefreshPolicy {
+            idle_ttl: Some(Duration::minutes(30)),
+            max_ttl: Some(Duration::days(1)),
+            ends_with_browser_session: true,
+        };
+
+        for (row, essential) in [(registered, false), (essential_client, true)] {
+            let changed = Client {
+                refresh_policy,
+                ..row.clone()
+            };
+            assert_eq!(
+                updater.set_refresh_policy(&row.client_id, refresh_policy),
+                Ok(ClientView {
+                    client: changed.clone(),
+                    essential
+                })
+            );
+            assert_eq!(stored(&updater, &row.client_id), changed);
+        }
+        assert_eq!(
+            updater.set_refresh_policy("ghost", refresh_policy),
+            Err(AuthorizationServerError::ClientNotFound {
+                client_id: "ghost".to_owned()
+            })
+        );
+        assert_eq!(updater.store.tx().list_clients().unwrap().len(), 2);
+    }
 }

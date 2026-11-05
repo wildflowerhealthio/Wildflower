@@ -230,6 +230,7 @@ mod tests {
                 Just(RegistrationSource::ServerDefined),
                 Just(RegistrationSource::TrustedOnFirstUse)
             ],
+            arb_refresh_policy(),
         )
             .prop_map(
                 |(
@@ -242,6 +243,7 @@ mod tests {
                     registered_at,
                     disabled_at,
                     registration_source,
+                    refresh_policy,
                 )| Client {
                     client_id,
                     name,
@@ -253,8 +255,27 @@ mod tests {
                     registered_at,
                     disabled_at,
                     registration_source,
+                    refresh_policy,
                 },
             )
+    }
+
+    /// A refresh policy with each limit present or not, in whole seconds from
+    /// one second up to the ceiling.
+    fn arb_refresh_policy() -> impl Strategy<Value = RefreshPolicy> {
+        let arb_limit = || {
+            prop::option::of(
+                (1..=crate::domain::refresh_token::REFRESH_TOKEN_FAMILY_CEILING.num_seconds())
+                    .prop_map(Duration::seconds),
+            )
+        };
+        (arb_limit(), arb_limit(), any::<bool>()).prop_map(
+            |(idle_ttl, max_ttl, ends_with_browser_session)| RefreshPolicy {
+                idle_ttl,
+                max_ttl,
+                ends_with_browser_session,
+            },
+        )
     }
 
     proptest! {
@@ -352,10 +373,11 @@ mod tests {
         }
     }
 
-    /// Upserting an existing client updates its name and policy in place but
-    /// keeps its first `registered_at` and the Owner's disable.
+    /// Upserting an existing client updates its name and registration in
+    /// place but keeps its first `registered_at`, the Owner's disable and its
+    /// refresh policy.
     #[test]
-    fn upsert_updates_policy_but_preserves_registration_and_disable() {
+    fn upsert_updates_registration_but_preserves_registered_at_disable_and_refresh_policy() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let registered_at = chrono::DateTime::from_timestamp(1_000, 0).unwrap();
         let disabled_at = chrono::DateTime::from_timestamp(1_500, 0).unwrap();
@@ -370,7 +392,13 @@ mod tests {
             registered_at,
             disabled_at: Some(disabled_at),
             registration_source: RegistrationSource::TrustedOnFirstUse,
+            refresh_policy: RefreshPolicy {
+                idle_ttl: Some(Duration::minutes(30)),
+                max_ttl: None,
+                ends_with_browser_session: true,
+            },
         };
+        let first_refresh_policy = client.refresh_policy;
         store.write(|tx| tx.upsert_client(&client)).expect("insert");
 
         // Re-seed with drifted policy, a newer registered_at, and disabled_at
@@ -381,6 +409,11 @@ mod tests {
         client.registered_at = chrono::DateTime::from_timestamp(2_000, 0).unwrap();
         client.disabled_at = None;
         client.registration_source = RegistrationSource::ServerDefined;
+        client.refresh_policy = RefreshPolicy {
+            idle_ttl: None,
+            max_ttl: Some(Duration::days(1)),
+            ends_with_browser_session: false,
+        };
         store.write(|tx| tx.upsert_client(&client)).expect("update");
 
         let fetched = store
@@ -395,6 +428,48 @@ mod tests {
             fetched.registration_source,
             RegistrationSource::ServerDefined,
             "seeding marks the rows it owns server-defined"
+        );
+        assert_eq!(
+            fetched.refresh_policy, first_refresh_policy,
+            "only the Owner changes a refresh policy"
+        );
+    }
+
+    /// Setting a refresh policy writes exactly the three refresh columns,
+    /// clearing a limit to `NULL`, and reports a miss for an unknown id.
+    #[test]
+    fn set_client_refresh_policy_writes_only_the_policy() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        let registered = Client {
+            refresh_policy: RefreshPolicy {
+                idle_ttl: Some(Duration::hours(2)),
+                max_ttl: Some(Duration::days(7)),
+                ends_with_browser_session: false,
+            },
+            registered_at: chrono::DateTime::from_timestamp(1_000, 0).unwrap(),
+            ..crate::domain::test_fake::client("app", &["openid"])
+        };
+        store
+            .write(|tx| tx.upsert_client(&registered))
+            .expect("insert");
+        let changed_policy = RefreshPolicy {
+            idle_ttl: None,
+            max_ttl: Some(Duration::days(30)),
+            ends_with_browser_session: true,
+        };
+
+        assert!(store
+            .write(|tx| tx.set_client_refresh_policy("app", &changed_policy))
+            .expect("update"));
+        assert!(!store
+            .write(|tx| tx.set_client_refresh_policy("ghost", &changed_policy))
+            .expect("update"));
+        assert_eq!(
+            store.read(|tx| tx.client_by_id("app")).expect("read"),
+            Some(Client {
+                refresh_policy: changed_policy,
+                ..registered
+            })
         );
     }
 

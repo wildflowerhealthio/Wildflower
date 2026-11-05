@@ -833,6 +833,53 @@ mod tests {
         );
     }
 
+    /// Seeding inserts each client it owns with that client's refresh
+    /// policy, and a later boot keeps a policy the Owner changed since.
+    #[test]
+    fn seeding_inserts_each_owned_client_s_refresh_policy_and_keeps_the_owner_s() {
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
+        let origin = url::Url::parse("https://ruth.relay.example").expect("origin");
+        let seed = || {
+            open_and_seed_store(
+                pool.clone(),
+                &crate::default_host_app_client_scopes(),
+                "fhir-ui-client",
+                &origin,
+            )
+            .expect("seed store")
+        };
+        let store = seed();
+        let policy_of = |store: &SqliteGrantStore, client_id: &str| {
+            store
+                .read(|tx| tx.client_by_id(client_id))
+                .expect("query client")
+                .map(|client| client.refresh_policy)
+        };
+        assert_eq!(
+            policy_of(&store, crate::WILDFLOWER_HOST_APP_CLIENT_ID),
+            Some(HOST_APP_REFRESH_POLICY)
+        );
+        assert_eq!(
+            policy_of(&store, crate::BROWSER_SESSION_CLIENT_ID),
+            Some(BROWSER_SESSION_CLIENT_REFRESH_POLICY)
+        );
+        assert_eq!(
+            policy_of(&store, "fhir-ui-client"),
+            Some(FHIR_UI_REFRESH_POLICY)
+        );
+
+        let owner_s_policy = RefreshPolicy {
+            idle_ttl: Some(Duration::minutes(15)),
+            ..FHIR_UI_REFRESH_POLICY
+        };
+        assert!(store
+            .write(|tx| tx.set_client_refresh_policy("fhir-ui-client", &owner_s_policy))
+            .expect("set the policy"));
+        let reseeded = seed();
+        assert_eq!(policy_of(&reseeded, "fhir-ui-client"), Some(owner_s_policy));
+    }
+
     /// With the standalone defaults, the host app's client may be granted
     /// `openid` alone: the Owner's authority is not the host client's.
     #[test]

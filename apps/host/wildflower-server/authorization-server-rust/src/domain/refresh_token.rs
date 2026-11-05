@@ -157,7 +157,7 @@ mod tests {
                 scopes: vec!["read".to_owned()],
                 patient: None,
                 issued_at: now,
-                expires_at: now + Duration::days(90),
+                expires_at: now + Duration::days(1),
                 authorization_code_hash: None,
                 grant_id: None,
                 sid: None,

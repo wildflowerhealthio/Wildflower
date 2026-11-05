@@ -324,6 +324,38 @@ mod tests {
         assert_eq!(row.allowed_scopes, ["patient/Patient.r", "openid"]);
         assert_eq!(row.redirect_uris, [redirect()]);
         assert_eq!(row.kind, ClientKind::Public);
+        assert_eq!(
+            row.refresh_policy,
+            RefreshPolicy::trusted_on_first_use(&row.allowed_scopes)
+        );
+    }
+
+    /// A new registration takes the first-use refresh policy for the scopes
+    /// it is created with, and widening it later, even by a `wildflower/`
+    /// scope, leaves the policy it has.
+    #[test]
+    fn a_new_registration_takes_the_first_use_policy_and_widening_keeps_it() {
+        let store = FakeGrantStore::default();
+        let record = |scopes: &[&str]| {
+            GrantRecorder::within(&mut store.tx())
+                .record_code_grant(
+                    "newcomer",
+                    &redirect(),
+                    &registering_delegated_scopes(scopes),
+                    None,
+                    Utc::now(),
+                )
+                .unwrap();
+            store
+                .tx()
+                .client_by_id("newcomer")
+                .unwrap()
+                .expect("registered")
+                .refresh_policy
+        };
+        let data_policy = RefreshPolicy::trusted_on_first_use(&["patient/Patient.r".to_owned()]);
+        assert_eq!(record(&["patient/Patient.r"]), data_policy);
+        assert_eq!(record(&["wildflower/Grant.r"]), data_policy);
     }
 
     /// Widening a known client by an approval whose redirect the row already
