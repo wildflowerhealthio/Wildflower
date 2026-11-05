@@ -63,25 +63,32 @@ const PlotsPage = ({ connection }: { readonly connection: SmartConnection }): JS
 
   return (
     <>
-      {Option.isSome(patientChoice) ? (
-        <PatientChoiceLine
-          className={styles['patient-line']}
-          patientChoice={patientChoice.value}
-          onPatientChange={changePatient}
-          {...walkthroughAnchor(PlotsPageWalkthroughAnchor.patientLine)}
-        />
-      ) : undefined}
-      {Option.isNone(patientChoice) ? (
-        <PatientPicker onPatientChoice={choosePatient} />
-      ) : (
-        <PatientRecord
-          // Remounted per choice, so no read or reconciliation carries over.
-          key={patientChoiceKeyOf(patientChoice.value)}
-          patientId={patientScopeOf(patientChoice.value)}
-          selection={selection}
-          onSelectionUpdate={updateSelection}
-          openedAt={openedAt}
-        />
+      {patientChoice.pipe(
+        Option.map((chosen) => (
+          <PatientChoiceLine
+            key="patient-line"
+            className={styles['patient-line']}
+            patientChoice={chosen}
+            onPatientChange={changePatient}
+            {...walkthroughAnchor(PlotsPageWalkthroughAnchor.patientLine)}
+          />
+        )),
+        Option.getOrNull
+      )}
+      {patientChoice.pipe(
+        Option.map((chosen) => (
+          <PatientRecord
+            // Remounted per choice, so no read or reconciliation carries over.
+            key={patientChoiceKeyOf(chosen)}
+            patientId={patientScopeOf(chosen)}
+            selection={selection}
+            onSelectionUpdate={updateSelection}
+            openedAt={openedAt}
+          />
+        )),
+        Option.getOrElse(() => (
+          <PatientPicker key="patient-picker" onPatientChoice={choosePatient} />
+        ))
       )}
     </>
   )
