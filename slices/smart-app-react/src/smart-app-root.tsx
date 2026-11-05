@@ -24,7 +24,6 @@ import {
   launchError,
   type RootArrival,
   rootArrivalFrom,
-  type SignInArrival,
   type SignInLanding,
   type SmartConnection,
   type SmartRegistration,
@@ -192,6 +191,60 @@ function SignInLandingProvider({
 }
 
 /**
+ * The app a sign-in came back to: `BrandBar`, with the telemetry status
+ * control at its end, over `children` in an error boundary that reports what
+ * it catches, under the {@link SignInLanding} their `SmartHandshakeGate`
+ * completes.
+ */
+function LaunchedApp({
+  telemetry,
+  children,
+  ...landing
+}: SignInLanding & Pick<SmartAppRootProps, 'telemetry' | 'children'>): JSX.Element {
+  return (
+    <SignInLandingProvider {...landing}>
+      <BrandBar trailing={<ConsentStatusControl />} />
+      <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
+        {children}
+      </CrashReportingBoundary>
+    </SignInLandingProvider>
+  )
+}
+
+/**
+ * The standalone page, `branding-react`'s `AppLandingPage`: the app's
+ * introduction beside the `ConnectMenu`, in an error boundary that reports
+ * what it catches, showing `launchFailure` as its `arrivalProblem`, and the
+ * telemetry status control above the footer.
+ */
+function ConnectMenuPage({
+  app,
+  registration,
+  telemetry,
+  redirectUri,
+  launchFailure,
+}: Pick<SmartAppRootProps, 'app' | 'registration' | 'telemetry'> & {
+  /** The app root, which the connect menu's sign-in comes back to. */
+  readonly redirectUri: string
+  /** The launch failure the page arrived with, if it arrived with one. */
+  readonly launchFailure: Option.Option<Error>
+}): JSX.Element {
+  return (
+    <AppLandingPage app={app} aboveFooter={<ConsentStatusControl />}>
+      <CrashReportingBoundary extraContext={{ app: telemetry.app }} headingLevel={2}>
+        <ConnectMenu
+          target="fhir-r4"
+          clientId={registration.clientId}
+          scope={registration.scope}
+          redirectUri={redirectUri}
+          arrivalProblem={Option.getOrUndefined(launchFailure)}
+        />
+      </CrashReportingBoundary>
+    </AppLandingPage>
+  )
+}
+
+/**
  * Tag Sentry's events with the host of the FHIR server `connection` names. A
  * server URL that does not parse is reported, and tagged as having no host.
  * The report leaves the URL out, and the URL is redacted as written: it can
@@ -226,15 +279,11 @@ const replaceWindowLocation = (url: string): void => {
  *   launch that fails before it leaves comes back to this root as
  *   `?launchError`.
  * - **SignInReturn** or **SelfAddressedSignInReturn** (a sign-in came back):
- *   `BrandBar`, with the telemetry status control at its end, over `children`
- *   in an error boundary that reports what it catches, under the
- *   `SignInLanding` their `SmartHandshakeGate` completes as a query on the
- *   shared client.
+ *   {@link LaunchedApp}, whose `SmartHandshakeGate` completes the sign-in as a
+ *   query on the shared client.
  * - **SignInRefused** or **Visit** (the authorization server's refusal, or a
- *   bare visit): `branding-react`'s `AppLandingPage`, the app's introduction
- *   beside the `ConnectMenu` (in the same kind of error boundary), which shows
- *   the refusal, or a launch that failed and landed back here, as its
- *   `arrivalProblem`, and the telemetry status control above the footer.
+ *   bare visit): {@link ConnectMenuPage}, showing the refusal, or a launch
+ *   that failed and landed back here.
  *
  * @remarks
  * **Nothing starts before the visitor answers the consent dialog.** Every
@@ -352,35 +401,6 @@ function SmartAppRoot({
     if (telemetryStarted) Option.map(connection, tagFhirServerHost)
   }, [telemetryStarted, connection])
 
-  const launchedApp = (signInArrival: SignInArrival): JSX.Element => (
-    <QueryClientProvider client={queryClient}>
-      <SignInLandingProvider
-        arrival={signInArrival}
-        registration={registration}
-        appRootRedirectUri={redirectUri}
-        onSignedIn={onSignedIn}
-      >
-        <BrandBar trailing={<ConsentStatusControl />} />
-        <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
-          {children}
-        </CrashReportingBoundary>
-      </SignInLandingProvider>
-    </QueryClientProvider>
-  )
-  const connectMenu = (
-    <AppLandingPage app={app} aboveFooter={<ConsentStatusControl />}>
-      <CrashReportingBoundary extraContext={{ app: telemetry.app }} headingLevel={2}>
-        <ConnectMenu
-          target="fhir-r4"
-          clientId={registration.clientId}
-          scope={registration.scope}
-          redirectUri={redirectUri}
-          arrivalProblem={Option.getOrUndefined(launchFailure)}
-        />
-      </CrashReportingBoundary>
-    </AppLandingPage>
-  )
-
   return (
     <TelemetryConsentGate copy={TELEMETRY_CONSENT_COPY} onDecided={startTelemetry}>
       {Match.value(arrival).pipe(
@@ -395,9 +415,29 @@ function SmartAppRoot({
             />
           </CrashReportingBoundary>
         )),
-        Match.tag('SignInReturn', 'SelfAddressedSignInReturn', launchedApp),
+        Match.tag('SignInReturn', 'SelfAddressedSignInReturn', (signInArrival) => (
+          <QueryClientProvider client={queryClient}>
+            <LaunchedApp
+              arrival={signInArrival}
+              registration={registration}
+              appRootRedirectUri={redirectUri}
+              onSignedIn={onSignedIn}
+              telemetry={telemetry}
+            >
+              {children}
+            </LaunchedApp>
+          </QueryClientProvider>
+        )),
         Match.tag('SignInRefused', 'Visit', () => (
-          <QueryClientProvider client={queryClient}>{connectMenu}</QueryClientProvider>
+          <QueryClientProvider client={queryClient}>
+            <ConnectMenuPage
+              app={app}
+              registration={registration}
+              telemetry={telemetry}
+              redirectUri={redirectUri}
+              launchFailure={launchFailure}
+            />
+          </QueryClientProvider>
         )),
         Match.exhaustive
       )}
