@@ -130,8 +130,9 @@ printed identifier but must be referenced, the system is a fictitious
 Wildflower one with a readable value. DICOM keys each record by the
 identifier its file carries (`DicomIdentifierSystem`): the Patient by its
 Patient ID and the ServiceRequest by its Accession Number, each under the URI
-its issuer names (HL7 v2's HD-to-URI rule) or a Wildflower-minted system for
-an unstated issuer, and the ImagingStudy by its Study Instance UID in
+its issuer's Universal Entity ID names (as IHE ITI TF-2 Appendix Z maps an
+assigning authority) or, since Wildflower keeps no identifier-domain
+registry, a Wildflower-minted system for an issuer naming no URI, and the ImagingStudy by its Study Instance UID in
 `urn:dicom:uid`.
 
 ## Detaching a server's record
