@@ -1,3 +1,4 @@
+import { HealthCardIdentifier, type HealthCardProvince } from '@wildflowerhealthio/fhir-ca-infoway'
 import { PickedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
@@ -34,13 +35,16 @@ describe('lifeLabsPdfImporter', () => {
     expect(lifeLabsPdfImporter.detect(jsonLike, 'export.json')).toBe(false)
   })
 
-  it('defaultSettings has a timeZone', () => {
+  it("defaultSettings are Toronto's zone and Ontario's health card", () => {
     expect(lifeLabsPdfImporter.defaultSettings).toEqual(defaultLifeLabsPdfSettings)
-    expect(lifeLabsPdfImporter.defaultSettings.timeZone).toBe('America/Toronto')
+    expect(lifeLabsPdfImporter.defaultSettings).toEqual({
+      timeZone: 'America/Toronto',
+      healthCardProvince: 'ON',
+    })
   })
 })
 
-const SETTINGS = { timeZone: 'America/Vancouver' }
+const SETTINGS = { timeZone: 'America/Vancouver', healthCardProvince: 'BC' } as const
 
 /** An extractor that reads any PDF as `reports` printed. */
 const extractorPrinting = (reports: readonly Report.Type[]): Layer.Layer<PositionedTextExtractor> =>
@@ -86,6 +90,58 @@ describe('lifeLabsPdfImporter decode', () => {
           }
         }
       ),
+      { numRuns: numRunsFor({ base: 10 }) }
+    )
+  })
+
+  it("property: writes the HC # in the chosen province's health card system", async () => {
+    const file: PickedFile.Type = {
+      id: '0:Reports.pdf',
+      fileName: 'Reports.pdf',
+      bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
+    }
+    await fc.assert(
+      fc.asyncProperty(reportArbitrary, async (printed) => {
+        const report = {
+          ...printed,
+          patient: { ...printed.patient, patientId: '', healthCardNumber: '1234567890 AB' },
+        }
+        const patientIdentifiersWith = async (
+          healthCardProvince: HealthCardProvince.Type
+        ): Promise<readonly unknown[]> => {
+          const decoded = await Effect.runPromise(
+            lifeLabsPdfImporter
+              .decode([file], { ...SETTINGS, healthCardProvince })
+              .pipe(Effect.provide(extractorPrinting([report])))
+          )
+          return decoded.fileSets
+            .flatMap((fileSet) => fileSet.sections)
+            .flatMap((section) => section.entries)
+            .flatMap(({ resource }) =>
+              resource.resourceType === 'Patient' ? resource.identifier : []
+            )
+        }
+
+        expect(await patientIdentifiersWith('ON')).toEqual([
+          expect.objectContaining({
+            system: new URL(HealthCardIdentifier.HealthCardNumberSystem.ON),
+            value: '1234567890',
+            extension: [
+              expect.objectContaining({
+                url: HealthCardIdentifier.ONTARIO_HEALTH_CARD_VERSION_CODE_URL,
+                valueString: 'AB',
+              }),
+            ],
+          }),
+        ])
+        expect(await patientIdentifiersWith('BC')).toEqual([
+          expect.objectContaining({
+            system: new URL(HealthCardIdentifier.HealthCardNumberSystem.BC),
+            value: '1234567890 AB',
+            extension: [],
+          }),
+        ])
+      }),
       { numRuns: numRunsFor({ base: 10 }) }
     )
   })

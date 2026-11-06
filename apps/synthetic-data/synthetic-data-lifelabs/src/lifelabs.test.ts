@@ -279,7 +279,10 @@ describe('LifeLabs.reportsOf', () => {
         expect(readBack.pagesWithoutLabNo).toEqual([])
 
         const decoded = Effect.runSync(
-          decodeLifeLabsPdfDocument(printed, { timeZone: laboratory.timeZone })
+          decodeLifeLabsPdfDocument(printed, {
+            timeZone: laboratory.timeZone,
+            healthCardProvince: LifeLabs.HEALTH_CARD_PROVINCE,
+          })
         )
         // Adopted as the import stage adopts them, without its source file.
         const imported = DecodedFile.resources(DecodedFileSet.adopt(decoded)).map(
@@ -292,6 +295,43 @@ describe('LifeLabs.reportsOf', () => {
         expect(renderOf(inputs).map(withoutSubject)).toEqual(
           imported.filter((resource) => resource.resourceType !== 'Patient').map(withoutSubject)
         )
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test("property: print the person's one Ontario health card number, read back as its number and version code", () => {
+    fc.assert(
+      fc.property(inputsArbitrary, (inputs) => {
+        const { laboratory, story } = inputs.storyWithLaboratory
+        const reports = Effect.runSync(
+          LifeLabs.reportsOf(inputs.asOf, story, laboratory, inputs.requisition)
+        )
+        const printedNumbers = [
+          ...new Set(reports.map((report) => report.patient.healthCardNumber)),
+        ]
+        expect(printedNumbers).toHaveLength(1)
+        const [number, versionCode] = printedNumbers[0]?.split(' ') ?? []
+        expect(number).toMatch(/^\d{10}$/)
+        expect(versionCode).toMatch(/^[A-Z]{2}$/)
+
+        const decoded = Effect.runSync(
+          decodeLifeLabsPdfDocument(layoutDocument(reports), {
+            timeZone: laboratory.timeZone,
+            healthCardProvince: LifeLabs.HEALTH_CARD_PROVINCE,
+          })
+        )
+        const patients = DecodedFile.resources(DecodedFileSet.adopt(decoded)).flatMap(
+          ({ resource }) => (resource.resourceType === 'Patient' ? [resource] : [])
+        )
+        expect(
+          patients.map((patient) =>
+            patient.identifier.map((identifier) => ({
+              value: identifier.value,
+              versionCodes: identifier.extension.map((extension) => extension.valueString),
+            }))
+          )
+        ).toEqual([[{ value: number, versionCodes: [versionCode] }]])
       }),
       { numRuns: RUNS }
     )

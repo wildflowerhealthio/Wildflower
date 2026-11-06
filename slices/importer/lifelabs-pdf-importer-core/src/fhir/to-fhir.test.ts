@@ -1,3 +1,4 @@
+import { HealthCardIdentifier } from '@wildflowerhealthio/fhir-ca-infoway'
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -16,19 +17,24 @@ import {
   practitionerKeyOf,
   reportKeyOf,
   type ReportResources,
+  type SynthesisOptions,
   toFhirResources,
 } from './to-fhir.ts'
 import { UCUM_SYSTEM } from './units.ts'
 
-const TIME_ZONE = 'America/Toronto'
+const OPTIONS: SynthesisOptions = { timeZone: 'America/Toronto', healthCardProvince: 'ON' }
+
+const ONTARIO_HEALTH_CARD = HealthCardIdentifier.HealthCardNumberSystem.ON
 
 /** A group's resources, in order; none for no group. */
 const resourcesOf = (group: ReportResources | undefined): readonly FhirResource[] =>
   group?.entries.map(({ resource }) => resource) ?? []
 
 /** The synthesized groups flattened in order — most assertions read the whole set. */
-const synthesize = (reports: readonly Report.Type[]): readonly FhirResource[] =>
-  Effect.runSync(toFhirResources(reports, { timeZone: TIME_ZONE })).flatMap(resourcesOf)
+const synthesize = (
+  reports: readonly Report.Type[],
+  options: SynthesisOptions = OPTIONS
+): readonly FhirResource[] => Effect.runSync(toFhirResources(reports, options)).flatMap(resourcesOf)
 
 const ofType = <T extends FhirResource['resourceType']>(
   resources: readonly FhirResource[],
@@ -238,7 +244,7 @@ describe('toFhirResources', () => {
     const [patient] = ofType(synthesize([sample]), 'Patient')
 
     expect(patient?.id).toBeNull()
-    expect(idOf(patient)).toBe(keyText(patientKeyOf(sample.patient)))
+    expect(idOf(patient)).toBe(keyText(patientKeyOf(sample.patient, 'ON')))
     expect(patient?.name[0]).toMatchObject({
       family: 'OKAFOR',
       given: ['DANA', 'MARIE'],
@@ -246,11 +252,18 @@ describe('toFhirResources', () => {
     })
     expect(patient?.gender).toBe('female')
     expect(patient?.birthDate).toBe('1981-08-13')
-    // The health card number, less its version code, is the key, written once.
+    // The health card number, less its version code, is the key, written once,
+    // its version code in Ontario's extension.
     expect(patient?.identifier).toEqual([
       expect.objectContaining({
-        system: new URL(LifeLabsIdentifierSystem.OntarioHealthCardNumber),
+        system: new URL(ONTARIO_HEALTH_CARD),
         value: '1234567890',
+        extension: [
+          expect.objectContaining({
+            url: HealthCardIdentifier.ONTARIO_HEALTH_CARD_VERSION_CODE_URL,
+            valueString: 'AB',
+          }),
+        ],
       }),
     ])
     expect(patient?.telecom[0]).toMatchObject({ system: 'phone', value: '(416) 555-0100' })
@@ -261,16 +274,16 @@ describe('toFhirResources', () => {
   })
 
   it('keys a patient by Patient ID first, then health card number, then name and birth date', () => {
-    expect(patientKeyOf({ ...sample.patient, patientId: 'P-77' })).toEqual({
+    expect(patientKeyOf({ ...sample.patient, patientId: 'P-77' }, 'ON')).toEqual({
       system: LifeLabsIdentifierSystem.PatientId,
       value: 'P-77',
     })
-    expect(patientKeyOf(sample.patient)).toEqual({
-      system: LifeLabsIdentifierSystem.OntarioHealthCardNumber,
+    expect(patientKeyOf(sample.patient, 'ON')).toEqual({
+      system: ONTARIO_HEALTH_CARD,
       value: '1234567890',
     })
     expect(
-      patientKeyOf({ ...sample.patient, name: ' OKAFOR, DANA MARIE ', healthCardNumber: '' })
+      patientKeyOf({ ...sample.patient, name: ' OKAFOR, DANA MARIE ', healthCardNumber: '' }, 'ON')
     ).toEqual({
       system: LifeLabsIdentifierSystem.PatientNameBirthDate,
       value: 'OKAFOR, DANA MARIE, Aug 13 1981',
@@ -285,7 +298,7 @@ describe('toFhirResources', () => {
 
     expect(patient?.identifier.map(identifierText)).toEqual([
       `${LifeLabsIdentifierSystem.PatientId}|P-77`,
-      `${LifeLabsIdentifierSystem.OntarioHealthCardNumber}|1234567890`,
+      `${ONTARIO_HEALTH_CARD}|1234567890`,
     ])
   })
 
@@ -296,17 +309,34 @@ describe('toFhirResources', () => {
       { ...sample, labNo: LabNumber.make('2024-JJ0000001'), patient: reissued },
     ])
 
-    expect(patientKeyOf(reissued)).toEqual(patientKeyOf(sample.patient))
+    expect(patientKeyOf(reissued, 'ON')).toEqual(patientKeyOf(sample.patient, 'ON'))
     expect(ofType(resources, 'Patient')).toHaveLength(1)
     expect(ofType(resources, 'DiagnosticReport').map((report) => targetOf(report.subject))).toEqual(
-      [
-        `${LifeLabsIdentifierSystem.OntarioHealthCardNumber}|1234567890`,
-        `${LifeLabsIdentifierSystem.OntarioHealthCardNumber}|1234567890`,
-      ]
+      [`${ONTARIO_HEALTH_CARD}|1234567890`, `${ONTARIO_HEALTH_CARD}|1234567890`]
     )
-    expect(patientKeyOf({ ...sample.patient, healthCardNumber: '1234-567-890 A' }).value).toBe(
-      '1234-567-890'
+    expect(
+      patientKeyOf({ ...sample.patient, healthCardNumber: '1234-567-890 A' }, 'ON').value
+    ).toBe('1234-567-890')
+  })
+
+  it("writes the health card number in British Columbia's system when British Columbia is chosen", () => {
+    const british = { ...sample.patient, healthCardNumber: '9123456789' }
+    const [patient] = ofType(
+      synthesize([{ ...sample, patient: british }], { ...OPTIONS, healthCardProvince: 'BC' }),
+      'Patient'
     )
+
+    expect(patientKeyOf(british, 'BC')).toEqual({
+      system: HealthCardIdentifier.HealthCardNumberSystem.BC,
+      value: '9123456789',
+    })
+    expect(patient?.identifier).toEqual([
+      expect.objectContaining({
+        system: new URL(HealthCardIdentifier.HealthCardNumberSystem.BC),
+        value: '9123456789',
+        extension: [],
+      }),
+    ])
   })
 
   it('keys a practitioner by the printed name, inner whitespace collapsed', () => {
@@ -546,7 +576,7 @@ describe('toFhirResources', () => {
   it('groups each report with its own resources, minting a shared Patient in the first group only', () => {
     const second = { ...sample, labNo: LabNumber.make('2024-JJ0000001') }
 
-    const groups = Effect.runSync(toFhirResources([sample, second], { timeZone: TIME_ZONE }))
+    const groups = Effect.runSync(toFhirResources([sample, second], OPTIONS))
 
     expect(groups.map((group) => group.report)).toEqual([sample, second])
     const [first, again] = groups

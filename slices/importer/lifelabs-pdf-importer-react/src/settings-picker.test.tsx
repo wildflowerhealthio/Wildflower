@@ -30,21 +30,31 @@ describe('LifeLabsPdfSettingsPicker', () => {
 
   it('shows the current zone and reports every keystroke up verbatim', async () => {
     const changes: LifeLabsPdfSettings[] = []
-    render(<Harness initial={{ timeZone: 'America/Toronto' }} onChange={(s) => changes.push(s)} />)
+    render(
+      <Harness
+        initial={{ timeZone: 'America/Toronto', healthCardProvince: 'ON' }}
+        onChange={(s) => changes.push(s)}
+      />
+    )
     const input = screen.getByLabelText<HTMLInputElement>('Report time zone')
 
     expect(input.value).toBe('America/Toronto')
     await userEvent.clear(input)
     await userEvent.type(input, 'UTC')
 
-    expect(changes.at(-1)).toEqual({ timeZone: 'UTC' })
+    expect(changes.at(-1)).toEqual({ timeZone: 'UTC', healthCardProvince: 'ON' })
     expect(input.value).toBe('UTC')
     expect(input.getAttribute('aria-invalid')).toBe('false')
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('flags a zone the runtime does not know, and clears the flag once it is fixed', async () => {
-    render(<Harness initial={{ timeZone: 'Mars/Olympus' }} onChange={() => {}} />)
+    render(
+      <Harness
+        initial={{ timeZone: 'Mars/Olympus', healthCardProvince: 'ON' }}
+        onChange={() => {}}
+      />
+    )
     const input = screen.getByLabelText<HTMLInputElement>('Report time zone')
 
     expect(input.getAttribute('aria-invalid')).toBe('true')
@@ -55,5 +65,26 @@ describe('LifeLabsPdfSettingsPicker', () => {
 
     expect(input.getAttribute('aria-invalid')).toBe('false')
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('shows the current health card province and reports a change of it up', async () => {
+    const changes: LifeLabsPdfSettings[] = []
+    render(
+      <Harness
+        initial={{ timeZone: 'America/Vancouver', healthCardProvince: 'ON' }}
+        onChange={(s) => changes.push(s)}
+      />
+    )
+    const select = screen.getByLabelText<HTMLSelectElement>('Health card province')
+
+    expect(select.value).toBe('ON')
+    expect([...select.options].map((option) => option.text)).toEqual([
+      'Ontario',
+      'British Columbia',
+    ])
+    await userEvent.selectOptions(select, 'British Columbia')
+
+    expect(changes).toEqual([{ timeZone: 'America/Vancouver', healthCardProvince: 'BC' }])
+    expect(select.value).toBe('BC')
   })
 })
