@@ -11,9 +11,14 @@ import {
   type ReferenceType,
 } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
-import { type FhirResource, ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResource,
+  ResourceReferences,
+  ResourceType,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import {
   Array as Arr,
+  type Either,
   Option,
   type ParseResult,
   pipe,
@@ -21,8 +26,6 @@ import {
   Schema,
   type Effect,
 } from 'effect'
-
-import { identifierOf, mapReferences } from './reference-table.ts'
 
 /**
  * `TResource` with no logical id, distributed over a union so each variant
@@ -93,6 +96,20 @@ const decodeUnknown = <TResource extends FhirResource, TEncoded>(
   )
 
 /**
+ * {@link decodeUnknown} as an `Either`: the detached record, or the
+ * `ParseError` for a wire its schema rejects or one that carries an `id`, for
+ * a caller that builds records synchronously.
+ */
+const decodeUnknownEither = <TResource extends FhirResource, TEncoded>(
+  resourceSchema: Schema.Schema<TResource, TEncoded>
+): ((wire: unknown) => Either.Either<Detached<TResource>, ParseResult.ParseError>) =>
+  Schema.decodeUnknownEither(
+    resourceSchema.pipe(
+      Schema.filter(isDetached, { message: () => 'a detached record carries no id' })
+    )
+  )
+
+/**
  * The `Identifier` wire a detached record is keyed by, `{ system, value }`:
  * its `identifier[0]`.
  */
@@ -100,6 +117,25 @@ const keyIdentifierWire = ({
   system,
   value,
 }: Key): typeof IdentifierAndReference.IdentifierSchema.Encoded => ({ system, value })
+
+/**
+ * The decoded `Identifier` a record is keyed by, `{ system, value }`, every
+ * other element empty: {@link keyIdentifierWire} as its schema decodes it.
+ *
+ * @remarks
+ * Takes the system parsed, so a caller keying many records in one system
+ * parses it once ({@link fromServerRecord}'s `memoisedUrlOf`).
+ */
+const keyIdentifier = (system: URL, value: string): IdentifierType => ({
+  id: null,
+  extension: [],
+  assigner: null,
+  period: null,
+  system,
+  type: null,
+  use: null,
+  value,
+})
 
 /**
  * The logical `Reference` wire to the record of `resourceType` keyed by `key`:
@@ -249,7 +285,7 @@ const detachReference =
       ...reference,
       reference: null,
       type: resourceType,
-      identifier: identifierOf(urlOf(serverSystemOf(baseUrl, resourceType)), id),
+      identifier: keyIdentifier(urlOf(serverSystemOf(baseUrl, resourceType)), id),
     }
   }
 
@@ -275,17 +311,17 @@ const detachReference =
  *   kept behind it. A `Binary` (no `identifier` element) and a record with no
  *   `id` keep only what they had, so they are keyless unless the server's own
  *   first identifier names them.
- * - Every reference the per-type table ({@link mapReferences}) reaches is run
- *   through {@link detachReference}.
+ * - Every reference it carries, at any depth (`ResourceReferences.mapReferences`),
+ *   is run through {@link detachReference}.
  *
  * There is deliberately no "already keyed?" guard: a server that publishes
  * its own id as an identifier in the same system yields a benign duplicate.
  */
 const fromServerRecord = (baseUrl: string) => {
   const urlOf = memoisedUrlOf()
-  const detachReferences = mapReferences(detachReference(baseUrl, urlOf))
+  const detachOne = detachReference(baseUrl, urlOf)
   return <TResource extends FhirResource>(resource: TResource): Detached<TResource> => {
-    const detached = detachReferences(resource)
+    const detached: FhirResource = ResourceReferences.mapReferences(resource, detachOne)
     const { id } = resource
     const keyed: Type =
       id !== null && hasIdentifier(detached)
@@ -293,13 +329,14 @@ const fromServerRecord = (baseUrl: string) => {
             ...detached,
             id: null,
             identifier: [
-              identifierOf(urlOf(serverSystemOf(baseUrl, detached.resourceType)), id),
+              keyIdentifier(urlOf(serverSystemOf(baseUrl, detached.resourceType)), id),
               ...detached.identifier,
             ],
           }
         : { ...detached, id: null }
-    // `mapReferences` maps each variant to itself, so `keyed` is `resource`'s
-    // own type, detached; the type system cannot see that (see its remarks).
+    // `ResourceReferences.mapReferences` keeps `resource`'s shape, so `keyed`
+    // is `resource`'s own type, detached; the type system cannot see that
+    // through the distributive `Detached`.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     return keyed as Detached<TResource>
   }
@@ -307,9 +344,11 @@ const fromServerRecord = (baseUrl: string) => {
 
 export {
   decodeUnknown,
+  decodeUnknownEither,
   fromServerRecord,
   hasIdentifier,
   isDetached,
+  keyIdentifier,
   keyIdentifierOf,
   keyIdentifierWire,
   keyOf,

@@ -54,6 +54,7 @@ const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => {
                 key: `k-${index}`,
                 title: resource.resourceType,
                 resource,
+                origin: 'Decoded' as const,
               })),
             },
           ],

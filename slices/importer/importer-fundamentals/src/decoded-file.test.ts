@@ -16,13 +16,30 @@ describe('sectionResources', () => {
     const sections: readonly DecodedFile.Section[] = [
       {
         title: 'https://r4.example.org/Patient/pat-7',
-        resources: [{ key: 'req-0:0', title: 'Patient/pat-7', resource: resource('pat-7') }],
+        resources: [
+          {
+            key: 'req-0:0',
+            title: 'Patient/pat-7',
+            resource: resource('pat-7'),
+            origin: 'Decoded',
+          },
+        ],
       },
       {
         title: 'https://r4.example.org/Observation?patient=pat-7',
         resources: [
-          { key: 'req-1:0', title: 'Observation/obs-1', resource: resource('weight') },
-          { key: 'req-1:1', title: 'Observation/obs-2', resource: resource('height') },
+          {
+            key: 'req-1:0',
+            title: 'Observation/obs-1',
+            resource: resource('weight'),
+            origin: 'Decoded',
+          },
+          {
+            key: 'req-1:1',
+            title: 'Observation/obs-2',
+            resource: resource('height'),
+            origin: 'Decoded',
+          },
         ],
       },
     ]
@@ -38,7 +55,12 @@ describe('sectionResources', () => {
     const sectionArbitrary = fc.record({
       title: fc.string(),
       resources: fc.array(
-        fc.record({ key: fc.string(), title: fc.string(), resource: fc.string().map(resource) })
+        fc.record({
+          key: fc.string(),
+          title: fc.string(),
+          resource: fc.string().map(resource),
+          origin: fc.constant<DecodedFile.Origin>('Decoded'),
+        })
       ),
     })
     fc.assert(
@@ -55,12 +77,15 @@ describe('sectionResources', () => {
 describe('mapResources', () => {
   const file: DecodedFile.DecodedFile = {
     sections: [
-      { title: 'First', resources: [{ key: 'k-0', title: 'Patient/a', resource: resource('a') }] },
+      {
+        title: 'First',
+        resources: [{ key: 'k-0', title: 'Patient/a', resource: resource('a'), origin: 'Decoded' }],
+      },
       {
         title: 'Second',
         resources: [
-          { key: 'k-1', title: 'Patient/b', resource: resource('b') },
-          { key: 'k-2', title: 'Patient/c', resource: resource('c') },
+          { key: 'k-1', title: 'Patient/b', resource: resource('b'), origin: 'Decoded' },
+          { key: 'k-2', title: 'Patient/c', resource: resource('c'), origin: 'Decoded' },
         ],
       },
     ],
@@ -84,6 +109,7 @@ describe('mapResources', () => {
       key: 'k-2',
       title: 'Patient C',
       resource: file.sections[1]?.resources[1]?.resource,
+      origin: 'Decoded',
     })
   })
 })

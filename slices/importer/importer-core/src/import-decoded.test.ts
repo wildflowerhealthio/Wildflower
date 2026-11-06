@@ -716,8 +716,7 @@ describe('the records the import adopts', () => {
     const adoptRecord = adopt(
       ReferencePlan.of([
         {
-          resourceType: patientPlan.resourceType,
-          identifier: patientPlan.identifier,
+          logicalReference: patientPlan,
           literalReference: ResourcePlan.literalReference(patientPlan),
         },
       ])

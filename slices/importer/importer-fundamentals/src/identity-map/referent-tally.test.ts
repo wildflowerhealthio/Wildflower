@@ -15,7 +15,7 @@ describe('ReferentTally.of', () => {
         LinkTarget.Stored({ resource: STORED_TYRA }),
         LinkTarget.Stored({ resource: STORED_TYRA }),
       ])
-    ).toEqual({ onServer: 1, fromImport: 0, unlinked: 0 })
+    ).toEqual({ onServer: 1, fromImport: 0 })
   })
 
   it('counts a stored link onto a record the import updates once, from the import', () => {
@@ -26,16 +26,15 @@ describe('ReferentTally.of', () => {
         LinkTarget.Decoded({ resource: updated, storedCopy: Option.some(STORED_TYRA) }),
         LinkTarget.Stored({ resource: STORED_TYRA }),
       ])
-    ).toEqual({ onServer: 0, fromImport: 1, unlinked: 0 })
+    ).toEqual({ onServer: 0, fromImport: 1 })
   })
 
-  it('counts each unlinked referent', () => {
+  it('counts each decoded record once, however many referents it is', () => {
     expect(
       ReferentTally.of([
         LinkTarget.Decoded({ resource: DECODED_TYRA, storedCopy: Option.none() }),
-        LinkTarget.Unlinked(),
-        LinkTarget.Unlinked(),
+        LinkTarget.Decoded({ resource: DECODED_TYRA, storedCopy: Option.none() }),
       ])
-    ).toEqual({ onServer: 0, fromImport: 1, unlinked: 2 })
+    ).toEqual({ onServer: 0, fromImport: 1 })
   })
 })

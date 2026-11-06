@@ -32,8 +32,7 @@ const decodedFilesOf = (batch: DecodedBatch): readonly DecodedFile.DecodedFile[]
 
 /**
  * Every referent the batch holds, once per identity across formats, in
- * format-then-review order, those with a resource first
- * (`Referent.discover`).
+ * format-then-review order (`Referent.discover`).
  *
  * @param batch - The decoded batch
  * @returns The referents the reviewer makes a link choice for
@@ -52,9 +51,8 @@ const discoverReferents = (
  */
 interface ResolvedBatch extends DecodedBatch {
   /**
-   * The records the batch only mentions, written beside the files, each with
-   * its origin (`FileResolution.linkedRecords`), keyed by
-   * `FileResolution.linkedKey`.
+   * The stored records the batch only links to, written beside the files
+   * (`FileResolution.linkedRecords`), keyed by `FileResolution.linkedKey`.
    */
   readonly linkedRecords: readonly FileResolution.LinkedRecord[]
   /**
@@ -156,9 +154,9 @@ const resolveMentions = (
  * `batch` with its mentions resolved on the reviewer's `chosen` choices over
  * the searched `defaults`, and on their link choice set `byMention`, where a
  * referent choice that cannot be resolved (`InvalidLinkChoice`) falls back:
- * the reviewer's own choice to its searched default, a default to its kind's
- * default. A re-decode may have changed a referent's kind, or removed the
- * referent a choice linked to.
+ * the reviewer's own choice to its searched default, a default to
+ * `ReferentLinkChoiceSet.DEFAULT_CHOICE`. A re-decode may have changed the
+ * record a choice updates.
  *
  * @param batch - The decoded batch
  * @param defaults - The searched default choices, by `Referent.key`
@@ -206,7 +204,7 @@ const resolveMentionsWithFallback = (
       }
       return Effect.die(
         new Error(
-          `a kind's default choice could not be resolved: ${failure.reason} for ${failure.referentKey}`
+          `the default choice could not be resolved: ${failure.reason} for ${failure.referentKey}`
         )
       )
     })

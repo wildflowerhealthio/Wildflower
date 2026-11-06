@@ -161,8 +161,8 @@ sits above `http-extraction` and below every binding.
   **resolved** batch: each referent's mentions are redirected to its link
   target, a decoded Patient or Practitioner linked to a stored one is
   replaced by it under the same review key, the stored or decoded resource
-  assumes the identifiers of the referents linked to it, and the records the
-  batch only mentions are its linked records. The shell runs it as a memo
+  assumes the identifiers of the referents linked to it, and the stored
+  records the batch only links to are its linked records. The shell runs it as a memo
   (`importer-core`'s `resolveMentions`) and hands the resolved batch to the
   server diff, the preview and the confirm, so all three see the resources
   that get written. Identity never enters the `StagedImport` selection, which
@@ -171,8 +171,10 @@ sits above `http-extraction` and below every binding.
   anything itself: a format's job is to make each resource name its identity,
   by a literal to a resource the same decode emits or by a logical reference
   that states its `type` and carries an `identifier` with a `system` and a
-  `value` (`Practitioner.tryReferenceFromName` for a provider known only by a
-  printed name). See the
+  `value` (`Practitioner.tryReferenceFromName` in the source's own name
+  system for a provider known only by a printed name; with a `display`, the
+  import stage implies the record such a reference names when the set holds
+  none). See the
   [Source Identity Explanation](../http-extraction/fhir-r4-adoption/docs/Source%20Identity%20Explanation.md#the-identity-map)
   for the model.
 - **The picker takes bytes, and identifies against every registered

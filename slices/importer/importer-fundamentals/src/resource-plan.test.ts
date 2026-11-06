@@ -67,7 +67,7 @@ describe('ResourcePlan.of', () => {
       ResourcePlan.Derived({
         resourceType: 'Patient',
         id: localResourceId(KEY.system, 'Patient', KEY.value),
-        identifier: Option.getOrThrow(DetachedResource.keyIdentifierOf(patient)),
+        identifier: [Option.getOrThrow(DetachedResource.keyIdentifierOf(patient))],
       })
     )
   })

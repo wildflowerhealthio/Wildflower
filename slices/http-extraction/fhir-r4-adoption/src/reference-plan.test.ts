@@ -1,12 +1,13 @@
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ReferencePlan from './reference-plan.ts'
 
 /**
- * Covers the reference plan: the literal reference a type and qualified
- * identifier resolve to, matched on type, system and value alone, and
+ * Covers the reference plan: the literal reference a logical reference
+ * resolves to, matched on type, system and value alone, and
  * nothing for an identifier given two different literal references.
  */
 
@@ -28,29 +29,36 @@ const PATIENT_KEY = qualified({ system: SYSTEM, value: 'pat-7' })
 /** The plan with one entry: the Patient keyed by {@link PATIENT_KEY} resolves to `Patient/stored-7`. */
 const patientPlan = (): ReferencePlan.Type =>
   ReferencePlan.of([
-    { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
+    {
+      logicalReference: LogicalReference.make('Patient', PATIENT_KEY),
+      literalReference: 'Patient/stored-7',
+    },
   ])
 
 describe('ReferencePlan.literalReferenceFor', () => {
   it('resolves a type and identifier the plan holds to its literal reference', () => {
-    expect(ReferencePlan.literalReferenceFor(patientPlan(), 'Patient', PATIENT_KEY)).toEqual(
-      Option.some('Patient/stored-7')
-    )
+    expect(
+      ReferencePlan.literalReferenceFor(
+        patientPlan(),
+        LogicalReference.make('Patient', PATIENT_KEY)
+      )
+    ).toEqual(Option.some('Patient/stored-7'))
   })
 
   it('resolves nothing for another type, system or value', () => {
     const plan = patientPlan()
     expect([
-      ReferencePlan.literalReferenceFor(plan, 'Practitioner', PATIENT_KEY),
+      ReferencePlan.literalReferenceFor(plan, LogicalReference.make('Practitioner', PATIENT_KEY)),
       ReferencePlan.literalReferenceFor(
         plan,
-        'Patient',
-        qualified({ system: 'https://other.example/patient-id', value: 'pat-7' })
+        LogicalReference.make(
+          'Patient',
+          qualified({ system: 'https://other.example/patient-id', value: 'pat-7' })
+        )
       ),
       ReferencePlan.literalReferenceFor(
         plan,
-        'Patient',
-        qualified({ system: SYSTEM, value: 'pat-8' })
+        LogicalReference.make('Patient', qualified({ system: SYSTEM, value: 'pat-8' }))
       ),
     ]).toEqual([Option.none(), Option.none(), Option.none()])
   })
@@ -59,20 +67,34 @@ describe('ReferencePlan.literalReferenceFor', () => {
   // is meant cannot be told, so the reference stays logical.
   it('resolves nothing for an identifier given two different literal references', () => {
     const plan = ReferencePlan.of([
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-8' },
+      {
+        logicalReference: LogicalReference.make('Patient', PATIENT_KEY),
+        literalReference: 'Patient/stored-7',
+      },
+      {
+        logicalReference: LogicalReference.make('Patient', PATIENT_KEY),
+        literalReference: 'Patient/stored-8',
+      },
     ])
-    expect(ReferencePlan.literalReferenceFor(plan, 'Patient', PATIENT_KEY)).toEqual(Option.none())
+    expect(
+      ReferencePlan.literalReferenceFor(plan, LogicalReference.make('Patient', PATIENT_KEY))
+    ).toEqual(Option.none())
   })
 
   it('resolves an identifier given the same literal reference twice', () => {
     const plan = ReferencePlan.of([
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
+      {
+        logicalReference: LogicalReference.make('Patient', PATIENT_KEY),
+        literalReference: 'Patient/stored-7',
+      },
+      {
+        logicalReference: LogicalReference.make('Patient', PATIENT_KEY),
+        literalReference: 'Patient/stored-7',
+      },
     ])
-    expect(ReferencePlan.literalReferenceFor(plan, 'Patient', PATIENT_KEY)).toEqual(
-      Option.some('Patient/stored-7')
-    )
+    expect(
+      ReferencePlan.literalReferenceFor(plan, LogicalReference.make('Patient', PATIENT_KEY))
+    ).toEqual(Option.some('Patient/stored-7'))
   })
 
   // A system may carry the character a naive `<Type>|<system>|<value>` join
@@ -81,11 +103,14 @@ describe('ReferencePlan.literalReferenceFor', () => {
     const joinedAtSystem = qualified({ system: 'https://a.example/x|y', value: 'z' })
     const joinedAtValue = qualified({ system: 'https://a.example/x', value: 'y|z' })
     const plan = ReferencePlan.of([
-      { resourceType: 'Patient', identifier: joinedAtSystem, literalReference: 'Patient/stored-7' },
+      {
+        logicalReference: LogicalReference.make('Patient', joinedAtSystem),
+        literalReference: 'Patient/stored-7',
+      },
     ])
     expect([
-      ReferencePlan.literalReferenceFor(plan, 'Patient', joinedAtSystem),
-      ReferencePlan.literalReferenceFor(plan, 'Patient', joinedAtValue),
+      ReferencePlan.literalReferenceFor(plan, LogicalReference.make('Patient', joinedAtSystem)),
+      ReferencePlan.literalReferenceFor(plan, LogicalReference.make('Patient', joinedAtValue)),
     ]).toEqual([Option.some('Patient/stored-7'), Option.none()])
   })
 
@@ -100,17 +125,18 @@ describe('ReferencePlan.literalReferenceFor', () => {
       period: { start: '2020-01-01' },
     })
     expect([
-      ReferencePlan.literalReferenceFor(patientPlan(), 'Patient', describedKey),
+      ReferencePlan.literalReferenceFor(
+        patientPlan(),
+        LogicalReference.make('Patient', describedKey)
+      ),
       ReferencePlan.literalReferenceFor(
         ReferencePlan.of([
           {
-            resourceType: 'Patient',
-            identifier: describedKey,
+            logicalReference: LogicalReference.make('Patient', describedKey),
             literalReference: 'Patient/stored-7',
           },
         ]),
-        'Patient',
-        PATIENT_KEY
+        LogicalReference.make('Patient', PATIENT_KEY)
       ),
     ]).toEqual([Option.some('Patient/stored-7'), Option.some('Patient/stored-7')])
   })
@@ -156,11 +182,47 @@ describe('ReferencePlan.literalReferenceIfResolved', () => {
 
   it('resolves nothing for an identifier given two different literal references', () => {
     const plan = ReferencePlan.of([
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-8' },
+      {
+        logicalReference: LogicalReference.make('Patient', PATIENT_KEY),
+        literalReference: 'Patient/stored-7',
+      },
+      {
+        logicalReference: LogicalReference.make('Patient', PATIENT_KEY),
+        literalReference: 'Patient/stored-8',
+      },
     ])
     expect(
       resolved(plan, { type: 'Patient', identifier: { system: SYSTEM, value: 'pat-7' } })
     ).toEqual(Option.none())
+  })
+})
+
+describe('ReferencePlan.holds', () => {
+  it('holds a type and identifier given once, or given two different literal references', () => {
+    const ambiguous = ReferencePlan.of([
+      {
+        logicalReference: LogicalReference.make('Patient', PATIENT_KEY),
+        literalReference: 'Patient/stored-7',
+      },
+      {
+        logicalReference: LogicalReference.make('Patient', PATIENT_KEY),
+        literalReference: 'Patient/stored-8',
+      },
+    ])
+
+    expect([
+      ReferencePlan.holds(patientPlan(), LogicalReference.make('Patient', PATIENT_KEY)),
+      ReferencePlan.holds(ambiguous, LogicalReference.make('Patient', PATIENT_KEY)),
+    ]).toEqual([true, true])
+  })
+
+  it('holds nothing for another type or value', () => {
+    expect([
+      ReferencePlan.holds(patientPlan(), LogicalReference.make('Practitioner', PATIENT_KEY)),
+      ReferencePlan.holds(
+        patientPlan(),
+        LogicalReference.make('Patient', qualified({ system: SYSTEM, value: 'pat-8' }))
+      ),
+    ]).toEqual([false, false])
   })
 })

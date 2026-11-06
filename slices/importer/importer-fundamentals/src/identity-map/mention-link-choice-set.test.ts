@@ -22,7 +22,7 @@ import {
   discoverOnTestClock,
   fileOf,
   fileWireOf,
-  fileWithReapplicableChoicesArbitrary,
+  fileWithChoicesArbitrary,
   literalSubject,
   observation,
   patient,
@@ -52,8 +52,8 @@ afterAll(() => {
 
 const RUNS = numRunsFor({ base: 30 })
 
-const PERSON = `Patient|${SOURCE_PATIENT}|p-1`
-const ACCOUNT = `Patient|${CUSTOMER}|c-9`
+const PERSON = JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1'])
+const ACCOUNT = JSON.stringify(['Patient', CUSTOMER, 'c-9'])
 
 /** The `subject` of the resource keyed `key` in `file`: `null` for an empty slot, `undefined` for none. */
 const subjectAt = (
@@ -100,7 +100,7 @@ describe('a mention link choice on a resolved file', () => {
       subjectAt(onStored, 'k-1')?.display,
       subjectAt(onStored, 'k-1')?.identifier?.value,
     ]).toEqual(['Tyra B.', 'c-9'])
-    // The account's other mention keeps the account's own rule: not linked.
+    // The account's other mention names no record of the batch, so it stays as it is.
     expect(subjectAt(onStored, 'k-2')?.reference).toBe(null)
   })
 
@@ -160,7 +160,7 @@ describe('a mention link choice on a resolved file', () => {
     ).toEqual(['Dangling k-1', 'Dangling k-2', 'OutsidePatientCompartment k-3'])
   })
 
-  it('reads a choice the mention cannot take as none: another type, or an unlinked referent', () => {
+  it('reads a choice the mention cannot take as none: another type, or a referent the batch does not hold', () => {
     const resolved = resolveOnTestClock(
       file,
       HashMap.empty(),
@@ -169,7 +169,9 @@ describe('a mention link choice on a resolved file', () => {
         ['k-2', LinkChoice.LinkToDecodedReferent({ referentKey: ACCOUNT })],
         [
           'k-3',
-          LinkChoice.LinkToDecodedReferent({ referentKey: 'Patient|https://nowhere.example|x' }),
+          LinkChoice.LinkToDecodedReferent({
+            referentKey: JSON.stringify(['Patient', 'https://nowhere.example/', 'x']),
+          }),
         ],
       ])
     )
@@ -217,40 +219,35 @@ describe('Mention.relinked', () => {
       { nil: undefined }
     )
     fc.assert(
-      fc.property(
-        fileWithReapplicableChoicesArbitrary,
-        fc.nat(),
-        literals,
-        ({ file }, pick, literal) => {
-          const entries = DecodedFile.resources(file)
-          const entry = entries[pick % Math.max(entries.length, 1)]
-          if (entry === undefined) return
-          const mentions = Mention.linkableIn(entry.resource)
-          const mention = mentions[pick % Math.max(mentions.length, 1)]
-          if (mention === undefined) return
+      fc.property(fileWithChoicesArbitrary, fc.nat(), literals, ({ file }, pick, literal) => {
+        const entries = DecodedFile.resources(file)
+        const entry = entries[pick % Math.max(entries.length, 1)]
+        if (entry === undefined) return
+        const mentions = Mention.linkableIn(entry.resource)
+        const mention = mentions[pick % Math.max(mentions.length, 1)]
+        if (mention === undefined) return
 
-          const relinked = Mention.relinked(
-            entry.resource,
-            mention.path,
-            Option.fromNullable(literal)
-          )
+        const relinked = Mention.relinked(
+          entry.resource,
+          mention.path,
+          Option.fromNullable(literal)
+        )
 
-          const before = Mention.madeIn(entry.resource)
-          const after = Mention.madeIn(relinked)
-          const elsewhere = (found: readonly Mention.Type[]): readonly Mention.Type[] =>
-            found.filter(({ path }) => path !== mention.path)
-          expect(elsewhere(after)).toEqual(elsewhere(before))
-          const now = Mention.at(relinked, mention.path)
-          if (relinked === entry.resource) return
-          // A relink sets the literal, or drops it, and keeps the rest of the mention.
-          expect(Option.map(now, ({ reference }) => reference.reference)).toEqual(
-            Option.some(literal ?? null)
-          )
-          expect(
-            Option.map(now, ({ reference }) => [reference.identifier, reference.display])
-          ).toEqual(Option.some([mention.reference.identifier, mention.reference.display]))
-        }
-      ),
+        const before = Mention.madeIn(entry.resource)
+        const after = Mention.madeIn(relinked)
+        const elsewhere = (found: readonly Mention.Type[]): readonly Mention.Type[] =>
+          found.filter(({ path }) => path !== mention.path)
+        expect(elsewhere(after)).toEqual(elsewhere(before))
+        const now = Mention.at(relinked, mention.path)
+        if (relinked === entry.resource) return
+        // A relink sets the literal, or drops it, and keeps the rest of the mention.
+        expect(Option.map(now, ({ reference }) => reference.reference)).toEqual(
+          Option.some(literal ?? null)
+        )
+        expect(
+          Option.map(now, ({ reference }) => [reference.identifier, reference.display])
+        ).toEqual(Option.some([mention.reference.identifier, mention.reference.display]))
+      }),
       { numRuns: RUNS }
     )
   })
@@ -275,12 +272,16 @@ describe('mention link choices and the referents', () => {
                 fc
                   .constantFrom(...STORED.filter((stored) => stored.resourceType === mention.type))
                   .map((resource) => LinkChoice.LinkToStoredResource({ resource })),
-                ...(referents.some((referent) => referent.logicalReference.type === mention.type)
+                ...(referents.some(
+                  (referent) => referent.logicalReference.resourceType === mention.type
+                )
                   ? [
                       fc
                         .constantFrom(
                           ...referents
-                            .filter((referent) => referent.logicalReference.type === mention.type)
+                            .filter(
+                              (referent) => referent.logicalReference.resourceType === mention.type
+                            )
                             .map(Referent.key)
                         )
                         .map((referentKey) => LinkChoice.LinkToDecodedReferent({ referentKey })),
@@ -301,10 +302,10 @@ describe('mention link choices and the referents', () => {
       )
   }
 
-  it('property: resolving again on the same choices changes nothing, when the resolved file has the decoded file’s referents', () => {
+  it('property: resolving again on the same choices changes nothing, when the resolved file keeps the decoded file’s referents', () => {
     fc.assert(
       fc.property(
-        fileWithReapplicableChoicesArbitrary.chain(({ file, choices }) =>
+        fileWithChoicesArbitrary.chain(({ file, choices }) =>
           mentionChoicesForArbitrary(file).map((mentionChoices) => ({
             file,
             choices,
@@ -332,7 +333,7 @@ describe('mention link choices and the referents', () => {
   it('property: a mention link choice moves nothing but the mentions chosen for', () => {
     fc.assert(
       fc.property(
-        fileWithReapplicableChoicesArbitrary.chain(({ file, choices }) =>
+        fileWithChoicesArbitrary.chain(({ file, choices }) =>
           mentionChoicesForArbitrary(file).map((mentionChoices) => ({
             file,
             choices,

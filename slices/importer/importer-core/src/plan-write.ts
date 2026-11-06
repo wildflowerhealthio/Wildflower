@@ -6,7 +6,7 @@ import {
   Mention,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Match } from 'effect'
+import { Array as Arr, Match } from 'effect'
 
 import { claimedFormats } from './read-batch.ts'
 import type { FormatKind } from './registry.ts'
@@ -92,6 +92,22 @@ const literalReferencesIn = (resources: readonly FhirResourceWithId[]): Readonly
   )
 
 /**
+ * A candidate format row as written: `Unreferenced` when it is a record the
+ * import implied (its `origin`) and no candidate format row names it, which
+ * would write it as an orphan; else still a candidate.
+ *
+ * @param named - The literal references the candidate format rows carry
+ */
+const unlessUnreferenced =
+  (named: ReadonlySet<string>) =>
+  (row: ReviewedRow): ReviewedRow =>
+    row.verdict === 'Candidate' &&
+    row.entry.origin === 'Implied' &&
+    !named.has(literalReferenceOf(row.entry.resource))
+      ? { ...row, verdict: 'Unreferenced' }
+      : row
+
+/**
  * Every claimed format's rows, in registry order and then review order, as
  * reviewed: the edit, resolved on the batch's plan, substituted where the
  * reviewer made one (`StagedImport.resolvedResourceOf`), `Excluded` where
@@ -116,28 +132,16 @@ const formatRowsOf = (
 
 /**
  * A linked record's verdict: `Unchanged` when the server holds it as it is;
- * else a stored copy is a candidate, the link choice being the consent to
- * it, and a new record a candidate only when a candidate format row names it.
+ * else a candidate, the link choice being the consent to it.
  *
  * @param record - The linked record
  * @param unchangedLinked - The keys of the linked records the server diff
  *   found unchanged
- * @param named - The literal references the candidate format rows carry
  */
 const linkedVerdictOf = (
   record: FileResolution.LinkedRecord,
-  unchangedLinked: ReadonlySet<string>,
-  named: ReadonlySet<string>
-): Verdict =>
-  unchangedLinked.has(record.key)
-    ? 'Unchanged'
-    : Match.value(record.origin).pipe(
-        Match.when('Stored', (): Verdict => 'Candidate'),
-        Match.when('Provisional', (): Verdict =>
-          named.has(literalReferenceOf(record.resource)) ? 'Candidate' : 'Unreferenced'
-        ),
-        Match.exhaustive
-      )
+  unchangedLinked: ReadonlySet<string>
+): Verdict => (unchangedLinked.has(record.key) ? 'Unchanged' : 'Candidate')
 
 /**
  * The confirm's plan: a decision per reviewed resource, in submit order,
@@ -158,23 +162,26 @@ const linkedVerdictOf = (
  * - A format row is **`Excluded`** when it is not included: the reviewer
  *   unticked it, or never ticked one the default leaves out. Else it is a
  *   candidate. Its `entry.resource` is the edited resource, resolved on the
- *   batch's plan, where the reviewer made an edit.
+ *   batch's plan, where the reviewer made an edit. A record the import
+ *   implied from the references naming it (its `origin`) is
+ *   **`Unreferenced`** when no candidate format row carries its literal
+ *   `Type/<id>` in any reference field (`Mention.madeIn`): one nothing
+ *   written names would be an orphan.
  * - A linked record is read-only in the review (a link choice is how to
  *   change one), so this is the one place its write is decided. It is
  *   **`Unchanged`** when the server holds it as it is (its key in
- *   `unchangedLinked`). Else a `Stored` one — a stored resource a link targets
- *   on, the batch's identifiers assumed — is a candidate whatever the
- *   reviewer excluded: the link choice is the consent to it, and excluding a
- *   resource says nothing about who its subject is. A `Provisional` one,
- *   made from a mention alone, is a candidate only when some candidate
- *   format row's resource carries its literal `Type/<id>` in any reference
- *   field (`Mention.madeIn`), else **`Unreferenced`**: one nothing written
- *   names would be an orphan.
+ *   `unchangedLinked`). Else it — a resolved record no file holds, the
+ *   batch's identifiers assumed — is a candidate whatever the reviewer
+ *   excluded: the link choice is the consent to it, and excluding a resource
+ *   says nothing about who its subject is.
  * - Among the candidates, in submit order, the last under each `Type/id` is
  *   **`Included`** and every earlier one **`Superseded`**. That is the rule
  *   the transaction bundle applies to its entries (last occurrence wins), so
  *   the `Included` resources are exactly the bundle's entries and no row's
- *   edit is lost silently. A linked record is a record no resolved file
+ *   edit is lost silently. A record a file decoded wins over one another file
+ *   set implied under the same `Type/id`, which says only what a reference
+ *   to it said, whatever their order: every implied candidate under it is
+ *   `Superseded`. A linked record is a record no resolved file
  *   holds, so it never shares a `Type/id` with a format row.
  *
  * A claimed format with no `Included` decision writes nothing
@@ -196,14 +203,24 @@ const planWrite = (
     ...batch.linkedRecords.map((record): ReviewedRow => ({
       group: LINKED_GROUP,
       entry: record,
-      verdict: linkedVerdictOf(record, unchangedLinked, named),
+      verdict: linkedVerdictOf(record, unchangedLinked),
     })),
-    ...formatRows,
+    ...formatRows.map(unlessUnreferenced(named)),
   ]
-  // Built in submit order, the map keeps each `Type/id`'s last candidate.
+  const candidateIndexes = rows.flatMap(({ entry, verdict }, index) =>
+    verdict === 'Candidate'
+      ? [[literalReferenceOf(entry.resource), index, entry.origin] as const]
+      : []
+  )
+  // Built in submit order, implied records first, the map keeps each
+  // `Type/id`'s last candidate, a decoded one over any implied one.
+  const [decodedCandidates, impliedCandidates] = Arr.partition(
+    candidateIndexes,
+    ([, , origin]) => origin === 'Implied'
+  )
   const lastCandidateIndexByLiteralReference = new Map(
-    rows.flatMap(({ entry, verdict }, index) =>
-      verdict === 'Candidate' ? [[literalReferenceOf(entry.resource), index] as const] : []
+    [...impliedCandidates, ...decodedCandidates].map(
+      ([literalReference, index]) => [literalReference, index] as const
     )
   )
   return rows.map(({ group, entry, verdict }, index): WriteDecision => ({

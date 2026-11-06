@@ -3,21 +3,18 @@ import {
   type FhirResourceWithId,
   Observation,
   Patient,
-  Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type Referent,
   type DecodedFile,
   type FileResolution,
   FormatDecode,
-  type Link,
   LinkableResource,
   LinkPlan,
   LinkTarget,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Option, ParseResult, Schema } from 'effect'
+import { ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -29,11 +26,16 @@ import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
 const patient = (id: string, gender: 'male' | 'female' | null = null): FhirResourceWithId =>
   Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id, gender })
 
-/** A row keyed `key` holding `resource`. */
-const row = (key: string, resource: FhirResourceWithId): DecodedFile.Resource => ({
+/** A row keyed `key` holding `resource`, from `origin`. */
+const row = (
+  key: string,
+  resource: FhirResourceWithId,
+  origin: DecodedFile.Origin = 'Decoded'
+): DecodedFile.Resource => ({
   key,
   title: `${resource.resourceType}/${resource.id}`,
   resource,
+  origin,
 })
 
 /** A row keyed `key` holding the Patient of id `key`. */
@@ -75,7 +77,7 @@ const batchOf = (
     formats,
     unrecognizedFiles: [],
     linkedRecords: linked.map(({ entry }) => entry),
-    plan: { ...LinkPlan.empty, links: linked.map(({ link }) => link) },
+    plan: LinkPlan.empty,
     decodedBatch: { formats, unrecognizedFiles: [] },
   }
 }
@@ -223,51 +225,17 @@ describe('planWrite', () => {
     const batch = batchOf(
       {
         dicom: [patientRow('d')],
-        har: [observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })],
+        har: [observationOf('obs-1', { subject: { reference: STORED_PATIENT } })],
       },
-      [PROVISIONAL]
+      [STORED]
     )
 
     expect(
       dispositionsOf(planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set()))
     ).toEqual([
-      [LINKED_GROUP, PROVISIONAL.key, 'Included'],
+      [LINKED_GROUP, STORED.key, 'Included'],
       ['har', 'obs-1', 'Included'],
       ['dicom', 'd', 'Included'],
-    ])
-  })
-
-  it('includes a new linked record a written resource names, in any reference field', () => {
-    const batch = batchOf(
-      { har: [observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })] },
-      [PROVISIONAL]
-    )
-
-    expect(
-      dispositionsOf(planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set()))
-    ).toEqual([
-      [LINKED_GROUP, PROVISIONAL.key, 'Included'],
-      ['har', 'obs-1', 'Included'],
-    ])
-  })
-
-  it('leaves the provisional Practitioner unreferenced once the only resource naming it is excluded', () => {
-    const batch = batchOf(
-      {
-        har: [
-          observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] }),
-          observationOf('obs-2', {}),
-        ],
-      },
-      [PROVISIONAL]
-    )
-
-    expect(
-      dispositionsOf(planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set()))
-    ).toEqual([
-      [LINKED_GROUP, PROVISIONAL.key, 'Unreferenced'],
-      ['har', 'obs-1', 'Excluded'],
-      ['har', 'obs-2', 'Included'],
     ])
   })
 
@@ -281,6 +249,75 @@ describe('planWrite', () => {
       dispositionsOf(planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set()))
     ).toEqual([
       [LINKED_GROUP, STORED.key, 'Included'],
+      ['har', 'obs-1', 'Excluded'],
+    ])
+  })
+
+  it('writes a record the import implied only while a written row names it', () => {
+    const implied = row('implied-9', patient('implied-9'), 'Implied')
+    const batch = batchOf({
+      har: [implied, observationOf('obs-1', { subject: { reference: 'Patient/implied-9' } })],
+    })
+
+    expect(
+      dispositionsOf(planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set()))
+    ).toEqual([
+      ['har', implied.key, 'Included'],
+      ['har', 'obs-1', 'Included'],
+    ])
+    expect(
+      dispositionsOf(planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set()))
+    ).toEqual([
+      ['har', implied.key, 'Unreferenced'],
+      ['har', 'obs-1', 'Excluded'],
+    ])
+  })
+
+  it('writes a decoded record no written row names', () => {
+    const decoded = row('p-9', patient('p-9'))
+
+    expect(
+      dispositionsOf(
+        planWrite(
+          batchOf({ har: [decoded] }),
+          () => StagedImport.initial(),
+          noneByDefault,
+          new Set()
+        )
+      )
+    ).toEqual([['har', 'p-9', 'Included']])
+  })
+
+  it('writes the record a file decoded over the copy another file set implied under its id, whatever their order', () => {
+    const implied = row('implied-9', patient('p-9'), 'Implied')
+    const decoded = row('p-9', patient('p-9', 'female'))
+    const naming = observationOf('obs-1', { subject: { reference: 'Patient/p-9' } })
+
+    expect(
+      dispositionsOf(
+        planWrite(
+          batchOf({ har: [decoded, implied, naming] }),
+          () => StagedImport.initial(),
+          noneByDefault,
+          new Set()
+        )
+      )
+    ).toEqual([
+      ['har', 'p-9', 'Included'],
+      ['har', implied.key, 'Superseded'],
+      ['har', 'obs-1', 'Included'],
+    ])
+  })
+
+  it('writes a decoded record whatever names it', () => {
+    const batch = batchOf({
+      har: [patientRow('p-1'), observationOf('obs-1', { subject: { reference: 'Patient/p-1' } })],
+    })
+
+    expect(
+      dispositionsOf(planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set()))
+    ).toEqual([
+      ['har', 'p-1', 'Included'],
       ['har', 'obs-1', 'Excluded'],
     ])
   })
@@ -303,33 +340,17 @@ describe('planWrite', () => {
 
   it('includes nothing on a re-import whose rows and linked record the server holds unchanged', () => {
     const batch = batchOf(
-      { har: [observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })] },
-      [PROVISIONAL]
+      { har: [observationOf('obs-1', { subject: { reference: STORED_PATIENT } })] },
+      [STORED]
     )
 
     expect(
       dispositionsOf(
-        planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set([PROVISIONAL.key]))
+        planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set([STORED.key]))
       )
     ).toEqual([
-      [LINKED_GROUP, PROVISIONAL.key, 'Unchanged'],
+      [LINKED_GROUP, STORED.key, 'Unchanged'],
       ['har', 'obs-1', 'Excluded'],
-    ])
-  })
-
-  it('leaves out an unchanged new linked record while a resource naming it is written', () => {
-    const batch = batchOf(
-      { har: [observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })] },
-      [PROVISIONAL]
-    )
-
-    expect(
-      dispositionsOf(
-        planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set([PROVISIONAL.key]))
-      )
-    ).toEqual([
-      [LINKED_GROUP, PROVISIONAL.key, 'Unchanged'],
-      ['har', 'obs-1', 'Included'],
     ])
   })
 
@@ -413,18 +434,17 @@ describe('planWrite', () => {
     )
   })
 
-  it('property: a new linked record is included only beside an included resource naming it, a stored copy whenever the server holds it changed', () => {
+  it('property: a linked record is included whenever the server holds it changed, whatever the reviewer excluded', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom(PROVISIONAL, STORED),
         fc.array(fc.boolean(), { minLength: 1, maxLength: 4 }),
         fc.func(fc.boolean()),
         fc.boolean(),
-        (linkedRecord, namesLinked, excludes, unchanged) => {
+        (namesLinked, excludes, unchanged) => {
           const observations = namesLinked.map((names, index) =>
             observationOf(
               `obs-${index}`,
-              names ? { performer: [{ reference: linkedRecord.literalReference }] } : {}
+              names ? { subject: { reference: STORED.literalReference } } : {}
             )
           )
           let selection = StagedImport.initial()
@@ -434,23 +454,16 @@ describe('planWrite', () => {
           }
 
           const plan = planWrite(
-            batchOf({ har: observations }, [linkedRecord]),
+            batchOf({ har: observations }, [STORED]),
             () => selection,
             noneByDefault,
-            new Set(unchanged ? [linkedRecord.key] : [])
+            new Set(unchanged ? [STORED.key] : [])
           )
 
-          const namedAndIncluded = observations.some(
-            ({ key }, index) => namesLinked[index] && !excludes(key)
-          )
-          const expected = (): Disposition => {
-            if (unchanged) return 'Unchanged'
-            return linkedRecord === STORED || namedAndIncluded ? 'Included' : 'Unreferenced'
-          }
           expect(plan[0]).toEqual({
             group: LINKED_GROUP,
-            entry: linkedRecord.entry,
-            disposition: expected(),
+            entry: STORED.entry,
+            disposition: unchanged ? 'Unchanged' : 'Included',
           })
         }
       ),
@@ -459,68 +472,39 @@ describe('planWrite', () => {
   })
 })
 
-/** The literal reference of the provisional Practitioner a printed name makes. */
-const PRACTITIONER = 'Practitioner/provisional-1'
-
-/** The literal reference of the stored Patient a mention is linked to. */
+/** The literal reference of the stored Patient a link targets. */
 const STORED_PATIENT = 'Patient/s-1'
 
-/** A linked record of a batch: its review entry and the link whose target it is. */
+/** A linked record of a batch: its review entry. */
 interface LinkedRecord {
   readonly key: string
   readonly literalReference: string
   readonly entry: FileResolution.LinkedRecord
-  readonly link: Link.Type
 }
 
-/** `linkedResource` as a linked record titled `title`, the link whose target it is made by `target`. */
-const linkedRecordOf = (
-  linkedResource: LinkableResource.WithId,
-  title: string,
-  target: (linkedTo: LinkableResource.WithId) => LinkTarget.StoredType | LinkTarget.ProvisionalType
-): LinkedRecord => {
+/** `linkedResource` as a linked record titled `title`. */
+const linkedRecordOf = (linkedResource: LinkableResource.WithId, title: string): LinkedRecord => {
   const literalReference = LinkableResource.literalReferenceOf(linkedResource)
   const key = `linked:${literalReference}`
-  const linkTarget = target(linkedResource)
   return {
     key,
     literalReference,
-    entry: { key, title, resource: linkedResource, origin: linkTarget._tag },
-    link: {
-      referent: {
-        _tag: 'ByMentionOnly',
-        logicalReference: Option.getOrThrow(
-          LinkableResource.tryIntoLogicalReference(linkedResource)
-        ),
-        label: title,
-      } satisfies Referent.ByMentionOnly,
-      target: linkTarget,
-    },
+    entry: { key, title, resource: linkedResource, origin: 'Decoded' },
   }
 }
 
-/** A new linked record: the Practitioner made from a printed name, provisional. */
-const PROVISIONAL = linkedRecordOf(
-  Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))({
-    resourceType: 'Practitioner',
-    id: 'provisional-1',
-    identifier: [{ system: 'https://source.example/practitioner-name', value: 'Dr. Provisional' }],
-  }),
-  'Dr. Provisional',
-  (provisional) => LinkTarget.Provisional({ resource: provisional })
-)
+/** The system the stored Patient is keyed in. */
+const PATIENT_SYSTEM = 'https://source.example/patient-id'
 
 /** The stored Patient a mention is linked to. */
 const STORED_RESOURCE = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
   resourceType: 'Patient',
   id: 's-1',
-  identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
+  identifier: [{ system: PATIENT_SYSTEM, value: 'mrn-1' }],
 })
 
 /** A stored copy: the stored Patient a mention is linked to, the batch's identifiers assumed. */
-const STORED = linkedRecordOf(STORED_RESOURCE, 'Stored Patient', (stored) =>
-  LinkTarget.Stored({ resource: stored })
-)
+const STORED = linkedRecordOf(STORED_RESOURCE, 'Stored Patient')
 
 /** An Observation keyed `key` carrying the given reference fields. */
 const observationOf = (key: string, references: object): DecodedFile.Resource => ({
@@ -533,4 +517,5 @@ const observationOf = (key: string, references: object): DecodedFile.Resource =>
     code: { text: 'Heart rate' },
     ...references,
   }),
+  origin: 'Decoded',
 })

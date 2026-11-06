@@ -195,10 +195,13 @@ Three things ride along, none of them moving an extension:
 - **The prescriber names their identity.** `requester.agent` arrives with an
   empty `reference` and the prescriber's printed name, so the R4 `requester`
   is `display` only. It becomes `fhir-r4`'s `Practitioner.tryReferenceFromName`
-  of that name (a logical reference: `type` Practitioner, the name identifier,
-  and the name as `display`), so the
-  importer's identity map can link the prescriber, and the same name from
-  another source is the same provider. A `display`-only requester with a blank
+  of that name in `REXALL_PRACTITIONER_NAME_SYSTEM`
+  (`https://wildflowerhealth.io/fhir/sid/rexall-be-well/practitioner-name`;
+  a logical reference: `type` Practitioner, the name identifier, and the name
+  as `display`), so the import stage implies one Practitioner per name,
+  named by that display, which the identity map can link. The system is
+  Rexall's own: the same name from another source is another referent until
+  the reviewer links them. A `display`-only requester with a blank
   or absent name is dropped; one carrying a literal or an identifier is left
   alone.
 
@@ -346,9 +349,10 @@ Observed, not acted on — worth knowing before trusting a field:
   left in `note` for now.
 - A request's `requester` can be a literal `Practitioner/<id>` to a
   practitioner carebook does not serve. It detaches to the logical reference by
-  that id's key in `<base>/Practitioner`, and since no record of the import
-  holds that key it stays logical: the importer's identity map offers it as a
-  provider to link.
+  that id's key in `<base>/Practitioner`, keeping its `display`, and since no
+  record of the import holds that key the import stage implies the
+  Practitioner, keyed by it and named by the display: a referent like any
+  other, which the identity map offers to link.
 - `requester.agent.reference` and `subject.display` arrive as empty strings
   where the field should simply be absent.
 

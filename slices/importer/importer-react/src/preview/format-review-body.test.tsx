@@ -46,7 +46,7 @@ const SOURCE = 'https://source.example/patient-id'
 const CUSTOMER = 'https://source.example/customer-id'
 const TYRA = 'Tyra Banks · 1990-01-02'
 const NAOMI = 'Naomi Campbell · 1970-05-22'
-const TYRA_KEY = `Patient|${SOURCE}|p-1`
+const TYRA_KEY = JSON.stringify(['Patient', SOURCE, 'p-1'])
 
 const decodePatient = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))
 const decodeObservation = Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))
@@ -86,6 +86,7 @@ const fileOf = (resources: readonly FhirResourceWithId[]): DecodedFile.DecodedFi
         key: `k-${index}`,
         title: `${resource.resourceType}/${resource.id}`,
         resource,
+        origin: 'Decoded',
       })),
     },
   ],
@@ -532,7 +533,7 @@ describe('FormatReviewBody', () => {
       weight('o-1', { type: 'Patient', identifier: { system: CUSTOMER, value: 'c-9' } }),
       weight('o-2'),
     ]
-    const { rerender } = render(<Harness resources={resources} onReport={reported.onReport} />)
+    render(<Harness resources={resources} onReport={reported.onReport} />)
     expect(includedIn(reported.latest(), 'k-1')).toBe(false)
     const [other] = screen.getAllByRole<HTMLInputElement>('checkbox', {
       name: 'Include Observation Weight o-2',
@@ -542,15 +543,11 @@ describe('FormatReviewBody', () => {
     expect(includedIn(reported.latest(), 'k-2')).toBe(true)
 
     // Act — link the account to Tyra
-    rerender(
-      <Harness
-        resources={resources}
-        choices={HashMap.make([
-          `Patient|${CUSTOMER}|c-9`,
-          LinkChoice.LinkToDecodedReferent({ referentKey: TYRA_KEY }),
-        ])}
-        onReport={reported.onReport}
-      />
+    await userEvent.selectOptions(
+      within(screen.getByRole('region', { name: NEEDS_A_PATIENT_HEADING })).getByRole('combobox', {
+        name: SUBJECT_OF_O1,
+      }),
+      TYRA
     )
 
     // Assert — the untouched row is in; the ticked one stays as ticked

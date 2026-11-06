@@ -50,8 +50,9 @@ const pageWithoutLabNoNote = (pageNumber: number): string =>
  * Exported so property tests can drive it directly, feeding `layoutDocument`'s
  * printed inverse instead of going through an extractor.
  * `decodeLifeLabsPdf` is `decodeLifeLabsPdfDocument ∘ PositionedTextExtractor`.
- * A `Patient` or `Practitioner` shared across reports appears in the section
- * of the first report naming it — the synthesis deduplicates by key.
+ * A `Patient` shared across reports appears in the section of the first
+ * report naming it — the synthesis deduplicates by key; the import stage
+ * implies each provider's Practitioner the same way.
  */
 const decodeLifeLabsPdfDocument = (
   document: Document.Type,

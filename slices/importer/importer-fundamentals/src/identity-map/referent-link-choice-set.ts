@@ -5,8 +5,8 @@
  *
  * @remarks
  * Held beside the per-format selections, never inside them: `StagedImport`
- * keeps exclusions and edits only. A referent missing from it takes its
- * default ({@link defaultFor}), which is what {@link forReferent} reads.
+ * keeps exclusions and edits only. A referent missing from it takes the
+ * default ({@link DEFAULT_CHOICE}), which is what {@link forReferent} reads.
  *
  * @packageDocumentation
  */
@@ -21,16 +21,12 @@ type Type = HashMap.HashMap<string, LinkChoice.Type>
 /** No choice made for any referent: every referent takes its default. */
 const empty: Type = HashMap.empty()
 
-/** The choice a referent takes when the reviewer has made none: `CreateResource` with a resource, else `DontLink`. */
-const defaultFor = (referent: Referent.Type): LinkChoice.Type =>
-  Referent.match(referent, {
-    AsResource: () => LinkChoice.CreateResource(),
-    ByMentionOnly: () => LinkChoice.DontLink(),
-  })
+/** The choice a referent takes when the reviewer has made none: its own record is written. */
+const DEFAULT_CHOICE: LinkChoice.Type = LinkChoice.CreateResource()
 
-/** The choice `byReferent` holds for `referent`, else its default. */
+/** The choice `byReferent` holds for `referent`, else {@link DEFAULT_CHOICE}. */
 const forReferent = (byReferent: Type, referent: Referent.Type): LinkChoice.Type =>
-  HashMap.get(byReferent, Referent.key(referent)).pipe(Option.getOrElse(() => defaultFor(referent)))
+  HashMap.get(byReferent, Referent.key(referent)).pipe(Option.getOrElse(() => DEFAULT_CHOICE))
 
 /** `over`'s choices laid over `under`'s: a referent `over` holds a choice for takes that one. */
 const union = (under: Type, over: Type): Type => HashMap.union(under, over)
@@ -39,5 +35,5 @@ const union = (under: Type, over: Type): Type => HashMap.union(under, over)
 const remove = (byReferent: Type, referentKey: string): Type =>
   HashMap.remove(byReferent, referentKey)
 
-export { defaultFor, empty, forReferent, remove, union }
+export { DEFAULT_CHOICE, empty, forReferent, remove, union }
 export type { Type }

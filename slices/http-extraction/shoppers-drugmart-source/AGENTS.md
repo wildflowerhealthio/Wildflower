@@ -107,15 +107,19 @@ and `rexall-be-well-source` alike:
   Patient stands for the account. The import stage files it on the person its
   `authorizingPrescription` is for when that `MedicationRequest` is in the
   same import and its `subject` names a Patient there
-  (`importer-fundamentals`' `DecodedFileSet.adopt`).
+  (`importer-fundamentals`' `DecodedFileSet.adopt`). An
+  `authorizingPrescription` naming a prescription the import does not hold
+  stays logical: a `MedicationRequest` needs a `subject` a reference cannot
+  supply, so the import stage implies none.
 - **Prescriber** — a status-feed `MedicationRequest.requester` is
-  `fhir-r4`'s `Practitioner.tryReferenceWireFromName` of `prescriberName`,
-  since the portal knows the prescriber only by that name: a logical
-  reference stating `type` Practitioner, the name identifier (under the
-  shared `Practitioner.NAME_IDENTIFIER_SYSTEM`) and the name as printed in
-  `display`. Every source names such a provider through that one helper (the
-  Rexall prescriber, the DICOM referring physician), so the same name from
-  two sources is one referent. A blank or absent name writes no `requester`.
+  `fhir-r4`'s `Practitioner.tryReferenceWireFromName` of `prescriberName` in
+  `ShoppersIdentifierSystem.PractitionerName`, since the portal knows the
+  prescriber only by that name: a logical reference stating `type`
+  Practitioner, the name identifier and its value, the name as keyed, in `display`. No
+  Practitioner is synthesized; the import stage implies one per name
+  (`DecodedFileSet.adopt`), named by that display. The system is Shoppers'
+  own, so the same name from another source is another referent until the
+  reviewer links them. A blank or absent name writes no `requester`.
 - **DIN** — one coding on `medicationCodeableConcept` under `fhir-r4`'s
   canonical `CanadianCodingSystem.Din`
   (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). The portal does not namespace

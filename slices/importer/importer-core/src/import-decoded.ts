@@ -83,7 +83,7 @@ const importFileSet = (
       ),
       { concurrency: 'unbounded' }
     )
-    const adopted = DecodedFileSet.adopt(fileSet)
+    const adopted = yield* DecodedFileSet.adopt(fileSet)
 
     const linkSourceFile = importer.linkSourceFile ?? Function.identity
     const linked = Arr.map(sourceFiles, ({ pickedFile, sourceFile }) => ({
@@ -117,6 +117,7 @@ const importFileSet = (
       key: sourceFileKey(pickedFile),
       title: pickedFile.fileName,
       resource: sourceFile,
+      origin: 'Decoded',
     }))
     // Their own section ahead of what was read out of them, so the reviewer
     // sees what is about to be stored before what it yielded.
