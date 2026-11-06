@@ -255,8 +255,8 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
-          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id",
+          "value": "8b2d4f6a-1c3e-4a5b-8d7f-9e0a1b2c3d4e"
         },
         "reference": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209",
         "type": "Patient"
@@ -328,8 +328,8 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
-          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id",
+          "value": "8b2d4f6a-1c3e-4a5b-8d7f-9e0a1b2c3d4e"
         },
         "reference": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209",
         "type": "Patient"
@@ -401,8 +401,8 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
-          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id",
+          "value": "8b2d4f6a-1c3e-4a5b-8d7f-9e0a1b2c3d4e"
         },
         "reference": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209",
         "type": "Patient"
@@ -547,8 +547,8 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
-          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id",
+          "value": "8b2d4f6a-1c3e-4a5b-8d7f-9e0a1b2c3d4e"
         },
         "reference": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209",
         "type": "Patient"
@@ -693,8 +693,8 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
-          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id",
+          "value": "8b2d4f6a-1c3e-4a5b-8d7f-9e0a1b2c3d4e"
         },
         "reference": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209",
         "type": "Patient"
@@ -766,8 +766,8 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
-          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id",
+          "value": "8b2d4f6a-1c3e-4a5b-8d7f-9e0a1b2c3d4e"
         },
         "reference": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209",
         "type": "Patient"
@@ -912,8 +912,8 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
-          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id",
+          "value": "8b2d4f6a-1c3e-4a5b-8d7f-9e0a1b2c3d4e"
         },
         "reference": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209",
         "type": "Patient"
@@ -985,8 +985,8 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
-          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id",
+          "value": "8b2d4f6a-1c3e-4a5b-8d7f-9e0a1b2c3d4e"
         },
         "reference": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209",
         "type": "Patient"
@@ -1377,11 +1377,6 @@
           "extension": [],
           "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id",
           "value": "8b2d4f6a-1c3e-4a5b-8d7f-9e0a1b2c3d4e"
-        },
-        {
-          "extension": [],
-          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/customer-id",
-          "value": "3c7e9a1b-5d2f-4b8a-9e6c-0f1d2a3b4c5d"
         }
       ],
       "link": [],
