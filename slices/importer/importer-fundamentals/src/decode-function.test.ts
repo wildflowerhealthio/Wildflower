@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import * as DecodeFunction from './decode-function.ts'
 import type * as DecodedFileSet from './decoded-file-set.ts'
-import * as FormatDecode from './format-decode.ts'
 import type * as PickedFile from './picked-file.ts'
 
 // A decode through `importer-core`'s import stage, source files and all, is
@@ -59,7 +58,7 @@ const decode = DecodeFunction.make({
 })
 
 describe('DecodeFunction.make', () => {
-  it('returns each set apart, its picked files in the order they were picked and its sections under namespaced keys', async () => {
+  it('returns each set apart, its picked files in the order they were picked and its sections as the format gave them', async () => {
     const files = [
       pickedFile(0, 'a-1.bin', [1]),
       pickedFile(1, 'b-1.bin', [2]),
@@ -77,7 +76,7 @@ describe('DecodeFunction.make', () => {
             {
               title: 'a-1.bin',
               entries: [a1, a2].map((file) => ({
-                fullUrl: `${FormatDecode.keyPrefix(a1)}${file.fileName}`,
+                fullUrl: file.fileName,
                 resource: fakeResource(`${file.bytes[0]}`),
               })),
             },
@@ -91,7 +90,7 @@ describe('DecodeFunction.make', () => {
               title: 'b-1.bin',
               entries: [
                 {
-                  fullUrl: `${FormatDecode.keyPrefix(b1)}b-1.bin`,
+                  fullUrl: 'b-1.bin',
                   resource: fakeResource('2'),
                 },
               ],

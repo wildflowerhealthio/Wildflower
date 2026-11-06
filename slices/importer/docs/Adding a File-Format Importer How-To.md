@@ -99,8 +99,6 @@ manifest naming its siblings, a DICOM study — states a `groupBy` instead (see
 `DecodeFunction.make` lifts that into the batch `decode(files, settings)` the
 shell runs across every file the format claimed. That lifted decode:
 
-- **namespaces every `fullUrl`** with the set's first picked file, so two sets
-  cannot collide on a key (see the obligations below);
 - folds a `ParseError` into one `unreadableFiles` row per picked file of the
   failing set;
 - returns each set apart with its picked files and its sections.
@@ -113,8 +111,11 @@ every format's `decode`) then, per set:
 - adopts the set's records (`DecodedFileSet.adopt`): a keyed record under the
   `wf-` id its key derives, a keyless one under a random id, and each logical
   reference to a record of the set resolved to a literal one (a reference to
-  anything else stays logical, for the identity map), so every record has its id
-  before the hooks below run;
+  anything else stays logical, for the identity map), and a literal reference
+  or an `Attachment.url` spelling a keyless record's `http(s)` `fullUrl` to that
+  record, so every record has its id before the hooks below run;
+- **namespaces every review key** with the set's first picked file, so two sets
+  cannot collide on a key (see the obligations below);
 - lets the format link each source file to what the set decoded to
   (`linkSourceFile`, §4) and each record to the source files it was read from
   (`linkToSourceFiles`, §4), and prepends the source files as their own
@@ -329,7 +330,7 @@ picked file and returns the key that file shares with its set-mates, or a `Left`
 when the file states none — which reports it as its own `unreadableFiles` row,
 ahead of any failing set, in the order the files were picked. Sets come out in
 the order the picked files that opened them arrived. Nothing else changes — the
-key namespacing and the failure folding are the constructor's, and the mint, the
+failure folding is the constructor's, and the key namespacing, the mint, the
 source file section and the `meta.source` stamp the import stage's, either way.
 
 `dicom-importer-core` is the worked example. What decodes together there is a

@@ -1,7 +1,8 @@
-import { Effect } from 'effect'
+import { Array as Arr, Effect, Either, Option } from 'effect'
 
-import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
+  type Extraction,
   type HttpResponseKind,
   SourceDescriptor,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
@@ -38,16 +39,70 @@ const enabledKindNames = (settings: HarSettings): ReadonlySet<string> => {
 }
 
 /**
+ * A previewed record's `fullUrl`: for a `Binary` a read served, the server's
+ * URL for it (`DetachedResource.serverBinaryUrlIfRead`); for any other
+ * record, its preview key, `<response id>:<index>`.
+ *
+ * @remarks
+ * A Binary has no identifier, so its `fullUrl` is what names it: a reference
+ * or an `Attachment.url` naming it is detached to the same URL, and the import
+ * stage resolves one to the other.
+ */
+const fullUrlOf = (responseUrl: string, key: string, resource: DetachedResource.Type): string =>
+  resource.resourceType === 'Binary'
+    ? Option.getOrElse(DetachedResource.serverBinaryUrlIfRead(responseUrl), () => key)
+    : key
+
+/**
+ * The previews with every record whose `fullUrl` ({@link fullUrlOf}) an
+ * earlier record already has left out, and a response left with no record a
+ * `duplicate` of the response that first held it.
+ *
+ * @remarks
+ * So a Binary served by two reads (one with a query string, one without) is
+ * one record, and the second read is noted as a duplicate, as a response
+ * repeated byte for byte is. Every other record's `fullUrl` is its own
+ * preview key, so only a Binary repeats.
+ */
+const withRepeatedRecordsAsDuplicates = (
+  previews: readonly FhirPreview[]
+): readonly FhirPreview[] => {
+  const firstHolders = new Map<string, Extraction.ResponseRef>()
+  return previews.map((response): FhirPreview => {
+    const { outcome, ref } = response
+    if (outcome._tag !== 'resources') return response
+    // Each record kept, or the response that first held its `fullUrl`.
+    const [kept, holdersOfRepeats] = Arr.partitionMap(outcome.resources, (record) => {
+      const fullUrl = fullUrlOf(ref.url, record.key, record.resource)
+      const holder = firstHolders.get(fullUrl)
+      if (holder !== undefined) return Either.right(holder)
+      firstHolders.set(fullUrl, ref)
+      return Either.left(record)
+    })
+    return Arr.match(holdersOfRepeats, {
+      onEmpty: () => response,
+      onNonEmpty: ([firstHolder]) => ({
+        ...response,
+        outcome:
+          kept.length === 0
+            ? { _tag: 'duplicate', of: firstHolder }
+            : { _tag: 'resources', resources: kept },
+      }),
+    })
+  })
+}
+
+/**
  * The previews' records as one section per response URL, in the order each
- * URL first appears in the archive, each record's `fullUrl` its preview key
- * (`<response id>:<index>`).
+ * URL first appears in the archive, each record's `fullUrl` from
+ * {@link fullUrlOf}.
  */
 const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFileSet.Section[] => {
   const byUrl = new Map<string, DecodedFileSet.Entry[]>()
   for (const entry of previews) {
     if (entry.outcome._tag !== 'resources' || entry.outcome.resources.length === 0) continue
     const labeled = entry.outcome.resources.map(({ key, resource }): DecodedFileSet.Entry => ({
-      fullUrl: key,
+      fullUrl: fullUrlOf(entry.ref.url, key, resource),
       resource,
     }))
     const existing = byUrl.get(entry.ref.url)
@@ -61,7 +116,13 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
   previews.flatMap((entry) => {
     const url = entry.ref.url
     const tag = entry.outcome._tag
-    if (tag === 'resources') return []
+    if (tag === 'resources') {
+      // A Binary read that parsed to nothing was served as its raw content.
+      return entry.outcome.resources.length === 0 &&
+        Option.isSome(DetachedResource.serverBinaryUrlIfRead(url))
+        ? [`A Binary served as its raw content, not as FHIR JSON — not imported: ${url}`]
+        : []
+    }
     if (tag === 'duplicate') return [`Duplicate of an earlier response — not imported: ${url}`]
     if (tag === 'parseError') return [`Could not be parsed and will not import: ${url}`]
     if (tag === 'bodyAbsent') return [`The archive captured no response body: ${url}`]
@@ -105,6 +166,7 @@ const harImporter: FileImporter.Type<HarSettings, typeof format> = {
       decodeHar(pickedFiles[0].bytes, settings).pipe(
         Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
         Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
+        Effect.map(withRepeatedRecordsAsDuplicates),
         Effect.map((previews) => ({
           sections: sectionsByUrl(previews),
           notes: notesFor(previews),

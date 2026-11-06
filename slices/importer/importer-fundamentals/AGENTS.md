@@ -92,8 +92,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   its identity within the set before it is stored (FHIR's `Bundle.entry.fullUrl`
   in a transaction, what the review tracks a choice by) and its record **detached** (`fhir-r4-adoption`'s `DetachedResource`: no
   id, keyed by its first identifier, naming every other decoded record by a
-  logical reference). A decoder writes or detaches its own records, so a
-  section carries no source base URL or system. It is a
+  logical reference). The `fullUrl` is as its format gave it, unique within
+  the set; the import stage namespaces the review key it becomes. A keyless
+  record whose `fullUrl` is an `http:` or `https:` URL (a FHIR server's
+  `Binary`, at the server's URL for it) is named by it. A decoder writes or detaches its
+  own records, so a section carries no source base URL or system. It is a
   separate type from `DecodedFile.Section`, the same records adopted: the two
   hold different records, and every reader of a decoded file reads
   `resources` off it. The "Source file(s)" section is the import stage's own,
@@ -103,7 +106,6 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `<Type>/<id>`, or `<Type> (<fullUrl>)` for a `Minted` one, whose id
   changes on every re-decode; `adopt` titles each row with it, so no decoder
   titles its records.
-  **`namespaceKeys(sections, prefix)`** prefixes every entry's `fullUrl`;
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
   **`adopt({ sections, notes }, mintId?)`** is how the import stage makes a
   decode's records the device's own, as a `DecodedFile`: it plans every
@@ -112,7 +114,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   entry for each qualified identifier of a keyed record, its key and every
   other, each resolving to its plan's literal reference: the one place that
   decides which identifiers resolve; a keyless record's identifiers stay
-  out), then runs `fhir-r4-adoption`'s `adopt` over each record with that
+  out) and from the `Minted` plans whose entry's `fullUrl` is an `http:` or
+  `https:` URL (one `fullUrl` entry each, resolving to its plan's literal
+  reference; any other `fullUrl`, LifeLabs' `<Type>/<key value>`, DICOM's
+  fixed one or a HAR preview key, names nothing), then runs `fhir-r4-adoption`'s `adopt` over each record with that
   reference plan and its plan's `id`. So a keyed record lands on the id its
   key derives, a keyless one on an id `mintId` mints (a random UUID unless a
   test injects one), in entry order, and a logical reference resolves when
@@ -121,7 +126,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   reference against a transaction bundle; one naming a record the set does
   not hold, a keyless one, or an identifier two records of the set share
   (`ReferencePlan`'s ambiguous case; a record listing one identifier twice
-  is no clash), stays logical, for the identity map. Before adopting, a
+  is no clash), stays logical, for the identity map. A literal reference or
+  an `Attachment.url` that spells a keyless record's `fullUrl` resolves to
+  that record, as a FHIR server resolves a transaction bundle's reference to
+  an entry by its `fullUrl`; one spelling no entry's keeps its literal, the
+  source's absolute URL for its target. Before adopting, a
   `MedicationDispense` with no `subject` takes its authorizing
   prescriptions' `subject`, as they spell it, when they agree: every
   `authorizingPrescription` resolving (`ReferencePlan.literalReferenceIfResolved`)
@@ -163,10 +172,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   by its own id. A format that needs a parse to state that key **parses
   twice** — once here, once in `decodeFileSet` — which is the
   deliberate price of a constructor with no parsed-value passthrough in it.
-  Per set, concurrently across sets, `make` runs `decodeFileSet`,
-  **namespaces the decode's review keys** by the set's first picked file
-  (`FormatDecode.keyPrefix`), and folds a `ParseError` into one
-  `unreadableFiles` row per picked file of the failing set. It returns each
+  Per set, concurrently across sets, `make` runs `decodeFileSet` and folds a
+  `ParseError` into one `unreadableFiles` row per picked file of the failing
+  set; each entry's `fullUrl` stays as the format gave it. It returns each
   set apart, with its picked files, because `importer-core`'s import stage
   builds each set's source files and sets its records' `meta.source` from them.
 
@@ -555,9 +563,11 @@ but `fhir-r4-adoption`.
   `decodeFileSet` keys within _one_ set, because that is all it can see; the
   batch merges every claimed file's sections into one format-wide review,
   while the selection, the server-diff verdicts and the write plan are all
-  keyed by `(format, key)`. `DecodeFunction.make` prefixes each set's keys with
-  its first picked file (`FormatDecode.keyPrefix`), which is what makes a
-  fixed key safe. Do not push that obligation down into a `decodeFileSet` —
+  keyed by `(format, key)`. `importer-core`'s import stage prefixes each set's
+  adopted review keys with its first picked file (`DecodedFile.namespaceKeys`,
+  `FormatDecode.keyPrefix`), which is what makes a fixed key safe. An entry's
+  `fullUrl` itself is never prefixed: a FHIR server's `Binary` is named by its
+  `fullUrl`, the server's URL for it, which a reference spells as it is. Do not push that obligation down into a `decodeFileSet` —
   one that tries to be unique across a batch cannot be, since it is not given
   the batch.
 - **Identity is the map's, never the selection's.** `StagedImport` keeps

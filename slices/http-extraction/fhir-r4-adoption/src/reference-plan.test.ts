@@ -27,9 +27,10 @@ const PATIENT_KEY = qualified({ system: SYSTEM, value: 'pat-7' })
 
 /** The plan with one entry: the Patient keyed by {@link PATIENT_KEY} resolves to `Patient/stored-7`. */
 const patientPlan = (): ReferencePlan.Type =>
-  ReferencePlan.of([
-    { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
-  ])
+  ReferencePlan.of(
+    [{ resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' }],
+    []
+  )
 
 describe('ReferencePlan.literalReferenceFor', () => {
   it('resolves a type and identifier the plan holds to its literal reference', () => {
@@ -58,18 +59,24 @@ describe('ReferencePlan.literalReferenceFor', () => {
   // As a FHIR conditional reference that matches several records: which one
   // is meant cannot be told, so the reference stays logical.
   it('resolves nothing for an identifier given two different literal references', () => {
-    const plan = ReferencePlan.of([
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-8' },
-    ])
+    const plan = ReferencePlan.of(
+      [
+        { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
+        { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-8' },
+      ],
+      []
+    )
     expect(ReferencePlan.literalReferenceFor(plan, 'Patient', PATIENT_KEY)).toEqual(Option.none())
   })
 
   it('resolves an identifier given the same literal reference twice', () => {
-    const plan = ReferencePlan.of([
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
-    ])
+    const plan = ReferencePlan.of(
+      [
+        { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
+        { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
+      ],
+      []
+    )
     expect(ReferencePlan.literalReferenceFor(plan, 'Patient', PATIENT_KEY)).toEqual(
       Option.some('Patient/stored-7')
     )
@@ -80,9 +87,16 @@ describe('ReferencePlan.literalReferenceFor', () => {
   it('tells apart identifiers that only a separator inside a system or value would join', () => {
     const joinedAtSystem = qualified({ system: 'https://a.example/x|y', value: 'z' })
     const joinedAtValue = qualified({ system: 'https://a.example/x', value: 'y|z' })
-    const plan = ReferencePlan.of([
-      { resourceType: 'Patient', identifier: joinedAtSystem, literalReference: 'Patient/stored-7' },
-    ])
+    const plan = ReferencePlan.of(
+      [
+        {
+          resourceType: 'Patient',
+          identifier: joinedAtSystem,
+          literalReference: 'Patient/stored-7',
+        },
+      ],
+      []
+    )
     expect([
       ReferencePlan.literalReferenceFor(plan, 'Patient', joinedAtSystem),
       ReferencePlan.literalReferenceFor(plan, 'Patient', joinedAtValue),
@@ -102,13 +116,16 @@ describe('ReferencePlan.literalReferenceFor', () => {
     expect([
       ReferencePlan.literalReferenceFor(patientPlan(), 'Patient', describedKey),
       ReferencePlan.literalReferenceFor(
-        ReferencePlan.of([
-          {
-            resourceType: 'Patient',
-            identifier: describedKey,
-            literalReference: 'Patient/stored-7',
-          },
-        ]),
+        ReferencePlan.of(
+          [
+            {
+              resourceType: 'Patient',
+              identifier: describedKey,
+              literalReference: 'Patient/stored-7',
+            },
+          ],
+          []
+        ),
         'Patient',
         PATIENT_KEY
       ),
@@ -155,10 +172,13 @@ describe('ReferencePlan.literalReferenceIfResolved', () => {
   })
 
   it('resolves nothing for an identifier given two different literal references', () => {
-    const plan = ReferencePlan.of([
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
-      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-8' },
-    ])
+    const plan = ReferencePlan.of(
+      [
+        { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
+        { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-8' },
+      ],
+      []
+    )
     expect(
       resolved(plan, { type: 'Patient', identifier: { system: SYSTEM, value: 'pat-7' } })
     ).toEqual(Option.none())

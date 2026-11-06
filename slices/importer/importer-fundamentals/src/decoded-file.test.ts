@@ -87,3 +87,28 @@ describe('mapResources', () => {
     })
   })
 })
+
+describe('DecodedFile.namespaceKeys', () => {
+  it('prefixes every review key and keeps everything else', () => {
+    const decodedFile: DecodedFile.DecodedFile = {
+      sections: [
+        {
+          title: 'people',
+          resources: [{ key: 'req-0:0', title: 'Patient/pat-7', resource: resource('pat-7') }],
+        },
+      ],
+      notes: ['a note'],
+    }
+    expect(DecodedFile.namespaceKeys(decodedFile, '0:a.har/')).toEqual({
+      sections: [
+        {
+          title: 'people',
+          resources: [
+            { key: '0:a.har/req-0:0', title: 'Patient/pat-7', resource: resource('pat-7') },
+          ],
+        },
+      ],
+      notes: ['a note'],
+    })
+  })
+})

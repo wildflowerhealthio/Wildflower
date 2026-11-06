@@ -16,7 +16,8 @@ const fhirR4Source: SourceDescriptor.SourceDescriptor<DetachedResource.Type> =
     name: 'fhir-r4',
     display: {
       title: 'FHIR R4 server',
-      description: 'Patient and Observation reads from any server speaking FHIR R4 JSON.',
+      description:
+        'Patient, Observation, DocumentReference and Binary reads from any server speaking FHIR R4 JSON.',
     },
     responseKinds: fhirR4ResponseKinds,
   })

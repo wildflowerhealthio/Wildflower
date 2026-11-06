@@ -4,16 +4,16 @@
  * builds it.
  *
  * @remarks
- * {@link make} groups a batch into file sets, decodes each set, namespaces its
- * review keys, and folds a set that fails into `unreadableFiles` rows. It
- * returns each set's decode apart, with its picked files, because
- * `importer-core`'s import stage (`importDecoded`) mints each set's source
- * files and makes its records the device's own.
+ * {@link make} groups a batch into file sets, decodes each set, and folds a
+ * set that fails into `unreadableFiles` rows. It returns each set's decode
+ * apart, with its picked files, because `importer-core`'s import stage
+ * (`importDecoded`) mints each set's source files, makes its records the
+ * device's own and namespaces their review keys by the set.
  *
  * What differs between formats is {@link Config.groupBy} — which files are
  * decoded together. Left out, every file is its own set; a format whose files
  * must be read together (DICOM's studies) says which key they share and gets
- * the same key-namespacing and failure folding around it. A format that needs
+ * the same failure folding around it. A format that needs
  * a parse to state that key parses twice — once in `groupBy` for the key, once
  * in `decodeFileSet` for the contents — which is a deliberate trade of a
  * little work for a constructor with no parsed-value passthrough in it.
@@ -82,7 +82,7 @@ interface Config<TFormat extends string, TSettings, R = never> {
   ) => Effect.Effect<FileSetDecode, ParseResult.ParseError, R>
 }
 
-/** Decode one set, its review keys namespaced by its first picked file. */
+/** Decode one set, beside its picked files. */
 const decodeSet = <TSettings, R>(
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: TSettings,
@@ -90,10 +90,7 @@ const decodeSet = <TSettings, R>(
 ): Effect.Effect<DecodedFileSet.Type, ParseResult.ParseError, R> =>
   Effect.map(config.decodeFileSet(pickedFiles, settings), (decoded) => ({
     pickedFiles: decoded.pickedFiles ?? Arr.map(pickedFiles, DecodedFileSet.unidentified),
-    sections: DecodedFileSet.namespaceKeys(
-      decoded.sections,
-      FormatDecode.keyPrefix(pickedFiles[0])
-    ),
+    sections: decoded.sections,
     notes: decoded.notes,
   }))
 

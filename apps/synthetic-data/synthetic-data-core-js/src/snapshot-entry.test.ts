@@ -83,15 +83,45 @@ describe('Snapshot.Entry.ResourceFileSchema', () => {
     if (entry._tag !== 'Resource') throw new Error('expected a resource')
     expect(entry.attachmentPath).toBeUndefined()
     expect(entry.resource).toMatchObject({
-      content: [{ attachment: { url: new URL('https://example.com/a.har') } }],
+      content: [{ attachment: { url: 'https://example.com/a.har' } }],
     })
   })
 
   test.each([
     ['carries its data beside a relative url', { url: 'har/a.har', data: 'aGVsbG8=' }],
     ['links to a parent directory', { url: 'har/../index.json' }],
+    ['names an attachment by a path no link spells', { url: './har/a.har' }],
   ])('does not read a DocumentReference that %s', (_, attachment) => {
     expect(Either.isLeft(decodeFile(resourceFile(sourceFileJson(attachment))))).toBe(true)
+  })
+
+  test('reads a DocumentReference whose attachment names an imported Binary as linking nothing', () => {
+    const entry = Either.getOrThrow(
+      decodeFile(resourceFile(sourceFileJson({ url: 'Binary/minted-1' })))
+    )
+    if (entry._tag !== 'Resource') throw new Error('expected a resource')
+    expect(entry.attachmentPath).toBeUndefined()
+    expect(entry.resource).toMatchObject({ content: [{ attachment: { url: 'Binary/minted-1' } }] })
+  })
+
+  // Its file would carry the path as a link the resource does not make.
+  test('does not write a resource naming a snapshot path outside its attachmentPath', () => {
+    const entry = Either.getOrThrow(decodeFile(resourceFile(sourceFileJson({ url: 'har/a.har' }))))
+    if (entry._tag !== 'Resource' || entry.resource.resourceType !== 'DocumentReference') {
+      throw new Error('expected a linked DocumentReference')
+    }
+    const { attachmentPath: _, ...unlinked } = entry
+    const naming = {
+      ...unlinked,
+      resource: {
+        ...entry.resource,
+        content: entry.resource.content.map((content) => ({
+          ...content,
+          attachment: { ...content.attachment, url: 'har/a.har' },
+        })),
+      },
+    }
+    expect(Either.isLeft(encodeFile(naming))).toBe(true)
   })
 
   test('does not read a resource at another resource’s path', () => {

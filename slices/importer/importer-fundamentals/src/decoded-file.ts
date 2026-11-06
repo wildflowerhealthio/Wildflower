@@ -37,6 +37,15 @@ const mapResources = (decodedFile: DecodedFile, f: (entry: Resource) => Resource
     : { ...decodedFile, sections }
 }
 
-export { mapResources, resources }
+/**
+ * Prefix every review key in `decodedFile`, so one file set's cannot collide
+ * with another's once the batch merges their sections.
+ *
+ * @param prefix - The set's key namespace, from `FormatDecode.keyPrefix`
+ */
+const namespaceKeys = (decodedFile: DecodedFile, prefix: string): DecodedFile =>
+  mapResources(decodedFile, (entry) => ({ ...entry, key: `${prefix}${entry.key}` }))
+
+export { mapResources, namespaceKeys, resources }
 
 export type { Resource, Section, DecodedFile }

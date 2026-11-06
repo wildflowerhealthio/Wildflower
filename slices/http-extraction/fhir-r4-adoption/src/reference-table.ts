@@ -1,7 +1,8 @@
 /**
  * The per-type reference table: every `Reference` a resource holds, reached
- * by one walk, which detaching a server's record and adopting a detached one
- * both rewrite through.
+ * by one walk, and every `Attachment.url`, reached by a second, which
+ * detaching a server's record and adopting a detached one both rewrite
+ * through.
  *
  * @packageDocumentation
  */
@@ -407,6 +408,58 @@ const mapReferences =
       Match.exhaustive
     )
 
+/** An `Attachment`'s URL-bearing half, named structurally. */
+interface AttachmentUrl {
+  readonly url: string | null
+}
+
+/** Apply `rewrite` to an attachment's `url`, when it has one. */
+const rewriteAttachmentUrl = <TAttachment extends AttachmentUrl>(
+  rewrite: (url: string) => string,
+  attachment: TAttachment
+): TAttachment =>
+  attachment.url === null ? attachment : { ...attachment, url: rewrite(attachment.url) }
+
+/**
+ * `resource` with `rewrite` applied to the `url` of every `Attachment` it
+ * holds, and nothing else changed.
+ *
+ * @remarks
+ * An `Attachment.url` is a plain URL, not a `Reference`, so
+ * {@link mapReferences} never reaches it, but a server's
+ * `DocumentReference.content.attachment` names the `Binary` holding the
+ * document by one (`Binary/<id>`). The types that carry an `Attachment` are
+ * matched; every other passes through, and the schema-derived coverage
+ * property in `adopt-resource.test.ts` fails when a type gains one that no
+ * row here reaches. The same variant-to-itself caveat as
+ * {@link mapReferences} holds.
+ */
+const mapAttachmentUrls =
+  (rewrite: (url: string) => string) =>
+  (resource: FhirResource): FhirResource =>
+    Match.value(resource).pipe(
+      Match.discriminator('resourceType')('Patient', (patient) => ({
+        ...patient,
+        photo: patient.photo.map((photo) => rewriteAttachmentUrl(rewrite, photo)),
+      })),
+      Match.discriminator('resourceType')('Practitioner', (practitioner) => ({
+        ...practitioner,
+        photo: practitioner.photo.map((photo) => rewriteAttachmentUrl(rewrite, photo)),
+      })),
+      Match.discriminator('resourceType')('DocumentReference', (document) => ({
+        ...document,
+        content: document.content.map((content) => ({
+          ...content,
+          attachment: rewriteAttachmentUrl(rewrite, content.attachment),
+        })),
+      })),
+      Match.discriminator('resourceType')('DiagnosticReport', (report) => ({
+        ...report,
+        presentedForm: report.presentedForm.map((form) => rewriteAttachmentUrl(rewrite, form)),
+      })),
+      Match.orElse((other) => other)
+    )
+
 /** The `Identifier` `{ system, value }`, every other element empty. */
 const identifierOf = (systemUrl: URL, value: string): IdentifierType => ({
   id: null,
@@ -419,4 +472,4 @@ const identifierOf = (systemUrl: URL, value: string): IdentifierType => ({
   value,
 })
 
-export { identifierOf, mapReferences }
+export { identifierOf, mapAttachmentUrls, mapReferences }

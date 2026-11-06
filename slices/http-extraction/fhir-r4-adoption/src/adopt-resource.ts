@@ -4,21 +4,24 @@ import { Option } from 'effect'
 
 import * as DetachedResource from './detached-resource.ts'
 import * as ReferencePlan from './reference-plan.ts'
-import { identifierOf, mapReferences } from './reference-table.ts'
+import { identifierOf, mapAttachmentUrls, mapReferences } from './reference-table.ts'
 
 /** A fresh random id for a keyless record: a v4 UUID, a legal FHIR id. */
 const randomResourceId = (): string => crypto.randomUUID()
 
 /**
- * A logical reference the batch's reference plan resolves, as the literal
- * reference the plan gives it, `type` and `identifier` kept; every other
- * reference exactly as it is.
+ * A reference the batch's reference plan resolves, as the literal reference
+ * the plan gives it, `type` and `identifier` kept; every other reference
+ * exactly as it is.
  *
  * @remarks
- * Resolved by `ReferencePlan.literalReferenceIfResolved`. One the plan does
+ * Resolved by `ReferencePlan.literalReferenceIfResolved`: a logical
+ * reference by its type and identifier, a literal one (a server's absolute
+ * URL for a `Binary`) by an entry's `fullUrl`. A logical one the plan does
  * not resolve — a target the source never served, an account number, a
  * provider's printed name — stays logical, for the importer's identity map
- * (and, later, a match against what the device already holds).
+ * (and, later, a match against what the device already holds); a literal one
+ * keeps its literal, which points at the server's record.
  */
 const adoptReference =
   (referencePlan: ReferencePlan.Type) =>
@@ -29,9 +32,19 @@ const adoptReference =
     })
 
 /**
+ * An `Attachment.url` that is the `fullUrl` of a record of the batch, as the
+ * literal reference that record is stored under; every other URL exactly as
+ * it is.
+ */
+const adoptAttachmentUrl =
+  (referencePlan: ReferencePlan.Type) =>
+  (url: string): string =>
+    Option.getOrElse(ReferencePlan.literalReferenceForFullUrl(referencePlan, url), () => url)
+
+/**
  * Adopt a detached record into the store: give it the id it is stored under,
- * and resolve each of its logical references the batch's reference plan
- * resolves to a literal one.
+ * and resolve each of its references and attachment URLs the batch's
+ * reference plan resolves to a literal reference.
  *
  * @param referencePlan - The literal reference each logical reference into
  *   the batch resolves to
@@ -42,15 +55,17 @@ const adoptReference =
  * The id and the reference plan are decided before adoption, by the import
  * stage: the id a keyed record's key derives, so a re-import lands on the
  * same id, or a minted one for a keyless record. References resolve through
- * {@link adoptReference}. Nothing else changes: the record's identifiers,
- * its key first, are written as they are.
+ * {@link adoptReference}, attachment URLs through {@link adoptAttachmentUrl}.
+ * Nothing else changes: the record's identifiers, its key first, are written
+ * as they are.
  *
  * Takes no base URL: everything it needs is on the records.
  */
 const adopt = (referencePlan: ReferencePlan.Type) => {
   const adoptReferences = mapReferences(adoptReference(referencePlan))
+  const adoptAttachmentUrls = mapAttachmentUrls(adoptAttachmentUrl(referencePlan))
   return (record: DetachedResource.Type, id: string): FhirResourceWithId => ({
-    ...adoptReferences(record),
+    ...adoptAttachmentUrls(adoptReferences(record)),
     id,
   })
 }

@@ -156,11 +156,12 @@ package.
 
 ## Traps
 
-- **A linked source file's `url` is relative,** and `fhir-r4` reads
-  `Attachment.url` as an absolute `URL`: a `Resource` holds the link as
-  `attachmentPath`, and only its file carries it as `url`. Decode a resource
-  file with `Entry.ResourceFileSchema`, never straight through
-  `FhirResourceSchema`.
+- **A linked source file's `url` is the snapshot path of its attachment:** a
+  `Resource` holds the link as `attachmentPath`, and only its file carries it
+  as `url`; a `Resource` whose own attachment `url` is a relative path that is
+  no FHIR `<Type>/<id>` (an imported `Binary/<id>` is one) does not decode or
+  encode. Decode a resource file with `Entry.ResourceFileSchema`, never
+  straight through `FhirResourceSchema`.
 - **`fhir-r4` encodes to its own key order and empty arrays.** A resource's
   file is whatever `FhirResourceSchema` encodes the decoded resource to, so a
   hand-written resource file does not round-trip to the same text; one

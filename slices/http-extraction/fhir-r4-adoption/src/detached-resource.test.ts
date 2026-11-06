@@ -1,5 +1,5 @@
 import { type FhirResource, FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
-import { Arbitrary, Array as Arr, FastCheck as fc, Schema } from 'effect'
+import { Arbitrary, Array as Arr, FastCheck as fc, Option, Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as DetachedResource from './detached-resource.ts'
@@ -56,4 +56,44 @@ describe('hasIdentifier', () => {
       })
     }
   }
+})
+
+describe('DetachedResource.serverBinaryUrlIfRead', () => {
+  test.each([
+    ['https://fhir.example/R4/Binary/bin-1', 'https://fhir.example/R4/Binary/bin-1'],
+    ['https://fhir.example/R4/Binary/bin-1?_format=json', 'https://fhir.example/R4/Binary/bin-1'],
+    ['https://fhir.example/Binary/bin-1#top', 'https://fhir.example/Binary/bin-1'],
+    // Past R4's 64-character id grammar, and with a `_`: still a Binary read.
+    [
+      `https://fhir.example/Binary/${'e'.repeat(80)}_1`,
+      `https://fhir.example/Binary/${'e'.repeat(80)}_1`,
+    ],
+  ])('names the Binary read at %s by %s', (readUrl, binaryUrl) => {
+    expect(DetachedResource.serverBinaryUrlIfRead(readUrl)).toEqual(Option.some(binaryUrl))
+  })
+
+  // The URL a reference to the Binary is detached to, so the two match.
+  test('spells the Binary as a reference to it detaches', () => {
+    const base = 'https://fhir.example/R4'
+    const document = DetachedResource.fromServerRecord(base)(
+      decodeResource({
+        resourceType: 'DocumentReference',
+        id: 'doc-1',
+        status: 'current',
+        content: [{ attachment: { url: 'Binary/bin-1' } }],
+      })
+    )
+    expect(
+      document.resourceType === 'DocumentReference' ? document.content[0]?.attachment.url : null
+    ).toEqual(Option.getOrNull(DetachedResource.serverBinaryUrlIfRead(`${base}/Binary/bin-1`)))
+  })
+
+  test.each([
+    'https://fhir.example/R4/Patient/pat-1',
+    'https://fhir.example/R4/Binary',
+    'https://fhir.example/R4/Binary/bin-1/_history/2',
+    'Binary/bin-1',
+  ])('names nothing for %s', (readUrl) => {
+    expect(DetachedResource.serverBinaryUrlIfRead(readUrl)).toEqual(Option.none())
+  })
 })
