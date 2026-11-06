@@ -82,14 +82,16 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   files one format claimed.
 - `src/sectioned-list.ts` — the **`SectionedList`** namespace: the one
   container every stage of an import carries its records in. **`Type<E>`** is
-  `{ sections }`, each a `Section.Type<E>`. **`map`**, **`filterMap`**,
-  **`filter`** and **`forEach`** (the `Effect` traversal) work row by row;
+  `{ sections }`, each a `Section.Type<E>`. **`map`**, **`modify`**,
+  **`filterMap`**, **`filter`** and **`forEach`** (the `Effect` traversal)
+  work row by row;
   **`rows`** flattens; **`groupBy`** sections rows by title in the order each
   first appears; **`make`**, **`empty`**, **`concatenate`**,
   **`concatenateAll`**, **`prepend`** and **`append`** build. Section order is
   meaning (a set's source files first, its implied records last), so nothing
-  reorders sections or merges two that share a title. `map` keeps reference
-  identity: a section `f` changed nothing in comes back as itself, and so does
+  reorders sections or merges two that share a title. `modify`, the
+  same-typed `map`, keeps reference identity: a section `f` changed nothing in
+  comes back as itself, and so does
   a list none of whose sections changed, which `FileResolution.resolveFile`
   and the review's memoized rows rely on.
 - `src/section.ts` — the **`Section`** namespace: **`Type<E>`**, one titled

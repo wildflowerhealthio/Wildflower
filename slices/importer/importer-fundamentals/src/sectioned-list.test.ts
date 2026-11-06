@@ -49,23 +49,11 @@ describe('SectionedList.rows', () => {
 })
 
 describe('SectionedList.map', () => {
-  it('should give back the list itself when every row comes back as itself', () => {
-    expect(SectionedList.map(list, (row) => row)).toBe(list)
-  })
-
-  it('should replace only the rows that changed, keeping every untouched row and section as itself', () => {
-    const retitled = SectionedList.map(list, (row) =>
-      row.key === 'k-2' ? { ...row, title: 'Patient C' } : row
-    )
-
-    expect(retitled).not.toBe(list)
-    expect(retitled.sections[0]).toBe(list.sections[0])
-    expect(retitled.sections[1]?.rows[0]).toBe(list.sections[1]?.rows[0])
-    expect(retitled.sections[1]).toEqual({
-      title: 'Second',
-      rows: [
-        { key: 'k-1', title: 'Patient/b' },
-        { key: 'k-2', title: 'Patient C' },
+  it('should apply the function to every row, keeping sections and titles', () => {
+    expect(SectionedList.map(list, (row) => row.key)).toEqual({
+      sections: [
+        { title: 'First', rows: ['k-0'] },
+        { title: 'Second', rows: ['k-1', 'k-2'] },
       ],
     })
   })
@@ -82,6 +70,29 @@ describe('SectionedList.map', () => {
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('SectionedList.modify', () => {
+  it('should give back the list itself when every row comes back as itself', () => {
+    expect(SectionedList.modify(list, (row) => row)).toBe(list)
+  })
+
+  it('should replace only the rows that changed, keeping every untouched row and section as itself', () => {
+    const retitled = SectionedList.modify(list, (row) =>
+      row.key === 'k-2' ? { ...row, title: 'Patient C' } : row
+    )
+
+    expect(retitled).not.toBe(list)
+    expect(retitled.sections[0]).toBe(list.sections[0])
+    expect(retitled.sections[1]?.rows[0]).toBe(list.sections[1]?.rows[0])
+    expect(retitled.sections[1]).toEqual({
+      title: 'Second',
+      rows: [
+        { key: 'k-1', title: 'Patient/b' },
+        { key: 'k-2', title: 'Patient C' },
+      ],
+    })
   })
 })
 

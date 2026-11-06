@@ -8,10 +8,10 @@
  * sections and of the rows in each, and {@link concatenate} never merges two
  * sections that share a title.
  *
- * {@link map} keeps reference identity: a section `f` returns every row of
- * as itself comes back as the same section object, and a list none of whose
- * sections changed comes back as itself. A memoized row, and a resolve pass
- * that tells whether anything moved by comparing objects, rely on it.
+ * {@link modify} keeps reference identity: a section `f` returns every row
+ * of as itself comes back as the same section object, and a list none of
+ * whose sections changed comes back as itself. A memoized row, and a resolve
+ * pass that tells whether anything moved by comparing objects, rely on it.
  *
  * @packageDocumentation
  */
@@ -30,32 +30,28 @@ const empty = <E>(): Type<E> => ({ sections: [] })
 /** `sections`, in the order given. */
 const make = <E>(sections: readonly Section.Type<E>[]): Type<E> => ({ sections })
 
-/**
- * Whether `before`'s `key` holds the very values `after` does, at every
- * position: where it does, `before` is already what {@link map} would build
- * from `after`, so map gives it back as itself.
- */
-const holdsSame = <K extends PropertyKey, V>(
-  before: Readonly<Record<K, readonly unknown[]>>,
-  key: K,
-  after: readonly V[]
-): before is Readonly<Record<K, readonly V[]>> =>
-  before[key].length === after.length &&
-  before[key].every((value, at) => Object.is(value, after[at]))
+/** `list` with `f` applied to every row, sections and their titles kept. */
+const map = <A, B>(list: Type<A>, f: (row: A) => B): Type<B> =>
+  make(list.sections.map(({ title, rows }) => Section.make(title, rows.map(f))))
+
+/** Whether `after` holds the very values `before` does, at every position. */
+const sameElements = (before: readonly unknown[], after: readonly unknown[]): boolean =>
+  before.length === after.length && before.every((value, at) => Object.is(value, after[at]))
 
 /**
- * `list` with `f` applied to every row, sections and their titles kept.
+ * {@link map} with a row of the same type out as in, keeping reference
+ * identity.
  *
  * @remarks
  * A section whose every row `f` returns as itself comes back as the same
  * object, and `list` comes back as itself when every section does.
  */
-const map = <A, B>(list: Type<A>, f: (row: A) => B): Type<B> => {
-  const sections = list.sections.map((section): Section.Type<B> => {
+const modify = <A>(list: Type<A>, f: (row: A) => A): Type<A> => {
+  const sections = list.sections.map((section) => {
     const rows = section.rows.map(f)
-    return holdsSame(section, 'rows', rows) ? section : Section.make(section.title, rows)
+    return sameElements(section.rows, rows) ? section : Section.make(section.title, rows)
   })
-  return holdsSame(list, 'sections', sections) ? list : make(sections)
+  return sameElements(list.sections, sections) ? list : make(sections)
 }
 
 /** `list` with each row `f` returns `Some` for replaced by its value, and a section left empty dropped. */
@@ -137,6 +133,7 @@ export {
   groupBy,
   make,
   map,
+  modify,
   prepend,
   rows,
 }

@@ -159,7 +159,7 @@ const linkedRecords = (plan: LinkPlan.Type): readonly DecodedFile.Row[] =>
 const resolveFile =
   (plan: LinkPlan.Type) =>
   (decodedFile: DecodedFile.DecodedFile): DecodedFile.DecodedFile => {
-    const rows = SectionedList.map(decodedFile.rows, resolveRow(plan))
+    const rows = SectionedList.modify(decodedFile.rows, resolveRow(plan))
     return rows === decodedFile.rows ? decodedFile : { ...decodedFile, rows }
   }
 
