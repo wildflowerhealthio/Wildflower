@@ -20,6 +20,7 @@ import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 
 import { dicomCalendarDate } from './fhir/dates.ts'
+import { unresolvedUniversalIssuerOf } from './fhir/issuer.ts'
 import {
   accessionNumbers,
   orderedInstances,
@@ -137,9 +138,41 @@ const sectionTitle = (header: DicomHeader.Type): string => {
 const contributionNote = ({ fileName, header }: StudyFile): string =>
   `${fileName}: series ${header.seriesNumber ?? header.seriesInstanceUid}, instance ${header.instanceNumber ?? header.sopInstanceUid}.`
 
+/**
+ * The notes for a stated issuer that names no URI — its number is then keyed
+ * as one whose issuer the file does not state, beside every other such number:
+ * the Patient ID's, read off the study's representative header, and the
+ * Accession Number's, off the first file in study order stating one, as the
+ * synthesis reads them.
+ */
+const unresolvedIssuerNotes = (files: readonly StudyFile[]): readonly string[] => {
+  const ordered = orderedInstances(files)
+  const patientIssuer = Option.flatMap(Arr.head(ordered), ({ header }) =>
+    header.patientId === undefined
+      ? Option.none()
+      : unresolvedUniversalIssuerOf(header.issuerOfPatientIdQualifiers)
+  )
+  const accessionIssuer = Option.flatMap(
+    Arr.findFirst(ordered, ({ header }) => header.accessionNumber !== undefined),
+    ({ header }) => unresolvedUniversalIssuerOf(header.issuerOfAccessionNumber)
+  )
+  return Arr.getSomes([
+    Option.map(
+      patientIssuer,
+      (issuer) =>
+        `IssuerOfPatientIDQualifiersSequence names ${issuer}, which is no URI — the PatientID is keyed as one whose issuer is not stated.`
+    ),
+    Option.map(
+      accessionIssuer,
+      (issuer) =>
+        `IssuerOfAccessionNumberSequence names ${issuer}, which is no URI — the AccessionNumber is keyed as one whose issuer is not stated.`
+    ),
+  ])
+}
+
 /** The notes a study's headers earn, beyond the resources they synthesize. */
 const studyNotes = (files: readonly StudyFile[]): readonly string[] => {
-  const notes: string[] = []
+  const notes: string[] = [...unresolvedIssuerNotes(files)]
   const accessions = accessionNumbers(files)
   if (accessions.length === 0) {
     notes.push('No AccessionNumber — no ServiceRequest will be created.')

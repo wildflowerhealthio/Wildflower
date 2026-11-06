@@ -1,10 +1,11 @@
+import type { HierarchicDesignator } from '@wildflowerhealthio/dicom'
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { issuedIdentifierOf, universalSystemOf } from './issuer.ts'
+import { issuedIdentifierOf, unresolvedUniversalIssuerOf, universalSystemOf } from './issuer.ts'
 
 const FALLBACK = 'https://wildflowerhealth.io/fhir/sid/dicom/accession-number'
 
@@ -33,6 +34,26 @@ describe('universalSystemOf', () => {
     expect(universalSystemOf('HOSPITAL', 'ISO')).toEqual(Option.none())
     expect(universalSystemOf('not-a-uuid', 'UUID')).toEqual(Option.none())
     expect(universalSystemOf('not a uri', 'URI')).toEqual(Option.none())
+  })
+})
+
+describe('unresolvedUniversalIssuerOf', () => {
+  it('names a stated universal id that resolves to no URI, and nothing else', () => {
+    const issuer = (
+      universalEntityId?: string,
+      universalEntityIdType?: string
+    ): HierarchicDesignator.Type => ({
+      localNamespaceEntityId: 'LOCAL',
+      universalEntityId,
+      universalEntityIdType,
+    })
+    expect(unresolvedUniversalIssuerOf(issuer('pacs.example.org', 'DNS'))).toEqual(
+      Option.some('pacs.example.org (DNS)')
+    )
+    expect(unresolvedUniversalIssuerOf(issuer('1.2.3'))).toEqual(Option.some('1.2.3 (no type)'))
+    expect(unresolvedUniversalIssuerOf(issuer('1.2.3', 'ISO'))).toEqual(Option.none())
+    expect(unresolvedUniversalIssuerOf(issuer())).toEqual(Option.none())
+    expect(unresolvedUniversalIssuerOf(undefined)).toEqual(Option.none())
   })
 })
 

@@ -42,6 +42,31 @@ const universalSystemOf = (
     Match.orElse(() => Option.none())
   )
 
+/** The system the issuer's Universal Entity ID names, `None` when it states none or one naming no URI. */
+const universalSystemOfIssuer = (
+  issuer: HierarchicDesignator.Type | undefined
+): Option.Option<string> =>
+  Option.flatMap(Option.fromNullable(issuer?.universalEntityId), (id) =>
+    Option.flatMap(Option.fromNullable(issuer?.universalEntityIdType), (type) =>
+      universalSystemOf(id, type)
+    )
+  )
+
+/**
+ * The issuer's Universal Entity ID when it states one that names no URI, as
+ * `<id> (<type>)`: what the decode notes, since the number is then keyed as
+ * one whose issuer the file does not state.
+ */
+const unresolvedUniversalIssuerOf = (
+  issuer: HierarchicDesignator.Type | undefined
+): Option.Option<string> =>
+  Option.isSome(universalSystemOfIssuer(issuer))
+    ? Option.none()
+    : Option.map(
+        Option.fromNullable(issuer?.universalEntityId),
+        (id) => `${id} (${issuer?.universalEntityIdType ?? 'no type'})`
+      )
+
 /**
  * A number under its issuer: the record key it is, and the name its issuer is
  * displayed by when the issuer is not that key's system.
@@ -75,11 +100,7 @@ const issuedIdentifierOf = (
   unstatedIssuerSystem: string
 ): IssuedIdentifier => {
   const universalEntityId = Option.fromNullable(issuer?.universalEntityId)
-  const universalSystem = Option.flatMap(universalEntityId, (id) =>
-    Option.flatMap(Option.fromNullable(issuer?.universalEntityIdType), (type) =>
-      universalSystemOf(id, type)
-    )
-  )
+  const universalSystem = universalSystemOfIssuer(issuer)
   return {
     key: { system: Option.getOrElse(universalSystem, () => unstatedIssuerSystem), value },
     assignerDisplay: Option.orElse(Option.fromNullable(issuer?.localNamespaceEntityId), () =>
@@ -100,5 +121,5 @@ const issuedIdentifierWire = ({
   }),
 })
 
-export { issuedIdentifierOf, issuedIdentifierWire, universalSystemOf }
+export { issuedIdentifierOf, issuedIdentifierWire, unresolvedUniversalIssuerOf, universalSystemOf }
 export type { IssuedIdentifier }

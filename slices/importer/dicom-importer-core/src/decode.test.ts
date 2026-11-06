@@ -160,6 +160,39 @@ describe('decodeStudy', () => {
     ])
   })
 
+  it('notes a stated issuer that names no URI, keying its number under the fallback', async () => {
+    const result = await Effect.runPromise(
+      decodeStudy(
+        sample({
+          IssuerOfPatientIDQualifiersSequence: {
+            localNamespaceEntityId: undefined,
+            universalEntityId: 'pacs.example.org',
+            universalEntityIdType: 'DNS',
+          },
+          IssuerOfAccessionNumberSequence: {
+            localNamespaceEntityId: undefined,
+            universalEntityId: '1.02.3',
+            universalEntityIdType: 'ISO',
+          },
+        }),
+        defaultDicomSettings
+      )
+    )
+    expect(result.notes).toEqual([
+      'IssuerOfPatientIDQualifiersSequence names pacs.example.org (DNS), which is no URI — the PatientID is keyed as one whose issuer is not stated.',
+      'IssuerOfAccessionNumberSequence names 1.02.3 (ISO), which is no URI — the AccessionNumber is keyed as one whose issuer is not stated.',
+    ])
+    expect(
+      result.sections[0]?.entries.map(({ resource }) =>
+        Option.map(DetachedResource.keyOf(resource), ({ system }) => system)
+      )
+    ).toEqual([
+      Option.some(DicomIdentifierSystem.PatientId),
+      Option.some(DicomIdentifierSystem.AccessionNumber),
+      Option.some('urn:dicom:uid'),
+    ])
+  })
+
   it('keys the ServiceRequest under the ISO OID Issuer of Accession Number Sequence names', async () => {
     const result = await Effect.runPromise(
       decodeStudy(
