@@ -1,6 +1,6 @@
-import { Effect, Option, pipe } from 'effect'
+import { Effect, Option } from 'effect'
 
-import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   type HttpResponseKind,
   SourceDescriptor,
@@ -37,25 +37,10 @@ const enabledKindNames = (settings: HarSettings): ReadonlySet<string> => {
   return new Set(fhirPool.map((kind) => kind.name).filter((name) => !disabled.has(name)))
 }
 
-/** The tail of a FHIR server's `Binary` read path: `/Binary/<id>`, the id in R4's id grammar. */
-const BINARY_READ_PATH = /\/Binary\/[A-Za-z0-9\-.]{1,64}$/
-
-/**
- * The URL a `Binary` read served at `responseUrl` names the Binary by: the
- * read's URL less its query and fragment, `<root>/Binary/<id>`. `None` for a
- * response that is no `Binary` read.
- */
-const binaryUrlIfRead = (responseUrl: string): Option.Option<string> =>
-  pipe(
-    Option.fromNullable(URL.parse(responseUrl)),
-    Option.filter(({ pathname }) => BINARY_READ_PATH.test(pathname)),
-    Option.map(({ origin, pathname }) => `${origin}${pathname}`)
-  )
-
 /**
  * A previewed record's `fullUrl`: for a `Binary` a read served, the server's
- * URL for it ({@link binaryUrlIfRead}); for any other record, its preview
- * key, `<response id>:<index>`.
+ * URL for it (`DetachedResource.serverBinaryUrlIfRead`); for any other
+ * record, its preview key, `<response id>:<index>`.
  *
  * @remarks
  * A Binary has no identifier, so its `fullUrl` is what names it: a reference
@@ -64,7 +49,7 @@ const binaryUrlIfRead = (responseUrl: string): Option.Option<string> =>
  */
 const fullUrlOf = (responseUrl: string, key: string, resource: DetachedResource.Type): string =>
   resource.resourceType === 'Binary'
-    ? Option.getOrElse(binaryUrlIfRead(responseUrl), () => key)
+    ? Option.getOrElse(DetachedResource.serverBinaryUrlIfRead(responseUrl), () => key)
     : key
 
 /**

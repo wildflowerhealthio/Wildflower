@@ -41,6 +41,9 @@ vocabulary) stays FHIR-free and below it.
   instead made the server's absolute URL for the Binary,
   `<baseUrl>/Binary/<id>`, its `type` and `identifier` kept: R4 gives `Binary`
   no identifier to name it by. It keeps the resource's own type.
+  `serverBinaryUrlIfRead(readUrl)` is the same URL read off a `Binary` read's
+  URL, the `fullUrl` a decoder gives the Binary's entry, so the two are built
+  in one place.
 - `src/reference-table.ts` — the per-type reference table (`mapReferences`,
   the one place a resource's references are walked) and, beside it, the
   attachment URL walk (`mapAttachmentUrls`: `Patient.photo`,

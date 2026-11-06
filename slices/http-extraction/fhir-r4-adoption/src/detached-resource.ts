@@ -234,9 +234,9 @@ const serverRecordNamedBy = (baseUrl: string, literal: string): Option.Option<Se
 
 /**
  * The server's absolute URL for its `Binary` `id`, `<baseUrl>/Binary/<id>`:
- * what a reference or an `Attachment.url` naming the Binary is detached to.
- * It is the URL the server serves the Binary's read at, which is the
- * `fullUrl` its decoder gives the Binary's entry.
+ * what a reference or an `Attachment.url` naming the Binary is detached to,
+ * and, through {@link serverBinaryUrlIfRead}, the `fullUrl` its decoder gives
+ * the Binary's entry.
  *
  * @remarks
  * R4 gives `Binary` no `identifier` element, so nothing can name one by a key;
@@ -245,6 +245,35 @@ const serverRecordNamedBy = (baseUrl: string, literal: string): Option.Option<Se
  */
 const serverBinaryUrlOf = (baseUrl: string, id: string): string =>
   `${serverSystemOf(baseUrl, 'Binary')}/${id}`
+
+/**
+ * The server's URL for the `Binary` a read at `readUrl` served: the read's
+ * URL less its query and fragment, `<base>/Binary/<id>`, built by
+ * {@link serverBinaryUrlOf} under the same id rule a reference to it is
+ * detached by, so the two spell it alike. `None` for a URL that is no
+ * `Binary` read.
+ *
+ * @remarks
+ * The `fullUrl` a decoder gives a Binary's entry: a detached Binary carries
+ * neither its id nor its server's base, so the read's URL is what names it.
+ */
+const serverBinaryUrlIfRead = (readUrl: string): Option.Option<string> =>
+  pipe(
+    Option.fromNullable(URL.parse(readUrl)),
+    Option.flatMap(({ origin, pathname }) =>
+      pipe(
+        Option.liftPredicate(pathname.lastIndexOf('/Binary/'), (at) => at >= 0),
+        Option.map((at) => `${origin}${pathname.slice(0, at)}`),
+        Option.flatMap((baseUrl) =>
+          pipe(
+            serverRecordNamedBy(baseUrl, `${origin}${pathname}`),
+            Option.filter(({ resourceType }) => resourceType === 'Binary'),
+            Option.map(({ id }) => serverBinaryUrlOf(baseUrl, id))
+          )
+        )
+      )
+    )
+  )
 
 /**
  * A reference whose literal, relativised against `baseUrl`, is a relative
@@ -370,6 +399,7 @@ export {
   keyIdentifierWire,
   keyOf,
   logicalReferenceWire,
+  serverBinaryUrlIfRead,
   storedReferenceOf,
 }
 export type { Detached, Key, Type }

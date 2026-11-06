@@ -52,7 +52,8 @@ shell's shared `persistTransactionBundle`.
   one section per URL, a plain insertion-ordered map (first-seen order, only
   responses that parsed to at least one resource), each entry's `fullUrl` its
   preview key, `<response id>:<index>`, except a `Binary` a read served, whose
-  `fullUrl` is the read's URL less its query, `<root>/Binary/<id>`: the
+  `fullUrl` is the read's URL less its query, `<root>/Binary/<id>`
+  (`fhir-r4-adoption`'s `DetachedResource.serverBinaryUrlIfRead`): the
   server's URL for it, which a reference or an `Attachment.url` naming it is
   detached to, so the import stage resolves one to the other. Only the first
   entry per `fullUrl` is kept, so a Binary read twice is one record —
