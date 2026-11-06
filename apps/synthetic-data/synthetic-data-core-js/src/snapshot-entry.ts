@@ -188,11 +188,7 @@ type ResourceJson = Schema.Schema.Encoded<typeof FhirResourceSchema>
 
 type DocumentReferenceJson = Extract<ResourceJson, { readonly resourceType: 'DocumentReference' }>
 
-/**
- * A resource file's JSON, checked for shape but not read into `fhir-r4`'s
- * decoded values, so a linked source file's relative `url` decodes
- * (`FhirResourceSchema` reads a `url` as an absolute `URL`).
- */
+/** A resource file's JSON, checked for shape but not read into `fhir-r4`'s decoded values. */
 const ResourceJsonSchema: Schema.Schema<ResourceJson> = Schema.encodedSchema(FhirResourceSchema)
 
 const isAttachmentPath = Schema.is(AttachmentPathSchema)
@@ -211,14 +207,23 @@ const attachmentPathLinkedBy = (json: ResourceJson): string | undefined => {
 }
 
 /**
+ * Whether a resource file's JSON names a file in one of the snapshot's
+ * attachment directories (`<format>/…`) by an attachment `url` without
+ * linking it ({@link attachmentPathLinkedBy}): a link that carries `data`
+ * beside it, sits in a `DocumentReference` of several attachments, or is no
+ * {@link AttachmentPathSchema} path (`har/../index.json`).
+ */
+const namesAttachmentWithoutLinking = (json: ResourceJson): boolean =>
+  json.resourceType === 'DocumentReference' &&
+  attachmentPathLinkedBy(json) === undefined &&
+  json.content.some(({ attachment: { url } }) =>
+    FORMATS.some((format) => url?.startsWith(`${format}/`) === true)
+  )
+
+/**
  * A source file's JSON with its attachment linking to `attachmentPath`: `url`
- * is the path, where `fhir-r4` encodes an attachment's `url`, and there is no
- * `data`.
- *
- * @remarks
- * Rewritten on the JSON rather than the decoded resource because `fhir-r4`'s
- * `Attachment.url` decodes to an absolute `URL`, and the link is relative to
- * the snapshot's root.
+ * is the path, relative to the snapshot's root, where `fhir-r4` encodes an
+ * attachment's `url`, and there is no `data`.
  */
 const withAttachmentUrl = (
   json: DocumentReferenceJson,
@@ -260,6 +265,15 @@ const ResourceFileSchema: Schema.Schema<Resource, SnapshotFile.Text> = Schema.tr
     decode: (file, _, ast) =>
       Either.gen(function* () {
         const json = yield* ParseResult.decodeUnknownEither(ResourceJsonSchema)(file.text)
+        if (namesAttachmentWithoutLinking(json)) {
+          return yield* Either.left(
+            new ParseResult.Type(
+              ast,
+              file,
+              `${file.path} names a snapshot attachment by url without linking it.`
+            )
+          )
+        }
         const attachmentPath = attachmentPathLinkedBy(json)
         const resource = yield* ParseResult.decodeUnknownEither(FhirResourceSchema)(
           attachmentPath !== undefined && json.resourceType === 'DocumentReference'
