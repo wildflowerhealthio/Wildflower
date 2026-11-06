@@ -408,6 +408,37 @@ describe('the access page', () => {
     })
   })
 
+  it('offers no session lifetime for the browser-session client, which never refreshes, but does for the host app', async () => {
+    // Arrange
+    const server = stubServer(undefined, undefined, undefined, () =>
+      Response.json([hostClient, browsersClient, medicationsClient])
+    )
+    const { router } = mountAccessPages(server)
+    await sectionTitled('Approved Apps')
+
+    // Act
+    await router.navigate({
+      to: '/approved/$id',
+      params: { id: hostGrant.id },
+      search: { iss: SERVER_URL },
+    })
+
+    // Assert — the host app's grant has the section.
+    expect(await sectionTitled('Session lifetime')).toBeTruthy()
+
+    // Act
+    await router.navigate({
+      to: '/approved/$id',
+      params: { id: browsersGrant.id },
+      search: { iss: SERVER_URL },
+    })
+
+    // Assert — the browser-session client's grant, its name loaded, has none.
+    expect(await screen.findByText(browsersClient.name)).toBeTruthy()
+    expect(screen.getByText(browsersGrant.clientId)).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Session lifetime' })).toBeNull()
+  })
+
   it('shows a session lifetime changed elsewhere until the Owner edits it', async () => {
     // Arrange — stored with an idle limit no preset has, then changed elsewhere.
     let storedIdleTtlSeconds = 2700
@@ -593,7 +624,7 @@ const medicationsClient = {
   kind: 'public',
   redirectUris: ['https://medications.wildflowerhealth.io/'],
   allowedScopes: ['system/MedicationRequest.rs'],
-  allowedGrantTypes: ['authorization_code'],
+  allowedGrantTypes: ['authorization_code', 'refresh_token'],
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
   essential: false,
@@ -606,6 +637,22 @@ const hostClient = {
   name: 'Wildflower Host',
   redirectUris: [],
   essential: true,
+} as const
+
+/** A paired browser's grant, held by the browser-session client. */
+const browsersGrant = {
+  ...pebbleGrant,
+  id: 'grant-browsers',
+  clientId: 'cb9bbe139845cae9654b7909d60d274f',
+  deviceName: 'Kitchen tablet',
+} as const
+
+/** The browser-session client: its tokens are never refreshed, so it has no grant type. */
+const browsersClient = {
+  ...hostClient,
+  clientId: browsersGrant.clientId,
+  name: 'Wildflower Browsers',
+  allowedGrantTypes: [],
 } as const
 
 /** One request as the stub server saw it; `body` is the parsed JSON, if any. */
@@ -641,8 +688,11 @@ const stubServer = (
     if (method === 'GET' && path === '/authorization/grants') {
       return answerGrants()
     }
-    if (method === 'GET' && path === `/authorization/grants/${medicationsGrant.id}`) {
-      return Response.json(medicationsGrant)
+    const grantById = [medicationsGrant, hostGrant, browsersGrant].find(
+      ({ id }) => path === `/authorization/grants/${id}`
+    )
+    if (method === 'GET' && grantById !== undefined) {
+      return Response.json(grantById)
     }
     if (method === 'GET' && path === '/authorization/clients') {
       return answerClients()

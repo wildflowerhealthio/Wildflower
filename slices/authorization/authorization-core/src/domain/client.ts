@@ -4,7 +4,8 @@
  * unknown app (trust on first use). `secret_hash` never leaves the server.
  *
  * Namespace module (`import { Client } from '@wildflowerhealthio/authorization-core/domain'`):
- * the wire shape is `Client.Schema` / `Client.Type`, with `Client.displayName`.
+ * the wire shape is `Client.Schema` / `Client.Type`, with `Client.displayName`
+ * and `Client.mayRefresh`.
  */
 
 import { Schema } from 'effect'
@@ -51,4 +52,13 @@ const displayName = (clients: readonly ClientType[] | undefined, clientId: strin
   return name === '' ? clientId : name
 }
 
-export { ClientSchema as Schema, type ClientType as Type, displayName }
+/**
+ * Whether `client` may use the `refresh_token` grant, so its refresh policy
+ * decides anything. One that may not (the browser-session client, whose
+ * tokens are minted by sign-in and pairing, never by `/oauth/token`) has no
+ * sign-ins to keep alive.
+ */
+const mayRefresh = (client: ClientType): boolean =>
+  client.allowedGrantTypes.includes('refresh_token')
+
+export { ClientSchema as Schema, type ClientType as Type, displayName, mayRefresh }

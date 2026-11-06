@@ -76,7 +76,8 @@ const GrantDetailBody = ({
 
 /**
  * The grant detail over the grant its loader warmed, with its client's
- * "Session lifetime" once the trusted apps have loaded.
+ * "Session lifetime" once the trusted apps have loaded, for a client that
+ * refreshes its sign-ins at all ({@link Client.mayRefresh}).
  */
 const GrantDetail = ({ id }: { readonly id: string }): JSX.Element => {
   const { data: grant } = useGrantQuery(id)
@@ -90,6 +91,7 @@ const GrantDetail = ({ id }: { readonly id: string }): JSX.Element => {
     <>
       <GrantDetailBody grant={grant} clientName={Client.displayName(clients, grant.clientId)} />
       {client.pipe(
+        Option.filter(Client.mayRefresh),
         Option.map((loaded) => <SessionLifetimeSection key={loaded.clientId} client={loaded} />),
         Option.getOrNull
       )}

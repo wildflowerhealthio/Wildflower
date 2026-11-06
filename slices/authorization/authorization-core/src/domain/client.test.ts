@@ -26,6 +26,19 @@ describe('Client.displayName', () => {
   })
 })
 
+describe('Client.mayRefresh', () => {
+  it('holds for a client allowed the refresh_token grant, and not for one without it', () => {
+    // Arrange
+    const browsers = { ...medicationViewer, allowedGrantTypes: [] }
+    const codeOnly = { ...medicationViewer, allowedGrantTypes: ['authorization_code'] }
+
+    // Act / Assert
+    expect(Client.mayRefresh(medicationViewer)).toBe(true)
+    expect(Client.mayRefresh(browsers)).toBe(false)
+    expect(Client.mayRefresh(codeOnly)).toBe(false)
+  })
+})
+
 // Helpers
 
 const medicationViewer = Schema.decodeUnknownSync(Client.Schema)({
@@ -34,7 +47,7 @@ const medicationViewer = Schema.decodeUnknownSync(Client.Schema)({
   kind: 'public',
   redirectUris: ['https://medications.wildflowerhealth.io/'],
   allowedScopes: ['system/MedicationRequest.rs'],
-  allowedGrantTypes: ['authorization_code'],
+  allowedGrantTypes: ['authorization_code', 'refresh_token'],
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
   essential: false,
