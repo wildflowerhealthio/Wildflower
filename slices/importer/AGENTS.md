@@ -51,12 +51,9 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `harImporter` for format `'har'`: HAR decode through the
   FHIR response-kind pool into per-URL sections of detached records (with a
   note per response that yielded nothing), under the HAR source-file coding the import
-  stage mints its source files with. The kind toggles are a _setting_
-  (`HarSettings.disabledKinds`), applied inside `decode` too.
-- **[`har-importer-react`](./har-importer-react/AGENTS.md)** (the HAR UI) —
-  `HarSettingsPicker`, the whole-import kind toggles grouped by source. The
-  format has no review UI of its own; the shell's generalized sectioned
-  review covers it.
+  stage mints its source files with. Each response routes to its top-ranked
+  kind, so the format has no settings (its `TSettings` is `null`) and no
+  React package: the shell's generalized sectioned review covers it.
 - **[`lifelabs-pdf-importer-core`](./lifelabs-pdf-importer-core/AGENTS.md)** (the
   LifeLabs PDF binding) — `lifeLabsPdfImporter` for format
   `'lifelabs-pdf'`: takes a picked LifeLabs report PDF's raw bytes end-to-end,
@@ -100,7 +97,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
   the React half of the registry (each `importer-core` importer spread with
-  that format's `SettingsPicker`) and the generalized sectioned review every format
+  that format's `SettingsPicker`, for a format that has settings) and the generalized sectioned review every format
   shares (per-resource include/edit with the inline JSON `ResourceEditor`),
   plus the identity map's state and its review: one select per referent above
   the format groups, a select per mention on each row, and **Needs a patient**
@@ -152,8 +149,9 @@ sits above `http-extraction` and below every binding.
   **writes** still only run at confirm, and confirm writes exactly those
   reviewed objects (`importer-core`'s `planWrite`) with no re-parse — the same
   "is the same object" argument the anonymizer's preview makes. This split
-  is the whole point; do not collapse it. A settings change (a HAR kind
-  toggle, the LifeLabs time zone or health card province) re-runs `decode` from the retained bytes —
+  is the whole point; do not collapse it. A settings change (the LifeLabs
+  or DICOM time zone, the LifeLabs health card province) re-runs `decode`
+  from the retained bytes —
   still the read half. The identity map's defaults are reads too: one
   identifier search per referent, never a write.
 - **Identity is linked before the review, in one stage.** The patients and
@@ -205,10 +203,11 @@ sits above `http-extraction` and below every binding.
   `SettingsPicker` — composition, not a subclass, so a field added to
   `FileImporter` cannot be silently dropped on the way through. Every slot is a
   mapped or exhaustive type over `FormatKind`, so a format missing one part
-  fails to compile.
+  fails to compile. The picker slot is conditional per format: forbidden for a
+  format whose settings are `null` (HAR), required for every other, and the
+  preview panel renders no settings form for a format without one.
   Dispatch over the registry is generic (`<K extends FormatKind>`), not a
-  `Match` branch per format — the one exhaustive match left is the preview
-  panel's settings form. The review display is not a registry
+  `Match` branch per format. The review display is not a registry
   slot: every format is reviewed through the shell's one generalized
   sectioned view. There is no separate registry
   package — the importer has no HTTP wire union to derive.
@@ -238,8 +237,6 @@ sits above `http-extraction` and below every binding.
   registry and the pure batch machinery the shell drives.
 - [har-importer-core AGENTS.md](./har-importer-core/AGENTS.md) — the HAR binding's
   decode, pool, and source-file coding.
-- [har-importer-react AGENTS.md](./har-importer-react/AGENTS.md) — the HAR
-  settings picker (the response-kind toggles).
 - [dicom-importer-core AGENTS.md](./dicom-importer-core/AGENTS.md) — the DICOM
   binding's detect, source file, and decode.
 - [dicom-importer-react AGENTS.md](./dicom-importer-react/AGENTS.md) — the DICOM

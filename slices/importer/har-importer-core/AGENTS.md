@@ -44,29 +44,30 @@ shell's shared `persistTransactionBundle`.
   registry lists — a `FileImporter.Type` literal whose `decode` is a
   `DecodeFunction.make` with no `groupBy` (a HAR stands alone), and which
   states no `linkSourceFile` (a captured session is an engineering artifact,
-  kept out of `Patient/$everything`). Its `decodeFileSet` runs the whole read half for one
+  kept out of `Patient/$everything`), and which has no settings: its
+  `TSettings` and `defaultSettings` are `null`, so the shell shows no settings
+  form for HAR. Its `decodeFileSet` runs the whole read half for one
   archive:
-  `decodeHar`, then `review.ts`'s `preview` over the pool filtered by the
-  settings' enabled kinds (each kind yields detached records), then
+  `decodeHar`, then `review.ts`'s `preview` over the pool (each kind yields
+  detached records), then
   `mergeSharedResources`, folded into `DecodedFileSet` sections —
   one section per URL, a plain insertion-ordered map (first-seen order, only
   responses that parsed to at least one resource), each entry's `fullUrl` its
   preview key, `<response id>:<index>` —
   plus one diagnostic note per response that yielded nothing (no kind
-  matched, every matching kind disabled, parse
-  failure, body absent, duplicate). The import stage adopts the records and
+  matched, parse failure, body absent, duplicate). The import stage adopts the records and
   puts them under the source-file section described above. Never
   fails: a malformed source file comes back as that file's `unreadableFiles` entry,
   leaving the batch's other files reviewable. Resource keys are
-  `responseId:index` — independent of the kind toggles, so a settings change
-  re-decodes to the same keys for the resources that survive it. They are keyed
-  **within one source file**; `DecodeFunction.make` prefixes each set's keys with its slot
+  `responseId:index`, unique **within one decode of one source file**;
+  `DecodeFunction.make` prefixes each set's keys with its slot
   in the batch, so two source files in one pick cannot collide on
   `responseId:index`.
-- `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses,
-  enabledKinds)` recognizes each response (`Extraction.recognize`), takes its
-  top-specificity enabled candidate (`pickFor` — there are no per-response
-  overrides), and parses the chosen ones (`Extraction.parseWith`). Every
+- `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses)`
+  recognizes each response (`Extraction.recognize`), takes its
+  top-specificity candidate (`pickFor` — there are no per-response
+  overrides), and parses through it (`Extraction.parseWith`). A previewed
+  response keeps its response ref and the name of the kind it routed to. Every
   non-resource outcome is folded to data so one bad response cannot abort the
   batch. Consumed by the importer's `decodeFileSet`; the per-resource selection
   (exclude/edit) lives in `importer-fundamentals`' `StagedImport`.
@@ -90,10 +91,9 @@ shell's shared `persistTransactionBundle`.
 - `src/fhir-pool.ts` — **`fhirSources`**, the registered `SourceDescriptor`s —
   `fhir-r4-source`'s `fhirR4Source`, `rexall-be-well-source`'s
   `rexallBeWellSource`, and `shoppers-drugmart-source`'s `shoppersDrugMartSource`.
-  `har-importer-react`'s settings picker groups its include toggles by these;
-  the flat pool responses are recognized and decoded through is
-  `SourceDescriptor.poolOf(fhirSources)` — derived from the same list, so the
-  toggles and the recognizer route can never disagree. Every kind yields
+  The flat pool responses are recognized and decoded through is
+  `SourceDescriptor.poolOf(fhirSources)`, and `mergeSharedResources` matches
+  a response's kind to its source through the same list. Every kind yields
   detached records (`SourceDescriptor<DetachedResource.Type>`). Registering
   another source is one static append to `fhirSources`.
 - `src/anonymizer/` — **the shape-preserving pseudonymizer** behind the
@@ -107,11 +107,6 @@ shell's shared `persistTransactionBundle`.
   `freeText`, and extend the example table in `shapes.test.ts` when you touch a
   pattern. `redact.ts` is the policy and the derivation loop; `leaves.ts` the
   traversal. See [Anonymization Explanation](../../../slices/anonymizer/docs/Anonymization%20Explanation.md).
-- `src/har-settings.ts` — **`HarSettings`** `{ disabledKinds }`, default the
-  empty list: the kind names turned off for an import. Stored as the
-  _disabled_ list so a newly registered kind is on by default. A pre-decode
-  setting — the shell re-decodes a HAR file when it changes, and `decode`
-  folds a disabled kind's responses into notes rather than sections.
 
 ## Layering
 
@@ -121,8 +116,7 @@ through), `importer-fundamentals` (the contract), `http-extraction-fundamentals`
 (the pool), `fhir-r4-adoption` (`DetachedResource`), `web-trace-core`
 (`sha256Base64` from `capture`, and the trace-side codec constants the source file
 codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
-(resources), and `effect`. Never imports `importer-react` or
-`har-importer-react`.
+(resources), and `effect`. Never imports `importer-react`.
 
 ## Guardrails
 
@@ -143,8 +137,6 @@ codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
   the three seams meet here.
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
   `FileImporter` contract this binding is built on.
-- [har-importer-react AGENTS.md](../../../slices/importer/har-importer-react/AGENTS.md) — the HAR UI
-  over this importer.
 - [fhir-r4-source AGENTS.md](../../http-extraction/fhir-r4-source/AGENTS.md) — the
   `fhirR4Source` descriptor whose kinds the pool flattens.
 - [http-archive AGENTS.md](../../file-formats/http-archive/AGENTS.md) — the HAR

@@ -4,14 +4,15 @@ The end-to-end checklist for adding a new file format the importer can turn into
 FHIR resources — a `.csv`, a `.json` export, another imaging archive. For _why_
 the slice is layered the way it is, read
 [slices/importer/AGENTS.md](../AGENTS.md) first; this doc is the recipe. HAR
-(`har-importer-core` + `har-importer-react`), LifeLabs PDF, and DICOM are the
-worked examples throughout.
+(`har-importer-core`, a format with no settings), LifeLabs PDF, and DICOM are
+the worked examples throughout.
 
 A format is registered with exactly **two static edits** — its importer entry in
-`importer-core`'s closed `formatRegistry`, and its `SettingsPicker` in
-`importer-react`'s registry on top of it — because the slice has no runtime
-registry. Everything before those edits lives in a new `*-importer-core` binding
-(and its `*-importer-react` settings UI) built on `importer-fundamentals`'
+`importer-core`'s closed `formatRegistry`, and its entry in `importer-react`'s
+registry on top of it (with its `SettingsPicker`, when it has settings) —
+because the slice has no runtime registry. Everything before those edits lives
+in a new `*-importer-core` binding (and, for a format with settings, its
+`*-importer-react` settings UI) built on `importer-fundamentals`'
 `DecodeFunction.make`.
 
 ## What you're building
@@ -32,10 +33,10 @@ note per thing that did not become a resource.
 | Decode dialect  | a pure dialect package (below both transports) | the format's document → structural records                    |
 | Response kinds  | `slices/http-extraction/*-source/`             | `HttpResponseKind` — recognize + parse (only if HTTP-shaped)  |
 | Importer        | `*-importer-core/src/<format>-importer.ts`     | one `FileImporter.Type` literal over `DecodeFunction.make`    |
-| Settings        | `*-importer-core/src/settings.ts`              | `TSettings` + `defaultSettings` (an empty record if none)     |
+| Settings        | `*-importer-core/src/settings.ts`              | `TSettings` + `defaultSettings` (both `null` if none)         |
 | Persistence     | shell-owned                                    | one shared `persistBatchBundle` — write no sink               |
 | Source file     | the `sourceFileFormat` you state               | minted by `importer-core`'s import stage                      |
-| Settings picker | `*-importer-react/src/settings-picker.tsx`     | `SettingsPickerProps<TSettings>` (`importer-fundamentals`)    |
+| Settings picker | `*-importer-react/src/settings-picker.tsx`     | `SettingsPickerProps<TSettings>` (only if it has settings)    |
 | Registry entry  | `importer-core/src/registry.ts`                | `FormatSettings` + `formatRegistry` + `defaultFormatSettings` |
 | Picker entry    | `importer-react/src/registry.ts`               | the same key's `SettingsPicker`                               |
 
@@ -88,8 +89,8 @@ its files' issuers). A record nothing references may stay keyless.
 Decode each wire with `DetachedResource.decodeUnknown(<Type>.Schema)`, which
 fails a wire that carries an `id`. A section carries no source base URL or
 system: everything the import stage needs is on the records. An entry's `fullUrl` is its identity within the
-set, as in a FHIR transaction bundle, and must be stable across a settings
-re-decode. The import stage titles every row by the reference it will be
+set, as in a FHIR transaction bundle; for a format with settings it must be
+stable across a settings re-decode. The import stage titles every row by the reference it will be
 written under (`DecodedFileSet.writtenReferenceTitle`), and makes every `wf-`
 id; the decode makes neither.
 
@@ -159,11 +160,12 @@ identifies as nothing.
 
 Four obligations:
 
-- **Stable resource keys.** A section entry's `key` must be stable
-  across settings changes where the underlying resource is unchanged (HAR keys
-  by `responseId:index`, DICOM by the resource's role), because the reviewer's
-  per-resource exclusions and inline edits are keyed by it and must survive a
-  settings re-decode. Key **within one set** and do not try to make keys unique
+- **Stable resource keys.** A section entry's `key` must be unique within
+  one decode of a set (HAR keys by `responseId:index`). For a format with
+  settings it must also be stable across settings changes where the
+  underlying resource is unchanged (DICOM keys by the resource's role),
+  because the reviewer's per-resource exclusions and inline edits are keyed
+  by it and must survive a settings re-decode. Key **within one set** and do not try to make keys unique
   across the batch yourself — `DecodeFunction.make` prefixes each set's keys
   with its first picked file (`FormatDecode.keyPrefix`), which is what makes
   a fixed key like `patient` safe when the reviewer picked eight images at once.
@@ -193,9 +195,14 @@ Four obligations:
 shell mounts the format's `SettingsPicker` above its sections in the preview, and
 a change re-runs `decode` on that format's files from their retained bytes.
 Anything the user should be able to change about _how_ a file decodes is a
-setting — HAR's response-kind toggles (`disabledKinds`), the LifeLabs report time
-zone and health card province, and DICOM's equipment time zone all live here. There is no post-decode
-review state besides the shell's per-resource selection.
+setting — the LifeLabs report time zone and health card province, and DICOM's
+equipment time zone, live here. There is no post-decode review state besides
+the shell's per-resource selection.
+
+A format with nothing to set (HAR) has `null` settings: its `TSettings` and
+`defaultSettings` are `null`, its `decodeFileSet` ignores the argument, it
+has no `*-importer-react` package, and the shell renders no settings form for
+it, so it is never re-decoded.
 
 ## 3. Persistence — nothing to write
 
@@ -382,7 +389,7 @@ them **fails to compile**:
 
 ```ts
 type FormatSettings = {
-  har: HarSettings
+  har: null
   'lifelabs-pdf': LifeLabsPdfSettings
   dicom: DicomSettings
   'my-format': MySettings
@@ -396,11 +403,9 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
 }
 ```
 
-**The UI half, in `importer-react/src/registry.ts`.** Add the
-`*-importer-react` package as a dependency of `importer-react`, run
-`vp install`, and add the React parts a format contributes — its settings
-picker, and optionally a `FilePreview` the server source file list's preview
-dialog renders in place of its content-type dispatch:
+**The UI half, in `importer-react/src/registry.ts`.** For a format with
+settings, add the `*-importer-react` package as a dependency of
+`importer-react`, run `vp install`, and add its settings picker:
 
 ```ts
 const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
@@ -411,9 +416,11 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
 }
 ```
 
-`BoundFormat<K>` requires every part typed against the format's `FormatSettings`
-entry, so a format missing its settings picker **fails to compile** rather than
-at runtime. The read and write halves need no new branch: `importer-core`
+A format with no settings takes its core importer as it is
+(`har: coreRegistry.har`). The picker slot is conditional on the format's
+`FormatSettings` entry: forbidden where it is `null`, required and typed
+against it everywhere else, so a format with settings that is missing its
+settings picker **fails to compile** rather than at runtime. The read and write halves need no new branch: `importer-core`
 dispatches generically (`<K extends FormatKind>(kind: K)` keeps `registry[kind]`
 and `settings[kind]` correlated), and the confirm is format-blind.
 
@@ -422,15 +429,16 @@ and `settings[kind]` correlated), and the confirm is format-blind.
 Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 `/javascript-testing-expert` command). Cover each layer where it lives:
 
-- **Decode** — a fixture file decodes to the expected sections and notes; keys
-  are stable across a settings change. Pin the source file contract too: a pick
+- **Decode** — a fixture file decodes to the expected sections and notes; for
+  a format with settings, keys are stable across a settings change. Pin the source file contract too: a pick
   yields a "Source file" first section and `meta.source` on every extracted
   resource, the minted id is the same for the same bytes and name, and malformed
   bytes yield an `unreadableFiles` entry rather than a failed Effect. A format
   with a `groupBy` also pins the grouping itself: which picks share a key, which
   are `Left`, and that the resources are identical whatever order the files were
   picked in.
-- **Settings picker** — a change reports the next settings value verbatim.
+- **Settings picker** (a format with settings) — a change reports the next
+  settings value verbatim.
 - **Shell** — the end-to-end flow: zero writes to reach a review, the confirm
   (the source file and the resources in one bundle, `meta.source` on every
   write), and a partial result. The existing `importer-screen.test.tsx` is the

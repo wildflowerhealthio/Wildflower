@@ -517,8 +517,8 @@ but `fhir-r4-adoption`.
   `importer-core`'s `planWrite` — the same objects, the exclusions applied and
   the edits substituted — with no re-parse. This split is the whole point; do
   not collapse it.
-- **Sections and notes are the whole review surface.** A format with routing
-  decisions (HAR's kind toggles) expresses them as _settings_, and its decode
+- **Sections and notes are the whole review surface.** A format's per-import
+  knobs (the LifeLabs and DICOM time zones) are _settings_, and its decode
   folds everything that yielded no resources into notes — there is no
   per-format review state and no format review UI. Don't reintroduce either.
 - **`importer-core`'s import stage provides `PickedFile.Format`; the shell

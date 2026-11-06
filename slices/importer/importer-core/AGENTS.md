@@ -4,7 +4,7 @@ The **pure core** of the importer slice: the closed format registry and the
 batch machinery a shell drives. It sits between the format bindings
 (`har-importer-core`, `lifelabs-pdf-importer-core`, `dicom-importer-core`) and
 the React shell (`importer-react`), which adds each format's `SettingsPicker`
-to the registry here and runs these functions from its hooks.
+(for a format that has settings) to the registry here and runs these functions from its hooks.
 
 No DOM, no `fs`, no React, no client: every export is a value or an Effect
 whose only requirement is **`DecodeRequirements`**, what the registered
@@ -23,7 +23,7 @@ package alone and a layer that provides those.
   their union, and **`BoundFormat<K>`** is one format's importer with its own
   settings, tag and requirement.
   **`FormatSettings`** is the per-format settings record and the source of
-  truth — **`FormatKind`** is its key union, **`defaultFormatSettings`** the
+  truth, `null` for a format with no settings (HAR) — **`FormatKind`** is its key union, **`defaultFormatSettings`** the
   seed a fresh import starts from, and **`formatKinds`** the typed
   registry-order walk, _derived_ from `formatRegistry` rather than listed,
   because a hand-written `readonly FormatKind[]` was the one slot a missing
