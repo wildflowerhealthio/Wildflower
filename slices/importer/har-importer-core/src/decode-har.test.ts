@@ -21,7 +21,6 @@ import { describe, expect, it, test } from 'vite-plus/test'
 import { decodeHar } from './decode-har.ts'
 import { fhirSources } from './fhir-pool.ts'
 import chromeHar from './fixtures/chrome-fhir-capture.har.json' with { type: 'json' }
-import { defaultHarSettings } from './har-settings.ts'
 
 /**
  * Covers the HAR binding's read half: `decodeHar` in, the FHIR pool run over it
@@ -90,9 +89,7 @@ const fhirPool = SourceDescriptor.poolOf(fhirSources)
 /** The five-way extraction of running the FHIR pool over a decoded HAR. */
 const extract = (harBytes: Uint8Array): ExtractionResult<DetachedResource.Type> =>
   Effect.runSync(
-    decodeHar(harBytes, defaultHarSettings).pipe(
-      Effect.flatMap((inputs) => runExtraction(fhirPool, inputs))
-    )
+    decodeHar(harBytes).pipe(Effect.flatMap((inputs) => runExtraction(fhirPool, inputs)))
   )
 
 /** Every decoded resource of one `resourceType`, in batch order. */
@@ -368,9 +365,7 @@ describe('decodeHar + runExtraction', () => {
 
   describe('failures', () => {
     it('should fail with a ParseError for bytes that are not a well-formed HAR', () => {
-      const result = Effect.runSync(
-        Effect.either(decodeHar(bytesOf('{ not a har }'), defaultHarSettings))
-      )
+      const result = Effect.runSync(Effect.either(decodeHar(bytesOf('{ not a har }'))))
       expect(result._tag).toBe('Left')
       if (result._tag === 'Left') {
         expect(result.left._tag).toBe('ParseError')
@@ -385,7 +380,7 @@ describe('decodeHar + runExtraction', () => {
     const decode: (
       fileBytes: Uint8Array
     ) => Effect.Effect<readonly Extraction.Input[], ParseResult.ParseError, never> = (fileBytes) =>
-      decodeHar(fileBytes, defaultHarSettings)
+      decodeHar(fileBytes)
     // Runtime: run with NO layers provided at all — a missing requirement would
     // surface as a defect here.
     const inputs = await Effect.runPromise(

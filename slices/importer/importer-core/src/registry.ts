@@ -1,5 +1,5 @@
 import { type DicomSettings, dicomImporter } from '@wildflowerhealthio/dicom-importer-core'
-import { type HarSettings, harImporter } from '@wildflowerhealthio/har-importer-core'
+import { harImporter } from '@wildflowerhealthio/har-importer-core'
 import type { FileImporter } from '@wildflowerhealthio/importer-fundamentals'
 import {
   type LifeLabsPdfSettings,
@@ -12,7 +12,7 @@ import type { Effect } from 'effect'
  * {@link FileImporter}, indexed by its format tag and typed through
  * {@link BoundFormat} so each entry keeps its concrete settings without
  * erasure. The React shell layers each format's `SettingsPicker` on top of
- * this record.
+ * this record, for the formats that have settings.
  *
  * @remarks
  * Wiring a binding in is three edits *here* — the {@link FormatSettings} map,
@@ -33,10 +33,11 @@ type FormatKind = keyof FormatSettings
 
 /**
  * The current settings of every registered format, indexed by tag — the
- * state the settings pickers edit and every decode reads.
+ * state the settings pickers edit and every decode reads. A format with no
+ * settings is `null` here, and the shell renders no settings form for it.
  */
 type FormatSettings = {
-  har: HarSettings
+  har: null
   'lifelabs-pdf': LifeLabsPdfSettings
   dicom: DicomSettings
 }

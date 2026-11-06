@@ -3,8 +3,6 @@ import { Effect, Option, type ParseResult, Schema } from 'effect'
 import { HttpArchive } from '@wildflowerhealthio/http-archive'
 import type { Extraction } from '@wildflowerhealthio/http-extraction-fundamentals'
 
-import type { HarSettings } from './har-settings.ts'
-
 /**
  * One source file entry as the structural {@link Extraction.Input} the recognizer
  * consumes.
@@ -42,15 +40,12 @@ const utf8 = new TextDecoder()
  * reads — the read half's only step, with nothing written.
  *
  * @param fileBytes - The bytes of a `.har` file (UTF-8 JSON)
- * @param _settings - The HAR settings (none today; accepted so the signature
- *   matches the importer's `decodeFileSet`)
  * @returns The source file's entries as `Extraction.Input`s, failing only with a
  *   `ParseError` when the bytes are not a well-formed HTTP Source file; requires
  *   nothing, so the write client is unreachable from a decode by construction
  */
 const decodeHar = (
-  fileBytes: Uint8Array,
-  _settings: HarSettings
+  fileBytes: Uint8Array
 ): Effect.Effect<readonly Extraction.Input[], ParseResult.ParseError> =>
   Schema.decodeUnknown(HttpArchive.LogFromHarJson)(utf8.decode(fileBytes)).pipe(
     Effect.map((log) => log.entries.map(toInput))

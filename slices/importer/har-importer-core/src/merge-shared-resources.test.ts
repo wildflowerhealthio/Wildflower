@@ -66,11 +66,9 @@ const previewOf = (
   responseId: string,
   kindName: string,
   resources: readonly DetachedResource.Type[]
-): PreviewedResponse<never, DetachedResource.Type> => {
-  const ref = { id: responseId, url: `https://example.org/${responseId}` }
+): PreviewedResponse<DetachedResource.Type> => {
   return {
-    ref,
-    recognized: { ref, candidates: [] },
+    ref: { id: responseId, url: `https://example.org/${responseId}` },
     pickKindName: Option.some(kindName),
     outcome: {
       _tag: 'resources',
@@ -81,7 +79,7 @@ const previewOf = (
 
 /** Each response's resources as `key given…` lines, to read a result at a glance. */
 const heldBy = (
-  previews: readonly PreviewedResponse<never, DetachedResource.Type>[]
+  previews: readonly PreviewedResponse<DetachedResource.Type>[]
 ): readonly (readonly string[])[] =>
   previews.map((preview) =>
     preview.outcome._tag === 'resources'

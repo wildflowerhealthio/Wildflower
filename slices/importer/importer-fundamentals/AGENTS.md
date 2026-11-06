@@ -23,7 +23,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   field is either a constant it states or a function it already has, and
   `decode` comes from `DecodeFunction.make`. A `FileImporter` is a **plain
   record, not a class instance**: an adapter layer extends one by spreading it
-  (which is how `importer-react`'s registry attaches each format's
+  (which is how `importer-react`'s registry attaches a format's
   `SettingsPicker`), and a spread is only total when there is no prototype to
   lose. The **write direction is not a field**: minting the source file a
   picked file is stored as is something only `importer-core`'s import stage does, through
@@ -61,10 +61,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   type of a format it is only sniffing. A `FileImporter.Type` satisfies it
   structurally, so the registry's values pass straight through.
 - `src/settings-picker-props.ts` — **`SettingsPickerProps<TSettings>`**, the
-  `{ settings, onChange }` contract every format's settings picker renders
-  against, below every format's React package. Its own module rather than a
-  member of `file-importer.ts`: it describes a _component_, not the importer
-  value.
+  `{ settings, onChange }` contract a format's settings picker renders
+  against (a format whose settings are `null` has none), below every format's
+  React package. Its own module rather than a member of `file-importer.ts`: it
+  describes a _component_, not the importer value.
 - `src/format-decode.ts` — the **`FormatDecode`** namespace: **`Decoded<K>`**
   (what a format's `decode` returns: its files, its **`DecodedFileSet`**s
   apart, and its **`UnreadableFile`** rows), **`Result<K>`** (one format's
@@ -517,8 +517,8 @@ but `fhir-r4-adoption`.
   `importer-core`'s `planWrite` — the same objects, the exclusions applied and
   the edits substituted — with no re-parse. This split is the whole point; do
   not collapse it.
-- **Sections and notes are the whole review surface.** A format with routing
-  decisions (HAR's kind toggles) expresses them as _settings_, and its decode
+- **Sections and notes are the whole review surface.** A format's per-import
+  knobs (the LifeLabs and DICOM time zones) are _settings_, and its decode
   folds everything that yielded no resources into notes — there is no
   per-format review state and no format review UI. Don't reintroduce either.
 - **`importer-core`'s import stage provides `PickedFile.Format`; the shell

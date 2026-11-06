@@ -31,12 +31,30 @@ const response = makeExtractionInput({ id: 'req-0', url: 'https://example.org/a'
 describe('preview', () => {
   it('keeps every record its kind parsed, keyed by the response and its index', () => {
     const kind = kindRecognizing('Text', { specificity: Specificity.PORTAL })
-    const [previewed] = Effect.runSync(preview([kind], [response], new Set(['Text'])))
+    const [previewed] = Effect.runSync(preview([kind], [response]))
 
     expect(previewed?.outcome).toEqual({
       _tag: 'resources',
       resources: [{ key: 'req-0:0', resource: 'body' }],
     })
     expect(previewed?.pickKindName).toEqual(Option.some('Text'))
+  })
+
+  it('routes a response to its top-specificity kind, whatever the pool order', () => {
+    const protocol = kindRecognizing('Protocol', { specificity: Specificity.PROTOCOL })
+    const portal = kindRecognizing('Portal', { specificity: Specificity.PORTAL })
+    const [previewed] = Effect.runSync(preview([protocol, portal], [response]))
+
+    expect(previewed?.pickKindName).toEqual(Option.some('Portal'))
+  })
+
+  it('notes a response no kind claims as no pick', () => {
+    const [previewed] = Effect.runSync(preview([], [response]))
+
+    expect(previewed).toEqual({
+      ref: { id: 'req-0', url: 'https://example.org/a' },
+      pickKindName: Option.none(),
+      outcome: { _tag: 'noPick' },
+    })
   })
 })

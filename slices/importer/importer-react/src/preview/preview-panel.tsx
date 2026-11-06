@@ -1,7 +1,7 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { type DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
-import { Array, Data } from 'effect'
+import { Array, Data, Option } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
 import {
@@ -16,7 +16,7 @@ import {
 } from '@wildflowerhealthio/importer-core'
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
-import type { FormatWithComponents } from '../registry.ts'
+import type { FormatSettingsPicker, FormatWithComponents, SettingsPickerSlot } from '../registry.ts'
 import { describeResource } from './describe-resource.ts'
 import { DiffBadge } from './diff-badge.tsx'
 import { type ChooseMention, FormatReviewBody } from './format-review-body.tsx'
@@ -42,32 +42,33 @@ import panelStyles from './preview-panel.module.css'
  * A pick is a *batch* of one or more files, grouped by format and decoded
  * into one `FormatDecode.Result` per format, rendered together under
  * one confirm. The display is fully general — the same for every format:
- * formats shown under that format's settings form, each format showing its
- * decoded sections (title + per-resource rows with include/edit/revert)
- * and its diagnostic notes, with unreadable files reported rather than
- * sinking the batch. Below the formats, the batch's linked records — the
- * records it names but holds no copy of, as the referent rows link them —
+ * formats shown under that format's settings form (when it has settings), each
+ * format showing its decoded sections (title + per-resource rows with
+ * include/edit/revert) and its diagnostic notes, with unreadable files reported
+ * rather than sinking the batch. Below the formats, the batch's linked records
+ * — the records it names but holds no copy of, as the referent rows link them —
  * are shown with their server diff and no toggle: which are written is
- * `importer-core`'s `planWrite`, which the confirm reads too — a stored
- * copy whenever the server does not hold it unchanged, a new record only
- * when a resource the batch writes names it. Each format's body lists what
- * the referent links leave unlinked in it (`UnlinkedMention.leftByReferentLinks`
- * on the batch's plan, of each row as decoded or edited) and offers a select
- * per linkable mention
- * (`mentionLinkOptions`, a pick calling `onChooseMention`). A settings change calls
- * `onSettingsChange`; the shell re-decodes that format. The confirm appears
- * only when that plan includes at least one resource, and it does not write —
- * it calls `onConfirm`; the confirm step writes exactly the reviewed objects.
+ * `importer-core`'s `planWrite`, which the confirm reads too — a stored copy
+ * whenever the server does not hold it unchanged, a new record only when a
+ * resource the batch writes names it. Each format's body lists what the
+ * referent links leave unlinked in it (`UnlinkedMention.leftByReferentLinks` on
+ * the batch's plan, of each row as decoded or edited) and offers a select per
+ * linkable mention (`mentionLinkOptions`, a pick calling `onChooseMention`). A
+ * settings change calls `onSettingsChange`; the shell re-decodes that format.
+ * The confirm appears only when that plan includes at least one resource, and
+ * it does not write — it calls `onConfirm`; the confirm step writes exactly the
+ * reviewed objects.
  *
  * @packageDocumentation
  */
 
 /**
  * The registry-shaped structure this panel reads per format: the display
- * strings for the group heading and the `SettingsPicker` for its form.
+ * strings for the group heading and, for a format with settings, the
+ * `SettingsPicker` for its form.
  */
 type SettingsRegistry = {
-  readonly [K in FormatKind]: Pick<FormatWithComponents<K>, 'display' | 'SettingsPicker'>
+  readonly [K in FormatKind]: Pick<FormatWithComponents<K>, 'display'> & SettingsPickerSlot<K>
 }
 
 type SettingsChangeHandler<K extends FormatKind> = (format: K, settings: FormatSettings[K]) => void
@@ -121,7 +122,10 @@ interface PreviewPanelProps {
   readonly onChooseMention?: ChooseMention
 }
 
-/** One format's settings form, picked out of the registry by kind. */
+/**
+ * One format's settings form, picked out of the registry by kind, in its
+ * box; nothing for a format with no settings picker.
+ */
 const FormatSettingsForm = <TFormat extends FormatKind>({
   kind,
   settings,
@@ -132,10 +136,18 @@ const FormatSettingsForm = <TFormat extends FormatKind>({
   readonly settings: FormatSettings
   readonly settingsRegistry: SettingsRegistry
   readonly onSettingsChange: SettingsChangeHandler<TFormat>
-}): JSX.Element => {
-  const Picker = settingsRegistry[kind].SettingsPicker
-
-  return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
+}): JSX.Element | null => {
+  // Widened to the slot either branch satisfies: the conditional slot stays
+  // deferred under a generic kind, so its picker could not be rendered as is.
+  const slot: { readonly SettingsPicker?: FormatSettingsPicker<TFormat> } = settingsRegistry[kind]
+  return Option.fromNullable(slot.SettingsPicker).pipe(
+    Option.map((Picker) => (
+      <div key="settings-form" className={panelStyles['preview-panel__settings-form']}>
+        <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
+      </div>
+    )),
+    Option.getOrNull
+  )
 }
 
 /** The single action row for the whole batch: confirm (when anything is chosen) and cancel. */
@@ -303,14 +315,12 @@ const PreviewPanel = ({
               <h3 className={panelStyles['preview-panel__format-heading']}>
                 {settingsRegistry[kind].display.title}
               </h3>
-              <div className={panelStyles['preview-panel__settings-form']}>
-                <FormatSettingsForm
-                  kind={kind}
-                  settings={settings}
-                  settingsRegistry={settingsRegistry}
-                  onSettingsChange={onSettingsChange}
-                />
-              </div>
+              <FormatSettingsForm
+                kind={kind}
+                settings={settings}
+                settingsRegistry={settingsRegistry}
+                onSettingsChange={onSettingsChange}
+              />
               <div className={panelStyles['preview-panel__file-sections']}>
                 <FormatReviewBody
                   result={result}

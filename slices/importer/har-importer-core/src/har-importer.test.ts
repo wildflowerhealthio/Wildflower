@@ -37,13 +37,12 @@ import * as fc from 'fast-check'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import { harImporter } from './har-importer.ts'
-import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 
 /**
  * Covers the importer's decode: it folds each picked HAR's recognized
  * responses into per-URL sections of labeled resources plus one diagnostic
- * note per response that yielded nothing, with the settings' kind toggles
- * deciding which kinds parse. The source file it is stored as is minted by
+ * note per response that yielded nothing, each response routed to its
+ * top-ranked kind. The source file it is stored as is minted by
  * `importer-core`'s import stage, and tested there.
  */
 
@@ -121,9 +120,6 @@ const RECOGNIZED_WITH_NOISE = harBytesOf([
   }),
 ])
 
-/** The two kinds that claim the source file's Observation response. */
-const OBSERVATION_KINDS = ['ObservationListResponseKind', 'ObservationResponseKind']
-
 /** The fixture source file, as the batch read hands it over. */
 const pickedHar = (): PickedFile.Type => ({
   id: '0:archive.har',
@@ -132,11 +128,8 @@ const pickedHar = (): PickedFile.Type => ({
 })
 
 /** Decode one pick, which must have been read, into its one file set. */
-const decodeOne = async (
-  file: PickedFile.Type,
-  settings: HarSettings = defaultHarSettings
-): Promise<DecodedFileSet.Type> => {
-  const result = await Effect.runPromise(harImporter.decode([file], settings))
+const decodeOne = async (file: PickedFile.Type): Promise<DecodedFileSet.Type> => {
+  const result = await Effect.runPromise(harImporter.decode([file], null))
   const [fileSet] = result.fileSets
   if (result.unreadableFiles.length > 0 || fileSet === undefined) {
     throw new Error(
@@ -150,10 +143,8 @@ const decodeOne = async (
  * Decode one pick into its one file set's sections and notes, every record
  * adopted as the import stage adopts it.
  */
-const readOne = async (
-  file: PickedFile.Type,
-  settings: HarSettings = defaultHarSettings
-): Promise<DecodedFile.DecodedFile> => DecodedFileSet.adopt(await decodeOne(file, settings))
+const readOne = async (file: PickedFile.Type): Promise<DecodedFile.DecodedFile> =>
+  DecodedFileSet.adopt(await decodeOne(file))
 
 describe('harImporter.decode', () => {
   it('should fold a recognized source file into one section per URL, in first-seen order', async () => {
@@ -238,25 +229,6 @@ describe('harImporter.decode', () => {
     expect(decoded.notes).toEqual([`Matched no importer: ${NOISE_URL}`])
   })
 
-  it("should fold a disabled kind's responses into notes instead of sections", async () => {
-    const decoded = await readOne(pickedHar(), { disabledKinds: OBSERVATION_KINDS })
-
-    expect(decoded.sections.map((section) => section.title)).toEqual([PATIENT_URL])
-    expect(decoded.notes).toContain(
-      `Excluded — every matching kind is turned off in the settings: ${OBSERVATION_URL}`
-    )
-  })
-
-  it('should keep the surviving resource keys identical across a settings change', async () => {
-    const file = pickedHar()
-    const withAll = (await readOne(file)).sections
-    const withoutObservations = (await readOne(file, { disabledKinds: OBSERVATION_KINDS })).sections
-
-    expect(withoutObservations[0]?.resources.map((entry) => entry.key)).toEqual(
-      withAll[0]?.resources.map((entry) => entry.key)
-    )
-  })
-
   it('should note each duplicate, unparseable, and body-less response exactly once', async () => {
     const duplicatePatientUrl = `${ROOT}/Patient/pat-8?_format=json`
     const unparseableUrl = `${ROOT}/Patient/pat-9?_format=json`
@@ -319,7 +291,7 @@ describe('harImporter.decode', () => {
       fileName: 'archive.har',
       bytes: new TextEncoder().encode('{ not a har }'),
     }
-    const result = await Effect.runPromise(harImporter.decode([file], defaultHarSettings))
+    const result = await Effect.runPromise(harImporter.decode([file], null))
 
     expect(result.fileSets).toHaveLength(0)
     expect(result.unreadableFiles).toHaveLength(1)

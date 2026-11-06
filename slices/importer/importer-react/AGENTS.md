@@ -8,10 +8,10 @@ One surface a host app mounts, reading the authed runner out of router context:
   chosen, or source files already on the device's FHIR server), review
   exactly what every format would write in one combined, **generalized**
   view — each format's decoded sections with per-resource include/edit, under
-  its own settings form — confirm once to write the reviewed, included
-  resources across the batch (every file's source file among them), and read
-  the per-format results. Every source picks a **batch**: several local files,
-  several folder entries, several server rows.
+  its own settings form when it has settings — confirm once to write the
+  reviewed, included resources across the batch (every file's source file among
+  them), and read the per-format results. Every source picks a **batch**:
+  several local files, several folder entries, several server rows.
 
 The whole read half — grouping a pick by format, running each format's
 `decode`, re-decoding under new settings, and planning a format's write — is
@@ -37,15 +37,14 @@ It depends on `importer-core` (the importer registry, `readBatch` /
 `DecodedBatch` model), `importer-fundamentals` (the `PickedFile`
 vocabulary, the `FormatDecode.Result` and `DecodedFile` shapes, and the pure
 `StagedImport` model), each format's
-React package for its settings picker only (`har-importer-react`,
-`lifelabs-pdf-importer-react`, `dicom-importer-react`), `fhir-r4` (the typed
-client, `persistTransactionBundle`, and the server-diff classifier), `fhir-r4-react`
-(the authed runner and the slice runtime layer), `positioned-text-web` (the
-pdfjs `PositionedTextExtractor` layer the read runs under), and
-`react-tundraish`. It
-names no format's core package and no `web-trace-core` at runtime — HAR
-fixtures in `importer-screen.test.tsx` are the only place `http-archive` and
-`web-trace-core` appear at all.
+React package for its settings picker only (`lifelabs-pdf-importer-react`,
+`dicom-importer-react`; HAR has no settings and no React package), `fhir-r4`
+(the typed client, `persistTransactionBundle`, and the server-diff classifier),
+`fhir-r4-react` (the authed runner and the slice runtime layer),
+`positioned-text-web` (the pdfjs `PositionedTextExtractor` layer the read runs
+under), and `react-tundraish`. It names no format's core package and no
+`web-trace-core` at runtime — HAR fixtures in `importer-screen.test.tsx` are the
+only place `http-archive` and `web-trace-core` appear at all.
 
 The seam between this package and a format is its **`FileImporter`** (reached
 through `importer-core`'s registry) and the `StagedImport` model: the read half
@@ -65,22 +64,21 @@ reimplements none.
 ## The registry
 
 `src/registry.ts` is `importer-core`'s closed `format → FileImporter` registry
-with the React parts a format contributes — its `SettingsPicker`, and an
-optional `FilePreview` the server source file list's preview dialog renders in
-place of its content-type dispatch — attached to each entry by `withComponents`, a
+with the React part a format contributes — its `SettingsPicker`, for a format
+that has settings — attached to each entry by `withComponents`, a
 **spread**, not a subclass: a
 `FileImporter` is a plain record with no prototype, so the spread is total and
 a field added to it cannot be silently dropped on the way through. The importer
 half is registered in `importer-core/src/registry.ts`; this file is the single
 edit point for a format's UI. **`FormatWithComponents<K>`** — named for what it
 adds, and defined as `importer-core`'s `BoundFormat<K>` intersected with the
-picker rather than restating it — keeps per-format concrete types against
+picker slot rather than restating it — keeps per-format concrete types against
 `FormatSettings[K]`, so a picker typed against another format's settings fails
-to compile here. A `FilePreview`'s props are `PickedFile.NamedBytes` rather
-than a props type of their own: a preview is handed a file's name and bytes,
-which is exactly that shape, and a second interface saying so would only be a
-structural copy that could drift. `har`, `lifelabs-pdf`, and `dicom` are
-registered; `dicom` is the only one with a `FilePreview` today.
+to compile here. The slot is conditional per format (`SettingsPickerSlot<K>`):
+forbidden for a format whose `FormatSettings` entry is `null`, required for
+every other, so a format with settings that is missing its picker fails to
+compile too. `har`, `lifelabs-pdf`, and `dicom` are registered; `har` has no
+settings, so its entry is `importer-core`'s importer as it is.
 This module exports **only what it adds**: `defaultFormatSettings`,
 `formatKinds`, `FormatKind` and `FormatSettings` are `importer-core`'s and are
 imported from there directly, since re-exporting them here gave the package two
@@ -241,7 +239,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   twice before it is reported; a fresh pick carries nothing over.
   `preview-panel.tsx` renders the batch grouped by format — one group per
   `claimedFormats` entry, its settings form (the registry's own
-  `SettingsPicker`, indexed by the format tag) over that format's sectioned,
+  `SettingsPicker`, indexed by the format tag, in its box; neither for a
+  format with no picker) over that format's sectioned,
   per-resource review — then the batch's **linked records** (`batch.linkedRecords`,
   the records it names but holds no copy of, as the referent rows link them)
   read-only with their diff badge and no toggle or edit, under one shared
@@ -314,8 +313,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   editor: **Keep** parses the text, decodes through
   `Schema.decodeUnknown(FhirResourceSchema)`, and refuses the edit unless it
   parses and preserves `resourceType` / `id`; `describe-resource.ts` is the
-  pure one-line summary per resource type. Both moved here from
-  `har-importer-react` when the review display was generalized.
+  pure one-line summary per resource type.
 - **`src/results/`** — the outcome. `import-outcome.ts` is the pure fold: the
   per-format `ImportOutcome` and the `FileImportResult`/`BatchOutcome`
   aggregate (`summarizeBatch`, `isPartialBatch`) — the `files` and, beside
@@ -445,14 +443,15 @@ The importer has no HTTP wire union to derive, so there is no separate
   `batch_bundle_at_base.rs` pins HFS doing so), rather than one `batch` per
   format. `persistTransactionBundle`'s error channel is `never`, so a refusal
   is every entry's outcome under the one cause, not a raised error. A claimed
-  format with no `Included` decision (no kind recognized it, every matching
-  kind toggled off, or every file unreadable; `skipReasonFor` says which) is
-  `skipped`, never a failure, and never reaches the bundle. `isPartialBatch` lifts
-  `collectImportSummary` to the batch: any rejected resource, a linked record
-  included, makes it partial, and `import-results.tsx` frames a batch nothing
-  of which wrote as failed; a `skipped` format alone does neither. There is
-  **no** whole-flow `errored` state and no `uploadFailed` result — a refused
-  batch is its rows in the results, their cause the server's own response.
+  format with no `Included` decision (nothing in it decoded to a resource, the
+  reviewer left every row out, or every file unreadable; `skipReasonFor` says
+  which) is `skipped`, never a failure, and never reaches the bundle.
+  `isPartialBatch` lifts `collectImportSummary` to the batch: any rejected
+  resource, a linked record included, makes it partial, and `import-results.tsx`
+  frames a batch nothing of which wrote as failed; a `skipped` format alone does
+  neither. There is **no** whole-flow `errored` state and no `uploadFailed`
+  result — a refused batch is its rows in the results, their cause the server's
+  own response.
 - **The confirm affordance is gated on the batch having a resource to
   write.** `PreviewPanel` shows the single confirm button only when
   `planWrite`'s plan — over the **claimed** formats' rows and the linked
@@ -630,7 +629,8 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   title with per-resource checkboxes, that an unreadable file renders its own
   alert, that a mixed batch sums to one confirm over every claimed format's
   sections, that two rows under one `Type/id` count once, that each
-  registered format mounts its own settings picker, and that the confirm
+  format with settings mounts its own settings picker in its box while HAR
+  renders no settings form, and that the confirm
   appears only when at least one resource is included.
   `results/import-outcome.test.ts` is the property/example test for the folds.
 
@@ -645,8 +645,6 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   registry and the batch machinery these hooks wrap.
 - [har-importer-core AGENTS.md](../../../slices/importer/har-importer-core/AGENTS.md) — the HAR
   importer (`decode` plus the server-read seam) the core registry lists.
-- [har-importer-react AGENTS.md](../har-importer-react/AGENTS.md) — the
-  `HarSettingsPicker` this shell mounts per HAR group.
 - [slices AGENTS.md](../../../slices/AGENTS.md) — the slice layering rules this package
   follows.
 - [web-trace-core AGENTS.md](../../../slices/web-trace-core/AGENTS.md) — the

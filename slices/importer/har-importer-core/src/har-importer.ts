@@ -1,10 +1,7 @@
 import { Effect } from 'effect'
 
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import {
-  type HttpResponseKind,
-  SourceDescriptor,
-} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
   type DecodedFileSet,
   DecodeFunction,
@@ -21,21 +18,12 @@ import {
 import { decodeHar } from './decode-har.ts'
 import { detectHar } from './detect-har.ts'
 import { fhirSources } from './fhir-pool.ts'
-import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 import { mergeSharedResources } from './merge-shared-resources.ts'
 import { preview, type PreviewedResponse } from './review.ts'
 
-type FhirPreview = PreviewedResponse<
-  HttpResponseKind.HttpResponseKind<DetachedResource.Type>,
-  DetachedResource.Type
->
+type FhirPreview = PreviewedResponse<DetachedResource.Type>
 
 const fhirPool = SourceDescriptor.poolOf(fhirSources)
-
-const enabledKindNames = (settings: HarSettings): ReadonlySet<string> => {
-  const disabled = new Set(settings.disabledKinds)
-  return new Set(fhirPool.map((kind) => kind.name).filter((name) => !disabled.has(name)))
-}
 
 /**
  * The previews' records as one section per response URL, in the order each
@@ -65,9 +53,7 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
     if (tag === 'duplicate') return [`Duplicate of an earlier response — not imported: ${url}`]
     if (tag === 'parseError') return [`Could not be parsed and will not import: ${url}`]
     if (tag === 'bodyAbsent') return [`The archive captured no response body: ${url}`]
-    return entry.recognized.candidates.length === 0
-      ? [`Matched no importer: ${url}`]
-      : [`Excluded — every matching kind is turned off in the settings: ${url}`]
+    return [`Matched no importer: ${url}`]
   })
 const format = 'har'
 
@@ -88,22 +74,24 @@ const sourceFileFormat = {
  * folded into per-URL sections.
  *
  * @remarks
- * No `groupBy` — a HAR stands alone, so every pick is its own set — and no
- * `linkSourceFile`: a captured browsing session is an engineering artifact, so
- * its source file is stored exactly as minted rather than filed under a patient,
- * where it would land in `Patient/$everything`.
+ * No settings: every response routes to its top-ranked kind, so the format's
+ * settings are `null` and the shell shows no settings form for it. No `groupBy`
+ * — a HAR stands alone, so every pick is its own set — and no `linkSourceFile`:
+ * a captured browsing session is an engineering artifact, so its source file is
+ * stored exactly as minted rather than filed under a patient, where it would
+ * land in `Patient/$everything`.
  */
-const harImporter: FileImporter.Type<HarSettings, typeof format> = {
+const harImporter: FileImporter.Type<null, typeof format> = {
   format,
   display,
   detect: detectHar,
-  defaultSettings: defaultHarSettings,
+  defaultSettings: null,
   sourceFileFormat,
   decode: DecodeFunction.make({
     format,
-    decodeFileSet: (pickedFiles, settings) =>
-      decodeHar(pickedFiles[0].bytes, settings).pipe(
-        Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
+    decodeFileSet: (pickedFiles) =>
+      decodeHar(pickedFiles[0].bytes).pipe(
+        Effect.flatMap((responses) => preview(fhirPool, responses)),
         Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
         Effect.map((previews) => ({
           sections: sectionsByUrl(previews),
@@ -113,4 +101,4 @@ const harImporter: FileImporter.Type<HarSettings, typeof format> = {
   }),
 }
 
-export { harImporter, fhirSources }
+export { harImporter }
