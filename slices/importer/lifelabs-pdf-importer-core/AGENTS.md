@@ -5,8 +5,8 @@ importer opens a picked LifeLabs "Reports" PDF's raw bytes end-to-end. Its
 decode asks `positioned-text`'s `PositionedTextExtractor` service for the
 PDF's text, runs the positioned-text dialect over the extracted
 `wildflower-positioned-text` document to typed `LifeLabsReport` records, and
-synthesizes Patient, Practitioner, DiagnosticReport, and Observation FHIR
-resources — the importer's opt-in write happens through the shell's shared
+synthesizes Patient, DiagnosticReport, and Observation FHIR resources, the
+import stage implying a Practitioner for each provider a report names — the importer's opt-in write happens through the shell's shared
 `persistBatchBundle` afterwards.
 The picker's user hands in the PDF itself, not the anonymizer's JSON output:
 this binding does its own extraction.
@@ -55,17 +55,22 @@ that hands back a hand-written positioned-text document.
 - `src/fhir/` — **the FHIR R4 synthesis** that converts parsed reports into
   standard resources. `to-fhir.ts` (`toFhirResources`) is the orchestrator:
   it validates each wire object through the `fhir-r4` schema decoders and
-  emits `Patient`, `Practitioner`, `DiagnosticReport`, and `Observation`
-  resources detached, each keyed by a real identifier the report prints
-  (see `source-system.ts`), grouped as one `ReportResources` per report, each
-  resource an entry whose `fullUrl` is `<Type>/<key value>` — a
-  `Patient` or `Practitioner` several reports share (one key) is minted once,
-  in the group of the first report naming it, so flattening the groups in
-  order writes every reference target before its referrer. A shared
-  Patient is written from the latest-reported of its reports (the earlier in
-  the document on a tie), so a card reissued between reports carries its
-  current version code. The keys:
-  the Patient's printed `Patient ID`, else its `HC #` in the settings'
+  emits `Patient`, `DiagnosticReport`, and `Observation` resources
+  detached, each keyed by a real identifier the report prints (see
+  `source-system.ts`), grouped as one `ReportResources` per report, each
+  resource an entry whose `fullUrl` is `<Type>/<key value>` — a `Patient`
+  several reports share (one key) is minted once, in the group of the first
+  report naming it, so flattening the groups in order writes every reference
+  target before its referrer. A shared Patient is written from the
+  latest-reported of its reports (the earlier in the document on a tie), so a
+  card reissued between reports carries its current version code. A provider
+  is no entry: the `DiagnosticReport`'s `resultsInterpreter` names the
+  ordering provider and each CC'd one, once per name, as `fhir-r4`'s
+  `Practitioner.tryReferenceWireFromName` in
+  `LifeLabsIdentifierSystem.PractitionerName` (the printed name, its
+  whitespace collapsed, also its `display`), and the import stage implies one
+  Practitioner per name across the document (`DecodedFileSet.adopt`). The
+  keys: the Patient's printed `Patient ID`, else its `HC #` in the settings'
   province's health card system (decoded by `fhir-ca-infoway`'s
   `HealthCardIdentifier.FromPrinted`, spaces and hyphens stripped: an Ontario
   number's ten digits, its version code in Ontario Health's version-code
@@ -74,14 +79,13 @@ that hands back a hand-written positioned-text document.
   `<name>, <date of birth>` as printed (`patientKeyOf`, the other printed
   identifiers behind the key); the `DiagnosticReport`'s
   `Lab No` (`reportKeyOf`); a result row's
-  `<Lab No>/<section>/<test name>/<ordinal>` (`observationKeyOf`); a
-  provider's printed name, inner whitespace collapsed (`practitionerKeyOf`).
+  `<Lab No>/<section>/<test name>/<ordinal>` (`observationKeyOf`).
   An `HC #` that is not the chosen province's shape fails the synthesis with
   the schema's `ParseError`, which names the shape expected, so the import
   lists the file as unreadable rather than keying the Patient some other
   way; an empty `HC #` is no card.
   The per-resource wire builders live in `wire/`:
-  `wire/patient.ts`, `wire/practitioner.ts`, `wire/observation.ts`,
+  `wire/patient.ts`, `wire/observation.ts`,
   `wire/diagnostic-report.ts`, with shared helpers (`timingWire`,
   `reportStatus`, `performerWire`, `quantityWire`) in `wire/shared.ts`.
   Supporting modules: `dates.ts` (printed timestamps to FHIR `date` /
@@ -93,12 +97,13 @@ that hands back a hand-written positioned-text document.
   not in the table is carried as `unit` alone rather than guessing a code).
 - `src/source-system.ts` — **`LIFELABS_SYSTEM`** and
   **`LifeLabsIdentifierSystem`**: the source file's coding system, and the
-  identifier systems the synthesis keys its records in — the printed
-  `Lab No` and `Patient ID`, and the
-  Wildflower-minted name-and-birth-date, result and practitioner-name
-  systems for what the report prints no number for. The health card number
-  is not among them: it is written in its province's health card system,
-  which `fhir-ca-infoway` declares. A leaf module so the
+  identifier systems the synthesis keys its records and references in — the
+  printed `Lab No` and `Patient ID`, and the Wildflower-minted
+  name-and-birth-date, result and practitioner-name systems for what the
+  report prints no number for (the last keys the Practitioners the import
+  stage implies). The health card number is not among them: it is written in
+  its province's health card system, which `fhir-ca-infoway` declares. A leaf
+  module so the
   importer and the FHIR synthesis import it without a cycle.
 - `src/decode.ts` — **`decodeLifeLabsPdf`** (the `decodeFileSet` the format's
   importer lifts into its batch `decode`) and **`decodeLifeLabsPdfDocument`** (the pure

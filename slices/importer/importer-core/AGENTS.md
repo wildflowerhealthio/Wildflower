@@ -47,8 +47,9 @@ package alone and a layer that provides those.
   (`Schema.encode(PickedFile.FromDocumentReference)`), its `masterIdentifier`
   what the picked file identified itself as; adopts its detached records with
   `DecodedFileSet.adopt` (a keyed record under the id its key derives, a
-  keyless one under a random id, each logical reference to a record of the set
-  resolved to a literal one); runs `linkSourceFile` over each source file with the
+  keyless one under a random id, the records the set's references name and
+  none of its records is implied, each logical reference to a record of the
+  set resolved to a literal one); runs `linkSourceFile` over each source file with the
   set's adopted records, then `linkToSourceFiles` over every record with each
   picked file and its linked source file; stamps every record's `meta.source`
   with the set's **representative** — the picked file whose source file id is
@@ -108,8 +109,8 @@ package alone and a layer that provides those.
   against what is **stored** on the device, the identity map's three states
   (`importer-fundamentals`' AGENTS).
   **`ResolvedBatch`** is a decoded batch, each format slot's `decoded`
-  holding the resolved file, plus its **`linkedRecords`** (the resources it
-  only mentions, written beside the files, no format's), **`plan`** (the
+  holding the resolved file, plus its **`linkedRecords`** (the resolved
+  records no resolved file holds, written beside the files, no format's), **`plan`** (the
   `LinkPlan` it was resolved on, which the referent rows ask each referent's
   link target of, and the review asks what its referent links leave
   unlinked, `UnlinkedMention.leftByReferentLinks`) and **`decodedBatch`**
@@ -121,7 +122,7 @@ package alone and a layer that provides those.
   take nothing else.
   **`discoverReferents(batch)`** is `Referent.discover` over every claimed
   format's `decoded`: one referent per identity across formats,
-  format-then-review order, those with a resource first.
+  format-then-review order.
   **`resolveMentions(batch, linkChoiceSet)`** (a `LinkChoiceSet`, by
   referent and by mention) resolves every mention in every
   claimed format's `decoded` on one plan over the batch's referents
@@ -133,9 +134,7 @@ package alone and a layer that provides those.
   links to a referent another holds, and a review key being unique across
   the batch, a mention link choice names one mention of one format's
   resource; it fills `linkedRecords` with the
-  records the batch only mentions, each with its `origin`, `Stored` or
-  `Provisional` (`FileResolution.linkedRecords`), so a
-  stored person several formats mention is written once, and `plan`, so
+  resolved records no resolved file holds (`FileResolution.linkedRecords`), and `plan`, so
   the screen's hook reads each referent's link target without planning
   again. Keys and section
   titles are kept; the format slots are reassembled through `collectFormats`,
@@ -152,8 +151,8 @@ package alone and a layer that provides those.
   `{ batch, linkChoices }`: the `ResolvedBatch` and the referent
   choices it was resolved on. A referent choice that
   cannot be resolved (`InvalidLinkChoice`) falls back: the reviewer's own
-  choice to its searched default, a default to its kind's default
-  (`ReferentLinkChoiceSet.remove`); a failure
+  choice to its searched default, a default to
+  `ReferentLinkChoiceSet.DEFAULT_CHOICE` (`ReferentLinkChoiceSet.remove`); a failure
   naming a referent with no choice dies. Its one failure is
   `Referent.DuplicateReferent`.
 - `src/unlinked-mentions.ts` — what the referent links leave unlinked in a
@@ -185,14 +184,15 @@ package alone and a layer that provides those.
     unticked it, or never ticked one `excludedByDefaultFor` leaves out.
     Every other format row is a candidate.
   - **`Unchanged`** — a linked record the server holds as it is (its key in
-    `unchangedLinked`, the server diff's `unchanged`).
-  - **`Unreferenced`** — a linked record of `Provisional` origin, made from a
-    mention alone, that no candidate format row names by its literal
-    `Type/<id>` in any reference field (`Mention.madeIn`), so it is never an
-    orphan. A changed linked record of `Stored` origin — a stored resource a
-    link targets, the batch's identifiers assumed — is a candidate whatever
-    the reviewer excluded, the link choice being the consent to it, so a
-    batch can write stored copies and no format's resources.
+    `unchangedLinked`, the server diff's `unchanged`). Any other linked
+    record — a resolved record no file holds, the batch's identifiers
+    assumed — is a candidate whatever the reviewer excluded, the link choice
+    being the consent to it, so a batch can write it and no format's
+    resources.
+  - **`Unreferenced`** — a format row the import implied
+    (`ImpliedRecord.isFullUrl` of its key) that no candidate format row
+    names by its literal `Type/<id>` (`Mention.madeIn`): written alone it
+    would be an orphan.
   - **`Superseded`** — a candidate a later candidate shares its `Type/id`
     with.
   - **`Included`** — the last candidate under its `Type/id`: the transaction

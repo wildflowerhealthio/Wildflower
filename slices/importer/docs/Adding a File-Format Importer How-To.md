@@ -182,11 +182,14 @@ Four obligations:
   carries a literal to a `Patient` or `Practitioner` the same decode emits, or
   is a logical reference: `type` stated, and an `identifier` with both
   `system` and `value`. A provider known only by a printed name is `fhir-r4`'s
-  `Practitioner.tryReferenceFromName(<name>)` (or its
-  `tryReferenceWireFromName`), the name identifier beside the `display`, as
-  the Shoppers and Rexall prescribers and DICOM's referring physician are. A
-  `display`-only reference, or an identifier-only one that states no type,
-  names nobody the map can link. See the
+  `Practitioner.tryReferenceFromName(<system>, <name>)` (or its
+  `tryReferenceWireFromName`), `<system>` the format's own practitioner-name
+  system, the name identifier beside
+  the `display`, as the Shoppers and Rexall prescribers, LifeLabs' providers
+  and DICOM's referring physician are. The format emits no Practitioner for
+  such a name: `DecodedFileSet.adopt` implies one per name across the set,
+  named by the display. A `display`-only reference, or an identifier-only one
+  that states no type, names nobody the map can link. See the
   [Source Identity Explanation](../../http-extraction/fhir-r4-adoption/docs/Source%20Identity%20Explanation.md#the-identity-map).
 
 ## 2. The settings

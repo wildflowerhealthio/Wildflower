@@ -213,6 +213,8 @@ it is written: its **resource plan** (`importer-fundamentals`'
   UUID (`randomResourceId`, injected so a test can count). A re-import of it
   is a second record.
 
+It then adds the records the batch's references name and none of its records
+is, each planned like any other ([Implied records](#implied-records), below).
 From those plans it builds the batch's **reference plan** (`ReferencePlan`,
 here): for each resource type and qualified identifier, the literal reference
 a logical reference by them resolves to. The reference plan is a plain data
@@ -249,12 +251,11 @@ not ambiguous.
 
 This is a FHIR server processing a transaction bundle: a conditional reference
 resolves against the bundle's own entries, and one that matches none of them
-stays as it is. So a reference to a record the source never served — a Rexall
-request's `Practitioner/<id>`, a FHIR `Observation`'s `Encounter/1` — stays
-logical, and so does a logical reference by an identifier no keyed record of
-the batch carries (an account number, a provider's printed name, a
-prescription number), or by one two of its records share. They
-are left for the importer's identity map (below), and nothing is written that
+stays as it is. So a reference to a record the batch neither holds nor
+implies — a FHIR `Observation`'s `Encounter/1`, a fill's
+`authorizingPrescription` by a prescription number the batch lacks — stays
+logical, and so does one by an identifier two of its records share. They are
+left for the importer's identity map (below), and nothing is written that
 points at an id nothing is stored under. A reference to a **keyless** record
 stays logical too, whichever of its identifiers it names it by.
 
@@ -280,6 +281,36 @@ reference the import stores the record with that key under, spelled as
 its import stores (a synthetic lab result filed on the Patient a
 pharmacy import made); `fhir-r4/resources`' `withSubject` files such a
 resource on it.
+
+### Implied records
+
+A reference can name a record its source never sends: a provider a pharmacy
+label or a lab report knows only by a printed name, or a Rexall prescriber
+carebook names as `Practitioner/<id>` and never serves. The reference says
+what the record is (its type), who it is (its identifier) and what it is
+called (its `display`), which for a person or a provider is a record. So
+before it builds the reference plan, the import stage implies that record
+(`DecodedFileSet.adopt`'s `implyReferencedRecords`):
+
+- Every logical reference the per-type table reaches
+  (`DetachedResource.referencesOf`), typed, by a qualified identifier and
+  with no literal (`ReferencePlan.logicalTargetIfLogical`), that carries a
+  `display` and whose target no record of the batch holds by any of its
+  identifiers (`ReferencePlan.holds`), implies one record per distinct type,
+  `system` and `value`, built from the first reference to name it.
+- `importer-fundamentals`' `ImpliedRecord.of` is an exhaustive per-type
+  table: a `Patient` or `Practitioner` is the reference's identifier and one
+  `name` whose `text` is the display; every other type implies none,
+  since R4 requires elements a reference cannot carry (a
+  `MedicationRequest`'s `subject`, `status`, `intent` and `medication[x]`,
+  for one). So a Shoppers history fill's `authorizingPrescription` by a
+  prescription the batch lacks stays logical.
+- The implied record's `fullUrl` is `<referencing fullUrl>#implied:<Type>|<system>|<value>`,
+  and it is placed first in the section of the entry that first names it.
+
+It is keyed, so its plan is `Derived` and every reference to it resolves to
+it as a literal, as if the source had sent it. The review shows it as a row
+of its own, and the identity map treats it as any decoded record.
 
 ### Reference field table
 
@@ -429,34 +460,34 @@ its path: a `subject`, a `requester`, a `performer[0].actor`, a report's
 refers to that may already exist on the device, one per **linkable logical
 reference**, FHIR's logical reference (`type` and `identifier`, no literal)
 narrowed to a `Patient` or `Practitioner` and an identifier with both a
-`system` and a `value`. A referent comes in one of two kinds:
-
-- **As a resource**: the decode emitted the `Patient` or `Practitioner`
-  itself. It is keyed by its `identifier[0]`, its key, and answers to every
-  identifier it brings: its own, and the one its demographics derive (below).
-  A keyless one names nothing the map can link, so it is written as it is.
-- **By mention only**: mentions name it by a logical reference and no decode
-  emitted its resource. A prescriber known only by name is one.
+`system` and a `value`. Every referent is a record of the batch: the decode
+emitted the `Patient` or `Practitioner`, or the import stage implied it from
+a reference ([Implied records](#implied-records)). It is keyed by its
+`identifier[0]`, its key, and answers to every identifier it brings: its own,
+and the one its demographics derive (below). A keyless one names nothing the
+map can link, so it is written as it is.
 
 Which type a mention names is the reference's own business. A logical
 reference states its `type`; an identifier-only reference that states none
 names nothing the map can tell apart from an account number, and a
 `display`-only mention names nobody the map can link. A source that knows a
 provider only by a printed name therefore writes
-`Practitioner.tryReferenceFromName(<name>)` (`tryReferenceWireFromName` when
-it builds wire): `type` Practitioner, `Practitioner.nameIdentifier(<name>)` as
-the `identifier`, the name as `display`, and no reference at all for a blank
-name. The Shoppers prescriber, the Rexall prescriber and the DICOM referring
+`Practitioner.tryReferenceFromName(<system>, <name>)`
+(`tryReferenceWireFromName` when it builds wire): `type` Practitioner,
+`Practitioner.nameIdentifier(<system>, <name>)` as the `identifier`, the name
+as `display`, and no reference at all for a blank name. The import stage
+implies the Practitioner it names. The Shoppers prescriber, the Rexall
+prescriber, LifeLabs' ordering and CC'd providers and the DICOM referring
 physician all do. DICOM builds the name from the parsed PN, given names first
 and then family, because the PN text prints the family name first and would
-never match a prescription's "Jane Smith". LifeLabs writes a `Practitioner`
-per provider it prints, so its providers are referents as resources.
+not read as a prescription's "Jane Smith".
 
 ### Name-and-birth-date and practitioner-name identifiers
 
-Two identifier systems are Wildflower's, not any source's, so the same identity
-from two sources is one identifier. Both sit under `terminology.ts`'s
-`WILDFLOWER_IDENTIFIER_SYSTEM_BASE` and are persisted wire format:
+The name-and-birth-date system is Wildflower's, not any source's, so the same
+person from two sources derives one identifier. It sits under
+`terminology.ts`'s `WILDFLOWER_IDENTIFIER_SYSTEM_BASE` and is persisted wire
+format:
 
 - `Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM`: `family;given;YYYY-MM-DD` from
   the name shown for the person (`HumanName.displayName`'s pick) and
@@ -464,57 +495,57 @@ from two sources is one identifier. Both sit under `terminology.ts`'s
   whitespace collapsed, the three parts joined on `;` because `|` is the FHIR
   token separator. None unless all three parts are present, so a partial
   match never links two people, and a name change alone never matches.
-- `Practitioner.NAME_IDENTIFIER_SYSTEM`: the printed name, trimmed, whitespace
-  collapsed, case kept.
 
-Every Patient and Practitioner referent as a resource carries its derived
-identifier beside its own once resolved, and the identifier is written with
-the resource. A name-and-birth-date match is therefore an ordinary identifier
-match, and a person whose name changed keeps both spellings on the device.
+Every Patient referent carries its derived identifier beside its own once
+resolved, and the identifier is written with the resource. A
+name-and-birth-date match is therefore an ordinary identifier match, and a
+person whose name changed keeps both spellings on the device. A Practitioner
+derives none: a name alone identifies no one across sources.
+
+A practitioner-name system is each source's own, persisted wire format like
+any key: `ShoppersIdentifierSystem.PractitionerName`,
+`REXALL_PRACTITIONER_NAME_SYSTEM`
+(`https://wildflowerhealth.io/fhir/sid/rexall-be-well/practitioner-name`),
+`LifeLabsIdentifierSystem.PractitionerName` and
+`DICOM_PRACTITIONER_NAME_SYSTEM`. Its value is the printed name, trimmed,
+whitespace collapsed, case kept (`Practitioner.nameIdentifier`). The same name
+from two sources is two Practitioners until the reviewer links them.
 
 ### Link choices and link targets
 
 The reviewer makes one **link choice** per referent:
 
-- **Create** the resource: the referent's own resource is written and becomes
-  the person or provider. For a referent by mention only, allowed only when
-  its logical reference stands for something **provisional**: a provider's
-  printed name stands for a `Practitioner` carrying the name and the
-  identifier, at `localResourceId(NAME_IDENTIFIER_SYSTEM, 'Practitioner',
-  name)`, so the same name from two sources is one record that later imports
-  add to. Nothing stands for a Patient: a person named only by an id is linked
-  to a record or left unlinked.
-- **Update the stored resource**: the referent's own resource is written over
+- **Create** the resource: the referent's own record is written and becomes
+  the person or provider. The default when the search finds nothing.
+- **Update the stored resource**: the referent's own record is written over
   the stored copy under its own literal reference, keeping every identifier
   the copy assumed. What a re-import does.
 - **Link to a stored resource**: a resource of that type already on the
   device.
-- **Link to a decoded referent** of its type in the batch, for a referent by
-  mention only: it lands wherever that one lands.
-- **Don't link**, for a referent by mention only: its mentions keep their
-  logical-reference form.
 
 Each referent's default comes from one identifier search
 (`GET <Type>?identifier=`) over the identifiers its source gave it, then the
 derived one: a hit that is the stored copy of its own resource is an update,
-one hit is a link to it, two hits are ambiguous and no hit falls back to the
-kind's default, Create with a resource and Don't link without. The reviewer
-always sees every referent and can change it.
+one hit is a link to it, two hits are ambiguous and no hit falls back to
+Create. The reviewer always sees every referent and can change it.
 
-A choice resolves to a **link target**: a stored resource, the referent's own
-decoded resource, a provisional resource, or unlinked. Every mention of the
-referent, literal or logical, is redirected to that target, keeping its
-`display` and `identifier`. A decoded Patient or Practitioner linked to a
-stored one is replaced by it under the same review key, so the review, the
-server diff and the confirm all see the resource that is written. The records
-the batch only mentions, stored or provisional, are the batch's **linked
-records**, written beside the files, once however many files mention them.
+A choice resolves to a **link target**: a stored resource or the referent's
+own decoded resource. Every mention of the referent, literal or logical, is
+redirected to that target, keeping its `display` and `identifier`. A decoded
+Patient or Practitioner linked to a stored one is replaced by it under the
+same review key, so the review, the server diff and the confirm all see the
+resource that is written. The stored records the batch only links to are the
+batch's **linked records**, written beside the files, once however many files
+mention them.
 
 ### Mention link choices
 
 A reviewer may also choose for one mention of one resource, over whatever its
-referent's choice says: link it to a stored resource, to a decoded referent
-(so it follows that referent's later link), or don't link it. A mention link
+referent's choice says: link it to a stored resource, to a referent of the
+batch (so it follows that referent's later link), or don't link it, which
+leaves it unlinked: its literal dropped, its `identifier` and `display`
+kept. These are a mention's choices only, which the review's per-mention
+selects make. A mention link
 choice is held in the identity map beside the referent choices and resolved
 by the same plan, never written into the resource as an edit; it teaches
 nothing and writes nothing. A resource whose `subject` lands on no patient of
