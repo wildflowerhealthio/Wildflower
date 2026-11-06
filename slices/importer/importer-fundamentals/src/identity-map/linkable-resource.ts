@@ -6,12 +6,10 @@
  */
 
 import { HumanName, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import {
+import { type Practitioner,
   type FhirResourceWithId,
   literalReferenceOf,
-  Patient,
-  Practitioner,
-} from '@wildflowerhealthio/fhir-r4/resources'
+  Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, DateTime, Effect, Match, Option, pipe } from 'effect'
 
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
@@ -61,11 +59,7 @@ const maybeBirthDate: (resource: Type) => Option.Option<string> = Match.type<Typ
   Match.exhaustive
 )
 
-const DERIVED_IDENTIFIER_SYSTEM_HREFS: ReadonlySet<string> = new Set(
-  [Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM, Practitioner.NAME_IDENTIFIER_SYSTEM].map(
-    (system) => new URL(system).href
-  )
-)
+const DERIVED_IDENTIFIER_SYSTEM_HREF = new URL(Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM).href
 
 /**
  * Whether `identifier` is one demographics derive, under a Wildflower system
@@ -74,20 +68,19 @@ const DERIVED_IDENTIFIER_SYSTEM_HREFS: ReadonlySet<string> = new Set(
  * source's identifiers leaves out.
  */
 const isDerivedIdentifier = (identifier: IdentifierAndReference.IdentifierType): boolean =>
-  identifier.system !== null && DERIVED_IDENTIFIER_SYSTEM_HREFS.has(identifier.system.href)
+  identifier.system?.href === DERIVED_IDENTIFIER_SYSTEM_HREF
 
 /**
  * The identifier `resource`'s own demographics derive, under a Wildflower
- * system: name and birth date for a Patient, the displayed name for a
- * Practitioner. `None` when they do not allow one.
+ * system: name and birth date for a Patient. `None` when they do not allow
+ * one, and always for a Practitioner, whose name alone identifies no one
+ * across sources.
  */
 const maybeDerivedIdentifier: (
   resource: Type
 ) => Effect.Effect<Option.Option<IdentifierAndReference.IdentifierType>> = Match.type<Type>().pipe(
   matchResourceType('Patient', (patient) => Patient.nameBirthDateIdentifier(patient)),
-  matchResourceType('Practitioner', (practitioner) =>
-    Effect.map(maybeDisplayName(practitioner), Option.flatMap(Practitioner.nameIdentifier))
-  ),
+  matchResourceType('Practitioner', () => Effect.succeedNone),
   Match.exhaustive
 )
 
@@ -114,9 +107,7 @@ const labelOf = (resource: Type, fallback: string): Effect.Effect<string> =>
 const tryProvisionalFrom: (
   logicalReference: LinkableLogicalReference.Type
 ) => Option.Option<WithId> = Match.type<LinkableLogicalReference.Type>().pipe(
-  Match.when({ type: 'Practitioner' }, ({ identifier }) =>
-    Practitioner.tryFromNameIdentifier(identifier)
-  ),
+  Match.when({ type: 'Practitioner' }, () => Option.none()),
   Match.when({ type: 'Patient' }, () => Option.none()),
   Match.exhaustive
 )
