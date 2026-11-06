@@ -106,23 +106,28 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   **`namespaceKeys(sections, prefix)`** prefixes every entry's `fullUrl`;
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
   **`adopt({ sections, notes }, mintId?)`** is how the import stage makes a
-  decode's records the device's own, as a `DecodedFile`: it plans every
-  entry (`ResourcePlan.of`), keeping each plan beside its entry, implies the
-  records the set's references name and no record of the set is
-  (`implyReferencedRecords`: each logical reference the per-type table
-  reaches, `DetachedResource.referencesOf`, typed, by a qualified identifier
-  and with no literal, `ReferencePlan.logicalTargetIfLogical`, that has a
+  decode's records the device's own, as a `DecodedFile`, in five named
+  steps. It plans every entry (`planSections`: `ResourcePlan.of`, each plan
+  kept beside its entry, every one `Decoded`). It implies the records the
+  set's references name and no record of the set is (`impliedSectionOf`, a
+  pipeline over the set's references, `ResourceReferences.collect`: each
+  logical reference, `LogicalReference.tryFromReference`, that has a
   `display` and whose target no record of the set holds by any identifier,
-  `ReferencePlan.holds`, implies one record per distinct type, `system` and
-  `value`, built by `ImpliedRecord.of` from the first reference to name it,
-  under `ImpliedRecord.fullUrlOf`, planned like any entry and placed first in
-  the section of the entry that first names it), builds the
-  set's `fhir-r4-adoption` `ReferencePlan` from the `Derived` plans (one
+  `ReferencePlan.holds`, implies one record per distinct logical reference,
+  built by `ImpliedRecord.tryFromLogicalReference` from the first reference
+  to name it, under `ImpliedRecord.fullUrlOf`, planned like any entry and
+  `Implied`), in a section of their own titled `Implied records`, the last
+  of the set's sections, added only when the set implies a record. It builds
+  the set's `fhir-r4-adoption` `ReferencePlan` from the `Derived` plans (`referencePlanOf`; one
   entry for each qualified identifier of a keyed record, its key and every
   other, each resolving to its plan's literal reference: the one place that
   decides which identifiers resolve; a keyless record's identifiers stay
   out), then runs `fhir-r4-adoption`'s `adopt` over each record with that
-  reference plan and its plan's `id`. So a keyed record lands on the id its
+  reference plan and its plan's `id` (`adoptSections`), each row keeping its
+  entry's origin as `DecodedFile.Resource`'s **`origin`**
+  (`DecodedFile.Origin`: `Decoded` or `Implied`, the one place a row says it
+  was implied; the import stage's source-file rows and the identity map's
+  linked records are `Decoded`). So a keyed record lands on the id its
   key derives, a keyless one on an id `mintId` mints (a random UUID unless a
   test injects one), in entry order, and a logical reference resolves when
   the set holds a keyed record it names by any of that record's identifiers,
@@ -134,7 +139,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   implies, a provider a source names only by a printed name, or a Rexall prescriber carebook names as
   `Practitioner/<id>` and never serves, is a row of its own, and every
   reference to it resolves to it. Before adopting, a
-  `MedicationDispense` with no `subject` takes its authorizing
+  `MedicationDispense` with no `subject` (`takeSubjectFromPrescription`) takes its authorizing
   prescriptions' `subject`, as they spell it, when they agree: every
   `authorizingPrescription` resolving (`ReferencePlan.literalReferenceIfResolved`)
   to a keyed `MedicationRequest` of the set has a copy whose `subject` names a
@@ -146,25 +151,31 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   fill. The format decode tests adopt through it too.
 - `src/implied-record.ts` — the **`ImpliedRecord`** namespace: the record a
   reference names when no record of its file set is that record, built from
-  what the reference says of it. **`of(resourceType, identifier, display)`**
-  reads an exhaustive table over `fhir-r4`'s `FhirResource`: a `Patient` or
-  `Practitioner` is its `identifier` and one `name` whose `text` is the
-  display, decoded detached (`DetachedResource.decodeUnknownOption`); every
-  other type implies none, its row stating the R4-required elements a
-  reference cannot carry (a `MedicationRequest`'s `subject` among them, so a
-  Shoppers history-only fill's `authorizingPrescription` stays logical). A
-  type the table does not list, or a record its schema rejects, implies none.
-  **`fullUrlOf(referencingFullUrl, resourceType, identifier)`** is
-  `<referencingFullUrl>#implied:<Type>|<system>|<value>`: stable across a
-  settings re-decode, and unique across the batch since the referencing
-  entry's `fullUrl` is.
+  what the reference says of it.
+  **`tryFromLogicalReference(logicalReference, display)`** reads an
+  exhaustive table over `fhir-r4`'s `FhirResource` of an `Option` of an
+  **`ImpliedRecordMaker`** per type: a `Patient` or `Practitioner`'s maker
+  builds its `identifier` and one `name` whose `text` is the display,
+  decoded detached (`DetachedResource.decodeUnknownEither`), so it gives the
+  record or the `ParseError` its schema rejects it with; every other type
+  has none, its row stating the R4-required elements a reference cannot
+  carry (a `MedicationRequest`'s `subject` among them, so a Shoppers
+  history-only fill's `authorizingPrescription` stays logical). A type the
+  table does not list (one `fhir-r4` does not model) implies none too.
+  **`fullUrlOf(referencingFullUrl, logicalReference)`** is
+  `<referencingFullUrl>#implied:<Type>|<system>|<value>`, only a key: stable
+  across a settings re-decode, and unique across the batch since the
+  referencing entry's `fullUrl` is. Nothing reads it back; a row says it is
+  implied by its `origin`.
 - `src/resource-plan.ts` — the **`ResourcePlan`** namespace: where one
   decoded record is written, decided before any record of its set is
   adopted, as a FHIR server decides each transaction entry's id before
   rewriting the references between them. **`Type`** is **`Derived`**
   (`{ resourceType, id, identifier }`: a keyed record, the same location on
   every import, its `id` `localResourceId(key.system, Type, key.value)` and
-  its `identifier` the key, its `identifier[0]` as a `QualifiedIdentifier`)
+  its `identifier` its key alone, `[identifier[0]]` as a
+  `QualifiedIdentifier`, so a `Derived` plan is the `LogicalReference` to its
+  record)
   or **`Minted`** (`{ resourceType, id }`: a keyless record, a new location
   every import), matched with `ResourcePlan.match`. **`of(resource,
   mintId)`** plans one record, deriving a keyed record's id there, once, or
@@ -237,14 +248,16 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   an `Option` whose `None` is one nameable fact is `<thing>If<condition>`
   (`resourceIfLinked`, `redirectionIfLinked`, `resolvedResourceIfReferent`);
   `maybe` is only for an attribute that may be absent.
-  - **`LinkableLogicalReference`** — FHIR's logical reference (a `Reference`
-    that names its target by `type` and `identifier` rather than a literal
-    `reference`), narrowed to `type: 'Patient' | 'Practitioner'` and a
-    `QualifiedIdentifier` (fhir-r4: an `Identifier` with a `system` and a
-    non-empty `value`). What an identifier-only mention carries and what a
-    resource's `resourceType` + `identifier[0]` answer to; its map **`key`**
-    `type|system|value`, `equivalence`, `tryFromIdentifier`,
-    `tryFromReference`. Nothing about linking.
+  - **`LinkableLogicalReference`** — `fhir-r4`'s `LogicalReference` (what a
+    `Reference` names its target by when it has `type` and `identifier` and
+    no literal `reference`: `{ resourceType, identifier: [identifier] }`, the
+    identifier a `QualifiedIdentifier`, one with a `system` and a non-empty
+    `value`) narrowed to `resourceType: 'Patient' | 'Practitioner'`. What an
+    identifier-only mention carries and what a resource's `resourceType` +
+    `identifier[0]` answer to; the map keys it by `LogicalReference.key` and
+    compares it by `LogicalReference.equivalence`. `tryFromReference` narrows
+    `LogicalReference.tryFromReference`, `isLinkable` the narrowing itself.
+    Nothing about linking.
   - **`LinkableResource`** — a `Patient` or `Practitioner`, the types a
     referent can have a resource for: `is` (a decoded resource as one, its
     `id` already set), `tryIntoLogicalReference` (its `identifier[0]`), `maybeDisplayName`
@@ -282,7 +295,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   - **`Referent`** — a Patient or Practitioner the import holds a record
     of, which may already exist on the device, once per identity: its
     decoded `resource` (keyed by its `identifier[0]`), carrying every
-    identifier a search tries, its own and the derived one. Every referent
+    identifier a search tries, its own and the derived one, and its row's
+    `origin`. Every referent
     has a record: a reference to one the import never saw implies it at
     decode (`DecodedFileSet.adopt`). `ownLogicalReferencesOf` is the logical
     references a referent's source-given identifiers make (a derived
@@ -293,7 +307,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     referent that answers to it, so a health card number a decoded Patient
     also carries is that Patient. **`discover`** finds them over a batch's
     files, once per identity (a record two file sets imply under one id is
-    one referent), and fails with **`DuplicateReferent`** when two resources
+    one referent, and a copy a file decoded is taken over an implied one by
+    its `origin`), and fails with **`DuplicateReferent`** when two resources
     under different ids, in one file or two, share a key; `byKey` indexes
     into a `HashMap`.
   - **`LinkChoiceSet`** — the reviewer's whole answer (**`Type`**,
@@ -441,7 +456,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     (`maybeDerivedLogicalReferenceOf`), so a record this source wrote is
     found ahead of a namesake; a hit that is the stored copy of the
     referent's own decoded resource (same literal reference: a re-import) is
-    `UpdateStoredResource`, whatever else was found; otherwise the one hit is
+    `UpdateStoredResource`, whatever else was found, or `LinkToStoredResource`
+    for a referent whose `origin` is `Implied`, which would write only what a
+    reference said over the copy; otherwise the one hit is
     `LinkToStoredResource`, two hits are ambiguous and no hit is
     `ReferentLinkChoiceSet.DEFAULT_CHOICE`, so the reviewer chooses; the hits are the
     searchset's matches (an `outcome` entry is not one), a match without its

@@ -190,11 +190,13 @@ package alone and a layer that provides those.
     being the consent to it, so a batch can write it and no format's
     resources.
   - **`Unreferenced`** — a format row the import implied
-    (`ImpliedRecord.isFullUrl` of its key) that no candidate format row
+    (its `origin` is `Implied`) that no candidate format row
     names by its literal `Type/<id>` (`Mention.madeIn`): written alone it
     would be an orphan.
   - **`Superseded`** — a candidate a later candidate shares its `Type/id`
-    with.
+    with, or an implied candidate (its `origin`) a decoded one shares its
+    `Type/id` with, whatever their order: a record a file decoded says more
+    than one a reference implied.
   - **`Included`** — the last candidate under its `Type/id`: the transaction
     bundle keeps one entry per `Type/id`, the last occurrence, so the
     `Included` resources are exactly the bundle's entries and no row's edit

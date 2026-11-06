@@ -25,45 +25,41 @@ vocabulary) stays FHIR-free and below it.
   record detached: `keyIdentifierWire(key)` for its `identifier[0]`,
   `logicalReferenceWire(Type, key)` for a reference to another record, and
   `decodeUnknown(schema)` to decode that wire as a detached record, failing
-  one that carries an `id` (`decodeUnknownOption(schema)` the same as an
-  `Option`, for a record built from data already decoded, such as the import
-  stage's implied records). `referencesOf(record)` is every reference the
-  per-type table reaches, in its order. How a kind whose response is a FHIR server's
-  records detaches one: `fromServerRecord(baseUrl)` drops its `id`, prepends
+  one that carries an `id` (`decodeUnknownEither(schema)` the same as an
+  `Either`, for a record built synchronously, such as the import stage's
+  implied records). `keyIdentifier(system, value)` is the decoded
+  `Identifier` a record is keyed by, every other element empty. How a kind
+  whose response is a FHIR server's records detaches one: `fromServerRecord(baseUrl)` drops its `id`, prepends
   `{ system: <baseUrl>/<Type>, value: id }` as `identifier[0]` when it had one
   and the type has an `identifier` element, and turns each reference whose
   literal is a `Type/id` of an R4 resource type (`fhir-r4`'s `ResourceType`),
   relative or under `<baseUrl>/`, into the logical reference to its target by
   key, replacing any identifier the server had put on it; any other reference
   (a non-R4 token like carebook's `PrescriptionOrder` included) keeps its
-  spelling and identifier. It keeps the resource's own type.
-- `src/reference-table.ts` — the per-type reference table (`mapReferences`,
-  the one place a resource's references are walked), which
-  `fromServerRecord` and `adopt` both rewrite through and `referencesOf`
-  reads through.
+  spelling and identifier. It keeps the resource's own type. Both
+  `fromServerRecord` and `adopt` walk a record's references with `fhir-r4`'s
+  `ResourceReferences.mapReferences`, which reaches every reference at any
+  depth (an `Identifier.assigner` included); the import stage reads them
+  with `ResourceReferences.collect`.
 - `src/reference-plan.ts` — the **`ReferencePlan`** namespace, a plain data
-  structure: for each resource type and qualified identifier, the literal
-  reference a logical reference by them resolves to. **`of(entries)`** holds
-  each `{ resourceType, identifier, literalReference }` it is given and
-  decides nothing about which identifiers go in; its builder does.
-  **`literalReferenceFor(plan, Type, identifier)`** matches on the type and
-  the identifier's `system` and `value` alone (spelled as JSON, so no
-  separator inside either can make two collide), and is `None` for one the
-  plan does not hold or holds with two different literal references: as a
-  FHIR conditional reference matching several records, it is ambiguous, so
-  the reference stays logical (the same entry given twice is no clash).
-  **`holds(plan, Type, identifier)`** is whether the plan has any entry for
-  them, one or several that disagree: a record the set holds, which the
-  import stage implies no record for.
-  **`logicalTargetIfLogical(reference)`** is what a logical reference names,
-  a **`LogicalTarget`** `{ resourceType, identifier }`: `None` for a literal
-  reference, an untyped or display-only one, and one whose `type` is no R4
-  resource type.
+  structure: for each logical reference (`fhir-r4`'s **`LogicalReference`**,
+  a resource type and one qualified identifier), the literal reference it
+  resolves to. **`of(entries)`** holds each
+  `{ logicalReference, literalReference }` it is given and decides nothing
+  about which identifiers go in; its builder does.
+  **`literalReferenceFor(plan, logicalReference)`** matches on the type and
+  the identifier's `system` and `value` alone (`LogicalReference.key`), and
+  is `None` for one the plan does not hold or holds with two different
+  literal references: as a FHIR conditional reference matching several
+  records, it is ambiguous, so the reference stays logical (the same entry
+  given twice is no clash). **`holds(plan, logicalReference)`** is whether
+  the plan has any entry for it, one or several that disagree: a record the
+  set holds, which the import stage implies no record for.
   **`literalReferenceIfResolved(plan, reference)`** is what a reference
   resolves to: `None` unless it is a logical reference
-  (`logicalTargetIfLogical`) `literalReferenceFor` resolves. `adopt` writes
-  it, and the import stage reads it to ask whether a reference names a
-  record of the set.
+  (`LogicalReference.tryFromReference`) `literalReferenceFor` resolves.
+  `adopt` writes it, and the import stage reads it to ask whether a
+  reference names a record of the set.
 - `src/adopt-resource.ts` — `adopt(referencePlan)(record, id)` stores a
   record under the id it is given (the import stage's resource plan decides
   it: `localResourceId(key.system, Type, key.value)` for a keyed record, a
@@ -106,9 +102,11 @@ everything is read off the records.
   under the id it would derive. The import stage implies a Patient or
   Practitioner such a reference names with a `display` before it builds the
   plan, so the set then holds it; any other stays logical.
-- **Each `mapReferences` row maps a variant to itself by construction, not by
-  the type system.** A row returning a different variant would compile, and
-  `fromServerRecord`'s one cast back to the resource's own type would lie.
+- **The reference walk keeps a resource's shape by construction, not by the
+  type system.** `ResourceReferences.mapReferences` replaces a `Reference`
+  only with what the rewrite returns for it, so `fromServerRecord`'s one cast
+  back to the resource's own type holds only while each rewrite returns a
+  `Reference`.
 
 ## References
 

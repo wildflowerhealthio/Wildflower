@@ -152,8 +152,8 @@ detached one of the same type:
    benign duplicate.
    A `Binary`, and a record with no `id`, keep only what they had, so they are
    keyless unless the source's own first identifier names them.
-3. **Turns each literal reference logical**, through the per-type field table
-   below.
+3. **Turns each literal reference logical**, at any depth
+   ([the reference walk](#the-reference-walk), below).
 
 ### The detach reference rule
 
@@ -216,8 +216,8 @@ it is written: its **resource plan** (`importer-fundamentals`'
 It then adds the records the batch's references name and none of its records
 is, each planned like any other ([Implied records](#implied-records), below).
 From those plans it builds the batch's **reference plan** (`ReferencePlan`,
-here): for each resource type and qualified identifier, the literal reference
-a logical reference by them resolves to. The reference plan is a plain data
+here): for each logical reference (`fhir-r4`'s `LogicalReference`, a resource
+type and one qualified identifier), the literal reference it resolves to. The reference plan is a plain data
 structure that holds what it is given; which identifiers go in is the import
 stage's choice, and it puts in every qualified identifier of each keyed
 record, its key and every other, each resolving to the literal reference its
@@ -290,86 +290,57 @@ carebook names as `Practitioner/<id>` and never serves. The reference says
 what the record is (its type), who it is (its identifier) and what it is
 called (its `display`), which for a person or a provider is a record. So
 before it builds the reference plan, the import stage implies that record
-(`DecodedFileSet.adopt`'s `implyReferencedRecords`):
+(`DecodedFileSet.adopt`'s `impliedSectionOf`):
 
-- Every logical reference the per-type table reaches
-  (`DetachedResource.referencesOf`), typed, by a qualified identifier and
-  with no literal (`ReferencePlan.logicalTargetIfLogical`), that carries a
-  `display` and whose target no record of the batch holds by any of its
-  identifiers (`ReferencePlan.holds`), implies one record per distinct type,
-  `system` and `value`, built from the first reference to name it.
-- `importer-fundamentals`' `ImpliedRecord.of` is an exhaustive per-type
-  table: a `Patient` or `Practitioner` is the reference's identifier and one
-  `name` whose `text` is the display; every other type implies none,
+- Every logical reference of the batch (`ResourceReferences.collect`, then
+  `LogicalReference.tryFromReference`: typed, by a qualified identifier and
+  with no literal) that carries a `display` and whose target no record of
+  the batch holds by any of its identifiers (`ReferencePlan.holds`) implies
+  one record per distinct logical reference, built from the first reference
+  to name it.
+- `importer-fundamentals`' `ImpliedRecord.tryFromLogicalReference` reads an
+  exhaustive per-type table of `ImpliedRecordMaker`s: a `Patient` or
+  `Practitioner` is the reference's identifier and one `name` whose `text` is
+  the display; every other type has none,
   since R4 requires elements a reference cannot carry (a
   `MedicationRequest`'s `subject`, `status`, `intent` and `medication[x]`,
   for one). So a Shoppers history fill's `authorizingPrescription` by a
   prescription the batch lacks stays logical.
-- The implied record's `fullUrl` is `<referencing fullUrl>#implied:<Type>|<system>|<value>`,
-  and it is placed first in the section of the entry that first names it.
+- The implied record's `fullUrl` is
+  `<referencing fullUrl>#implied:<Type>|<system>|<value>`, a stable key and
+  nothing more. The implied records are reviewed in a section of their own,
+  `Implied records`, after the batch's decoded sections, and each row says
+  it is implied by its `origin` (`DecodedFile.Origin`).
 
 It is keyed, so its plan is `Derived` and every reference to it resolves to
 it as a literal, as if the source had sent it. The review shows it as a row
 of its own, and the identity map treats it as any decoded record.
 
-### Reference field table
+### The reference walk
 
-`fromServerRecord` and `adopt` walk a resource's references through one
-per-type table, `mapReferences`:
+`fromServerRecord` and `adopt` rewrite a resource's references with
+`fhir-r4`'s `ResourceReferences.mapReferences`, and the import stage reads
+them with `ResourceReferences.collect`. It is a structural walk: it finds
+every decoded `Reference` by `fhir-r4`'s own `Reference` schema, at any
+depth, so `note[].authorReference` (`Annotation.author[x]`, one level down
+inside an array), a nested `PlanDefinition.action[].subjectReference`, an
+`Identifier.assigner` and an extension's `valueReference` are all reached, and
+a `Reference` field added to a resource schema is walked with no edit here.
 
-| Resource             | Fields walked                                                                                                                                                                                                                                                                                                                                                             |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Binary`             | `securityContext`                                                                                                                                                                                                                                                                                                                                                         |
-| `Patient`            | `generalPractitioner[]`, `managingOrganization`, `link[].other`, `contact[].organization`                                                                                                                                                                                                                                                                                 |
-| `Observation`        | `subject`, `encounter`, `device`, `specimen`, `basedOn[]`, `derivedFrom[]`, `focus[]`, `hasMember[]`, `partOf[]`, `performer[]`, `note[].authorReference`                                                                                                                                                                                                                 |
-| `MedicationRequest`  | `subject`, `encounter`, `requester`, `performer`, `recorder`, `priorPrescription`, `reportedReference`, `medicationReference`, `supportingInformation[]`, `reasonReference[]`, `basedOn[]`, `insurance[]`, `detectedIssue[]`, `eventHistory[]`, `dispenseRequest.performer`, `note[].authorReference`                                                                     |
-| `MedicationDispense` | `subject`, `context`, `location`, `destination`, `statusReasonReference`, `medicationReference`, `partOf[]`, `supportingInformation[]`, `authorizingPrescription[]`, `receiver[]`, `detectedIssue[]`, `eventHistory[]`, `performer[].actor`, `substitution.responsibleParty[]`, `note[].authorReference`                                                                  |
-| `DocumentReference`  | `subject`, `authenticator`, `custodian`, `author[]`, `relatesTo[].target`, `context.sourcePatientInfo`, `context.encounter[]`, `context.related[]`                                                                                                                                                                                                                        |
-| `DiagnosticReport`   | `subject`, `encounter`, `basedOn[]`, `performer[]`, `resultsInterpreter[]`, `specimen[]`, `result[]`, `imagingStudy[]`, `media[].link`                                                                                                                                                                                                                                    |
-| `Practitioner`       | `qualification[].issuer`                                                                                                                                                                                                                                                                                                                                                  |
-| `ServiceRequest`     | `subject`, `encounter`, `requester`, `basedOn[]`, `replaces[]`, `performer[]`, `locationReference[]`, `reasonReference[]`, `insurance[]`, `supportingInfo[]`, `relevantHistory[]`                                                                                                                                                                                         |
-| `ImagingStudy`       | `subject`, `encounter`, `referrer`, `procedureReference`, `location`, `basedOn[]`, `interpreter[]`, `endpoint[]`, `reasonReference[]`, `series[].endpoint[]`, `series[].specimen[]`, `series[].performer[].actor`                                                                                                                                                         |
-| `CarePlan`           | `subject`, `encounter`, `author`, `basedOn[]`, `replaces[]`, `partOf[]`, `contributor[]`, `careTeam[]`, `addresses[]`, `supportingInfo[]`, `goal[]`, `note[].authorReference`, `activity[].outcomeReference[]`, `activity[].progress[].authorReference`, `activity[].reference`, `activity[].detail.{reasonReference[], goal[], location, performer[], productReference}` |
-| `Goal`               | `subject`, `expressedBy`, `addresses[]`, `outcomeReference[]`, `note[].authorReference`                                                                                                                                                                                                                                                                                   |
-| `PlanDefinition`     | `subjectReference`, `action[].subjectReference` (recursively through nested `action[]`)                                                                                                                                                                                                                                                                                   |
-| `Procedure`          | `subject`, `encounter`, `recorder`, `asserter`, `location`, `basedOn[]`, `partOf[]`, `performer[].actor`, `performer[].onBehalfOf`, `reasonReference[]`, `report[]`, `complicationDetail[]`, `focalDevice[].manipulated`, `usedReference[]`, `note[].authorReference`                                                                                                     |
-
-`mapReferences` dispatches with `Match.exhaustive` over the closed `FhirResource`
-union, so a resource type added to the union without a row is a compile error
-rather than a resource whose references silently keep the source's literals.
-
-The list is explicit rather than a structural walk, so what gets rewritten is
-readable and reviewable. `adopt-resource.test.ts` guards it from both sides:
-
-- It diffs the _complement_ of this table on generated resources, through
-  both `fromServerRecord` and `adopt`, so a field touched **outside** it
-  fails.
-- It walks each resource schema's own AST for every path that declares a
-  `Reference`, and asserts that set is exactly the walked paths. So a
-  `Reference` field missing from **both** the implementation and the table fails
-  too — the case the complement diff structurally cannot see, because a field
-  nobody rewrites is a field the complement asserts was left alone.
-
-The second guard is what catches a `Reference` that is easy to miss by eye, such
-as `note[].authorReference`: `Annotation.author[x]` is a `Reference` when it is
-not the `authorString` variant, and it sits one level down inside an array.
-
-The walk stops at every `Reference` (that is the find) and at every `Identifier`
-(whose `assigner` is exempt wherever it is reached from), which is also what
-breaks the `Reference` ⇄ `Identifier` cycle. `extension`, `modifierExtension` and
-`contained` are pruned as exempt subtrees; `Extension` is recursive, so
-descending would not terminate anyway.
-
-Note the variant preservation inside `mapReferences` is real but unchecked: each
-row maps a variant to itself **by construction**, and a row that returned a
-different variant would compile. That is stated on the function.
+The walk rebuilds only what a rewrite changed and replaces a `Reference` only
+with what the rewrite returns for it, so a resource keeps its own shape; the
+type system cannot follow that, so `fromServerRecord` casts back to the
+resource's own type once. `adopt-resource.test.ts` diffs every field that
+holds no reference on generated resources, through both `fromServerRecord`
+and `adopt`, so a field touched outside the references fails, and walks each
+resource schema's AST so the list of reference fields it diffs around stays
+complete.
 
 ### Never touched
 
-`contained` (raw passthrough JSON — a decoded `Identifier` injected there writes
-`null`s onto the wire), `extension` / `modifierExtension` including any
-`valueReference` inside them, `meta.source`, `Identifier.assigner`,
-`groupIdentifier`, and `Attachment.url`.
+`contained` (raw passthrough JSON, in which the walk finds no decoded
+`Reference`; a decoded `Identifier` injected there would write `null`s onto
+the wire), `meta.source`, and `Attachment.url`.
 
 `meta.source` is not a rewrite site because the importer's import stage
 (`importer-core`'s `importDecoded`) sets it to a reference to the source-file
