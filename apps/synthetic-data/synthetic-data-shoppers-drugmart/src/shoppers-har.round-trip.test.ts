@@ -84,7 +84,7 @@ const importHar = async (har: string): Promise<Imported> => {
   )
   const sections = result.decoded.sections
     .filter((section) => section.title !== 'Source file')
-    .map((section) => section.entries.map((entry) => entry.resource))
+    .map((section) => section.rows.map((row) => row.resource))
   const resources = sections.flat()
   return {
     notes: result.decoded.notes,

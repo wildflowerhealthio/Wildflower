@@ -14,7 +14,7 @@ import { Array, Option, pipe } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
 import type * as Row from '../row.ts'
-import * as Sectioned from '../sectioned.ts'
+import * as SectionedList from '../sectioned-list.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkTarget from './link-target.ts'
 import * as LinkableResource from './linkable-resource.ts'
@@ -84,49 +84,49 @@ const redirectMentions =
     )
 
 /** Whether `after` holds the very resource and title `before` does. */
-const sameEntry = (
+const sameRow = (
   before: Row.Type<FhirResourceWithId>,
   after: Row.Type<FhirResourceWithId>
 ): boolean => after.resource === before.resource && after.title === before.title
 
 /**
- * `decodedEntry` as it is resolved under `plan`: a referent's resource
+ * `decodedRow` as it is resolved under `plan`: a referent's resource
  * written as its resolved resource (a stored resource standing in for it, or
  * itself having assumed what the referents linked to it bring), any other
  * written as decoded, with its mentions redirected either way, those the
- * reviewer chose a link for under the entry's review key where their choice
- * says. An entry whose resource the resolved one replaces under another id
+ * reviewer chose a link for under the row's review key where their choice
+ * says. A row whose resource the resolved one replaces under another id
  * takes the resolved resource's label as its title; any other keeps its own.
  * The same object when nothing changes.
  */
-const resolveEntry =
+const resolveRow =
   (plan: LinkPlan.Type) =>
-  (decodedEntry: Row.Type<FhirResourceWithId>): Row.Type<FhirResourceWithId> => {
-    const redirect = redirectMentions(plan, decodedEntry.key)
-    const resolvedEntry = Option.match(
-      LinkPlan.resolvedResourceIfReferent(plan, decodedEntry.resource),
+  (decodedRow: Row.Type<FhirResourceWithId>): Row.Type<FhirResourceWithId> => {
+    const redirect = redirectMentions(plan, decodedRow.key)
+    const resolvedRow = Option.match(
+      LinkPlan.resolvedResourceIfReferent(plan, decodedRow.resource),
       {
         onNone: () => ({
-          ...decodedEntry,
-          resource: redirect(decodedEntry.resource),
+          ...decodedRow,
+          resource: redirect(decodedRow.resource),
         }),
         onSome: (resolvedResource) => ({
-          ...decodedEntry,
+          ...decodedRow,
           resource: redirect(resolvedResource.resource),
           title:
-            resolvedResource.resource.id === decodedEntry.resource.id
-              ? decodedEntry.title
+            resolvedResource.resource.id === decodedRow.resource.id
+              ? decodedRow.title
               : resolvedResource.label,
         }),
       }
     )
-    return sameEntry(decodedEntry, resolvedEntry) ? decodedEntry : resolvedEntry
+    return sameRow(decodedRow, resolvedRow) ? decodedRow : resolvedRow
   }
 
 /**
  * `editedResource`, the reviewer's edit of the resource reviewed under
  * `reviewKey`, as it is resolved under `plan`: its mentions redirected as a
- * decoded entry's are ({@link redirectMentions}), so a mention the edit
+ * decoded row's are ({@link redirectMentions}), so a mention the edit
  * names by a decoded literal reference a stored resource now stands in for,
  * or one the reviewer chose a link for, is written where the plan says
  * today, not where it pointed when the edit was made. The edit itself is
@@ -158,14 +158,14 @@ const linkedRecords = (plan: LinkPlan.Type): readonly Row.Type<FhirResourceWithI
 
 /**
  * `decodedFile` resolved on `plan`: the file to review, diff and write. Every
- * section keeps its keys, and an entry nothing changed in comes back as the
+ * section keeps its keys, and a row nothing changed in comes back as the
  * same object. The records the batch only mentions are no file's: they are
  * {@link linkedRecords}.
  */
 const resolveFile =
   (plan: LinkPlan.Type) =>
   (decodedFile: DecodedFile.DecodedFile): DecodedFile.DecodedFile => {
-    const resolved = Sectioned.map(decodedFile, resolveEntry(plan))
+    const resolved = SectionedList.map(decodedFile, resolveRow(plan))
     return resolved === decodedFile ? decodedFile : { ...decodedFile, sections: resolved.sections }
   }
 

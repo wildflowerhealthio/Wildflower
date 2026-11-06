@@ -4,7 +4,11 @@ import { useMemo, useState } from 'react'
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import { type Row, Sectioned, type StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import {
+  type Row,
+  SectionedList,
+  type StagedImport,
+} from '@wildflowerhealthio/importer-fundamentals'
 
 import type { FormatKind, ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
 import { formatKinds, keysWithoutPatientOf, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
@@ -131,10 +135,10 @@ const byGroupAndKey = (
  */
 const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] => [
   ...formatKinds.flatMap((kind) =>
-    Sectioned.entries(batch.formats[kind].decoded).map((entry): DiffRow => ({
+    SectionedList.rows(batch.formats[kind].decoded).map((row): DiffRow => ({
       group: kind,
-      key: entry.key,
-      resource: entry.resource,
+      key: row.key,
+      resource: row.resource,
     }))
   ),
   ...batch.linkedRecords.map((entry): DiffRow => ({
@@ -275,7 +279,7 @@ const formatExcludedByDefault = (
   selection: StagedImport.Selection
 ): ReadonlySet<string> =>
   new Set([
-    ...unchangedKeysOf(Sectioned.entries(batch.formats[kind].decoded), comparisons),
+    ...unchangedKeysOf(SectionedList.rows(batch.formats[kind].decoded), comparisons),
     ...keysWithoutPatientOf(batch, kind, selection),
   ])
 

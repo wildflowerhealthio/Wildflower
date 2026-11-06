@@ -6,7 +6,7 @@ import {
   DecodedFileSet,
   PickedFile,
   Referent,
-  Sectioned,
+  SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
@@ -152,10 +152,10 @@ describe('harImporter.decode', () => {
     const decoded = await readOne(pickedHar())
 
     expect(decoded.sections.map((section) => section.title)).toEqual([PATIENT_URL, OBSERVATION_URL])
-    expect(decoded.sections[0]?.entries.map((entry) => entry.title)).toEqual([
+    expect(decoded.sections[0]?.rows.map((row) => row.title)).toEqual([
       expect.stringMatching(/^Patient\//),
     ])
-    expect(decoded.sections[1]?.entries.map((entry) => entry.title)).toEqual([
+    expect(decoded.sections[1]?.rows.map((row) => row.title)).toEqual([
       expect.stringMatching(/^Observation\//),
       expect.stringMatching(/^Observation\//),
     ])
@@ -163,7 +163,7 @@ describe('harImporter.decode', () => {
 
   it("should hand every record over detached, keyed by the server's own id", async () => {
     const fileSet = await decodeOne(pickedHar())
-    const records = fileSet.sections.flatMap((section) => section.entries)
+    const records = fileSet.sections.flatMap((section) => section.rows)
 
     expect(records.map(({ resource }) => resource.id)).toEqual([null, null, null])
     expect(records.map(({ resource }) => DetachedResource.keyOf(resource))).toEqual([
@@ -176,7 +176,7 @@ describe('harImporter.decode', () => {
   it('should title each record by the reference the import stage writes it under', async () => {
     const decoded = await readOne(pickedHar())
 
-    for (const { title, resource } of decoded.sections.flatMap((section) => section.entries)) {
+    for (const { title, resource } of decoded.sections.flatMap((section) => section.rows)) {
       expect(title).toBe(`${resource.resourceType}/${resource.id}`)
     }
   })
@@ -212,7 +212,7 @@ describe('harImporter.decode', () => {
     expect(
       decoded.sections.map((section) => [
         section.title,
-        section.entries.map(({ resource }) =>
+        section.rows.map(({ resource }) =>
           resource.resourceType === 'Observation' || resource.resourceType === 'Patient'
             ? resource.identifier[0]?.value
             : null
@@ -276,7 +276,7 @@ describe('harImporter.decode', () => {
       ),
     })
 
-    expect(decoded.sections.map((section) => [section.title, section.entries.length])).toEqual([
+    expect(decoded.sections.map((section) => [section.title, section.rows.length])).toEqual([
       [duplicatePatientUrl, 1],
     ])
     expect(decoded.notes).toEqual([
@@ -365,7 +365,7 @@ const shoppersResourcesOf = async (
       fileName: 'shoppers.har',
       bytes: harBytesOf(exchanges),
     })
-  ).sections.flatMap((section) => section.entries.map((entry) => entry.resource))
+  ).sections.flatMap((section) => section.rows.map((row) => row.resource))
 
 describe('harImporter.decode over a Shoppers capture', () => {
   it.each([
@@ -498,7 +498,7 @@ const referentKeysOf = (result: DecodedFile.DecodedFile): readonly (readonly str
 
 /** The `requester` of `result`'s MedicationRequest. */
 const requesterIn = (result: DecodedFile.DecodedFile): unknown => {
-  const request = Sectioned.entries(result).find(
+  const request = SectionedList.rows(result).find(
     ({ resource }) => resource.resourceType === 'MedicationRequest'
   )?.resource
   return request?.resourceType === 'MedicationRequest' ? request.requester : undefined
@@ -516,7 +516,7 @@ describe('harImporter.decode over a Rexall capture', () => {
       ['Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
       ['Practitioner', REXALL_PRACTITIONER_NAME_SYSTEM, 'DR PATEL'],
     ])
-    const prescriber = Sectioned.entries(result).find(
+    const prescriber = SectionedList.rows(result).find(
       ({ resource }) => resource.resourceType === 'Practitioner'
     )?.resource
     expect(requesterIn(result)).toMatchObject({
@@ -540,7 +540,7 @@ describe('harImporter.decode over a Rexall capture naming a prescriber carebook 
       ),
     })
 
-    const prescriber = Sectioned.entries(result).find(
+    const prescriber = SectionedList.rows(result).find(
       ({ resource }) => resource.resourceType === 'Practitioner'
     )?.resource
     expect(

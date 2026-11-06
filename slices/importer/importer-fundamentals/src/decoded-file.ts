@@ -7,21 +7,21 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 
 import type * as Row from './row.ts'
-import * as Sectioned from './sectioned.ts'
+import * as SectionedList from './sectioned-list.ts'
 
 /** A file set's rows, each record with an id to be written under, and its notes. */
-interface DecodedFile extends Sectioned.Type<Row.Type<FhirResourceWithId>> {
+interface DecodedFile extends SectionedList.Type<Row.Type<FhirResourceWithId>> {
   readonly notes: readonly string[]
 }
 
 /** No sections and no notes: a format with no claimed files. */
 const empty: DecodedFile = { sections: [], notes: [] }
 
-/** Every file's sections, in order ({@link Sectioned.combineAll}), and every file's notes. */
-const combineAll = (files: readonly DecodedFile[]): DecodedFile => ({
-  sections: Sectioned.combineAll(files).sections,
+/** Every file's sections, in order ({@link SectionedList.concatenateAll}), and every file's notes. */
+const concatenateAll = (files: readonly DecodedFile[]): DecodedFile => ({
+  sections: SectionedList.concatenateAll(files).sections,
   notes: files.flatMap((file) => file.notes),
 })
 
-export { combineAll, empty }
+export { concatenateAll, empty }
 export type { DecodedFile }

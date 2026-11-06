@@ -11,7 +11,7 @@ import {
   hasId,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import type { DecodedBatch, ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import { FormatDecode, Sectioned } from '@wildflowerhealthio/importer-fundamentals'
+import { FormatDecode, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Layer, Option, Schema } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
@@ -379,7 +379,7 @@ const batchOf = (resources: readonly FhirResourceWithId[]): DecodedBatch => ({
         sections: [
           {
             title: 'Resources',
-            entries: resources.map((resource, index) => ({
+            rows: resources.map((resource, index) => ({
               key: `k-${index}`,
               title: resource.resourceType,
               resource,
@@ -539,7 +539,7 @@ const renderRows = async (
 }
 
 const subjectOfRequest = (): string | null | undefined => {
-  const request = Sectioned.entries(resolved?.formats.har.decoded ?? { sections: [] }).find(
+  const request = SectionedList.rows(resolved?.formats.har.decoded ?? { sections: [] }).find(
     (entry) => entry.resource.resourceType === 'MedicationRequest'
   )?.resource
   return request !== undefined && 'subject' in request ? request.subject?.reference : undefined
@@ -547,7 +547,7 @@ const subjectOfRequest = (): string | null | undefined => {
 
 /** The literal reference the resolved request's `requester` names. */
 const requesterOfRequest = (): string | null | undefined => {
-  const request = Sectioned.entries(resolved?.formats.har.decoded ?? { sections: [] }).find(
+  const request = SectionedList.rows(resolved?.formats.har.decoded ?? { sections: [] }).find(
     (entry) => entry.resource.resourceType === 'MedicationRequest'
   )?.resource
   return request !== undefined && 'requester' in request ? request.requester?.reference : undefined

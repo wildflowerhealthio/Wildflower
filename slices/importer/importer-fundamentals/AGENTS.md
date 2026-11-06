@@ -80,27 +80,29 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   out of one file set carries — which is what keeps a fixed key like DICOM's
   `patient`, or HAR's per-archive `har-entry-<index>`, from colliding across the
   files one format claimed.
-- `src/sectioned.ts` — the **`Sectioned`** namespace: the one container every
-  stage of an import carries its records in. **`Type<E>`** is `{ sections }`,
-  each **`Section<E>`** `{ title, entries }`. **`map`**, **`filterMap`**,
-  **`filter`** and **`forEach`** (the `Effect` traversal) work entry by entry;
-  **`entries`** flattens; **`groupBy`** sections entries by title in the order
-  each first appears; **`of`**, **`empty`**, **`combine`**, **`combineAll`**,
-  **`prepend`** and **`append`** build. Section order is meaning (a set's
-  source files first, its implied records last), so nothing reorders sections
-  or merges two that share a title. `map` keeps reference identity: a section
-  `f` changed nothing in comes back as itself, and so does a container none of
-  whose sections changed, which `FileResolution.resolveFile` and the review's
-  memoized rows rely on.
+- `src/sectioned-list.ts` — the **`SectionedList`** namespace: the one
+  container every stage of an import carries its records in. **`Type<E>`** is
+  `{ sections }`, each a `Section.Type<E>`. **`map`**, **`filterMap`**,
+  **`filter`** and **`forEach`** (the `Effect` traversal) work row by row;
+  **`rows`** flattens; **`groupBy`** sections rows by title in the order each
+  first appears; **`make`**, **`empty`**, **`concatenate`**,
+  **`concatenateAll`**, **`prepend`** and **`append`** build. Section order is
+  meaning (a set's source files first, its implied records last), so nothing
+  reorders sections or merges two that share a title. `map` keeps reference
+  identity: a section `f` changed nothing in comes back as itself, and so does
+  a list none of whose sections changed, which `FileResolution.resolveFile`
+  and the review's memoized rows rely on.
+- `src/section.ts` — the **`Section`** namespace: **`Type<E>`**, one titled
+  group of rows `{ title, rows }`, and **`make(title, rows)`**.
 - `src/row.ts` — the **`Row`** namespace: **`Type<R>`**, one reviewed record
   `{ key, title, origin, resource }`, `R` being what the record is at its
   stage, and **`Origin`** (`Decoded` or `Implied`, the one place a row says it
   was implied; the import stage's source-file rows and the identity map's
   linked records are `Decoded`).
 - `src/decoded-file.ts` — the **`DecodedFile`** namespace: **`DecodedFile`**,
-  a file set's records the device's own, a `Sectioned.Type` of
+  a file set's records the device's own, a `SectionedList.Type` of
   `Row.Type<FhirResourceWithId>` beside its `notes`; **`empty`** and
-  **`combineAll`** (every file's sections in order, and every file's notes).
+  **`concatenateAll`** (every file's sections in order, and every file's notes).
 - `src/decoded-file-set.ts` — the **`DecodedFileSet`** namespace: one file
   set as its format decoded it. **`Type`** is its `pickedFiles` (read
   together, in the order they were picked), its `sections` and its `notes`.
@@ -108,8 +110,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `identifiedAs`, the FHIR `Identifier` its own content names it by (DICOM's
   SOP Instance UID as `urn:oid:`), or `None` for a format whose files do not
   name themselves; the import stage writes it onto the file's source file as
-  `masterIdentifier`. Its records are a `Sectioned.Type` of **`Entry`**, one
-  section per source batch, each entry `{ fullUrl, resource }`:
+  `masterIdentifier`. Its records are a `SectionedList.Type` of **`Entry`**, one
+  section per source batch, each row an `Entry` `{ fullUrl, resource }`:
   its identity within the set before it is stored (FHIR's `Bundle.entry.fullUrl`
   in a transaction, what the review tracks a choice by) and its record **detached** (`fhir-r4-adoption`'s `DetachedResource`: no
   id, keyed by its first identifier, naming every other decoded record by a
@@ -205,7 +207,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `Config`'s `decodeFileSet`.
   **`make(config)`** takes one **`Config`**: the `format`, a `decodeFileSet`
   (the picked files of one set in, a **`FileSetDecode`** out: its
-  `Sectioned.Type` of `DecodedFileSet.Entry` as the import stage receives it, its notes, and optionally `pickedFiles`,
+  `SectionedList.Type` of `DecodedFileSet.Entry` as the import stage receives it, its notes, and optionally `pickedFiles`,
   each picked file of the set
   paired with the `Identifier` it identifies as; left out, each identifies as
   nothing), and — optionally — a `groupBy`. **`groupBy`** is called per
@@ -431,7 +433,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     Practitioner) and **`resolvedResources`** (every resolved resource).
   - **`FileResolution`** — pure, every function taking the plan first, since
     it is fixed for a batch: **`resolveFile(plan)`** writes each decoded
-    resource of one file (`Sectioned.map`) as the resolved
+    resource of one file (`SectionedList.map`) as the resolved
     resource `LinkPlan.resolvedResourceIfReferent` has for it, titled by its
     label when it replaces the decoded one under another id, else as decoded,
     its mentions redirected to their referents' link targets either way

@@ -6,7 +6,8 @@ import {
   MetaSource,
   PickedFile,
   type Row,
-  Sectioned,
+  Section,
+  SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema } from 'effect'
 
@@ -94,7 +95,7 @@ const importFileSet = (
     }))
 
     const linkToSourceFiles = importer.linkToSourceFiles ?? Effect.succeed
-    const linkedToSourceFiles = yield* Sectioned.forEach(adopted, (row) =>
+    const linkedToSourceFiles = yield* SectionedList.forEach(adopted, (row) =>
       Effect.map(linkToSourceFiles(row.resource, linked), (resource) => ({ ...row, resource }))
     )
     const stamped = MetaSource.stampDecoded(
@@ -107,16 +108,22 @@ const importFileSet = (
       )
     )
 
-    const rows = linked.map(({ pickedFile, sourceFile }): Row.Type<PickedFile.SourceFile> => ({
-      key: sourceFileKey(pickedFile),
-      title: pickedFile.fileName,
-      origin: 'Decoded',
-      resource: sourceFile,
-    }))
+    const sourceFileRows = linked.map(
+      ({ pickedFile, sourceFile }): Row.Type<PickedFile.SourceFile> => ({
+        key: sourceFileKey(pickedFile),
+        title: pickedFile.fileName,
+        origin: 'Decoded',
+        resource: sourceFile,
+      })
+    )
     // Their own section ahead of what was read out of them, so the reviewer
     // sees what is about to be stored before what it yielded.
-    const title = rows.length === 1 ? SOURCE_FILE_SECTION_TITLE : SOURCE_FILES_SECTION_TITLE
-    return { ...Sectioned.prepend(stamped, { title, entries: rows }), notes: stamped.notes }
+    const title =
+      sourceFileRows.length === 1 ? SOURCE_FILE_SECTION_TITLE : SOURCE_FILES_SECTION_TITLE
+    return {
+      ...SectionedList.prepend(stamped, Section.make(title, sourceFileRows)),
+      notes: stamped.notes,
+    }
   })
 
 /**
@@ -156,7 +163,7 @@ const importDecoded = <TFormat extends string>(
       title: decoded.files.map((file) => file.fileName).join(', '),
       files: decoded.files,
       format: decoded.format,
-      decoded: DecodedFile.combineAll(imported),
+      decoded: DecodedFile.concatenateAll(imported),
       unreadableFiles: [...decoded.unreadableFiles, ...rejected.flat()],
     })),
     Effect.provideService(PickedFile.Format, importer.sourceFileFormat)

@@ -64,7 +64,7 @@ describe('MetaSource.stampDecoded', () => {
         fc.array(
           fc.record({
             title: fc.string(),
-            entries: fc.array(
+            rows: fc.array(
               fc.record({
                 key: fc.string(),
                 title: fc.string(),
@@ -81,10 +81,10 @@ describe('MetaSource.stampDecoded', () => {
             sections.map((section) => section.title)
           )
           for (const [index, section] of stamped.sections.entries()) {
-            expect(section.entries.map((entry) => entry.key)).toEqual(
-              sections[index]?.entries.map((entry) => entry.key)
+            expect(section.rows.map((row) => row.key)).toEqual(
+              sections[index]?.rows.map((row) => row.key)
             )
-            for (const entry of section.entries) expect(entry.resource.meta?.source).toBe(source)
+            for (const row of section.rows) expect(row.resource.meta?.source).toBe(source)
           }
         }
       ),

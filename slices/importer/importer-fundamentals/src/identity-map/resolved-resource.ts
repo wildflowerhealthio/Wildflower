@@ -41,7 +41,7 @@ interface Type {
   readonly resourceExistsInBatch: boolean
   /**
    * What a review shows for it (`LinkableResource.labelOf`, else its literal
-   * reference): the title of an entry it replaces or is appended as.
+   * reference): the title of a row it replaces or is appended as.
    */
   readonly label: string
   /**

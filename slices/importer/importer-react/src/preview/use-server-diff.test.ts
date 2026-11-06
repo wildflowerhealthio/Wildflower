@@ -37,7 +37,7 @@ const formatResult = <K extends FormatKind>(
     sections: [
       {
         title: 's',
-        entries: entries.map(([key, rid]) => ({
+        rows: entries.map(([key, rid]) => ({
           key,
           title: `Patient/${rid}`,
           resource: patient(rid),

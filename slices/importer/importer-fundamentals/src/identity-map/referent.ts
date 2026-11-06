@@ -22,7 +22,7 @@ import { Array, Data, Effect, HashMap, Option, pipe, Record } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
 import type * as Row from '../row.ts'
-import * as Sectioned from '../sectioned.ts'
+import * as SectionedList from '../sectioned-list.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
 
@@ -113,10 +113,10 @@ const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.
  * nothing can be linked to, so the stage writes it as it is.
  */
 const tryFromDecodedResource = (
-  entry: Row.Type<FhirResourceWithId>
+  row: Row.Type<FhirResourceWithId>
 ): Effect.Effect<Option.Option<Type>> =>
   pipe(
-    Option.liftPredicate(entry.resource, LinkableResource.is),
+    Option.liftPredicate(row.resource, LinkableResource.is),
     Option.flatMap((resource) =>
       Option.map(LinkableResource.tryIntoLogicalReference(resource), (logicalReference) => ({
         resource,
@@ -137,8 +137,8 @@ const tryFromDecodedResource = (
           ),
           derivedIdentifier,
           resource,
-          reviewKey: entry.key,
-          origin: entry.origin,
+          reviewKey: row.key,
+          origin: row.origin,
           label,
         }))
       )
@@ -184,7 +184,7 @@ const discover = (
 ): Effect.Effect<readonly Type[], DuplicateReferent> =>
   Effect.gen(function* () {
     const decodedReferents = Array.getSomes(
-      yield* Effect.forEach(decodedFiles.flatMap(Sectioned.entries), tryFromDecodedResource)
+      yield* Effect.forEach(decodedFiles.flatMap(SectionedList.rows), tryFromDecodedResource)
     )
     const duplicate = firstDuplicateAmong(decodedReferents)
     if (Option.isSome(duplicate)) return yield* Effect.fail(duplicate.value)

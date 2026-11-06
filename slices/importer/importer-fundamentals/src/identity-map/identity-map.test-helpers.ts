@@ -20,7 +20,7 @@ import { Arbitrary, Array, Effect, FastCheck as fc, HashMap, Schema, TestContext
 
 import type * as DecodedFile from '../decoded-file.ts'
 import type * as Row from '../row.ts'
-import * as Sectioned from '../sectioned.ts'
+import * as SectionedList from '../sectioned-list.ts'
 import * as FileResolution from './file-resolution.ts'
 import * as LinkChoice from './link-choice.ts'
 import * as LinkPlan from './link-plan.ts'
@@ -104,7 +104,7 @@ const leftByReferentLinksOnTestClock = (
       LinkPlan.withMentionLinkChoiceSet(onReferents, byMention)
     )
   )
-  return Sectioned.entries(file).flatMap(({ key, resource }) =>
+  return SectionedList.rows(file).flatMap(({ key, resource }) =>
     UnlinkedMention.leftByReferentLinks(plan, key, resource)
   )
 }
@@ -123,7 +123,7 @@ const fileWireOf = (file: DecodedFile.DecodedFile): string =>
   JSON.stringify(
     file.sections.map((section) => ({
       title: section.title,
-      entries: section.entries.map((entry) => [entry.key, entry.title, wireOf(entry.resource)]),
+      rows: section.rows.map((row) => [row.key, row.title, wireOf(row.resource)]),
     }))
   )
 
@@ -251,7 +251,7 @@ const fileOf = (...resources: readonly FhirResourceWithId[]): DecodedFile.Decode
   sections: [
     {
       title: 'Resources',
-      entries: resources.map((resource, index) => ({
+      rows: resources.map((resource, index) => ({
         key: `k-${index}`,
         title: `${resource.resourceType}/${resource.id}`,
         resource,
@@ -339,12 +339,12 @@ const fileArbitrary: fc.Arbitrary<DecodedFile.DecodedFile> = fc
   .chain((resources) =>
     fc.integer({ min: 0, max: resources.length }).map((split) => {
       const file = fileOf(...resources)
-      const entries = file.sections.flatMap((section) => section.entries)
+      const entries = file.sections.flatMap((section) => section.rows)
       return {
         ...file,
         sections: [
-          { title: 'First', entries: entries.slice(0, split) },
-          { title: 'Second', entries: entries.slice(split) },
+          { title: 'First', rows: entries.slice(0, split) },
+          { title: 'Second', rows: entries.slice(split) },
         ],
       }
     })

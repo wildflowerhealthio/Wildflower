@@ -59,7 +59,7 @@ const resultOf = <K extends FormatKind>(
   id: `${kind}/a`,
   title: `${kind} a`,
   files: [{ id: `0:${kind}`, fileName: kind, bytes: new Uint8Array([1]) }],
-  decoded: { sections: [{ title: 's', entries: resources }], notes: [] },
+  decoded: { sections: [{ title: 's', rows: resources }], notes: [] },
 })
 
 /** A resolved batch of the given formats' rows, the others claiming nothing, with `linked` its linked records. */

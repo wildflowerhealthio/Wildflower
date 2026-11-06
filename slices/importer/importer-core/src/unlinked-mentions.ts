@@ -2,7 +2,7 @@ import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type LinkPlan,
   Mention,
-  Sectioned,
+  SectionedList,
   StagedImport,
   UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -67,9 +67,9 @@ const keysWithoutPatientOf = (
 ): ReadonlySet<string> => {
   const leftUnlinked = leftUnlinkedIn(batch.plan, kind)
   return new Set(
-    Sectioned.entries(batch.formats[kind].decoded)
-      .filter((entry) =>
-        leftUnlinked(entry.key, StagedImport.resolvedResourceOf(batch.plan, selection, entry)).some(
+    SectionedList.rows(batch.formats[kind].decoded)
+      .filter((row) =>
+        leftUnlinked(row.key, StagedImport.resolvedResourceOf(batch.plan, selection, row)).some(
           isOfPatient
         )
       )

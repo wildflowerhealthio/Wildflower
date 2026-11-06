@@ -25,7 +25,7 @@ import {
 import {
   LinkChoiceSet,
   PickedFile,
-  Sectioned,
+  SectionedList,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Order, Schema } from 'effect'
@@ -98,7 +98,7 @@ const encodedResourcesOf = (
 
 /** Every source file of `kind` in `batch`'s decode. */
 const sourceFilesOf = (batch: DecodedBatch, kind: FormatKind): readonly FhirResourceWithId[] =>
-  Sectioned.entries(batch.formats[kind].decoded)
+  SectionedList.rows(batch.formats[kind].decoded)
     .map(({ resource }) => resource)
     .filter((resource) => isSourceFileOf(kind, resource))
 

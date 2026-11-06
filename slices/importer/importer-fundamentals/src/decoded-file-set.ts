@@ -24,7 +24,8 @@ import * as ImpliedRecord from './implied-record.ts'
 import type * as PickedFile from './picked-file.ts'
 import * as ResourcePlan from './resource-plan.ts'
 import type * as Row from './row.ts'
-import * as Sectioned from './sectioned.ts'
+import * as Section from './section.ts'
+import * as SectionedList from './sectioned-list.ts'
 
 /**
  * One record of a decoded set: the record as its source gave it, detached
@@ -78,7 +79,7 @@ interface PickedFileIdentity {
 
 /**
  * One file set's decode: its picked files, in the order they were picked, each
- * with what it identifies itself as, and its sections of entries and notes,
+ * with what it identifies itself as, and its rows in sections (each an {@link Entry}) and its notes,
  * every review key already namespaced by the set's first picked file
  * (`FormatDecode.keyPrefix`).
  *
@@ -90,7 +91,7 @@ interface PickedFileIdentity {
  * the record. The section listing a set's source files is built by the import
  * stage, never decoded.
  */
-interface Type extends Sectioned.Type<Entry> {
+interface Type extends SectionedList.Type<Entry> {
   readonly pickedFiles: Arr.NonEmptyReadonlyArray<PickedFileIdentity>
   readonly notes: readonly string[]
 }
@@ -107,8 +108,11 @@ const unidentified = (pickedFile: PickedFile.Type): PickedFileIdentity => ({
  *
  * @param prefix - The set's key namespace, from `FormatDecode.keyPrefix`
  */
-const namespaceKeys = (decoded: Sectioned.Type<Entry>, prefix: string): Sectioned.Type<Entry> =>
-  Sectioned.map(decoded, (entry) => ({ ...entry, fullUrl: `${prefix}${entry.fullUrl}` }))
+const namespaceKeys = (
+  decoded: SectionedList.Type<Entry>,
+  prefix: string
+): SectionedList.Type<Entry> =>
+  SectionedList.map(decoded, (row) => ({ ...row, fullUrl: `${prefix}${row.fullUrl}` }))
 
 /**
  * The entries a planned record gives its set's reference plan: one for each
@@ -172,10 +176,10 @@ const IMPLIED_SECTION_TITLE = 'Implied records'
  * every entry is stored under, before it rewrites any reference between them.
  */
 const planEntries = (
-  decoded: Sectioned.Type<Entry>,
+  decoded: SectionedList.Type<Entry>,
   mintId: () => string
-): Sectioned.Type<PlannedEntry> =>
-  Sectioned.map(decoded, (entry): PlannedEntry => ({
+): SectionedList.Type<PlannedEntry> =>
+  SectionedList.map(decoded, (entry): PlannedEntry => ({
     entry,
     plan: ResourcePlan.of(entry.resource, mintId),
     origin: 'Decoded',
@@ -240,10 +244,10 @@ const impliedTargetsOf = (
  *   rejects it with
  */
 const impliedSectionOf = (
-  plannedEntries: Sectioned.Type<PlannedEntry>,
+  plannedEntries: SectionedList.Type<PlannedEntry>,
   mintId: () => string
-): Either.Either<Option.Option<Sectioned.Section<PlannedEntry>>, ParseResult.ParseError> => {
-  const decodedEntries = Sectioned.entries(plannedEntries)
+): Either.Either<Option.Option<Section.Type<PlannedEntry>>, ParseResult.ParseError> => {
+  const decodedEntries = SectionedList.rows(plannedEntries)
   return pipe(
     impliedTargetsOf(decodedEntries, referencePlanOf(decodedEntries)),
     Arr.dedupeWith((left, right) =>
@@ -266,10 +270,7 @@ const impliedSectionOf = (
     Either.map((impliedEntries) =>
       Option.map(
         Option.liftPredicate(impliedEntries, Arr.isNonEmptyReadonlyArray),
-        (nonEmpty): Sectioned.Section<PlannedEntry> => ({
-          title: IMPLIED_SECTION_TITLE,
-          entries: nonEmpty,
-        })
+        (nonEmptyImpliedEntries) => Section.make(IMPLIED_SECTION_TITLE, nonEmptyImpliedEntries)
       )
     )
   )
@@ -401,12 +402,12 @@ const takeSubjectFromPrescription =
  * {@link writtenReferenceTitle}, its origin kept.
  */
 const adoptEntries = (
-  plannedEntries: Sectioned.Type<PlannedEntry>,
+  plannedEntries: SectionedList.Type<PlannedEntry>,
   referencePlan: ReferencePlan.Type,
   takeSubject: (record: DetachedResource.Type) => DetachedResource.Type
-): Sectioned.Type<Row.Type<FhirResourceWithId>> => {
+): SectionedList.Type<Row.Type<FhirResourceWithId>> => {
   const adoptEntry = adoptRecord(referencePlan)
-  return Sectioned.map(plannedEntries, ({ entry, plan, origin }) => ({
+  return SectionedList.map(plannedEntries, ({ entry, plan, origin }) => ({
     key: entry.fullUrl,
     title: writtenReferenceTitle(plan, entry),
     origin,
@@ -446,9 +447,9 @@ const adopt = (
   return Either.map(impliedSectionOf(decodedEntries, mintId), (impliedSection) => {
     const plannedEntries = Option.match(impliedSection, {
       onNone: () => decodedEntries,
-      onSome: (section) => Sectioned.append(decodedEntries, section),
+      onSome: (section) => SectionedList.append(decodedEntries, section),
     })
-    const everyPlannedEntry = Sectioned.entries(plannedEntries)
+    const everyPlannedEntry = SectionedList.rows(plannedEntries)
     const referencePlan = referencePlanOf(everyPlannedEntry)
     const takeSubject = takeSubjectFromPrescription(
       referencePlan,

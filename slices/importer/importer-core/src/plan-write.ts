@@ -3,7 +3,7 @@ import {
   type FormatDecode,
   Mention,
   type Row,
-  Sectioned,
+  SectionedList,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Match } from 'effect'
@@ -55,7 +55,7 @@ type SkipReason = 'nothing' | 'unreadable'
  * unreadable, else `nothing`.
  */
 const skipReasonFor = (result: FormatDecode.Result<FormatKind>): SkipReason =>
-  Sectioned.entries(result.decoded).length === 0 && result.unreadableFiles.length > 0
+  SectionedList.rows(result.decoded).length === 0 && result.unreadableFiles.length > 0
     ? 'unreadable'
     : 'nothing'
 
@@ -121,10 +121,10 @@ const formatRowsOf = (
   claimedFormats(batch.formats).flatMap((kind) => {
     const selection = selectionFor(kind)
     const excludedByDefault = excludedByDefaultFor(kind)
-    return Sectioned.entries(batch.formats[kind].decoded).map((entry): ReviewedRow => ({
+    return SectionedList.rows(batch.formats[kind].decoded).map((row): ReviewedRow => ({
       group: kind,
-      entry: { ...entry, resource: StagedImport.resolvedResourceOf(batch.plan, selection, entry) },
-      verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, entry.key)
+      entry: { ...row, resource: StagedImport.resolvedResourceOf(batch.plan, selection, row) },
+      verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, row.key)
         ? 'Candidate'
         : 'Excluded',
     }))

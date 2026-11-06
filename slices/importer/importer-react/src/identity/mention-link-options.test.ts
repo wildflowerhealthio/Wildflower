@@ -59,7 +59,7 @@ const file: DecodedFile.DecodedFile = {
   sections: [
     {
       title: 'Resources',
-      entries: [
+      rows: [
         patientOf('p-1', 'Banks'),
         patientOf('p-2', 'Bankes'),
         SMITH,

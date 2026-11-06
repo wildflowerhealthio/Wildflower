@@ -5,7 +5,7 @@ import {
   LinkableResource,
   type LinkChoice,
   Referent,
-  Sectioned,
+  SectionedList,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Match, Option } from 'effect'
@@ -104,7 +104,7 @@ const revertCopiesOf = (
   decodedFile: DecodedFile.DecodedFile,
   referent: Referent.Type
 ): StagedImport.Selection =>
-  Sectioned.entries(decodedFile)
+  SectionedList.rows(decodedFile)
     .filter(({ resource }) =>
       Option.exists(Option.liftPredicate(resource, LinkableResource.is), (linkable) =>
         LinkableResource.sameRecord(linkable, referent.resource)

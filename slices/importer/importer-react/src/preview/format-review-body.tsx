@@ -12,7 +12,7 @@ import {
   type LinkPlan,
   Mention,
   type Row,
-  Sectioned,
+  SectionedList,
   StagedImport,
   type UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -92,7 +92,7 @@ const perTypeTallies = (
 ): readonly TypeTally[] => {
   const order: string[] = []
   const totals = new Map<string, { total: number; excluded: number }>()
-  for (const resource of Sectioned.entries(decodedFile)) {
+  for (const resource of SectionedList.rows(decodedFile)) {
     const type = resourceTypeOf(resource.resource)
     const excluded = StagedImport.isResourceIncluded(selection, excludedByDefault, resource.key)
       ? 0
@@ -431,14 +431,14 @@ const FormatReviewBody = ({
       })
     )
 
-  const renderRow = (entry: Row.Type<FhirResourceWithId>, listsReason: boolean): JSX.Element => (
+  const renderRow = (row: Row.Type<FhirResourceWithId>, listsReason: boolean): JSX.Element => (
     <ResourceRow
-      key={entry.key}
-      resourceKey={entry.key}
-      reviewed={StagedImport.resolvedResourceOf(plan, selection, entry)}
-      included={StagedImport.isResourceIncluded(selection, excludedByDefault, entry.key)}
-      isEdited={StagedImport.isResourceEdited(selection, entry.key)}
-      comparison={comparisons?.get(entry.key)}
+      key={row.key}
+      resourceKey={row.key}
+      reviewed={StagedImport.resolvedResourceOf(plan, selection, row)}
+      included={StagedImport.isResourceIncluded(selection, excludedByDefault, row.key)}
+      isEdited={StagedImport.isResourceEdited(selection, row.key)}
+      comparison={comparisons?.get(row.key)}
       mentionLinkOptions={mentionLinkOptions}
       unlinked={unlinked}
       leftUnlinked={leftUnlinked}
@@ -449,7 +449,7 @@ const FormatReviewBody = ({
       onEdit={onEditResource}
       onRevert={(key) => onSelectionChange(StagedImport.revert(selection, key))}
       onKeepServerValue={(key, next) => onSelectionChange(StagedImport.edit(selection, key, next))}
-      onPick={(mention, picked) => pick(entry, mention, picked)}
+      onPick={(mention, picked) => pick(row, mention, picked)}
     />
   )
   const unlinkedGroup = (
@@ -460,7 +460,7 @@ const FormatReviewBody = ({
       <section aria-label={heading} className={styles['review-body__unlinked']}>
         <h4 className={styles['review-body__unlinked-heading']}>{heading}</h4>
         <ul className={styles['review-body__resource-list']}>
-          {listed.map((entry) => renderRow(entry, true))}
+          {listed.map((row) => renderRow(row, true))}
         </ul>
       </section>
     )
@@ -491,20 +491,20 @@ const FormatReviewBody = ({
           // (`FormatDecode.keyPrefix`), so it is unique across the format —
           // which lets a section's first resource identify it even when two
           // files contribute sections of the same title.
-          key={section.entries[0]?.key ?? section.title}
+          key={section.rows[0]?.key ?? section.title}
           className={styles['review-body__section']}
           aria-label={section.title}
         >
           <SectionToggle
             title={section.title}
-            keys={section.entries.map((resource) => resource.key)}
+            keys={section.rows.map((resource) => resource.key)}
             isIncluded={(key) => StagedImport.isResourceIncluded(selection, excludedByDefault, key)}
             onSetIncluded={(keys, included) => {
               onSelectionChange(StagedImport.setResourcesIncluded(selection, keys, included))
             }}
           />
           <ul className={styles['review-body__resource-list']}>
-            {section.entries.map((entry) => renderRow(entry, false))}
+            {section.rows.map((row) => renderRow(row, false))}
           </ul>
         </section>
       ))}

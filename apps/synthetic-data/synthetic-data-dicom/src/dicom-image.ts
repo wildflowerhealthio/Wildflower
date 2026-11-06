@@ -3,7 +3,7 @@ import { dicomImporter } from '@wildflowerhealthio/dicom-importer-core'
 import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResource, withSubject } from '@wildflowerhealthio/fhir-r4/resources'
 import { importDecoded } from '@wildflowerhealthio/importer-core'
-import { type FormatDecode, Sectioned } from '@wildflowerhealthio/importer-fundamentals'
+import { type FormatDecode, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
 import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'
 import { Person, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import { Data, DateTime, Effect, Either } from 'effect'
@@ -399,8 +399,8 @@ const importWithSubject = (
     if (unreadable !== undefined) {
       return yield* new UnreadableReidentifiedFile({ error: unreadable.error })
     }
-    return Sectioned.entries(result.decoded)
-      .map((entry) => entry.resource)
+    return SectionedList.rows(result.decoded)
+      .map((row) => row.resource)
       .filter((resource) => resource.resourceType !== 'Patient')
       .map(withSubject(subject))
   })

@@ -1,6 +1,6 @@
 import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResource, withSubject } from '@wildflowerhealthio/fhir-r4/resources'
-import { DecodedFileSet, Sectioned } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFileSet, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
 import {
   decodedReportsOf,
   LabNumber,
@@ -327,8 +327,8 @@ const render = (
       timeZone: laboratory.timeZone,
       healthCardProvince: HEALTH_CARD_PROVINCE,
     })
-    return Sectioned.entries(yield* DecodedFileSet.adopt(decoded))
-      .map((entry) => entry.resource)
+    return SectionedList.rows(yield* DecodedFileSet.adopt(decoded))
+      .map((row) => row.resource)
       .filter((resource) => resource.resourceType !== 'Patient')
       .map(withSubject(pharmacyPatient))
   })

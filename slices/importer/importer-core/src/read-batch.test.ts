@@ -6,7 +6,8 @@ import {
   type FormatDecode,
   type PickedFile,
   type Row,
-  Sectioned,
+  type Section,
+  SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor } from '@wildflowerhealthio/positioned-text'
@@ -58,7 +59,7 @@ const kindOf = (fileName: string): FormatKind | undefined => {
 
 /** Every review key a format's result offers, in review order. */
 const reviewKeys = (result: FormatDecode.Result<FormatKind>): readonly string[] =>
-  Sectioned.entries(result.decoded).map((resource) => resource.key)
+  SectionedList.rows(result.decoded).map((resource) => resource.key)
 
 /** A Patient its source calls `id`, detached as a decoder hands it over. */
 const fakeResource = (id: string): DetachedResource.Type =>
@@ -81,7 +82,7 @@ const fakeDecode = <K extends FormatKind>(kind: K): DecodeFunction.Type<unknown,
             sections: [
               {
                 title: `${kind}:${JSON.stringify(settings)}`,
-                entries: [
+                rows: [
                   {
                     fullUrl: `r:${file.fileName}`,
                     resource: fakeResource(`${kind}-${file.fileName}`),
@@ -103,7 +104,7 @@ const sourceFileFormatOf = (kind: FormatKind): PickedFile.FormatValue => ({
 /** The sections a format's decode read out of its files, its source file sections left out. */
 const extractedSections = (
   result: FormatDecode.Result<FormatKind>
-): readonly Sectioned.Section<Row.Type<FhirResourceWithId>>[] =>
+): readonly Section.Type<Row.Type<FhirResourceWithId>>[] =>
   result.decoded.sections.filter((section) => section.title !== 'Source file')
 
 const fakeRegistry: ReadRegistry<never> = {
@@ -306,7 +307,7 @@ describe('a DICOM study read over the real registry', () => {
       )
     )
     expect(batch.formats.dicom.unreadableFiles).toEqual([])
-    return Sectioned.entries(batch.formats.dicom.decoded).map((entry) => entry.resource)
+    return SectionedList.rows(batch.formats.dicom.decoded).map((row) => row.resource)
   }
 
   it("files every source file under the study's patient, each instance naming its own, every record stamped with the smallest", async () => {

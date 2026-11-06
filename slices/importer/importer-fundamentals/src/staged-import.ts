@@ -127,18 +127,18 @@ const editedResource = (selection: Selection, key: string): Option.Option<FhirRe
 }
 
 /**
- * The resource the review writes for `resolvedEntry`, a row of a file
+ * The resource the review writes for `resolvedRow`, a row of a file
  * resolved on `plan`: the edit override at its key resolved on the plan
- * (`FileResolution.resolveEdit`), else the entry's own resource.
+ * (`FileResolution.resolveEdit`), else the row's own resource.
  */
 const resolvedResourceOf = (
   plan: LinkPlan.Type,
   selection: Selection,
-  resolvedEntry: Row.Type<FhirResourceWithId>
+  resolvedRow: Row.Type<FhirResourceWithId>
 ): FhirResourceWithId =>
-  Option.match(editedResource(selection, resolvedEntry.key), {
-    onNone: () => resolvedEntry.resource,
-    onSome: FileResolution.resolveEdit(plan, resolvedEntry.key),
+  Option.match(editedResource(selection, resolvedRow.key), {
+    onNone: () => resolvedRow.resource,
+    onSome: FileResolution.resolveEdit(plan, resolvedRow.key),
   })
 
 export {

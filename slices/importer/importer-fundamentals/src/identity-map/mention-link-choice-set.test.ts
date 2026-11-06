@@ -10,7 +10,7 @@ import {
   Mention,
   MentionLinkChoiceSet,
   Referent,
-  Sectioned,
+  SectionedList,
 } from '../index.ts'
 import {
   ABSOLUTE,
@@ -61,7 +61,7 @@ const subjectAt = (
   file: DecodedFile.DecodedFile,
   key: string
 ): IdentifierAndReference.ReferenceType | null | undefined => {
-  const resource = Sectioned.entries(file).find((entry) => entry.key === key)?.resource
+  const resource = SectionedList.rows(file).find((row) => row.key === key)?.resource
   return resource !== undefined && 'subject' in resource ? resource.subject : undefined
 }
 
@@ -115,7 +115,7 @@ describe('a mention link choice on a resolved file', () => {
     expect(subjectAt(resolved, 'k-1')?.reference).toBe('Patient/s-2')
     expect(subjectAt(resolved, 'k-2')?.reference).toBe(null)
     expect(resolved.sections.map((section) => section.title)).toEqual(['Resources'])
-    expect(Sectioned.entries(resolved).filter(({ resource }) => resource.id === 's-2')).toEqual([])
+    expect(SectionedList.rows(resolved).filter(({ resource }) => resource.id === 's-2')).toEqual([])
   })
 
   it('drops a DontLink mention’s literal and keeps its identifier and display', () => {
@@ -219,26 +219,22 @@ describe('Mention.relinked', () => {
     )
     fc.assert(
       fc.property(fileWithChoicesArbitrary, fc.nat(), literals, ({ file }, pick, literal) => {
-        const entries = Sectioned.entries(file)
-        const entry = entries[pick % Math.max(entries.length, 1)]
-        if (entry === undefined) return
-        const mentions = Mention.linkableIn(entry.resource)
+        const rows = SectionedList.rows(file)
+        const row = rows[pick % Math.max(rows.length, 1)]
+        if (row === undefined) return
+        const mentions = Mention.linkableIn(row.resource)
         const mention = mentions[pick % Math.max(mentions.length, 1)]
         if (mention === undefined) return
 
-        const relinked = Mention.relinked(
-          entry.resource,
-          mention.path,
-          Option.fromNullable(literal)
-        )
+        const relinked = Mention.relinked(row.resource, mention.path, Option.fromNullable(literal))
 
-        const before = Mention.madeIn(entry.resource)
+        const before = Mention.madeIn(row.resource)
         const after = Mention.madeIn(relinked)
         const elsewhere = (found: readonly Mention.Type[]): readonly Mention.Type[] =>
           found.filter(({ path }) => path !== mention.path)
         expect(elsewhere(after)).toEqual(elsewhere(before))
         const now = Mention.at(relinked, mention.path)
-        if (relinked === entry.resource) return
+        if (relinked === row.resource) return
         // A relink sets the literal, or drops it, and keeps the rest of the mention.
         expect(Option.map(now, ({ reference }) => reference.reference)).toEqual(
           Option.some(literal ?? null)
@@ -258,7 +254,7 @@ describe('mention link choices and the referents', () => {
     file: DecodedFile.DecodedFile
   ): fc.Arbitrary<MentionLinkChoiceSet.Type> => {
     const referents = discoverOnTestClock(file)
-    const slots = Sectioned.entries(file).flatMap(({ key, resource }) =>
+    const slots = SectionedList.rows(file).flatMap(({ key, resource }) =>
       Mention.linkableIn(resource).map((mention) => ({ key, mention }))
     )
     return fc
@@ -344,7 +340,7 @@ describe('mention link choices and the referents', () => {
           const withChosen = resolveOnTestClock(file, choices, mentionChoices)
 
           const unchosenMentionsOf = (resolved: DecodedFile.DecodedFile): readonly unknown[] =>
-            Sectioned.entries(resolved).flatMap(({ key, resource }) =>
+            SectionedList.rows(resolved).flatMap(({ key, resource }) =>
               Mention.madeIn(resource)
                 .filter(({ path }) =>
                   Option.isNone(MentionLinkChoiceSet.forMention(mentionChoices, key, path))

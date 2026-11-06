@@ -81,7 +81,7 @@ const importHar = async (har: string): Promise<Imported> => {
   )
   const resources = result.decoded.sections
     .filter((section) => section.title !== 'Source file')
-    .flatMap((section) => section.entries.map((entry) => entry.resource))
+    .flatMap((section) => section.rows.map((row) => row.resource))
   return {
     notes: result.decoded.notes,
     unreadableFiles: result.unreadableFiles,

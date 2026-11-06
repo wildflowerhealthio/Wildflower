@@ -57,7 +57,7 @@ const resolvedHarBatchOf = (resources: readonly FhirResourceWithId[]): ResolvedB
       sections: [
         {
           title: 'Resources',
-          entries: resources.map((resource, index) => ({
+          rows: resources.map((resource, index) => ({
             key: `k-${index}`,
             title: `${resource.resourceType}/${resource.id}`,
             resource,

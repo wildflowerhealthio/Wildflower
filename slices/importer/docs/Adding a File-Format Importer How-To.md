@@ -58,7 +58,7 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 You write **one file set at a time**. `decodeFileSet(pickedFiles, settings)` takes
 the picked files that are decoded together — each a `PickedFile.Type`
 (`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) —
-and yields a `DecodeFunction.FileSetDecode`: titled sections (`Sectioned`) of
+and yields a `DecodeFunction.FileSetDecode`: titled sections (`SectionedList`) of
 labeled, **detached** resources, plus diagnostic notes.
 
 ```ts
@@ -67,10 +67,10 @@ const decodeMyFormat = (
   settings: MySettings
 ): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> => …
 // each section:
-//   {
+//   Section.make(
 //     title,
-//     entries: resources.map((resource) => ({ fullUrl, resource })),
-//   }
+//     resources.map((resource) => ({ fullUrl, resource }))
+//   )
 ```
 
 Write each resource detached (`fhir-r4-adoption`'s `DetachedResource`): no
@@ -160,7 +160,7 @@ identifies as nothing.
 
 Four obligations:
 
-- **Stable resource keys.** A section entry's `key` must be unique within
+- **Stable resource keys.** A section row's `key` must be unique within
   one decode of a set (HAR keys by `responseId:index`). For a format with
   settings it must also be stable across settings changes where the
   underlying resource is unchanged (DICOM keys by the resource's role),

@@ -3,7 +3,7 @@ import {
   DecodedFileSet,
   type DecodeFunction,
   Referent,
-  Sectioned,
+  SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
@@ -72,7 +72,7 @@ const KEY_SYSTEMS: readonly string[] = [
 
 /** Every record of a decode, detached. */
 const entriesOf = (decoded: DecodeFunction.FileSetDecode): readonly DecodedFileSet.Entry[] =>
-  decoded.sections.flatMap(({ entries }) => entries)
+  decoded.sections.flatMap(({ rows }) => rows)
 
 /** One or two reports, each printing its own Lab No. */
 const reportsArbitrary = fc.uniqueArray(reportArbitrary, {
@@ -115,7 +115,7 @@ describe('decodeLifeLabsPdfDocument', () => {
             )
           )
         )
-        const written = Sectioned.entries(Either.getOrThrow(DecodedFileSet.adopt(decoded)))
+        const written = SectionedList.rows(Either.getOrThrow(DecodedFileSet.adopt(decoded)))
         expect(written.map(({ title }) => title)).toEqual(
           written.map(({ key, resource }) =>
             Option.isSome(DetachedResource.keyOf({ ...resource, id: null }))
@@ -159,7 +159,7 @@ describe('decodeLifeLabsPdfDocument', () => {
           )
         )
 
-        const adoptedReferences = Sectioned.entries(
+        const adoptedReferences = SectionedList.rows(
           Either.getOrThrow(DecodedFileSet.adopt(decoded))
         ).map(({ resource }) => `${resource.resourceType}/${resource.id}`)
         for (const reference of keyedReferences) {
@@ -200,10 +200,10 @@ describe('decodeLifeLabsPdfDocument', () => {
         const adopted = Either.getOrThrow(DecodedFileSet.adopt(decoded))
         const referents = Effect.runSync(Referent.discover([adopted]))
 
-        const practitioners = Sectioned.entries(adopted).flatMap(({ resource }) =>
+        const practitioners = SectionedList.rows(adopted).flatMap(({ resource }) =>
           resource.resourceType === 'Practitioner' ? [resource] : []
         )
-        for (const { resource } of Sectioned.entries(adopted)) {
+        for (const { resource } of SectionedList.rows(adopted)) {
           if (resource.resourceType !== 'DiagnosticReport') continue
           for (const interpreter of resource.resultsInterpreter) {
             const practitioner = practitioners.find(

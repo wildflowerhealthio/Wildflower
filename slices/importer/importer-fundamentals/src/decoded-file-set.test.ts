@@ -16,7 +16,8 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import * as DecodedFileSet from './decoded-file-set.ts'
 import type * as Row from './row.ts'
-import * as Sectioned from './sectioned.ts'
+import * as Section from './section.ts'
+import * as SectionedList from './sectioned-list.ts'
 
 /**
  * Covers the import stage's half of a decoded set: adopting every section's
@@ -63,10 +64,11 @@ const observationOn = (subject: Record<string, unknown>): DetachedResource.Type 
 const sectionOf = (
   title: string,
   resources: readonly DetachedResource.Type[]
-): Sectioned.Section<DecodedFileSet.Entry> => ({
-  title,
-  entries: resources.map((resource, index) => ({ fullUrl: `${title}:${index}`, resource })),
-})
+): Section.Type<DecodedFileSet.Entry> =>
+  Section.make(
+    title,
+    resources.map((resource, index) => ({ fullUrl: `${title}:${index}`, resource }))
+  )
 
 /** A minter that counts: `minted-1`, `minted-2`, …. */
 const countingMinter = (): (() => string) => {
@@ -78,9 +80,9 @@ const countingMinter = (): (() => string) => {
 }
 
 const adoptedIn = (
-  sections: readonly Sectioned.Section<DecodedFileSet.Entry>[]
+  sections: readonly Section.Type<DecodedFileSet.Entry>[]
 ): readonly FhirResourceWithId[] =>
-  Sectioned.entries(
+  SectionedList.rows(
     Either.getOrThrow(DecodedFileSet.adopt({ sections, notes: [] }, countingMinter()))
   ).map(({ resource }) => resource)
 
@@ -455,11 +457,11 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
 
   /** Every adopted row of `sections`, with its section's title. */
   const rowsIn = (
-    sections: readonly Sectioned.Section<DecodedFileSet.Entry>[]
+    sections: readonly Section.Type<DecodedFileSet.Entry>[]
   ): readonly (Row.Type<FhirResourceWithId> & { readonly section: string })[] =>
     Either.getOrThrow(
       DecodedFileSet.adopt({ sections, notes: [] }, countingMinter())
-    ).sections.flatMap(({ title, entries }) => entries.map((row) => ({ ...row, section: title })))
+    ).sections.flatMap(({ title, rows }) => rows.map((row) => ({ ...row, section: title })))
 
   const requesterOf = (resource: FhirResourceWithId | undefined): unknown =>
     resource?.resourceType === 'MedicationRequest' ? resource.requester : undefined
@@ -722,7 +724,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         notes: [],
       })
     ).sections
-    expect(section?.entries.map(({ title }) => title)).toEqual([
+    expect(section?.rows.map(({ title }) => title)).toEqual([
       `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7')}`,
     ])
   })
@@ -734,7 +736,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         countingMinter()
       )
     ).sections
-    expect(section?.entries.map(({ title, resource }) => [title, resource.id])).toEqual([
+    expect(section?.rows.map(({ title, resource }) => [title, resource.id])).toEqual([
       ['Patient (people:0)', 'minted-1'],
     ])
   })
@@ -746,7 +748,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         notes: [],
       })
     ).sections
-    expect(section?.entries.map(({ key }) => key)).toEqual(['people:0', 'people:1'])
+    expect(section?.rows.map(({ key }) => key)).toEqual(['people:0', 'people:1'])
   })
 })
 
@@ -757,9 +759,9 @@ describe('DecodedFileSet.namespaceKeys', () => {
       sections: [
         {
           ...section,
-          entries: section.entries.map((entry) => ({
-            ...entry,
-            fullUrl: `0:a.har/${entry.fullUrl}`,
+          rows: section.rows.map((row) => ({
+            ...row,
+            fullUrl: `0:a.har/${row.fullUrl}`,
           })),
         },
       ],

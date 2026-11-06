@@ -14,7 +14,7 @@ import {
   MentionLinkChoiceSet,
   Referent,
   type ReferentLinkChoiceSet,
-  Sectioned,
+  SectionedList,
   UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap, Schema, TestContext } from 'effect'
@@ -85,7 +85,7 @@ const resultOf = <K extends FormatKind>(
           sections: [
             {
               title: 'Resources',
-              entries: resources.map((resource, index) => ({
+              rows: resources.map((resource, index) => ({
                 key: `${kind}/k-${index}`,
                 title: `${resource.resourceType}/${resource.id}`,
                 resource,
@@ -117,7 +117,7 @@ const resolvedOnTestClock = (
 
 /** The resource keyed `key` in `kind`'s decoded file. */
 const at = (batch: DecodedBatch, kind: FormatKind, key: string): FhirResource | undefined =>
-  Sectioned.entries(batch.formats[kind].decoded).find((entry) => entry.key === key)?.resource
+  SectionedList.rows(batch.formats[kind].decoded).find((row) => row.key === key)?.resource
 
 const subjectOf = (resource: FhirResource | undefined): string | null | undefined =>
   resource !== undefined && 'subject' in resource ? resource.subject?.reference : undefined
@@ -154,7 +154,7 @@ describe('resolveMentions', () => {
       (['har', 'lifelabs-pdf'] as const).map((kind) =>
         resolved.formats[kind].decoded.sections.map((section) => [
           section.title,
-          section.entries.map((entry) => entry.key),
+          section.rows.map((row) => row.key),
         ])
       )
     ).toEqual([[['Resources', ['har/k-0']]], [['Resources', ['lifelabs-pdf/k-0']]]])
@@ -261,7 +261,7 @@ describe('resolveMentions with mention link choices', () => {
     )
 
     const listed = (resolved: ResolvedBatch): readonly string[] =>
-      Sectioned.entries(resolved.decodedBatch.formats.har.decoded)
+      SectionedList.rows(resolved.decodedBatch.formats.har.decoded)
         .flatMap(({ key, resource }) =>
           UnlinkedMention.leftByReferentLinks(resolved.plan, key, resource)
         )
