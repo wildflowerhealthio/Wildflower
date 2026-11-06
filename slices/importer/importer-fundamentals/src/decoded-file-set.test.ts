@@ -3,6 +3,7 @@ import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   Binary,
+  DocumentReference,
   type FhirResourceWithId,
   MedicationDispense,
   MedicationRequest,
@@ -27,6 +28,7 @@ const detachTest = DetachedResource.fromServerRecord(BASE_URL)
 const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
 const decodeObservation = Schema.decodeUnknownSync(Observation.Schema)
 const decodeBinary = Schema.decodeUnknownSync(Binary.Schema)
+const decodeDocumentReference = Schema.decodeUnknownSync(DocumentReference.Schema)
 
 const patient = (id: string | null): DetachedResource.Type =>
   detachTest(decodePatient({ resourceType: 'Patient', ...(id === null ? {} : { id }) }))
@@ -451,17 +453,67 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
   })
 })
 
-describe('DecodedFileSet.namespaceKeys', () => {
-  it('prefixes every fullUrl and keeps everything else', () => {
-    const section = sectionOf('people', [patient('pat-7')])
-    expect(DecodedFileSet.namespaceKeys([section], '0:a.har/')).toEqual([
+/** The source's Binary `id`, detached: keyless. */
+const binary = (id: string): DetachedResource.Type =>
+  detachTest(decodeBinary({ resourceType: 'Binary', id, contentType: 'application/pdf' }))
+
+/** The source's URL for its Binary `id`, which its entry's `fullUrl` is. */
+const binaryUrl = (id: string): string => `${BASE_URL}/Binary/${id}`
+
+/** A DocumentReference whose attachment `url` and `context.related` both spell `literal`. */
+const documentNaming = (literal: string): DetachedResource.Type =>
+  detachTest(
+    decodeDocumentReference({
+      resourceType: 'DocumentReference',
+      id: 'doc-1',
+      status: 'current',
+      content: [{ attachment: { contentType: 'application/pdf', url: literal } }],
+      context: { related: [{ reference: literal }] },
+    })
+  )
+
+/** The attachment `url` and the `context.related` reference of a {@link documentNaming} document. */
+const binaryLinksOf = (resource: FhirResourceWithId | undefined): readonly (string | null)[] =>
+  resource?.resourceType === 'DocumentReference'
+    ? [resource.content[0]?.attachment.url ?? null, resource.context?.related[0]?.reference ?? null]
+    : []
+
+// As a FHIR server resolves a transaction bundle's literal references to an
+// entry with no identifier by the entry's `fullUrl`.
+describe('DecodedFileSet.adopt, a Binary named by its fullUrl', () => {
+  it('resolves an attachment URL and a reference to the Binary of the set to its minted id', () => {
+    const [document, stored] = adoptedIn([
+      sectionOf('documents', [documentNaming('Binary/bin-1')]),
+      { title: 'binaries', entries: [{ fullUrl: binaryUrl('bin-1'), resource: binary('bin-1') }] },
+    ])
+    expect(stored?.id).toBe('minted-1')
+    expect(binaryLinksOf(document)).toEqual(['Binary/minted-1', 'Binary/minted-1'])
+  })
+
+  it('writes a reference to a Binary the set does not hold as the source URL for it', () => {
+    const [document] = adoptedIn([
+      sectionOf('documents', [documentNaming('Binary/bin-2')]),
+      { title: 'binaries', entries: [{ fullUrl: binaryUrl('bin-1'), resource: binary('bin-1') }] },
+    ])
+    expect(binaryLinksOf(document)).toEqual([binaryUrl('bin-2'), binaryUrl('bin-2')])
+  })
+
+  it('names nothing by a keyless record whose fullUrl is no URL', () => {
+    const [document] = adoptedIn([
+      sectionOf('documents', [documentNaming('Binary/bin-1')]),
+      sectionOf('binaries', [binary('bin-1')]),
+    ])
+    expect(binaryLinksOf(document)).toEqual([binaryUrl('bin-1'), binaryUrl('bin-1')])
+  })
+
+  it('names nothing by a keyed record, whatever its fullUrl', () => {
+    const [observation] = adoptedIn([
+      sectionOf('results', [observationOn({ reference: `${BASE_URL}/Patient/pat-1` })]),
       {
-        ...section,
-        entries: section.entries.map((entry) => ({
-          ...entry,
-          fullUrl: `0:a.har/${entry.fullUrl}`,
-        })),
+        title: 'people',
+        entries: [{ fullUrl: `${BASE_URL}/Patient/pat-1`, resource: patient('pat-2') }],
       },
     ])
+    expect(subjectOf(observation)).toBeNull()
   })
 })

@@ -83,7 +83,7 @@ describe('Snapshot.Entry.ResourceFileSchema', () => {
     if (entry._tag !== 'Resource') throw new Error('expected a resource')
     expect(entry.attachmentPath).toBeUndefined()
     expect(entry.resource).toMatchObject({
-      content: [{ attachment: { url: new URL('https://example.com/a.har') } }],
+      content: [{ attachment: { url: 'https://example.com/a.har' } }],
     })
   })
 

@@ -1,4 +1,5 @@
 import {
+  Attachment,
   IdentifierAndReference,
   type IdentifierType,
   type ReferenceType,
@@ -143,7 +144,15 @@ const sample = <A, I>(schema: Schema.Schema<A, I>, seed: number): A => {
  */
 const TOUCHED_FIELDS = {
   Binary: ['id', 'securityContext'],
-  Patient: ['id', 'identifier', 'generalPractitioner', 'managingOrganization', 'link', 'contact'],
+  Patient: [
+    'id',
+    'identifier',
+    'generalPractitioner',
+    'managingOrganization',
+    'link',
+    'contact',
+    'photo',
+  ],
   Observation: [
     'id',
     'identifier',
@@ -207,6 +216,7 @@ const TOUCHED_FIELDS = {
     'author',
     'relatesTo',
     'context',
+    'content',
   ],
   DiagnosticReport: [
     'id',
@@ -220,8 +230,9 @@ const TOUCHED_FIELDS = {
     'result',
     'imagingStudy',
     'media',
+    'presentedForm',
   ],
-  Practitioner: ['id', 'identifier', 'qualification'],
+  Practitioner: ['id', 'identifier', 'qualification', 'photo'],
   ServiceRequest: [
     'id',
     'identifier',
@@ -334,23 +345,28 @@ const declaredShapeOf = (node: SchemaAST.AST, depth = 0): string => {
 // occurrences this needs to find.
 const REFERENCE_SHAPE = declaredShapeOf(IdentifierAndReference.ReferenceSchema.ast)
 const IDENTIFIER_SHAPE = declaredShapeOf(IdentifierAndReference.IdentifierSchema.ast)
+const ATTACHMENT_SHAPE = declaredShapeOf(Attachment.Schema.ast)
 
 /**
- * Every dotted path at which a resource schema declares a `Reference`.
+ * Every dotted path at which a resource schema declares an element of
+ * `targetShape`: a `Reference`, or an `Attachment`.
  *
  * @remarks
- * Stops at a `Reference` (that is the find) and at an `Identifier` — whose
- * `assigner` neither detach nor adopt rewrites, wherever it is reached from.
- * Those two stops also break the `Reference` ⇄ `Identifier` cycle. A struct
- * nested in one of its own shape stops too: a recursive element
- * (`PlanDefinition.action`) reports its references once, at its outermost
- * path, and the table rewrites them at every depth.
+ * Stops at the target (that is the find), at a `Reference`, and at an
+ * `Identifier` — whose `assigner` neither detach nor adopt rewrites, wherever
+ * it is reached from. Those stops also break the `Reference` ⇄ `Identifier`
+ * cycle. A struct nested in one of its own shape stops too: a recursive
+ * element (`PlanDefinition.action`) reports its references once, at its
+ * outermost path, and the table rewrites them at every depth.
  *
  * Throws rather than truncating at {@link MAX_WALK_DEPTH}: a silently-cut walk
- * reports *fewer* references than exist, which is the failure this guard exists
+ * reports *fewer* paths than exist, which is the failure this guard exists
  * to prevent.
  */
-const referencePathsIn = (schema: { readonly ast: SchemaAST.AST }): readonly string[] => {
+const pathsDeclaring = (
+  targetShape: string,
+  schema: { readonly ast: SchemaAST.AST }
+): readonly string[] => {
   const found: string[] = []
   const walk = (
     node: SchemaAST.AST,
@@ -362,11 +378,11 @@ const referencePathsIn = (schema: { readonly ast: SchemaAST.AST }): readonly str
       throw new Error(`reference walk exceeded ${MAX_WALK_DEPTH} at ${path.join('.')}`)
     }
     const shape = shapeOf(node)
-    if (shape !== '' && shape === REFERENCE_SHAPE) {
+    if (shape !== '' && shape === targetShape) {
       found.push(path.join('.'))
       return
     }
-    if (shape !== '' && shape === IDENTIFIER_SHAPE) return
+    if (shape !== '' && (shape === REFERENCE_SHAPE || shape === IDENTIFIER_SHAPE)) return
     // A struct nested in one of its own shape (`PlanDefinition.action.action`)
     // declares the references its enclosing copy already reported.
     if (shape !== '' && enclosing.includes(shape)) return
@@ -552,6 +568,27 @@ const REWRITTEN_REFERENCE_PATHS = {
   ],
 } as const satisfies Record<FhirResource['resourceType'], readonly string[]>
 
+/**
+ * Every `Attachment` whose `url` the implementation rewrites
+ * (`mapAttachmentUrls`), as a dotted path.
+ */
+const ATTACHMENT_URL_PATHS = {
+  Binary: [],
+  Patient: ['photo'],
+  Observation: [],
+  MedicationRequest: [],
+  MedicationDispense: [],
+  DocumentReference: ['content.attachment'],
+  DiagnosticReport: ['presentedForm'],
+  Practitioner: ['photo'],
+  ServiceRequest: [],
+  ImagingStudy: [],
+  CarePlan: [],
+  Goal: [],
+  PlanDefinition: [],
+  Procedure: [],
+} as const satisfies Record<FhirResource['resourceType'], readonly string[]>
+
 const SCHEMA_FOR = {
   Binary: Binary.Schema,
   Patient: Patient.Schema,
@@ -586,16 +623,26 @@ describe('reference coverage is derived from the schemas, not asserted by hand',
     // right, and fails here — instead of shipping a reference that keeps the
     // source's literal and dangles.
     test(`${resourceType}: every Reference the schema declares is rewritten or exempt`, () => {
-      expect(referencePathsIn(SCHEMA_FOR[resourceType])).toEqual(
+      expect(pathsDeclaring(REFERENCE_SHAPE, SCHEMA_FOR[resourceType])).toEqual(
         [...REWRITTEN_REFERENCE_PATHS[resourceType]].toSorted()
       )
     })
 
-    // Ties the dotted table to the flat one, so the "no collateral change"
-    // properties below cannot go stale against it.
+    // The same for `Attachment.url`, which a `Binary` is named by and which
+    // the reference walk never reaches.
+    test(`${resourceType}: every Attachment the schema declares has its url rewritten`, () => {
+      expect(pathsDeclaring(ATTACHMENT_SHAPE, SCHEMA_FOR[resourceType])).toEqual(
+        [...ATTACHMENT_URL_PATHS[resourceType]].toSorted()
+      )
+    })
+
+    // Ties the dotted tables to the flat one, so the "no collateral change"
+    // properties below cannot go stale against them.
     test(`${resourceType}: every rewritten path is rooted in an adopted field`, () => {
       const roots = new Set(
-        REWRITTEN_REFERENCE_PATHS[resourceType].map((path) => path.split('.')[0])
+        [...REWRITTEN_REFERENCE_PATHS[resourceType], ...ATTACHMENT_URL_PATHS[resourceType]].map(
+          (path) => path.split('.')[0]
+        )
       )
       expect([...roots].toSorted()).toEqual(
         TOUCHED_FIELDS[resourceType]
@@ -608,7 +655,8 @@ describe('reference coverage is derived from the schemas, not asserted by hand',
   test('the walk actually finds things — a guard that found nothing would pass everything', () => {
     expect(REFERENCE_SHAPE).not.toBe('')
     expect(IDENTIFIER_SHAPE).not.toBe(REFERENCE_SHAPE)
-    expect(referencePathsIn(Observation.Schema).length).toBeGreaterThan(5)
+    expect(ATTACHMENT_SHAPE).not.toBe('')
+    expect(pathsDeclaring(REFERENCE_SHAPE, Observation.Schema).length).toBeGreaterThan(5)
   })
 })
 
@@ -1074,32 +1122,6 @@ describe('adopt', () => {
     })
   }
 
-  // A Binary has no identifier element, so nothing can name it by a key: a
-  // reference to one never matches a record of the batch, and stays logical.
-  test('leaves a reference to a keyless record of the batch logical', () => {
-    const binarySource = { ...sample(Binary.Schema, 11), id: 'bin-1' }
-    const document = detachThenAdopt(
-      {
-        ...sample(DocumentReference.Schema, 16),
-        id: 'doc-1',
-        relatesTo: [
-          {
-            id: null,
-            extension: [],
-            modifierExtension: [],
-            code: 'appends',
-            target: reference({ reference: 'Binary/bin-1' }),
-          },
-        ],
-      },
-      binarySource
-    )
-    if (document.resourceType !== 'DocumentReference') {
-      throw new Error('unreachable: adopted a DocumentReference')
-    }
-    expect(document.relatesTo[0]?.target.reference).toBeNull()
-  })
-
   test('resolves a logical reference the source wrote by key, when the batch holds its target', () => {
     const byKey = reference({
       type: 'Patient',
@@ -1179,6 +1201,163 @@ describe('adopt', () => {
     )
     expect(adopted.performer[0]?.onBehalfOf?.reference).toBeNull()
     expect(adopted.focalDevice[0]?.manipulated.reference).toBeNull()
+  })
+})
+
+/** {@link BASE}'s absolute URL for its Binary `bin-1`, what a reference or an attachment naming it detaches to. */
+const BINARY_URL = `${BASE}/Binary/bin-1`
+
+/** The literal reference the Binary at {@link BINARY_URL} is stored under in the batches below. */
+const MINTED_BINARY = 'Binary/minted-1'
+
+/** A batch holding the Binary at {@link BINARY_URL}, named by it as its entry's `fullUrl`. */
+const binaryBatchPlan = ReferencePlan.of(
+  [],
+  [{ fullUrl: new URL(BINARY_URL), literalReference: MINTED_BINARY }]
+)
+
+/** An `Attachment` with only `url` set. */
+const attachmentAt = (url: string | null): typeof Attachment.Schema.Type => ({
+  id: null,
+  extension: [],
+  contentType: null,
+  creation: null,
+  data: null,
+  url,
+  hash: null,
+  language: null,
+  size: null,
+  title: null,
+})
+
+/** A DocumentReference served by {@link BASE}: its one attachment at `url`, and a `relatesTo` target `literal`. */
+const documentNaming = (url: string, literal: string): typeof DocumentReference.Schema.Type => ({
+  ...sample(DocumentReference.Schema, 16),
+  id: 'doc-1',
+  content: [
+    { id: null, extension: [], modifierExtension: [], attachment: attachmentAt(url), format: null },
+  ],
+  relatesTo: [
+    {
+      id: null,
+      extension: [],
+      modifierExtension: [],
+      code: 'appends',
+      target: reference({ reference: literal }),
+    },
+  ],
+})
+
+/** A DocumentReference, narrowed back to one. */
+const asDocumentReference = (resource: FhirResource): typeof DocumentReference.Schema.Type => {
+  if (resource.resourceType !== 'DocumentReference') {
+    throw new Error('unreachable: expected a DocumentReference')
+  }
+  return resource
+}
+
+/** The one attachment's `url` and the one `relatesTo` target of a {@link documentNaming} document. */
+const binaryLinksOf = (
+  resource: FhirResource
+): { readonly attachmentUrl: string | null; readonly target: ReferenceType | undefined } => {
+  const document = asDocumentReference(resource)
+  return {
+    attachmentUrl: document.content[0]?.attachment.url ?? null,
+    target: document.relatesTo[0]?.target,
+  }
+}
+
+// R4 `Binary` has no identifier element, so nothing names one by a key: the
+// server's URL for it names it instead, as a transaction bundle's `fullUrl`
+// names an entry with no identifier.
+describe('naming a Binary by its server URL', () => {
+  test.each([
+    ['relative', 'Binary/bin-1'],
+    ['absolute under the base', BINARY_URL],
+  ])('detaches a %s Binary reference and attachment URL to the server URL', (_, spelled) => {
+    expect(binaryLinksOf(detachFhir(documentNaming(spelled, spelled)))).toEqual({
+      attachmentUrl: BINARY_URL,
+      target: reference({ reference: BINARY_URL }),
+    })
+  })
+
+  test("keeps a Binary reference's type and identifier as the server wrote them", () => {
+    const named = reference({
+      reference: 'Binary/bin-1',
+      type: 'Binary',
+      identifier: identifier({ value: 'scan-1' }),
+    })
+    const document = detachFhir({
+      ...documentNaming('Binary/bin-1', 'Binary/bin-1'),
+      relatesTo: [
+        { id: null, extension: [], modifierExtension: [], code: 'appends', target: named },
+      ],
+    })
+    expect(binaryLinksOf(document).target).toEqual({ ...named, reference: BINARY_URL })
+  })
+
+  test.each([
+    ['a foreign absolute URL', 'https://elsewhere.example/Binary/bin-1'],
+    ['a URL of another type', 'Observation/obs-1'],
+    ['a data URL', 'data:,Hello'],
+    ['a fragment', '#bin-1'],
+  ])('leaves an attachment URL that is %s as it is', (_, url) => {
+    expect(binaryLinksOf(detachFhir(documentNaming(url, 'Binary/bin-1'))).attachmentUrl).toBe(url)
+  })
+
+  test('resolves the attachment URL and the reference to the Binary the batch holds', () => {
+    const detached = detachFhir(documentNaming('Binary/bin-1', 'Binary/bin-1'))
+    expect(binaryLinksOf(adopt(binaryBatchPlan)(detached, 'doc-local'))).toEqual({
+      attachmentUrl: MINTED_BINARY,
+      target: reference({ reference: MINTED_BINARY }),
+    })
+  })
+
+  test('resolves another spelling of the same absolute URL', () => {
+    const detached = detachFhir(
+      documentNaming(
+        'HTTPS://SOURCE.EXAMPLE:443/baseR4/Binary/bin-1',
+        'HTTPS://SOURCE.EXAMPLE:443/baseR4/Binary/bin-1'
+      )
+    )
+    expect(binaryLinksOf(adopt(binaryBatchPlan)(detached, 'doc-local'))).toEqual({
+      attachmentUrl: MINTED_BINARY,
+      target: reference({ reference: MINTED_BINARY }),
+    })
+  })
+
+  test('writes a Binary the batch does not hold as the server URL', () => {
+    const detached = detachFhir(documentNaming('Binary/bin-2', 'Binary/bin-2'))
+    expect(binaryLinksOf(adopt(binaryBatchPlan)(detached, 'doc-local'))).toEqual({
+      attachmentUrl: `${BASE}/Binary/bin-2`,
+      target: reference({ reference: `${BASE}/Binary/bin-2` }),
+    })
+  })
+
+  test('resolves an attachment on every type that carries one', () => {
+    const named = attachmentAt(BINARY_URL)
+    const resolved = attachmentAt(MINTED_BINARY)
+    const adoptRecord = adopt(binaryBatchPlan)
+    const patient = adoptRecord(
+      detachFhir({ ...sample(Patient.Schema, 12), id: 'pat-1', photo: [named] }),
+      'local'
+    )
+    const practitioner = adoptRecord(
+      detachFhir({ ...sample(Practitioner.Schema, 18), id: 'prac-1', photo: [named] }),
+      'local'
+    )
+    const report = adoptRecord(
+      detachFhir({ ...sample(DiagnosticReport.Schema, 17), id: 'rep-1', presentedForm: [named] }),
+      'local'
+    )
+    expect([patient, practitioner, report].map((resource) => resource.resourceType)).toEqual([
+      'Patient',
+      'Practitioner',
+      'DiagnosticReport',
+    ])
+    expect(patient.resourceType === 'Patient' && patient.photo).toEqual([resolved])
+    expect(practitioner.resourceType === 'Practitioner' && practitioner.photo).toEqual([resolved])
+    expect(report.resourceType === 'DiagnosticReport' && report.presentedForm).toEqual([resolved])
   })
 })
 

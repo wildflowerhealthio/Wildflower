@@ -394,6 +394,88 @@ const shoppersResourcesOf = async (
     })
   ).sections.flatMap((section) => section.resources.map((entry) => entry.resource))
 
+const BINARY_URL = `${ROOT}/Binary/bin-1`
+
+/**
+ * A capture of a DocumentReference whose attachments name the Binary
+ * `bin-1`, read twice (with and without a query string), and `bin-9`, never
+ * read; its `context.related` names `bin-1` too.
+ */
+const DOCUMENT_WITH_BINARY = harBytesOf(
+  [
+    {
+      url: `${ROOT}/DocumentReference/doc-1`,
+      body: {
+        resourceType: 'DocumentReference',
+        id: 'doc-1',
+        status: 'current',
+        content: [
+          { attachment: { contentType: 'application/pdf', url: 'Binary/bin-1' } },
+          { attachment: { contentType: 'application/pdf', url: 'Binary/bin-9' } },
+        ],
+        context: { related: [{ reference: 'Binary/bin-1' }] },
+      },
+    },
+    ...[`${BINARY_URL}?_format=json`, BINARY_URL].map((url) => ({
+      url,
+      body: {
+        resourceType: 'Binary',
+        id: 'bin-1',
+        contentType: 'application/pdf',
+        data: 'JVBERi0=',
+      },
+    })),
+  ].map(({ url, body }, index) =>
+    traceExchange({
+      requestId: `req-${index}`,
+      url,
+      headers: [['content-type', 'application/fhir+json']],
+      body: storedJson(body),
+      startedAtMillis: CAPTURE_FLOOR + index * 1000,
+    })
+  )
+)
+
+const pickedDocumentWithBinary = (): PickedFile.Type => ({
+  id: '0:document.har',
+  fileName: 'document.har',
+  bytes: DOCUMENT_WITH_BINARY,
+})
+
+describe('harImporter.decode over a capture of a DocumentReference and its Binary', () => {
+  it("should hold a Binary read twice once, at the server's URL for it", async () => {
+    const fileSet = await decodeOne(pickedDocumentWithBinary())
+
+    expect(
+      fileSet.sections.flatMap((section) =>
+        section.entries.map(({ fullUrl, resource }) => [resource.resourceType, fullUrl])
+      )
+    ).toEqual([
+      ['DocumentReference', 'har-entry-0:0'],
+      ['Binary', BINARY_URL],
+    ])
+  })
+
+  it('should point the attachment and the reference at the imported Binary, and a Binary it never read at the server', async () => {
+    const resources = (await readOne(pickedDocumentWithBinary())).sections.flatMap((section) =>
+      section.resources.map((entry) => entry.resource)
+    )
+    const binary = resources.find((resource) => resource.resourceType === 'Binary')
+    const document = resources.find((resource) => resource.resourceType === 'DocumentReference')
+    if (binary === undefined || document?.resourceType !== 'DocumentReference') {
+      throw new Error('expected a Binary and a DocumentReference')
+    }
+
+    expect({
+      attachments: document.content.map(({ attachment }) => attachment.url),
+      related: document.context?.related.map(({ reference }) => reference),
+    }).toEqual({
+      attachments: [`Binary/${binary.id}`, `${ROOT}/Binary/bin-9`],
+      related: [`Binary/${binary.id}`],
+    })
+  })
+})
+
 describe('harImporter.decode over a Shoppers capture', () => {
   it.each([
     { order: 'status feed first', exchanges: shoppersExchanges() },

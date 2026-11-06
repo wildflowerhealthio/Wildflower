@@ -1,4 +1,4 @@
-import { PickedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
+import { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
 import { Effect, Layer, Option, ParseResult, Schema } from 'effect'
@@ -55,7 +55,7 @@ const extractorRefusing: Layer.Layer<PositionedTextExtractor> = Layer.succeed(
 )
 
 describe('lifeLabsPdfImporter decode', () => {
-  it('property: a picked file is one file set of detached records, keyed under the picked file', async () => {
+  it('property: a picked file is one file set of detached records, each its own fullUrl', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
@@ -79,11 +79,9 @@ describe('lifeLabsPdfImporter decode', () => {
           const sections = decoded.fileSets.flatMap((fileSet) => fileSet.sections)
           const entries = sections.flatMap((section) => section.entries)
           expect(entries.map(({ resource }) => resource.id)).toEqual(entries.map(() => null))
-          const keys = entries.map((entry) => entry.fullUrl)
-          expect(keys.length).toBeGreaterThan(0)
-          for (const key of keys) {
-            expect(key.startsWith(FormatDecode.keyPrefix(file))).toBe(true)
-          }
+          const fullUrls = entries.map((entry) => entry.fullUrl)
+          expect(fullUrls.length).toBeGreaterThan(0)
+          expect(new Set(fullUrls).size).toBe(fullUrls.length)
         }
       ),
       { numRuns: numRunsFor({ base: 10 }) }
