@@ -155,7 +155,8 @@ impl FromState for LiveClientAuthenticator {
 }
 
 /// Exchange grants for tokens — built by the `/oauth/token` handler. Takes the
-/// revocation check, which refresh redemption asks, and the server's origin.
+/// revocation check and the stale-session cutoff, which refresh redemption
+/// asks, and the server's origin.
 pub(crate) type LiveTokenExchanger = TokenExchanger<SqliteGrantStore>;
 
 impl FromState for LiveTokenExchanger {
@@ -163,6 +164,7 @@ impl FromState for LiveTokenExchanger {
         TokenExchanger::new(
             state.store.clone(),
             state.revocation_check(),
+            state.stale_session_cutoff.clone(),
             state.server_origin.clone(),
         )
     }

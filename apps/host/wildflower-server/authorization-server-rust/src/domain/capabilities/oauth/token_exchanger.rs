@@ -19,6 +19,7 @@ use crate::domain::authority::{
     AuthenticatedClient, ConsumedDeviceRequest, GrantRedemption, PresentedAuthorizationCode,
     RedeemedAuthorizationCode, TokenEntitlement, ValidatedRefreshToken,
 };
+use crate::domain::browser_session::StaleSessionCutoff;
 use crate::domain::capabilities::writers::{AccessTokenMinter, RefreshFamilyWriter};
 use crate::domain::client::AllowedGrantType;
 use crate::domain::token_exchange_error::TokenExchangeError;
@@ -56,21 +57,27 @@ pub(crate) struct TokenExchanger<S: GrantStore> {
     store: S,
     /// The revocation check a refresh runs against its client's epoch.
     revocation: Arc<dyn RevocationCheck>,
+    /// The cutoff that makes a same-device session stale, which ends a
+    /// refresh family tied to that session.
+    stale_session_cutoff: Arc<StaleSessionCutoff>,
     /// The server's bare origin, every minted token's `iss` and `aud`.
     server_origin: Arc<str>,
 }
 
 impl<S: GrantStore> TokenExchanger<S> {
-    /// Build the exchanger over a store handle, the revocation-check port and
-    /// the server's origin, all lifted from the state.
+    /// Build the exchanger over a store handle, the revocation-check port,
+    /// the stale-session cutoff and the server's origin, all lifted from the
+    /// state.
     pub(crate) fn new(
         store: S,
         revocation: Arc<dyn RevocationCheck>,
+        stale_session_cutoff: Arc<StaleSessionCutoff>,
         server_origin: Arc<str>,
     ) -> Self {
         TokenExchanger {
             store,
             revocation,
+            stale_session_cutoff,
             server_origin,
         }
     }
@@ -145,6 +152,7 @@ impl<S: GrantStore> TokenExchanger<S> {
             ValidatedRefreshToken::validate(
                 tx,
                 self.revocation.as_ref(),
+                &self.stale_session_cutoff,
                 authenticated_client,
                 presented_refresh_token,
                 now,
@@ -223,12 +231,16 @@ impl<S: GrantStore> TokenExchanger<S> {
         validated_refresh_token: ValidatedRefreshToken,
         now: DateTime<Utc>,
     ) -> ExchangeOutcome {
-        let validated_refresh_token =
-            match validated_refresh_token.revalidate(tx, authenticated_client, now) {
-                Ok(validated_refresh_token) => validated_refresh_token,
-                Err(TokenExchangeError::Store(error)) => return Err(error.into()),
-                Err(refusal) => return Ok(Err(refusal)),
-            };
+        let validated_refresh_token = match validated_refresh_token.revalidate(
+            tx,
+            &self.stale_session_cutoff,
+            authenticated_client,
+            now,
+        ) {
+            Ok(validated_refresh_token) => validated_refresh_token,
+            Err(TokenExchangeError::Store(error)) => return Err(error.into()),
+            Err(refusal) => return Ok(Err(refusal)),
+        };
         let minter = AccessTokenMinter::with_active_key(tx, &self.server_origin, ACCESS_TOKEN_TTL)?;
         let successor =
             match RefreshFamilyWriter::within(tx).rotate(&validated_refresh_token, now)? {
@@ -330,7 +342,12 @@ mod tests {
     fn exchanger() -> TokenExchanger<FakeGrantStore> {
         let store = FakeGrantStore::default();
         seed_active_signing_key(&store);
-        TokenExchanger::new(store, Arc::new(NothingRevoked), SERVER_ORIGIN.into())
+        TokenExchanger::new(
+            store,
+            Arc::new(NothingRevoked),
+            Arc::new(StaleSessionCutoff::none()),
+            SERVER_ORIGIN.into(),
+        )
     }
 
     /// The proof that public client `client_id`, allowed `openid` and the

@@ -83,7 +83,8 @@ the row is created or widened only when the Owner approves — see
   - `refresh_max_ttl_seconds`: a family ends this long after it was issued.
     `NULL` leaves only the 365-day ceiling.
   - `refresh_ends_with_browser_session`: a family ends when the
-    [browser session](#browser-session) it was minted under expires. A family
+    [browser session](#browser-session) it was minted under is no longer
+    live: expired, or a same-device session gone stale at a restart. A family
     with no `sid` (the device flow) has none to end with, so only the two
     limits apply to it.
 

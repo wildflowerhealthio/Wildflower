@@ -25,7 +25,7 @@ Each is a capability over the concrete store, plus what it needs from the state.
 | `LiveAuthorizationStatusReader` | the wait page's status poll                                                         | nothing                                                                       |
 | `LivePublicKeysReader`          | `/.well-known/jwks.json`                                                            | nothing                                                                       |
 | `LiveClientAuthenticator`       | the token request's extractor, for `/oauth/token` and `/oauth/device_authorization` | nothing                                                                       |
-| `LiveTokenExchanger`            | `/oauth/token`                                                                      | the revocation check, the origin                                              |
+| `LiveTokenExchanger`            | `/oauth/token`                                                                      | the revocation check, the stale-session cutoff, the origin                    |
 | `LiveClientTokenRevoker`        | `/oauth/revoke`                                                                     | the revocation port, the origin                                               |
 
 The capabilities themselves are on the [OAuth](<../Capabilities/OAuth Explanation.md>) pages.

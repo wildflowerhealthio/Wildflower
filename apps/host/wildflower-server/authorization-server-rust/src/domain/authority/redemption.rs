@@ -38,6 +38,7 @@ use crate::domain::authorization_request::approval::Approval;
 use crate::domain::authorization_request::device::device_grant_name;
 use crate::domain::authorization_request::polled::{Polled as _, PolledState};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::browser_session::StaleSessionCutoff;
 use crate::domain::client::RefreshPolicy;
 use crate::domain::grant_store::{
     AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, GrantsTx, RefreshTokensTx,
@@ -446,12 +447,14 @@ impl ValidatedRefreshToken {
     pub(crate) fn validate(
         tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
         revocation: &dyn RevocationCheck,
+        stale_session_cutoff: &StaleSessionCutoff,
         authenticated_client: &AuthenticatedClient,
         presented_refresh_token: &str,
         now: DateTime<Utc>,
     ) -> Result<Self, TokenExchangeError> {
         let validated = Self::live_family(
             tx,
+            stale_session_cutoff,
             authenticated_client,
             token_storage_hash(presented_refresh_token),
             now,
@@ -494,22 +497,31 @@ impl ValidatedRefreshToken {
     pub(crate) fn revalidate(
         self,
         tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
+        stale_session_cutoff: &StaleSessionCutoff,
         authenticated_client: &AuthenticatedClient,
         now: DateTime<Utc>,
     ) -> Result<Self, TokenExchangeError> {
-        Self::live_family(tx, authenticated_client, self.presented_hash, now)
+        Self::live_family(
+            tx,
+            stale_session_cutoff,
+            authenticated_client,
+            self.presented_hash,
+            now,
+        )
     }
 
     /// The store-only half of validation: the family `presented_hash`
     /// belongs to, required to be `authenticated_client`'s, unexpired at
     /// `now`, not minted under a revoked browser session, and within the
-    /// client's [`RefreshPolicy`] as it stands. A revoked family is one whose
-    /// deadline was pulled back to the revocation instant, so the deadline
-    /// check covers both. A family that has passed a deadline stays ended
-    /// even if the policy is loosened afterwards; a tightened policy ends a
-    /// family on its next refresh.
+    /// client's [`RefreshPolicy`] as it stands, a family tied to its browser
+    /// session needing that session live under `stale_session_cutoff`. A
+    /// revoked family is one whose deadline was pulled back to the revocation
+    /// instant, so the deadline check covers both. A family that has passed a
+    /// deadline stays ended even if the policy is loosened afterwards; a
+    /// tightened policy ends a family on its next refresh.
     fn live_family(
         tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
+        stale_session_cutoff: &StaleSessionCutoff,
         authenticated_client: &AuthenticatedClient,
         presented_hash: String,
         now: DateTime<Utc>,
@@ -538,17 +550,25 @@ impl ValidatedRefreshToken {
             ));
         }
         // Revoking a browser session ends every family minted under it,
-        // whatever its client's policy says. A family with no session (the
-        // device flow) has none to check.
-        if let Some(sid) = family.sid.as_deref() {
-            if tx.is_browser_session_revoked(sid)? {
-                return Err(TokenExchangeError::InvalidGrant(
-                    InvalidGrantReason::RefreshTokenSessionRevoked {
-                        family_id: family.family_id,
-                    },
-                ));
-            }
-        }
+        // whatever its client's policy says. A `sid` that names no session
+        // counts as revoked: a session is pruned only once nothing it minted
+        // can still be live. A family with no session (the device flow) has
+        // none to check.
+        let browser_session = match family.sid.as_deref() {
+            Some(sid) => match tx.browser_session_by_sid(sid)? {
+                Some(browser_session) if browser_session.revoked_at.is_none() => {
+                    Some(browser_session)
+                }
+                _ => {
+                    return Err(TokenExchangeError::InvalidGrant(
+                        InvalidGrantReason::RefreshTokenSessionRevoked {
+                            family_id: family.family_id,
+                        },
+                    ))
+                }
+            },
+            None => None,
+        };
         let refresh_policy = *authenticated_client.refresh_policy();
         // The idle limit runs from the family's last rotation, which is when
         // its live token was issued. A consumed token is a replay, and its
@@ -571,21 +591,16 @@ impl ValidatedRefreshToken {
                 },
             ));
         }
-        if let Some(sid) = family
-            .sid
-            .as_deref()
-            .filter(|_| refresh_policy.ends_with_browser_session)
-        {
-            let session_expired = tx
-                .browser_session_by_sid(sid)?
-                .is_none_or(|session| session.expires_at <= now);
-            if session_expired {
-                return Err(TokenExchangeError::InvalidGrant(
-                    InvalidGrantReason::RefreshTokenSessionExpired {
-                        family_id: family.family_id,
-                    },
-                ));
-            }
+        let has_tied_session_ended = refresh_policy.ends_with_browser_session
+            && browser_session.is_some_and(|browser_session| {
+                !browser_session.is_live_at(now, stale_session_cutoff)
+            });
+        if has_tied_session_ended {
+            return Err(TokenExchangeError::InvalidGrant(
+                InvalidGrantReason::RefreshTokenSessionExpired {
+                    family_id: family.family_id,
+                },
+            ));
         }
         Ok(ValidatedRefreshToken {
             token_scopes: token_scope_spellings(&family.scopes),
@@ -979,9 +994,15 @@ mod tests {
         let stranger = authenticated(&store, "stranger");
         live_family(&store, "client", now);
 
-        let proof =
-            ValidatedRefreshToken::validate(&mut store.tx(), &NothingRevoked, &client, "live", now)
-                .expect("validates");
+        let proof = ValidatedRefreshToken::validate(
+            &mut store.tx(),
+            &NothingRevoked,
+            &StaleSessionCutoff::none(),
+            &client,
+            "live",
+            now,
+        )
+        .expect("validates");
         assert_eq!(proof.family_id(), "fam");
         assert_eq!(proof.presented_hash(), token_storage_hash("live"));
         assert_eq!(proof.granted_scopes(), ["openid", "offline_access"]);
@@ -989,6 +1010,7 @@ mod tests {
             reason(ValidatedRefreshToken::validate(
                 &mut store.tx(),
                 &NothingRevoked,
+                &StaleSessionCutoff::none(),
                 &client,
                 "ghost",
                 now
@@ -999,6 +1021,7 @@ mod tests {
             reason(ValidatedRefreshToken::validate(
                 &mut store.tx(),
                 &NothingRevoked,
+                &StaleSessionCutoff::none(),
                 &stranger,
                 "live",
                 now
@@ -1009,6 +1032,7 @@ mod tests {
             reason(ValidatedRefreshToken::validate(
                 &mut store.tx(),
                 &NothingRevoked,
+                &StaleSessionCutoff::none(),
                 &client,
                 "live",
                 now + Duration::days(2)
@@ -1031,9 +1055,15 @@ mod tests {
         let client = authenticated(&store, "client");
         store.tx().insert_browser_session(&session).unwrap();
         live_family_under(&store, "client", Some(&session.sid), now);
-        let proof =
-            ValidatedRefreshToken::validate(&mut store.tx(), &NothingRevoked, &client, "live", now)
-                .expect("validates");
+        let proof = ValidatedRefreshToken::validate(
+            &mut store.tx(),
+            &NothingRevoked,
+            &StaleSessionCutoff::none(),
+            &client,
+            "live",
+            now,
+        )
+        .expect("validates");
         assert_eq!(proof.sid(), Some(session.sid.as_str()));
         assert!(store
             .tx()
@@ -1043,6 +1073,7 @@ mod tests {
             reason(ValidatedRefreshToken::validate(
                 &mut store.tx(),
                 &NothingRevoked,
+                &StaleSessionCutoff::none(),
                 &client,
                 "live",
                 now
@@ -1059,6 +1090,7 @@ mod tests {
             reason(ValidatedRefreshToken::validate(
                 &mut store.tx(),
                 &NothingRevoked,
+                &StaleSessionCutoff::none(),
                 &client,
                 "live",
                 now
@@ -1082,13 +1114,27 @@ mod tests {
         revocation_store
             .bump_subject_epoch("client", now)
             .expect("bump to the family's start");
-        ValidatedRefreshToken::validate(&mut store.tx(), &revocation_store, &client, "live", now)
-            .expect("a family begun at the epoch validates");
+        ValidatedRefreshToken::validate(
+            &mut store.tx(),
+            &revocation_store,
+            &StaleSessionCutoff::none(),
+            &client,
+            "live",
+            now,
+        )
+        .expect("a family begun at the epoch validates");
         revocation_store
             .bump_subject_epoch("other-client", now + Duration::seconds(1))
             .expect("bump another client");
-        ValidatedRefreshToken::validate(&mut store.tx(), &revocation_store, &client, "live", now)
-            .expect("another client's epoch doesn't touch this family");
+        ValidatedRefreshToken::validate(
+            &mut store.tx(),
+            &revocation_store,
+            &StaleSessionCutoff::none(),
+            &client,
+            "live",
+            now,
+        )
+        .expect("another client's epoch doesn't touch this family");
 
         revocation_store
             .bump_subject_epoch("client", now + Duration::seconds(1))
@@ -1097,6 +1143,7 @@ mod tests {
             reason(ValidatedRefreshToken::validate(
                 &mut store.tx(),
                 &revocation_store,
+                &StaleSessionCutoff::none(),
                 &client,
                 "live",
                 now
@@ -1129,7 +1176,14 @@ mod tests {
         client: &AuthenticatedClient,
         at: DateTime<Utc>,
     ) -> Result<ValidatedRefreshToken, TokenExchangeError> {
-        ValidatedRefreshToken::validate(&mut store.tx(), &NothingRevoked, client, "live", at)
+        ValidatedRefreshToken::validate(
+            &mut store.tx(),
+            &NothingRevoked,
+            &StaleSessionCutoff::none(),
+            client,
+            "live",
+            at,
+        )
     }
 
     /// The idle limit runs from the live token's issue, the family's last
@@ -1279,6 +1333,60 @@ mod tests {
         live_family(&store, "client", signed_in_at);
         validate_at(&store, &tied, session_expires_at)
             .expect("a family with no session has none to end with");
+    }
+
+    /// A same-device session the stale cutoff makes stale (a server restart
+    /// since its sign-in) has ended, though its `expires_at` is hours away: a
+    /// family tied to it is refused, while one whose client doesn't tie its
+    /// families to the session keeps refreshing.
+    #[test]
+    fn a_session_tied_family_ends_when_its_session_goes_stale() {
+        let signed_in_at = Utc::now();
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), signed_in_at);
+        let restarted = StaleSessionCutoff::new(
+            signed_in_at + Duration::seconds(1),
+            std::collections::HashSet::new(),
+        );
+        let ends_with_session = RefreshPolicy {
+            idle_ttl: None,
+            max_ttl: None,
+            ends_with_browser_session: true,
+        };
+        let validate_after_restart = |store: &FakeGrantStore, client: &AuthenticatedClient| {
+            ValidatedRefreshToken::validate(
+                &mut store.tx(),
+                &NothingRevoked,
+                &restarted,
+                client,
+                "live",
+                signed_in_at + Duration::minutes(5),
+            )
+        };
+
+        let store = FakeGrantStore::default();
+        store.tx().insert_browser_session(&session).unwrap();
+        let tied = authenticated_under(&store, "client", ends_with_session);
+        live_family_under(&store, "client", Some(&session.sid), signed_in_at);
+        assert_eq!(
+            reason(validate_after_restart(&store, &tied)),
+            InvalidGrantReason::RefreshTokenSessionExpired {
+                family_id: "fam".to_owned()
+            }
+        );
+
+        let store = FakeGrantStore::default();
+        store.tx().insert_browser_session(&session).unwrap();
+        let untied = authenticated_under(
+            &store,
+            "client",
+            RefreshPolicy {
+                ends_with_browser_session: false,
+                ..ends_with_session
+            },
+        );
+        live_family_under(&store, "client", Some(&session.sid), signed_in_at);
+        validate_after_restart(&store, &untied).expect("an untied family outlives a stale session");
     }
 
     /// Revoking a browser session ends the families minted under it whatever

@@ -146,6 +146,7 @@ mod tests {
 
     use chrono::Duration;
 
+    use crate::domain::browser_session::StaleSessionCutoff;
     use crate::domain::client::Client;
     use crate::domain::refresh_token::REFRESH_TOKEN_FAMILY_CEILING;
     use crate::domain::test_fake::{
@@ -225,8 +226,15 @@ mod tests {
                 ..client("client", &["openid"])
             },
         );
-        ValidatedRefreshToken::validate(&mut store.tx(), &NothingRevoked, &client, plaintext, now)
-            .unwrap()
+        ValidatedRefreshToken::validate(
+            &mut store.tx(),
+            &NothingRevoked,
+            &StaleSessionCutoff::none(),
+            &client,
+            plaintext,
+            now,
+        )
+        .unwrap()
     }
 
     /// Rotating a family made under a browser session moves the session's
