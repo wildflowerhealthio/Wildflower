@@ -324,11 +324,16 @@ const imagingStudyKeysOf = (fileSet: DecodedFileSet.Type): readonly string[] =>
 const withSharedStudyNotes = <TFormat extends string>(
   decoded: FormatDecode.Decoded<TFormat>
 ): FormatDecode.Decoded<TFormat> => {
-  const setsByStudyKey = Arr.groupBy(decoded.fileSets.flatMap(imagingStudyKeysOf), (key) => key)
+  const studyKeysBySet = decoded.fileSets.map(imagingStudyKeysOf)
+  const setCountByStudyKey = Arr.reduce(
+    studyKeysBySet.flat(),
+    new Map<string, number>(),
+    (counts, key) => counts.set(key, (counts.get(key) ?? 0) + 1)
+  )
   return {
     ...decoded,
-    fileSets: decoded.fileSets.map((fileSet) =>
-      imagingStudyKeysOf(fileSet).some((key) => (setsByStudyKey[key]?.length ?? 0) > 1)
+    fileSets: Arr.zipWith(decoded.fileSets, studyKeysBySet, (fileSet, studyKeys) =>
+      studyKeys.some((key) => (setCountByStudyKey.get(key) ?? 0) > 1)
         ? { ...fileSet, notes: [...fileSet.notes, SHARED_STUDY_NOTE] }
         : fileSet
     ),
