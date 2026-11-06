@@ -393,9 +393,10 @@ describe(
       })
     })
 
-    test('property: every latest fill names the patient, and every earlier fill the account by its customerId alone', async () => {
+    test("property: every latest fill names the patient, and every earlier fill a one-person account's patient or else the account by its customerId alone", async () => {
       await assertRoundTrip(({ asOf, shoppersCase }, imported) => {
         const accountSubject = `${ShoppersIdentifierSystem.CustomerId}|${shoppersCase.account.pcid}`
+        const isAccountOfOne = shoppersCase.account.patients.length === 1
         for (const each of prescriptionsOf(shoppersCase)) {
           const request = requestFor(asOf, imported, each)
           const lastFillDate = isoDateOn(asOf, each.expected.lastFillDay)
@@ -409,7 +410,9 @@ describe(
               .map((day) => {
                 const fillDate = isoDateOn(asOf, day)
                 const subject =
-                  fillDate === lastFillDate ? request?.subject.reference : accountSubject
+                  fillDate === lastFillDate || isAccountOfOne
+                    ? request?.subject.reference
+                    : accountSubject
                 return `${fillDate} ${subject}`
               })
               .toSorted()
