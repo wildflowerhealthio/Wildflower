@@ -714,13 +714,16 @@ describe('the records the import adopts', () => {
       throw new Error('unreachable: the Patient is keyed by its source id')
     }
     const adoptRecord = adopt(
-      ReferencePlan.of([
-        {
-          resourceType: patientPlan.resourceType,
-          identifier: patientPlan.identifier,
-          literalReference: ResourcePlan.literalReference(patientPlan),
-        },
-      ])
+      ReferencePlan.of(
+        [
+          {
+            resourceType: patientPlan.resourceType,
+            identifier: patientPlan.identifier,
+            literalReference: ResourcePlan.literalReference(patientPlan),
+          },
+        ],
+        []
+      )
     )
     expect(imported).toEqual(
       [

@@ -90,7 +90,8 @@ const adoptionOver = (
           identifier,
           literalReference: `${record.resourceType}/${idOf(record)}`,
         }))
-      )
+      ),
+      []
     )
   )
   return (record) => adoptRecord(record, idOf(record))
@@ -989,7 +990,7 @@ describe('adopt', () => {
   }
 
   test('stores a record under the id it is given, keyed or not', () => {
-    const adoptRecord = adopt(ReferencePlan.of([]))
+    const adoptRecord = adopt(ReferencePlan.of([], []))
     const keyed = detachFhir({ ...sample(Patient.Schema, 12), id: 'pat-7' })
     const keyless = detachFhir({ ...sample(Binary.Schema, 11), id: 'src-1' })
     expect(adoptRecord(keyed, 'planned-1').id).toBe('planned-1')

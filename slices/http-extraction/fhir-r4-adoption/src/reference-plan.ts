@@ -87,7 +87,7 @@ const distinctLiteralReferences = (
  * reference matching several records is an error, except that it fails
  * nothing here. The same entry given twice is not ambiguous.
  */
-const of = (entries: Iterable<Entry>, fullUrlEntries: Iterable<FullUrlEntry> = []): Type => ({
+const of = (entries: Iterable<Entry>, fullUrlEntries: Iterable<FullUrlEntry>): Type => ({
   literalReferencesByTypedIdentifier: distinctLiteralReferences(
     Arr.groupBy(entries, ({ resourceType, identifier }) =>
       typedIdentifierText(resourceType, identifier)

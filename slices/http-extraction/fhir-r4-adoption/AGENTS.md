@@ -51,7 +51,7 @@ vocabulary) stays FHIR-free and below it.
   structure: for each resource type and qualified identifier, the literal
   reference a logical reference by them resolves to, and for each absolute
   `fullUrl`, the literal reference a literal reference or an `Attachment.url`
-  spelling it resolves to. **`of(entries, fullUrlEntries?)`** holds each
+  spelling it resolves to. **`of(entries, fullUrlEntries)`** holds each
   `{ resourceType, identifier, literalReference }` and each
   **`FullUrlEntry`** `{ fullUrl, literalReference }` it is given and decides
   nothing about which go in; its builder does.
