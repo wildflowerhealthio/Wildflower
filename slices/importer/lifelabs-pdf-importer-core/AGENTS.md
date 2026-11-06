@@ -66,15 +66,20 @@ that hands back a hand-written positioned-text document.
   the document on a tie), so a card reissued between reports carries its
   current version code. The keys:
   the Patient's printed `Patient ID`, else its `HC #` in the settings'
-  province's health card system (`fhir-ca-infoway`'s
-  `HealthCardIdentifier.of`: an Ontario number less its version code, which
-  goes in Ontario Health's version-code extension, so a reissued card keys the
-  same Patient; a British Columbia PHN as printed), else
+  province's health card system (decoded by `fhir-ca-infoway`'s
+  `HealthCardIdentifier.FromPrinted`, spaces and hyphens stripped: an Ontario
+  number's ten digits, its version code in Ontario Health's version-code
+  extension, so a reissued card keys the same Patient; a British Columbia
+  PHN's ten digits; an `Other` number as printed), else
   `<name>, <date of birth>` as printed (`patientKeyOf`, the other printed
   identifiers behind the key); the `DiagnosticReport`'s
   `Lab No` (`reportKeyOf`); a result row's
   `<Lab No>/<section>/<test name>/<ordinal>` (`observationKeyOf`); a
   provider's printed name, inner whitespace collapsed (`practitionerKeyOf`).
+  An `HC #` that is not the chosen province's shape fails the synthesis with
+  the schema's `ParseError`, which names the shape expected, so the import
+  lists the file as unreadable rather than keying the Patient some other
+  way; an empty `HC #` is no card.
   The per-resource wire builders live in `wire/`:
   `wire/patient.ts`, `wire/practitioner.ts`, `wire/observation.ts`,
   `wire/diagnostic-report.ts`, with shared helpers (`timingWire`,
@@ -92,8 +97,8 @@ that hands back a hand-written positioned-text document.
   `Lab No` and `Patient ID`, and the
   Wildflower-minted name-and-birth-date, result and practitioner-name
   systems for what the report prints no number for. The health card number
-  is not among them: it is written in its province's Infoway system, which
-  `fhir-ca-infoway` declares. A leaf module so the
+  is not among them: it is written in its province's health card system,
+  which `fhir-ca-infoway` declares. A leaf module so the
   importer and the FHIR synthesis import it without a cycle.
 - `src/decode.ts` — **`decodeLifeLabsPdf`** (the `decodeFileSet` the format's
   importer lifts into its batch `decode`) and **`decodeLifeLabsPdfDocument`** (the pure
@@ -163,7 +168,8 @@ that hands back a hand-written positioned-text document.
   report prints local clock times with no zone, and FHIR's
   `dateTime`-with-time / `instant` need one; and it prints the `HC #` but not
   which province issued the card (LifeLabs runs labs in Ontario and British
-  Columbia, and the report prints the lab's address). Both are passed to
+  Columbia, and the report prints the lab's address; `'Other'` takes a card
+  from anywhere else). Both are passed to
   `decode` as settings and to the synthesis as `SynthesisOptions`. Changing
   the province re-decodes, and a Patient keyed by its `HC #` changes key, so
   its review row and any choice made on it reset.

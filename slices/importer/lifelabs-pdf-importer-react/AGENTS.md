@@ -17,9 +17,10 @@ per-resource include/edit) covers it.
   shell owns the settings); a name the runtime does not know is flagged inline
   (`aria-invalid`, an alert) with the same `DateTime.zoneMakeNamed` check the
   import's `parse` makes, so the reviewer sees the problem before the import
-  fails on it. Beside it, a `<select>` of the provinces whose health cards
-  `fhir-ca-infoway` names (`HealthCardProvince.all`, labelled by
-  `HealthCardProvince.names`), read back through `HealthCardProvince.is`.
+  fails on it. Beside it, a `<select>` of `fhir-ca-infoway`'s health card
+  provinces (`HealthCardProvince.all`: Ontario, British Columbia and "Other
+  province", labelled by `HealthCardProvince.names`), read back through
+  `HealthCardProvince.is`.
 - `src/index.ts` — the package barrel: `LifeLabsPdfSettingsPicker`, the
   `SUGGESTED_TIME_ZONES` list and `UNKNOWN_ZONE_MESSAGE` sentence the picker
   renders, and the `SettingsPickerProps` type re-exported from

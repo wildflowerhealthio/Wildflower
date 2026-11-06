@@ -78,8 +78,9 @@ linked to your other resources by logical reference by their key
 (`DetachedResource.logicalReferenceWire`). Key a record by a real identifier
 the file prints, in that identifier's own system (LifeLabs keys a report by
 its `Lab No`, a Patient by its `Patient ID` or health card number, the latter
-written with `fhir-ca-infoway`'s `HealthCardIdentifier.of` rather than a
-system of your own); where the
+decoded with `fhir-ca-infoway`'s `HealthCardIdentifier.FromPrinted` rather
+than in a system of your own, so a number that is not its province's shape
+fails the decode); where the
 file prints none for a record that must be referenced, use a Wildflower-minted
 system with a readable value made of what it does print (LifeLabs' result rows
 and providers), never a digest (DICOM still keys by one; #1508 moves it to
