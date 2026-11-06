@@ -62,10 +62,7 @@ const decodeLifeLabsPdfDocument = (
     const { reports, pagesWithoutLabNo } = yield* Report.tryFromDocument(document).pipe(
       Effect.mapError(asParseError)
     )
-    const decoded = yield* decodedReportsOf(reports, {
-      timeZone,
-      healthCardProvince: settings.healthCardProvince,
-    })
+    const decoded = yield* decodedReportsOf(reports, { ...settings, timeZone })
     return { ...decoded, notes: [...pagesWithoutLabNo.map(pageWithoutLabNoNote), ...decoded.notes] }
   })
 
