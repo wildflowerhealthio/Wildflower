@@ -211,9 +211,32 @@ const prescriptionSubjectIfAgreed = (
   )
 
 /**
- * A detached record, a `MedicationDispense` whose `subject` names no Patient
- * of the set filed on the person its prescriptions agree it is for
- * ({@link prescriptionSubjectIfAgreed}), and any other record as it is.
+ * Whether a dispense's `subject` says nothing the set can file it by: it has
+ * none, or it is a logical reference to a Patient (no literal, `type`
+ * `Patient`, an `identifier`) that resolves to no Patient of the set, because
+ * the set holds none the identifier names or holds several that carry it.
+ *
+ * @remarks
+ * Any other `subject` is the source's own statement of who received the
+ * fill, so it is kept: a literal reference of any kind (a contained `#…`, a
+ * `Patient/…` the set does not hold, an absolute URL), or a logical reference
+ * that does not say it names a Patient (a `Group`, or no `type`).
+ */
+const isUnfiledSubject = (
+  referencePlan: ReferencePlan.Type,
+  subject: ReferenceType | null
+): boolean =>
+  subject === null ||
+  (subject.reference === null &&
+    subject.type === 'Patient' &&
+    subject.identifier !== null &&
+    Option.isNone(ReferencePlan.literalReferenceIfResolved(referencePlan, subject)))
+
+/**
+ * A detached record, a `MedicationDispense` whose `subject` is unfiled
+ * ({@link isUnfiledSubject}) filed on the person its prescriptions agree it
+ * is for ({@link prescriptionSubjectIfAgreed}), and any other record as it
+ * is.
  *
  * @remarks
  * A source may know who a prescription is for but not who one of its fills
@@ -224,8 +247,7 @@ const prescriptionSubjectIfAgreed = (
 const takeSubjectFromPrescription =
   (referencePlan: ReferencePlan.Type, subjectsByPrescription: SubjectsByPrescription) =>
   (record: DetachedResource.Type): DetachedResource.Type =>
-    record.resourceType === 'MedicationDispense' &&
-    Option.isNone(patientReferenceIfInSet(referencePlan, record.subject))
+    record.resourceType === 'MedicationDispense' && isUnfiledSubject(referencePlan, record.subject)
       ? Option.match(
           prescriptionSubjectIfAgreed(
             referencePlan,
@@ -255,8 +277,9 @@ const takeSubjectFromPrescription =
  * whichever section holds it. One that names a record the set does not hold,
  * a keyless one, or an identifier two records of the set share, stays
  * logical, for the identity map. Before it is adopted, a `MedicationDispense`
- * whose `subject` names no Patient of the set takes the `subject` of the
- * prescriptions of the set it names ({@link takeSubjectFromPrescription}).
+ * with no `subject`, or one naming a Patient by an identifier that resolves to
+ * no Patient of the set, takes the `subject` of the prescriptions of the set
+ * it names ({@link takeSubjectFromPrescription}).
  */
 const adopt = (
   decoded: Pick<Type, 'sections' | 'notes'>,

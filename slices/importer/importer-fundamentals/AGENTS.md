@@ -122,9 +122,13 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   not hold, a keyless one, or an identifier two records of the set share
   (`ReferencePlan`'s ambiguous case; a record listing one identifier twice
   is no clash), stays logical, for the identity map. Before adopting, a
-  `MedicationDispense` whose `subject` names no Patient of the set (by
-  `ReferencePlan.literalReferenceIfResolved`) takes its authorizing
-  prescriptions' `subject`, as they spell it, replacing its own: every
+  `MedicationDispense` with no `subject`, or one that is a logical reference
+  to a Patient (no literal) resolving to no Patient of the set (by
+  `ReferencePlan.literalReferenceIfResolved`: none the identifier names, or
+  several sharing it), takes its authorizing prescriptions' `subject`, as
+  they spell it, replacing its own; a literal `subject` (contained, a
+  `Patient/…` the set does not hold, a URL) or a logical one to another type
+  is the source's own statement and is kept. For the replacement, every
   `authorizingPrescription` resolving to a `MedicationRequest` of the set
   must have a `subject` naming a Patient of the set, and all the same one;
   otherwise the dispense is left as it is. It is how a source that knows who
