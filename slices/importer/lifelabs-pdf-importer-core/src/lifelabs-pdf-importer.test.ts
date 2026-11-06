@@ -101,47 +101,57 @@ describe('lifeLabsPdfImporter decode', () => {
       bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
     }
     await fc.assert(
-      fc.asyncProperty(reportArbitrary, async (printed) => {
-        const report = {
-          ...printed,
-          patient: { ...printed.patient, patientId: '', healthCardNumber: '1234567890 AB' },
-        }
-        const patientIdentifiersWith = async (
-          healthCardProvince: HealthCardProvince.Type
-        ): Promise<readonly unknown[]> => {
-          const decoded = await Effect.runPromise(
-            lifeLabsPdfImporter
-              .decode([file], { ...SETTINGS, healthCardProvince })
-              .pipe(Effect.provide(extractorPrinting([report])))
-          )
-          return decoded.fileSets
-            .flatMap((fileSet) => fileSet.sections)
-            .flatMap((section) => section.entries)
-            .flatMap(({ resource }) =>
-              resource.resourceType === 'Patient' ? resource.identifier : []
+      fc.asyncProperty(
+        reportArbitrary,
+        fc.stringMatching(/^\d{10}$/),
+        fc.constantFrom('', ' '),
+        fc.stringMatching(/^[A-Z]{0,2}$/),
+        async (printed, number, separator, versionCode) => {
+          const healthCardNumber = `${number}${versionCode === '' ? '' : separator}${versionCode}`
+          const report = {
+            ...printed,
+            patient: { ...printed.patient, patientId: '', healthCardNumber },
+          }
+          const patientIdentifiersWith = async (
+            healthCardProvince: HealthCardProvince.Type
+          ): Promise<readonly unknown[]> => {
+            const decoded = await Effect.runPromise(
+              lifeLabsPdfImporter
+                .decode([file], { ...SETTINGS, healthCardProvince })
+                .pipe(Effect.provide(extractorPrinting([report])))
             )
-        }
+            return decoded.fileSets
+              .flatMap((fileSet) => fileSet.sections)
+              .flatMap((section) => section.entries)
+              .flatMap(({ resource }) =>
+                resource.resourceType === 'Patient' ? resource.identifier : []
+              )
+          }
 
-        expect(await patientIdentifiersWith('ON')).toEqual([
-          expect.objectContaining({
-            system: new URL(HealthCardIdentifier.HealthCardNumberSystem.ON),
-            value: '1234567890',
-            extension: [
-              expect.objectContaining({
-                url: HealthCardIdentifier.ONTARIO_HEALTH_CARD_VERSION_CODE_URL,
-                valueString: 'AB',
-              }),
-            ],
-          }),
-        ])
-        expect(await patientIdentifiersWith('BC')).toEqual([
-          expect.objectContaining({
-            system: new URL(HealthCardIdentifier.HealthCardNumberSystem.BC),
-            value: '1234567890 AB',
-            extension: [],
-          }),
-        ])
-      }),
+          expect(await patientIdentifiersWith('ON')).toEqual([
+            expect.objectContaining({
+              system: new URL(HealthCardIdentifier.HealthCardNumberSystem.ON),
+              value: number,
+              extension:
+                versionCode === ''
+                  ? []
+                  : [
+                      expect.objectContaining({
+                        url: HealthCardIdentifier.ONTARIO_HEALTH_CARD_VERSION_CODE_URL,
+                        valueString: versionCode,
+                      }),
+                    ],
+            }),
+          ])
+          expect(await patientIdentifiersWith('BC')).toEqual([
+            expect.objectContaining({
+              system: new URL(HealthCardIdentifier.HealthCardNumberSystem.BC),
+              value: healthCardNumber,
+              extension: [],
+            }),
+          ])
+        }
+      ),
       { numRuns: numRunsFor({ base: 10 }) }
     )
   })
