@@ -20,8 +20,9 @@ const isKnownTimeZone = (timeZone: string): boolean =>
  * suggested through a `datalist`, so any zone can be typed and the common ones
  * need no typing; a name the runtime does not know is flagged inline
  * (`aria-invalid`, a message) rather than swallowed, since the import's parse
- * fails on it. The province is a `<select>` of the provinces whose health
- * cards `fhir-ca-infoway` names. Every change is reported up through
+ * fails on it. The province is a `<select>` of `fhir-ca-infoway`'s
+ * `HealthCardProvince`s: Ontario, British Columbia, and "Other province" for
+ * a card from anywhere else. Every change is reported up through
  * {@link SettingsPickerProps.onChange} verbatim — the shell owns the settings.
  */
 const LifeLabsPdfSettingsPicker = ({

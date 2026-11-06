@@ -4,9 +4,9 @@ import { Option, ParseResult, Schema } from 'effect'
 import type * as HealthCardProvince from './health-card-province.ts'
 
 /**
- * Each province's health card number naming system, from Canada Health
- * Infoway's Canadian URI Registry: the `Identifier.system` a health card
- * number is written under.
+ * Each province's health card number naming system: the `Identifier.system`
+ * a health card number is written under. Ontario's and British Columbia's are
+ * from Canada Health Infoway's Canadian URI Registry.
  *
  * @remarks
  * **Persisted wire format.** A record keyed by a health card number is stored
@@ -18,6 +18,12 @@ const HealthCardNumberSystem: Readonly<Record<HealthCardProvince.Type, string>> 
   ON: 'https://fhir.infoway-inforoute.ca/NamingSystem/ca-on-patient-hcn',
   /** British Columbia's Personal Health Number (PHN). */
   BC: 'https://fhir.infoway-inforoute.ca/NamingSystem/ca-bc-patient-healthcare-id',
+  /**
+   * A health card number from any other province or territory, in a
+   * Wildflower-minted system: the registry names only each jurisdiction's own
+   * system, and has none for a number whose jurisdiction is not known.
+   */
+  Other: 'https://wildflowerhealth.io/fhir/sid/health-card-number',
 }
 
 /**
@@ -27,6 +33,21 @@ const HealthCardNumberSystem: Readonly<Record<HealthCardProvince.Type, string>> 
  */
 const ONTARIO_HEALTH_CARD_VERSION_CODE_URL =
   'http://ontariohealth.ca/fhir/StructureDefinition/ca-on-setp-ext-health-card-version-code'
+
+/**
+ * HL7 v2 table 0203's Jurisdictional health number (`JHN`), the identifier
+ * type CA Baseline gives a health card number: the `type` of an `Other`
+ * number, whose Wildflower-minted system alone does not say what it is.
+ */
+const JURISDICTIONAL_HEALTH_NUMBER_TYPE = {
+  coding: [
+    {
+      system: 'http://terminology.hl7.org/CodeSystem/v2-0203',
+      code: 'JHN',
+      display: 'Jurisdictional health number (Canada)',
+    },
+  ],
+}
 
 /**
  * A health card number as an `Identifier` on the wire: always with its
@@ -54,7 +75,9 @@ const BRITISH_COLUMBIA_PHN = /^\d{10}$/
  * @remarks
  * Each rule checks the number's shape only: neither Ontario's nor British
  * Columbia's check digit is verified (#1523), so a misread number with the
- * right shape still decodes.
+ * right shape still decodes. `Other` has no shape to check: any number but an
+ * empty one is written as printed, letters and all (a Québec RAMQ number
+ * starts with four), and no version code is split off.
  */
 interface PrintedRule {
   /** The identifier a number less its separators is; `None` when it is not this province's shape. */
@@ -88,6 +111,17 @@ const PrintedRules: Readonly<Record<HealthCardProvince.Type, PrintedRule>> = {
       ),
     expected: 'not a British Columbia PHN: expected exactly ten digits',
   },
+  Other: {
+    identifierOf: (card) =>
+      Option.liftPredicate(card, (number) => number !== '').pipe(
+        Option.map((number) => ({
+          system: HealthCardNumberSystem.Other,
+          type: JURISDICTIONAL_HEALTH_NUMBER_TYPE,
+          value: number,
+        }))
+      ),
+    expected: 'not a health card number: expected something besides spaces and hyphens',
+  },
 }
 
 /** A printed number less the spaces and hyphens it may be printed with, anywhere in it. */
@@ -112,9 +146,11 @@ const printedOf = (identifier: HealthCardIdentifier): string =>
  *   {@link HealthCardNumberSystem}: Ontario's ten digits in `value` and its
  *   version code, when it prints one, in the
  *   {@link ONTARIO_HEALTH_CARD_VERSION_CODE_URL} extension; British
- *   Columbia's ten-digit PHN in `value`. Decoding fails when the number is
- *   not that province's shape, with a message naming the shape expected, so a
- *   wrong province choice reads as one. Encoding gives the printed form back
+ *   Columbia's ten-digit PHN in `value`; an `Other` number in `value`,
+ *   typed {@link JURISDICTIONAL_HEALTH_NUMBER_TYPE}. Decoding fails when the
+ *   number is not that province's shape (for `Other`, when nothing is left),
+ *   with a message naming the shape expected, so a wrong province choice
+ *   reads as one. Encoding gives the printed form back
  *   (`1234567890 AB`), and fails for an identifier in another system.
  */
 const FromPrinted = (
@@ -141,6 +177,7 @@ const FromPrinted = (
 export {
   FromPrinted,
   HealthCardNumberSystem,
+  JURISDICTIONAL_HEALTH_NUMBER_TYPE,
   ONTARIO_HEALTH_CARD_VERSION_CODE_URL,
   HealthCardIdentifierSchema as Schema,
   type HealthCardIdentifier as Type,

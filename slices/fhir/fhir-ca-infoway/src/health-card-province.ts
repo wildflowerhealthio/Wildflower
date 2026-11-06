@@ -1,16 +1,19 @@
 import { Schema } from 'effect'
 
 /**
- * A province whose health card numbers this package names, by its ISO 3166-2
- * subdivision code: Ontario (`ON`) and British Columbia (`BC`).
+ * The province that issued a health card: Ontario (`ON`) or British Columbia
+ * (`BC`) by its ISO 3166-2 subdivision code, or `Other` for a card from any
+ * other province or territory.
  *
  * @remarks
- * Not every province: each one here has its health card naming system in
- * Canada Health Infoway's URI registry and its rule for writing a printed
- * number ({@link HealthCardIdentifier.FromPrinted}). Another province is added when a
- * source needs it.
+ * Ontario and British Columbia each have their health card naming system in
+ * Canada Health Infoway's URI registry and a rule for the shape of a printed
+ * number ({@link HealthCardIdentifier.FromPrinted}). `Other` is there so a
+ * card from anywhere else can still be written, under a Wildflower-minted
+ * system with no rule for its shape. A province gets its own code when a
+ * source needs its rule.
  */
-const HealthCardProvinceSchema = Schema.Literal('ON', 'BC')
+const HealthCardProvinceSchema = Schema.Literal('ON', 'BC', 'Other')
 
 type HealthCardProvince = typeof HealthCardProvinceSchema.Type
 
@@ -21,6 +24,7 @@ const all: readonly HealthCardProvince[] = HealthCardProvinceSchema.literals
 const names: Readonly<Record<HealthCardProvince, string>> = {
   ON: 'Ontario',
   BC: 'British Columbia',
+  Other: 'Other province',
 }
 
 /** Whether a string is a {@link HealthCardProvince}: how a `<select>`'s value is read back. */
