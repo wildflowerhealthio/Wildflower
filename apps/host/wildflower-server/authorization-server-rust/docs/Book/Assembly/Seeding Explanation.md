@@ -2,7 +2,7 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/seeding.rs}}
 
-**Some rows must exist before anyone can ask for anything**: a key to sign tokens with, and the server's own clients. Seeding writes them at every boot, and is safe to run again. The signing key is inserted only when no key is active, and never rotated. The server's own clients are **upserted**: rewritten to match the code every boot, so their registrations follow the host's configuration and a store written by another build is corrected. An upsert keeps a row's registration time, any disable the Owner set, and its [refresh policy](<../Domain/Client Explanation.md#item-RefreshPolicy>): each client is inserted with its policy, and from then on only the Owner changes it. Migration `0049` gave the rows that already existed the same policies, and a test holds the two together.
+**Some rows must exist before anyone can ask for anything**: a key to sign tokens with, and the server's own clients. Seeding writes them at every boot, and is safe to run again. The signing key is inserted only when no key is active, and never rotated. The server's own clients are **upserted**: rewritten to match the code every boot, so their registrations follow the host's configuration and a store written by another build is corrected. An upsert keeps a row's registration time, any disable the Owner set, and its [refresh policy](<../Domain/Client Explanation.md#item-RefreshPolicy>): each client is inserted with its policy, and from then on only the Owner changes it. Migration `0050` gave the rows that already existed the same policies, and a test holds the two together.
 
 The bundled SMART sample apps' clients are static, so a migration seeds them instead (`0003_seed_sample_clients`). Seeding in code is kept for what depends on the running host: the configured scopes and origin, and a freshly generated key.
 
@@ -36,7 +36,7 @@ The two [essential clients](<Setup Explanation.md#the-servers-own-clients>) are 
 
 #### The refresh policies seeding inserts
 
-Migration `0049` seeds the same policies for these clients where their rows already exist; [`an_install_already_at_0048_gives_every_client_a_refresh_policy`](<../Persistence/SQLite Grant Store Explanation.md#item-tests--an_install_already_at_0048_gives_every_client_a_refresh_policy>) holds the two together.
+Migration `0050` seeds the same policies for these clients where their rows already exist; [`an_install_already_at_0049_gives_every_client_a_refresh_policy`](<../Persistence/SQLite Grant Store Explanation.md#item-tests--an_install_already_at_0049_gives_every_client_a_refresh_policy>) holds the two together.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs HOST_APP_REFRESH_POLICY tests="tests::seeding_inserts_each_owned_client_s_refresh_policy_and_keeps_the_owner_s"}}
 
@@ -57,7 +57,7 @@ Migration `0049` seeds the same policies for these clients where their rows alre
 - **Scopes mirror each app's production client**, which is what a dev build of the app asks for.
 - **It is code, not a migration**, because migrations run in release databases too. The function, and its one call in the Tauri host, are compiled only into debug builds.
 - **It upserts**, so a change to a definition lands on the next boot. They are trusted on first use, like any app the Owner approved.
-- **Each is inserted with its production client's refresh policy**, as migration `0049` gives a dev client that already exists.
+- **Each is inserted with its production client's refresh policy**, as migration `0050` gives a dev client that already exists.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs seed_dev_app_clients}}
 

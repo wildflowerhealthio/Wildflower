@@ -92,7 +92,7 @@ the row is created or widened only when the Owner approves — see
   families it minted whatever the policy says. The policy is read on every
   refresh, so a change applies to the client's families on their next one.
   A family that has already passed a deadline stays ended if the policy is
-  loosened later. Migration `0049` seeds the policy of the clients the
+  loosened later. Migration `0050` seeds the policy of the clients the
   migrations seed:
 
   | Client                                                       | Ends with browser session | Idle       | Max      |

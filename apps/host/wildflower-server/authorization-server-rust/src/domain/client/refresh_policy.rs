@@ -60,7 +60,7 @@ impl RefreshPolicy {
     /// The policy a client trusted on first use starts with, from the scopes
     /// it is registered with: tied to the browser session with a two-hour
     /// idle limit when any is a `wildflower/` scope, otherwise a day idle and
-    /// a week at most. Migration `0049` gives an existing client the same
+    /// a week at most. Migration `0050` gives an existing client the same
     /// policy by the same rule.
     #[must_use]
     pub fn trusted_on_first_use(allowed_scopes: &[String]) -> Self {
