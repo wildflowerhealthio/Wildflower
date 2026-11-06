@@ -10,8 +10,12 @@ import {
   type FhirResourceWithId,
   hasId,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import type { DecodedBatch, ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import { DecodedFile, FormatDecode, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
+import {
+  type DecodedBatch,
+  type ResolvedBatch,
+  ReviewGroup,
+} from '@wildflowerhealthio/importer-core'
+import { SectionedList } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Layer, Option, Schema } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
@@ -368,14 +372,12 @@ const requestFor = (identifier: {
     },
   })
 
-/** A HAR result holding `resources`, the other formats claiming nothing. */
+/** A HAR group holding `resources`, the other formats claiming nothing. */
 const batchOf = (resources: readonly FhirResourceWithId[]): DecodedBatch => ({
-  formats: {
+  groups: {
     har: {
-      ...FormatDecode.emptyResult('har'),
-      title: 'a.har',
-      files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
-      decoded: {
+      ...ReviewGroup.empty,
+      decodedFile: {
         sectionedList: SectionedList.make([
           {
             title: 'Resources',
@@ -388,9 +390,8 @@ const batchOf = (resources: readonly FhirResourceWithId[]): DecodedBatch => ({
         notes: [],
       },
     },
-    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-    dicom: FormatDecode.emptyResult('dicom'),
   },
+  files: { har: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }] },
   unrecognizedFiles: [],
 })
 
@@ -537,16 +538,16 @@ const renderRows = async (
 }
 
 const subjectOfRequest = (): string | null | undefined => {
-  const request = SectionedList.rows(
-    (resolved?.formats.har.decoded ?? DecodedFile.empty).sectionedList
-  ).find((row) => row.resource.resourceType === 'MedicationRequest')?.resource
+  const request = ReviewGroup.rows(ReviewGroup.get(resolved?.groups ?? {}, 'har')).find(
+    (row) => row.resource.resourceType === 'MedicationRequest'
+  )?.resource
   return request !== undefined && 'subject' in request ? request.subject?.reference : undefined
 }
 
 /** The literal reference the resolved request's `requester` names. */
 const requesterOfRequest = (): string | null | undefined => {
-  const request = SectionedList.rows(
-    (resolved?.formats.har.decoded ?? DecodedFile.empty).sectionedList
-  ).find((row) => row.resource.resourceType === 'MedicationRequest')?.resource
+  const request = ReviewGroup.rows(ReviewGroup.get(resolved?.groups ?? {}, 'har')).find(
+    (row) => row.resource.resourceType === 'MedicationRequest'
+  )?.resource
   return request !== undefined && 'requester' in request ? request.requester?.reference : undefined
 }

@@ -9,7 +9,6 @@ import {
 import {
   type DecodedFile,
   FileResolution,
-  FormatDecode,
   type LinkableResource,
   LinkChoice,
   LinkPlan,
@@ -23,7 +22,7 @@ import { Effect, HashMap, Option, Schema, TestContext } from 'effect'
 import { type JSX, useMemo, useState } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
+import { type ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
 import { DONT_LINK_LABEL } from '../identity/referent-text.ts'
@@ -146,23 +145,15 @@ const batchOf = (
   file: DecodedFile.DecodedFile,
   resolved: DecodedFile.DecodedFile,
   plan: LinkPlan.Type
-): ResolvedBatch => {
-  const decodedBatch = {
-    formats: {
-      har: { ...FormatDecode.emptyResult('har'), decoded: file },
-      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-      dicom: FormatDecode.emptyResult('dicom'),
-    },
+): ResolvedBatch => ({
+  groups: { har: { ...ReviewGroup.empty, decodedFile: resolved } },
+  plan,
+  decoded: {
+    groups: { har: { ...ReviewGroup.empty, decodedFile: file } },
+    files: { har: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }] },
     unrecognizedFiles: [],
-  }
-  return {
-    formats: { ...decodedBatch.formats, har: { ...decodedBatch.formats.har, decoded: resolved } },
-    unrecognizedFiles: [],
-    linkedRecords: [],
-    plan,
-    decodedBatch,
-  }
-}
+  },
+})
 
 /**
  * The review body over `resources` resolved on `choices` and the mention
@@ -205,7 +196,7 @@ const Harness = ({
   onReport({ selection, excludedByDefault, byMention, plan, resolved })
   return (
     <FormatReviewBody
-      result={{ ...FormatDecode.emptyResult('har'), decoded: resolved }}
+      reviewGroup={{ ...ReviewGroup.empty, decodedFile: resolved }}
       selection={selection}
       excludedByDefault={excludedByDefault}
       comparisons={undefined}

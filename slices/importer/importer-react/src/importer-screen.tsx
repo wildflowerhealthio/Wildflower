@@ -1,5 +1,5 @@
 import type { FormatKind } from '@wildflowerhealthio/importer-core'
-import { claimedFormats, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
+import { claimedFormats, ReviewGroup } from '@wildflowerhealthio/importer-core'
 import {
   type DecodedFile,
   LinkableResource,
@@ -151,7 +151,10 @@ const ImporterScreen = (): JSX.Element => {
     (): ReadonlySet<string> =>
       diff._tag === 'loading' || batch === undefined
         ? NONE_BY_DEFAULT
-        : unchangedKeysOf(batch.linkedRecords, diff.comparisons.get(LINKED_GROUP)),
+        : unchangedKeysOf(
+            ReviewGroup.rows(ReviewGroup.get(batch.groups, ReviewGroup.LINKED)),
+            diff.comparisons.get(ReviewGroup.LINKED)
+          ),
     [diff, batch]
   )
 
@@ -160,7 +163,7 @@ const ImporterScreen = (): JSX.Element => {
   const excludedByDefault = useMemo((): ReadonlyMap<FormatKind, ReadonlySet<string>> => {
     if (diff._tag === 'loading' || batch === undefined) return new Map()
     return new Map(
-      claimedFormats(batch.formats).map((kind) => [
+      claimedFormats(batch.decoded).map((kind) => [
         kind,
         formatExcludedByDefault(batch, kind, diff.comparisons.get(kind), selectionFor(kind)),
       ])
@@ -185,7 +188,7 @@ const ImporterScreen = (): JSX.Element => {
   // written in its place.
   const { choose } = identity
   const referents = shown?.referents
-  const decodedBatch = shown?.resolved.decodedBatch
+  const decodedBatch = shown?.resolved.decoded
   const chooseLink = useCallback(
     (referentKey: string, choice: LinkChoice.Type): void => {
       choose(referentKey, choice)
@@ -196,7 +199,11 @@ const ImporterScreen = (): JSX.Element => {
           new Map(
             [...previous].map(([kind, selection]) => [
               kind,
-              revertCopiesOf(selection, decodedBatch.formats[kind].decoded, changed),
+              revertCopiesOf(
+                selection,
+                ReviewGroup.get(decodedBatch.groups, kind).decodedFile,
+                changed
+              ),
             ])
           )
       )

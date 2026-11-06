@@ -23,13 +23,16 @@
 
 import { type ParseResult } from 'effect'
 import type * as DecodedFileSet from './decoded-file-set.ts'
-import * as DecodedFile from './decoded-file.ts'
 import type * as FileImporter from './file-importer.ts'
 import type * as PickedFile from './picked-file.ts'
 
-/** The id of one format's whole decode result — deterministic in its files and their order. */
+/** The id of one format's files — deterministic in its files and their order. */
 const makeId = (format: string, files: readonly PickedFile.Type[]): string =>
   `${format}/${files.map((file) => file.id).join(',')}`
+
+/** The title one format's files are reported under: their names, in pick order. */
+const titleOf = (files: readonly PickedFile.Type[]): string =>
+  files.map((file) => file.fileName).join(', ')
 
 /** The id of one file within its format's batch — an {@link UnreadableFile} row's, and an unrecognized picked file's. */
 const makeFileId = (format: string, file: PickedFile.Type): string => `${format}/${file.id}`
@@ -39,22 +42,13 @@ const keyPrefix = (file: PickedFile.Type): string => `${file.id}/`
 
 /**
  * One format's decode, file set by file set, as its `decode` returns it:
- * `importer-core`'s import stage (`importDecoded`) makes it a {@link Result}.
+ * `importer-core`'s import stage (`importDecoded`) makes it the format's
+ * review group.
  */
 interface Decoded<TFormat extends string> {
   readonly format: TFormat
   readonly files: readonly PickedFile.Type[]
   readonly fileSets: readonly DecodedFileSet.Type[]
-  readonly unreadableFiles: readonly UnreadableFile[]
-}
-
-/** One format's imported decode: its file sets' records the device's own, merged into one review. */
-interface Result<TFormat extends string> {
-  readonly id: string
-  readonly title: string
-  readonly files: readonly PickedFile.Type[]
-  readonly format: TFormat
-  readonly decoded: DecodedFile.DecodedFile
   readonly unreadableFiles: readonly UnreadableFile[]
 }
 
@@ -82,15 +76,5 @@ const makeUnreadableFile = (
   error,
 })
 
-/** A format with no claimed files — the seed for unclaimed format slots. */
-const emptyResult = <K extends string>(kind: K): Result<K> => ({
-  id: makeId(kind, []),
-  title: '',
-  files: [],
-  format: kind,
-  decoded: DecodedFile.empty,
-  unreadableFiles: [],
-})
-
-export { emptyResult, keyPrefix, makeFileId, makeId, makeUnreadableFile }
-export type { Decoded, Result, UnreadableFile }
+export { keyPrefix, makeFileId, makeId, makeUnreadableFile, titleOf }
+export type { Decoded, UnreadableFile }

@@ -1,17 +1,10 @@
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  type DecodedFile,
-  type FormatDecode,
-  Mention,
-  SectionedList,
-  StagedImport,
-} from '@wildflowerhealthio/importer-fundamentals'
+import { type DecodedFile, Mention, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Match } from 'effect'
 
-import { claimedFormats } from './read-batch.ts'
-import type { FormatKind } from './registry.ts'
+import { type FormatKind, formatKinds } from './registry.ts'
 import type { ResolvedBatch } from './resolve-mentions.ts'
-import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
+import * as ReviewGroup from './review-group.ts'
 
 /**
  * The pure half of the confirm: a decision for every resource the reviewer
@@ -44,7 +37,7 @@ type Disposition = 'Included' | 'Excluded' | 'Unchanged' | 'Unreferenced' | 'Sup
  * applied, with its review group and its disposition.
  */
 interface WriteDecision extends DecodedFile.Row {
-  readonly group: ReviewGroup
+  readonly group: ReviewGroup.Key
   readonly disposition: Disposition
 }
 
@@ -60,12 +53,15 @@ type SkipReason = 'nothing' | 'unreadable'
  * `unreadable` when its decode yielded no resources and some file was
  * unreadable, else `nothing`.
  */
-const skipReasonFor = (result: FormatDecode.Result<FormatKind>): SkipReason =>
-  SectionedList.rows(result.decoded.sectionedList).length === 0 && result.unreadableFiles.length > 0
+const skipReasonFor = (group: ReviewGroup.Type): SkipReason =>
+  ReviewGroup.rows(group).length === 0 && group.unreadableFiles.length > 0
     ? 'unreadable'
     : 'nothing'
 
-/** How the confirm reads each format's reviewed selection. */
+/**
+ * How the confirm reads each format's reviewed selection. The linked
+ * records' group has none: a linked record is read-only in the review.
+ */
 type SelectionFor = (format: FormatKind) => StagedImport.Selection
 
 /**
@@ -86,7 +82,7 @@ type Verdict = Exclude<Disposition, 'Included' | 'Superseded'> | 'Candidate'
  * {@link Verdict}.
  */
 interface ProvisionalDecision extends DecodedFile.Row {
-  readonly group: ReviewGroup
+  readonly group: ReviewGroup.Key
   readonly verdict: Verdict
 }
 
@@ -117,43 +113,48 @@ const unlessUnreferenced =
       ? { ...decision, verdict: 'Unreferenced' }
       : decision
 
+/** The order the confirm submits the groups in: the linked records, then the formats in registry order. */
+const SUBMIT_ORDER: readonly ReviewGroup.Key[] = [ReviewGroup.LINKED, ...formatKinds]
+
 /**
- * A provisional decision on every claimed format's rows, in registry order
- * and then review order, each row as reviewed: the edit, resolved on the
- * batch's plan, substituted where the reviewer made one
+ * How the rows of one group are provisionally decided: each row as reviewed
+ * with its {@link Verdict}.
+ */
+type ProvisionalDecide = (row: DecodedFile.Row) => Omit<ProvisionalDecision, 'group'>
+
+/**
+ * A format row as reviewed: the edit, resolved on the batch's plan,
+ * substituted where the reviewer made one
  * (`StagedImport.resolvedResourceOf`), `Excluded` where the row is not
  * included, else a candidate.
  */
-const formatDecisionsOf = (
-  batch: ResolvedBatch,
-  selectionFor: SelectionFor,
-  excludedByDefaultFor: ExcludedByDefaultFor
-): readonly ProvisionalDecision[] =>
-  claimedFormats(batch.formats).flatMap((kind) => {
-    const selection = selectionFor(kind)
-    const excludedByDefault = excludedByDefaultFor(kind)
-    return SectionedList.rows(batch.formats[kind].decoded.sectionedList).map(
-      (row): ProvisionalDecision => ({
-        ...row,
-        group: kind,
-        resource: StagedImport.resolvedResourceOf(batch.plan, selection, row),
-        verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, row.reviewable.key)
-          ? 'Candidate'
-          : 'Excluded',
-      })
-    )
+const formatDecide =
+  (
+    batch: ResolvedBatch,
+    selection: StagedImport.Selection,
+    excludedByDefault: ReadonlySet<string>
+  ): ProvisionalDecide =>
+  (row) => ({
+    ...row,
+    resource: StagedImport.resolvedResourceOf(batch.plan, selection, row),
+    verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, row.reviewable.key)
+      ? 'Candidate'
+      : 'Excluded',
   })
 
 /**
- * A linked record's verdict: `Unchanged` when the server holds it as it is;
- * else a candidate, the link choice being the consent to it.
+ * A linked record as reviewed: `Unchanged` when the server holds it as it
+ * is; else a candidate, the link choice being the consent to it.
  *
- * @param record - The linked record
  * @param unchangedLinked - The keys of the linked records the server diff
  *   found unchanged
  */
-const linkedVerdictOf = (record: DecodedFile.Row, unchangedLinked: ReadonlySet<string>): Verdict =>
-  unchangedLinked.has(record.reviewable.key) ? 'Unchanged' : 'Candidate'
+const linkedDecide =
+  (unchangedLinked: ReadonlySet<string>): ProvisionalDecide =>
+  (row) => ({
+    ...row,
+    verdict: unchangedLinked.has(row.reviewable.key) ? 'Unchanged' : 'Candidate',
+  })
 
 /**
  * The confirm's plan: a decision per reviewed resource, in submit order,
@@ -166,7 +167,7 @@ const linkedVerdictOf = (record: DecodedFile.Row, unchangedLinked: ReadonlySet<s
  *   ticked them
  * @param unchangedLinked - The keys of the linked records the server diff
  *   found unchanged
- * @returns One {@link WriteDecision} per format row and linked record
+ * @returns One {@link WriteDecision} per row of every group
  *
  * @remarks
  * The dispositions are decided in this order:
@@ -207,18 +208,24 @@ const planWrite = (
   excludedByDefaultFor: ExcludedByDefaultFor,
   unchangedLinked: ReadonlySet<string>
 ): readonly WriteDecision[] => {
-  const formatDecisions = formatDecisionsOf(batch, selectionFor, excludedByDefaultFor)
+  const decideFor = (group: ReviewGroup.Key): ProvisionalDecide =>
+    Match.value(group).pipe(
+      Match.when(ReviewGroup.LINKED, () => linkedDecide(unchangedLinked)),
+      Match.orElse((kind) => formatDecide(batch, selectionFor(kind), excludedByDefaultFor(kind)))
+    )
+  const provisional = ReviewGroup.entries(batch.groups, SUBMIT_ORDER).flatMap(([key, group]) => {
+    const decide = decideFor(key)
+    return ReviewGroup.rows(group).map((row): ProvisionalDecision => ({
+      ...decide(row),
+      group: key,
+    }))
+  })
   const named = literalReferencesIn(
-    formatDecisions.flatMap(({ resource, verdict }) => (verdict === 'Candidate' ? [resource] : []))
+    provisional.flatMap(({ group, resource, verdict }) =>
+      group !== ReviewGroup.LINKED && verdict === 'Candidate' ? [resource] : []
+    )
   )
-  const decisions: readonly ProvisionalDecision[] = [
-    ...batch.linkedRecords.map((record): ProvisionalDecision => ({
-      ...record,
-      group: LINKED_GROUP,
-      verdict: linkedVerdictOf(record, unchangedLinked),
-    })),
-    ...formatDecisions.map(unlessUnreferenced(named)),
-  ]
+  const decisions = provisional.map(unlessUnreferenced(named))
   const candidateIndexes = decisions.flatMap(({ reviewable, resource, verdict }, index) =>
     verdict === 'Candidate'
       ? [[literalReferenceOf(resource), index, reviewable.origin] as const]

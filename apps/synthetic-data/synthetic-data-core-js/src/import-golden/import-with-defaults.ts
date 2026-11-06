@@ -15,19 +15,13 @@ import {
   formatRegistry,
   isSourceFileOf,
   keysWithoutPatientOf,
-  LINKED_GROUP,
   planWrite,
   readBatch,
   resolveMentions,
-  type ReviewGroup,
+  ReviewGroup,
   type WriteDecision,
 } from '@wildflowerhealthio/importer-core'
-import {
-  LinkChoiceSet,
-  PickedFile,
-  SectionedList,
-  StagedImport,
-} from '@wildflowerhealthio/importer-fundamentals'
+import { LinkChoiceSet, PickedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Order, Schema } from 'effect'
 
 /**
@@ -44,7 +38,7 @@ import { Effect, Order, Schema } from 'effect'
 
 /** One reviewed row: where it is reviewed, its key and title, what it holds, and its disposition. */
 interface ReviewRow {
-  readonly group: ReviewGroup
+  readonly group: ReviewGroup.Key
   readonly key: string
   readonly title: string
   readonly resource: string
@@ -98,7 +92,7 @@ const encodedResourcesOf = (
 
 /** Every source file of `kind` in `batch`'s decode. */
 const sourceFilesOf = (batch: DecodedBatch, kind: FormatKind): readonly FhirResourceWithId[] =>
-  SectionedList.rows(batch.formats[kind].decoded.sectionedList)
+  ReviewGroup.rows(ReviewGroup.get(batch.groups, kind))
     .map(({ resource }) => resource)
     .filter((resource) => isSourceFileOf(kind, resource))
 
@@ -139,11 +133,11 @@ const importWithDefaults = (
 ): Effect.Effect<DefaultImport, unknown, DecodeRequirements> =>
   Effect.gen(function* () {
     const decodedBatch = yield* readBatch(formatRegistry, SETTINGS, picks)
-    const kinds = claimedFormats(decodedBatch.formats)
+    const kinds = claimedFormats(decodedBatch)
     const unread = [
       ...decodedBatch.unrecognizedFiles.map(({ title }) => title),
       ...kinds.flatMap((kind) =>
-        decodedBatch.formats[kind].unreadableFiles.map(({ title }) => title)
+        ReviewGroup.get(decodedBatch.groups, kind).unreadableFiles.map(({ title }) => title)
       ),
     ]
     if (unread.length > 0) return yield* Effect.fail(`Not read: ${unread.join(', ')}`)
@@ -162,7 +156,7 @@ const importWithDefaults = (
     const included = plan.filter(({ disposition }) => disposition === 'Included')
     const sourceFileRePicks = yield* Effect.forEach(
       included.flatMap(({ group, resource }) =>
-        group !== LINKED_GROUP && isSourceFileOf(group, resource)
+        group !== ReviewGroup.LINKED && isSourceFileOf(group, resource)
           ? [{ kind: group, sourceFile: resource }]
           : []
       ),
@@ -182,7 +176,9 @@ const importWithDefaults = (
         resource: literalReferenceOf(resource),
         disposition,
       })),
-      notes: Object.fromEntries(kinds.map((kind) => [kind, batch.formats[kind].decoded.notes])),
+      notes: Object.fromEntries(
+        kinds.map((kind) => [kind, ReviewGroup.get(batch.groups, kind).decodedFile.notes])
+      ),
       sourceFileRePicks,
     }
   })

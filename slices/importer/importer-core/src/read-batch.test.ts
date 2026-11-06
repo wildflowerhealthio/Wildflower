@@ -3,11 +3,9 @@ import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodeFunction,
-  type FormatDecode,
   type PickedFile,
   type DecodedFile,
   type Section,
-  SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor } from '@wildflowerhealthio/positioned-text'
@@ -24,6 +22,7 @@ import {
 } from './read-batch.ts'
 import { defaultFormatSettings, type FormatKind, formatKinds, formatRegistry } from './registry.ts'
 import { isSourceFileOf } from './resolve-mentions.ts'
+import * as ReviewGroup from './review-group.ts'
 
 /**
  * The batch read over a fake registry whose formats claim files by name
@@ -57,9 +56,9 @@ const kindOf = (fileName: string): FormatKind | undefined => {
   return undefined
 }
 
-/** Every review key a format's result offers, in review order. */
-const reviewKeys = (result: FormatDecode.Result<FormatKind>): readonly string[] =>
-  SectionedList.rows(result.decoded.sectionedList).map((resource) => resource.reviewable.key)
+/** Every review key a format's group offers, in review order. */
+const reviewKeys = (group: ReviewGroup.Type): readonly string[] =>
+  ReviewGroup.rows(group).map((row) => row.reviewable.key)
 
 /** A Patient its source calls `id`, detached as a decoder hands it over. */
 const fakeResource = (id: string): DetachedResource.Type =>
@@ -102,10 +101,8 @@ const sourceFileFormatOf = (kind: FormatKind): PickedFile.FormatValue => ({
 })
 
 /** The sections a format's decode read out of its files, its source file sections left out. */
-const extractedSections = (
-  result: FormatDecode.Result<FormatKind>
-): readonly Section.Type<DecodedFile.Row>[] =>
-  result.decoded.sectionedList.sections.filter((section) => section.title !== 'Source file')
+const extractedSections = (group: ReviewGroup.Type): readonly Section.Type<DecodedFile.Row>[] =>
+  group.decodedFile.sectionedList.sections.filter((section) => section.title !== 'Source file')
 
 const fakeRegistry: ReadRegistry<never> = {
   har: {
@@ -168,14 +165,14 @@ describe('readBatch', () => {
         const batch = await Effect.runPromise(readBatch(fakeRegistry, defaultFormatSettings, picks))
         const stamped = withIds(picks)
         for (const kind of formatKinds) {
-          const result = batch.formats[kind]
+          const group = ReviewGroup.get(batch.groups, kind)
           const expectedFiles = stamped.filter((pick) => kindOf(pick.fileName) === kind)
-          expect(result.files).toEqual(expectedFiles)
-          expect(result.format).toBe(kind)
+          expect(batch.files[kind] ?? []).toEqual(expectedFiles)
+          expect(batch.groups[kind] === undefined).toBe(expectedFiles.length === 0)
           const expectedReadable = expectedFiles.filter((f) => f.bytes[0] !== 0)
           const expectedUnreadable = expectedFiles.filter((f) => f.bytes[0] === 0)
-          expect(extractedSections(result).length).toBe(expectedReadable.length)
-          expect(result.unreadableFiles.length).toBe(expectedUnreadable.length)
+          expect(extractedSections(group).length).toBe(expectedReadable.length)
+          expect(group.unreadableFiles.length).toBe(expectedUnreadable.length)
         }
         const expectedUnrecognized = picks.filter((pick) => kindOf(pick.fileName) === undefined)
         expect(batch.unrecognizedFiles.length).toBe(expectedUnrecognized.length)
@@ -195,7 +192,7 @@ describe('readBatch', () => {
     const batch = await Effect.runPromise(
       readBatch(fakeRegistry, settings, [{ fileName: 'pdf-a', bytes: new Uint8Array([1]) }])
     )
-    expect(extractedSections(batch.formats['lifelabs-pdf'])[0]?.title).toBe(
+    expect(extractedSections(ReviewGroup.get(batch.groups, 'lifelabs-pdf'))[0]?.title).toBe(
       `lifelabs-pdf:${JSON.stringify(settings['lifelabs-pdf'])}`
     )
   })
@@ -217,17 +214,18 @@ describe('redecodeFormat', () => {
           )
           for (const kind of formatKinds) {
             if (kind !== changed) {
-              expect(after.formats[kind]).toBe(before.formats[kind])
+              expect(after.groups[kind]).toBe(before.groups[kind])
               continue
             }
+            const groupAfter = ReviewGroup.get(after.groups, kind)
+            const groupBefore = ReviewGroup.get(before.groups, kind)
             // The ids the reviewer's selection is keyed by survive the re-decode.
-            expect(after.formats[kind].id).toBe(before.formats[kind].id)
-            expect(after.formats[kind].files).toEqual(before.formats[kind].files)
-            expect(after.formats[kind].unreadableFiles.map((file) => file.id)).toEqual(
-              before.formats[kind].unreadableFiles.map((file) => file.id)
+            expect(after.files[kind]).toBe(before.files[kind])
+            expect(groupAfter.unreadableFiles.map((file) => file.id)).toEqual(
+              groupBefore.unreadableFiles.map((file) => file.id)
             )
-            expect(reviewKeys(after.formats[kind])).toEqual(reviewKeys(before.formats[kind]))
-            for (const section of extractedSections(after.formats[kind])) {
+            expect(reviewKeys(groupAfter)).toEqual(reviewKeys(groupBefore))
+            for (const section of extractedSections(groupAfter)) {
               expect(section.title).toBe(`${changed}:${JSON.stringify(settings[changed])}`)
             }
           }
@@ -270,13 +268,14 @@ describe('readBatch over the real registry', () => {
         Effect.provide(extractorReadingBlankPage)
       )
     )
-    expect(batch.formats['lifelabs-pdf'].files.map((file) => file.fileName)).toEqual(['blank.pdf'])
-    expect(batch.formats['lifelabs-pdf'].unreadableFiles.map((file) => file.title)).toEqual([
-      'blank.pdf',
-    ])
-    expect(batch.formats.dicom.files.length).toBe(1)
-    expect(batch.formats.dicom.decoded.sectionedList.sections[0]?.title).toBe('Source file')
-    expect(batch.formats.dicom.decoded.sectionedList.sections.length).toBeGreaterThan(1)
+    const dicom = ReviewGroup.get(batch.groups, 'dicom')
+    expect(batch.files['lifelabs-pdf']?.map((file) => file.fileName)).toEqual(['blank.pdf'])
+    expect(
+      ReviewGroup.get(batch.groups, 'lifelabs-pdf').unreadableFiles.map((file) => file.title)
+    ).toEqual(['blank.pdf'])
+    expect(batch.files.dicom?.length).toBe(1)
+    expect(dicom.decodedFile.sectionedList.sections[0]?.title).toBe('Source file')
+    expect(dicom.decodedFile.sectionedList.sections.length).toBeGreaterThan(1)
     expect(batch.unrecognizedFiles.length).toBe(1)
     expect(batch.unrecognizedFiles[0]?.title).toBe('notes.txt')
   })
@@ -306,8 +305,9 @@ describe('a DICOM study read over the real registry', () => {
         Effect.provide(extractorReadingBlankPage)
       )
     )
-    expect(batch.formats.dicom.unreadableFiles).toEqual([])
-    return SectionedList.rows(batch.formats.dicom.decoded.sectionedList).map((row) => row.resource)
+    const dicom = ReviewGroup.get(batch.groups, 'dicom')
+    expect(dicom.unreadableFiles).toEqual([])
+    return ReviewGroup.rows(dicom).map((row) => row.resource)
   }
 
   it("files every source file under the study's patient, each instance naming its own, every record stamped with the smallest", async () => {
@@ -360,7 +360,7 @@ describe('claimedFormats', () => {
         const expected = formatKinds.filter((kind) =>
           picks.some((pick) => kindOf(pick.fileName) === kind)
         )
-        expect(claimedFormats(batch.formats)).toEqual(expected)
+        expect(claimedFormats(batch)).toEqual(expected)
       }),
       { numRuns: numRunsFor({ base: 40 }) }
     )
@@ -372,7 +372,7 @@ describe('claimedFormats', () => {
         { fileName: 'txt-a', bytes: new Uint8Array([1]) },
       ])
     )
-    expect(claimedFormats(batch.formats)).toEqual([])
+    expect(claimedFormats(batch)).toEqual([])
   })
 })
 

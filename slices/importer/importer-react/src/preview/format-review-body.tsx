@@ -4,10 +4,10 @@ import {
   type FormatKind,
   type LeftUnlinked,
   leftUnlinkedIn,
+  type ReviewGroup,
 } from '@wildflowerhealthio/importer-core'
 import {
   type DecodedFile,
-  type FormatDecode,
   LinkChoice,
   type LinkPlan,
   Mention,
@@ -376,7 +376,7 @@ const ResourceRow = ({
  * the format's diagnostic notes folded into a collapsed details block.
  */
 const FormatReviewBody = ({
-  result,
+  reviewGroup,
   selection,
   excludedByDefault,
   comparisons,
@@ -388,7 +388,8 @@ const FormatReviewBody = ({
   onEditResource,
   onChooseMention = chooseNothing,
 }: {
-  readonly result: FormatDecode.Result<string>
+  /** The format's review group, its decoded file resolved. */
+  readonly reviewGroup: ReviewGroup.Type
   readonly selection: StagedImport.Selection
   /** The keys of the rows that are out unless the reviewer ticks them. */
   readonly excludedByDefault: ReadonlySet<string>
@@ -406,17 +407,20 @@ const FormatReviewBody = ({
   /** The identity map's action a pick drives. */
   readonly onChooseMention?: ChooseMention
 }): JSX.Element => {
-  const { sectionedList, notes } = result.decoded
+  const { sectionedList, notes } = reviewGroup.decodedFile
   const tallies = useMemo(
-    () => perTypeTallies(result.decoded, selection, excludedByDefault),
-    [result.decoded, selection, excludedByDefault]
+    () => perTypeTallies(reviewGroup.decodedFile, selection, excludedByDefault),
+    [reviewGroup.decodedFile, selection, excludedByDefault]
   )
   const leftUnlinked = useMemo(() => leftUnlinkedIn(plan, kind), [plan, kind])
   const unlinked = useMemo(
     () => unlinkedInRows(decodedFile, selection, leftUnlinked),
     [decodedFile, selection, leftUnlinked]
   )
-  const groups = useMemo(() => groupsOf(result.decoded, unlinked), [result.decoded, unlinked])
+  const groups = useMemo(
+    () => groupsOf(reviewGroup.decodedFile, unlinked),
+    [reviewGroup.decodedFile, unlinked]
+  )
 
   // A pick is a mention link choice, which the resolved row, and its edit
   // override resolved on the plan, follow.
@@ -476,12 +480,12 @@ const FormatReviewBody = ({
       )}
       {unlinkedGroup(NEEDS_A_PATIENT_HEADING, groups.needingPatient)}
       {unlinkedGroup(NEEDS_A_PROVIDER_HEADING, groups.needingProvider)}
-      {sectionedList.sections.length === 0 && result.unreadableFiles.length === 0 && (
+      {sectionedList.sections.length === 0 && reviewGroup.unreadableFiles.length === 0 && (
         <p className={styles['review-body__empty']}>{NO_RESOURCES_MESSAGE}</p>
       )}
-      {result.unreadableFiles.length > 0 && (
+      {reviewGroup.unreadableFiles.length > 0 && (
         <ul className={styles['review-body__note-list']}>
-          {result.unreadableFiles.map((file) => (
+          {reviewGroup.unreadableFiles.map((file) => (
             <li key={file.id} className={styles['review-body__note']}>
               {file.title}: {UNREADABLE_FILE_MESSAGE}
             </li>

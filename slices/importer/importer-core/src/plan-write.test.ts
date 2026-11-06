@@ -5,7 +5,7 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  FormatDecode,
+  type FormatDecode,
   LinkableResource,
   LinkPlan,
   LinkTarget,
@@ -21,9 +21,9 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { type Disposition, planWrite, skipReasonFor, type WriteDecision } from './plan-write.ts'
-import type { FormatKind } from './registry.ts'
+import { type FormatKind, formatKinds } from './registry.ts'
 import type { ResolvedBatch } from './resolve-mentions.ts'
-import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
+import * as ReviewGroup from './review-group.ts'
 
 const patient = (id: string, gender: 'male' | 'female' | null = null): FhirResourceWithId =>
   Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id, gender })
@@ -51,16 +51,10 @@ const unreadableFile = (fileName: string): FormatDecode.UnreadableFile => ({
   }),
 })
 
-/** `kind`'s result of one file and one section holding `resources`. */
-const resultOf = <K extends FormatKind>(
-  kind: K,
-  resources: readonly DecodedFile.Row[]
-): FormatDecode.Result<K> => ({
-  ...FormatDecode.emptyResult(kind),
-  id: `${kind}/a`,
-  title: `${kind} a`,
-  files: [{ id: `0:${kind}`, fileName: kind, bytes: new Uint8Array([1]) }],
-  decoded: { sectionedList: SectionedList.make([Section.make('s', resources)]), notes: [] },
+/** A group of one section holding `rows`. */
+const groupOf = (rows: readonly DecodedFile.Row[]): ReviewGroup.Type => ({
+  ...ReviewGroup.empty,
+  decodedFile: { sectionedList: SectionedList.make([Section.make('s', rows)]), notes: [] },
 })
 
 /** A resolved batch of the given formats' rows, the others claiming nothing, with `linked` its linked records. */
@@ -68,24 +62,31 @@ const batchOf = (
   rows: { readonly [K in FormatKind]?: readonly DecodedFile.Row[] },
   linked: readonly LinkedRecord[] = []
 ): ResolvedBatch => {
-  const slot = <K extends FormatKind>(kind: K): FormatDecode.Result<K> => {
-    const resources = rows[kind]
-    return resources === undefined ? FormatDecode.emptyResult(kind) : resultOf(kind, resources)
-  }
-  const formats = { har: slot('har'), 'lifelabs-pdf': slot('lifelabs-pdf'), dicom: slot('dicom') }
+  const kinds = formatKinds.filter((kind) => rows[kind] !== undefined)
+  const groups = Object.fromEntries(kinds.map((kind) => [kind, groupOf(rows[kind] ?? [])]))
   return {
-    formats,
-    unrecognizedFiles: [],
-    linkedRecords: linked.map(({ row }) => row),
+    groups:
+      linked.length === 0
+        ? groups
+        : { ...groups, linked: ReviewGroup.linked(linked.map(({ row }) => row)) },
     plan: LinkPlan.empty,
-    decodedBatch: { formats, unrecognizedFiles: [] },
+    decoded: {
+      groups,
+      files: Object.fromEntries(
+        kinds.map((kind) => [
+          kind,
+          [{ id: `0:${kind}`, fileName: kind, bytes: new Uint8Array([1]) }],
+        ])
+      ),
+      unrecognizedFiles: [],
+    },
   }
 }
 
 /** Each decision as `[group, key, disposition]`, in plan order. */
 const dispositionsOf = (
   plan: readonly WriteDecision[]
-): readonly (readonly [ReviewGroup, string, Disposition])[] =>
+): readonly (readonly [ReviewGroup.Key, string, Disposition])[] =>
   plan.map(({ group, reviewable, disposition }) => [group, reviewable.key, disposition] as const)
 
 /** No row out by default. */
@@ -101,25 +102,21 @@ const excluding = (...keys: readonly string[]): StagedImport.Selection =>
 describe('skipReasonFor', () => {
   it('names a format with only unreadable files unreadable', () => {
     expect(
-      skipReasonFor({
-        ...FormatDecode.emptyResult('har'),
-        files: [{ id: '0:broken.har', fileName: 'broken.har', bytes: new Uint8Array() }],
-        unreadableFiles: [unreadableFile('broken.har')],
-      })
+      skipReasonFor({ ...ReviewGroup.empty, unreadableFiles: [unreadableFile('broken.har')] })
     ).toBe('unreadable')
   })
 
   it('names a format whose decode yielded resources beside an unreadable file nothing', () => {
     expect(
       skipReasonFor({
-        ...resultOf('har', [patientRow('a')]),
+        ...groupOf([patientRow('a')]),
         unreadableFiles: [unreadableFile('broken.har')],
       })
     ).toBe('nothing')
   })
 
   it('names a format that claimed no files nothing', () => {
-    expect(skipReasonFor(FormatDecode.emptyResult('har'))).toBe('nothing')
+    expect(skipReasonFor(ReviewGroup.empty)).toBe('nothing')
   })
 })
 
@@ -233,7 +230,7 @@ describe('planWrite', () => {
     expect(
       dispositionsOf(planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set()))
     ).toEqual([
-      [LINKED_GROUP, STORED.key, 'Included'],
+      [ReviewGroup.LINKED, STORED.key, 'Included'],
       ['har', 'obs-1', 'Included'],
       ['dicom', 'd', 'Included'],
     ])
@@ -248,7 +245,7 @@ describe('planWrite', () => {
     expect(
       dispositionsOf(planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set()))
     ).toEqual([
-      [LINKED_GROUP, STORED.key, 'Included'],
+      [ReviewGroup.LINKED, STORED.key, 'Included'],
       ['har', 'obs-1', 'Excluded'],
     ])
   })
@@ -333,7 +330,7 @@ describe('planWrite', () => {
         planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set([STORED.key]))
       )
     ).toEqual([
-      [LINKED_GROUP, STORED.key, 'Unchanged'],
+      [ReviewGroup.LINKED, STORED.key, 'Unchanged'],
       ['har', 'obs-1', 'Included'],
     ])
   })
@@ -349,7 +346,7 @@ describe('planWrite', () => {
         planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set([STORED.key]))
       )
     ).toEqual([
-      [LINKED_GROUP, STORED.key, 'Unchanged'],
+      [ReviewGroup.LINKED, STORED.key, 'Unchanged'],
       ['har', 'obs-1', 'Excluded'],
     ])
   })
@@ -466,7 +463,7 @@ describe('planWrite', () => {
 
           expect(plan[0]).toEqual({
             ...STORED.row,
-            group: LINKED_GROUP,
+            group: ReviewGroup.LINKED,
             disposition: unchanged ? 'Unchanged' : 'Included',
           })
         }

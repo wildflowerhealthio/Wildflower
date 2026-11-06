@@ -399,7 +399,7 @@ const importWithSubject = (
     if (unreadable !== undefined) {
       return yield* new UnreadableReidentifiedFile({ error: unreadable.error })
     }
-    return SectionedList.rows(result.decoded.sectionedList)
+    return SectionedList.rows(result.decodedFile.sectionedList)
       .map((row) => row.resource)
       .filter((resource) => resource.resourceType !== 'Patient')
       .map(withSubject(subject))

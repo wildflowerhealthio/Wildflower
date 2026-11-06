@@ -4,14 +4,10 @@ import { useMemo, useState } from 'react'
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  type DecodedFile,
-  SectionedList,
-  type StagedImport,
-} from '@wildflowerhealthio/importer-fundamentals'
+import type { DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 
-import type { FormatKind, ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
-import { formatKinds, keysWithoutPatientOf, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
+import type { FormatKind, ResolvedBatch } from '@wildflowerhealthio/importer-core'
+import { keysWithoutPatientOf, ReviewGroup } from '@wildflowerhealthio/importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
 /**
@@ -52,7 +48,7 @@ import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
 /** One labeled resource, the group it is reviewed in, and the value the classifier probes for it. */
 interface DiffRow {
-  readonly group: ReviewGroup
+  readonly group: ReviewGroup.Key
   readonly key: string
   readonly resource: FhirResourceWithId
 }
@@ -68,9 +64,9 @@ interface DiffRow {
  * row stay distinct across the files a format claimed. Across formats they
  * are not: two formats may both key a row `0:a.json/patient`. Scoping by
  * group is what keeps each format's badges and defaults its own; the
- * linked records, no format's, are the {@link LINKED_GROUP}.
+ * linked records, no format's, are the linked records' group.
  */
-type GroupComparisons = ReadonlyMap<ReviewGroup, ReadonlyMap<string, ServerComparison>>
+type GroupComparisons = ReadonlyMap<ReviewGroup.Key, ReadonlyMap<string, ServerComparison>>
 
 /**
  * The state of the pre-fetch: `loading` while there is nothing worth showing
@@ -119,7 +115,7 @@ const byGroupAndKey = (
   rows: readonly DiffRow[],
   byDiffKey: ReadonlyMap<string, ServerComparison>
 ): GroupComparisons => {
-  const comparisons = new Map<ReviewGroup, Map<string, ServerComparison>>()
+  const comparisons = new Map<ReviewGroup.Key, Map<string, ServerComparison>>()
   for (const row of rows) {
     const group = comparisons.get(row.group) ?? new Map<string, ServerComparison>()
     group.set(row.key, byDiffKey.get(literalReferenceOf(row.resource)) ?? AS_NEW)
@@ -129,24 +125,18 @@ const byGroupAndKey = (
 }
 
 /**
- * Every previewed resource across a batch's formats and its linked records,
- * paired with its group and labeled key — the flat list one classifier round
- * trip probes.
+ * Every previewed resource across a batch's groups, in review order, paired
+ * with its group and labeled key — the flat list one classifier round trip
+ * probes.
  */
-const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] => [
-  ...formatKinds.flatMap((kind) =>
-    SectionedList.rows(batch.formats[kind].decoded.sectionedList).map((row): DiffRow => ({
-      group: kind,
+const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] =>
+  ReviewGroup.entries(batch.groups, ReviewGroup.keys).flatMap(([key, group]) =>
+    ReviewGroup.rows(group).map((row): DiffRow => ({
+      group: key,
       key: row.reviewable.key,
       resource: row.resource,
     }))
-  ),
-  ...batch.linkedRecords.map((row): DiffRow => ({
-    group: LINKED_GROUP,
-    key: row.reviewable.key,
-    resource: row.resource,
-  })),
-]
+  )
 
 /**
  * Run the pre-fetch over every labeled resource across the batch's formats
@@ -281,7 +271,7 @@ const formatExcludedByDefault = (
   selection: StagedImport.Selection
 ): ReadonlySet<string> =>
   new Set([
-    ...unchangedKeysOf(SectionedList.rows(batch.formats[kind].decoded.sectionedList), comparisons),
+    ...unchangedKeysOf(ReviewGroup.rows(ReviewGroup.get(batch.groups, kind)), comparisons),
     ...keysWithoutPatientOf(batch, kind, selection),
   ])
 

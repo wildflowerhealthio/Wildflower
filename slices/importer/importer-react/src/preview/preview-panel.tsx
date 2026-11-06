@@ -1,6 +1,6 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { type DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import { StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 import { Array, Data, Option } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
@@ -10,9 +10,8 @@ import {
   type ResolvedBatch,
   claimedFormats,
   type ExcludedByDefaultFor,
-  formatKinds,
-  LINKED_GROUP,
   planWrite,
+  ReviewGroup,
 } from '@wildflowerhealthio/importer-core'
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
@@ -40,7 +39,7 @@ import panelStyles from './preview-panel.module.css'
  *
  * @remarks
  * A pick is a *batch* of one or more files, grouped by format and decoded
- * into one `FormatDecode.Result` per format, rendered together under
+ * into one review group per format, rendered together under
  * one confirm. The display is fully general — the same for every format:
  * formats shown under that format's settings form (when it has settings), each
  * format showing its decoded sections (title + per-resource rows with
@@ -195,11 +194,12 @@ const PreviewActions = ({
  * are), and changing it means choosing differently there.
  */
 const LinkedRecords = ({
-  linkedRecords,
+  linked,
   labels,
   comparisons,
 }: {
-  readonly linkedRecords: readonly DecodedFile.Row[]
+  /** The linked records' group. */
+  readonly linked: ReviewGroup.Type
   /** The label of each record a subject may be redirected to, by its literal reference. */
   readonly labels: ReadonlyMap<string, string>
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
@@ -211,7 +211,7 @@ const LinkedRecords = ({
     <h3 className={panelStyles['preview-panel__format-heading']}>{LINKED_RECORDS_HEADING}</h3>
     <p className={panelStyles['preview-panel__linked-note']}>{LINKED_RECORDS_NOTE}</p>
     <ul className={panelStyles['preview-panel__linked-list']}>
-      {linkedRecords.map((row) => {
+      {ReviewGroup.rows(linked).map((row) => {
         const description = describeResource(row.resource, labels)
         return (
           <li key={row.reviewable.key} className={panelStyles['preview-panel__linked-row']}>
@@ -262,8 +262,8 @@ const PreviewPanel = ({
 
   const totalFiles = useMemo(
     () =>
-      formatKinds.reduce((sum, kind) => sum + batch.formats[kind].files.length, 0) +
-      batch.unrecognizedFiles.length,
+      Object.values(batch.decoded.files).reduce((sum, files) => sum + files.length, 0) +
+      batch.decoded.unrecognizedFiles.length,
     [batch]
   )
 
@@ -290,7 +290,7 @@ const PreviewPanel = ({
     setEditing(makeClosedEditor())
   }
 
-  const activeFormats = useMemo(() => claimedFormats(batch.formats), [batch])
+  const activeFormats = useMemo(() => claimedFormats(batch.decoded), [batch])
 
   return (
     <section aria-label="Import preview" className={panelStyles['preview-panel']}>
@@ -305,7 +305,6 @@ const PreviewPanel = ({
       {referentRows}
       <div className={panelStyles['preview-panel__format-groups']}>
         {activeFormats.map((kind) => {
-          const result = batch.formats[kind]
           return (
             <section
               key={kind}
@@ -323,14 +322,14 @@ const PreviewPanel = ({
               />
               <div className={panelStyles['preview-panel__file-sections']}>
                 <FormatReviewBody
-                  result={result}
+                  reviewGroup={ReviewGroup.get(batch.groups, kind)}
                   selection={selectionFor(kind)}
                   excludedByDefault={excludedByDefaultFor(kind)}
                   comparisons={comparisons.get(kind)}
                   mentionLinkOptions={mentionLinkOptions}
                   onChooseMention={onChooseMention}
                   kind={kind}
-                  decodedFile={batch.decodedBatch.formats[kind].decoded}
+                  decodedFile={ReviewGroup.get(batch.decoded.groups, kind).decodedFile}
                   plan={batch.plan}
                   onSelectionChange={(selection) => onSelectionChange(kind, selection)}
                   onEditResource={(key, resource) => openEditor(kind, key, resource)}
@@ -339,14 +338,18 @@ const PreviewPanel = ({
             </section>
           )
         })}
-        {batch.linkedRecords.length > 0 && (
-          <LinkedRecords
-            linkedRecords={batch.linkedRecords}
-            labels={mentionLinkOptions.labelsByLiteralReference}
-            comparisons={comparisons.get(LINKED_GROUP)}
-          />
+        {Option.fromNullable(batch.groups.linked).pipe(
+          Option.map((linked) => (
+            <LinkedRecords
+              key={ReviewGroup.LINKED}
+              linked={linked}
+              labels={mentionLinkOptions.labelsByLiteralReference}
+              comparisons={comparisons.get(ReviewGroup.LINKED)}
+            />
+          )),
+          Option.getOrNull
         )}
-        {batch.unrecognizedFiles.map((file) => (
+        {batch.decoded.unrecognizedFiles.map((file) => (
           <section
             key={file.id}
             className={panelStyles['preview-panel__file-section']}

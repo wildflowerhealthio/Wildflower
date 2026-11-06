@@ -10,6 +10,8 @@ import {
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema } from 'effect'
 
+import type * as ReviewGroup from './review-group.ts'
+
 /**
  * The import stage: one format's decode, file set by file set, made the
  * device's own. The one place a record is adopted, a source file is minted
@@ -130,12 +132,12 @@ const importFileSet = (
 
 /**
  * Import one format's decode: every file set through {@link importFileSet},
- * merged into the one review the format's {@link FormatDecode.Result} holds.
+ * merged into the format's one review group.
  *
  * @param importer - The format's importer, whose source-file constants and
  *   hooks the import reads
  * @param decoded - The format's decode, as its `decode` returned it
- * @returns The imported result, never failing
+ * @returns The format's review group, never failing
  *
  * @remarks
  * Sets are imported concurrently and each is independent: one whose source file
@@ -149,7 +151,7 @@ const importFileSet = (
 const importDecoded = <TFormat extends string>(
   importer: ImportingFormat,
   decoded: FormatDecode.Decoded<TFormat>
-): Effect.Effect<FormatDecode.Result<TFormat>> =>
+): Effect.Effect<ReviewGroup.Type> =>
   Effect.partition(
     decoded.fileSets,
     (fileSet) =>
@@ -160,12 +162,8 @@ const importDecoded = <TFormat extends string>(
       ),
     { concurrency: 'unbounded' }
   ).pipe(
-    Effect.map(([rejected, imported]): FormatDecode.Result<TFormat> => ({
-      id: FormatDecode.makeId(decoded.format, decoded.files),
-      title: decoded.files.map((file) => file.fileName).join(', '),
-      files: decoded.files,
-      format: decoded.format,
-      decoded: DecodedFile.concatenateAll(imported),
+    Effect.map(([rejected, imported]): ReviewGroup.Type => ({
+      decodedFile: DecodedFile.concatenateAll(imported),
       unreadableFiles: [...decoded.unreadableFiles, ...rejected.flat()],
     })),
     Effect.provideService(PickedFile.Format, importer.sourceFileFormat)
