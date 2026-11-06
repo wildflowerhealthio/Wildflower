@@ -101,6 +101,9 @@ const of = (
     impliedRecordOf(identifier, display)
   )
 
+/** What {@link fullUrlOf} puts between the referencing entry's `fullUrl` and the target. */
+const IMPLIED_MARK = '#implied:'
+
 /**
  * The `fullUrl` of the record a reference to `resourceType` by `identifier`
  * implies, first named by the entry under `referencingFullUrl`:
@@ -115,6 +118,12 @@ const fullUrlOf = (
   referencingFullUrl: string,
   resourceType: string,
   { system, value }: IdentifierAndReference.QualifiedIdentifierType
-): string => `${referencingFullUrl}#implied:${resourceType}|${system.href}|${value}`
+): string => `${referencingFullUrl}${IMPLIED_MARK}${resourceType}|${system.href}|${value}`
 
-export { fullUrlOf, of }
+/**
+ * Whether `fullUrl`, or the review key an adopted row carries it as, is one
+ * {@link fullUrlOf} made: the row is an implied record.
+ */
+const isFullUrl = (fullUrl: string): boolean => fullUrl.includes(IMPLIED_MARK)
+
+export { fullUrlOf, isFullUrl, of }

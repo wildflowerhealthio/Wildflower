@@ -1,8 +1,10 @@
-import { literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodedFile,
   type FileResolution,
   type FormatDecode,
+  ImpliedRecord,
+  Mention,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Match } from 'effect'
@@ -32,7 +34,7 @@ import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
  */
 
 /** Why a reviewed resource is, or is not, in the transaction. */
-type Disposition = 'Included' | 'Excluded' | 'Unchanged' | 'Superseded'
+type Disposition = 'Included' | 'Excluded' | 'Unchanged' | 'Unreferenced' | 'Superseded'
 
 /** One reviewed resource's place in the write: the row as reviewed, edits applied, and its disposition. */
 interface WriteDecision {
@@ -79,6 +81,32 @@ interface ReviewedRow {
   readonly entry: DecodedFile.Resource
   readonly verdict: Verdict
 }
+
+/** Every literal reference `resources` carry, in any reference field. */
+const literalReferencesIn = (resources: readonly FhirResourceWithId[]): ReadonlySet<string> =>
+  new Set(
+    resources.flatMap((resource) =>
+      Mention.madeIn(resource).flatMap(({ reference }) =>
+        reference.reference === null ? [] : [reference.reference]
+      )
+    )
+  )
+
+/**
+ * A candidate format row as written: `Unreferenced` when it is a record the
+ * import implied (`ImpliedRecord.isFullUrl`) and no candidate format row
+ * names it, which would write it as an orphan; else still a candidate.
+ *
+ * @param named - The literal references the candidate format rows carry
+ */
+const unlessUnreferenced =
+  (named: ReadonlySet<string>) =>
+  (row: ReviewedRow): ReviewedRow =>
+    row.verdict === 'Candidate' &&
+    ImpliedRecord.isFullUrl(row.entry.key) &&
+    !named.has(literalReferenceOf(row.entry.resource))
+      ? { ...row, verdict: 'Unreferenced' }
+      : row
 
 /**
  * Every claimed format's rows, in registry order and then review order, as
@@ -135,7 +163,11 @@ const linkedVerdictOf = (
  * - A format row is **`Excluded`** when it is not included: the reviewer
  *   unticked it, or never ticked one the default leaves out. Else it is a
  *   candidate. Its `entry.resource` is the edited resource, resolved on the
- *   batch's plan, where the reviewer made an edit.
+ *   batch's plan, where the reviewer made an edit. A record the import
+ *   implied from the references naming it (`ImpliedRecord.isFullUrl`) is
+ *   **`Unreferenced`** when no candidate format row carries its literal
+ *   `Type/<id>` in any reference field (`Mention.madeIn`): one nothing
+ *   written names would be an orphan.
  * - A linked record is read-only in the review (a link choice is how to
  *   change one), so this is the one place its write is decided. It is
  *   **`Unchanged`** when the server holds it as it is (its key in
@@ -161,13 +193,17 @@ const planWrite = (
   excludedByDefaultFor: ExcludedByDefaultFor,
   unchangedLinked: ReadonlySet<string>
 ): readonly WriteDecision[] => {
+  const formatRows = formatRowsOf(batch, selectionFor, excludedByDefaultFor)
+  const named = literalReferencesIn(
+    formatRows.flatMap(({ entry, verdict }) => (verdict === 'Candidate' ? [entry.resource] : []))
+  )
   const rows: readonly ReviewedRow[] = [
     ...batch.linkedRecords.map((record): ReviewedRow => ({
       group: LINKED_GROUP,
       entry: record,
       verdict: linkedVerdictOf(record, unchangedLinked),
     })),
-    ...formatRowsOf(batch, selectionFor, excludedByDefaultFor),
+    ...formatRows.map(unlessUnreferenced(named)),
   ]
   // Built in submit order, the map keeps each `Type/id`'s last candidate.
   const lastCandidateIndexByLiteralReference = new Map(
