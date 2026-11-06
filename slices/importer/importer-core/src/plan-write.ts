@@ -7,7 +7,7 @@ import {
   Mention,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Match } from 'effect'
+import { Array as Arr, Match } from 'effect'
 
 import { claimedFormats } from './read-batch.ts'
 import type { FormatKind } from './registry.ts'
@@ -179,7 +179,10 @@ const linkedVerdictOf = (
  *   **`Included`** and every earlier one **`Superseded`**. That is the rule
  *   the transaction bundle applies to its entries (last occurrence wins), so
  *   the `Included` resources are exactly the bundle's entries and no row's
- *   edit is lost silently. A linked record is a record no resolved file
+ *   edit is lost silently. A record a file decoded wins over one another file
+ *   set implied under the same `Type/id`, which says only what a reference
+ *   to it said, whatever their order: every implied candidate under it is
+ *   `Superseded`. A linked record is a record no resolved file
  *   holds, so it never shares a `Type/id` with a format row.
  *
  * A claimed format with no `Included` decision writes nothing
@@ -205,10 +208,17 @@ const planWrite = (
     })),
     ...formatRows.map(unlessUnreferenced(named)),
   ]
-  // Built in submit order, the map keeps each `Type/id`'s last candidate.
+  const candidateIndexes = rows.flatMap(({ entry, verdict }, index) =>
+    verdict === 'Candidate' ? [[literalReferenceOf(entry.resource), index, entry.key] as const] : []
+  )
+  // Built in submit order, implied records first, the map keeps each
+  // `Type/id`'s last candidate, a decoded one over any implied one.
+  const [decodedCandidates, impliedCandidates] = Arr.partition(candidateIndexes, ([, , key]) =>
+    ImpliedRecord.isFullUrl(key)
+  )
   const lastCandidateIndexByLiteralReference = new Map(
-    rows.flatMap(({ entry, verdict }, index) =>
-      verdict === 'Candidate' ? [[literalReferenceOf(entry.resource), index] as const] : []
+    [...impliedCandidates, ...decodedCandidates].map(
+      ([literalReference, index]) => [literalReference, index] as const
     )
   )
   return rows.map(({ group, entry, verdict }, index): WriteDecision => ({
