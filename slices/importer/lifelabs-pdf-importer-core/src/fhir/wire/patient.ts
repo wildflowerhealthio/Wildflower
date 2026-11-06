@@ -1,4 +1,6 @@
-import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { HealthCardIdentifier, type HealthCardProvince } from '@wildflowerhealthio/fhir-ca-infoway'
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Array as Arr, Option } from 'effect'
 
 import type * as Report from '../../entities/report.ts'
@@ -6,47 +8,56 @@ import { LifeLabsIdentifierSystem } from '../../source-system.ts'
 import { parsePrintedDate } from '../dates.ts'
 import type { Wire } from './shared.ts'
 
-/**
- * A printed Ontario health card number less its version code: the one or two
- * letters after the number, and any whitespace before them (`1234567890 AB` →
- * `1234567890`).
- *
- * @remarks
- * The version code changes when a card is reissued, and the number names the
- * person, so two reports printing one number under different version codes
- * key one Patient. The rest is kept as printed.
- */
-const healthCardNumberWithoutVersionCode = (printed: string): string =>
-  printed.replace(/(?<=\d)\s*[A-Za-z]{1,2}$/, '')
+/** An identifier the synthesis writes for the patient: always with its `system` and `value`. */
+type PatientIdentifier = DetachedResource.Key &
+  typeof IdentifierAndReference.IdentifierSchema.Encoded
 
 /**
  * The identifiers the report prints for its patient: `Patient ID` as printed,
- * then `HC #` less its version code.
+ * then `HC #` as `healthCardProvince` writes it.
  */
-const printedIdentifiersOf = (patient: Report.Type['patient']): DetachedResource.Key[] => [
+const printedIdentifiersOf = (
+  patient: Report.Type['patient'],
+  healthCardProvince: HealthCardProvince.Type
+): PatientIdentifier[] => [
   ...(patient.patientId === ''
     ? []
     : [{ system: LifeLabsIdentifierSystem.PatientId, value: patient.patientId }]),
   ...(patient.healthCardNumber === ''
     ? []
-    : [
-        {
-          system: LifeLabsIdentifierSystem.OntarioHealthCardNumber,
-          value: healthCardNumberWithoutVersionCode(patient.healthCardNumber),
-        },
-      ]),
+    : [HealthCardIdentifier.of(healthCardProvince, patient.healthCardNumber)]),
 ]
 
 /**
- * The key the report gives its patient: the printed `Patient ID`, else the
- * health card number less its version code, else the name and date of birth
- * as printed, `<name>, <date of birth>`.
+ * The patient's identifiers, its key first: the identifiers the report
+ * prints, else the name and date of birth as printed,
+ * `<name>, <date of birth>`.
  */
-const patientKeyOf = (patient: Report.Type['patient']): DetachedResource.Key =>
-  Option.getOrElse(Arr.head(printedIdentifiersOf(patient)), () => ({
-    system: LifeLabsIdentifierSystem.PatientNameBirthDate,
-    value: `${patient.name.trim()}, ${patient.dateOfBirth}`,
-  }))
+const patientIdentifiersOf = (
+  patient: Report.Type['patient'],
+  healthCardProvince: HealthCardProvince.Type
+): Arr.NonEmptyReadonlyArray<PatientIdentifier> =>
+  Arr.match(printedIdentifiersOf(patient, healthCardProvince), {
+    onEmpty: () =>
+      Arr.of({
+        system: LifeLabsIdentifierSystem.PatientNameBirthDate,
+        value: `${patient.name.trim()}, ${patient.dateOfBirth}`,
+      }),
+    onNonEmpty: (identifiers) => identifiers,
+  })
+
+/**
+ * The key the report gives its patient: the printed `Patient ID`, else the
+ * health card number (Ontario's less its version code, so a reissued card
+ * keys the same Patient), else the name and date of birth as printed.
+ */
+const patientKeyOf = (
+  patient: Report.Type['patient'],
+  healthCardProvince: HealthCardProvince.Type
+): DetachedResource.Key => {
+  const { system, value } = Arr.headNonEmpty(patientIdentifiersOf(patient, healthCardProvince))
+  return { system, value }
+}
 
 /** `FAMILY, GIVEN GIVEN` → a HumanName; any other shape becomes `text`. */
 const humanNameWire = (printed: string): Wire => {
@@ -68,18 +79,11 @@ const genderOf = (sex: string): string | undefined => {
   }
 }
 
-const patientWire = (report: Report.Type): Wire => {
+const patientWire = (report: Report.Type, healthCardProvince: HealthCardProvince.Type): Wire => {
   const { patient } = report
-  const key = patientKeyOf(patient)
-  // The key first, then every other identifier the report prints.
   const wire: Wire = {
     resourceType: 'Patient',
-    identifier: [
-      DetachedResource.keyIdentifierWire(key),
-      ...printedIdentifiersOf(patient)
-        .filter(({ system }) => system !== key.system)
-        .map(DetachedResource.keyIdentifierWire),
-    ],
+    identifier: patientIdentifiersOf(patient, healthCardProvince),
   }
   if (patient.name !== '') wire['name'] = [humanNameWire(patient.name)]
   const gender = genderOf(patient.sex)

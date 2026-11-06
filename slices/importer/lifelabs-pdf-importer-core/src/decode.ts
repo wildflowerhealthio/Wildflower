@@ -37,7 +37,8 @@ const pageWithoutLabNoNote = (pageNumber: number): string =>
  *
  * @param document - The positioned-text document the
  *   {@link PositionedTextExtractor} produced from the PDF's bytes
- * @param settings - The import's settings (time zone for date interpretation)
+ * @param settings - The import's settings (time zone for date interpretation,
+ *   health card province for the `HC #`)
  * @returns The document's reports as {@link decodedReportsOf} yields them:
  *   one section per report, titled by its `Lab No` and date of service, its
  *   records detached and keyed by what the report prints, with a note for
@@ -61,7 +62,10 @@ const decodeLifeLabsPdfDocument = (
     const { reports, pagesWithoutLabNo } = yield* Report.tryFromDocument(document).pipe(
       Effect.mapError(asParseError)
     )
-    const decoded = yield* decodedReportsOf(reports, { timeZone })
+    const decoded = yield* decodedReportsOf(reports, {
+      timeZone,
+      healthCardProvince: settings.healthCardProvince,
+    })
     return { ...decoded, notes: [...pagesWithoutLabNo.map(pageWithoutLabNoNote), ...decoded.notes] }
   })
 
@@ -71,7 +75,8 @@ const decodeLifeLabsPdfDocument = (
  *
  * @param file - The picked file, whose `bytes` are a LifeLabs "Reports" PDF
  *   exactly as the picker read them
- * @param settings - The import's settings (time zone for date interpretation)
+ * @param settings - The import's settings (time zone for date interpretation,
+ *   health card province for the `HC #`)
  * @returns One section per report, and a note per page skipped for printing
  *   no `Lab No`; fails only
  *   with a `ParseError` when the bytes are not a PDF the extractor can open or

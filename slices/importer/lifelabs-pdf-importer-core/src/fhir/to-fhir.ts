@@ -1,3 +1,4 @@
+import type { HealthCardProvince } from '@wildflowerhealthio/fhir-ca-infoway'
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   DiagnosticReport,
@@ -19,6 +20,8 @@ import type { Wire } from './wire/shared.ts'
 interface SynthesisOptions {
   /** The IANA zone the report's printed clock is in (`America/Toronto`). */
   readonly timeZone: string
+  /** The province that issued the health card the report prints as `HC #`. */
+  readonly healthCardProvince: HealthCardProvince.Type
 }
 
 /**
@@ -61,7 +64,8 @@ const entryOf = (
  * per report.
  *
  * @param reports - The reports one positioned-text document parsed to
- * @param options - The time zone the reports' printed clocks are in
+ * @param options - The time zone the reports' printed clocks are in, and the
+ *   province that issued the health card they print
  * @returns One {@link ReportResources} per report, in report order: the
  *   `Practitioner`s and `Patient` this report is first to name, then its
  *   `Observation`s and the `DiagnosticReport` that lists them — so the
@@ -80,7 +84,7 @@ const toFhirResources = (
   options: SynthesisOptions
 ): Effect.Effect<readonly ReportResources[], ParseResult.ParseError> =>
   Effect.gen(function* () {
-    const { timeZone } = options
+    const { timeZone, healthCardProvince } = options
     const seenPatients = new Set<string>()
     const seenPractitioners = new Set<string>()
     const groups: ReportResources[] = []
@@ -106,10 +110,12 @@ const toFhirResources = (
         seenPractitioners.add(keyText(key))
         entries.push(entryOf(key, yield* decodePractitioner(practitionerWire(name))))
       }
-      const patientKey = patientKeyOf(report.patient)
+      const patientKey = patientKeyOf(report.patient, healthCardProvince)
       if (!seenPatients.has(keyText(patientKey))) {
         seenPatients.add(keyText(patientKey))
-        entries.push(entryOf(patientKey, yield* decodePatient(patientWire(report))))
+        entries.push(
+          entryOf(patientKey, yield* decodePatient(patientWire(report, healthCardProvince)))
+        )
       }
 
       const observations: Wire[] = []
