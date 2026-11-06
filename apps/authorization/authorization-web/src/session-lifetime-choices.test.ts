@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   choiceValue,
   idleTtlChoices,
-  isSamePolicy,
   limitLabel,
   limitOfChoice,
   maxTtlChoices,
@@ -107,23 +106,5 @@ describe('the limit choices', () => {
 
   it('know no choice for a value none of them has', () => {
     expect(limitOfChoice(idleTtlChoices(Option.none()), '42')).toEqual(Option.none())
-  })
-})
-
-describe('isSamePolicy', () => {
-  it('compares each limit by its length, and the session tie', () => {
-    // Arrange
-    const policy = {
-      idleTtl: Option.some(Duration.hours(2)),
-      maxTtl: Option.none(),
-      endsWithBrowserSession: true,
-    }
-
-    // Act / Assert
-    expect(isSamePolicy(policy, { ...policy, idleTtl: Option.some(Duration.minutes(120)) })).toBe(
-      true
-    )
-    expect(isSamePolicy(policy, { ...policy, maxTtl: Option.some(Duration.days(1)) })).toBe(false)
-    expect(isSamePolicy(policy, { ...policy, endsWithBrowserSession: false })).toBe(false)
   })
 })

@@ -1,4 +1,4 @@
-import type { Client, RefreshPolicy } from '@wildflowerhealthio/authorization-core/domain'
+import { RefreshPolicy, type Client } from '@wildflowerhealthio/authorization-core/domain'
 import { useUpdateRefreshPolicyMutation } from '@wildflowerhealthio/authorization-react'
 import { Checkbox, ErrorBanner, Field } from '@wildflowerhealthio/react-tundraish'
 import { Option } from 'effect'
@@ -7,7 +7,6 @@ import { useId, useState, type ChangeEvent, type JSX } from 'react'
 import {
   choiceValue,
   idleTtlChoices,
-  isSamePolicy,
   limitOfChoice,
   maxTtlChoices,
   type LimitChoice,
@@ -50,7 +49,7 @@ const useSessionLifetime = (client: Client.Type): SessionLifetime => {
     setDraft: (next) => {
       setEditedRefreshPolicy(Option.some(next))
     },
-    canSave: !mutation.isPending && !isSamePolicy(draft, storedRefreshPolicy),
+    canSave: !mutation.isPending && !RefreshPolicy.equivalence(draft, storedRefreshPolicy),
     save: () => {
       mutation.mutate(
         { clientId: client.clientId, refreshPolicy: draft },

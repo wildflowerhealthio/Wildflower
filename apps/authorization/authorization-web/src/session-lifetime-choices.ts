@@ -4,7 +4,6 @@
  * stands for, so a picked `<select>` value maps back to it without parsing.
  */
 
-import type { RefreshPolicy } from '@wildflowerhealthio/authorization-core/domain'
 import { Array, Duration, Equal, Option } from 'effect'
 
 /** One option of a limit's `<select>`. */
@@ -103,18 +102,4 @@ const limitOfChoice = (
     Option.map((choice) => choice.limit)
   )
 
-/** Whether two policies say the same thing. */
-const isSamePolicy = (left: RefreshPolicy.Type, right: RefreshPolicy.Type): boolean =>
-  Equal.equals(left.idleTtl, right.idleTtl) &&
-  Equal.equals(left.maxTtl, right.maxTtl) &&
-  left.endsWithBrowserSession === right.endsWithBrowserSession
-
-export {
-  choiceValue,
-  idleTtlChoices,
-  isSamePolicy,
-  limitLabel,
-  limitOfChoice,
-  maxTtlChoices,
-  type LimitChoice,
-}
+export { choiceValue, idleTtlChoices, limitLabel, limitOfChoice, maxTtlChoices, type LimitChoice }

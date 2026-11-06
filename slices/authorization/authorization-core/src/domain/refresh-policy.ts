@@ -6,7 +6,8 @@
  * policy says.
  *
  * Namespace module (`import { RefreshPolicy } from '@wildflowerhealthio/authorization-core/domain'`):
- * `RefreshPolicy.Schema` / `RefreshPolicy.Type`, with `RefreshPolicy.ceiling`.
+ * `RefreshPolicy.Schema` / `RefreshPolicy.Type`, with `RefreshPolicy.ceiling`
+ * and `RefreshPolicy.equivalence`.
  */
 
 import { Duration, Schema } from 'effect'
@@ -55,4 +56,10 @@ const RefreshPolicySchema = Schema.Struct({
 
 type RefreshPolicyType = typeof RefreshPolicySchema.Type
 
-export { ceiling, RefreshPolicySchema as Schema, type RefreshPolicyType as Type }
+/**
+ * Whether two policies say the same thing: each limit by its length, and the
+ * session tie. Derived from the schema, so a field it gains is compared too.
+ */
+const equivalence = Schema.equivalence(RefreshPolicySchema)
+
+export { ceiling, equivalence, RefreshPolicySchema as Schema, type RefreshPolicyType as Type }
