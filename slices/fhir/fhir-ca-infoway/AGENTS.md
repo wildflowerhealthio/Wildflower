@@ -25,7 +25,8 @@ R4, so they live here rather than in `fhir-r4`.
   that province's rule (`Type`: `fhir-r4`'s encoded `Identifier` with its
   `system` and `value` always set, so a source can key a record by it).
   Ontario: the number in `value` and its version code (the one or two
-  letters after the last digit, whitespace before them dropped) in the
+  letters after the last digit, any whitespace or hyphens before them
+  dropped) in the
   extension, no extension when it prints none. British Columbia: the PHN in
   `value` as printed; a PHN has no version code.
 - `src/index.ts` — the two namespaces.

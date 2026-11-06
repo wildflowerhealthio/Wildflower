@@ -39,11 +39,11 @@ type HealthCardIdentifier = typeof IdentifierAndReference.IdentifierSchema.Encod
 
 /**
  * A printed Ontario health card number split into its number and its version
- * code, the one or two letters after the last digit, with any whitespace
- * before them (`1234567890 AB`). A number printed with no version code has
- * none.
+ * code, the one or two letters after the last digit, with any whitespace or
+ * hyphens between them (`1234567890 AB`, `1234-567-890-AB`). A number printed
+ * with no version code has none.
  */
-const ONTARIO_VERSION_CODE = /^(?<number>.*\d)\s*(?<versionCode>[A-Za-z]{1,2})$/
+const ONTARIO_VERSION_CODE = /^(?<number>.*\d)[\s-]*(?<versionCode>[A-Za-z]{1,2})$/
 
 const ontarioHealthCardIdentifier = (printed: string): HealthCardIdentifier =>
   Option.fromNullable(ONTARIO_VERSION_CODE.exec(printed)?.groups).pipe(

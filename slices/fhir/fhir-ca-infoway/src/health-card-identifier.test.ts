@@ -8,7 +8,7 @@ import { HealthCardIdentifier } from './index.ts'
 
 const digits = fc.stringMatching(/^\d{10}$/)
 const versionCode = fc.stringMatching(/^[A-Z]{1,2}$/)
-const separator = fc.constantFrom('', ' ', '  ')
+const separator = fc.constantFrom('', ' ', '  ', '-', ' - ')
 
 describe('HealthCardIdentifier.of', () => {
   it('writes an Ontario number in value and its version code in the extension', () => {
@@ -47,6 +47,16 @@ describe('HealthCardIdentifier.of', () => {
       value: '1234-567-890',
       extension: [
         { url: HealthCardIdentifier.ONTARIO_HEALTH_CARD_VERSION_CODE_URL, valueString: 'A' },
+      ],
+    })
+  })
+
+  it('splits a version code printed after a hyphen, keeping the number as printed', () => {
+    expect(HealthCardIdentifier.of('ON', '1234-567-890-AB')).toEqual({
+      system: HealthCardIdentifier.HealthCardNumberSystem.ON,
+      value: '1234-567-890',
+      extension: [
+        { url: HealthCardIdentifier.ONTARIO_HEALTH_CARD_VERSION_CODE_URL, valueString: 'AB' },
       ],
     })
   })
