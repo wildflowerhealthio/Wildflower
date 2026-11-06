@@ -501,7 +501,7 @@ describe('ImporterScreen', () => {
     // Act — commit a new equipment time zone, which re-decodes and re-classifies
     const zoneInput = screen.getByLabelText('Equipment time zone')
     await userEvent.clear(zoneInput)
-    await userEvent.type(zoneInput, 'UTC{Enter}')
+    await userEvent.type(zoneInput, 'Pacific/Chatham{Enter}')
 
     // Assert — the re-classification resolves *underneath* the panel. Blocking
     // the preview on it would unmount the whole panel, dropping the focus of
