@@ -1,8 +1,8 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import { type FhirResource, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { HarFromJson, HttpArchive, emitHar } from '@wildflowerhealthio/http-archive'
 import {
-  type DecodedFile,
+  DecodedFile,
   DecodedFileSet,
   PickedFile,
   Referent,
@@ -32,7 +32,7 @@ import {
   jsonBody,
   traceExchange,
 } from '@wildflowerhealthio/web-trace-core/test-helpers'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option, Schema, Either } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it, test } from 'vite-plus/test'
 
@@ -144,7 +144,7 @@ const decodeOne = async (file: PickedFile.Type): Promise<DecodedFileSet.Type> =>
  * adopted as the import stage adopts it.
  */
 const readOne = async (file: PickedFile.Type): Promise<DecodedFile.DecodedFile> =>
-  DecodedFileSet.adopt(await decodeOne(file))
+  Either.getOrThrow(DecodedFileSet.adopt(await decodeOne(file)))
 
 describe('harImporter.decode', () => {
   it('should fold a recognized source file into one section per URL, in first-seen order', async () => {
@@ -483,57 +483,85 @@ const rexallExchanges = (
     })
   )
 
+/** The system Rexall's import names a prescriber known only by printed name in. */
+const REXALL_PRACTITIONER_NAME_SYSTEM =
+  'https://wildflowerhealth.io/fhir/sid/rexall-be-well/practitioner-name'
+
+/** The referents of `result`, as `[type, system, value]`. */
+const referentKeysOf = (result: DecodedFile.DecodedFile): readonly (readonly string[])[] =>
+  Effect.runSync(Referent.discover([result])).map(({ logicalReference }) => [
+    logicalReference.type,
+    logicalReference.identifier.system.href,
+    logicalReference.identifier.value,
+  ])
+
+/** The `requester` of `result`'s MedicationRequest. */
+const requesterIn = (result: DecodedFile.DecodedFile): unknown => {
+  const request = DecodedFile.resources(result).find(
+    ({ resource }) => resource.resourceType === 'MedicationRequest'
+  )?.resource
+  return request?.resourceType === 'MedicationRequest' ? request.requester : undefined
+}
+
 describe('harImporter.decode over a Rexall capture', () => {
-  it('should name one Patient and the prescriber by printed name as its referents', async () => {
+  it('should imply the prescriber carebook names by printed name, and name it and the Patient as its referents', async () => {
     const result = await readOne({
       id: '0:rexall.har',
       fileName: 'rexall.har',
       bytes: harBytesOf(rexallExchanges()),
     })
 
-    const referents = Effect.runSync(Referent.discover([result]))
-
-    expect(
-      referents.map(({ _tag, logicalReference }) => [
-        _tag,
-        logicalReference.type,
-        logicalReference.identifier.system.href,
-        logicalReference.identifier.value,
-      ])
-    ).toEqual([
-      ['AsResource', 'Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
-      ['ByMentionOnly', 'Practitioner', Practitioner.NAME_IDENTIFIER_SYSTEM, 'DR PATEL'],
+    expect(referentKeysOf(result)).toEqual([
+      ['Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
+      ['Practitioner', REXALL_PRACTITIONER_NAME_SYSTEM, 'DR PATEL'],
     ])
+    const prescriber = DecodedFile.resources(result).find(
+      ({ resource }) => resource.resourceType === 'Practitioner'
+    )?.resource
+    expect(requesterIn(result)).toMatchObject({
+      reference: `Practitioner/${prescriber?.id}`,
+      display: 'DR PATEL',
+    })
   })
 })
 
 describe('harImporter.decode over a Rexall capture naming a prescriber carebook does not serve', () => {
-  // The import holds no Practitioner keyed by that id, so the reference stays
-  // logical rather than pointing at an id nothing is stored under, and the
-  // identity map offers it as a provider to link.
-  it('should name the prescriber as a referent by mention, by its carebook id', async () => {
+  // The import holds no Practitioner keyed by that id, so it implies one,
+  // keyed by the carebook id and named by the display.
+  it('should imply the prescriber, keyed by its carebook id, and point the request at it', async () => {
+    const result = await readOne({
+      id: '0:rexall.har',
+      fileName: 'rexall.har',
+      bytes: harBytesOf(
+        rexallExchanges({
+          agent: { reference: 'Practitioner/dr-1', display: 'Dr. Jonathan Brown' },
+        })
+      ),
+    })
+
+    const prescriber = DecodedFile.resources(result).find(
+      ({ resource }) => resource.resourceType === 'Practitioner'
+    )?.resource
+    expect(
+      prescriber?.resourceType === 'Practitioner' ? prescriber.name.map(({ text }) => text) : []
+    ).toEqual(['Dr. Jonathan Brown'])
+    expect(requesterIn(result)).toMatchObject({ reference: `Practitioner/${prescriber?.id}` })
+    expect(referentKeysOf(result)).toEqual([
+      ['Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
+      ['Practitioner', `${REXALL_STU3_BASE_URL}/Practitioner`, 'dr-1'],
+    ])
+  })
+
+  it('should leave a prescriber it names with no display as carebook wrote it', async () => {
     const result = await readOne({
       id: '0:rexall.har',
       fileName: 'rexall.har',
       bytes: harBytesOf(rexallExchanges({ agent: { reference: 'Practitioner/dr-1' } })),
     })
 
-    const request = result.sections
-      .flatMap((section) => section.resources)
-      .find(({ resource }) => resource.resourceType === 'MedicationRequest')?.resource
-    expect(
-      request?.resourceType === 'MedicationRequest' ? request.requester?.reference : ''
-    ).toBeNull()
-    expect(
-      Effect.runSync(Referent.discover([result])).map(({ _tag, logicalReference }) => [
-        _tag,
-        logicalReference.type,
-        logicalReference.identifier.system.href,
-        logicalReference.identifier.value,
-      ])
-    ).toEqual([
-      ['AsResource', 'Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
-      ['ByMentionOnly', 'Practitioner', `${REXALL_STU3_BASE_URL}/Practitioner`, 'dr-1'],
+    expect(requesterIn(result)).toMatchObject({ reference: null, type: 'Practitioner' })
+    expect(referentKeysOf(result)).toEqual([
+      ['Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
     ])
   })
 })

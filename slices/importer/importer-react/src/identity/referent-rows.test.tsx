@@ -7,7 +7,6 @@ import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import {
   FhirResourceSchema,
-  Practitioner,
   type FhirResourceWithId,
   hasId,
 } from '@wildflowerhealthio/fhir-r4/resources'
@@ -19,10 +18,8 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { ReferentRows } from './referent-rows.tsx'
 import {
-  DONT_LINK_LABEL,
   GROUP_HEADINGS,
   NEW_LABEL,
-  newAsLabel,
   ON_SERVER_GROUP,
   STORED_LIST_ERROR_MESSAGE,
   STORED_LIST_TRUNCATED_MESSAGE,
@@ -53,6 +50,7 @@ afterEach(() => {
 const SOURCE = 'https://source.example/patient-id'
 const CUSTOMER = 'https://source.example/customer-id'
 const SERVER = 'https://server.example/id'
+const PRACTITIONER_NAME = 'https://source.example/practitioner-name'
 const TYRA = 'Tyra Banks · 1990-01-02'
 
 describe('ReferentRows', () => {
@@ -61,8 +59,7 @@ describe('ReferentRows', () => {
 
     const people = screen.getByRole('region', { name: GROUP_HEADINGS.Patient })
     const providers = screen.getByRole('region', { name: GROUP_HEADINGS.Practitioner })
-    expect(within(people).getAllByRole('combobox')).toHaveLength(2)
-    expect(within(people).getByRole('combobox', { name: 'c-9' })).toBeDefined()
+    expect(within(people).getAllByRole('combobox')).toHaveLength(1)
     expect(within(providers).getAllByRole('combobox')).toHaveLength(1)
     expect(within(providers).getByRole('combobox', { name: 'Dr. A Smith' })).toBeDefined()
     expect(people.compareDocumentPosition(providers)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
@@ -155,18 +152,6 @@ describe('ReferentRows', () => {
     await waitFor(() => {
       expect(select.value).toBe('update:Patient/p-1')
     })
-
-    // The account linked to the stored copy is redirected to the record this import
-    // writes over it: one record, counted with the import's.
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'c-9' }),
-      'Tyra Lynne Banks · 1990-01-02'
-    )
-    await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toBe(
-        '0 records on the server, 1 record from this import, 1 not linked'
-      )
-    })
   })
 
   it('should say when the page limit cut the server’s list off', async () => {
@@ -208,29 +193,26 @@ describe('ReferentRows', () => {
   })
 
   it('should resolve the batch on a changed select', async () => {
-    await renderRows(BATCH, {})
+    await renderRows(BATCH, { listed: [practitionerWire('42', 'Dr. A Smith')] })
 
-    // Tyra's own record is the one new record; the account and the prescriber are unlinked.
+    // Tyra's own record and the prescriber's are the import's new records.
     expect(screen.getByRole('status').textContent).toBe(
-      '0 records on the server, 1 record from this import, 2 not linked'
+      '0 records on the server, 2 records from this import'
     )
+    expect(requesterOfRequest()).toBe('Practitioner/dr-a-smith')
 
-    // The account is the person the Patient line creates: its mentions follow.
-    const account = screen.getByRole('combobox', { name: 'c-9' })
-    await userEvent.selectOptions(account, newAsLabel(TYRA))
+    // The prescriber is the provider the server holds: the request names it.
+    const provider = screen.getByRole('combobox', { name: 'Dr. A Smith' })
     await waitFor(() => {
-      expect(subjectOfRequest()).toBe('Patient/p-1')
+      expect(within(provider).getByRole('group', { name: ON_SERVER_GROUP })).toBeDefined()
     })
-    // Two referents on one new record count once.
+    await userEvent.selectOptions(provider, 'stored:Practitioner/42')
+    await waitFor(() => {
+      expect(requesterOfRequest()).toBe('Practitioner/42')
+    })
     expect(screen.getByRole('status').textContent).toBe(
-      '0 records on the server, 1 record from this import, 1 not linked'
+      '1 record on the server, 1 record from this import'
     )
-
-    // Unlinked again: the mention keeps its identifier-only form.
-    await userEvent.selectOptions(account, DONT_LINK_LABEL)
-    await waitFor(() => {
-      expect(subjectOfRequest()).toBeNull()
-    })
   })
 
   it('should say when the server’s list could not be read, and still offer the search’s hits', async () => {
@@ -254,37 +236,6 @@ describe('ReferentRows', () => {
     const provider = screen.getByRole<HTMLSelectElement>('combobox', { name: 'Dr. A Smith' })
     expect(provider.value).toBe('stored:Practitioner/42')
     expect(provider.selectedOptions[0]?.textContent).toBe('Dr. A Smith')
-  })
-
-  it('should fall back to the searched default, not the kind’s, when a re-decode drops the referent a choice linked to', async () => {
-    // Arrange: the account's search finds a stored person; a second decoded person, Jan, is in the batch.
-    const jan = decodeResource(
-      patientWire('p-2', SOURCE, { family: 'Doe', given: ['Jan'], birthDate: '1980-05-06' })
-    )
-    const withJan = batchOf([
-      decodeResource(patientWire('p-1', SOURCE)),
-      requestFor({ system: CUSTOMER, value: 'c-9' }),
-      jan,
-    ])
-    currentRunAuthed = serverHolding({ accountFound: [patientWire('s-1', SERVER)] })
-    const { rerender } = renderHarness(withJan)
-    const account = await screen.findByRole<HTMLSelectElement>('combobox', { name: 'c-9' })
-    expect(account.value).toBe('stored:Patient/s-1')
-
-    // Act: link the account to Jan's new record, then re-decode without Jan.
-    await userEvent.selectOptions(account, newAsLabel('Jan Doe · 1980-05-06'))
-    await waitFor(() => {
-      expect(subjectOfRequest()).toBe('Patient/p-2')
-    })
-    rerender(harnessOver(BATCH))
-
-    // Assert: the choice that can no longer be resolved is dropped, and the searched default stands again.
-    await waitFor(() => {
-      expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'c-9' }).value).toBe(
-        'stored:Patient/s-1'
-      )
-    })
-    expect(subjectOfRequest()).toBe('Patient/s-1')
   })
 
   it('should keep the last review up when a re-decode refuses the batch', async () => {
@@ -326,10 +277,12 @@ describe('ReferentRows', () => {
     // Arrange: a dozen people, each mentioned once, and three hundred stored people to offer each.
     const people = Array.from({ length: 12 }, (_, index) => `p-${index}`)
     const batch = batchOf(
-      people.flatMap((id) => [
-        decodeResource(patientWire(id, SOURCE, { given: [`Given${id}`] })),
-        requestFor({ system: CUSTOMER, value: `c-${id}` }),
-      ])
+      people
+        .flatMap((id) => [
+          decodeResource(patientWire(id, SOURCE, { given: [`Given${id}`] })),
+          requestFor({ system: CUSTOMER, value: `c-${id}` }),
+        ])
+        .concat([decodeResource(prescriberWire)])
     )
     const listed = Array.from({ length: 300 }, (_, index) =>
       patientWire(`s-${index}`, SERVER, { given: [`Stored${index}`] })
@@ -349,8 +302,8 @@ describe('ReferentRows', () => {
 
     // Assert: every line painted with the whole list, within a bound generous
     // for jsdom (measured around a second); a quadratic blow-up would miss it.
-    // Twelve people, their twelve accounts, and the one prescriber they share.
-    expect(screen.getAllByRole('combobox')).toHaveLength(25)
+    // Twelve people and the one prescriber they share.
+    expect(screen.getAllByRole('combobox')).toHaveLength(13)
     expect(elapsedMillis, `rendered in ${Math.round(elapsedMillis)}ms`).toBeLessThan(10_000)
   })
 })
@@ -389,7 +342,15 @@ const practitionerWire = (id: string, text: string): object => ({
   name: [{ text }],
 })
 
-/** A request for the account `identifier` names, prescribed by a provider known only by name. */
+/** The prescriber every request names, keyed by its printed name, as the import implies it. */
+const prescriberWire = {
+  resourceType: 'Practitioner',
+  id: 'dr-a-smith',
+  identifier: [{ system: PRACTITIONER_NAME, value: 'Dr. A Smith' }],
+  name: [{ text: 'Dr. A Smith' }],
+}
+
+/** A request for the account `identifier` names, prescribed by the provider named Dr. A Smith. */
 const requestFor = (identifier: {
   readonly system: string
   readonly value: string
@@ -402,7 +363,7 @@ const requestFor = (identifier: {
     subject: { type: 'Patient', identifier },
     requester: {
       type: 'Practitioner',
-      identifier: { system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: 'Dr. A Smith' },
+      identifier: { system: PRACTITIONER_NAME, value: 'Dr. A Smith' },
       display: 'Dr. A Smith',
     },
   })
@@ -437,6 +398,7 @@ const batchOf = (resources: readonly FhirResourceWithId[]): DecodedBatch => ({
 const BATCH = batchOf([
   decodeResource(patientWire('p-1', SOURCE)),
   requestFor({ system: CUSTOMER, value: 'c-9' }),
+  decodeResource(prescriberWire),
 ])
 
 /**
@@ -474,7 +436,7 @@ const serverHolding = ({
     if (identifier === undefined) return listed
     if (identifier.includes(`${CUSTOMER}|c-9`)) return accountFound
     return identifier.includes(`${SOURCE}|p-1`) ||
-      identifier.includes(`${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`)
+      identifier.includes(`${PRACTITIONER_NAME}|Dr. A Smith`)
       ? found
       : []
   }
@@ -580,4 +542,12 @@ const subjectOfRequest = (): string | null | undefined => {
     (entry) => entry.resource.resourceType === 'MedicationRequest'
   )?.resource
   return request !== undefined && 'subject' in request ? request.subject?.reference : undefined
+}
+
+/** The literal reference the resolved request's `requester` names. */
+const requesterOfRequest = (): string | null | undefined => {
+  const request = DecodedFile.resources(resolved?.formats.har.decoded ?? { sections: [] }).find(
+    (entry) => entry.resource.resourceType === 'MedicationRequest'
+  )?.resource
+  return request !== undefined && 'requester' in request ? request.requester?.reference : undefined
 }

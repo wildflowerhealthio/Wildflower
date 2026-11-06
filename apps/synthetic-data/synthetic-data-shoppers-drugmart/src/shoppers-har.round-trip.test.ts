@@ -311,8 +311,13 @@ describe(
         // import merges the two copies of a latest fill into one.
         expect(imported.dispenses).toHaveLength(fillCount)
         expect(new Set(imported.dispenses.map((dispense) => dispense.id)).size).toBe(fillCount)
+        // The feeds name each prescriber by printed name alone, so the import
+        // implies one Practitioner per distinct name, whitespace collapsed.
+        const prescriberCount = new Set(
+          prescriptions.map(({ prescriber }) => prescriber.trim().replaceAll(/\s+/g, ' '))
+        ).size
         expect(imported.resources).toHaveLength(
-          shoppersCase.patients.length + prescriptions.length + fillCount
+          shoppersCase.patients.length + prescriptions.length + fillCount + prescriberCount
         )
       })
     })

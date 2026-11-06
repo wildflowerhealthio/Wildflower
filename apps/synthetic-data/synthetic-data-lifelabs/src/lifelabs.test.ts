@@ -13,7 +13,7 @@ import { decodeLifeLabsPdfDocument, Report } from '@wildflowerhealthio/lifelabs-
 import { layoutDocument } from '@wildflowerhealthio/lifelabs-pdf-importer-core/test-helpers'
 import { type Story, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import { asOfArbitrary } from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
-import { DateTime, Effect, Option, Schema } from 'effect'
+import { DateTime, Effect, Option, Schema, Either } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -285,9 +285,9 @@ describe('LifeLabs.reportsOf', () => {
           })
         )
         // Adopted as the import stage adopts them, without its source file.
-        const imported = DecodedFile.resources(DecodedFileSet.adopt(decoded)).map(
-          (entry) => entry.resource
-        )
+        const imported = DecodedFile.resources(
+          Either.getOrThrow(DecodedFileSet.adopt(decoded))
+        ).map((entry) => entry.resource)
         const withoutSubject = (resource: FhirResource): FhirResource =>
           resource.resourceType === 'Observation' || resource.resourceType === 'DiagnosticReport'
             ? { ...resource, subject: null }
@@ -321,9 +321,9 @@ describe('LifeLabs.reportsOf', () => {
             healthCardProvince: LifeLabs.HEALTH_CARD_PROVINCE,
           })
         )
-        const patients = DecodedFile.resources(DecodedFileSet.adopt(decoded)).flatMap(
-          ({ resource }) => (resource.resourceType === 'Patient' ? [resource] : [])
-        )
+        const patients = DecodedFile.resources(
+          Either.getOrThrow(DecodedFileSet.adopt(decoded))
+        ).flatMap(({ resource }) => (resource.resourceType === 'Patient' ? [resource] : []))
         expect(
           patients.map((patient) =>
             patient.identifier.map((identifier) => ({

@@ -3,11 +3,7 @@ import {
   CodeableConcept,
   IdentifierAndReference,
 } from '@wildflowerhealthio/fhir-r4/data-types'
-import {
-  MedicationDispense,
-  MedicationRequest,
-  Practitioner,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import { MedicationDispense, MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
@@ -127,7 +123,7 @@ const expectedRequest = decodeRequest({
   },
   requester: {
     type: 'Practitioner',
-    identifier: { system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: 'Dr. A Prescriber' },
+    identifier: { system: ShoppersIdentifierSystem.PractitionerName, value: 'Dr. A Prescriber' },
     display: 'Dr. A Prescriber',
   },
   statusReason: {
@@ -406,7 +402,7 @@ describe('PrescriptionResponseKind', () => {
       expect(request?.dispenseRequest?.validityPeriod?.end).not.toBeNull()
     })
 
-    it("names the prescriber by Practitioner's name identifier, and shows the name as printed", () => {
+    it("names the prescriber by a name identifier in Shoppers' practitioner-name system, and shows the name as keyed", () => {
       const [request] = byType(
         parse(prescriptionJson({ prescriberName: ' Dr.  A Prescriber' })),
         'MedicationRequest'
@@ -415,8 +411,11 @@ describe('PrescriptionResponseKind', () => {
       expect(request?.requester).toStrictEqual(
         decodeReference({
           type: 'Practitioner',
-          identifier: { system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: 'Dr. A Prescriber' },
-          display: ' Dr.  A Prescriber',
+          identifier: {
+            system: ShoppersIdentifierSystem.PractitionerName,
+            value: 'Dr. A Prescriber',
+          },
+          display: 'Dr. A Prescriber',
         })
       )
     })

@@ -11,14 +11,12 @@ import {
   DocumentReference,
   type FhirResourceWithId,
   type ImagingStudy,
-  Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodedFileSet,
   type FileImporter,
   DecodedFile,
   type FormatDecode,
-  LinkableResource,
   type PickedFile,
   Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -39,7 +37,7 @@ import {
 } from './decode.ts'
 import { dicomImporter } from './dicom-importer.ts'
 import { type DicomSettings } from './settings.ts'
-import { DICOM_SYSTEM } from './source-system.ts'
+import { DICOM_PRACTITIONER_NAME_SYSTEM, DICOM_SYSTEM } from './source-system.ts'
 
 /**
  * A fixed zone rather than the default, whose `timeZone` is the runtime's own:
@@ -95,7 +93,7 @@ const sample = (overrides: DicomTagMap = {}): Arr.NonEmptyReadonlyArray<PickedFi
 /** A decode's records adopted as the import stage adopts them. */
 const adoptedOf = (
   decoded: Pick<DecodedFileSet.Type, 'sections' | 'notes'>
-): DecodedFile.DecodedFile => DecodedFileSet.adopt(decoded)
+): DecodedFile.DecodedFile => Either.getOrThrow(DecodedFileSet.adopt(decoded))
 
 describe('decodeStudy', () => {
   it('resolves ImagingStudy.started against the settings time zone', async () => {
@@ -206,7 +204,7 @@ describe('decodeStudy', () => {
     expect(await keysOf()).toEqual(await keysOf())
   })
 
-  it('names the Patient and the referring physician as its referents', async () => {
+  it("implies the referring physician's Practitioner, named by the PN, and requests the study of it", async () => {
     const result = await Effect.runPromise(
       decodeStudy(
         sample({ ReferringPhysicianName: { family: 'Smith', given: 'Jane', text: 'Smith Jane' } }),
@@ -214,27 +212,34 @@ describe('decodeStudy', () => {
       )
     )
 
-    const referents = Effect.runSync(Referent.discover([adoptedOf(result)]))
+    const resources = DecodedFile.resources(adoptedOf(result)).map(({ resource }) => resource)
+    const physician = resources.find((resource) => resource.resourceType === 'Practitioner')
+    const request = resources.find((resource) => resource.resourceType === 'ServiceRequest')
 
     expect(
-      referents.map((referent) => [
-        referent._tag,
-        referent.logicalReference.type,
-        referent.logicalReference.identifier.system.href,
+      physician?.resourceType === 'Practitioner'
+        ? {
+            identifier: physician.identifier.map(({ system, value }) => [system?.href, value]),
+            name: physician.name.map(({ text }) => text),
+          }
+        : physician
+    ).toEqual({
+      identifier: [[DICOM_PRACTITIONER_NAME_SYSTEM, 'Jane Smith']],
+      name: ['Jane Smith'],
+    })
+    expect(
+      request?.resourceType === 'ServiceRequest' ? request.requester?.reference : request
+    ).toBe(`Practitioner/${physician?.id}`)
+    const referents = Effect.runSync(Referent.discover([adoptedOf(result)]))
+    expect(
+      referents.map(({ logicalReference }) => [
+        logicalReference.type,
+        logicalReference.identifier.system.href,
       ])
     ).toEqual([
-      ['AsResource', 'Patient', DICOM_SYSTEM],
-      ['ByMentionOnly', 'Practitioner', Practitioner.NAME_IDENTIFIER_SYSTEM],
+      ['Practitioner', DICOM_PRACTITIONER_NAME_SYSTEM],
+      ['Patient', DICOM_SYSTEM],
     ])
-    const [, physician] = referents
-    expect(physician?.logicalReference.identifier.value).toBe('Jane Smith')
-    expect(
-      Option.isSome(
-        Option.flatMap(Option.fromNullable(physician), ({ logicalReference }) =>
-          LinkableResource.tryProvisionalFrom(logicalReference)
-        )
-      )
-    ).toBe(true)
   })
 
   describe('a study spread across files', () => {

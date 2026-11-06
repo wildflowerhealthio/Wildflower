@@ -2,7 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Observation, Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
+import { Observation, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   defaultFormatSettings,
   type FormatKind,
@@ -74,29 +74,6 @@ describe('PreviewPanel', () => {
     expect(group.getByRole('button', { name: /Differs from server/ })).toBeDefined()
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
     expect(screen.getByRole('button', { name: 'Import 2 resources' })).toBeDefined()
-  })
-
-  it('writes no provisional linked record once the only resource naming it is excluded', () => {
-    const batch = withLinkedPractitioner(
-      makeBatch({
-        har: formatResult(
-          'session.har',
-          decoded([
-            section('s', [
-              observationOf('obs-1', { performer: [{ reference: 'Practitioner/pr-1' }] }),
-            ]),
-          ]),
-          'har'
-        ),
-      })
-    )
-    const selectionFor = (): StagedImport.Selection =>
-      StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'obs-1')
-    render(<PreviewPanel {...panelProps(batch, { selectionFor })} />)
-
-    expect(screen.getByRole('region', { name: LINKED_RECORDS_HEADING })).toBeDefined()
-    expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
-    expect(screen.queryByRole('button', { name: /^Import/ })).toBeNull()
   })
 
   it('offers the confirm for a changed stored copy alone once every resource naming it is excluded', () => {
@@ -718,56 +695,29 @@ const observationOf = (key: string, references: object): DecodedFile.Resource =>
   }),
 })
 
-/** `batch` with `resource` as its one linked record, the link whose target it is made by `target`. */
-const withLinked = (
-  batch: ResolvedBatch,
-  resource: LinkableResource.WithId,
-  target: (resource: LinkableResource.WithId) => LinkTarget.StoredType | LinkTarget.ProvisionalType
-): ResolvedBatch => {
+/** `batch` with the stored `Patient/s-1` as its one linked record: a stored copy. */
+const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch => {
+  const resource = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+    resourceType: 'Patient',
+    id: 's-1',
+    identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
+  })
   const literalReference = LinkableResource.literalReferenceOf(resource)
-  const referent: Referent.ByMentionOnly = {
-    _tag: 'ByMentionOnly',
-    logicalReference: Option.getOrThrow(LinkableResource.tryIntoLogicalReference(resource)),
+  const logicalReference = Option.getOrThrow(LinkableResource.tryIntoLogicalReference(resource))
+  const referent: Referent.Type = {
+    logicalReference,
+    identifiers: [logicalReference.identifier],
+    derivedIdentifier: Option.none(),
+    resource,
+    reviewKey: 'k-s-1',
     label: literalReference,
   }
-  const linkTarget = target(resource)
   return {
     ...batch,
-    linkedRecords: [
-      {
-        key: `linked:${literalReference}`,
-        title: literalReference,
-        resource,
-        origin: linkTarget._tag,
-      },
-    ],
-    plan: { ...LinkPlan.empty, links: [{ referent, target: linkTarget }] },
+    linkedRecords: [{ key: `linked:${literalReference}`, title: literalReference, resource }],
+    plan: { ...LinkPlan.empty, links: [{ referent, target: LinkTarget.Stored({ resource }) }] },
   }
 }
-
-/** `batch` with the stored `Patient/s-1` as its one linked record: a stored copy. */
-const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch =>
-  withLinked(
-    batch,
-    Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
-      resourceType: 'Patient',
-      id: 's-1',
-      identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
-    }),
-    (resource) => LinkTarget.Stored({ resource })
-  )
-
-/** `batch` with the provisional `Practitioner/pr-1` as its one linked record: a new one. */
-const withLinkedPractitioner = (batch: ResolvedBatch): ResolvedBatch =>
-  withLinked(
-    batch,
-    Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))({
-      resourceType: 'Practitioner',
-      id: 'pr-1',
-      identifier: [{ system: 'https://source.example/practitioner-name', value: 'Dr. One' }],
-    }),
-    (resource) => LinkTarget.Provisional({ resource })
-  )
 
 /**
  * A settings registry whose pickers are one-button stubs reporting the default

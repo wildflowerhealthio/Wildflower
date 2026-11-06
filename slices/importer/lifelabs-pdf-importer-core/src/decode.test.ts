@@ -15,7 +15,7 @@ import { decodeLifeLabsPdf, decodeLifeLabsPdfDocument } from './decode.ts'
 import * as LabNumber from './entities/lab-number.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
 import type * as Report from './entities/report.ts'
-import { patientKeyOf, practitionerKeyOf } from './fhir/to-fhir.ts'
+import { patientKeyOf } from './fhir/to-fhir.ts'
 import { LifeLabsIdentifierSystem } from './source-system.ts'
 import { reportSectionTitle } from './synthesis.ts'
 import { layoutDocument } from './test-helpers.ts'
@@ -115,7 +115,7 @@ describe('decodeLifeLabsPdfDocument', () => {
             )
           )
         )
-        const written = DecodedFile.resources(DecodedFileSet.adopt(decoded))
+        const written = DecodedFile.resources(Either.getOrThrow(DecodedFileSet.adopt(decoded)))
         expect(written.map(({ title }) => title)).toEqual(
           written.map(({ key, resource }) =>
             Option.isSome(DetachedResource.keyOf({ ...resource, id: null }))
@@ -159,9 +159,9 @@ describe('decodeLifeLabsPdfDocument', () => {
           )
         )
 
-        const adoptedReferences = DecodedFile.resources(DecodedFileSet.adopt(decoded)).map(
-          ({ resource }) => `${resource.resourceType}/${resource.id}`
-        )
+        const adoptedReferences = DecodedFile.resources(
+          Either.getOrThrow(DecodedFileSet.adopt(decoded))
+        ).map(({ resource }) => `${resource.resourceType}/${resource.id}`)
         for (const reference of keyedReferences) {
           expect(reference).toMatch(/^[A-Za-z]+\/wf-[0-9a-f]{32}$/)
           expect(adoptedReferences).toContain(reference)
@@ -171,7 +171,7 @@ describe('decodeLifeLabsPdfDocument', () => {
     )
   })
 
-  it('property: its referents are each Patient and each provider it names, with their resources', () => {
+  it('property: its referents are each Patient and each provider it names, each provider implied once', () => {
     fc.assert(
       fc.property(reportsArbitrary, (reports) => {
         const document = layoutDocument(reports)
@@ -189,18 +189,32 @@ describe('decodeLifeLabsPdfDocument', () => {
             })
           ),
           ...new Set(
-            providerNames.map((name) => {
-              const { system, value } = practitionerKeyOf(name)
-              return `Practitioner|${system}|${value}`
-            })
+            providerNames.map(
+              (name) =>
+                `Practitioner|${LifeLabsIdentifierSystem.PractitionerName}|${name.replaceAll(/\s+/g, ' ')}`
+            )
           ),
         ]
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
-        const referents = Effect.runSync(Referent.discover([DecodedFileSet.adopt(decoded)]))
+        const adopted = Either.getOrThrow(DecodedFileSet.adopt(decoded))
+        const referents = Effect.runSync(Referent.discover([adopted]))
 
-        for (const referent of referents) {
-          expect(referent._tag).toBe('AsResource')
+        const practitioners = DecodedFile.resources(adopted).flatMap(({ resource }) =>
+          resource.resourceType === 'Practitioner' ? [resource] : []
+        )
+        for (const { resource } of DecodedFile.resources(adopted)) {
+          if (resource.resourceType !== 'DiagnosticReport') continue
+          for (const interpreter of resource.resultsInterpreter) {
+            const practitioner = practitioners.find(
+              ({ id }) => interpreter.reference === `Practitioner/${id}`
+            )
+            // Named by the display of the first report naming it.
+            expect([practitioner?.identifier[0]?.value, practitioner?.name.length]).toEqual([
+              interpreter.identifier?.value,
+              1,
+            ])
+          }
         }
         expect(
           referents

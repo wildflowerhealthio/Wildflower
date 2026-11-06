@@ -164,3 +164,84 @@ describe('ReferencePlan.literalReferenceIfResolved', () => {
     ).toEqual(Option.none())
   })
 })
+
+describe('ReferencePlan.extend', () => {
+  it('resolves as the plan of every entry, old and added, would', () => {
+    const practitionerKey = qualified({ system: SYSTEM, value: 'dr-1' })
+    const added = [
+      {
+        resourceType: 'Practitioner',
+        identifier: practitionerKey,
+        literalReference: 'Practitioner/p-1',
+      },
+      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/other-7' },
+    ]
+    const extended = ReferencePlan.extend(patientPlan(), added)
+
+    expect(ReferencePlan.literalReferenceFor(extended, 'Practitioner', practitionerKey)).toEqual(
+      Option.some('Practitioner/p-1')
+    )
+    // Two different literal references for one key are as ambiguous added as given at once.
+    expect(ReferencePlan.literalReferenceFor(extended, 'Patient', PATIENT_KEY)).toEqual(
+      Option.none()
+    )
+    expect(extended).toEqual(
+      ReferencePlan.of([
+        { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
+        ...added,
+      ])
+    )
+  })
+})
+
+describe('ReferencePlan.holds', () => {
+  it('holds a type and identifier given once, or given two different literal references', () => {
+    const ambiguous = ReferencePlan.of([
+      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
+      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-8' },
+    ])
+
+    expect([
+      ReferencePlan.holds(patientPlan(), 'Patient', PATIENT_KEY),
+      ReferencePlan.holds(ambiguous, 'Patient', PATIENT_KEY),
+    ]).toEqual([true, true])
+  })
+
+  it('holds nothing for another type or value', () => {
+    expect([
+      ReferencePlan.holds(patientPlan(), 'Practitioner', PATIENT_KEY),
+      ReferencePlan.holds(patientPlan(), 'Patient', qualified({ system: SYSTEM, value: 'pat-8' })),
+    ]).toEqual([false, false])
+  })
+})
+
+describe('ReferencePlan.logicalTargetIfLogical', () => {
+  const decodeReference = Schema.decodeUnknownSync(IdentifierAndReference.ReferenceSchema)
+
+  it('names the type and identifier of a logical reference', () => {
+    expect(
+      ReferencePlan.logicalTargetIfLogical(
+        decodeReference({ type: 'Patient', identifier: { system: SYSTEM, value: 'pat-7' } })
+      )
+    ).toEqual(Option.some({ resourceType: 'Patient', identifier: PATIENT_KEY }))
+  })
+
+  it.each([
+    {
+      name: 'a literal',
+      wire: {
+        reference: 'Patient/1',
+        type: 'Patient',
+        identifier: { system: SYSTEM, value: 'pat-7' },
+      },
+    },
+    { name: 'an untyped identifier', wire: { identifier: { system: SYSTEM, value: 'pat-7' } } },
+    { name: 'a display alone', wire: { type: 'Patient', display: 'Tyra Banks' } },
+    {
+      name: 'a type R4 does not define',
+      wire: { type: 'Pet', identifier: { system: SYSTEM, value: 'pat-7' } },
+    },
+  ])('names nothing for $name', ({ wire }) => {
+    expect(ReferencePlan.logicalTargetIfLogical(decodeReference(wire))).toEqual(Option.none())
+  })
+})

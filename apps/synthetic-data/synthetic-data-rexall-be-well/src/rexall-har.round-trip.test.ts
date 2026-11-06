@@ -188,12 +188,26 @@ describe(
           'Matched no importer: https://app.letsbewell.ca/health/prescriptions',
         ])
         const count = storyCase.expected.length
+        // carebook names each prescriber by `Practitioner/<id>` and never
+        // serves one, so the import implies one Practitioner per prescriber.
+        const prescriberCount = new Set(
+          storyCase.story.prescriptions.map(({ prescriber }) => prescriber.key)
+        ).size
         expect({
           patients: imported.patients.length,
           requests: imported.requests.length,
           dispenses: imported.dispenses.length,
+          practitioners: imported.resources.filter(
+            ({ resourceType }) => resourceType === 'Practitioner'
+          ).length,
           resources: imported.resources.length,
-        }).toEqual({ patients: 1, requests: count, dispenses: count, resources: 1 + 2 * count })
+        }).toEqual({
+          patients: 1,
+          requests: count,
+          dispenses: count,
+          practitioners: prescriberCount,
+          resources: 1 + 2 * count + prescriberCount,
+        })
       })
     })
 

@@ -76,7 +76,6 @@ describe('diffRowsOf / byGroupAndKey', () => {
           key: 'linked:Patient/p-stored',
           title: 'Patient/p-stored',
           resource: patient('p-stored'),
-          origin: 'Stored',
         },
       ],
     }

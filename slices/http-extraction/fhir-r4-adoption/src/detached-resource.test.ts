@@ -1,4 +1,8 @@
-import { type FhirResource, FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResource,
+  FhirResourceSchema,
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Arbitrary, Array as Arr, FastCheck as fc, Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -56,4 +60,42 @@ describe('hasIdentifier', () => {
       })
     }
   }
+})
+
+describe('referencesOf', () => {
+  const detach = DetachedResource.fromServerRecord('https://source.example/fhir')
+
+  test('lists every reference the per-type table reaches, nested ones included, in its order', () => {
+    const request = detach(
+      decodeResource({
+        resourceType: 'MedicationRequest',
+        id: 'rx-1',
+        status: 'active',
+        intent: 'order',
+        subject: { reference: 'Patient/pat-7' },
+        requester: { display: 'Dr. A Smith' },
+        note: [{ text: 'call first', authorReference: { display: 'Pharmacist' } }],
+      })
+    )
+
+    expect(
+      DetachedResource.referencesOf(request).map(({ display, type }) => [type, display])
+    ).toEqual([
+      [null, 'Pharmacist'],
+      ['Patient', null],
+      [null, 'Dr. A Smith'],
+    ])
+  })
+})
+
+describe('decodeUnknownEither', () => {
+  const decodePatient = DetachedResource.decodeUnknownEither(Patient.Schema)
+
+  test('decodes a detached record, and fails one with an id or one the schema rejects', () => {
+    expect(decodePatient({ resourceType: 'Patient', name: [{ text: 'Tyra Banks' }] })._tag).toBe(
+      'Right'
+    )
+    expect(decodePatient({ resourceType: 'Patient', id: 'p-1' })._tag).toBe('Left')
+    expect(decodePatient({ resourceType: 'Patient', gender: 'dragon' })._tag).toBe('Left')
+  })
 })

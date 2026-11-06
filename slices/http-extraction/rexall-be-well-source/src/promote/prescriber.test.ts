@@ -4,6 +4,7 @@ import { Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { promoteMedicationRequest } from './medication-request.ts'
+import { REXALL_PRACTITIONER_NAME_SYSTEM } from './prescriber.ts'
 
 /** A request whose `requester` is `requester`, and nothing else. */
 const requestedBy = (
@@ -11,7 +12,7 @@ const requestedBy = (
 ): MedicationRequest.Type => ({ ...MedicationRequest.empty, requester })
 
 describe('promoteMedicationRequest, on the prescriber', () => {
-  it('should name a prescriber known only by display by the logical reference to that name', () => {
+  it("should name a prescriber known only by display by the logical reference to that name in Rexall's name system", () => {
     // Arrange
     const request = requestedBy({
       ...IdentifierAndReference.emptyReference,
@@ -23,9 +24,17 @@ describe('promoteMedicationRequest, on the prescriber', () => {
 
     // Assert
     expect(promoted.requester).toEqual(
-      Option.getOrThrow(Practitioner.tryReferenceFromName(' DR  PATEL'))
+      Option.getOrThrow(
+        Practitioner.tryReferenceFromName(REXALL_PRACTITIONER_NAME_SYSTEM, ' DR  PATEL')
+      )
     )
-    expect(promoted.requester?.identifier?.value).toBe('DR PATEL')
+    expect([
+      promoted.requester?.identifier?.system?.href,
+      promoted.requester?.identifier?.value,
+    ]).toEqual([
+      'https://wildflowerhealth.io/fhir/sid/rexall-be-well/practitioner-name',
+      'DR PATEL',
+    ])
   })
 
   it.each([
@@ -45,7 +54,9 @@ describe('promoteMedicationRequest, on the prescriber', () => {
       requester: {
         ...IdentifierAndReference.emptyReference,
         display: 'DR PATEL',
-        identifier: Option.getOrThrow(Practitioner.nameIdentifier('Dr. Patel')),
+        identifier: Option.getOrThrow(
+          Practitioner.nameIdentifier(REXALL_PRACTITIONER_NAME_SYSTEM, 'Dr. Patel')
+        ),
       },
     },
     { case: 'no requester', requester: null },

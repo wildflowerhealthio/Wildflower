@@ -331,9 +331,11 @@ describe('Snapshot.assemble', () => {
           resources: other.resources,
         },
       ])
+      // The first path they differ at: the HAR, or a prescriber both name, which
+      // each import implies under one id from a different source file.
       expect(Either.getLeft(result)).toMatchObject({
         _tag: 'Some',
-        value: { _tag: 'ConflictingFiles', path: 'har/family.har' },
+        value: { _tag: 'ConflictingFiles' },
       })
     },
     IMPORT_TIMEOUT_MILLIS

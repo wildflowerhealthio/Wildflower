@@ -11,6 +11,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { DicomSettings } from '../settings.ts'
+import { DICOM_PRACTITIONER_NAME_SYSTEM } from '../source-system.ts'
 import {
   accessionNumbers,
   fhirDate,
@@ -254,9 +255,13 @@ describe('toFhirResources', () => {
   it('ServiceRequest requester names the referring physician given names first', async () => {
     const sr = await requestReferredBy(PersonName.tryFromPnString('Smith^Jane'))
 
-    expect(sr.requester).toEqual(Option.getOrThrow(Practitioner.tryReferenceFromName('Jane Smith')))
+    expect(sr.requester).toEqual(
+      Option.getOrThrow(
+        Practitioner.tryReferenceFromName(DICOM_PRACTITIONER_NAME_SYSTEM, 'Jane Smith')
+      )
+    )
     expect(sr.requester?.identifier).toEqual(
-      Option.getOrThrow(Practitioner.nameIdentifier('Jane Smith'))
+      Option.getOrThrow(Practitioner.nameIdentifier(DICOM_PRACTITIONER_NAME_SYSTEM, 'Jane Smith'))
     )
   })
 
@@ -268,7 +273,9 @@ describe('toFhirResources', () => {
   ])('ServiceRequest requester for the PN $pn is named $name', async ({ pn, name }) => {
     const sr = await requestReferredBy(PersonName.tryFromPnString(pn))
 
-    expect(sr.requester).toEqual(Option.getOrThrow(Practitioner.tryReferenceFromName(name)))
+    expect(sr.requester).toEqual(
+      Option.getOrThrow(Practitioner.tryReferenceFromName(DICOM_PRACTITIONER_NAME_SYSTEM, name))
+    )
   })
 
   it('ServiceRequest has no requester when the PN has neither a given nor a family name', async () => {
@@ -288,7 +295,12 @@ describe('toFhirResources', () => {
             PersonName.tryFromPnString(`${family}^${given.join(' ')}`)
           )
           expect(sr.requester).toEqual(
-            Option.getOrThrow(Practitioner.tryReferenceFromName([...given, family].join(' ')))
+            Option.getOrThrow(
+              Practitioner.tryReferenceFromName(
+                DICOM_PRACTITIONER_NAME_SYSTEM,
+                [...given, family].join(' ')
+              )
+            )
           )
         }
       ),
