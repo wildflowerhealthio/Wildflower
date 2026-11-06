@@ -1,4 +1,5 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
@@ -77,7 +78,8 @@ describe('issuedIdentifierOf', () => {
           expect(() => new URL(key.system)).not.toThrow()
           expect(DetachedResource.keyIdentifierWire(key).system).toBe(key.system)
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
