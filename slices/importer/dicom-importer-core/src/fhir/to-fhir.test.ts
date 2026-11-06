@@ -1,25 +1,26 @@
 import { type DicomHeader, PersonName } from '@wildflowerhealthio/dicom'
 import { dicomHeaderArb } from '@wildflowerhealthio/dicom/test-helpers'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   Practitioner,
   type ImagingStudy,
   type ServiceRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { DicomSettings } from '../settings.ts'
-import { DICOM_PRACTITIONER_NAME_SYSTEM } from '../source-system.ts'
+import { DICOM_PRACTITIONER_NAME_SYSTEM, DicomIdentifierSystem } from '../source-system.ts'
 import {
   accessionNumbers,
   fhirDate,
   fhirDateTime,
-  imagingStudyOriginalId,
+  imagingStudyKeyOf,
   orderedInstances,
-  patientOriginalId,
-  serviceRequestOriginalId,
+  patientKeyOf,
   studySeries,
   toFhirResources,
   type StudyInstance,
@@ -38,6 +39,7 @@ const minimalHeader = (overrides: Partial<DicomHeader.Type> = {}): DicomHeader.T
   patientName: { family: 'Doe', given: 'John', text: 'Doe John' },
   patientId: 'P001',
   issuerOfPatientId: undefined,
+  issuerOfPatientIdQualifiers: undefined,
   patientBirthDate: '19800101',
   patientSex: 'M',
   studyInstanceUid: '1.2.3.4.5',
@@ -45,6 +47,7 @@ const minimalHeader = (overrides: Partial<DicomHeader.Type> = {}): DicomHeader.T
   studyTime: '143022',
   studyDescription: 'CT Chest',
   accessionNumber: 'ACC001',
+  issuerOfAccessionNumber: undefined,
   referringPhysicianName: { family: 'Smith', given: 'Jane', text: 'Smith Jane' },
   requestedProcedureDescription: 'CT of Chest',
   hasRequestAttributesSequence: false,
@@ -89,30 +92,37 @@ const minimalHeader = (overrides: Partial<DicomHeader.Type> = {}): DicomHeader.T
 const oneFileStudy = (header: DicomHeader.Type): readonly StudyInstance[] => [{ header }]
 
 describe('toFhirResources', () => {
-  it('produces deterministic ids from the same tags (property)', () => {
+  it('writes the same records under the same keys from the same tags (property)', () => {
     fc.assert(
       fc.property(
-        dicomHeaderArb().filter((h) => patientOriginalId(h) !== undefined),
+        dicomHeaderArb().filter((h) => Option.isSome(patientKeyOf(h))),
         (header) => {
           const run1 = Effect.runSync(toFhirResources(oneFileStudy(header), SETTINGS))
           const run2 = Effect.runSync(toFhirResources(oneFileStudy(header), SETTINGS))
-          expect(run1.map((r) => r.id)).toEqual(run2.map((r) => r.id))
+          expect(run1.map(DetachedResource.keyOf)).toEqual(run2.map(DetachedResource.keyOf))
+          expect(run1).toEqual(run2)
         }
       ),
       { numRuns: numRunsFor({ base: 40 }) }
     )
   })
 
-  it('gives two patients of one study and accession distinct ids (property)', () => {
+  it('keys two patients of one study and accession to one ImagingStudy and one ServiceRequest (property)', () => {
     fc.assert(
       fc.property(
         dicomHeaderArb().filter((h) => h.accessionNumber !== undefined),
-        fc.uniqueArray(fc.string({ minLength: 1, maxLength: 20 }), { minLength: 2, maxLength: 2 }),
+        fc.uniqueArray(fc.stringMatching(/^[A-Z0-9]{1,16}$/), { minLength: 2, maxLength: 2 }),
         (header, [firstPatientId, secondPatientId]) => {
-          const first = { ...header, patientId: firstPatientId }
-          const second = { ...header, patientId: secondPatientId }
-          expect(imagingStudyOriginalId(first)).not.toBe(imagingStudyOriginalId(second))
-          expect(serviceRequestOriginalId(first)).not.toBe(serviceRequestOriginalId(second))
+          const keysOf = (
+            patientId: string
+          ): readonly (readonly [string, Option.Option<DetachedResource.Key>])[] =>
+            Effect.runSync(toFhirResources(oneFileStudy({ ...header, patientId }), SETTINGS)).map(
+              (resource) => [resource.resourceType, DetachedResource.keyOf(resource)] as const
+            )
+          const [firstPatient, ...firstRest] = keysOf(firstPatientId)
+          const [secondPatient, ...secondRest] = keysOf(secondPatientId)
+          expect(firstPatient).not.toEqual(secondPatient)
+          expect(firstRest).toEqual(secondRest)
         }
       ),
       { numRuns: numRunsFor({ base: 40 }) }
@@ -329,6 +339,142 @@ describe('toFhirResources', () => {
     const sr = resources.find((r) => r.resourceType === 'ServiceRequest')
     if (sr?.resourceType !== 'ServiceRequest') throw new Error('expected a ServiceRequest')
     expect(sr.requester).toBeNull()
+  })
+})
+
+type Synthesized = Effect.Effect.Success<ReturnType<typeof toFhirResources>>[number]
+
+/** The resources one header synthesizes, by type. */
+const resourcesOfHeader = (
+  header: DicomHeader.Type
+): {
+  readonly patient: Extract<Synthesized, { resourceType: 'Patient' }> | undefined
+  readonly serviceRequest: Extract<Synthesized, { resourceType: 'ServiceRequest' }> | undefined
+  readonly imagingStudy: Extract<Synthesized, { resourceType: 'ImagingStudy' }> | undefined
+} => {
+  const resources = Effect.runSync(toFhirResources(oneFileStudy(header), SETTINGS))
+  const ofType = <T extends Synthesized['resourceType']>(
+    resourceType: T
+  ): Extract<Synthesized, { resourceType: T }> | undefined =>
+    resources.find(
+      (resource): resource is Extract<Synthesized, { resourceType: T }> =>
+        resource.resourceType === resourceType
+    )
+  return {
+    patient: ofType('Patient'),
+    serviceRequest: ofType('ServiceRequest'),
+    imagingStudy: ofType('ImagingStudy'),
+  }
+}
+
+/** The decoded `Identifier` a wire spells, to assert a whole synthesized one against. */
+const identifierOf = Schema.decodeSync(IdentifierAndReference.IdentifierSchema)
+
+/** The decoded `Reference` a wire spells. */
+const referenceOf = Schema.decodeSync(IdentifierAndReference.ReferenceSchema)
+
+const ISO_ISSUER = {
+  localNamespaceEntityId: undefined,
+  universalEntityId: '2.16.840.1.113883.3.42',
+  universalEntityIdType: 'ISO',
+} as const
+
+describe('record keys', () => {
+  it('keys a Patient by its Patient ID, a local issuer as its assigner', () => {
+    const { patient } = resourcesOfHeader(minimalHeader({ issuerOfPatientId: 'GENERAL HOSPITAL' }))
+    expect(patient?.identifier).toEqual([
+      identifierOf({
+        system: DicomIdentifierSystem.PatientId,
+        value: 'P001',
+        assigner: { display: 'GENERAL HOSPITAL' },
+      }),
+    ])
+  })
+
+  it('keys a Patient under the ISO OID its Issuer of Patient ID Qualifiers names', () => {
+    const { patient } = resourcesOfHeader(
+      minimalHeader({ issuerOfPatientId: 'GENERAL', issuerOfPatientIdQualifiers: ISO_ISSUER })
+    )
+    expect(patient?.identifier).toEqual([
+      identifierOf({
+        system: 'urn:oid:2.16.840.1.113883.3.42',
+        value: 'P001',
+        assigner: { display: 'GENERAL' },
+      }),
+    ])
+  })
+
+  it('keys a Patient named only by name under its name and birth date', () => {
+    const keyOf = (overrides: Partial<DicomHeader.Type>): Option.Option<DetachedResource.Key> =>
+      patientKeyOf(minimalHeader({ patientId: undefined, ...overrides }))
+    const system = DicomIdentifierSystem.PatientNameBirthDate
+    expect(keyOf({})).toEqual(Option.some({ system, value: 'Doe John, 1980-01-01' }))
+    expect(keyOf({ patientBirthDate: '19800230' })).toEqual(
+      Option.some({ system, value: 'Doe John' })
+    )
+    expect(keyOf({ patientBirthDate: undefined })).toEqual(
+      Option.some({ system, value: 'Doe John' })
+    )
+  })
+
+  it('keys a ServiceRequest by its Accession Number, typed ACSN, under the ISO OID its issuer names', () => {
+    const { serviceRequest } = resourcesOfHeader(
+      minimalHeader({ issuerOfAccessionNumber: ISO_ISSUER })
+    )
+    expect(serviceRequest?.identifier).toEqual([
+      identifierOf({
+        type: {
+          coding: [{ system: 'http://terminology.hl7.org/CodeSystem/v2-0203', code: 'ACSN' }],
+        },
+        system: 'urn:oid:2.16.840.1.113883.3.42',
+        value: 'ACC001',
+      }),
+    ])
+  })
+
+  it('keys a ServiceRequest whose issuer is a local namespace alone under the fallback', () => {
+    const { serviceRequest } = resourcesOfHeader(
+      minimalHeader({
+        issuerOfAccessionNumber: {
+          localNamespaceEntityId: 'RADIOLOGY',
+          universalEntityId: undefined,
+          universalEntityIdType: undefined,
+        },
+      })
+    )
+    expect(serviceRequest?.identifier[0]?.system?.href).toBe(DicomIdentifierSystem.AccessionNumber)
+    expect(serviceRequest?.identifier[0]?.value).toBe('ACC001')
+    expect(serviceRequest?.identifier[0]?.assigner?.display).toBe('RADIOLOGY')
+  })
+
+  it('keys an ImagingStudy by its Study Instance UID and names the others by their keys', () => {
+    const header = minimalHeader({ issuerOfAccessionNumber: ISO_ISSUER })
+    const { imagingStudy } = resourcesOfHeader(header)
+    expect(imagingStudyKeyOf(header)).toEqual({
+      system: 'urn:dicom:uid',
+      value: 'urn:oid:1.2.3.4.5',
+    })
+    expect(imagingStudy?.identifier).toEqual([
+      identifierOf({ system: 'urn:dicom:uid', value: 'urn:oid:1.2.3.4.5' }),
+    ])
+    expect(imagingStudy?.subject).toEqual(
+      referenceOf({
+        type: 'Patient',
+        identifier: { system: DicomIdentifierSystem.PatientId, value: 'P001' },
+      })
+    )
+    expect(imagingStudy?.basedOn).toEqual([
+      referenceOf({
+        type: 'ServiceRequest',
+        identifier: { system: 'urn:oid:2.16.840.1.113883.3.42', value: 'ACC001' },
+      }),
+    ])
+  })
+
+  it('keys one Patient for one Patient ID under two local issuers', () => {
+    const keyOf = (issuerOfPatientId: string): Option.Option<DetachedResource.Key> =>
+      patientKeyOf(minimalHeader({ issuerOfPatientId }))
+    expect(keyOf('NORTH')).toEqual(keyOf('SOUTH'))
   })
 })
 
@@ -553,7 +699,7 @@ describe('toFhirResources over a study of several files', () => {
     const resources = await Effect.runPromise(toFhirResources(instances, SETTINGS))
     const requests = resources.filter((r) => r.resourceType === 'ServiceRequest')
     expect(requests).toHaveLength(1)
-    expect(requests[0].identifier.slice(1).map((one) => one.value)).toEqual(['ACC-A'])
+    expect(requests[0].identifier.map((one) => one.value)).toEqual(['ACC-A'])
   })
 
   it('emits a ServiceRequest when only a later file states the accession', async () => {

@@ -1,5 +1,9 @@
 import { DicomHeader, type Part10 } from '@wildflowerhealthio/dicom'
-import { detectDicom, dicomImporter } from '@wildflowerhealthio/dicom-importer-core'
+import {
+  detectDicom,
+  DicomIdentifierSystem,
+  dicomImporter,
+} from '@wildflowerhealthio/dicom-importer-core'
 import {
   parserKeyOf,
   textOf,
@@ -25,6 +29,7 @@ import * as DicomImage from './dicom-image.ts'
 import {
   DEIDENTIFIED_EXPORT_ELEMENTS,
   deidentifiedFileArbitrary,
+  deidentifiedTagsArbitrary,
   PRIVATE_TAGS,
   SOURCE_FRAME_OF_REFERENCE_UID,
 } from './test-helpers.ts'
@@ -149,6 +154,46 @@ describe('DicomImage.reidentify', () => {
         }
         expect(textOf(dataSet, 0x0028_0303)).toBe('MODIFIED')
       }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test("property: removes the source's issuers of the patient id and accession number", () => {
+    const issuer = {
+      localNamespaceEntityId: 'SOURCE SITE',
+      universalEntityId: '1.2.840.99999.1',
+      universalEntityIdType: 'ISO',
+    }
+    const fileWithIssuers = deidentifiedTagsArbitrary.map((tags) =>
+      withElementsSpliced(
+        writeDicom({
+          ...tags,
+          IssuerOfPatientID: 'SOURCE SITE',
+          IssuerOfPatientIDQualifiersSequence: issuer,
+          IssuerOfAccessionNumberSequence: issuer,
+        }),
+        DEIDENTIFIED_EXPORT_ELEMENTS
+      )
+    )
+    fc.assert(
+      fc.property(
+        asOfArbitrary,
+        fileWithIssuers,
+        reidentificationArbitrary,
+        (asOf, file, reidentification) => {
+          const issuersOf = (header: DicomHeader.Type): readonly unknown[] => [
+            header.issuerOfPatientId,
+            header.issuerOfPatientIdQualifiers,
+            header.issuerOfAccessionNumber,
+          ]
+          expect(issuersOf(headerOf(file))).toEqual(['SOURCE SITE', issuer, issuer])
+          expect(issuersOf(headerOf(reidentified(asOf, file, reidentification)))).toEqual([
+            undefined,
+            undefined,
+            undefined,
+          ])
+        }
+      ),
       { numRuns: RUNS }
     )
   })
@@ -404,6 +449,19 @@ describe('DicomImage.importWithSubject', () => {
           const serviceRequests = resourcesOf(resources, 'ServiceRequest')
           expect(serviceRequests).toHaveLength(
             reidentification.accessionNumber === undefined ? 0 : 1
+          )
+          // The generator's accession states no issuer, so it is keyed under
+          // the unstated-issuer system.
+          expect(
+            serviceRequests.map((request) =>
+              request.resourceType === 'ServiceRequest'
+                ? [request.identifier[0]?.system?.href, request.identifier[0]?.value]
+                : null
+            )
+          ).toEqual(
+            reidentification.accessionNumber === undefined
+              ? []
+              : [[DicomIdentifierSystem.AccessionNumber, reidentification.accessionNumber]]
           )
           for (const resource of [study, sourceFile, ...serviceRequests]) {
             expect('subject' in resource ? resource.subject : undefined).toEqual(PHARMACY_PATIENT)
