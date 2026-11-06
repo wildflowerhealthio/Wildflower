@@ -31,7 +31,9 @@ carrying the one `ImagingStudy` its files make up.
   type or a malformed value. **`issuedIdentifierOf`** keys a number under that
   system, else under the caller's fallback, with the local namespace (else an
   unresolved Universal Entity ID, as written) as `assigner.display` — so the
-  decode is total whatever the issuer states.
+  decode is total whatever the issuer states. **`unresolvedUniversalIssuerOf`**
+  names a stated Universal Entity ID that resolves to no URI, for the decode's
+  note.
 - `src/detect.ts` — DICM magic bytes at offset 128 (PS3.10 preamble + magic)
   or a `.dcm` extension fallback.
 - `src/settings.ts` — `DicomSettings`: the one knob, `timeZone`, the IANA zone
@@ -126,7 +128,9 @@ carrying the one `ImagingStudy` its files make up.
   `<Modality> <StudyDescription> · <StudyDate>` off the study's representative
   header, with stable local keys `patient`, `service-request`, `imaging-study`,
   fixed _within one study_ and namespaced by the import stage outside it. Notes for missing patient
-  identity, an absent `AccessionNumber`, one the files disagree on, and — for a
+  identity, a stated issuer of the Patient ID or the Accession Number that
+  names no URI (its number keyed under the fallback), an absent
+  `AccessionNumber`, one the files disagree on, and — for a
   study of more than one file — what each file contributed.
   It rejects a `settings.timeZone` the runtime cannot resolve
   (`checkTimeZone` from `kitchen-sink`, a `ParseError`) rather than
