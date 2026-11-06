@@ -62,32 +62,6 @@ describe('hasIdentifier', () => {
   }
 })
 
-describe('referencesOf', () => {
-  const detach = DetachedResource.fromServerRecord('https://source.example/fhir')
-
-  test('lists every reference the per-type table reaches, nested ones included, in its order', () => {
-    const request = detach(
-      decodeResource({
-        resourceType: 'MedicationRequest',
-        id: 'rx-1',
-        status: 'active',
-        intent: 'order',
-        subject: { reference: 'Patient/pat-7' },
-        requester: { display: 'Dr. A Smith' },
-        note: [{ text: 'call first', authorReference: { display: 'Pharmacist' } }],
-      })
-    )
-
-    expect(
-      DetachedResource.referencesOf(request).map(({ display, type }) => [type, display])
-    ).toEqual([
-      [null, 'Pharmacist'],
-      ['Patient', null],
-      [null, 'Dr. A Smith'],
-    ])
-  })
-})
-
 describe('decodeUnknownEither', () => {
   const decodePatient = DetachedResource.decodeUnknownEither(Patient.Schema)
 

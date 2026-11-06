@@ -42,8 +42,8 @@ import * as ReferencePlan from './reference-plan.ts'
  *
  * - identifiers the source already carried being clobbered (asserted by value,
  *   never by reference);
- * - fields outside the reference table being blanked or invented (asserted by
- *   diffing everything the table does *not* name);
+ * - fields that hold no reference being blanked or invented (asserted by
+ *   diffing everything {@link TOUCHED_FIELDS} does *not* name);
  * - detach accepting reference strings that are not relative references
  *   (a `#fragment`, a `urn:uuid:`, an id with a space).
  *
@@ -339,12 +339,13 @@ const IDENTIFIER_SHAPE = declaredShapeOf(IdentifierAndReference.IdentifierSchema
  * Every dotted path at which a resource schema declares a `Reference`.
  *
  * @remarks
- * Stops at a `Reference` (that is the find) and at an `Identifier` — whose
- * `assigner` neither detach nor adopt rewrites, wherever it is reached from.
- * Those two stops also break the `Reference` ⇄ `Identifier` cycle. A struct
+ * Stops at a `Reference` (that is the find) and at an `Identifier`, whose
+ * `assigner` is rewritten under the `identifier` field {@link TOUCHED_FIELDS}
+ * already names. Those two stops also break the `Reference` ⇄ `Identifier`
+ * cycle. A struct
  * nested in one of its own shape stops too: a recursive element
  * (`PlanDefinition.action`) reports its references once, at its outermost
- * path, and the table rewrites them at every depth.
+ * path, and the walk rewrites them at every depth.
  *
  * Throws rather than truncating at {@link MAX_WALK_DEPTH}: a silently-cut walk
  * reports *fewer* references than exist, which is the failure this guard exists
@@ -581,17 +582,17 @@ describe('reference coverage is derived from the schemas, not asserted by hand',
   })
 
   for (const { resourceType } of resources) {
-    // The load-bearing one. A `Reference` field added to a resource schema and
-    // to neither table lands on the left of this comparison and nowhere on the
-    // right, and fails here — instead of shipping a reference that keeps the
-    // source's literal and dangles.
-    test(`${resourceType}: every Reference the schema declares is rewritten or exempt`, () => {
+    // A `Reference` field added to a resource schema and not to the list lands
+    // on the left of this comparison and nowhere on the right, and fails here
+    // — instead of the "no collateral change" properties below flagging the
+    // field the walk rightly rewrites.
+    test(`${resourceType}: every Reference the schema declares is listed`, () => {
       expect(referencePathsIn(SCHEMA_FOR[resourceType])).toEqual(
         [...REWRITTEN_REFERENCE_PATHS[resourceType]].toSorted()
       )
     })
 
-    // Ties the dotted table to the flat one, so the "no collateral change"
+    // Ties the dotted list to the flat table, so the "no collateral change"
     // properties below cannot go stale against it.
     test(`${resourceType}: every rewritten path is rooted in an adopted field`, () => {
       const roots = new Set(
@@ -660,10 +661,10 @@ describe('DetachedResource.fromServerRecord', () => {
       expect(detachFhir(resource).id).toBeNull()
     })
 
-    // The whole point of diffing the complement of the table: a rewrite that
+    // The whole point of diffing the complement of the reference fields: a rewrite that
     // spread a stale copy, or blanked a field it did not mean to name, shows up
     // here rather than passing unnoticed because no assertion mentioned it.
-    test(`${resourceType}: changes nothing outside the reference table`, () => {
+    test(`${resourceType}: changes nothing outside its reference fields`, () => {
       const detached = detachFhir(resource)
       expect(Object.keys(detached).toSorted()).toEqual(Object.keys(resource).toSorted())
       expect(untouchedFields(detached)).toEqual(untouchedFields(resource))
@@ -911,25 +912,29 @@ describe('detaching references', () => {
     expect(detached.note[0]).toEqual(note)
   })
 
-  // The standing exemption the coverage guard encodes by stopping at every
-  // `Identifier`: `Identifier.assigner` is a Reference, and neither detach nor
-  // adopt touches it.
-  test('never rewrites the assigner of an Identifier', () => {
-    const assigner = reference({ reference: 'Organization/org-2' })
+  // `Identifier.assigner` is a Reference like any other: the walk reaches
+  // every reference a resource carries, at any depth.
+  test('detaches the assigner of an Identifier like any other reference', () => {
     const resource = {
       ...sample(Patient.Schema, 12),
       id: 'src-1',
-      identifier: [identifier({ value: 'mrn-9', assigner })],
+      identifier: [
+        identifier({ value: 'mrn-9', assigner: reference({ reference: 'Organization/org-2' }) }),
+      ],
     }
-    expect(asPatient(detachFhir(resource)).identifier[1]?.assigner).toEqual(assigner)
-    expect(asPatient(detachThenAdopt(resource)).identifier[1]?.assigner).toEqual(assigner)
+    const detachedAssigner = reference({
+      type: 'Organization',
+      identifier: identifier({ value: 'org-2', system: new URL(fhirSystem('Organization')) }),
+    })
+    expect(asPatient(detachFhir(resource)).identifier[1]?.assigner).toEqual(detachedAssigner)
+    expect(asPatient(detachThenAdopt(resource)).identifier[1]?.assigner).toEqual(detachedAssigner)
   })
 })
 
 describe('adopt', () => {
   for (const resource of resources) {
     const { resourceType } = resource
-    test(`${resourceType}: changes nothing outside the reference table`, () => {
+    test(`${resourceType}: changes nothing outside its reference fields`, () => {
       const detached = detachFhir(resource)
       const adopted = adoptionOver([detached])(detached)
       expect(Object.keys(adopted).toSorted()).toEqual(Object.keys(detached).toSorted())

@@ -1,10 +1,13 @@
 import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResource,
+  type FhirResourceWithId,
+  ResourceReferences,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Option } from 'effect'
 
 import * as DetachedResource from './detached-resource.ts'
 import * as ReferencePlan from './reference-plan.ts'
-import { identifierOf, mapReferences } from './reference-table.ts'
 
 /** A fresh random id for a keyless record: a v4 UUID, a legal FHIR id. */
 const randomResourceId = (): string => crypto.randomUUID()
@@ -41,16 +44,17 @@ const adoptReference =
  * @remarks
  * The id and the reference plan are decided before adoption, by the import
  * stage: the id a keyed record's key derives, so a re-import lands on the
- * same id, or a minted one for a keyless record. References resolve through
- * {@link adoptReference}. Nothing else changes: the record's identifiers,
- * its key first, are written as they are.
+ * same id, or a minted one for a keyless record. Every reference the
+ * record carries, at any depth (`ResourceReferences.mapReferences`),
+ * resolves through {@link adoptReference}. Nothing else changes: the
+ * record's identifiers, its key first, are written as they are.
  *
  * Takes no base URL: everything it needs is on the records.
  */
 const adopt = (referencePlan: ReferencePlan.Type) => {
-  const adoptReferences = mapReferences(adoptReference(referencePlan))
+  const adoptOne = adoptReference(referencePlan)
   return (record: DetachedResource.Type, id: string): FhirResourceWithId => ({
-    ...adoptReferences(record),
+    ...ResourceReferences.mapReferences(record, adoptOne),
     id,
   })
 }
@@ -100,7 +104,7 @@ const adoptedReferenceOf = (
   ...IdentifierAndReference.emptyReference,
   reference: DetachedResource.storedReferenceOf(resourceType, { system, value: originalId }),
   type: resourceType,
-  identifier: identifierOf(new URL(system), originalId),
+  identifier: DetachedResource.keyIdentifier(new URL(system), originalId),
 })
 
 export { adopt, adoptedReferenceOf, originalIdOf, randomResourceId }

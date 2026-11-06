@@ -12,7 +12,7 @@ import {
   ReferencePlan,
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
-import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
+import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Either, Option, type ParseResult, pipe } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
@@ -186,11 +186,11 @@ interface ReferenceInSet {
   readonly reference: ReferenceType
 }
 
-/** Every reference of `plannedSections` the per-type table reaches, in entry order. */
+/** Every reference of `plannedSections`, at any depth, in entry order. */
 const referencesInSet = (plannedSections: readonly PlannedSection[]): readonly ReferenceInSet[] =>
   plannedSections.flatMap(({ plannedEntries }, sectionIndex) =>
     plannedEntries.flatMap(({ entry }) =>
-      DetachedResource.referencesOf(entry.resource).map((reference) => ({
+      ResourceReferences.collect(entry.resource).map(({ reference }) => ({
         sectionIndex,
         referencingFullUrl: entry.fullUrl,
         reference,
