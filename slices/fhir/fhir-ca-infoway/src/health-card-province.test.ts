@@ -7,11 +7,12 @@ describe('HealthCardProvince', () => {
     expect(HealthCardProvince.all.map((province) => HealthCardProvince.names[province])).toEqual([
       'Ontario',
       'British Columbia',
+      'Other province',
     ])
   })
 
   it('reads back a listed province and refuses any other code', () => {
-    expect(HealthCardProvince.all.filter(HealthCardProvince.is)).toEqual(['ON', 'BC'])
-    expect(['QC', 'on', ''].filter(HealthCardProvince.is)).toEqual([])
+    expect(HealthCardProvince.all.filter(HealthCardProvince.is)).toEqual(['ON', 'BC', 'Other'])
+    expect(['QC', 'on', 'other', ''].filter(HealthCardProvince.is)).toEqual([])
   })
 })

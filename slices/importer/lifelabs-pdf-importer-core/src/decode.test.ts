@@ -62,9 +62,11 @@ const headerOnly: Report.Type = {
  */
 const KEY_SYSTEMS: readonly string[] = [
   ...Object.values(LifeLabsIdentifierSystem),
-  patientKeyOf(
-    { ...headerOnly.patient, healthCardNumber: '9123456789' },
-    SETTINGS.healthCardProvince
+  Effect.runSync(
+    patientKeyOf(
+      { ...headerOnly.patient, healthCardNumber: '9123456789' },
+      SETTINGS.healthCardProvince
+    )
   ).system,
 ]
 
@@ -180,7 +182,9 @@ describe('decodeLifeLabsPdfDocument', () => {
         const expected = [
           ...new Set(
             reports.map((report) => {
-              const { system, value } = patientKeyOf(report.patient, SETTINGS.healthCardProvince)
+              const { system, value } = Effect.runSync(
+                patientKeyOf(report.patient, SETTINGS.healthCardProvince)
+              )
               return `Patient|${system}|${value}`
             })
           ),

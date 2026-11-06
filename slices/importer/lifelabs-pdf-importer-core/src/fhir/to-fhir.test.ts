@@ -26,6 +26,12 @@ const OPTIONS: SynthesisOptions = { timeZone: 'America/Toronto', healthCardProvi
 
 const ONTARIO_HEALTH_CARD = HealthCardIdentifier.HealthCardNumberSystem.ON
 
+/** The key `patient` is given with its card from `province`, for a card of that province's shape. */
+const patientKeyIn = (
+  patient: Report.Type['patient'],
+  province: SynthesisOptions['healthCardProvince']
+): DetachedResource.Key => Effect.runSync(patientKeyOf(patient, province))
+
 /** A group's resources, in order; none for no group. */
 const resourcesOf = (group: ReportResources | undefined): readonly FhirResource[] =>
   group?.entries.map(({ resource }) => resource) ?? []
@@ -244,7 +250,7 @@ describe('toFhirResources', () => {
     const [patient] = ofType(synthesize([sample]), 'Patient')
 
     expect(patient?.id).toBeNull()
-    expect(idOf(patient)).toBe(keyText(patientKeyOf(sample.patient, 'ON')))
+    expect(idOf(patient)).toBe(keyText(patientKeyIn(sample.patient, 'ON')))
     expect(patient?.name[0]).toMatchObject({
       family: 'OKAFOR',
       given: ['DANA', 'MARIE'],
@@ -274,16 +280,16 @@ describe('toFhirResources', () => {
   })
 
   it('keys a patient by Patient ID first, then health card number, then name and birth date', () => {
-    expect(patientKeyOf({ ...sample.patient, patientId: 'P-77' }, 'ON')).toEqual({
+    expect(patientKeyIn({ ...sample.patient, patientId: 'P-77' }, 'ON')).toEqual({
       system: LifeLabsIdentifierSystem.PatientId,
       value: 'P-77',
     })
-    expect(patientKeyOf(sample.patient, 'ON')).toEqual({
+    expect(patientKeyIn(sample.patient, 'ON')).toEqual({
       system: ONTARIO_HEALTH_CARD,
       value: '1234567890',
     })
     expect(
-      patientKeyOf({ ...sample.patient, name: ' OKAFOR, DANA MARIE ', healthCardNumber: '' }, 'ON')
+      patientKeyIn({ ...sample.patient, name: ' OKAFOR, DANA MARIE ', healthCardNumber: '' }, 'ON')
     ).toEqual({
       system: LifeLabsIdentifierSystem.PatientNameBirthDate,
       value: 'OKAFOR, DANA MARIE, Aug 13 1981',
@@ -302,21 +308,21 @@ describe('toFhirResources', () => {
     ])
   })
 
-  it('keys one Patient for two version codes of one health card number, the rest as printed', () => {
+  it('keys one Patient for two version codes of one health card number, however it is spaced', () => {
     const reissued = { ...sample.patient, healthCardNumber: '1234567890AC' }
     const resources = synthesize([
       sample,
       { ...sample, labNo: LabNumber.make('2024-JJ0000001'), patient: reissued },
     ])
 
-    expect(patientKeyOf(reissued, 'ON')).toEqual(patientKeyOf(sample.patient, 'ON'))
+    expect(patientKeyIn(reissued, 'ON')).toEqual(patientKeyIn(sample.patient, 'ON'))
     expect(ofType(resources, 'Patient')).toHaveLength(1)
     expect(ofType(resources, 'DiagnosticReport').map((report) => targetOf(report.subject))).toEqual(
       [`${ONTARIO_HEALTH_CARD}|1234567890`, `${ONTARIO_HEALTH_CARD}|1234567890`]
     )
     expect(
-      patientKeyOf({ ...sample.patient, healthCardNumber: '1234-567-890 A' }, 'ON').value
-    ).toBe('1234-567-890')
+      patientKeyIn({ ...sample.patient, healthCardNumber: '1234-567-890 A' }, 'ON').value
+    ).toBe('1234567890')
   })
 
   it("writes a shared Patient's version code from the latest report naming it", () => {
@@ -347,7 +353,7 @@ describe('toFhirResources', () => {
       'Patient'
     )
 
-    expect(patientKeyOf(british, 'BC')).toEqual({
+    expect(patientKeyIn(british, 'BC')).toEqual({
       system: HealthCardIdentifier.HealthCardNumberSystem.BC,
       value: '9123456789',
     })

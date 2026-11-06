@@ -81,10 +81,15 @@ describe('LifeLabsPdfSettingsPicker', () => {
     expect([...select.options].map((option) => option.text)).toEqual([
       'Ontario',
       'British Columbia',
+      'Other province',
     ])
     await userEvent.selectOptions(select, 'British Columbia')
+    await userEvent.selectOptions(select, 'Other province')
 
-    expect(changes).toEqual([{ timeZone: 'America/Vancouver', healthCardProvince: 'BC' }])
-    expect(select.value).toBe('BC')
+    expect(changes).toEqual([
+      { timeZone: 'America/Vancouver', healthCardProvince: 'BC' },
+      { timeZone: 'America/Vancouver', healthCardProvince: 'Other' },
+    ])
+    expect(select.value).toBe('Other')
   })
 })
