@@ -56,17 +56,18 @@ const choiceValue = (limit: Option.Option<Duration.Duration>): string =>
 
 /**
  * The choices for one limit: no limit, labelled `noLimitLabel`, then the
- * `presets` and the `current` limit if it isn't one of them, shortest first.
+ * `presets` and each of the `kept` limits that isn't one of them, shortest
+ * first.
  */
 const limitChoices = (
   presets: readonly Duration.Duration[],
-  current: Option.Option<Duration.Duration>,
+  kept: readonly Option.Option<Duration.Duration>[],
   noLimitLabel: string
 ): readonly LimitChoice[] => {
-  const unlisted = current.pipe(
-    Option.filter((limit) => !presets.some((preset) => Equal.equals(preset, limit)))
+  const limits = Array.sort(
+    Array.dedupeWith(Array.appendAll(presets, Array.getSomes(kept)), Equal.equals),
+    Duration.Order
   )
-  const limits = Array.sort(Array.appendAll(presets, Option.toArray(unlisted)), Duration.Order)
   return [
     { value: '', label: noLimitLabel, limit: Option.none() },
     ...limits.map((limit) => ({
@@ -77,13 +78,21 @@ const limitChoices = (
   ]
 }
 
-/** The choices for the idle limit, keeping `current` among them. */
-const idleTtlChoices = (current: Option.Option<Duration.Duration>): readonly LimitChoice[] =>
-  limitChoices(IDLE_TTL_PRESETS, current, 'No limit')
+/**
+ * The choices for the idle limit, keeping each of `kept` (the stored limit and
+ * the one in the form) among them.
+ */
+const idleTtlChoices = (
+  ...kept: readonly Option.Option<Duration.Duration>[]
+): readonly LimitChoice[] => limitChoices(IDLE_TTL_PRESETS, kept, 'No limit')
 
-/** The choices for the maximum lifetime, keeping `current` among them. */
-const maxTtlChoices = (current: Option.Option<Duration.Duration>): readonly LimitChoice[] =>
-  limitChoices(MAX_TTL_PRESETS, current, 'No limit (365 days at most)')
+/**
+ * The choices for the maximum lifetime, keeping each of `kept` (the stored
+ * limit and the one in the form) among them.
+ */
+const maxTtlChoices = (
+  ...kept: readonly Option.Option<Duration.Duration>[]
+): readonly LimitChoice[] => limitChoices(MAX_TTL_PRESETS, kept, 'No limit (365 days at most)')
 
 /** The limit the choice with `value` stands for, if one does. */
 const limitOfChoice = (

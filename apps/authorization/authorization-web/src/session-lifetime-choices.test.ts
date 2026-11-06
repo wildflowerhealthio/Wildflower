@@ -56,6 +56,31 @@ describe('the limit choices', () => {
     ])
   })
 
+  it('keep both the stored and the drafted limit, each once', () => {
+    // Act
+    const choices = idleTtlChoices(
+      Option.some(Duration.minutes(45)),
+      Option.some(Duration.minutes(45)),
+      Option.some(Duration.hours(3)),
+      Option.none()
+    )
+
+    // Assert
+    expect(choices.map(({ label }) => label)).toEqual([
+      'No limit',
+      '15 minutes',
+      '30 minutes',
+      '45 minutes',
+      '1 hour',
+      '2 hours',
+      '3 hours',
+      '8 hours',
+      '1 day',
+      '7 days',
+      '30 days',
+    ])
+  })
+
   it('should map every choice’s value back to its limit, whatever limit is stored', () => {
     fc.assert(
       fc.property(

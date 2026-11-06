@@ -30,21 +30,36 @@ interface SessionLifetime {
 
 /**
  * The section's logic: a draft of `client`'s refresh policy, the choices for
- * each limit (keeping the stored ones among them), and a save that PATCHes
- * the whole policy. The draft is the Owner's until they save; a refetch of
- * the clients doesn't replace it.
+ * each limit (keeping the stored and the drafted ones among them, so each
+ * `<select>` shows what Save sends), and a save that PATCHes the whole policy.
+ * Until the Owner edits it, the draft is the stored policy, so a refetch that
+ * brings another change shows it; once edited, the draft is the Owner's until
+ * a save succeeds, and a refetch doesn't replace it.
  */
 const useSessionLifetime = (client: Client.Type): SessionLifetime => {
   const mutation = useUpdateRefreshPolicyMutation()
-  const [draft, setDraft] = useState(client.refreshPolicy)
+  const [editedRefreshPolicy, setEditedRefreshPolicy] = useState<Option.Option<RefreshPolicy.Type>>(
+    Option.none()
+  )
+  const storedRefreshPolicy = client.refreshPolicy
+  const draft = Option.getOrElse(editedRefreshPolicy, () => storedRefreshPolicy)
   return {
     draft,
-    idleTtlChoices: idleTtlChoices(client.refreshPolicy.idleTtl),
-    maxTtlChoices: maxTtlChoices(client.refreshPolicy.maxTtl),
-    setDraft,
-    canSave: !mutation.isPending && !isSamePolicy(draft, client.refreshPolicy),
+    idleTtlChoices: idleTtlChoices(storedRefreshPolicy.idleTtl, draft.idleTtl),
+    maxTtlChoices: maxTtlChoices(storedRefreshPolicy.maxTtl, draft.maxTtl),
+    setDraft: (next) => {
+      setEditedRefreshPolicy(Option.some(next))
+    },
+    canSave: !mutation.isPending && !isSamePolicy(draft, storedRefreshPolicy),
     save: () => {
-      mutation.mutate({ clientId: client.clientId, refreshPolicy: draft })
+      mutation.mutate(
+        { clientId: client.clientId, refreshPolicy: draft },
+        {
+          onSuccess: () => {
+            setEditedRefreshPolicy(Option.none())
+          },
+        }
+      )
     },
     isSaving: mutation.isPending,
     error: mutation.error,

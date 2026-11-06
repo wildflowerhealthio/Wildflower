@@ -407,6 +407,108 @@ describe('the access page', () => {
       ])
     })
   })
+
+  it('shows a session lifetime changed elsewhere until the Owner edits it', async () => {
+    // Arrange — stored with an idle limit no preset has, then changed elsewhere.
+    let storedIdleTtlSeconds = 2700
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const server = stubServer(undefined, undefined, undefined, () =>
+      Response.json([
+        hostClient,
+        {
+          ...medicationsClient,
+          refreshPolicy: {
+            ...medicationsClient.refreshPolicy,
+            idleTtlSeconds: storedIdleTtlSeconds,
+          },
+        },
+      ])
+    )
+    mountAccessPages(server, queryClient)
+    const approvedApps = await sectionTitled('Approved Apps')
+    fireEvent.click(await within(approvedApps).findByText(medicationsClient.name))
+    const sessionLifetime = await sectionTitled('Session lifetime')
+    const idleTtl = within(sessionLifetime).getByLabelText('Sign out after unused for')
+    expect(idleTtl).toHaveProperty('value', '2700')
+
+    // Act
+    storedIdleTtlSeconds = 7200
+    await queryClient.invalidateQueries()
+
+    // Assert — the untouched form follows the stored policy.
+    await waitFor(() => {
+      expect(idleTtl).toHaveProperty('value', '7200')
+    })
+    expect(within(sessionLifetime).getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      true
+    )
+  })
+
+  it('keeps the Owner’s edit, and shows what Save sends, when the stored lifetime changes, then follows it once saved', async () => {
+    // Arrange — stored with an idle limit no preset has; the Owner edits another field.
+    let stored: { readonly name: string; readonly idleTtlSeconds: number } = {
+      name: medicationsClient.name,
+      idleTtlSeconds: 2700,
+    }
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const server = stubServer(undefined, undefined, undefined, () =>
+      Response.json([
+        hostClient,
+        {
+          ...medicationsClient,
+          name: stored.name,
+          refreshPolicy: {
+            ...medicationsClient.refreshPolicy,
+            idleTtlSeconds: stored.idleTtlSeconds,
+          },
+        },
+      ])
+    )
+    mountAccessPages(server, queryClient)
+    const approvedApps = await sectionTitled('Approved Apps')
+    fireEvent.click(await within(approvedApps).findByText(medicationsClient.name))
+    const sessionLifetime = await sectionTitled('Session lifetime')
+    fireEvent.click(
+      within(sessionLifetime).getByLabelText(
+        'Sign out when the browser session that signed it in ends'
+      )
+    )
+
+    // Act — changed elsewhere, renamed too so the refetch shows.
+    stored = { name: 'Medications', idleTtlSeconds: 7200 }
+    await queryClient.invalidateQueries()
+    expect(await within(sessionLifetime).findByText(/How long Medications stays/)).toBeTruthy()
+
+    // Assert — the drafted 45 minutes is still offered, and selected.
+    const idleTtl = within(sessionLifetime).getByLabelText<HTMLSelectElement>(
+      'Sign out after unused for'
+    )
+    expect(idleTtl.value).toBe('2700')
+    expect(idleTtl.selectedOptions[0]?.textContent).toBe('45 minutes')
+    fireEvent.click(within(sessionLifetime).getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(server.writes().map(({ body }) => body)).toEqual([
+        {
+          refreshPolicy: {
+            idleTtlSeconds: 2700,
+            maxTtlSeconds: 2592000,
+            endsWithBrowserSession: true,
+          },
+        },
+      ])
+    })
+
+    // Assert — once saved, the form follows the stored policy again, which
+    // this stub didn't keep.
+    await waitFor(() => {
+      expect(idleTtl.value).toBe('7200')
+    })
+    expect(within(sessionLifetime).getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      true
+    )
+  })
 })
 
 // Helpers
@@ -530,7 +632,8 @@ const stubServer = (
     Response.json([medicationsGrant, hostGrant, ownGrant, pebbleGrant]),
   answerBrowserSessions: () => Response = () =>
     Response.json([thisBrowserSession, otherBrowserSession, pairedBrowserSession]),
-  answerRevokeBrowserSession: () => Response = () => new Response(null, { status: 204 })
+  answerRevokeBrowserSession: () => Response = () => new Response(null, { status: 204 }),
+  answerClients: () => Response = () => Response.json([hostClient, medicationsClient])
 ): StubServer => {
   const requests: RecordedRequest[] = []
   const answer = (method: string, url: string): Response => {
@@ -542,7 +645,7 @@ const stubServer = (
       return Response.json(medicationsGrant)
     }
     if (method === 'GET' && path === '/authorization/clients') {
-      return Response.json([hostClient, medicationsClient])
+      return answerClients()
     }
     if (method === 'GET' && path === '/authorization/browser-sessions') {
       return answerBrowserSessions()
