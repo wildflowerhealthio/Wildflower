@@ -19,7 +19,8 @@ const DICOM_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/dicom'
  * these or in the URI its issuer names (`issuer.ts`), and the id it is stored
  * under derives from it, so changing a system or the value written in it
  * re-keys every DICOM record of that type already imported. The minted
- * systems are not a registry: each says only "a DICOM number of this kind",
+ * systems stand in for the identifier-domain registry IHE assumes (ITI TF-2
+ * Appendix Z) and are not one: each says only "a DICOM number of this kind",
  * so a study re-imported from a second disc lands on the same records.
  */
 const DicomIdentifierSystem = {

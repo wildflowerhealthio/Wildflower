@@ -1,7 +1,18 @@
 /**
  * A number a DICOM file states under its issuer, as the FHIR `Identifier` it
- * is keyed by: the HL7 v2 HD-to-URI rule the v2-to-FHIR mapping uses
- * (https://build.fhir.org/ig/HL7/v2-to-fhir/).
+ * is keyed by.
+ *
+ * The issuer's Universal Entity ID becomes `Identifier.system` as IHE ITI
+ * TF-2 Appendix Z.9.1.2 maps an HL7 v2 assigning authority
+ * (https://profiles.ihe.net/ITI/TF/Volume2/ch-Z.html), spelled as FHIR's
+ * Identifier data type spells an OID or a UUID (`urn:oid:`, `urn:uuid:`;
+ * https://hl7.org/fhir/R4/datatypes.html#Identifier). What follows is
+ * Wildflower's own: IHE expects a deployment to register a URI for each local
+ * namespace, and FHIR leaves an identifier with no system meaningful only in
+ * its local context. We keep no registry, and a key must have a system, so a
+ * number whose issuer states no URI is keyed under a Wildflower-minted system
+ * for that kind of number (`DicomIdentifierSystem`) with the local namespace
+ * as `assigner.display`.
  *
  * @packageDocumentation
  */

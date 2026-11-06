@@ -21,8 +21,10 @@ carrying the one `ImagingStudy` its files make up.
   `PatientNameBirthDate` (`…/dicom/patient-name-birth-date`), all
   Wildflower-minted and meaning "a DICOM number of this kind whose issuer the
   file does not state", and `StudyInstanceUid` (`urn:dicom:uid`, FHIR's own).
-- `src/fhir/issuer.ts` — the HL7 v2 HD-to-URI rule the v2-to-FHIR mapping
-  uses. **`universalSystemOf`** spells a Universal Entity ID as a system: `ISO`
+- `src/fhir/issuer.ts` — an issuer's Universal Entity ID as `Identifier.system`
+  (IHE ITI TF-2 Appendix Z.9.1.2, FHIR's `urn:oid:`/`urn:uuid:` spellings);
+  the fallback for an issuer naming no URI is Wildflower's own, standing in
+  for the identifier-domain registry IHE assumes. **`universalSystemOf`** spells a Universal Entity ID as a system: `ISO`
   as `urn:oid:<id>` (a well-formed OID), `UUID` as `urn:uuid:<id>` (lower
   case), `URI` as itself when `Schema.URL` accepts it; `None` for any other
   type or a malformed value. **`issuedIdentifierOf`** keys a number under that
