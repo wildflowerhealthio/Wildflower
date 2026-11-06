@@ -75,6 +75,19 @@ pub trait RefreshTokensTx {
     /// [`AuthorizationServerError::Infrastructure`] if the query fails.
     fn has_refresh_token(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError>;
 
+    /// Move a family's deadline to `expires_at`, touching nothing else — what
+    /// a rotation does once its successor is in, so the deadline follows the
+    /// client's refresh policy from the rotation.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn set_refresh_token_family_expires_at(
+        &mut self,
+        family_id: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError>;
+
     /// End a token family (pull its `expires_at` back to `now` and stamp its
     /// still-live token consumed at the same instant). Rows are kept, not
     /// deleted, so the lineage stays auditable. The two updates land together
@@ -119,7 +132,7 @@ pub trait RefreshTokensTx {
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError>;
 
-    /// Delete every refresh-token family whose absolute deadline fell before
+    /// Delete every refresh-token family whose deadline fell before
     /// `cutoff`, together with the tokens descended from it, returning how many
     /// **families** went — the counterpart to
     /// [`Self::expire_refresh_token_family`], which keeps the lineage readable.

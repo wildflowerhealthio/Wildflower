@@ -10,14 +10,14 @@ use crate::db::shared::JsonStrings;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant_store::RefreshTokensTx;
 
-/// Absolute lifetime of a refresh-token family, measured from the original
-/// authorization. Rotation swaps generations but never extends this
-/// deadline — past it the client re-runs the authorization flow.
-pub const REFRESH_TOKEN_FAMILY_TTL: Duration = Duration::days(90);
+/// The longest any refresh-token family lasts, measured from when it was
+/// issued, whatever its client's [`RefreshPolicy`](crate::domain::client::RefreshPolicy)
+/// says: past it the client re-runs the authorization flow.
+pub const REFRESH_TOKEN_FAMILY_CEILING: Duration = Duration::days(365);
 
 /// One authorization's refresh-token lineage (RFC 6749 §6). The family owns
 /// every fact shared by all the tokens rotated under it — client, scopes,
-/// patient context, and the absolute deadline — so those are stated exactly
+/// patient context, and the deadline — so those are stated exactly
 /// once. Tokens ([`RefreshToken`]) reference it by `family_id`.
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
 #[diesel(table_name = refresh_token_families)]
@@ -39,8 +39,10 @@ pub struct RefreshTokenFamily {
     /// started it. Revoking the client refuses every family issued before
     /// that moment.
     pub issued_at: DateTime<Utc>,
-    /// Absolute deadline for the whole family — rotation never extends it;
-    /// past this the client must re-run the authorization flow. Ending the
+    /// When the family ends if nothing refreshes it: the earliest of its
+    /// client's refresh-policy limits as of its last rotation, and the
+    /// ceiling. Each rotation moves it; past it the client must re-run the
+    /// authorization flow, even if its policy is loosened later. Ending the
     /// family (a replay, a revocation) moves it to the moment it ended,
     /// rather than deleting the row; the retention sweep removes it later.
     pub expires_at: DateTime<Utc>,
@@ -79,7 +81,8 @@ pub struct RefreshToken {
     pub token_hash: String,
     /// The [`RefreshTokenFamily`] this token belongs to.
     pub family_id: String,
-    /// When this token was minted.
+    /// When this token was minted. The live token's is the family's last
+    /// rotation, from which its client's idle limit runs.
     pub issued_at: DateTime<Utc>,
     /// Set when this token is redeemed. `None` means this is the family's
     /// single live token.
@@ -154,7 +157,7 @@ mod tests {
                 scopes: vec!["read".to_owned()],
                 patient: None,
                 issued_at: now,
-                expires_at: now + Duration::days(90),
+                expires_at: now + Duration::days(1),
                 authorization_code_hash: None,
                 grant_id: None,
                 sid: None,

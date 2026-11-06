@@ -11,7 +11,9 @@ use wildflowerhealthio_scopes::widened_scopes;
 
 use crate::domain::authority::DelegatedScopes;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
+use crate::domain::client::{
+    AllowedGrantType, Client, ClientKind, RefreshPolicy, RegistrationSource,
+};
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
 use crate::domain::GrantTx;
 
@@ -134,8 +136,9 @@ impl<'a, T: GrantTx> GrantRecorder<'a, T> {
 /// `delegated` scopes and (when the row doesn't allow it yet) the redirect —
 /// inside the caller's transaction, after reading the row under its write lock,
 /// so the write follows the row as it stands, not as an earlier read saw it.
-/// The store's upsert keeps the row's registration time and `disabled_at`, so
-/// a widening never brings a disabled client back.
+/// The store's upsert keeps the row's registration time, `disabled_at` and
+/// refresh policy, so a widening never brings a disabled client back; a
+/// widening that tightens the policy writes it on its own.
 fn write_registration<T: GrantTx>(
     tx: &mut T,
     client_id: &str,
@@ -143,22 +146,24 @@ fn write_registration<T: GrantTx>(
     delegated: &[String],
     now: DateTime<Utc>,
 ) -> Result<(), AuthorizationServerError> {
-    let row = match tx.client_by_id(client_id)? {
-        Some(existing_client) => {
-            let adds_redirect = !existing_client.allows_redirect_uri(redirect_uri);
-            widen_registration(existing_client, redirect_uri, delegated, adds_redirect)
-        }
-        None => new_registration(client_id, redirect_uri, delegated, now),
+    let Some(existing_client) = tx.client_by_id(client_id)? else {
+        return tx.upsert_client(&new_registration(client_id, redirect_uri, delegated, now));
     };
-    // `upsert_client` updates in place, preserving `registered_at` and any admin
-    // `disabled_at` — a widening never resurrects a disabled client.
-    tx.upsert_client(&row)
+    let registered_refresh_policy = existing_client.refresh_policy;
+    let adds_redirect = !existing_client.allows_redirect_uri(redirect_uri);
+    let row = widen_registration(existing_client, redirect_uri, delegated, adds_redirect);
+    tx.upsert_client(&row)?;
+    if row.refresh_policy != registered_refresh_policy {
+        tx.set_client_refresh_policy(client_id, &row.refresh_policy)?;
+    }
+    Ok(())
 }
 
 /// The `clients` row a first approval of an unregistered client creates: a
 /// public client named after its own `client_id` (there is no registrar to have
 /// supplied a display name), holding only the redirect it just used and the
-/// scopes the approver actually granted.
+/// scopes the approver actually granted, with the refresh policy a client
+/// trusted on first use starts with for those scopes.
 ///
 /// The scopes go in collapsed, through the same [`widened_scopes`] the widening
 /// path uses (against an empty registration), so a row created by a first
@@ -171,12 +176,14 @@ fn new_registration(
     granted_scopes: &[String],
     now: DateTime<Utc>,
 ) -> Client {
+    let allowed_scopes = widened_scopes(&[], granted_scopes);
     Client {
         client_id: client_id.to_owned(),
         name: client_id.to_owned(),
         kind: ClientKind::Public,
         redirect_uris: vec![redirect_uri.clone()],
-        allowed_scopes: widened_scopes(&[], granted_scopes),
+        refresh_policy: RefreshPolicy::trusted_on_first_use(&allowed_scopes),
+        allowed_scopes,
         allowed_grant_types: AllowedGrantType::ALL.to_vec(),
         secret_hash: None,
         registered_at: now,
@@ -187,9 +194,10 @@ fn new_registration(
 
 /// Widen an existing registration by what the approver just approved: append the
 /// `redirect_uri` as an absolute entry when it resolved to none of the existing
-/// ones, and widen `allowed_scopes` by the granted scopes. Everything else on
-/// the row (its name, kind, secret, registration time) is left exactly as it
-/// was.
+/// ones, widen `allowed_scopes` by the granted scopes, and tighten the refresh
+/// policy if that gives the client its first `wildflower/` scope
+/// ([`RefreshPolicy::after_widening`]). Everything else on the row (its name,
+/// kind, secret, registration time) is left exactly as it was.
 ///
 /// The scope half is [`wildflowerhealthio_scopes::widened_scopes`], not a string union: the
 /// granted scopes are parsed, so an approval that grants
@@ -209,7 +217,11 @@ fn widen_registration(
     if adds_redirect {
         client.redirect_uris.push(redirect_uri.clone());
     }
-    client.allowed_scopes = widened_scopes(&client.allowed_scopes, granted_scopes);
+    let allowed_scopes = widened_scopes(&client.allowed_scopes, granted_scopes);
+    client.refresh_policy = client
+        .refresh_policy
+        .after_widening(&client.allowed_scopes, &allowed_scopes);
+    client.allowed_scopes = allowed_scopes;
     client
 }
 
@@ -319,6 +331,48 @@ mod tests {
         assert_eq!(row.allowed_scopes, ["patient/Patient.r", "openid"]);
         assert_eq!(row.redirect_uris, [redirect()]);
         assert_eq!(row.kind, ClientKind::Public);
+        assert_eq!(
+            row.refresh_policy,
+            RefreshPolicy::trusted_on_first_use(&row.allowed_scopes)
+        );
+    }
+
+    /// A new registration takes the first-use refresh policy for the scopes
+    /// it is created with. Widening it by more data scopes keeps that
+    /// policy; widening it by its first `wildflower/` scope tightens it to
+    /// the session-bound two-hour idle limit, keeping the tighter maximum it
+    /// had.
+    #[test]
+    fn a_new_registration_takes_the_first_use_policy_and_a_wildflower_widening_tightens_it() {
+        let store = FakeGrantStore::default();
+        let record = |scopes: &[&str]| {
+            GrantRecorder::within(&mut store.tx())
+                .record_code_grant(
+                    "newcomer",
+                    &redirect(),
+                    &registering_delegated_scopes(scopes),
+                    None,
+                    Utc::now(),
+                )
+                .unwrap();
+            store
+                .tx()
+                .client_by_id("newcomer")
+                .unwrap()
+                .expect("registered")
+                .refresh_policy
+        };
+        let data_policy = RefreshPolicy::trusted_on_first_use(&["patient/Patient.r".to_owned()]);
+        assert_eq!(record(&["patient/Patient.r"]), data_policy);
+        assert_eq!(record(&["patient/Observation.r"]), data_policy);
+        assert_eq!(
+            record(&["wildflower/Grant.r"]),
+            RefreshPolicy {
+                idle_ttl: Some(chrono::Duration::hours(2)),
+                ends_with_browser_session: true,
+                ..data_policy
+            }
+        );
     }
 
     /// Widening a known client by an approval whose redirect the row already

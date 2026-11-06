@@ -96,21 +96,27 @@ It reads its [refresh token family](<../Domain/Refresh Token Explanation.md#item
 
 The epoch is the app's revocation epoch: bumping it revokes every token the app held at that instant, so a family begun before it is refused like an access token issued before it.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::validate tests="tests::a_refresh_token_validates_for_its_client_while_the_family_lives tests::a_refresh_token_is_refused_once_its_session_is_revoked tests::a_refresh_token_is_refused_once_its_client_epoch_passes_the_family"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::validate tests="tests::a_refresh_token_validates_for_its_client_while_the_family_lives tests::a_refresh_token_is_refused_once_its_session_is_revoked tests::a_refresh_token_is_refused_once_its_client_epoch_passes_the_family tests::revoking_the_session_ends_its_families_whatever_the_policy"}}
 
-End to end, the [Device Code](<../Integration Tests/Device Code Explanation.md>), [Browser Sessions](<../Integration Tests/Browser Sessions Explanation.md>) and [Token Revocation](<../Integration Tests/Token Revocation Explanation.md>) tests hold each refusal at `/oauth/token`: an expired family, another app's token, a revoked browser session, and a bumped epoch.
+End to end, the [Device Code](<../Integration Tests/Device Code Explanation.md>), [Browser Sessions](<../Integration Tests/Browser Sessions Explanation.md>), [Token Revocation](<../Integration Tests/Token Revocation Explanation.md>) and [Client Management](<../Integration Tests/Client Management Explanation.md>) tests hold each refusal at `/oauth/token`: an expired family, another app's token, a revoked browser session, a bumped epoch, and a family past a policy the Owner just tightened.
 
 #### `revalidate`
 
-It runs the store checks `validate`'s tests exercise.
+It runs the store checks `validate`'s tests exercise, then holds the family to the app's [refresh policy](<../Domain/Client Explanation.md#item-RefreshPolicy>), read off the authenticated client as its row stands now, so a policy the Owner changed applies from this refresh. **A family the policy refuses is ended in the same write scope**: the refusal is the scope's inner `Err`, so the end is kept, and loosening the policy afterwards finds the family past its deadline.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::revalidate}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::revalidate tests="tests::a_refresh_token_is_refused_once_its_family_goes_idle tests::a_replayed_token_is_not_refused_as_idle tests::a_refresh_token_is_refused_once_its_family_reaches_its_maximum_lifetime tests::a_session_tied_family_ends_when_its_session_expires tests::a_session_tied_family_ends_when_its_session_goes_stale tests::a_family_its_refresh_policy_refuses_stays_ended_when_the_policy_loosens"}}
 
 #### `live_family`
 
-The half both constructors run. A revoked family is one whose deadline was pulled back to the revocation instant, so the deadline check covers both. The browser session is checked with {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/grant_store/browser_sessions.rs BrowserSessionsTx::is_browser_session_revoked}}.
+The checks both constructors run. A revoked family is one whose deadline was pulled back to the revocation instant, so the deadline check covers both. The browser session is read once: a revoked or missing one ends the family whatever the policy, and a standing one is kept for the policy's check.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::live_family}}
+
+#### `refresh_policy_refusal`
+
+For an app whose families end with the browser session, a session that is no longer live ({{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/browser_session.rs BrowserSession::is_live_at}}: expired, or a same-device session the stale-session cutoff makes stale) refuses the family. **The idle limit is checked on the live link only**: a spent link's issue time is older than the family's last rotation, so checking it would turn a replay away as idle and spare the family the rotation that ends it.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::refresh_policy_refusal}}
 
 #### Getters
 
@@ -129,6 +135,8 @@ The half both constructors run. A revoked family is one whose deadline was pulle
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::family_id}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::presented_hash}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::family_deadline_once_rotated_at}}
 
 ### `GrantRedemption`
 

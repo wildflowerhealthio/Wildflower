@@ -34,9 +34,9 @@ End to end, the [Grant Flows](<../Integration Tests/Grant Flows Explanation.md>)
 
 ### `write_registration`
 
-The store's upsert updates the row in place, keeping its registration time and any `disabled_at`, so **a widening never brings a disabled app back**.
+The store's upsert updates the row in place, keeping its registration time, any `disabled_at` and the refresh policy, so **a widening never brings a disabled app back**. A widening that tightens the policy ([`after_widening`](<../Domain/Client Explanation.md#item-RefreshPolicy--after_widening>)) writes it on its own.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/grant_recorder.rs write_registration}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/grant_recorder.rs write_registration tests="tests::a_new_registration_takes_the_first_use_policy_and_a_wildflower_widening_tightens_it"}}
 
 ### `new_registration`
 

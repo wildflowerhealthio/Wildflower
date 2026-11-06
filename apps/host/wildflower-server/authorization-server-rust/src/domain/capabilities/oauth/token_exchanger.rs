@@ -19,6 +19,7 @@ use crate::domain::authority::{
     AuthenticatedClient, ConsumedDeviceRequest, GrantRedemption, PresentedAuthorizationCode,
     RedeemedAuthorizationCode, TokenEntitlement, ValidatedRefreshToken,
 };
+use crate::domain::browser_session::StaleSessionCutoff;
 use crate::domain::capabilities::writers::{AccessTokenMinter, RefreshFamilyWriter};
 use crate::domain::client::AllowedGrantType;
 use crate::domain::token_exchange_error::TokenExchangeError;
@@ -56,21 +57,27 @@ pub(crate) struct TokenExchanger<S: GrantStore> {
     store: S,
     /// The revocation check a refresh runs against its client's epoch.
     revocation: Arc<dyn RevocationCheck>,
+    /// The cutoff that makes a same-device session stale, which ends a
+    /// refresh family tied to that session.
+    stale_session_cutoff: Arc<StaleSessionCutoff>,
     /// The server's bare origin, every minted token's `iss` and `aud`.
     server_origin: Arc<str>,
 }
 
 impl<S: GrantStore> TokenExchanger<S> {
-    /// Build the exchanger over a store handle, the revocation-check port and
-    /// the server's origin, all lifted from the state.
+    /// Build the exchanger over a store handle, the revocation-check port,
+    /// the stale-session cutoff and the server's origin, all lifted from the
+    /// state.
     pub(crate) fn new(
         store: S,
         revocation: Arc<dyn RevocationCheck>,
+        stale_session_cutoff: Arc<StaleSessionCutoff>,
         server_origin: Arc<str>,
     ) -> Self {
         TokenExchanger {
             store,
             revocation,
+            stale_session_cutoff,
             server_origin,
         }
     }
@@ -115,14 +122,17 @@ impl<S: GrantStore> TokenExchanger<S> {
 
     /// Trade a live refresh token for a fresh access token and the refresh
     /// token's successor (RFC 6749 §6, OAuth 2.1 rotation). The family keeps
-    /// its scopes and absolute deadline — rotation never extends its life.
+    /// its scopes, and its client's refresh policy, as it stands now, decides
+    /// whether it may refresh and sets its next deadline.
     ///
     /// The one exchange with two scopes. A `read` scope validates the token,
     /// its client's revocation epoch included: the epoch lives on the
     /// revocation store, another connection to the same file, so reading it
     /// under our write lock could stall both connections for the busy
     /// timeout. The `write` scope then re-validates the store-only facts,
-    /// since the family may have ended between the two, rotates, and mints.
+    /// since the family may have ended between the two, holds the family to
+    /// its client's refresh policy (ending it there if the policy refuses
+    /// it), rotates, and mints.
     /// An epoch bumped between the two scopes doesn't stop this one rotation,
     /// as the epoch isn't read again; but the family still began before the
     /// epoch, so its next refresh is refused.
@@ -170,7 +180,8 @@ impl<S: GrantStore> TokenExchanger<S> {
                 Err(refusal) => return Ok(Err(refusal)),
             };
         let redemption = GrantRedemption::AuthorizationCode(&redeemed_code);
-        let (minter, refresh_token) = self.prepare_issuance(tx, redemption, now)?;
+        let (minter, refresh_token) =
+            self.prepare_issuance(tx, authenticated_client, redemption, now)?;
         issue(
             &minter,
             TokenEntitlement::AuthorizationCode(&redeemed_code),
@@ -197,6 +208,7 @@ impl<S: GrantStore> TokenExchanger<S> {
             };
         let (minter, refresh_token) = self.prepare_issuance(
             tx,
+            authenticated_client,
             GrantRedemption::DeviceCode(&consumed_device_request),
             now,
         )?;
@@ -212,7 +224,8 @@ impl<S: GrantStore> TokenExchanger<S> {
     /// [`exchange_refresh_token`](Self::exchange_refresh_token)'s write half,
     /// inside its write scope `tx`: re-validate the token validated in the
     /// read scope, rotate it, and mint. A refusal is the inner `Err`, so the
-    /// scope keeps a replayed family's end.
+    /// scope keeps the end of a family its refresh policy refused or a replay
+    /// revoked.
     fn rotate_refresh_token_in(
         &self,
         tx: &mut impl GrantTx,
@@ -220,12 +233,16 @@ impl<S: GrantStore> TokenExchanger<S> {
         validated_refresh_token: ValidatedRefreshToken,
         now: DateTime<Utc>,
     ) -> ExchangeOutcome {
-        let validated_refresh_token =
-            match validated_refresh_token.revalidate(tx, authenticated_client, now) {
-                Ok(validated_refresh_token) => validated_refresh_token,
-                Err(TokenExchangeError::Store(error)) => return Err(error.into()),
-                Err(refusal) => return Ok(Err(refusal)),
-            };
+        let validated_refresh_token = match validated_refresh_token.revalidate(
+            tx,
+            &self.stale_session_cutoff,
+            authenticated_client,
+            now,
+        ) {
+            Ok(validated_refresh_token) => validated_refresh_token,
+            Err(TokenExchangeError::Store(error)) => return Err(error.into()),
+            Err(refusal) => return Ok(Err(refusal)),
+        };
         let minter = AccessTokenMinter::with_active_key(tx, &self.server_origin, ACCESS_TOKEN_TTL)?;
         let successor =
             match RefreshFamilyWriter::within(tx).rotate(&validated_refresh_token, now)? {
@@ -242,16 +259,22 @@ impl<S: GrantStore> TokenExchanger<S> {
     }
 
     /// Load the signing key, then start `redemption`'s refresh family if the
-    /// grant earned one, inside the exchange's scope `tx`.
+    /// grant earned one, under `authenticated_client`'s refresh policy, inside
+    /// the exchange's scope `tx`.
     fn prepare_issuance(
         &self,
         tx: &mut impl GrantTx,
+        authenticated_client: &AuthenticatedClient,
         redemption: GrantRedemption<'_>,
         now: DateTime<Utc>,
     ) -> Result<(AccessTokenMinter<'_>, Option<String>), TokenExchangeError> {
         let minter = AccessTokenMinter::with_active_key(tx, &self.server_origin, ACCESS_TOKEN_TTL)?;
         let refresh_token = if redemption.is_refresh_token_earned() {
-            Some(RefreshFamilyWriter::within(tx).start_family(redemption, now)?)
+            Some(RefreshFamilyWriter::within(tx).start_family(
+                redemption,
+                authenticated_client.refresh_policy(),
+                now,
+            )?)
         } else {
             None
         };
@@ -321,7 +344,12 @@ mod tests {
     fn exchanger() -> TokenExchanger<FakeGrantStore> {
         let store = FakeGrantStore::default();
         seed_active_signing_key(&store);
-        TokenExchanger::new(store, Arc::new(NothingRevoked), SERVER_ORIGIN.into())
+        TokenExchanger::new(
+            store,
+            Arc::new(NothingRevoked),
+            Arc::new(StaleSessionCutoff::none()),
+            SERVER_ORIGIN.into(),
+        )
     }
 
     /// The proof that public client `client_id`, allowed `openid` and the

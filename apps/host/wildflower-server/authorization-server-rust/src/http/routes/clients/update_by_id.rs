@@ -1,40 +1,142 @@
-//! `PATCH /authorization/clients/{clientId}`: the Owner disables an app, or
-//! turns it back on.
+//! `PATCH /authorization/clients/{clientId}`: the Owner disables an app, turns
+//! it back on, or changes how long its sign-ins last.
 
 use axum::extract::Path;
 use axum::Json;
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use utoipa::ToSchema;
 
-use super::list_all::ClientBody;
+use super::list_all::{ClientBody, RefreshPolicyBody};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::Scoped;
+use crate::domain::client::{refresh_limit_from_seconds, RefreshPolicy};
 use crate::http::errors::{ClientNotFoundBody, EssentialClientBody};
-use crate::live_bindings::LiveClientsDisabler;
+use crate::live_bindings::LiveClientsUpdater;
 
-/// Body of `PATCH /authorization/clients/{clientId}` — the one client field the Owner
-/// can edit.
+/// Body of `PATCH /authorization/clients/{clientId}` — one of the two things
+/// the Owner can change about a client, each its own shape: whether it is
+/// disabled, or its refresh policy.
+// Read through `UpdateClientFields`, so a field's own error (a refresh
+// limit out of range, a time that doesn't parse) is the one the caller hears;
+// `untagged` only shapes the schema.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(untagged, try_from = "UpdateClientFields")]
+pub(crate) enum UpdateClientBody {
+    /// Disable or re-enable the client.
+    DisabledAt(DisabledAtChange),
+    /// Replace the client's refresh policy.
+    RefreshPolicy(RefreshPolicyChange),
+}
+
+/// Disable or re-enable a client.
+#[derive(Debug, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct UpdateClientBody {
+pub(crate) struct DisabledAtChange {
     /// Any time to disable the client now, or `null` to re-enable it. The
     /// server stamps its own now whatever time is sent, so a disable can't be
     /// scheduled or backdated. Required, `null` included.
-    // `Option::deserialize` stops serde reading a missing field as `null`, so an
-    // empty body can't re-enable a client by omission.
-    #[serde(deserialize_with = "Option::deserialize")]
     #[schema(value_type = Option<String>, format = DateTime, required = true)]
     disabled_at: Option<DateTime<Utc>>,
 }
 
-/// `PATCH /authorization/clients/{clientId}` — disable (stamped with the server's now,
-/// whatever time is sent) or re-enable a client by writing its `disabledAt`;
-/// answers with the client as stored. A disabled client is refused at
-/// `/oauth/authorize` and `/oauth/token`. Idempotent (a client that already
-/// has a `disabledAt` keeps it). Disabling an essential client — the host
-/// app's or the browser-session client — is refused with `409 EssentialClient`.
-/// Acquired through [`LiveClientsDisabler`] (scope `wildflower/Client.u`).
+/// Replace a client's refresh policy.
+#[derive(Debug, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RefreshPolicyChange {
+    /// The whole new policy. Each limit is at least a second and at most the
+    /// 365-day ceiling; a body outside that is refused.
+    #[schema(value_type = RefreshPolicyBody)]
+    refresh_policy: RefreshPolicy,
+}
+
+/// The fields of an [`UpdateClientBody`] as sent, each read on its own so
+/// its error names it, before exactly one is required. An absent field is
+/// `None`; a sent `"disabledAt": null` is `Some(None)`, so leaving the field
+/// out can't re-enable a client.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UpdateClientFields {
+    /// The sent `disabledAt`, `null` included.
+    #[serde(default, deserialize_with = "present_disabled_at")]
+    disabled_at: Option<Option<DateTime<Utc>>>,
+    /// The sent `refreshPolicy`, its limits checked.
+    #[serde(default, deserialize_with = "present_refresh_policy")]
+    refresh_policy: Option<RefreshPolicy>,
+}
+
+impl TryFrom<UpdateClientFields> for UpdateClientBody {
+    type Error = &'static str;
+
+    fn try_from(sent_fields: UpdateClientFields) -> Result<Self, Self::Error> {
+        match sent_fields {
+            UpdateClientFields {
+                disabled_at: Some(disabled_at),
+                refresh_policy: None,
+            } => Ok(UpdateClientBody::DisabledAt(DisabledAtChange {
+                disabled_at,
+            })),
+            UpdateClientFields {
+                disabled_at: None,
+                refresh_policy: Some(refresh_policy),
+            } => Ok(UpdateClientBody::RefreshPolicy(RefreshPolicyChange {
+                refresh_policy,
+            })),
+            UpdateClientFields { .. } => Err("send exactly one of disabledAt and refreshPolicy"),
+        }
+    }
+}
+
+/// A sent `disabledAt`, `null` included, as present.
+fn present_disabled_at<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Option<DateTime<Utc>>>, D::Error> {
+    Option::<DateTime<Utc>>::deserialize(deserializer).map(Some)
+}
+
+/// A sent `refreshPolicy`, as present: see [`refresh_policy_from_body`].
+fn present_refresh_policy<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<RefreshPolicy>, D::Error> {
+    refresh_policy_from_body(deserializer).map(Some)
+}
+
+/// Read a [`RefreshPolicyBody`] as a [`RefreshPolicy`], refusing a limit a
+/// client may not hold (see [`refresh_limit_from_seconds`]).
+fn refresh_policy_from_body<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<RefreshPolicy, D::Error> {
+    let body = RefreshPolicyBody::deserialize(deserializer)?;
+    let limit = |seconds: Option<i64>| {
+        seconds
+            .map(|seconds| {
+                refresh_limit_from_seconds(seconds).ok_or_else(|| {
+                    serde::de::Error::custom(format!(
+                        "a refresh limit of {seconds} seconds is not between a second and 365 days"
+                    ))
+                })
+            })
+            .transpose()
+    };
+    Ok(RefreshPolicy {
+        idle_ttl: limit(body.idle_ttl_seconds)?,
+        max_ttl: limit(body.max_ttl_seconds)?,
+        ends_with_browser_session: body.ends_with_browser_session,
+    })
+}
+
+/// `PATCH /authorization/clients/{clientId}` — disable or re-enable a client,
+/// or replace its refresh policy; answers with the client as stored.
+///
+/// - A disable is stamped with the server's now, whatever time is sent. A
+///   disabled client is refused at `/oauth/authorize` and `/oauth/token`.
+///   Idempotent (a client that already has a `disabledAt` keeps it).
+///   Disabling an essential client — the host app's or the browser-session
+///   client — is refused with `409 EssentialClient`.
+/// - A new `refreshPolicy` applies to the client's refresh-token families on
+///   their next refresh.
+///
+/// Acquired through [`LiveClientsUpdater`] (scope `wildflower/Client.u`).
 #[utoipa::path(
     patch,
     tag = "Access management",
@@ -49,11 +151,18 @@ pub(crate) struct UpdateClientBody {
     ),
 )]
 pub(super) async fn handle_update_client(
-    clients: Scoped<LiveClientsDisabler>,
+    clients: Scoped<LiveClientsUpdater>,
     Path(client_id): Path<String>,
     Json(body): Json<UpdateClientBody>,
 ) -> Result<Json<ClientBody>, AuthorizationServerError> {
-    let stamp = body.disabled_at.map(|_sent| Utc::now());
-    let updated = clients.set_disabled_at(&client_id, stamp)?;
+    let updated = match body {
+        UpdateClientBody::DisabledAt(DisabledAtChange { disabled_at }) => {
+            let stamp = disabled_at.map(|_sent| Utc::now());
+            clients.set_disabled_at(&client_id, stamp)?
+        }
+        UpdateClientBody::RefreshPolicy(RefreshPolicyChange { refresh_policy }) => {
+            clients.set_refresh_policy(&client_id, refresh_policy)?
+        }
+    };
     Ok(Json(updated.into()))
 }

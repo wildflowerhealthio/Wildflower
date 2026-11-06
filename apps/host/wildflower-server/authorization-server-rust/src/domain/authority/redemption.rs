@@ -38,10 +38,12 @@ use crate::domain::authorization_request::approval::Approval;
 use crate::domain::authorization_request::device::device_grant_name;
 use crate::domain::authorization_request::polled::{Polled as _, PolledState};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::browser_session::{BrowserSession, StaleSessionCutoff};
+use crate::domain::client::RefreshPolicy;
 use crate::domain::grant_store::{
     AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, GrantsTx, RefreshTokensTx,
 };
-use crate::domain::refresh_token::RefreshTokenFamily;
+use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
 use crate::ports::RevocationCheck;
 
@@ -402,20 +404,28 @@ impl ConsumedDeviceRequest {
 /// client (RFC 6749 §6). Not yet consumed: the refresh-family writer rotates
 /// it.
 ///
-/// Built in two scopes. [`validate`](Self::validate) runs the whole
-/// validation in a `read` scope, the client's revocation epoch included: the
-/// epoch lives on the revocation store, another connection to the same file,
-/// so it can't be read under the exchange's write lock without risking a
-/// lock-order stall. [`revalidate`](Self::revalidate) then re-runs the
-/// store-only half inside the `write` scope that rotates, because the family
-/// may have ended between the two.
+/// Built in two scopes. [`validate`](Self::validate) checks the token in a
+/// `read` scope, the client's revocation epoch included: the epoch lives on
+/// the revocation store, another connection to the same file, so it can't be
+/// read under the exchange's write lock without risking a lock-order stall.
+/// [`revalidate`](Self::revalidate) then re-runs the store-only checks inside
+/// the `write` scope that rotates, because the family may have ended between
+/// the two, and applies the client's refresh policy there, since a family
+/// the policy refuses is ended, which takes a write.
 pub(crate) struct ValidatedRefreshToken {
     /// The live family the token belongs to, this client's: the scopes,
     /// patient and browser session every token rotated under it carries.
     family: RefreshTokenFamily,
-    /// The storage hash of the token as presented, by which the refresh-family
-    /// writer consumes it when it rotates the token into its successor.
-    presented_hash: String,
+    /// The token as presented: its storage hash, by which the refresh-family
+    /// writer consumes it when it rotates the token into its successor, and
+    /// its issue, from which the client's idle limit runs.
+    presented_token: RefreshToken,
+    /// The browser session the family was minted under, not revoked; `None`
+    /// for a family with no session (the device flow).
+    browser_session: Option<BrowserSession>,
+    /// The client's refresh policy, as it stands, which decides whether the
+    /// family may refresh and sets its deadline when it rotates.
+    refresh_policy: RefreshPolicy,
     /// The family's scopes with each SMART scope's alternate spelling added:
     /// the token's `scope` claim.
     token_scopes: Vec<String>,
@@ -431,7 +441,8 @@ impl ValidatedRefreshToken {
     /// still validates. Bumping a client's revocation epoch revokes every
     /// token it held at that instant, so a family begun before it is refused
     /// like an access token issued before it. Runs in a `read` scope, outside
-    /// the write lock (see the type's doc).
+    /// the write lock (see the type's doc); the client's refresh policy is
+    /// applied by [`revalidate`](Self::revalidate).
     ///
     /// # Errors
     ///
@@ -448,7 +459,7 @@ impl ValidatedRefreshToken {
         let validated = Self::live_family(
             tx,
             authenticated_client,
-            token_storage_hash(presented_refresh_token),
+            &token_storage_hash(presented_refresh_token),
             now,
         )?;
         // Bumping a client's revocation epoch revokes every token it held at
@@ -477,36 +488,55 @@ impl ValidatedRefreshToken {
         Ok(validated)
     }
 
-    /// Re-load this token's family inside the rotating `write` scope `tx` and
+    /// Re-load this token's family inside the rotating `write` scope `tx`,
     /// re-check the store-only facts — this client's, unexpired, its browser
     /// session not revoked — since the family may have ended after
-    /// [`validate`](Self::validate)'s scope closed. The epoch was checked
-    /// there and is not re-read here (see the type's doc).
+    /// [`validate`](Self::validate)'s scope closed, and hold it to the
+    /// client's [`RefreshPolicy`] as it stands, a family tied to its browser
+    /// session needing that session live under `stale_session_cutoff`. A
+    /// family the policy refuses is ended in `tx`, so loosening the policy
+    /// afterwards doesn't revive it; the caller keeps that write by returning
+    /// the refusal as the scope's inner `Err`. The epoch was checked in
+    /// `validate` and is not re-read here (see the type's doc).
     ///
     /// # Errors
     ///
-    /// As [`validate`](Self::validate), less the epoch check.
+    /// As [`validate`](Self::validate), less the epoch check, plus the
+    /// refresh policy's [`InvalidGrantReason`]s.
     pub(crate) fn revalidate(
         self,
         tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
+        stale_session_cutoff: &StaleSessionCutoff,
         authenticated_client: &AuthenticatedClient,
         now: DateTime<Utc>,
     ) -> Result<Self, TokenExchangeError> {
-        Self::live_family(tx, authenticated_client, self.presented_hash, now)
+        let revalidated = Self::live_family(
+            tx,
+            authenticated_client,
+            &self.presented_token.token_hash,
+            now,
+        )?;
+        if let Some(refusal) = revalidated.refresh_policy_refusal(stale_session_cutoff, now) {
+            tx.expire_refresh_token_family(&revalidated.family.family_id, now)?;
+            return Err(TokenExchangeError::InvalidGrant(refusal));
+        }
+        Ok(revalidated)
     }
 
-    /// The store-only half of validation: the family `presented_hash`
-    /// belongs to, required to be `authenticated_client`'s, unexpired at
-    /// `now`, and not minted under a revoked browser session. A revoked family
-    /// is one whose deadline was pulled back to the revocation instant, so the
-    /// deadline check covers both.
+    /// The store-only checks both constructors run: the family
+    /// `presented_hash` belongs to, required to be `authenticated_client`'s,
+    /// unexpired at `now`, and not minted under a revoked browser session. A
+    /// revoked family is one whose deadline was pulled back to the
+    /// revocation instant, so the deadline check covers both.
     fn live_family(
         tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
         authenticated_client: &AuthenticatedClient,
-        presented_hash: String,
+        presented_hash: &str,
         now: DateTime<Utc>,
     ) -> Result<Self, TokenExchangeError> {
-        let Some((_, family)) = tx.refresh_token_with_family_by_hash(&presented_hash)? else {
+        let Some((presented_token, family)) =
+            tx.refresh_token_with_family_by_hash(presented_hash)?
+        else {
             return Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::RefreshTokenNotFound,
             ));
@@ -527,22 +557,79 @@ impl ValidatedRefreshToken {
                 InvalidGrantReason::RefreshTokenExpired,
             ));
         }
-        // Revoking a browser session ends every family minted under it. A
-        // family with no session (the device flow) has none to check.
-        if let Some(sid) = family.sid.as_deref() {
-            if tx.is_browser_session_revoked(sid)? {
-                return Err(TokenExchangeError::InvalidGrant(
-                    InvalidGrantReason::RefreshTokenSessionRevoked {
-                        family_id: family.family_id,
-                    },
-                ));
-            }
-        }
+        // Revoking a browser session ends every family minted under it,
+        // whatever its client's policy says. A `sid` that names no session
+        // counts as revoked: a session is pruned only once nothing it minted
+        // can still be live. A family with no session (the device flow) has
+        // none to check.
+        let browser_session = match family.sid.as_deref() {
+            Some(sid) => match tx.browser_session_by_sid(sid)? {
+                Some(browser_session) if browser_session.revoked_at.is_none() => {
+                    Some(browser_session)
+                }
+                _ => {
+                    return Err(TokenExchangeError::InvalidGrant(
+                        InvalidGrantReason::RefreshTokenSessionRevoked {
+                            family_id: family.family_id,
+                        },
+                    ))
+                }
+            },
+            None => None,
+        };
         Ok(ValidatedRefreshToken {
             token_scopes: token_scope_spellings(&family.scopes),
             family,
-            presented_hash,
+            presented_token,
+            browser_session,
+            refresh_policy: *authenticated_client.refresh_policy(),
         })
+    }
+
+    /// Why the client's [`RefreshPolicy`] refuses the family at `now`, if it
+    /// does: idle since its last rotation, past its maximum lifetime, or tied
+    /// to a browser session that is no longer live under
+    /// `stale_session_cutoff`.
+    fn refresh_policy_refusal(
+        &self,
+        stale_session_cutoff: &StaleSessionCutoff,
+        now: DateTime<Utc>,
+    ) -> Option<InvalidGrantReason> {
+        let family_id = || self.family.family_id.clone();
+        // The idle limit runs from the family's last rotation, which is when
+        // its live token was issued. A consumed token is a replay, and its
+        // older issue time would read a live family as idle and spare it the
+        // rotation that ends it, so the idle limit is checked on the live
+        // token only.
+        let is_live_token_idle = self.presented_token.consumed_at.is_none()
+            && self
+                .refresh_policy
+                .is_idle_limit_reached(self.presented_token.issued_at, now);
+        let has_tied_session_ended = self.refresh_policy.ends_with_browser_session
+            && self
+                .browser_session
+                .as_ref()
+                .is_some_and(|browser_session| {
+                    !browser_session.is_live_at(now, stale_session_cutoff)
+                });
+        if is_live_token_idle {
+            Some(InvalidGrantReason::RefreshTokenIdle {
+                family_id: family_id(),
+            })
+        } else if self
+            .refresh_policy
+            .is_max_lifetime_reached(self.family.issued_at, now)
+        {
+            Some(InvalidGrantReason::RefreshTokenMaxLifetimeReached {
+                family_id: family_id(),
+            })
+        } else if has_tied_session_ended {
+            Some(InvalidGrantReason::RefreshTokenSessionExpired {
+                family_id: family_id(),
+            })
+        } else {
+            None
+        }
     }
 
     /// The client the family belongs to.
@@ -591,7 +678,18 @@ impl ValidatedRefreshToken {
 
     /// The storage hash of the presented token — what rotation consumes.
     pub(crate) fn presented_hash(&self) -> &str {
-        &self.presented_hash
+        &self.presented_token.token_hash
+    }
+
+    /// When the family ends if it is rotated at `rotated_at` and then left
+    /// alone: the earliest of the client's limits from there, and the
+    /// ceiling. Rotation moves the family's `expires_at` to it.
+    pub(crate) fn family_deadline_once_rotated_at(
+        &self,
+        rotated_at: DateTime<Utc>,
+    ) -> DateTime<Utc> {
+        self.refresh_policy
+            .family_deadline(self.family.issued_at, rotated_at)
     }
 }
 
@@ -1041,6 +1139,343 @@ mod tests {
                 now
             )),
             InvalidGrantReason::RefreshTokenClientRevoked {
+                family_id: "fam".to_owned()
+            }
+        );
+    }
+
+    /// Register public client `client_id` holding `refresh_policy` and
+    /// authenticate as it.
+    fn authenticated_under(
+        store: &FakeGrantStore,
+        client_id: &str,
+        refresh_policy: RefreshPolicy,
+    ) -> AuthenticatedClient {
+        authenticated_public_client(
+            store,
+            crate::domain::client::Client {
+                refresh_policy,
+                ..client(client_id, &["openid"])
+            },
+        )
+    }
+
+    /// The whole check a refresh of the token `live` runs for `client` at
+    /// `at` before rotating: [`ValidatedRefreshToken::validate`], then
+    /// [`ValidatedRefreshToken::revalidate`] under `stale_session_cutoff`.
+    fn revalidate_under(
+        store: &FakeGrantStore,
+        client: &AuthenticatedClient,
+        stale_session_cutoff: &StaleSessionCutoff,
+        at: DateTime<Utc>,
+    ) -> Result<ValidatedRefreshToken, TokenExchangeError> {
+        ValidatedRefreshToken::validate(&mut store.tx(), &NothingRevoked, client, "live", at)?
+            .revalidate(&mut store.tx(), stale_session_cutoff, client, at)
+    }
+
+    /// [`revalidate_under`] a cutoff that makes no session stale.
+    fn revalidate_at(
+        store: &FakeGrantStore,
+        client: &AuthenticatedClient,
+        at: DateTime<Utc>,
+    ) -> Result<ValidatedRefreshToken, TokenExchangeError> {
+        revalidate_under(store, client, &StaleSessionCutoff::none(), at)
+    }
+
+    /// The idle limit runs from the live token's issue, the family's last
+    /// rotation: a second short of it the token validates, and exactly at it
+    /// the family is idle.
+    #[test]
+    fn a_refresh_token_is_refused_once_its_family_goes_idle() {
+        let issued_at = Utc::now();
+        let store = FakeGrantStore::default();
+        let client = authenticated_under(
+            &store,
+            "client",
+            RefreshPolicy {
+                idle_ttl: Some(Duration::minutes(30)),
+                max_ttl: None,
+                ends_with_browser_session: false,
+            },
+        );
+        live_family(&store, "client", issued_at);
+
+        revalidate_at(
+            &store,
+            &client,
+            issued_at + Duration::minutes(30) - Duration::seconds(1),
+        )
+        .expect("a second short of the idle limit validates");
+        assert_eq!(
+            reason(revalidate_at(
+                &store,
+                &client,
+                issued_at + Duration::minutes(30)
+            )),
+            InvalidGrantReason::RefreshTokenIdle {
+                family_id: "fam".to_owned()
+            }
+        );
+    }
+
+    /// A consumed token is a replay: however long ago it was issued, the idle
+    /// limit doesn't refuse it, so rotation sees the replay and ends the
+    /// family, rather than a stolen token being turned away as idle while the
+    /// family lives on.
+    #[test]
+    fn a_replayed_token_is_not_refused_as_idle() {
+        let issued_at = Utc::now();
+        let store = FakeGrantStore::default();
+        let client = authenticated_under(
+            &store,
+            "client",
+            RefreshPolicy {
+                idle_ttl: Some(Duration::minutes(30)),
+                max_ttl: None,
+                ends_with_browser_session: false,
+            },
+        );
+        live_family(&store, "client", issued_at);
+        assert!(store
+            .tx()
+            .stamp_refresh_token_consumed_if_live(
+                &token_storage_hash("live"),
+                issued_at + Duration::minutes(5)
+            )
+            .unwrap());
+
+        revalidate_at(&store, &client, issued_at + Duration::hours(1))
+            .expect("the replay reaches rotation");
+    }
+
+    /// The maximum lifetime runs from the family's issue: a second short of
+    /// it the token validates, and exactly at it the family is refused.
+    #[test]
+    fn a_refresh_token_is_refused_once_its_family_reaches_its_maximum_lifetime() {
+        let issued_at = Utc::now();
+        let store = FakeGrantStore::default();
+        let client = authenticated_under(
+            &store,
+            "client",
+            RefreshPolicy {
+                idle_ttl: None,
+                max_ttl: Some(Duration::hours(12)),
+                ends_with_browser_session: false,
+            },
+        );
+        live_family(&store, "client", issued_at);
+
+        revalidate_at(
+            &store,
+            &client,
+            issued_at + Duration::hours(12) - Duration::seconds(1),
+        )
+        .expect("a second short of the maximum lifetime validates");
+        assert_eq!(
+            reason(revalidate_at(
+                &store,
+                &client,
+                issued_at + Duration::hours(12)
+            )),
+            InvalidGrantReason::RefreshTokenMaxLifetimeReached {
+                family_id: "fam".to_owned()
+            }
+        );
+    }
+
+    /// A client that ends its families with the browser session refuses one
+    /// whose session has expired, from the session's `expires_at` on; a
+    /// client that doesn't keeps refreshing past it, and a family with no
+    /// session has none to end with.
+    #[test]
+    fn a_session_tied_family_ends_when_its_session_expires() {
+        let signed_in_at = Utc::now();
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), signed_in_at);
+        let ends_with_session = RefreshPolicy {
+            idle_ttl: None,
+            max_ttl: None,
+            ends_with_browser_session: true,
+        };
+        let session_expires_at = signed_in_at + Duration::hours(8);
+
+        let store = FakeGrantStore::default();
+        store.tx().insert_browser_session(&session).unwrap();
+        let tied = authenticated_under(&store, "client", ends_with_session);
+        live_family_under(&store, "client", Some(&session.sid), signed_in_at);
+        revalidate_at(&store, &tied, session_expires_at - Duration::seconds(1))
+            .expect("validates while the session lasts");
+        assert_eq!(
+            reason(revalidate_at(&store, &tied, session_expires_at)),
+            InvalidGrantReason::RefreshTokenSessionExpired {
+                family_id: "fam".to_owned()
+            }
+        );
+
+        let store = FakeGrantStore::default();
+        store.tx().insert_browser_session(&session).unwrap();
+        let untied = authenticated_under(
+            &store,
+            "client",
+            RefreshPolicy {
+                ends_with_browser_session: false,
+                ..ends_with_session
+            },
+        );
+        live_family_under(&store, "client", Some(&session.sid), signed_in_at);
+        revalidate_at(&store, &untied, session_expires_at)
+            .expect("an untied family outlives its session");
+
+        let store = FakeGrantStore::default();
+        let tied = authenticated_under(&store, "client", ends_with_session);
+        live_family(&store, "client", signed_in_at);
+        revalidate_at(&store, &tied, session_expires_at)
+            .expect("a family with no session has none to end with");
+    }
+
+    /// A same-device session the stale cutoff makes stale (a server restart
+    /// since its sign-in) has ended, though its `expires_at` is hours away: a
+    /// family tied to it is refused, while one whose client doesn't tie its
+    /// families to the session keeps refreshing.
+    #[test]
+    fn a_session_tied_family_ends_when_its_session_goes_stale() {
+        let signed_in_at = Utc::now();
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), signed_in_at);
+        let restarted = StaleSessionCutoff::new(
+            signed_in_at + Duration::seconds(1),
+            std::collections::HashSet::new(),
+        );
+        let ends_with_session = RefreshPolicy {
+            idle_ttl: None,
+            max_ttl: None,
+            ends_with_browser_session: true,
+        };
+        let after_restart = signed_in_at + Duration::minutes(5);
+
+        let store = FakeGrantStore::default();
+        store.tx().insert_browser_session(&session).unwrap();
+        let tied = authenticated_under(&store, "client", ends_with_session);
+        live_family_under(&store, "client", Some(&session.sid), signed_in_at);
+        assert_eq!(
+            reason(revalidate_under(&store, &tied, &restarted, after_restart)),
+            InvalidGrantReason::RefreshTokenSessionExpired {
+                family_id: "fam".to_owned()
+            }
+        );
+
+        let store = FakeGrantStore::default();
+        store.tx().insert_browser_session(&session).unwrap();
+        let untied = authenticated_under(
+            &store,
+            "client",
+            RefreshPolicy {
+                ends_with_browser_session: false,
+                ..ends_with_session
+            },
+        );
+        live_family_under(&store, "client", Some(&session.sid), signed_in_at);
+        revalidate_under(&store, &untied, &restarted, after_restart)
+            .expect("an untied family outlives a stale session");
+    }
+
+    /// A family the client's refresh policy refuses is ended, whichever limit
+    /// refused it: once the client's policy is loosened to the ceiling alone,
+    /// the same token is refused as expired rather than refreshing again.
+    #[test]
+    fn a_family_its_refresh_policy_refuses_stays_ended_when_the_policy_loosens() {
+        let issued_at = Utc::now();
+        let refused_at = issued_at + Duration::hours(2);
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(1), issued_at);
+        let no_limit = RefreshPolicy {
+            idle_ttl: None,
+            max_ttl: None,
+            ends_with_browser_session: false,
+        };
+        for (refresh_policy, refusal) in [
+            (
+                RefreshPolicy {
+                    idle_ttl: Some(Duration::minutes(30)),
+                    ..no_limit
+                },
+                InvalidGrantReason::RefreshTokenIdle {
+                    family_id: "fam".to_owned(),
+                },
+            ),
+            (
+                RefreshPolicy {
+                    max_ttl: Some(Duration::hours(1)),
+                    ..no_limit
+                },
+                InvalidGrantReason::RefreshTokenMaxLifetimeReached {
+                    family_id: "fam".to_owned(),
+                },
+            ),
+            (
+                RefreshPolicy {
+                    ends_with_browser_session: true,
+                    ..no_limit
+                },
+                InvalidGrantReason::RefreshTokenSessionExpired {
+                    family_id: "fam".to_owned(),
+                },
+            ),
+        ] {
+            let store = FakeGrantStore::default();
+            store.tx().insert_browser_session(&session).unwrap();
+            let tightened = authenticated_under(&store, "client", refresh_policy);
+            live_family_under(&store, "client", Some(&session.sid), issued_at);
+            assert_eq!(
+                reason(revalidate_at(&store, &tightened, refused_at)),
+                refusal
+            );
+
+            assert!(store
+                .tx()
+                .set_client_refresh_policy("client", &no_limit)
+                .unwrap());
+            let loosened = authenticated_under(&store, "client", no_limit);
+            assert_eq!(
+                reason(revalidate_at(&store, &loosened, refused_at)),
+                InvalidGrantReason::RefreshTokenExpired,
+                "{refusal:?}"
+            );
+        }
+    }
+
+    /// Revoking a browser session ends the families minted under it whatever
+    /// the client's policy says, a policy that outlives the session included.
+    #[test]
+    fn revoking_the_session_ends_its_families_whatever_the_policy() {
+        let now = Utc::now();
+        let session = BrowserSession::new_paired_session(
+            "Laptop".to_owned(),
+            vec![],
+            Duration::hours(24),
+            now,
+        );
+        let store = FakeGrantStore::default();
+        store.tx().insert_browser_session(&session).unwrap();
+        let client = authenticated_under(
+            &store,
+            "client",
+            RefreshPolicy {
+                idle_ttl: Some(Duration::days(7)),
+                max_ttl: Some(Duration::days(30)),
+                ends_with_browser_session: false,
+            },
+        );
+        live_family_under(&store, "client", Some(&session.sid), now);
+        revalidate_at(&store, &client, now).expect("validates before the revocation");
+
+        assert!(store
+            .tx()
+            .revoke_browser_session(&session.sid, now)
+            .unwrap());
+        assert_eq!(
+            reason(revalidate_at(&store, &client, now)),
+            InvalidGrantReason::RefreshTokenSessionRevoked {
                 family_id: "fam".to_owned()
             }
         );

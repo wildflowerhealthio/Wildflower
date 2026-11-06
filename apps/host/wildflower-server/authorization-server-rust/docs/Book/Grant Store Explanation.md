@@ -17,7 +17,7 @@ The port has two halves. A **scope** is one unit of store work: a run of reads a
 
 Two operations open a read scope and then a write scope, for the same reason: **each also reads or writes the revocation store, which is another connection to the same SQLite file**, and touching it while holding this store's write lock could stall both connections for the busy timeout.
 
-- [Exchanging a refresh token](<Capabilities/OAuth/Token Exchanger Explanation.md#item-TokenExchanger--exchange_refresh_token>) validates the token in a read scope, its app's revocation epoch included. A write scope then checks the store-only facts again (the family may have ended between the two), rotates the token and mints.
+- [Exchanging a refresh token](<Capabilities/OAuth/Token Exchanger Explanation.md#item-TokenExchanger--exchange_refresh_token>) validates the token in a read scope, its app's revocation epoch included. A write scope then checks the store-only facts again (the family may have ended between the two), holds the family to its app's refresh policy, ending a family the policy refuses, rotates the token and mints.
 - [Revoking a grant](<Capabilities/Access/Grants Explanation.md#item-GrantsRevoker--revoke>) loads the grant in a read scope to learn its app, bumps that app's revocation epoch, then deletes the grant and ends the app's refresh families in a write scope.
 
 ## `domain::grant_store::store`

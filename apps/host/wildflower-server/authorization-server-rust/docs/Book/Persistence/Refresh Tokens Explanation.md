@@ -51,6 +51,14 @@ A `false` doesn't say why: spent already, or never issued. [`consume_refresh_tok
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/refresh_tokens/tests.rs unknown_hash_neither_stamps_nor_exists}}
 
+#### `set_refresh_token_family_expires_at`
+
+A rotation moves the deadline to where its app's policy puts it; this is the write, nothing more.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/refresh_tokens.rs SqliteGrantTx::set_refresh_token_family_expires_at}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/refresh_tokens/tests.rs set_expires_at_moves_only_that_family_s_deadline}}
+
 #### `expire_refresh_token_family`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/refresh_tokens.rs SqliteGrantTx::expire_refresh_token_family}}

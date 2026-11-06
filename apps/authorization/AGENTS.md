@@ -47,6 +47,10 @@ that.
 - **Essential clients can't be disabled.** The Trusted Apps section offers
   the host app's client and the browser-session client no switch (the server
   answers `409 EssentialClient`).
+- **No Session lifetime for a client that never refreshes.** A grant's
+  detail offers the section only for a client allowed the `refresh_token`
+  grant (`authorization-core`'s `Client.mayRefresh`), so the browser-session
+  client, which has no grant type, gets none; the host app's client keeps it.
 - **No Revoke on this app's own grant.** The Approved Apps list offers none
   there, since it would revoke the page's bearer.
 - **Revoking a grant is two calls**: `DELETE /authorization/grants/:id`, then

@@ -364,6 +364,182 @@ describe('the access page', () => {
     expect(screen.getByText(medicationsGrant.redirectUri)).toBeTruthy()
     expect(router.state.location.search).toEqual({ iss: SERVER_URL })
   })
+
+  it('changes the grant’s app’s session lifetime from its detail', async () => {
+    // Arrange
+    const server = stubServer()
+    mountAccessPages(server)
+    const approvedApps = await sectionTitled('Approved Apps')
+    fireEvent.click(await within(approvedApps).findByText(medicationsClient.name))
+    const sessionLifetime = await sectionTitled('Session lifetime')
+    expect(
+      within(sessionLifetime).getByText(/These limits belong to the app, so they cover every/)
+    ).toBeTruthy()
+    const save = within(sessionLifetime).getByRole('button', { name: 'Save' })
+    expect(save).toHaveProperty('disabled', true)
+
+    // Act
+    fireEvent.change(within(sessionLifetime).getByLabelText('Sign out after unused for'), {
+      target: { value: '1800' },
+    })
+    fireEvent.click(
+      within(sessionLifetime).getByLabelText(
+        'Sign out when the browser session that signed it in ends'
+      )
+    )
+    fireEvent.click(save)
+
+    // Assert — one PATCH of the client's whole refresh policy.
+    await waitFor(() => {
+      expect(server.writes()).toEqual([
+        {
+          method: 'PATCH',
+          url: `https://ruth.wildflowerhealth.io/authorization/clients/${medicationsClient.clientId}`,
+          authorization: 'Bearer tok_owner',
+          body: {
+            refreshPolicy: {
+              idleTtlSeconds: 1800,
+              maxTtlSeconds: 2592000,
+              endsWithBrowserSession: true,
+            },
+          },
+        },
+      ])
+    })
+  })
+
+  it('offers no session lifetime for the browser-session client, which never refreshes, but does for the host app', async () => {
+    // Arrange
+    const server = stubServer(undefined, undefined, undefined, () =>
+      Response.json([hostClient, browsersClient, medicationsClient])
+    )
+    const { router } = mountAccessPages(server)
+    await sectionTitled('Approved Apps')
+
+    // Act
+    await router.navigate({
+      to: '/approved/$id',
+      params: { id: hostGrant.id },
+      search: { iss: SERVER_URL },
+    })
+
+    // Assert — the host app's grant has the section.
+    expect(await sectionTitled('Session lifetime')).toBeTruthy()
+
+    // Act
+    await router.navigate({
+      to: '/approved/$id',
+      params: { id: browsersGrant.id },
+      search: { iss: SERVER_URL },
+    })
+
+    // Assert — the browser-session client's grant, its name loaded, has none.
+    expect(await screen.findByText(browsersClient.name)).toBeTruthy()
+    expect(screen.getByText(browsersGrant.clientId)).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Session lifetime' })).toBeNull()
+  })
+
+  it('shows a session lifetime changed elsewhere until the Owner edits it', async () => {
+    // Arrange — stored with an idle limit no preset has, then changed elsewhere.
+    let storedIdleTtlSeconds = 2700
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const server = stubServer(undefined, undefined, undefined, () =>
+      Response.json([
+        hostClient,
+        {
+          ...medicationsClient,
+          refreshPolicy: {
+            ...medicationsClient.refreshPolicy,
+            idleTtlSeconds: storedIdleTtlSeconds,
+          },
+        },
+      ])
+    )
+    mountAccessPages(server, queryClient)
+    const approvedApps = await sectionTitled('Approved Apps')
+    fireEvent.click(await within(approvedApps).findByText(medicationsClient.name))
+    const sessionLifetime = await sectionTitled('Session lifetime')
+    const idleTtl = within(sessionLifetime).getByLabelText('Sign out after unused for')
+    expect(idleTtl).toHaveProperty('value', '2700')
+
+    // Act
+    storedIdleTtlSeconds = 7200
+    await queryClient.invalidateQueries()
+
+    // Assert — the untouched form follows the stored policy.
+    await waitFor(() => {
+      expect(idleTtl).toHaveProperty('value', '7200')
+    })
+    expect(within(sessionLifetime).getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      true
+    )
+  })
+
+  it('keeps the Owner’s edit, and shows what Save sends, when the stored lifetime changes, then follows it once saved', async () => {
+    // Arrange — stored with an idle limit no preset has; the Owner edits another field.
+    let stored: { readonly name: string; readonly idleTtlSeconds: number } = {
+      name: medicationsClient.name,
+      idleTtlSeconds: 2700,
+    }
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const server = stubServer(undefined, undefined, undefined, () =>
+      Response.json([
+        hostClient,
+        {
+          ...medicationsClient,
+          name: stored.name,
+          refreshPolicy: {
+            ...medicationsClient.refreshPolicy,
+            idleTtlSeconds: stored.idleTtlSeconds,
+          },
+        },
+      ])
+    )
+    mountAccessPages(server, queryClient)
+    const approvedApps = await sectionTitled('Approved Apps')
+    fireEvent.click(await within(approvedApps).findByText(medicationsClient.name))
+    const sessionLifetime = await sectionTitled('Session lifetime')
+    fireEvent.click(
+      within(sessionLifetime).getByLabelText(
+        'Sign out when the browser session that signed it in ends'
+      )
+    )
+
+    // Act — changed elsewhere, renamed too so the refetch shows.
+    stored = { name: 'Medications', idleTtlSeconds: 7200 }
+    await queryClient.invalidateQueries()
+    expect(await within(sessionLifetime).findByText(/How long Medications stays/)).toBeTruthy()
+
+    // Assert — the drafted 45 minutes is still offered, and selected.
+    const idleTtl = within(sessionLifetime).getByLabelText<HTMLSelectElement>(
+      'Sign out after unused for'
+    )
+    expect(idleTtl.value).toBe('2700')
+    expect(idleTtl.selectedOptions[0]?.textContent).toBe('45 minutes')
+    fireEvent.click(within(sessionLifetime).getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(server.writes().map(({ body }) => body)).toEqual([
+        {
+          refreshPolicy: {
+            idleTtlSeconds: 2700,
+            maxTtlSeconds: 2592000,
+            endsWithBrowserSession: true,
+          },
+        },
+      ])
+    })
+
+    // Assert — once saved, the form follows the stored policy again, which
+    // this stub didn't keep.
+    await waitFor(() => {
+      expect(idleTtl.value).toBe('7200')
+    })
+    expect(within(sessionLifetime).getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      true
+    )
+  })
 })
 
 // Helpers
@@ -448,10 +624,11 @@ const medicationsClient = {
   kind: 'public',
   redirectUris: ['https://medications.wildflowerhealth.io/'],
   allowedScopes: ['system/MedicationRequest.rs'],
-  allowedGrantTypes: ['authorization_code'],
+  allowedGrantTypes: ['authorization_code', 'refresh_token'],
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
   essential: false,
+  refreshPolicy: { idleTtlSeconds: 604800, maxTtlSeconds: 2592000, endsWithBrowserSession: false },
 } as const
 
 const hostClient = {
@@ -460,6 +637,22 @@ const hostClient = {
   name: 'Wildflower Host',
   redirectUris: [],
   essential: true,
+} as const
+
+/** A paired browser's grant, held by the browser-session client. */
+const browsersGrant = {
+  ...pebbleGrant,
+  id: 'grant-browsers',
+  clientId: 'cb9bbe139845cae9654b7909d60d274f',
+  deviceName: 'Kitchen tablet',
+} as const
+
+/** The browser-session client: its tokens are never refreshed, so it has no grant type. */
+const browsersClient = {
+  ...hostClient,
+  clientId: browsersGrant.clientId,
+  name: 'Wildflower Browsers',
+  allowedGrantTypes: [],
 } as const
 
 /** One request as the stub server saw it; `body` is the parsed JSON, if any. */
@@ -486,7 +679,8 @@ const stubServer = (
     Response.json([medicationsGrant, hostGrant, ownGrant, pebbleGrant]),
   answerBrowserSessions: () => Response = () =>
     Response.json([thisBrowserSession, otherBrowserSession, pairedBrowserSession]),
-  answerRevokeBrowserSession: () => Response = () => new Response(null, { status: 204 })
+  answerRevokeBrowserSession: () => Response = () => new Response(null, { status: 204 }),
+  answerClients: () => Response = () => Response.json([hostClient, medicationsClient])
 ): StubServer => {
   const requests: RecordedRequest[] = []
   const answer = (method: string, url: string): Response => {
@@ -494,11 +688,14 @@ const stubServer = (
     if (method === 'GET' && path === '/authorization/grants') {
       return answerGrants()
     }
-    if (method === 'GET' && path === `/authorization/grants/${medicationsGrant.id}`) {
-      return Response.json(medicationsGrant)
+    const grantById = [medicationsGrant, hostGrant, browsersGrant].find(
+      ({ id }) => path === `/authorization/grants/${id}`
+    )
+    if (method === 'GET' && grantById !== undefined) {
+      return Response.json(grantById)
     }
     if (method === 'GET' && path === '/authorization/clients') {
-      return Response.json([hostClient, medicationsClient])
+      return answerClients()
     }
     if (method === 'GET' && path === '/authorization/browser-sessions') {
       return answerBrowserSessions()
