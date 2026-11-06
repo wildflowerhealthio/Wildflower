@@ -1,9 +1,9 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
-  DecodedFile,
   DecodedFileSet,
   type DecodeFunction,
   Referent,
+  Sectioned,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
@@ -115,7 +115,7 @@ describe('decodeLifeLabsPdfDocument', () => {
             )
           )
         )
-        const written = DecodedFile.resources(Either.getOrThrow(DecodedFileSet.adopt(decoded)))
+        const written = Sectioned.entries(Either.getOrThrow(DecodedFileSet.adopt(decoded)))
         expect(written.map(({ title }) => title)).toEqual(
           written.map(({ key, resource }) =>
             Option.isSome(DetachedResource.keyOf({ ...resource, id: null }))
@@ -159,7 +159,7 @@ describe('decodeLifeLabsPdfDocument', () => {
           )
         )
 
-        const adoptedReferences = DecodedFile.resources(
+        const adoptedReferences = Sectioned.entries(
           Either.getOrThrow(DecodedFileSet.adopt(decoded))
         ).map(({ resource }) => `${resource.resourceType}/${resource.id}`)
         for (const reference of keyedReferences) {
@@ -200,10 +200,10 @@ describe('decodeLifeLabsPdfDocument', () => {
         const adopted = Either.getOrThrow(DecodedFileSet.adopt(decoded))
         const referents = Effect.runSync(Referent.discover([adopted]))
 
-        const practitioners = DecodedFile.resources(adopted).flatMap(({ resource }) =>
+        const practitioners = Sectioned.entries(adopted).flatMap(({ resource }) =>
           resource.resourceType === 'Practitioner' ? [resource] : []
         )
-        for (const { resource } of DecodedFile.resources(adopted)) {
+        for (const { resource } of Sectioned.entries(adopted)) {
           if (resource.resourceType !== 'DiagnosticReport') continue
           for (const interpreter of resource.resultsInterpreter) {
             const practitioner = practitioners.find(

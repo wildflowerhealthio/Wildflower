@@ -16,6 +16,7 @@
 import type { Meta } from '@wildflowerhealthio/fhir-r4/data-types'
 
 import type * as DecodedFile from './decoded-file.ts'
+import * as Sectioned from './sectioned.ts'
 
 const REFERENCE_PREFIX = 'DocumentReference/'
 
@@ -53,13 +54,8 @@ const stampDecoded = (
   source: Reference
 ): DecodedFile.DecodedFile => ({
   ...decoded,
-  sections: decoded.sections.map((section) => ({
-    ...section,
-    resources: section.resources.map((entry): DecodedFile.Resource => ({
-      ...entry,
-      resource: stamp(entry.resource, source),
-    })),
-  })),
+  sections: Sectioned.map(decoded, (row) => ({ ...row, resource: stamp(row.resource, source) }))
+    .sections,
 })
 
 export { makeReference, stamp, stampDecoded }

@@ -36,7 +36,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   gives how one set of files decodes (`decodeFileSet`) and — only if its files
   are read together — the key they share (`groupBy`). Back comes one
   `FormatDecode.Decoded` per format: each file set apart, its records in
-  `DecodedFileSet.Section`s under review keys namespaced so one set's keys cannot
+  sections (`Sectioned`) under review keys namespaced so one set's keys cannot
   collide with another's, plus an `unreadableFiles` row per picked file that
   rejected. Also the `PickedFile` vocabulary and the codec that stores a
   pick as a source file and reads it back, the `FormatDetector` seam

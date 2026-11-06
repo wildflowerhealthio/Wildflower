@@ -18,7 +18,9 @@ import {
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { Arbitrary, Array, Effect, FastCheck as fc, HashMap, Schema, TestContext } from 'effect'
 
-import * as DecodedFile from '../decoded-file.ts'
+import type * as DecodedFile from '../decoded-file.ts'
+import type * as Row from '../row.ts'
+import * as Sectioned from '../sectioned.ts'
 import * as FileResolution from './file-resolution.ts'
 import * as LinkChoice from './link-choice.ts'
 import * as LinkPlan from './link-plan.ts'
@@ -56,7 +58,7 @@ const resolveAcross = (
 ): Effect.Effect<
   {
     readonly resolvedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
-    readonly linkedRecords: readonly FileResolution.LinkedRecord[]
+    readonly linkedRecords: readonly Row.Type<FhirResourceWithId>[]
   },
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
 > =>
@@ -102,7 +104,7 @@ const leftByReferentLinksOnTestClock = (
       LinkPlan.withMentionLinkChoiceSet(onReferents, byMention)
     )
   )
-  return DecodedFile.resources(file).flatMap(({ key, resource }) =>
+  return Sectioned.entries(file).flatMap(({ key, resource }) =>
     UnlinkedMention.leftByReferentLinks(plan, key, resource)
   )
 }
@@ -121,7 +123,7 @@ const fileWireOf = (file: DecodedFile.DecodedFile): string =>
   JSON.stringify(
     file.sections.map((section) => ({
       title: section.title,
-      resources: section.resources.map((entry) => [entry.key, entry.title, wireOf(entry.resource)]),
+      entries: section.entries.map((entry) => [entry.key, entry.title, wireOf(entry.resource)]),
     }))
   )
 
@@ -249,7 +251,7 @@ const fileOf = (...resources: readonly FhirResourceWithId[]): DecodedFile.Decode
   sections: [
     {
       title: 'Resources',
-      resources: resources.map((resource, index) => ({
+      entries: resources.map((resource, index) => ({
         key: `k-${index}`,
         title: `${resource.resourceType}/${resource.id}`,
         resource,
@@ -337,12 +339,12 @@ const fileArbitrary: fc.Arbitrary<DecodedFile.DecodedFile> = fc
   .chain((resources) =>
     fc.integer({ min: 0, max: resources.length }).map((split) => {
       const file = fileOf(...resources)
-      const entries = file.sections.flatMap((section) => section.resources)
+      const entries = file.sections.flatMap((section) => section.entries)
       return {
         ...file,
         sections: [
-          { title: 'First', resources: entries.slice(0, split) },
-          { title: 'Second', resources: entries.slice(split) },
+          { title: 'First', entries: entries.slice(0, split) },
+          { title: 'Second', entries: entries.slice(split) },
         ],
       }
     })

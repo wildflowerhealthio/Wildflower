@@ -1,9 +1,9 @@
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  DecodedFile,
-  type FileResolution,
   type FormatDecode,
   Mention,
+  type Row,
+  Sectioned,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Match } from 'effect'
@@ -38,7 +38,7 @@ type Disposition = 'Included' | 'Excluded' | 'Unchanged' | 'Unreferenced' | 'Sup
 /** One reviewed resource's place in the write: the row as reviewed, edits applied, and its disposition. */
 interface WriteDecision {
   readonly group: ReviewGroup
-  readonly entry: DecodedFile.Resource
+  readonly entry: Row.Type<FhirResourceWithId>
   readonly disposition: Disposition
 }
 
@@ -55,7 +55,7 @@ type SkipReason = 'nothing' | 'unreadable'
  * unreadable, else `nothing`.
  */
 const skipReasonFor = (result: FormatDecode.Result<FormatKind>): SkipReason =>
-  DecodedFile.resources(result.decoded).length === 0 && result.unreadableFiles.length > 0
+  Sectioned.entries(result.decoded).length === 0 && result.unreadableFiles.length > 0
     ? 'unreadable'
     : 'nothing'
 
@@ -77,7 +77,7 @@ type Verdict = Exclude<Disposition, 'Included' | 'Superseded'> | 'Candidate'
 /** A reviewed resource with its {@link Verdict}. */
 interface ReviewedRow {
   readonly group: ReviewGroup
-  readonly entry: DecodedFile.Resource
+  readonly entry: Row.Type<FhirResourceWithId>
   readonly verdict: Verdict
 }
 
@@ -121,7 +121,7 @@ const formatRowsOf = (
   claimedFormats(batch.formats).flatMap((kind) => {
     const selection = selectionFor(kind)
     const excludedByDefault = excludedByDefaultFor(kind)
-    return DecodedFile.resources(batch.formats[kind].decoded).map((entry): ReviewedRow => ({
+    return Sectioned.entries(batch.formats[kind].decoded).map((entry): ReviewedRow => ({
       group: kind,
       entry: { ...entry, resource: StagedImport.resolvedResourceOf(batch.plan, selection, entry) },
       verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, entry.key)
@@ -139,7 +139,7 @@ const formatRowsOf = (
  *   found unchanged
  */
 const linkedVerdictOf = (
-  record: FileResolution.LinkedRecord,
+  record: Row.Type<FhirResourceWithId>,
   unchangedLinked: ReadonlySet<string>
 ): Verdict => (unchangedLinked.has(record.key) ? 'Unchanged' : 'Candidate')
 

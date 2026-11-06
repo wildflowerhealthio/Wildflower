@@ -1,10 +1,11 @@
 import type { FormatKind } from '@wildflowerhealthio/importer-core'
 import { claimedFormats, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
 import {
-  DecodedFile,
-  type LinkChoice,
+  type DecodedFile,
   LinkableResource,
+  type LinkChoice,
   Referent,
+  Sectioned,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Match, Option } from 'effect'
@@ -103,7 +104,7 @@ const revertCopiesOf = (
   decodedFile: DecodedFile.DecodedFile,
   referent: Referent.Type
 ): StagedImport.Selection =>
-  DecodedFile.resources(decodedFile)
+  Sectioned.entries(decodedFile)
     .filter(({ resource }) =>
       Option.exists(Option.liftPredicate(resource, LinkableResource.is), (linkable) =>
         LinkableResource.sameRecord(linkable, referent.resource)

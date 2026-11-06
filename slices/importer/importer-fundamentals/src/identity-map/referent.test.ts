@@ -2,7 +2,8 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, FastCheck as fc } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
-import * as DecodedFile from '../decoded-file.ts'
+import type * as DecodedFile from '../decoded-file.ts'
+import * as Sectioned from '../sectioned.ts'
 import {
   SOURCE_PATIENT,
   SOURCE_PRACTITIONER,
@@ -46,7 +47,7 @@ const wireKeyOf = (
  */
 const wireKeysOf = (file: DecodedFile.DecodedFile): readonly string[] => [
   ...new Set(
-    DecodedFile.resources(file)
+    Sectioned.entries(file)
       .map(({ resource }) => wireFieldsOf(resource))
       .filter((wire) => wire.resourceType === 'Patient' || wire.resourceType === 'Practitioner')
       .flatMap((wire) => wireKeyOf(wire.resourceType, wire.identifier?.[0]))
@@ -119,7 +120,7 @@ describe('Referent.discover', () => {
       sections: [
         {
           title: 'Resources',
-          resources: [
+          entries: [
             {
               key: 'k-0',
               title: 'implied',

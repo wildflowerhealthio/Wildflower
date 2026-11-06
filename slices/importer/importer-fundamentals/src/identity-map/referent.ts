@@ -17,10 +17,12 @@
  */
 
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResourceWithId, LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Data, Effect, HashMap, Option, pipe, Record } from 'effect'
 
-import * as DecodedFile from '../decoded-file.ts'
+import type * as DecodedFile from '../decoded-file.ts'
+import type * as Row from '../row.ts'
+import * as Sectioned from '../sectioned.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
 
@@ -38,10 +40,10 @@ interface Type {
   /** The identifier the record's demographics derive, when they allow one: the last of `identifiers`. */
   readonly derivedIdentifier: Option.Option<IdentifierAndReference.IdentifierType>
   readonly resource: LinkableResource.WithId
-  /** The `DecodedFile.Resource` key the record is reviewed under. */
+  /** The `Row` key the record is reviewed under. */
   readonly reviewKey: string
   /** Where the record came from: its row's `origin`. */
-  readonly origin: DecodedFile.Origin
+  readonly origin: Row.Origin
   readonly label: string
 }
 
@@ -54,7 +56,7 @@ interface Type {
 class DuplicateReferent extends Data.TaggedError('DuplicateReferent')<{
   /** The logical reference their `identifier[0]` makes. */
   readonly logicalReference: LinkableLogicalReference.Type
-  /** The `DecodedFile.Resource` keys of the resources, in review order. */
+  /** The `Row` keys of the resources, in review order. */
   readonly reviewKeys: readonly string[]
 }> {}
 
@@ -110,7 +112,9 @@ const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.
  * and for a Patient or Practitioner with an unqualified `identifier[0]`, which
  * nothing can be linked to, so the stage writes it as it is.
  */
-const tryFromDecodedResource = (entry: DecodedFile.Resource): Effect.Effect<Option.Option<Type>> =>
+const tryFromDecodedResource = (
+  entry: Row.Type<FhirResourceWithId>
+): Effect.Effect<Option.Option<Type>> =>
   pipe(
     Option.liftPredicate(entry.resource, LinkableResource.is),
     Option.flatMap((resource) =>
@@ -180,7 +184,7 @@ const discover = (
 ): Effect.Effect<readonly Type[], DuplicateReferent> =>
   Effect.gen(function* () {
     const decodedReferents = Array.getSomes(
-      yield* Effect.forEach(decodedFiles.flatMap(DecodedFile.resources), tryFromDecodedResource)
+      yield* Effect.forEach(decodedFiles.flatMap(Sectioned.entries), tryFromDecodedResource)
     )
     const duplicate = firstDuplicateAmong(decodedReferents)
     if (Option.isSome(duplicate)) return yield* Effect.fail(duplicate.value)

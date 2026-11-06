@@ -58,8 +58,8 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 You write **one file set at a time**. `decodeFileSet(pickedFiles, settings)` takes
 the picked files that are decoded together — each a `PickedFile.Type`
 (`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) —
-and yields a `DecodeFunction.FileSetDecode`: titled sections of labeled,
-**detached** resources, plus diagnostic notes.
+and yields a `DecodeFunction.FileSetDecode`: titled sections (`Sectioned`) of
+labeled, **detached** resources, plus diagnostic notes.
 
 ```ts
 const decodeMyFormat = (

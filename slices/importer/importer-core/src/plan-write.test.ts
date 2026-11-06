@@ -5,12 +5,11 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type DecodedFile,
-  type FileResolution,
   FormatDecode,
   LinkableResource,
   LinkPlan,
   LinkTarget,
+  type Row,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -30,8 +29,8 @@ const patient = (id: string, gender: 'male' | 'female' | null = null): FhirResou
 const row = (
   key: string,
   resource: FhirResourceWithId,
-  origin: DecodedFile.Origin = 'Decoded'
-): DecodedFile.Resource => ({
+  origin: Row.Origin = 'Decoded'
+): Row.Type<FhirResourceWithId> => ({
   key,
   title: `${resource.resourceType}/${resource.id}`,
   resource,
@@ -39,7 +38,7 @@ const row = (
 })
 
 /** A row keyed `key` holding the Patient of id `key`. */
-const patientRow = (key: string): DecodedFile.Resource => row(key, patient(key))
+const patientRow = (key: string): Row.Type<FhirResourceWithId> => row(key, patient(key))
 
 /** An `unreadableFiles` row for one broken pick. */
 const unreadableFile = (fileName: string): FormatDecode.UnreadableFile => ({
@@ -54,18 +53,18 @@ const unreadableFile = (fileName: string): FormatDecode.UnreadableFile => ({
 /** `kind`'s result of one file and one section holding `resources`. */
 const resultOf = <K extends FormatKind>(
   kind: K,
-  resources: readonly DecodedFile.Resource[]
+  resources: readonly Row.Type<FhirResourceWithId>[]
 ): FormatDecode.Result<K> => ({
   ...FormatDecode.emptyResult(kind),
   id: `${kind}/a`,
   title: `${kind} a`,
   files: [{ id: `0:${kind}`, fileName: kind, bytes: new Uint8Array([1]) }],
-  decoded: { sections: [{ title: 's', resources }], notes: [] },
+  decoded: { sections: [{ title: 's', entries: resources }], notes: [] },
 })
 
 /** A resolved batch of the given formats' rows, the others claiming nothing, with `linked` its linked records. */
 const batchOf = (
-  rows: { readonly [K in FormatKind]?: readonly DecodedFile.Resource[] },
+  rows: { readonly [K in FormatKind]?: readonly Row.Type<FhirResourceWithId>[] },
   linked: readonly LinkedRecord[] = []
 ): ResolvedBatch => {
   const slot = <K extends FormatKind>(kind: K): FormatDecode.Result<K> => {
@@ -479,7 +478,7 @@ const STORED_PATIENT = 'Patient/s-1'
 interface LinkedRecord {
   readonly key: string
   readonly literalReference: string
-  readonly entry: FileResolution.LinkedRecord
+  readonly entry: Row.Type<FhirResourceWithId>
 }
 
 /** `linkedResource` as a linked record titled `title`. */
@@ -507,7 +506,7 @@ const STORED_RESOURCE = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema)
 const STORED = linkedRecordOf(STORED_RESOURCE, 'Stored Patient')
 
 /** An Observation keyed `key` carrying the given reference fields. */
-const observationOf = (key: string, references: object): DecodedFile.Resource => ({
+const observationOf = (key: string, references: object): Row.Type<FhirResourceWithId> => ({
   key,
   title: `Observation/${key}`,
   resource: Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({

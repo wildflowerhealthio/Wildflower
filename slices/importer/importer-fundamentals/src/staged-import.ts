@@ -1,9 +1,9 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option } from 'effect'
 
-import type * as DecodedFile from './decoded-file.ts'
 import * as FileResolution from './identity-map/file-resolution.ts'
 import type * as LinkPlan from './identity-map/link-plan.ts'
+import type * as Row from './row.ts'
 
 /**
  * The pure model of an import that has been decoded but not yet written: which
@@ -134,7 +134,7 @@ const editedResource = (selection: Selection, key: string): Option.Option<FhirRe
 const resolvedResourceOf = (
   plan: LinkPlan.Type,
   selection: Selection,
-  resolvedEntry: DecodedFile.Resource
+  resolvedEntry: Row.Type<FhirResourceWithId>
 ): FhirResourceWithId =>
   Option.match(editedResource(selection, resolvedEntry.key), {
     onNone: () => resolvedEntry.resource,

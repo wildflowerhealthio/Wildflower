@@ -80,6 +80,27 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   out of one file set carries — which is what keeps a fixed key like DICOM's
   `patient`, or HAR's per-archive `har-entry-<index>`, from colliding across the
   files one format claimed.
+- `src/sectioned.ts` — the **`Sectioned`** namespace: the one container every
+  stage of an import carries its records in. **`Type<E>`** is `{ sections }`,
+  each **`Section<E>`** `{ title, entries }`. **`map`**, **`filterMap`**,
+  **`filter`** and **`forEach`** (the `Effect` traversal) work entry by entry;
+  **`entries`** flattens; **`groupBy`** sections entries by title in the order
+  each first appears; **`of`**, **`empty`**, **`combine`**, **`combineAll`**,
+  **`prepend`** and **`append`** build. Section order is meaning (a set's
+  source files first, its implied records last), so nothing reorders sections
+  or merges two that share a title. `map` keeps reference identity: a section
+  `f` changed nothing in comes back as itself, and so does a container none of
+  whose sections changed, which `FileResolution.resolveFile` and the review's
+  memoized rows rely on.
+- `src/row.ts` — the **`Row`** namespace: **`Type<R>`**, one reviewed record
+  `{ key, title, origin, resource }`, `R` being what the record is at its
+  stage, and **`Origin`** (`Decoded` or `Implied`, the one place a row says it
+  was implied; the import stage's source-file rows and the identity map's
+  linked records are `Decoded`).
+- `src/decoded-file.ts` — the **`DecodedFile`** namespace: **`DecodedFile`**,
+  a file set's records the device's own, a `Sectioned.Type` of
+  `Row.Type<FhirResourceWithId>` beside its `notes`; **`empty`** and
+  **`combineAll`** (every file's sections in order, and every file's notes).
 - `src/decoded-file-set.ts` — the **`DecodedFileSet`** namespace: one file
   set as its format decoded it. **`Type`** is its `pickedFiles` (read
   together, in the order they were picked), its `sections` and its `notes`.
@@ -87,27 +108,24 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `identifiedAs`, the FHIR `Identifier` its own content names it by (DICOM's
   SOP Instance UID as `urn:oid:`), or `None` for a format whose files do not
   name themselves; the import stage writes it onto the file's source file as
-  `masterIdentifier`. A **`Section`** is a titled group of records from one
-  source batch, `{ title, entries }`, each **`Entry`** `{ fullUrl, resource }`:
+  `masterIdentifier`. Its records are a `Sectioned.Type` of **`Entry`**, one
+  section per source batch, each entry `{ fullUrl, resource }`:
   its identity within the set before it is stored (FHIR's `Bundle.entry.fullUrl`
   in a transaction, what the review tracks a choice by) and its record **detached** (`fhir-r4-adoption`'s `DetachedResource`: no
   id, keyed by its first identifier, naming every other decoded record by a
   logical reference). A decoder writes or detaches its own records, so a
-  section carries no source base URL or system. It is a
-  separate type from `DecodedFile.Section`, the same records adopted: the two
-  hold different records, and every reader of a decoded file reads
-  `resources` off it. The "Source file(s)" section is the import stage's own,
+  section carries no source base URL or system. The "Source file(s)" section is the import stage's own,
   never decoded. **`writtenReferenceTitle(plan, entry)`** is every
   decoded record's review title, read off the entry's `ResourcePlan`: for a
   `Derived` plan the literal reference the import stage writes it under,
   `<Type>/<id>`, or `<Type> (<fullUrl>)` for a `Minted` one, whose id
   changes on every re-decode; `adopt` titles each row with it, so no decoder
   titles its records.
-  **`namespaceKeys(sections, prefix)`** prefixes every entry's `fullUrl`;
+  **`namespaceKeys(decoded, prefix)`** prefixes every entry's `fullUrl`;
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
   **`adopt({ sections, notes }, mintId?)`** is how the import stage makes a
   decode's records the device's own, as a `DecodedFile`, in five named
-  steps. It plans every entry (`planSections`: `ResourcePlan.of`, each plan
+  steps. It plans every entry (`planEntries`: `ResourcePlan.of`, each plan
   kept beside its entry, every one `Decoded`). It implies the records the
   set's references name and no record of the set is (`impliedSectionOf`, a
   pipeline over the set's references, `ResourceReferences.collect`: each
@@ -123,11 +141,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   other, each resolving to its plan's literal reference: the one place that
   decides which identifiers resolve; a keyless record's identifiers stay
   out), then runs `fhir-r4-adoption`'s `adopt` over each record with that
-  reference plan and its plan's `id` (`adoptSections`), each row keeping its
-  entry's origin as `DecodedFile.Resource`'s **`origin`**
-  (`DecodedFile.Origin`: `Decoded` or `Implied`, the one place a row says it
-  was implied; the import stage's source-file rows and the identity map's
-  linked records are `Decoded`). So a keyed record lands on the id its
+  reference plan and its plan's `id` (`adoptEntries`), each a
+  `Row.Type<FhirResourceWithId>` keeping its entry's **`origin`**. So a keyed record lands on the id its
   key derives, a keyless one on an id `mintId` mints (a random UUID unless a
   test injects one), in entry order, and a logical reference resolves when
   the set holds a keyed record it names by any of that record's identifiers,
@@ -189,8 +204,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `FileImporter.Type` carries the same `R`, and `make` takes it from the
   `Config`'s `decodeFileSet`.
   **`make(config)`** takes one **`Config`**: the `format`, a `decodeFileSet`
-  (the picked files of one set in, a **`FileSetDecode`** out: its `Section`s
-  as the import stage receives them, its notes, and optionally `pickedFiles`,
+  (the picked files of one set in, a **`FileSetDecode`** out: its
+  `Sectioned.Type` of `DecodedFileSet.Entry` as the import stage receives it, its notes, and optionally `pickedFiles`,
   each picked file of the set
   paired with the `Identifier` it identifies as; left out, each identifies as
   nothing), and — optionally — a `groupBy`. **`groupBy`** is called per
@@ -210,7 +225,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two
   axes: `includedByReviewer` (their own include/exclude choices, `true` or
-  `false` by a `DecodedFile.Resource`'s `key`; a key absent there takes the
+  `false` by a row's `key`; a key absent there takes the
   default the shell derives and passes in as `excludedByDefault`) and
   `resourceOverrides` (per-resource inline edits over `FhirResourceWithId`, same
   keying — the reviewer's edited resource, resolved on the batch's plan
@@ -416,7 +431,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     Practitioner) and **`resolvedResources`** (every resolved resource).
   - **`FileResolution`** — pure, every function taking the plan first, since
     it is fixed for a batch: **`resolveFile(plan)`** writes each decoded
-    resource of one file (`DecodedFile.mapResources`) as the resolved
+    resource of one file (`Sectioned.map`) as the resolved
     resource `LinkPlan.resolvedResourceIfReferent` has for it, titled by its
     label when it replaces the decoded one under another id, else as decoded,
     its mentions redirected to their referents' link targets either way
@@ -431,8 +446,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     stored one now stands in for, or a mention chosen for, is written where
     the plan says now;
     **`linkedRecords(plan)`**: the batch's linked records, the resolved
-    resources no resolved file holds, each a **`LinkedRecord`** (a
-    `DecodedFile.Resource`: a decoded record whose id a stored record,
+    resources no resolved file holds, each a `Row.Type<FhirResourceWithId>`
+    (a decoded record whose id a stored record,
     linked to under another of the record's keys, stands in for in every
     file), as
     they will be written, keyed by
@@ -516,7 +531,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 Depends on `effect` (and `kitchen-sink` in tests), `fhir-r4-adoption` for
 `DetachedResource`, `ReferencePlan` and `adopt` alone (a
-`DecodedFileSet.Section`'s records, `ResourcePlan`'s keys,
+a `DecodedFileSet.Entry`'s record, `ResourcePlan`'s keys,
 `DecodedFileSet.adopt` and the records `ImpliedRecord` builds; it depends on no importer package), plus `fhir-r4` for the
 `DocumentReference` schema and the `Identifier` a picked file identifies itself
 as, `fhir-r4/resources` for
@@ -645,7 +660,7 @@ but `fhir-r4-adoption`.
   choice wins over its referent's rule for that one mention; only an explicit
   `DontLink` unlinks one, and a choice of a type the mention cannot name, or
   of a referent the batch does not hold, is none.
-- **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
+- **Selection keys by a row's `key`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.
 

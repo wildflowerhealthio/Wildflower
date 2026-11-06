@@ -23,7 +23,7 @@
 
 import { type ParseResult } from 'effect'
 import type * as DecodedFileSet from './decoded-file-set.ts'
-import type * as DecodedFile from './decoded-file.ts'
+import * as DecodedFile from './decoded-file.ts'
 import type * as FileImporter from './file-importer.ts'
 import type * as PickedFile from './picked-file.ts'
 
@@ -88,7 +88,7 @@ const emptyResult = <K extends string>(kind: K): Result<K> => ({
   title: '',
   files: [],
   format: kind,
-  decoded: { sections: [], notes: [] },
+  decoded: DecodedFile.empty,
   unreadableFiles: [],
 })
 

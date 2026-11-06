@@ -5,8 +5,8 @@ import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type * as DecodedFile from './decoded-file.ts'
 import * as MetaSource from './meta-source.ts'
+import type * as Row from './row.ts'
 
 const fakeResource = (id: string): FhirResourceWithId =>
   Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
@@ -64,12 +64,12 @@ describe('MetaSource.stampDecoded', () => {
         fc.array(
           fc.record({
             title: fc.string(),
-            resources: fc.array(
+            entries: fc.array(
               fc.record({
                 key: fc.string(),
                 title: fc.string(),
                 resource: fc.string().map(fakeResource),
-                origin: fc.constant<DecodedFile.Origin>('Decoded'),
+                origin: fc.constant<Row.Origin>('Decoded'),
               })
             ),
           })
@@ -81,10 +81,10 @@ describe('MetaSource.stampDecoded', () => {
             sections.map((section) => section.title)
           )
           for (const [index, section] of stamped.sections.entries()) {
-            expect(section.resources.map((entry) => entry.key)).toEqual(
-              sections[index]?.resources.map((entry) => entry.key)
+            expect(section.entries.map((entry) => entry.key)).toEqual(
+              sections[index]?.entries.map((entry) => entry.key)
             )
-            for (const entry of section.resources) expect(entry.resource.meta?.source).toBe(source)
+            for (const entry of section.entries) expect(entry.resource.meta?.source).toBe(source)
           }
         }
       ),

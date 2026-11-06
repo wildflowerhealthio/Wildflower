@@ -181,7 +181,7 @@ describe('ReferentSearch.defaultChoice', () => {
         sections: [
           {
             title: 'Resources',
-            resources: [
+            entries: [
               {
                 key: 'k-0',
                 title: 'Patient/p-1',

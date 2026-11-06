@@ -2,7 +2,11 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Observation, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResourceWithId,
+  Observation,
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import {
   defaultFormatSettings,
   type FormatKind,
@@ -12,14 +16,16 @@ import {
   type UnrecognizedFile,
 } from '@wildflowerhealthio/importer-core'
 import {
-  StagedImport,
-  FormatDecode,
   type DecodedFile,
+  FormatDecode,
   LinkableResource,
   LinkPlan,
   LinkTarget,
   type PickedFile,
   type Referent,
+  type Row,
+  type Sectioned,
+  StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Option, Schema, type ParseResult } from 'effect'
 import type { JSX } from 'react'
@@ -524,7 +530,7 @@ describe('PreviewPanel', () => {
       ...onServer,
       gender: 'male',
     })
-    const labeled: DecodedFile.Resource = {
+    const labeled: Row.Type<FhirResourceWithId> = {
       key: 'pat-1',
       title: 'Patient/pat-1',
       resource: patientResource,
@@ -550,7 +556,7 @@ describe('PreviewPanel', () => {
       resourceType: 'Patient',
       id: 'pat-1',
     })
-    const labeled: DecodedFile.Resource = {
+    const labeled: Row.Type<FhirResourceWithId> = {
       key: 'pat-1',
       title: 'Patient/pat-1',
       resource: patientResource,
@@ -587,7 +593,7 @@ describe('PreviewPanel', () => {
 const valueSlot = (value: unknown): DiffSlot => ({ _tag: 'value', value })
 
 /** The Patient `pat-1` as the import has her: female, where the server has male. */
-const FEMALE_PAT_1: DecodedFile.Resource = {
+const FEMALE_PAT_1: Row.Type<FhirResourceWithId> = {
   key: 'pat-1',
   title: 'Patient/pat-1',
   resource: Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
@@ -661,22 +667,22 @@ const comparisonsFor = (
 
 /** A decoded file from sections and optional notes. */
 const decoded = (
-  sections: readonly DecodedFile.Section[],
+  sections: readonly Sectioned.Section<Row.Type<FhirResourceWithId>>[],
   notes: readonly string[] = []
 ): DecodedFile.DecodedFile => ({ sections, notes })
 
 /** One titled section holding the given resources. */
 const section = (
   title: string,
-  resources: readonly DecodedFile.Resource[]
-): DecodedFile.Section => ({ title, resources })
+  resources: readonly Row.Type<FhirResourceWithId>[]
+): Sectioned.Section<Row.Type<FhirResourceWithId>> => ({ title, entries: resources })
 
 /**
  * A labeled resource for the panel to count and display: a bare Patient, or
  * an Observation about a patient with an empty code, each summarised by its
  * `Type/id`.
  */
-const labeledResource = (key: string, title: string): DecodedFile.Resource => {
+const labeledResource = (key: string, title: string): Row.Type<FhirResourceWithId> => {
   const [resourceType = 'Patient', id = key] = title.split('/')
   const resource =
     resourceType === 'Observation'
@@ -686,7 +692,7 @@ const labeledResource = (key: string, title: string): DecodedFile.Resource => {
 }
 
 /** An Observation carrying the given reference fields, labeled under `key`, for a linked record to be named by. */
-const observationOf = (key: string, references: object): DecodedFile.Resource => ({
+const observationOf = (key: string, references: object): Row.Type<FhirResourceWithId> => ({
   key,
   title: `Observation/${key}`,
   resource: Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({

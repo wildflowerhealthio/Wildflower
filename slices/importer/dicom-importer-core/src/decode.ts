@@ -9,10 +9,11 @@ import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext } from '@wildflowerhealthio/fhir-r4/resources'
 import {
+  type DecodedFile,
   type DecodedFileSet,
-  DecodedFile,
   type DecodeFunction,
   type PickedFile,
+  Sectioned,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
@@ -155,7 +156,7 @@ const referenceTo = (
   resourceType: 'Patient' | 'ImagingStudy'
 ): Option.Option<string> =>
   Arr.findFirst(
-    DecodedFile.resources(decoded),
+    Sectioned.entries(decoded),
     (entry) => entry.resource.resourceType === resourceType
   ).pipe(Option.map((entry) => `${resourceType}/${entry.resource.id}`))
 

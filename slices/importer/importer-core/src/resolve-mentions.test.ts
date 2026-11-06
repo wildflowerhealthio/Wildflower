@@ -7,14 +7,14 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  DecodedFile,
   FormatDecode,
+  type LinkableResource,
   LinkChoice,
   LinkPlan,
-  type LinkableResource,
   MentionLinkChoiceSet,
   Referent,
   type ReferentLinkChoiceSet,
+  Sectioned,
   UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap, Schema, TestContext } from 'effect'
@@ -85,7 +85,7 @@ const resultOf = <K extends FormatKind>(
           sections: [
             {
               title: 'Resources',
-              resources: resources.map((resource, index) => ({
+              entries: resources.map((resource, index) => ({
                 key: `${kind}/k-${index}`,
                 title: `${resource.resourceType}/${resource.id}`,
                 resource,
@@ -117,7 +117,7 @@ const resolvedOnTestClock = (
 
 /** The resource keyed `key` in `kind`'s decoded file. */
 const at = (batch: DecodedBatch, kind: FormatKind, key: string): FhirResource | undefined =>
-  DecodedFile.resources(batch.formats[kind].decoded).find((entry) => entry.key === key)?.resource
+  Sectioned.entries(batch.formats[kind].decoded).find((entry) => entry.key === key)?.resource
 
 const subjectOf = (resource: FhirResource | undefined): string | null | undefined =>
   resource !== undefined && 'subject' in resource ? resource.subject?.reference : undefined
@@ -154,7 +154,7 @@ describe('resolveMentions', () => {
       (['har', 'lifelabs-pdf'] as const).map((kind) =>
         resolved.formats[kind].decoded.sections.map((section) => [
           section.title,
-          section.resources.map((entry) => entry.key),
+          section.entries.map((entry) => entry.key),
         ])
       )
     ).toEqual([[['Resources', ['har/k-0']]], [['Resources', ['lifelabs-pdf/k-0']]]])
@@ -261,7 +261,7 @@ describe('resolveMentions with mention link choices', () => {
     )
 
     const listed = (resolved: ResolvedBatch): readonly string[] =>
-      DecodedFile.resources(resolved.decodedBatch.formats.har.decoded)
+      Sectioned.entries(resolved.decodedBatch.formats.har.decoded)
         .flatMap(({ key, resource }) =>
           UnlinkedMention.leftByReferentLinks(resolved.plan, key, resource)
         )

@@ -12,16 +12,22 @@ import {
   ReferencePlan,
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
-import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResourceWithId,
+  LogicalReference,
+  ResourceReferences,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Either, Option, type ParseResult, pipe } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
 import * as ImpliedRecord from './implied-record.ts'
 import type * as PickedFile from './picked-file.ts'
 import * as ResourcePlan from './resource-plan.ts'
+import type * as Row from './row.ts'
+import * as Sectioned from './sectioned.ts'
 
 /**
- * One record of a section: the record as its source gave it, detached
+ * One record of a decoded set: the record as its source gave it, detached
  * (`fhir-r4-adoption`'s `DetachedResource`: no id, keyed by its first
  * identifier, naming every other record it decoded by a logical reference),
  * beside its identity within the decoded set.
@@ -36,29 +42,6 @@ import * as ResourcePlan from './resource-plan.ts'
 interface Entry {
   readonly fullUrl: string
   readonly resource: DetachedResource.Type
-}
-
-/**
- * A titled group of records from one source batch, as the import stage
- * receives it: each record detached, beside its `fullUrl`.
- *
- * @remarks
- * A decoder builds one per batch it reads: LifeLabs one per report, DICOM one
- * per study, the HAR importer one per response URL. Each decoder writes or
- * detaches its records itself, so a section carries no source base URL or
- * system: everything the import stage needs to adopt a record is on the
- * record.
- *
- * A separate type from `DecodedFile.Section`, the same records adopted: the
- * two differ in what their records are, and every reader of a decoded file
- * reads `resources` off it.
- *
- * The section listing a set's source files is built by the import stage,
- * never decoded.
- */
-interface Section {
-  readonly title: string
-  readonly entries: readonly Entry[]
 }
 
 /**
@@ -95,13 +78,20 @@ interface PickedFileIdentity {
 
 /**
  * One file set's decode: its picked files, in the order they were picked, each
- * with what it identifies itself as, and its sections and notes, every review
- * key already namespaced by the set's first picked file
+ * with what it identifies itself as, and its sections of entries and notes,
+ * every review key already namespaced by the set's first picked file
  * (`FormatDecode.keyPrefix`).
+ *
+ * @remarks
+ * A decoder builds one section per batch it reads: LifeLabs one per report,
+ * DICOM one per study, the HAR importer one per response URL. Each decoder
+ * writes or detaches its records itself, so a section carries no source base
+ * URL or system: everything the import stage needs to adopt a record is on
+ * the record. The section listing a set's source files is built by the import
+ * stage, never decoded.
  */
-interface Type {
+interface Type extends Sectioned.Type<Entry> {
   readonly pickedFiles: Arr.NonEmptyReadonlyArray<PickedFileIdentity>
-  readonly sections: readonly Section[]
   readonly notes: readonly string[]
 }
 
@@ -112,16 +102,13 @@ const unidentified = (pickedFile: PickedFile.Type): PickedFileIdentity => ({
 })
 
 /**
- * Prefix every `fullUrl` in `sections`, so one file set's cannot collide with
+ * Prefix every `fullUrl` in `decoded`, so one file set's cannot collide with
  * another's once the batch merges their sections.
  *
  * @param prefix - The set's key namespace, from `FormatDecode.keyPrefix`
  */
-const namespaceKeys = (sections: readonly Section[], prefix: string): readonly Section[] =>
-  sections.map(({ title, entries }) => ({
-    title,
-    entries: entries.map((entry) => ({ ...entry, fullUrl: `${prefix}${entry.fullUrl}` })),
-  }))
+const namespaceKeys = (decoded: Sectioned.Type<Entry>, prefix: string): Sectioned.Type<Entry> =>
+  Sectioned.map(decoded, (entry) => ({ ...entry, fullUrl: `${prefix}${entry.fullUrl}` }))
 
 /**
  * The entries a planned record gives its set's reference plan: one for each
@@ -163,18 +150,8 @@ const referencePlanEntriesOf = (
 interface PlannedEntry {
   readonly entry: Entry
   readonly plan: ResourcePlan.Type
-  readonly origin: DecodedFile.Origin
+  readonly origin: Row.Origin
 }
-
-/** A section with each of its entries planned. */
-interface PlannedSection {
-  readonly title: string
-  readonly plannedEntries: readonly PlannedEntry[]
-}
-
-/** Every planned entry of `plannedSections`, in section order. */
-const plannedEntriesOf = (plannedSections: readonly PlannedSection[]): readonly PlannedEntry[] =>
-  plannedSections.flatMap((section) => section.plannedEntries)
 
 /** The reference plan of a set's planned entries ({@link referencePlanEntriesOf}). */
 const referencePlanOf = (plannedEntries: readonly PlannedEntry[]): ReferencePlan.Type =>
@@ -186,25 +163,22 @@ const referencePlanOf = (plannedEntries: readonly PlannedEntry[]): ReferencePlan
 const IMPLIED_SECTION_TITLE = 'Implied records'
 
 /**
- * Plan ids: each decoded entry of `sections` beside its plan
- * (`ResourcePlan.of`), a keyed record's id derived from its key and a
- * keyless one's minted, in entry order, every one `Decoded`.
+ * Plan ids: each decoded entry beside its plan (`ResourcePlan.of`), a keyed
+ * record's id derived from its key and a keyless one's minted, in entry
+ * order, every one `Decoded`.
  *
  * @remarks
  * As a FHIR server processing a transaction bundle first decides the id
  * every entry is stored under, before it rewrites any reference between them.
  */
-const planSections = (
-  sections: readonly Section[],
+const planEntries = (
+  decoded: Sectioned.Type<Entry>,
   mintId: () => string
-): readonly PlannedSection[] =>
-  sections.map(({ title, entries }) => ({
-    title,
-    plannedEntries: entries.map((entry): PlannedEntry => ({
-      entry,
-      plan: ResourcePlan.of(entry.resource, mintId),
-      origin: 'Decoded',
-    })),
+): Sectioned.Type<PlannedEntry> =>
+  Sectioned.map(decoded, (entry): PlannedEntry => ({
+    entry,
+    plan: ResourcePlan.of(entry.resource, mintId),
+    origin: 'Decoded',
   }))
 
 /**
@@ -243,7 +217,7 @@ const impliedTargetsOf = (
   )
 
 /**
- * Imply: the section of the records the references of `plannedSections`
+ * Imply: the section of the records the references of `plannedEntries`
  * imply, `None` when they imply none. Each record is one a logical reference
  * names and no record of the set holds ({@link impliedTargetsOf}), built for
  * its type by `ImpliedRecord.tryFromLogicalReference`, keyed by the reference's identifier and
@@ -266,10 +240,10 @@ const impliedTargetsOf = (
  *   rejects it with
  */
 const impliedSectionOf = (
-  plannedSections: readonly PlannedSection[],
+  plannedEntries: Sectioned.Type<PlannedEntry>,
   mintId: () => string
-): Either.Either<Option.Option<PlannedSection>, ParseResult.ParseError> => {
-  const decodedEntries = plannedEntriesOf(plannedSections)
+): Either.Either<Option.Option<Sectioned.Section<PlannedEntry>>, ParseResult.ParseError> => {
+  const decodedEntries = Sectioned.entries(plannedEntries)
   return pipe(
     impliedTargetsOf(decodedEntries, referencePlanOf(decodedEntries)),
     Arr.dedupeWith((left, right) =>
@@ -292,7 +266,10 @@ const impliedSectionOf = (
     Either.map((impliedEntries) =>
       Option.map(
         Option.liftPredicate(impliedEntries, Arr.isNonEmptyReadonlyArray),
-        (nonEmpty): PlannedSection => ({ title: IMPLIED_SECTION_TITLE, plannedEntries: nonEmpty })
+        (nonEmpty): Sectioned.Section<PlannedEntry> => ({
+          title: IMPLIED_SECTION_TITLE,
+          entries: nonEmpty,
+        })
       )
     )
   )
@@ -418,25 +395,22 @@ const takeSubjectFromPrescription =
       : record
 
 /**
- * Adopt: each planned record of `plannedSections` given its plan's id, its
+ * Adopt: each planned record of `plannedEntries` given its plan's id, its
  * logical references `referencePlan` resolves made literal, after
  * `takeSubject`, keyed by its entry's `fullUrl` and titled by
  * {@link writtenReferenceTitle}, its origin kept.
  */
-const adoptSections = (
-  plannedSections: readonly PlannedSection[],
+const adoptEntries = (
+  plannedEntries: Sectioned.Type<PlannedEntry>,
   referencePlan: ReferencePlan.Type,
   takeSubject: (record: DetachedResource.Type) => DetachedResource.Type
-): readonly DecodedFile.Section[] => {
+): Sectioned.Type<Row.Type<FhirResourceWithId>> => {
   const adoptEntry = adoptRecord(referencePlan)
-  return plannedSections.map(({ title, plannedEntries }) => ({
-    title,
-    resources: plannedEntries.map(({ entry, plan, origin }) => ({
-      key: entry.fullUrl,
-      title: writtenReferenceTitle(plan, entry),
-      resource: adoptEntry(takeSubject(entry.resource), plan.id),
-      origin,
-    })),
+  return Sectioned.map(plannedEntries, ({ entry, plan, origin }) => ({
+    key: entry.fullUrl,
+    title: writtenReferenceTitle(plan, entry),
+    origin,
+    resource: adoptEntry(takeSubject(entry.resource), plan.id),
   }))
 }
 
@@ -452,11 +426,11 @@ const adoptSections = (
  *
  * @remarks
  * As a FHIR server processes one transaction bundle, in five steps: plan
- * every record's id ({@link planSections}); imply the records the set's
+ * every record's id ({@link planEntries}); imply the records the set's
  * references name and no record of the set is, in a section of their own,
  * last ({@link impliedSectionOf}); build the reference plan over every
  * record, the implied ones included ({@link referencePlanOf}); and adopt
- * each record ({@link adoptSections}), a `MedicationDispense` with no
+ * each record ({@link adoptEntries}), a `MedicationDispense` with no
  * `subject` first taking the `subject` of the prescriptions of the set it
  * names ({@link takeSubjectFromPrescription}). A logical reference resolves
  * when the set holds a keyed record it names by any of that record's
@@ -468,21 +442,24 @@ const adopt = (
   decoded: Pick<Type, 'sections' | 'notes'>,
   mintId: () => string = randomResourceId
 ): Either.Either<DecodedFile.DecodedFile, ParseResult.ParseError> => {
-  const decodedSections = planSections(decoded.sections, mintId)
-  return Either.map(impliedSectionOf(decodedSections, mintId), (impliedSection) => {
-    const plannedSections = [...decodedSections, ...Option.toArray(impliedSection)]
-    const plannedEntries = plannedEntriesOf(plannedSections)
-    const referencePlan = referencePlanOf(plannedEntries)
+  const decodedEntries = planEntries(decoded, mintId)
+  return Either.map(impliedSectionOf(decodedEntries, mintId), (impliedSection) => {
+    const plannedEntries = Option.match(impliedSection, {
+      onNone: () => decodedEntries,
+      onSome: (section) => Sectioned.append(decodedEntries, section),
+    })
+    const everyPlannedEntry = Sectioned.entries(plannedEntries)
+    const referencePlan = referencePlanOf(everyPlannedEntry)
     const takeSubject = takeSubjectFromPrescription(
       referencePlan,
-      prescriptionSubjectsOf(referencePlan, plannedEntries)
+      prescriptionSubjectsOf(referencePlan, everyPlannedEntry)
     )
     return {
-      sections: adoptSections(plannedSections, referencePlan, takeSubject),
+      sections: adoptEntries(plannedEntries, referencePlan, takeSubject).sections,
       notes: decoded.notes,
     }
   })
 }
 
 export { adopt, namespaceKeys, unidentified, writtenReferenceTitle }
-export type { Entry, PickedFileIdentity, Section, Type }
+export type { Entry, PickedFileIdentity, Type }

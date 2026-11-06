@@ -4,8 +4,7 @@ import { useMemo, useState } from 'react'
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import type { StagedImport } from '@wildflowerhealthio/importer-fundamentals'
-import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { type Row, Sectioned, type StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 
 import type { FormatKind, ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
 import { formatKinds, keysWithoutPatientOf, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
@@ -56,7 +55,7 @@ interface DiffRow {
 
 /**
  * Every previewed resource's server comparison, keyed by the group it is
- * reviewed in and then by `DecodedFile.Resource`'s `key` within the group.
+ * reviewed in and then by `Row`'s `key` within the group.
  *
  * @remarks
  * A resource key is unique within one format — a per-file decode's keys are
@@ -132,7 +131,7 @@ const byGroupAndKey = (
  */
 const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] => [
   ...formatKinds.flatMap((kind) =>
-    DecodedFile.resources(batch.formats[kind].decoded).map((entry): DiffRow => ({
+    Sectioned.entries(batch.formats[kind].decoded).map((entry): DiffRow => ({
       group: kind,
       key: entry.key,
       resource: entry.resource,
@@ -249,7 +248,7 @@ const useServerDiff = (batch: ResolvedBatch | undefined, batchId: number): Serve
  *   when the diff has none for it, which finds nothing unchanged)
  */
 const unchangedKeysOf = (
-  labeled: readonly DecodedFile.Resource[],
+  labeled: readonly Row.Type<FhirResourceWithId>[],
   comparisons: ReadonlyMap<string, ServerComparison> | undefined
 ): ReadonlySet<string> =>
   new Set(
@@ -276,7 +275,7 @@ const formatExcludedByDefault = (
   selection: StagedImport.Selection
 ): ReadonlySet<string> =>
   new Set([
-    ...unchangedKeysOf(DecodedFile.resources(batch.formats[kind].decoded), comparisons),
+    ...unchangedKeysOf(Sectioned.entries(batch.formats[kind].decoded), comparisons),
     ...keysWithoutPatientOf(batch, kind, selection),
   ])
 

@@ -24,7 +24,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 import {
-  DecodedFile,
+  type DecodedFile,
   FileResolution,
   Link,
   LinkChoice,
@@ -33,6 +33,8 @@ import {
   MentionLinkChoiceSet,
   Referent,
   ReferentLinkChoiceSet,
+  type Row,
+  Sectioned,
   UnlinkedMention,
 } from '../index.ts'
 import {
@@ -86,7 +88,7 @@ const PERSON = JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1'])
 const NAME_BIRTH_DATE = 'https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date'
 
 const at = (file: DecodedFile.DecodedFile, key: string): FhirResourceWithId | undefined =>
-  DecodedFile.resources(file).find((entry) => entry.key === key)?.resource
+  Sectioned.entries(file).find((entry) => entry.key === key)?.resource
 
 /** The resource keyed `key` in `file`; throws when there is none. */
 const resourceAt = (file: DecodedFile.DecodedFile, key: string): FhirResourceWithId => {
@@ -201,9 +203,9 @@ describe('the identity map on one file', () => {
       HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })])
     )
 
-    expect(resolved.sections.map((section) => section.resources.map((entry) => entry.key))).toEqual(
-      [['k-0', 'k-1', 'k-2', 'k-3']]
-    )
+    expect(resolved.sections.map((section) => section.entries.map((entry) => entry.key))).toEqual([
+      ['k-0', 'k-1', 'k-2', 'k-3'],
+    ])
     expect(at(resolved, 'k-0')?.id).toBe('s-1')
     expect(identifiersOf(at(resolved, 'k-0'))).toEqual([
       `${DEVICE}|s-1`,
@@ -278,7 +280,7 @@ describe('the identity map on one file', () => {
       HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })])
     )
 
-    expect(DecodedFile.resources(resolved).map(({ key, title }) => [key, title])).toEqual([
+    expect(Sectioned.entries(resolved).map(({ key, title }) => [key, title])).toEqual([
       ['k-0', 'Tyra Banks · 1990-01-02'],
       ['k-1', 'Patient/p-2'],
       ['k-2', 'MedicationRequest/rx-1'],
@@ -536,7 +538,7 @@ describe('UnlinkedMention.leftByReferentLinks on a decoded file', () => {
 
   it('drops a mention a decoded record answers to', () => {
     const named = fileOf(
-      ...DecodedFile.resources(file).map(({ resource }) => resource),
+      ...Sectioned.entries(file).map(({ resource }) => resource),
       patientWithAccount('p-9'),
       practitionerCarryingName('pr-1', 'Dr. A Smith')
     )
@@ -616,9 +618,7 @@ describe('the identity map across files', () => {
     )
 
     expect(
-      resolvedFiles.flatMap((file) =>
-        DecodedFile.resources(file).map(({ resource }) => resource.id)
-      )
+      resolvedFiles.flatMap((file) => Sectioned.entries(file).map(({ resource }) => resource.id))
     ).toEqual(['s-1', 's-1'])
     expect(linkedRecords.map(({ key }) => key)).toEqual(['linked:Patient/p-1'])
   })
@@ -695,7 +695,7 @@ describe('the identity map across files', () => {
       fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
         const together = resolveAcrossOnTestClock(Array.of(file), choices)
         const apart = resolveAcrossOnTestClock(splitIntoFiles(file), choices)
-        const linkedWireOf = (linked: readonly DecodedFile.Resource[]): readonly string[] =>
+        const linkedWireOf = (linked: readonly Row.Type<FhirResourceWithId>[]): readonly string[] =>
           linked.map((entry) => `${entry.key} ${wireOf(entry.resource)}`)
 
         expect(
@@ -748,8 +748,10 @@ describe('identity map properties', () => {
     fc.assert(
       fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
         const resolved = resolveOnTestClock(file, choices)
-        const shape = (sections: readonly DecodedFile.Section[]): readonly unknown[] =>
-          sections.map((section) => [section.title, section.resources.map((entry) => entry.key)])
+        const shape = (
+          sections: readonly Sectioned.Section<Row.Type<FhirResourceWithId>>[]
+        ): readonly unknown[] =>
+          sections.map((section) => [section.title, section.entries.map((entry) => entry.key)])
 
         expect(shape(resolved.sections)).toEqual(shape(file.sections))
       }),
@@ -770,9 +772,9 @@ describe('identity map properties', () => {
           const resolved = resolveOnTestClock(withUnrelated, choices)
 
           expect(
-            resolved.sections[file.sections.length]?.resources.map((entry) => entry.resource)
+            resolved.sections[file.sections.length]?.entries.map((entry) => entry.resource)
           ).toEqual(unrelated)
-          resolved.sections[file.sections.length]?.resources.forEach((entry, index) => {
+          resolved.sections[file.sections.length]?.entries.forEach((entry, index) => {
             expect(entry.resource).toBe(unrelated[index])
           })
         }
@@ -784,7 +786,7 @@ describe('identity map properties', () => {
   it('property: a stored resource keeps its demographics byte for byte, and its identifiers stay a set', () => {
     fc.assert(
       fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
-        for (const { resource } of DecodedFile.resources(resolveOnTestClock(file, choices))) {
+        for (const { resource } of Sectioned.entries(resolveOnTestClock(file, choices))) {
           const stored = STORED.find((candidate) => candidate.id === resource.id)
           const identifiers = identifiersOf(resource)
           expect(new Set(identifiers).size).toBe(identifiers.length)
@@ -807,7 +809,7 @@ describe('identity map properties', () => {
           .filter((unlinked) => pathOf(unlinked) === 'subject')
           .map((unlinked) => unlinked.mentioningResourceKey)
         // The generated literals are `Patient/<id>` or an absolute URL into another system.
-        const unlinkedSubjects = DecodedFile.resources(resolved)
+        const unlinkedSubjects = Sectioned.entries(resolved)
           .filter(({ resource }) => {
             const literal = wireFieldsOf(resource).subject?.reference
             return 'subject' in resource && literal?.startsWith('Patient/') !== true

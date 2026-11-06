@@ -30,7 +30,8 @@ import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-ty
 import { type FhirResourceWithId, LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Effect, Option, pipe } from 'effect'
 
-import * as DecodedFile from '../decoded-file.ts'
+import type * as DecodedFile from '../decoded-file.ts'
+import * as Sectioned from '../sectioned.ts'
 import type * as LinkChoice from './link-choice.ts'
 import * as LinkTarget from './link-target.ts'
 import * as Link from './link.ts'
@@ -101,7 +102,7 @@ const literalReferencesWrittenAsDecoded = (
   decodedFiles: readonly DecodedFile.DecodedFile[]
 ): readonly string[] =>
   pipe(
-    decodedFiles.flatMap(DecodedFile.resources),
+    decodedFiles.flatMap(Sectioned.entries),
     Array.filterMap(({ resource }) =>
       Option.map(
         Option.liftPredicate(resource, LinkableResource.is),

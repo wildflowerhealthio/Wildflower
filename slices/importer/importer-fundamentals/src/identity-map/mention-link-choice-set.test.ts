@@ -3,13 +3,14 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Array, Equivalence, FastCheck as fc, HashMap, Option } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
+import type { DecodedFile } from '../index.ts'
 import {
-  DecodedFile,
-  LinkChoice,
   LinkableResource,
+  LinkChoice,
   Mention,
   MentionLinkChoiceSet,
   Referent,
+  Sectioned,
 } from '../index.ts'
 import {
   ABSOLUTE,
@@ -60,7 +61,7 @@ const subjectAt = (
   file: DecodedFile.DecodedFile,
   key: string
 ): IdentifierAndReference.ReferenceType | null | undefined => {
-  const resource = DecodedFile.resources(file).find((entry) => entry.key === key)?.resource
+  const resource = Sectioned.entries(file).find((entry) => entry.key === key)?.resource
   return resource !== undefined && 'subject' in resource ? resource.subject : undefined
 }
 
@@ -114,9 +115,7 @@ describe('a mention link choice on a resolved file', () => {
     expect(subjectAt(resolved, 'k-1')?.reference).toBe('Patient/s-2')
     expect(subjectAt(resolved, 'k-2')?.reference).toBe(null)
     expect(resolved.sections.map((section) => section.title)).toEqual(['Resources'])
-    expect(DecodedFile.resources(resolved).filter(({ resource }) => resource.id === 's-2')).toEqual(
-      []
-    )
+    expect(Sectioned.entries(resolved).filter(({ resource }) => resource.id === 's-2')).toEqual([])
   })
 
   it('drops a DontLink mention’s literal and keeps its identifier and display', () => {
@@ -220,7 +219,7 @@ describe('Mention.relinked', () => {
     )
     fc.assert(
       fc.property(fileWithChoicesArbitrary, fc.nat(), literals, ({ file }, pick, literal) => {
-        const entries = DecodedFile.resources(file)
+        const entries = Sectioned.entries(file)
         const entry = entries[pick % Math.max(entries.length, 1)]
         if (entry === undefined) return
         const mentions = Mention.linkableIn(entry.resource)
@@ -259,7 +258,7 @@ describe('mention link choices and the referents', () => {
     file: DecodedFile.DecodedFile
   ): fc.Arbitrary<MentionLinkChoiceSet.Type> => {
     const referents = discoverOnTestClock(file)
-    const slots = DecodedFile.resources(file).flatMap(({ key, resource }) =>
+    const slots = Sectioned.entries(file).flatMap(({ key, resource }) =>
       Mention.linkableIn(resource).map((mention) => ({ key, mention }))
     )
     return fc
@@ -345,7 +344,7 @@ describe('mention link choices and the referents', () => {
           const withChosen = resolveOnTestClock(file, choices, mentionChoices)
 
           const unchosenMentionsOf = (resolved: DecodedFile.DecodedFile): readonly unknown[] =>
-            DecodedFile.resources(resolved).flatMap(({ key, resource }) =>
+            Sectioned.entries(resolved).flatMap(({ key, resource }) =>
               Mention.madeIn(resource)
                 .filter(({ path }) =>
                   Option.isNone(MentionLinkChoiceSet.forMention(mentionChoices, key, path))

@@ -6,6 +6,7 @@ import {
   type DecodedFileSet,
   DecodeFunction,
   type FileImporter,
+  Sectioned,
 } from '@wildflowerhealthio/importer-fundamentals'
 
 import {
@@ -30,20 +31,21 @@ const fhirPool = SourceDescriptor.poolOf(fhirSources)
  * URL first appears in the archive, each record's `fullUrl` its preview key
  * (`<response id>:<index>`).
  */
-const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFileSet.Section[] => {
-  const byUrl = new Map<string, DecodedFileSet.Entry[]>()
-  for (const entry of previews) {
-    if (entry.outcome._tag !== 'resources' || entry.outcome.resources.length === 0) continue
-    const labeled = entry.outcome.resources.map(({ key, resource }): DecodedFileSet.Entry => ({
-      fullUrl: key,
-      resource,
-    }))
-    const existing = byUrl.get(entry.ref.url)
-    if (existing === undefined) byUrl.set(entry.ref.url, labeled)
-    else existing.push(...labeled)
-  }
-  return Array.from(byUrl, ([url, entries]) => ({ title: url, entries }))
-}
+const sectionsByUrl = (previews: readonly FhirPreview[]): Sectioned.Type<DecodedFileSet.Entry> =>
+  Sectioned.map(
+    Sectioned.groupBy(
+      previews.flatMap(({ ref, outcome }) =>
+        outcome._tag === 'resources'
+          ? outcome.resources.map(({ key, resource }) => ({
+              url: ref.url,
+              entry: { fullUrl: key, resource },
+            }))
+          : []
+      ),
+      ({ url }) => url
+    ),
+    ({ entry }) => entry
+  )
 
 const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
   previews.flatMap((entry) => {
@@ -94,7 +96,7 @@ const harImporter: FileImporter.Type<null, typeof format> = {
         Effect.flatMap((responses) => preview(fhirPool, responses)),
         Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
         Effect.map((previews) => ({
-          sections: sectionsByUrl(previews),
+          ...sectionsByUrl(previews),
           notes: notesFor(previews),
         }))
       ),

@@ -6,11 +6,13 @@ import {
   leftUnlinkedIn,
 } from '@wildflowerhealthio/importer-core'
 import {
+  type DecodedFile,
   type FormatDecode,
-  DecodedFile,
   LinkChoice,
   type LinkPlan,
   Mention,
+  type Row,
+  Sectioned,
   StagedImport,
   type UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -90,7 +92,7 @@ const perTypeTallies = (
 ): readonly TypeTally[] => {
   const order: string[] = []
   const totals = new Map<string, { total: number; excluded: number }>()
-  for (const resource of DecodedFile.resources(decodedFile)) {
+  for (const resource of Sectioned.entries(decodedFile)) {
     const type = resourceTypeOf(resource.resource)
     const excluded = StagedImport.isResourceIncluded(selection, excludedByDefault, resource.key)
       ? 0
@@ -416,7 +418,7 @@ const FormatReviewBody = ({
   // A pick is a mention link choice, which the resolved row, and its edit
   // override resolved on the plan, follow.
   const pick = (
-    { key }: DecodedFile.Resource,
+    { key }: Row.Type<FhirResourceWithId>,
     mention: Mention.Linkable,
     picked: Option.Option<MentionLinkOptions.Option>
   ): void =>
@@ -429,7 +431,7 @@ const FormatReviewBody = ({
       })
     )
 
-  const renderRow = (entry: DecodedFile.Resource, listsReason: boolean): JSX.Element => (
+  const renderRow = (entry: Row.Type<FhirResourceWithId>, listsReason: boolean): JSX.Element => (
     <ResourceRow
       key={entry.key}
       resourceKey={entry.key}
@@ -452,7 +454,7 @@ const FormatReviewBody = ({
   )
   const unlinkedGroup = (
     heading: string,
-    listed: readonly DecodedFile.Resource[]
+    listed: readonly Row.Type<FhirResourceWithId>[]
   ): JSX.Element | null =>
     listed.length === 0 ? null : (
       <section aria-label={heading} className={styles['review-body__unlinked']}>
@@ -489,20 +491,20 @@ const FormatReviewBody = ({
           // (`FormatDecode.keyPrefix`), so it is unique across the format —
           // which lets a section's first resource identify it even when two
           // files contribute sections of the same title.
-          key={section.resources[0]?.key ?? section.title}
+          key={section.entries[0]?.key ?? section.title}
           className={styles['review-body__section']}
           aria-label={section.title}
         >
           <SectionToggle
             title={section.title}
-            keys={section.resources.map((resource) => resource.key)}
+            keys={section.entries.map((resource) => resource.key)}
             isIncluded={(key) => StagedImport.isResourceIncluded(selection, excludedByDefault, key)}
             onSetIncluded={(keys, included) => {
               onSelectionChange(StagedImport.setResourcesIncluded(selection, keys, included))
             }}
           />
           <ul className={styles['review-body__resource-list']}>
-            {section.resources.map((entry) => renderRow(entry, false))}
+            {section.entries.map((entry) => renderRow(entry, false))}
           </ul>
         </section>
       ))}

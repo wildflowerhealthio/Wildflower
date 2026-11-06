@@ -12,14 +12,13 @@
 import { type FhirResourceWithId, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Option, pipe } from 'effect'
 
-import * as DecodedFile from '../decoded-file.ts'
+import type * as DecodedFile from '../decoded-file.ts'
+import type * as Row from '../row.ts'
+import * as Sectioned from '../sectioned.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkTarget from './link-target.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as Mention from './mention.ts'
-
-/** A resolved resource no resolved file holds, as it will be written (`linkedRecords`). */
-type LinkedRecord = DecodedFile.Resource
 
 /** The review key a resource the batch only mentions is reviewed under, among the batch's linked records. */
 const linkedKey = (onlyMentioned: LinkableResource.WithId): string =>
@@ -85,8 +84,10 @@ const redirectMentions =
     )
 
 /** Whether `after` holds the very resource and title `before` does. */
-const sameEntry = (before: DecodedFile.Resource, after: DecodedFile.Resource): boolean =>
-  after.resource === before.resource && after.title === before.title
+const sameEntry = (
+  before: Row.Type<FhirResourceWithId>,
+  after: Row.Type<FhirResourceWithId>
+): boolean => after.resource === before.resource && after.title === before.title
 
 /**
  * `decodedEntry` as it is resolved under `plan`: a referent's resource
@@ -100,7 +101,7 @@ const sameEntry = (before: DecodedFile.Resource, after: DecodedFile.Resource): b
  */
 const resolveEntry =
   (plan: LinkPlan.Type) =>
-  (decodedEntry: DecodedFile.Resource): DecodedFile.Resource => {
+  (decodedEntry: Row.Type<FhirResourceWithId>): Row.Type<FhirResourceWithId> => {
     const redirect = redirectMentions(plan, decodedEntry.key)
     const resolvedEntry = Option.match(
       LinkPlan.resolvedResourceIfReferent(plan, decodedEntry.resource),
@@ -143,11 +144,11 @@ const resolveEdit = (
  * written, in the order the links first reach them. No resolved file holds
  * them; they are the batch's own, reviewed and written beside the files.
  */
-const linkedRecords = (plan: LinkPlan.Type): readonly LinkedRecord[] =>
+const linkedRecords = (plan: LinkPlan.Type): readonly Row.Type<FhirResourceWithId>[] =>
   pipe(
     LinkPlan.resolvedResources(plan),
     Array.filter(({ resourceExistsInBatch }) => !resourceExistsInBatch),
-    Array.map(({ resource, label }): LinkedRecord => ({
+    Array.map(({ resource, label }): Row.Type<FhirResourceWithId> => ({
       key: linkedKey(resource),
       title: label,
       resource,
@@ -163,8 +164,9 @@ const linkedRecords = (plan: LinkPlan.Type): readonly LinkedRecord[] =>
  */
 const resolveFile =
   (plan: LinkPlan.Type) =>
-  (decodedFile: DecodedFile.DecodedFile): DecodedFile.DecodedFile =>
-    DecodedFile.mapResources(decodedFile, resolveEntry(plan))
+  (decodedFile: DecodedFile.DecodedFile): DecodedFile.DecodedFile => {
+    const resolved = Sectioned.map(decodedFile, resolveEntry(plan))
+    return resolved === decodedFile ? decodedFile : { ...decodedFile, sections: resolved.sections }
+  }
 
 export { linkedKey, linkedRecords, resolveEdit, resolveFile }
-export type { LinkedRecord }

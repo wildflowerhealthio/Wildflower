@@ -1,15 +1,16 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type MentionLinkChoiceSet,
   type DecodedFile,
   FileResolution,
   type FormatDecode,
   type LinkChoice,
   type LinkChoiceSet,
   LinkPlan,
+  type MentionLinkChoiceSet,
   PickedFile,
   Referent,
   ReferentLinkChoiceSet,
+  type Row,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap } from 'effect'
 
@@ -54,7 +55,7 @@ interface ResolvedBatch extends DecodedBatch {
    * The stored records the batch only links to, written beside the files
    * (`FileResolution.linkedRecords`), keyed by `FileResolution.linkedKey`.
    */
-  readonly linkedRecords: readonly FileResolution.LinkedRecord[]
+  readonly linkedRecords: readonly Row.Type<FhirResourceWithId>[]
   /**
    * The plan the batch was resolved on: what the referent rows read each
    * choice's link target off, and what the review asks the referent links

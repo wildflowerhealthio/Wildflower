@@ -1,10 +1,12 @@
 import {
-  type DecodedFile,
+  DecodedFile,
   DecodedFileSet,
   type FileImporter,
   FormatDecode,
   MetaSource,
   PickedFile,
+  type Row,
+  Sectioned,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema } from 'effect'
 
@@ -92,19 +94,11 @@ const importFileSet = (
     }))
 
     const linkToSourceFiles = importer.linkToSourceFiles ?? Effect.succeed
-    const sections = yield* Effect.forEach(adopted.sections, (section) =>
-      Effect.map(
-        Effect.forEach(section.resources, (entry) =>
-          Effect.map(linkToSourceFiles(entry.resource, linked), (resource) => ({
-            ...entry,
-            resource,
-          }))
-        ),
-        (resources) => ({ ...section, resources })
-      )
+    const linkedToSourceFiles = yield* Sectioned.forEach(adopted, (row) =>
+      Effect.map(linkToSourceFiles(row.resource, linked), (resource) => ({ ...row, resource }))
     )
     const stamped = MetaSource.stampDecoded(
-      { ...adopted, sections },
+      { ...linkedToSourceFiles, notes: adopted.notes },
       MetaSource.makeReference(
         Arr.min(
           Arr.map(linked, ({ sourceFile }) => sourceFile.id),
@@ -113,16 +107,16 @@ const importFileSet = (
       )
     )
 
-    const rows = linked.map(({ pickedFile, sourceFile }): DecodedFile.Resource => ({
+    const rows = linked.map(({ pickedFile, sourceFile }): Row.Type<PickedFile.SourceFile> => ({
       key: sourceFileKey(pickedFile),
       title: pickedFile.fileName,
-      resource: sourceFile,
       origin: 'Decoded',
+      resource: sourceFile,
     }))
     // Their own section ahead of what was read out of them, so the reviewer
     // sees what is about to be stored before what it yielded.
     const title = rows.length === 1 ? SOURCE_FILE_SECTION_TITLE : SOURCE_FILES_SECTION_TITLE
-    return { ...stamped, sections: [{ title, resources: rows }, ...stamped.sections] }
+    return { ...Sectioned.prepend(stamped, { title, entries: rows }), notes: stamped.notes }
   })
 
 /**
@@ -162,10 +156,7 @@ const importDecoded = <TFormat extends string>(
       title: decoded.files.map((file) => file.fileName).join(', '),
       files: decoded.files,
       format: decoded.format,
-      decoded: {
-        sections: imported.flatMap((one) => one.sections),
-        notes: imported.flatMap((one) => one.notes),
-      },
+      decoded: DecodedFile.combineAll(imported),
       unreadableFiles: [...decoded.unreadableFiles, ...rejected.flat()],
     })),
     Effect.provideService(PickedFile.Format, importer.sourceFileFormat)

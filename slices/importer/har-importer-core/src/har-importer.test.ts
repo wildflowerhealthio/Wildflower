@@ -1,11 +1,12 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { HarFromJson, HttpArchive, emitHar } from '@wildflowerhealthio/http-archive'
+import type { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 import {
-  DecodedFile,
   DecodedFileSet,
   PickedFile,
   Referent,
+  Sectioned,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
@@ -151,10 +152,10 @@ describe('harImporter.decode', () => {
     const decoded = await readOne(pickedHar())
 
     expect(decoded.sections.map((section) => section.title)).toEqual([PATIENT_URL, OBSERVATION_URL])
-    expect(decoded.sections[0]?.resources.map((entry) => entry.title)).toEqual([
+    expect(decoded.sections[0]?.entries.map((entry) => entry.title)).toEqual([
       expect.stringMatching(/^Patient\//),
     ])
-    expect(decoded.sections[1]?.resources.map((entry) => entry.title)).toEqual([
+    expect(decoded.sections[1]?.entries.map((entry) => entry.title)).toEqual([
       expect.stringMatching(/^Observation\//),
       expect.stringMatching(/^Observation\//),
     ])
@@ -175,7 +176,7 @@ describe('harImporter.decode', () => {
   it('should title each record by the reference the import stage writes it under', async () => {
     const decoded = await readOne(pickedHar())
 
-    for (const { title, resource } of decoded.sections.flatMap((section) => section.resources)) {
+    for (const { title, resource } of decoded.sections.flatMap((section) => section.entries)) {
       expect(title).toBe(`${resource.resourceType}/${resource.id}`)
     }
   })
@@ -211,7 +212,7 @@ describe('harImporter.decode', () => {
     expect(
       decoded.sections.map((section) => [
         section.title,
-        section.resources.map(({ resource }) =>
+        section.entries.map(({ resource }) =>
           resource.resourceType === 'Observation' || resource.resourceType === 'Patient'
             ? resource.identifier[0]?.value
             : null
@@ -275,7 +276,7 @@ describe('harImporter.decode', () => {
       ),
     })
 
-    expect(decoded.sections.map((section) => [section.title, section.resources.length])).toEqual([
+    expect(decoded.sections.map((section) => [section.title, section.entries.length])).toEqual([
       [duplicatePatientUrl, 1],
     ])
     expect(decoded.notes).toEqual([
@@ -364,7 +365,7 @@ const shoppersResourcesOf = async (
       fileName: 'shoppers.har',
       bytes: harBytesOf(exchanges),
     })
-  ).sections.flatMap((section) => section.resources.map((entry) => entry.resource))
+  ).sections.flatMap((section) => section.entries.map((entry) => entry.resource))
 
 describe('harImporter.decode over a Shoppers capture', () => {
   it.each([
@@ -497,7 +498,7 @@ const referentKeysOf = (result: DecodedFile.DecodedFile): readonly (readonly str
 
 /** The `requester` of `result`'s MedicationRequest. */
 const requesterIn = (result: DecodedFile.DecodedFile): unknown => {
-  const request = DecodedFile.resources(result).find(
+  const request = Sectioned.entries(result).find(
     ({ resource }) => resource.resourceType === 'MedicationRequest'
   )?.resource
   return request?.resourceType === 'MedicationRequest' ? request.requester : undefined
@@ -515,7 +516,7 @@ describe('harImporter.decode over a Rexall capture', () => {
       ['Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
       ['Practitioner', REXALL_PRACTITIONER_NAME_SYSTEM, 'DR PATEL'],
     ])
-    const prescriber = DecodedFile.resources(result).find(
+    const prescriber = Sectioned.entries(result).find(
       ({ resource }) => resource.resourceType === 'Practitioner'
     )?.resource
     expect(requesterIn(result)).toMatchObject({
@@ -539,7 +540,7 @@ describe('harImporter.decode over a Rexall capture naming a prescriber carebook 
       ),
     })
 
-    const prescriber = DecodedFile.resources(result).find(
+    const prescriber = Sectioned.entries(result).find(
       ({ resource }) => resource.resourceType === 'Practitioner'
     )?.resource
     expect(

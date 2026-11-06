@@ -15,7 +15,8 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as DecodedFileSet from './decoded-file-set.ts'
-import * as DecodedFile from './decoded-file.ts'
+import type * as Row from './row.ts'
+import * as Sectioned from './sectioned.ts'
 
 /**
  * Covers the import stage's half of a decoded set: adopting every section's
@@ -62,7 +63,7 @@ const observationOn = (subject: Record<string, unknown>): DetachedResource.Type 
 const sectionOf = (
   title: string,
   resources: readonly DetachedResource.Type[]
-): DecodedFileSet.Section => ({
+): Sectioned.Section<DecodedFileSet.Entry> => ({
   title,
   entries: resources.map((resource, index) => ({ fullUrl: `${title}:${index}`, resource })),
 })
@@ -76,8 +77,10 @@ const countingMinter = (): (() => string) => {
   }
 }
 
-const adoptedIn = (sections: readonly DecodedFileSet.Section[]): readonly FhirResourceWithId[] =>
-  DecodedFile.resources(
+const adoptedIn = (
+  sections: readonly Sectioned.Section<DecodedFileSet.Entry>[]
+): readonly FhirResourceWithId[] =>
+  Sectioned.entries(
     Either.getOrThrow(DecodedFileSet.adopt({ sections, notes: [] }, countingMinter()))
   ).map(({ resource }) => resource)
 
@@ -452,19 +455,17 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
 
   /** Every adopted row of `sections`, with its section's title. */
   const rowsIn = (
-    sections: readonly DecodedFileSet.Section[]
-  ): readonly (DecodedFile.Resource & { readonly section: string })[] =>
+    sections: readonly Sectioned.Section<DecodedFileSet.Entry>[]
+  ): readonly (Row.Type<FhirResourceWithId> & { readonly section: string })[] =>
     Either.getOrThrow(
       DecodedFileSet.adopt({ sections, notes: [] }, countingMinter())
-    ).sections.flatMap(({ title, resources }) =>
-      resources.map((row) => ({ ...row, section: title }))
-    )
+    ).sections.flatMap(({ title, entries }) => entries.map((row) => ({ ...row, section: title })))
 
   const requesterOf = (resource: FhirResourceWithId | undefined): unknown =>
     resource?.resourceType === 'MedicationRequest' ? resource.requester : undefined
 
   const practitionersIn = (
-    rows: readonly DecodedFile.Resource[]
+    rows: readonly Row.Type<FhirResourceWithId>[]
   ): readonly Extract<FhirResourceWithId, { readonly resourceType: 'Practitioner' }>[] =>
     rows.flatMap(({ resource }) => (resource.resourceType === 'Practitioner' ? [resource] : []))
 
@@ -721,7 +722,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         notes: [],
       })
     ).sections
-    expect(section?.resources.map(({ title }) => title)).toEqual([
+    expect(section?.entries.map(({ title }) => title)).toEqual([
       `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7')}`,
     ])
   })
@@ -733,7 +734,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         countingMinter()
       )
     ).sections
-    expect(section?.resources.map(({ title, resource }) => [title, resource.id])).toEqual([
+    expect(section?.entries.map(({ title, resource }) => [title, resource.id])).toEqual([
       ['Patient (people:0)', 'minted-1'],
     ])
   })
@@ -745,21 +746,23 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         notes: [],
       })
     ).sections
-    expect(section?.resources.map(({ key }) => key)).toEqual(['people:0', 'people:1'])
+    expect(section?.entries.map(({ key }) => key)).toEqual(['people:0', 'people:1'])
   })
 })
 
 describe('DecodedFileSet.namespaceKeys', () => {
   it('prefixes every fullUrl and keeps everything else', () => {
     const section = sectionOf('people', [patient('pat-7')])
-    expect(DecodedFileSet.namespaceKeys([section], '0:a.har/')).toEqual([
-      {
-        ...section,
-        entries: section.entries.map((entry) => ({
-          ...entry,
-          fullUrl: `0:a.har/${entry.fullUrl}`,
-        })),
-      },
-    ])
+    expect(DecodedFileSet.namespaceKeys({ sections: [section] }, '0:a.har/')).toEqual({
+      sections: [
+        {
+          ...section,
+          entries: section.entries.map((entry) => ({
+            ...entry,
+            fullUrl: `0:a.har/${entry.fullUrl}`,
+          })),
+        },
+      ],
+    })
   })
 })

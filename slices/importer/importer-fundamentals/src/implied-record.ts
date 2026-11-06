@@ -120,7 +120,7 @@ const tryFromLogicalReference = (
  * across a settings re-decode, since it is read off the entry and the
  * reference, and unique across the batch, since the referencing entry's
  * `fullUrl` is (`FormatDecode.keyPrefix`). Nothing reads it back: a row says
- * it is implied by its `origin` (`DecodedFile.Origin`).
+ * it is implied by its `origin` (`Row.Origin`).
  */
 const fullUrlOf = (
   referencingFullUrl: string,

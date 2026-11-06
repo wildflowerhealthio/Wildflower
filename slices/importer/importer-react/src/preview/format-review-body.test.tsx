@@ -7,15 +7,16 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  DecodedFile,
+  type DecodedFile,
   FileResolution,
   FormatDecode,
-  LinkChoice,
   type LinkableResource,
+  LinkChoice,
   LinkPlan,
   Mention,
   MentionLinkChoiceSet,
   type ReferentLinkChoiceSet,
+  Sectioned,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap, Option, Schema, TestContext } from 'effect'
@@ -82,7 +83,7 @@ const fileOf = (resources: readonly FhirResourceWithId[]): DecodedFile.DecodedFi
   sections: [
     {
       title: 'Resources',
-      resources: resources.map((resource, index) => ({
+      entries: resources.map((resource, index) => ({
         key: `k-${index}`,
         title: `${resource.resourceType}/${resource.id}`,
         resource,
@@ -224,7 +225,7 @@ const Harness = ({
 /** The literal reference the subject of the resource keyed `key` carries in `file`, or `None` for none. */
 const subjectLiteral = (file: DecodedFile.DecodedFile, key: string): Option.Option<string> =>
   Option.fromNullable(
-    file.sections.flatMap((section) => section.resources).find((entry) => entry.key === key)
+    file.sections.flatMap((section) => section.entries).find((entry) => entry.key === key)
   ).pipe(
     Option.flatMap(({ resource }) => Mention.at(resource, Mention.SUBJECT_PATH)),
     Option.flatMapNullable(({ reference }) => reference.reference)
@@ -253,7 +254,7 @@ const includedIn = (reported: Reported, key: string): boolean =>
 
 /** The resource the review writes for the row keyed `key`, as the harness last reported. */
 const writtenAt = (reported: Reported, key: string): FhirResourceWithId => {
-  const entry = DecodedFile.resources(reported.resolved).find((one) => one.key === key)
+  const entry = Sectioned.entries(reported.resolved).find((one) => one.key === key)
   if (entry === undefined) throw new Error(`no row keyed ${key}`)
   return StagedImport.resolvedResourceOf(reported.plan, reported.selection, entry)
 }

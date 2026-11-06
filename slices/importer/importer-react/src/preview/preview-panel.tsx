@@ -1,6 +1,6 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { type DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import { type Row, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 import { Array, Data, Option } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
@@ -91,7 +91,7 @@ interface PreviewPanelProps {
    * Each labeled resource's server comparison (`new` / `unchanged` /
    * `changed`, and for `changed` the leaf-level field diffs), keyed by the
    * group it is reviewed in (a format, or the linked records) and then by
-   * `DecodedFile.Resource`'s `key`. Rendered as a badge on each row — the
+   * `Row`'s `key`. Rendered as a badge on each row — the
    * `changed` badge opens to show `field "server" -> "import"` with a
    * per-field reset on a format's row. A key absent from the map (the
    * pre-fetch is still in flight, or the resource is not covered by the
@@ -199,7 +199,7 @@ const LinkedRecords = ({
   labels,
   comparisons,
 }: {
-  readonly linkedRecords: readonly DecodedFile.Resource[]
+  readonly linkedRecords: readonly Row.Type<FhirResourceWithId>[]
   /** The label of each record a subject may be redirected to, by its literal reference. */
   readonly labels: ReadonlyMap<string, string>
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
