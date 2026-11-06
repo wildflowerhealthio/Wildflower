@@ -667,7 +667,7 @@ but `fhir-r4-adoption`.
   choice wins over its referent's rule for that one mention; only an explicit
   `DontLink` unlinks one, and a choice of a type the mention cannot name, or
   of a referent the batch does not hold, is none.
-- **Selection keys by a row's `key`.** Selection state must
+- **Selection keys by a row's reviewable's `key`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.
 

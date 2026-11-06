@@ -160,16 +160,18 @@ identifies as nothing.
 
 Four obligations:
 
-- **Stable resource keys.** A section row's `key` must be unique within
-  one decode of a set (HAR keys by `responseId:index`). For a format with
-  settings it must also be stable across settings changes where the
-  underlying resource is unchanged (DICOM keys by the resource's role),
-  because the reviewer's per-resource exclusions and inline edits are keyed
-  by it and must survive a settings re-decode. Key **within one set** and do not
-  try to make keys unique across the batch yourself — `DecodeFunction.make`
-  prefixes each set's keys with its first picked file
-  (`FormatDecode.keyPrefix`), which is what makes a fixed key like `patient`
-  safe when the reviewer picked eight images at once.
+- **Stable `fullUrl`s.** An entry's `fullUrl` becomes its review key at
+  adopt (`reviewable.key`), so it must be unique within one decode of a set
+  (HAR uses `responseId:index`). For a format with settings it must also be
+  stable across settings changes where the underlying resource is unchanged
+  (DICOM names it by the resource's role), because the reviewer's
+  per-resource exclusions and inline edits are keyed by it and must survive
+  a settings re-decode. Name entries **within one set** and do not try to
+  make them unique across the batch yourself — `DecodeFunction.make`
+  prefixes each set's `fullUrl`s with its first picked file
+  (`FormatDecode.keyPrefix`, via `DecodedFileSet.namespaceKeys`), which is
+  what makes a fixed `fullUrl` like `patient` safe when the reviewer picked
+  eight images at once.
 - **Sections are the display.** Pick a sectioning that means something to the
   reviewer: HAR sections by URL, LifeLabs by report. A section's `title` is the
   heading the shell renders.
@@ -435,7 +437,7 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 `/javascript-testing-expert` command). Cover each layer where it lives:
 
 - **Decode** — a fixture file decodes to the expected sections and notes; for
-  a format with settings, keys are stable across a settings change. Pin the
+  a format with settings, `fullUrl`s are stable across a settings change. Pin the
   source file contract too: a pick yields a "Source file" first section and
   `meta.source` on every extracted resource, the minted id is the same for the
   same bytes and name, and malformed bytes yield an `unreadableFiles` entry

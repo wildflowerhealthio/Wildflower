@@ -227,7 +227,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   formats can carry the same resource key, so
   a flat map would let one format's verdict overwrite another's. Within one
   format the keys are already distinct, because `DecodeFunction.make` namespaces each
-  claimed file's keys by its slot in the batch. The screen blocks the
+  file set's keys by its first picked file's slot in the batch. The screen blocks the
   first paint on it but **not** on the re-classification a settings change or
   a link choice triggers, since unmounting the panel mid-review would drop the
   focus of whatever control the reviewer is using; the verdicts the batch last
