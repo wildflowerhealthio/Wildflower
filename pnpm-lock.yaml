@@ -2679,6 +2679,9 @@ importers:
       '@wildflowerhealthio/dicom-importer-core':
         specifier: workspace:*
         version: link:../../../slices/importer/dicom-importer-core
+      '@wildflowerhealthio/fhir-ca-infoway':
+        specifier: workspace:*
+        version: link:../../../slices/fhir/fhir-ca-infoway
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../../slices/fhir/fhir-r4
@@ -2865,6 +2868,9 @@ importers:
       '@types/node':
         specifier: ^26
         version: 26.1.0
+      '@wildflowerhealthio/fhir-ca-infoway':
+        specifier: workspace:*
+        version: link:../../../slices/fhir/fhir-ca-infoway
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../../slices/fhir/fhir-r4
@@ -5114,6 +5120,9 @@ importers:
       '@wildflowerhealthio/dicom-importer-core':
         specifier: workspace:*
         version: link:../dicom-importer-core
+      '@wildflowerhealthio/fhir-ca-infoway':
+        specifier: workspace:*
+        version: link:../../fhir/fhir-ca-infoway
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../fhir/fhir-r4
@@ -5228,6 +5237,9 @@ importers:
       '@wildflowerhealthio/dicom-importer-react':
         specifier: workspace:*
         version: link:../dicom-importer-react
+      '@wildflowerhealthio/fhir-ca-infoway':
+        specifier: workspace:*
+        version: link:../../fhir/fhir-ca-infoway
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../fhir/fhir-r4
