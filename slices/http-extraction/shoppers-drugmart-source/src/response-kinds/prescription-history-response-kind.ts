@@ -18,7 +18,7 @@ import {
 
 import { decodesAsDateTime } from '../dates.ts'
 import { DecodableEntries } from '../lenient-schemas.ts'
-import { portalGetMatcher, SHOPPERS_API_BASE_URL } from '../portal-url.ts'
+import { portalGetMatcher, SHOPPERS_API_BASE_URL, tryPcidFromUrlParam } from '../portal-url.ts'
 import {
   ShoppersIdentifierSystem,
   shoppersStoreDisplay,
@@ -69,11 +69,12 @@ const decodeCustomerId = Schema.decodeUnknown(Schema.NonEmptyString)
 const decodeDispense = DetachedResource.decodeUnknown(MedicationDispense.Schema)
 
 /**
- * The account a history XHR is for: its `customerId` query parameter. A
- * `ParseError` when the URL carries none.
+ * The account a history XHR is for: its `customerId` query parameter, read
+ * as `tryPcidFromUrlParam` reads the customers URL's `pcid`. A `ParseError`
+ * when the URL carries none, an empty one, or one that does not decode.
  */
 const customerIdOf = (url: string): Effect.Effect<string, ParseResult.ParseError> =>
-  decodeCustomerId(URL.parse(url)?.searchParams.get('customerId'))
+  decodeCustomerId(Option.getOrNull(tryPcidFromUrlParam(url)))
 
 /**
  * The `subject` wire: the account the history is for, as a logical reference

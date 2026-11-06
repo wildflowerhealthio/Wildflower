@@ -1,5 +1,5 @@
 import type { UrlMatcher } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { Option } from 'effect'
+import { Option, pipe, RegExp as EffectRegExp } from 'effect'
 
 /**
  * The Shoppers Drug Mart "mypharmacy" portal's API URLs: the three XHRs the
@@ -44,6 +44,35 @@ const prescriptionStatusUrlOf = (prescriptionId: string): string =>
 const prescriptionHistoryUrlOf = (customerId: string): string =>
   `${SHOPPERS_API_BASE_URL}/prescription-history?customerId=${encodeURIComponent(customerId)}`
 
+/** `decodeURIComponent`, `None` where the percent-encoding does not decode. */
+const tryDecodeUriComponent: (encoded: string) => Option.Option<string> =
+  Option.liftThrowable(decodeURIComponent)
+
+/** The customers URL's `pcid` path segment, as the URL spells it. */
+const customerPcidParam = new RegExp(
+  `^${EffectRegExp.escape(SHOPPERS_API_BASE_URL)}/customers/pcid/([^/?#]+)(?:[?#]|$)`
+)
+
+/** The prescription-history URL's first `customerId` query value, as the URL spells it. */
+const historyCustomerIdParam = new RegExp(
+  `^${EffectRegExp.escape(SHOPPERS_API_BASE_URL)}/prescription-history\\?(?:[^#]*&)?customerId=([^&#]*)`
+)
+
+/**
+ * The account's `pcid` a portal URL names: the customers URL's path segment
+ * ({@link customerUrlOf}) or the prescription-history URL's `customerId`
+ * ({@link prescriptionHistoryUrlOf}), decoded the same way for both, by
+ * `decodeURIComponent`, so the two URLs of one account yield the same id.
+ * `None` for a URL that names no account, and for one whose id does not
+ * decode.
+ */
+const tryPcidFromUrlParam = (url: string): Option.Option<string> =>
+  pipe(
+    Option.fromNullable(customerPcidParam.exec(url)?.[1]),
+    Option.orElse(() => Option.fromNullable(historyCustomerIdParam.exec(url)?.[1])),
+    Option.flatMap(tryDecodeUriComponent)
+  )
+
 /**
  * A matcher for one portal XHR: a request for a URL `url` matches unless its
  * method is known and is not `GET`, yielding {@link SHOPPERS_API_BASE_URL},
@@ -71,4 +100,6 @@ export {
   portalGetMatcher,
   prescriptionHistoryUrlOf,
   prescriptionStatusUrlOf,
+  tryDecodeUriComponent,
+  tryPcidFromUrlParam,
 }
