@@ -197,43 +197,6 @@ describe('ReferencePlan.literalReferenceIfResolved', () => {
   })
 })
 
-describe('ReferencePlan.extend', () => {
-  it('resolves as the plan of every entry, old and added, would', () => {
-    const practitionerKey = qualified({ system: SYSTEM, value: 'dr-1' })
-    const added = [
-      {
-        logicalReference: LogicalReference.make('Practitioner', practitionerKey),
-        literalReference: 'Practitioner/p-1',
-      },
-      {
-        logicalReference: LogicalReference.make('Patient', PATIENT_KEY),
-        literalReference: 'Patient/other-7',
-      },
-    ]
-    const extended = ReferencePlan.extend(patientPlan(), added)
-
-    expect(
-      ReferencePlan.literalReferenceFor(
-        extended,
-        LogicalReference.make('Practitioner', practitionerKey)
-      )
-    ).toEqual(Option.some('Practitioner/p-1'))
-    // Two different literal references for one key are as ambiguous added as given at once.
-    expect(
-      ReferencePlan.literalReferenceFor(extended, LogicalReference.make('Patient', PATIENT_KEY))
-    ).toEqual(Option.none())
-    expect(extended).toEqual(
-      ReferencePlan.of([
-        {
-          logicalReference: LogicalReference.make('Patient', PATIENT_KEY),
-          literalReference: 'Patient/stored-7',
-        },
-        ...added,
-      ])
-    )
-  })
-})
-
 describe('ReferencePlan.holds', () => {
   it('holds a type and identifier given once, or given two different literal references', () => {
     const ambiguous = ReferencePlan.of([

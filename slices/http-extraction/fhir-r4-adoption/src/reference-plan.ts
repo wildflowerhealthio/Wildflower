@@ -50,18 +50,6 @@ const of = (entries: Iterable<Entry>): Type => ({
 })
 
 /**
- * `plan` with `entries` added, as {@link of} of the entries `plan` was built
- * from and `entries` would be.
- */
-const extend = (plan: Type, entries: Iterable<Entry>): Type => ({
-  literalReferencesByLogicalReference: Record.union(
-    plan.literalReferencesByLogicalReference,
-    of(entries).literalReferencesByLogicalReference,
-    (held, added) => Arr.dedupe(Arr.appendAll(held, added))
-  ),
-})
-
-/**
  * The literal reference `logicalReference` resolves to: `None` when `plan`
  * holds no entry for it, or several that disagree ({@link of}).
  *
@@ -106,5 +94,5 @@ const literalReferenceIfResolved = (plan: Type, reference: ReferenceType): Optio
     literalReferenceFor(plan, logicalReference)
   )
 
-export { extend, holds, literalReferenceFor, literalReferenceIfResolved, of }
+export { holds, literalReferenceFor, literalReferenceIfResolved, of }
 export type { Entry, Type }

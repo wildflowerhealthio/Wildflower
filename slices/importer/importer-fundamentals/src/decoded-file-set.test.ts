@@ -530,7 +530,7 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
       implied?.identifier.map(({ system, value }) => [system?.href, value]),
       implied?.name.map(({ text }) => text),
     ]).toEqual([[[`${BASE_URL}/Practitioner`, 'dr-9']], ['Dr. Jonathan Brown']])
-    expect(requesterOf(rows[1]?.resource)).toMatchObject({
+    expect(requesterOf(rows[0]?.resource)).toMatchObject({
       reference: `Practitioner/${localResourceId(`${BASE_URL}/Practitioner`, 'Practitioner', 'dr-9')}`,
     })
   })
@@ -546,7 +546,7 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
       ]),
     ])
 
-    const [implied, observation] = rows.map(({ resource }) => resource)
+    const [observation, implied] = rows.map(({ resource }) => resource)
     expect(
       implied?.resourceType === 'Patient'
         ? [implied.name.map(({ text }) => text), subjectOf(observation)]
@@ -618,7 +618,7 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
     expect(subjectOf(rows[1]?.resource)).toBe(`Patient/${rows[0]?.resource.id}`)
   })
 
-  it('places an implied record first in the section of the entry that first names it', () => {
+  it('places the implied records in a section of their own, last, in the order first named', () => {
     const rows = rowsIn([
       sectionOf('people', [patient('pat-7')]),
       sectionOf('first', [prescriptionBy('rx-1', byName('Dr. A Smith'))]),
@@ -630,11 +630,15 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
 
     expect(rows.map(({ section, resource }) => [section, resource.resourceType])).toEqual([
       ['people', 'Patient'],
-      ['first', 'Practitioner'],
       ['first', 'MedicationRequest'],
-      ['second', 'Practitioner'],
       ['second', 'MedicationRequest'],
       ['second', 'MedicationRequest'],
+      ['Implied records', 'Practitioner'],
+      ['Implied records', 'Practitioner'],
+    ])
+    expect(practitionersIn(rows).map(({ name }) => name[0]?.text)).toEqual([
+      'Dr. A Smith',
+      'Dr. B Jones',
     ])
   })
 

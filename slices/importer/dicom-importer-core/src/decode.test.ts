@@ -237,8 +237,8 @@ describe('decodeStudy', () => {
         logicalReference.identifier[0].system.href,
       ])
     ).toEqual([
-      ['Practitioner', DICOM_PRACTITIONER_NAME_SYSTEM],
       ['Patient', DICOM_SYSTEM],
+      ['Practitioner', DICOM_PRACTITIONER_NAME_SYSTEM],
     ])
   })
 

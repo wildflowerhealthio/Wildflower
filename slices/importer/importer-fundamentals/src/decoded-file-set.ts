@@ -172,146 +172,134 @@ interface PlannedSection {
   readonly plannedEntries: readonly PlannedEntry[]
 }
 
+/** Every planned entry of `plannedSections`, in section order. */
+const plannedEntriesOf = (plannedSections: readonly PlannedSection[]): readonly PlannedEntry[] =>
+  plannedSections.flatMap((section) => section.plannedEntries)
+
 /** The reference plan of a set's planned entries ({@link referencePlanEntriesOf}). */
 const referencePlanOf = (plannedEntries: readonly PlannedEntry[]): ReferencePlan.Type =>
   ReferencePlan.of(
     plannedEntries.flatMap(({ entry, plan }) => referencePlanEntriesOf(plan, entry.resource))
   )
 
-/** A record a reference of the set implies, beside the index of the section holding the entry that first names it. */
-interface ImpliedEntry {
-  readonly sectionIndex: number
-  readonly entry: Entry
-}
-
-/** A reference of a set, beside the entry holding it and that entry's section. */
-interface ReferenceInSet {
-  readonly sectionIndex: number
-  readonly referencingFullUrl: string
-  readonly reference: ReferenceType
-}
-
-/** Every reference of `plannedSections`, at any depth, in entry order. */
-const referencesInSet = (plannedSections: readonly PlannedSection[]): readonly ReferenceInSet[] =>
-  plannedSections.flatMap(({ plannedEntries }, sectionIndex) =>
-    plannedEntries.flatMap(({ entry }) =>
-      ResourceReferences.collect(entry.resource).map(({ reference }) => ({
-        sectionIndex,
-        referencingFullUrl: entry.fullUrl,
-        reference,
-      }))
-    )
-  )
+/** The title of the section a set's implied records are reviewed in, the last of its sections. */
+const IMPLIED_SECTION_TITLE = 'Implied records'
 
 /**
- * The records the references of `plannedSections` imply, once per target, in
- * the order they are first named: for each logical reference
- * (`LogicalReference.tryFromReference`) with a `display` whose target no
- * record of the set holds by any identifier (`ReferencePlan.holds`), the
- * record `ImpliedRecord.of` builds for its type, keyed by its identifier and
- * named by that reference's display, under a `fullUrl` read off the entry
- * holding it.
- */
-const impliedEntriesOf = (
-  plannedSections: readonly PlannedSection[],
-  heldPlan: ReferencePlan.Type
-): Either.Either<readonly ImpliedEntry[], ParseResult.ParseError> => {
-  const impliedByTarget = Arr.reduce(
-    referencesInSet(plannedSections),
-    new Map<string, Either.Either<ImpliedEntry, ParseResult.ParseError>>(),
-    (implied, { sectionIndex, referencingFullUrl, reference }) =>
-      pipe(
-        LogicalReference.tryFromReference(reference),
-        Option.filter(
-          (target) =>
-            !implied.has(LogicalReference.key(target)) && !ReferencePlan.holds(heldPlan, target)
-        ),
-        Option.flatMap((target) =>
-          pipe(
-            Option.fromNullable(reference.display),
-            Option.flatMap((display) =>
-              ImpliedRecord.of(target.resourceType, target.identifier[0], display)
-            ),
-            Option.map((decodedRecord) =>
-              implied.set(
-                LogicalReference.key(target),
-                Either.map(decodedRecord, (resource) => ({
-                  sectionIndex,
-                  entry: {
-                    fullUrl: ImpliedRecord.fullUrlOf(
-                      referencingFullUrl,
-                      target.resourceType,
-                      target.identifier[0]
-                    ),
-                    resource,
-                  },
-                }))
-              )
-            )
-          )
-        ),
-        Option.getOrElse(() => implied)
-      )
-  )
-  return Either.all([...impliedByTarget.values()])
-}
-
-/**
- * `plannedSections` with the records their references imply
- * ({@link impliedEntriesOf}) planned and placed first in the section holding
- * the entry that first names each, in the order they are first named, beside
- * the set's reference plan over every record, the implied ones included.
+ * Plan ids: each decoded entry of `sections` beside its plan
+ * (`ResourcePlan.of`), a keyed record's id derived from its key and a
+ * keyless one's minted, in entry order, every one `Decoded`.
  *
  * @remarks
- * A reference names the record the import never saw, a Rexall prescriber
+ * As a FHIR server processing a transaction bundle first decides the id
+ * every entry is stored under, before it rewrites any reference between them.
+ */
+const planSections = (
+  sections: readonly Section[],
+  mintId: () => string
+): readonly PlannedSection[] =>
+  sections.map(({ title, entries }) => ({
+    title,
+    plannedEntries: entries.map((entry): PlannedEntry => ({
+      entry,
+      plan: ResourcePlan.of(entry.resource, mintId),
+      origin: 'Decoded',
+    })),
+  }))
+
+/**
+ * A logical reference of a set to a record no record of the set is, beside
+ * what the reference says of it, its `display`, and the `fullUrl` of the
+ * entry holding it.
+ */
+interface ImpliedTarget {
+  readonly logicalReference: LogicalReference.Type
+  readonly display: string
+  readonly referencingFullUrl: string
+}
+
+/**
+ * Every reference of `plannedEntries`, at any depth, in entry order, that
+ * names a record the set does not hold: a logical reference
+ * (`LogicalReference.tryFromReference`) with a `display` that no record of the
+ * set holds by any identifier (`ReferencePlan.holds` of `heldPlan`).
+ */
+const impliedTargetsOf = (
+  plannedEntries: readonly PlannedEntry[],
+  heldPlan: ReferencePlan.Type
+): readonly ImpliedTarget[] =>
+  pipe(
+    plannedEntries,
+    Arr.flatMap(({ entry }) =>
+      Arr.filterMap(ResourceReferences.collect(entry.resource), ({ reference }) =>
+        Option.all({
+          logicalReference: LogicalReference.tryFromReference(reference),
+          display: Option.fromNullable(reference.display),
+          referencingFullUrl: Option.some(entry.fullUrl),
+        })
+      )
+    ),
+    Arr.filter(({ logicalReference }) => !ReferencePlan.holds(heldPlan, logicalReference))
+  )
+
+/**
+ * Imply: the section of the records the references of `plannedSections`
+ * imply, `None` when they imply none. Each record is one a logical reference
+ * names and no record of the set holds ({@link impliedTargetsOf}), built for
+ * its type by `ImpliedRecord.of`, keyed by the reference's identifier and
+ * named by its display, under a `fullUrl` read off the entry holding it
+ * (`ImpliedRecord.fullUrlOf`), planned and `Implied`. One record covers
+ * every reference to one target: the first to name it, in entry order, is
+ * the one it is built from.
+ *
+ * @remarks
+ * A reference names a record the import never saw: a Rexall prescriber
  * carebook names as `Practitioner/<id>` and never serves, or a provider a
  * source knows only by a printed name it keys in its own name system. Once
  * the set holds the record, every reference to it resolves to it, and the
- * review shows it as a row of its own. One record covers every reference to
- * one key in the set. A reference with no `display`, a literal one, an
- * untyped identifier, a type `fhir-r4` does not model, and a type whose
- * record needs more than a reference says (`ImpliedRecord.of`) imply
- * nothing, so it is left as the source wrote it. An implied record is keyed,
- * so planning it mints nothing.
+ * review shows it as a row of its own. A reference with no `display`, a
+ * literal one, an untyped identifier, a type `fhir-r4` does not model, and a
+ * type whose record needs more than a reference says (`ImpliedRecord.of`)
+ * imply nothing, so it is left as the source wrote it. An implied record is keyed, so planning it mints nothing.
+ *
+ * @returns The section, or the `ParseError` an implied record's schema
+ *   rejects it with
  */
-const implyReferencedRecords = (
+const impliedSectionOf = (
   plannedSections: readonly PlannedSection[],
   mintId: () => string
-): Either.Either<
-  {
-    readonly plannedSections: readonly PlannedSection[]
-    readonly referencePlan: ReferencePlan.Type
-  },
-  ParseResult.ParseError
-> => {
-  const heldPlan = referencePlanOf(plannedSections.flatMap(({ plannedEntries }) => plannedEntries))
-  return Either.map(impliedEntriesOf(plannedSections, heldPlan), (impliedEntries) => {
-    const implied = impliedEntries.map(({ sectionIndex, entry }) => ({
-      sectionIndex,
-      plannedEntry: {
-        entry,
-        plan: ResourcePlan.of(entry.resource, mintId),
-        origin: 'Implied' as const,
-      },
-    }))
-    return {
-      plannedSections: plannedSections.map(({ title, plannedEntries }, sectionIndex) => ({
-        title,
-        plannedEntries: [
-          ...implied
-            .filter((impliedEntry) => impliedEntry.sectionIndex === sectionIndex)
-            .map(({ plannedEntry }) => plannedEntry),
-          ...plannedEntries,
-        ],
-      })),
-      referencePlan: ReferencePlan.extend(
-        heldPlan,
-        implied.flatMap(({ plannedEntry: { entry, plan } }) =>
-          referencePlanEntriesOf(plan, entry.resource)
-        )
-      ),
-    }
-  })
+): Either.Either<Option.Option<PlannedSection>, ParseResult.ParseError> => {
+  const decodedEntries = plannedEntriesOf(plannedSections)
+  return pipe(
+    impliedTargetsOf(decodedEntries, referencePlanOf(decodedEntries)),
+    Arr.dedupeWith((left, right) =>
+      LogicalReference.equivalence(left.logicalReference, right.logicalReference)
+    ),
+    Arr.filterMap(({ logicalReference, display, referencingFullUrl }) =>
+      Option.map(
+        ImpliedRecord.of(logicalReference.resourceType, logicalReference.identifier[0], display),
+        Either.map((resource): PlannedEntry => ({
+          entry: {
+            fullUrl: ImpliedRecord.fullUrlOf(
+              referencingFullUrl,
+              logicalReference.resourceType,
+              logicalReference.identifier[0]
+            ),
+            resource,
+          },
+          plan: ResourcePlan.of(resource, mintId),
+          origin: 'Implied',
+        }))
+      )
+    ),
+    Either.all,
+    Either.map((impliedEntries) =>
+      Option.map(
+        Option.liftPredicate(impliedEntries, Arr.isNonEmptyReadonlyArray),
+        (nonEmpty): PlannedSection => ({ title: IMPLIED_SECTION_TITLE, plannedEntries: nonEmpty })
+      )
+    )
+  )
 }
 
 /**
@@ -434,10 +422,32 @@ const takeSubjectFromPrescription =
       : record
 
 /**
+ * Adopt: each planned record of `plannedSections` given its plan's id, its
+ * logical references `referencePlan` resolves made literal, after
+ * `takeSubject`, keyed by its entry's `fullUrl` and titled by
+ * {@link writtenReferenceTitle}, its origin kept.
+ */
+const adoptSections = (
+  plannedSections: readonly PlannedSection[],
+  referencePlan: ReferencePlan.Type,
+  takeSubject: (record: DetachedResource.Type) => DetachedResource.Type
+): readonly DecodedFile.Section[] => {
+  const adoptEntry = adoptRecord(referencePlan)
+  return plannedSections.map(({ title, plannedEntries }) => ({
+    title,
+    resources: plannedEntries.map(({ entry, plan, origin }) => ({
+      key: entry.fullUrl,
+      title: writtenReferenceTitle(plan, entry),
+      resource: adoptEntry(takeSubject(entry.resource), plan.id),
+      origin,
+    })),
+  }))
+}
+
+/**
  * A decode's sections adopted beside its notes: how the import stage makes a
  * file set's records the device's own, before it mints source files, links
- * and stamps. Each adopted row is keyed by its entry's `fullUrl` and titled
- * by {@link writtenReferenceTitle}.
+ * and stamps.
  *
  * @param decoded - The set's sections and notes
  * @param mintId - Mints the id of a keyless record; random outside tests
@@ -445,58 +455,38 @@ const takeSubjectFromPrescription =
  *   rejects it with
  *
  * @remarks
- * As a FHIR server processes one transaction bundle: every record's plan
- * (`ResourcePlan.of`) is decided first, a keyed record's id derived from its
- * key and a keyless one's minted, in entry order; then the records the
- * set's references name and no record of the set is are implied
- * ({@link implyReferencedRecords}); the set's
- * reference plan is built from the keyed records' plans and qualified
- * identifiers; then each record is adopted under its plan's id, a logical
- * reference resolving when the set holds a keyed record it names by any of
- * that record's identifiers, whichever section holds it. One that names a
- * record the set does not hold and implies none, a keyless one, or an
- * identifier two records of the set share, stays logical, for the identity
- * map. Before it is adopted, a `MedicationDispense` with no `subject` takes
- * the `subject` of the prescriptions of the set it names
- * ({@link takeSubjectFromPrescription}).
+ * As a FHIR server processes one transaction bundle, in five steps: plan
+ * every record's id ({@link planSections}); imply the records the set's
+ * references name and no record of the set is, in a section of their own,
+ * last ({@link impliedSectionOf}); build the reference plan over every
+ * record, the implied ones included ({@link referencePlanOf}); and adopt
+ * each record ({@link adoptSections}), a `MedicationDispense` with no
+ * `subject` first taking the `subject` of the prescriptions of the set it
+ * names ({@link takeSubjectFromPrescription}). A logical reference resolves
+ * when the set holds a keyed record it names by any of that record's
+ * identifiers, whichever section holds it. One that names a record the set
+ * does not hold and implies none, a keyless one, or an identifier two
+ * records of the set share, stays logical, for the identity map.
  */
 const adopt = (
   decoded: Pick<Type, 'sections' | 'notes'>,
   mintId: () => string = randomResourceId
-): Either.Either<DecodedFile.DecodedFile, ParseResult.ParseError> =>
-  Either.map(
-    implyReferencedRecords(
-      decoded.sections.map(({ title, entries }) => ({
-        title,
-        plannedEntries: entries.map((entry): PlannedEntry => ({
-          entry,
-          plan: ResourcePlan.of(entry.resource, mintId),
-          origin: 'Decoded',
-        })),
-      })),
-      mintId
-    ),
-    ({ plannedSections, referencePlan }) => {
-      const setEntries = plannedSections.flatMap(({ plannedEntries }) => plannedEntries)
-      const takeSubject = takeSubjectFromPrescription(
-        referencePlan,
-        prescriptionSubjectsOf(referencePlan, setEntries)
-      )
-      const adoptEntry = adoptRecord(referencePlan)
-      return {
-        sections: plannedSections.map(({ title, plannedEntries }) => ({
-          title,
-          resources: plannedEntries.map(({ entry, plan, origin }) => ({
-            key: entry.fullUrl,
-            title: writtenReferenceTitle(plan, entry),
-            resource: adoptEntry(takeSubject(entry.resource), plan.id),
-            origin,
-          })),
-        })),
-        notes: decoded.notes,
-      }
+): Either.Either<DecodedFile.DecodedFile, ParseResult.ParseError> => {
+  const decodedSections = planSections(decoded.sections, mintId)
+  return Either.map(impliedSectionOf(decodedSections, mintId), (impliedSection) => {
+    const plannedSections = [...decodedSections, ...Option.toArray(impliedSection)]
+    const plannedEntries = plannedEntriesOf(plannedSections)
+    const referencePlan = referencePlanOf(plannedEntries)
+    const takeSubject = takeSubjectFromPrescription(
+      referencePlan,
+      prescriptionSubjectsOf(referencePlan, plannedEntries)
+    )
+    return {
+      sections: adoptSections(plannedSections, referencePlan, takeSubject),
+      notes: decoded.notes,
     }
-  )
+  })
+}
 
 export { adopt, namespaceKeys, unidentified, writtenReferenceTitle }
 export type { Entry, PickedFileIdentity, Section, Type }
