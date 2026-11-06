@@ -183,7 +183,7 @@ describe('ReferentSearch.defaultChoice', () => {
             title: 'Resources',
             resources: [
               {
-                key: `k-0#implied:Patient|${SOURCE_PATIENT}|p-1`,
+                key: 'k-0',
                 title: 'Patient/p-1',
                 resource: patient({ id: 'p-1' }),
                 origin: 'Implied',

@@ -254,11 +254,7 @@ describe('planWrite', () => {
   })
 
   it('writes a record the import implied only while a written row names it', () => {
-    const implied = row(
-      `obs-1#implied:Patient|${PATIENT_SYSTEM}|mrn-9`,
-      patient('implied-9'),
-      'Implied'
-    )
+    const implied = row('implied-9', patient('implied-9'), 'Implied')
     const batch = batchOf({
       har: [implied, observationOf('obs-1', { subject: { reference: 'Patient/implied-9' } })],
     })
@@ -277,8 +273,23 @@ describe('planWrite', () => {
     ])
   })
 
+  it('writes a decoded record no written row names', () => {
+    const decoded = row('p-9', patient('p-9'))
+
+    expect(
+      dispositionsOf(
+        planWrite(
+          batchOf({ har: [decoded] }),
+          () => StagedImport.initial(),
+          noneByDefault,
+          new Set()
+        )
+      )
+    ).toEqual([['har', 'p-9', 'Included']])
+  })
+
   it('writes the record a file decoded over the copy another file set implied under its id, whatever their order', () => {
-    const implied = row(`obs-1#implied:Patient|${PATIENT_SYSTEM}|mrn-9`, patient('p-9'), 'Implied')
+    const implied = row('implied-9', patient('p-9'), 'Implied')
     const decoded = row('p-9', patient('p-9', 'female'))
     const naming = observationOf('obs-1', { subject: { reference: 'Patient/p-9' } })
 

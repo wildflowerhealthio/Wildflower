@@ -642,6 +642,47 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
     ])
   })
 
+  it('builds an implied record from the first reference to name it with a display', () => {
+    const rows = rowsIn([
+      sectionOf('prescriptions', [
+        prescriptionBy('rx-1', byName('Dr. A Smith', null)),
+        prescriptionBy('rx-2', byName('Dr. A Smith', 'DR A SMITH')),
+        prescriptionBy('rx-3', byName('Dr. A Smith', 'Dr. Adam Smith')),
+      ]),
+    ])
+
+    const impliedRow = rows.find(({ origin }) => origin === 'Implied')
+    expect([impliedRow?.key, practitionersIn(rows).map(({ name }) => name[0]?.text)]).toEqual([
+      `prescriptions:1#implied:Practitioner|${NAME_SYSTEM}|Dr. A Smith`,
+      ['DR A SMITH'],
+    ])
+  })
+
+  it('marks each implied row Implied and every decoded row Decoded', () => {
+    const rows = rowsIn([
+      sectionOf('prescriptions', [patient('pat-7'), prescriptionBy('rx-1', byName('Dr. A Smith'))]),
+    ])
+
+    expect(
+      rows.map(({ section, origin, resource }) => [section, origin, resource.resourceType])
+    ).toEqual([
+      ['prescriptions', 'Decoded', 'Patient'],
+      ['prescriptions', 'Decoded', 'MedicationRequest'],
+      ['Implied records', 'Implied', 'Practitioner'],
+    ])
+  })
+
+  it('adds no section when the references imply nothing', () => {
+    const adopted = Either.getOrThrow(
+      DecodedFileSet.adopt(
+        { sections: [sectionOf('people', [patient('pat-7')])], notes: [] },
+        countingMinter()
+      )
+    )
+
+    expect(adopted.sections.map(({ title }) => title)).toEqual(['people'])
+  })
+
   it('property: implies one record per distinct provider named, and resolves every reference to one', () => {
     fc.assert(
       fc.property(
