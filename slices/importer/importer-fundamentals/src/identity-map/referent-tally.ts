@@ -24,7 +24,7 @@ interface Type {
  * however many referents share it, and once in all when a stored link is to
  * a record this import writes over.
  */
-const of = (linkTargets: Iterable<LinkTarget.Linked>): Type => {
+const make = (linkTargets: Iterable<LinkTarget.Linked>): Type => {
   const targets = Array.fromIterable(linkTargets)
   const recordsAmong = (
     isCounted: (target: LinkTarget.Linked) => boolean
@@ -42,5 +42,5 @@ const of = (linkTargets: Iterable<LinkTarget.Linked>): Type => {
   }
 }
 
-export { of }
+export { make }
 export type { Type }

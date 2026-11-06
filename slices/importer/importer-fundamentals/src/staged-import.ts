@@ -8,8 +8,7 @@ import type * as Row from './row.ts'
 /**
  * The pure model of an import that has been decoded but not yet written: which
  * of its resources the reviewer included or excluded, and which carry an
- * inline edit, against the flat list of labeled resources the format's decode
- * produced.
+ * inline edit, against the rows the format's decode produced.
  *
  * @remarks
  * "Staged" in the sense the name carries elsewhere — resources sitting between
@@ -17,9 +16,9 @@ import type * as Row from './row.ts'
  * UI renders over this is *a* review; the model is the staged import itself,
  * and outlives any particular way of reviewing it.
  *
- * Both axes key by {@link LabeledResource.key} so the state stays serializable
- * and survives a settings re-decode: a key the new decode no longer produces
- * simply stops applying, rather than dangling.
+ * Both axes key by a row's `key` ({@link Row.Type}) so the state stays
+ * serializable and survives a settings re-decode: a key the new decode no
+ * longer produces simply stops applying, rather than dangling.
  *
  * @packageDocumentation
  */
@@ -39,16 +38,16 @@ import type * as Row from './row.ts'
  */
 interface Selection {
   /**
-   * The reviewer's own include/exclude choices, keyed by
-   * {@link LabeledResource.key}: `true` for a resource they ticked, `false`
-   * for one they unticked. A choice stands whatever the default becomes; a
-   * key absent here takes the default.
+   * The reviewer's own include/exclude choices, keyed by a row's `key`
+   * ({@link Row.Type}): `true` for a resource they ticked, `false` for one
+   * they unticked. A choice stands whatever the default becomes; a key absent
+   * here takes the default.
    */
   readonly includedByReviewer: ReadonlyMap<string, boolean>
   /**
-   * Per-resource edit overrides, keyed by {@link LabeledResource.key} — a
-   * resource whose key is here has its parsed value replaced by the edited one
-   * at confirm, resolved on the batch's plan (`FileResolution.resolveEdit`).
+   * Per-resource edit overrides, keyed by a row's `key` ({@link Row.Type}):
+   * a resource whose key is here has its parsed value replaced by the edited
+   * one at confirm, resolved on the batch's plan (`FileResolution.resolveEdit`).
    */
   readonly resourceOverrides: ReadonlyMap<string, FhirResourceWithId>
 }

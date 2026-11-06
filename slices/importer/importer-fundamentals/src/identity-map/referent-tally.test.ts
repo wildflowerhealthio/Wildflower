@@ -8,10 +8,10 @@ import * as ReferentTally from './referent-tally.ts'
 const STORED_TYRA = storedOf(patient({ id: 's-1', system: DEVICE }))
 const DECODED_TYRA = storedOf(patient({ id: 'p-1' }))
 
-describe('ReferentTally.of', () => {
+describe('ReferentTally.make', () => {
   it('counts a stored record two referents link to once', () => {
     expect(
-      ReferentTally.of([
+      ReferentTally.make([
         LinkTarget.Stored({ resource: STORED_TYRA }),
         LinkTarget.Stored({ resource: STORED_TYRA }),
       ])
@@ -22,7 +22,7 @@ describe('ReferentTally.of', () => {
     const updated = storedOf(patient({ id: 's-1', system: DEVICE, family: 'Sanders' }))
 
     expect(
-      ReferentTally.of([
+      ReferentTally.make([
         LinkTarget.Decoded({ resource: updated, storedCopy: Option.some(STORED_TYRA) }),
         LinkTarget.Stored({ resource: STORED_TYRA }),
       ])
@@ -31,7 +31,7 @@ describe('ReferentTally.of', () => {
 
   it('counts each decoded record once, however many referents it is', () => {
     expect(
-      ReferentTally.of([
+      ReferentTally.make([
         LinkTarget.Decoded({ resource: DECODED_TYRA, storedCopy: Option.none() }),
         LinkTarget.Decoded({ resource: DECODED_TYRA, storedCopy: Option.none() }),
       ])

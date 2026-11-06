@@ -57,10 +57,10 @@ const unusedMinter = (): string => {
   throw new Error('minted an id for a keyed record')
 }
 
-describe('ResourcePlan.of', () => {
+describe('ResourcePlan.make', () => {
   it('plans a keyed record under the id its key derives, derived once, with its key', () => {
     const patient = patientKeyedBy(KEY)
-    const plan = ResourcePlan.of(patient, unusedMinter)
+    const plan = ResourcePlan.make(patient, unusedMinter)
 
     expect(vi.mocked(localResourceId).mock.calls).toEqual([[KEY.system, 'Patient', KEY.value]])
     expect(plan).toEqual(
@@ -80,7 +80,7 @@ describe('ResourcePlan.of', () => {
       binary(),
       patientKeyedBy(KEY),
       patientIdentifiedBy({ value: 'unqualified' }, DetachedResource.keyIdentifierWire(KEY)),
-    ].map((resource) => ResourcePlan.of(resource, mintId))
+    ].map((resource) => ResourcePlan.make(resource, mintId))
 
     expect([plans[0], plans[2]]).toEqual([
       ResourcePlan.Minted({ resourceType: 'Binary', id: 'minted-1' }),
@@ -93,8 +93,8 @@ describe('ResourcePlan.of', () => {
 describe('ResourcePlan.literalReference', () => {
   it('is the type and id the record is written under, derived or minted', () => {
     expect([
-      ResourcePlan.literalReference(ResourcePlan.of(patientKeyedBy(KEY), unusedMinter)),
-      ResourcePlan.literalReference(ResourcePlan.of(binary(), () => 'minted-1')),
+      ResourcePlan.literalReference(ResourcePlan.make(patientKeyedBy(KEY), unusedMinter)),
+      ResourcePlan.literalReference(ResourcePlan.make(binary(), () => 'minted-1')),
     ]).toEqual([DetachedResource.storedReferenceOf('Patient', KEY), 'Binary/minted-1'])
   })
 })

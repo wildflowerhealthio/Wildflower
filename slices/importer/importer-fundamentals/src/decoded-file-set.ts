@@ -167,7 +167,7 @@ const referencePlanOf = (plannedEntries: readonly PlannedEntry[]): ReferencePlan
 const IMPLIED_SECTION_TITLE = 'Implied records'
 
 /**
- * Plan ids: each decoded entry beside its plan (`ResourcePlan.of`), a keyed
+ * Plan ids: each decoded entry beside its plan (`ResourcePlan.make`), a keyed
  * record's id derived from its key and a keyless one's minted, in entry
  * order, every one `Decoded`.
  *
@@ -181,7 +181,7 @@ const planEntries = (
 ): SectionedList.Type<PlannedEntry> =>
   SectionedList.map(decoded, (entry): PlannedEntry => ({
     entry,
-    plan: ResourcePlan.of(entry.resource, mintId),
+    plan: ResourcePlan.make(entry.resource, mintId),
     origin: 'Decoded',
   }))
 
@@ -261,7 +261,7 @@ const impliedSectionOf = (
             fullUrl: ImpliedRecord.fullUrlOf(referencingFullUrl, logicalReference),
             resource,
           },
-          plan: ResourcePlan.of(resource, mintId),
+          plan: ResourcePlan.make(resource, mintId),
           origin: 'Implied',
         }))
       )

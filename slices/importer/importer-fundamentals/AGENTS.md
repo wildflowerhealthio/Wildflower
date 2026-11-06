@@ -127,7 +127,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
   **`adopt({ sections, notes }, mintId?)`** is how the import stage makes a
   decode's records the device's own, as a `DecodedFile`, in five named
-  steps. It plans every entry (`planEntries`: `ResourcePlan.of`, each plan
+  steps. It plans every entry (`planEntries`: `ResourcePlan.make`, each plan
   kept beside its entry, every one `Decoded`). It implies the records the
   set's references name and no record of the set is (`impliedSectionOf`, a
   pipeline over the set's references, `ResourceReferences.collect`: each
@@ -194,7 +194,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `QualifiedIdentifier`, so a `Derived` plan is the `LogicalReference` to its
   record)
   or **`Minted`** (`{ resourceType, id }`: a keyless record, a new location
-  every import), matched with `ResourcePlan.match`. **`of(resource,
+  every import), matched with `ResourcePlan.match`. **`make(resource,
   mintId)`** plans one record, deriving a keyed record's id there, once, or
   minting a keyless one's; **`literalReference(plan)`** is `<Type>/<id>`.
 - `src/decode-function.ts` — the **`DecodeFunction`** namespace: the batch
@@ -489,7 +489,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     differ, compared on `Patient.demographics` at the clock's now, in the
     order a warning lists them; a Practitioner compares none. What the review
     warns about; the link stands.
-  - **`ReferentTally`** — **`of(linkTargets)`**: how many records the
+  - **`ReferentTally`** — **`make(linkTargets)`**: how many records the
     referents are linked to (`onServer`, `fromImport`, each record counted once, a
     stored record the import writes over counted from the import): the
     review's summary line.

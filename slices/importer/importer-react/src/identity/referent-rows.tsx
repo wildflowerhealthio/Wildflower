@@ -97,7 +97,7 @@ const ReferentRows = (props: ReferentRowsProps): JSX.Element | null => {
     <section aria-label={REFERENTS_HEADING} className={styles['referent-rows']}>
       <h3 className={styles['referent-rows__heading']}>{REFERENTS_HEADING}</h3>
       <p role="status" className={styles['referent-rows__tally']}>
-        {referentTallyLine(ReferentTally.of(LinkPlan.linkTargets(props.plan)))}
+        {referentTallyLine(ReferentTally.make(LinkPlan.linkTargets(props.plan)))}
       </p>
       {LinkableLogicalReference.RESOURCE_TYPES.map((resourceType) => (
         <ReferentGroup key={resourceType} resourceType={resourceType} props={props} />

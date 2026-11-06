@@ -709,8 +709,8 @@ describe('the records the import adopts', () => {
     // The Observation is keyless, so the stage minted its id: the expectation
     // reuses it.
     const mintedObservationId = imported[1]?.id ?? ''
-    const patientPlan = ResourcePlan.of(patientEntry.resource, () => mintedObservationId)
-    const observationPlan = ResourcePlan.of(observationEntry.resource, () => mintedObservationId)
+    const patientPlan = ResourcePlan.make(patientEntry.resource, () => mintedObservationId)
+    const observationPlan = ResourcePlan.make(observationEntry.resource, () => mintedObservationId)
     if (patientPlan._tag !== 'Derived') {
       throw new Error('unreachable: the Patient is keyed by its source id')
     }

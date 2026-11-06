@@ -49,7 +49,7 @@ const { Derived, Minted, $match: match } = Data.taggedEnum<Type>()
  *
  * @param mintId - Mints the id of a keyless record; random outside tests
  */
-const of = (resource: DetachedResource.Type, mintId: () => string): Type =>
+const make = (resource: DetachedResource.Type, mintId: () => string): Type =>
   Option.match(DetachedResource.keyIdentifierOf(resource), {
     onSome: (identifier) =>
       Derived({
@@ -63,5 +63,5 @@ const of = (resource: DetachedResource.Type, mintId: () => string): Type =>
 /** The literal reference the planned record is written under, `<Type>/<id>`. */
 const literalReference = ({ resourceType, id }: Type): string => `${resourceType}/${id}`
 
-export { Derived, literalReference, match, Minted, of }
+export { Derived, literalReference, make, match, Minted }
 export type { Type }
