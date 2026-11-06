@@ -144,10 +144,10 @@ impl<S: GrantStore> ClientsUpdater<S> {
 
     /// Replace `client_id`'s refresh policy in one write scope and return the
     /// row as stored. Its families pick the policy up on their next refresh:
-    /// a tighter one refuses a family that is past it, and a looser one moves
-    /// a family's deadline out when it next rotates, but never revives a
-    /// family that already ended. An essential client's policy may be
-    /// changed like any other.
+    /// a tighter one refuses and ends a family that is past it, and a looser
+    /// one moves a family's deadline out when it next rotates, but never
+    /// revives a family that already ended, one a tighter policy refused
+    /// included. An essential client's policy may be changed like any other.
     ///
     /// # Errors
     ///

@@ -130,7 +130,9 @@ impl<S: GrantStore> TokenExchanger<S> {
     /// revocation store, another connection to the same file, so reading it
     /// under our write lock could stall both connections for the busy
     /// timeout. The `write` scope then re-validates the store-only facts,
-    /// since the family may have ended between the two, rotates, and mints.
+    /// since the family may have ended between the two, holds the family to
+    /// its client's refresh policy (ending it there if the policy refuses
+    /// it), rotates, and mints.
     /// An epoch bumped between the two scopes doesn't stop this one rotation,
     /// as the epoch isn't read again; but the family still began before the
     /// epoch, so its next refresh is refused.
@@ -152,7 +154,6 @@ impl<S: GrantStore> TokenExchanger<S> {
             ValidatedRefreshToken::validate(
                 tx,
                 self.revocation.as_ref(),
-                &self.stale_session_cutoff,
                 authenticated_client,
                 presented_refresh_token,
                 now,
@@ -223,7 +224,8 @@ impl<S: GrantStore> TokenExchanger<S> {
     /// [`exchange_refresh_token`](Self::exchange_refresh_token)'s write half,
     /// inside its write scope `tx`: re-validate the token validated in the
     /// read scope, rotate it, and mint. A refusal is the inner `Err`, so the
-    /// scope keeps a replayed family's end.
+    /// scope keeps the end of a family its refresh policy refused or a replay
+    /// revoked.
     fn rotate_refresh_token_in(
         &self,
         tx: &mut impl GrantTx,

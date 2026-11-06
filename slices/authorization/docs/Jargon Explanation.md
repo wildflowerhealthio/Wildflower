@@ -92,7 +92,7 @@ the row is created or widened only when the Owner approves — see
   (`REFRESH_TOKEN_FAMILY_CEILING`), and revoking a browser session ends the
   families it minted whatever the policy says. The policy is read on every
   refresh, so a change applies to the client's families on their next one.
-  A family that has already passed a deadline stays ended if the policy is
+  A family a limit refuses is ended then, so it stays ended if the policy is
   loosened later. Migration `0050` seeds the policy of the clients the
   migrations seed:
 

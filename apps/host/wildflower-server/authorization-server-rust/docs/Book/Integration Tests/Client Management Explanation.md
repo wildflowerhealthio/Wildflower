@@ -2,7 +2,7 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs}}
 
-The other half of trusting a [client](<../Domain/Client Explanation.md>) on first use: the Owner can see every client the server trusts, take that trust back, and change how long its sign-ins last. `GET /authorization/clients` lists them; `PATCH /authorization/clients/{id}` with `disabledAt` disables or re-enables one, and with `refreshPolicy` replaces its [refresh policy](<../Domain/Client Explanation.md#item-RefreshPolicy>). **A disabled client is refused at both OAuth front doors at once, and re-enabling it restores it with its registration intact.** The [essential clients](<../Domain/Client Explanation.md#item-is_essential_client>) can't be disabled: that would leave the Owner no way in. **A changed refresh policy applies to the client's families on their next refresh.**
+The other half of trusting a [client](<../Domain/Client Explanation.md>) on first use: the Owner can see every client the server trusts, take that trust back, and change how long its sign-ins last. `GET /authorization/clients` lists them; `PATCH /authorization/clients/{id}` with `disabledAt` disables or re-enables one, and with `refreshPolicy` replaces its [refresh policy](<../Domain/Client Explanation.md#item-RefreshPolicy>). **A disabled client is refused at both OAuth front doors at once, and re-enabling it restores it with its registration intact.** The [essential clients](<../Domain/Client Explanation.md#item-is_essential_client>) can't be disabled: that would leave the Owner no way in. **A changed refresh policy applies to the client's families on their next refresh**, and a family it refuses stays ended.
 
 The writes go through [`ClientsUpdater::set_disabled_at`](<../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_disabled_at>) and [`ClientsUpdater::set_refresh_policy`](<../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_refresh_policy>).
 
@@ -74,7 +74,13 @@ Relies on [`require_valid_session`](<../HTTP/Middleware Explanation.md#item-requ
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs a_changed_refresh_policy_applies_on_the_next_refresh}}
 
-Relies on [`ClientsUpdater::set_refresh_policy`](<../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_refresh_policy>) and [`ValidatedRefreshToken::validate`](<../Authority/Redemption Explanation.md#item-ValidatedRefreshToken--validate>). Fixtures first used here: [`plant_aged_family`](<Test Fixtures Explanation.md#item-plant_aged_family>), [`refresh_confidential`](<Test Fixtures Explanation.md#item-refresh_confidential>) and [`stored_refresh_policy`](<Test Fixtures Explanation.md#item-stored_refresh_policy>).
+Relies on [`ClientsUpdater::set_refresh_policy`](<../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_refresh_policy>) and [`ValidatedRefreshToken::revalidate`](<../Authority/Redemption Explanation.md#item-ValidatedRefreshToken--revalidate>). Fixtures first used here: [`plant_aged_family`](<Test Fixtures Explanation.md#item-plant_aged_family>), [`refresh_confidential`](<Test Fixtures Explanation.md#item-refresh_confidential>) and [`stored_refresh_policy`](<Test Fixtures Explanation.md#item-stored_refresh_policy>).
+
+### `a_family_refused_under_a_tightened_policy_stays_ended`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs a_family_refused_under_a_tightened_policy_stays_ended}}
+
+Relies on [`ValidatedRefreshToken::revalidate`](<../Authority/Redemption Explanation.md#item-ValidatedRefreshToken--revalidate>), which ends the family it refuses.
 
 ### `a_refresh_policy_is_checked_and_an_essential_client_s_can_change`
 

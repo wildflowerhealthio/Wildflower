@@ -547,6 +547,50 @@ async fn a_changed_refresh_policy_applies_on_the_next_refresh() {
     );
 }
 
+/// A family refused under a tightened refresh policy has ended: loosening
+/// the policy again doesn't revive it, and the refused token is turned away
+/// as expired.
+#[tokio::test]
+async fn a_family_refused_under_a_tightened_policy_stays_ended() {
+    let (g, db) = spin_up_with_confidential_client();
+    let owner = mint_scoped_token(&db, &["wildflower/Client.u"]);
+    plant_aged_family(&db, "aged-token", Duration::days(2), Duration::hours(1));
+
+    for (idle_ttl_seconds, why) in [
+        (serde_json::json!(900), "idle under the tightened policy"),
+        (serde_json::Value::Null, "ended, though the policy loosened"),
+    ] {
+        let res = patch_client(
+            &g,
+            &owner,
+            CONFIDENTIAL_CLIENT_ID,
+            &serde_json::json!({ "refreshPolicy": {
+                "idleTtlSeconds": idle_ttl_seconds,
+                "maxTtlSeconds": null,
+                "endsWithBrowserSession": false,
+            }}),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let res = refresh_confidential(&g, "aged-token").await;
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST, "{why}");
+        assert_eq!(
+            body_json(res.into_body()).await["error"],
+            "invalid_grant",
+            "{why}"
+        );
+    }
+
+    let (_, family) = store_handle(&db)
+        .read(|tx| tx.refresh_token_with_family_by_hash(&token_storage_hash("aged-token")))
+        .unwrap()
+        .expect("the refused token resolves");
+    assert!(
+        family.expires_at <= Utc::now(),
+        "the refusal ended the family"
+    );
+}
+
 /// A refresh-policy body with a limit under a second or past the 365-day
 /// ceiling, a missing field, or both changes at once is refused and leaves
 /// the client as it was. An essential client's policy can be changed.
