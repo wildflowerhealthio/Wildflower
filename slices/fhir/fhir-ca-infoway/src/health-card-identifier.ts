@@ -1,5 +1,5 @@
-import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Match, Option } from 'effect'
+import { IdentifierAndReference, narrowFields } from '@wildflowerhealthio/fhir-r4/data-types'
+import { Option, ParseResult, Schema } from 'effect'
 
 import type * as HealthCardProvince from './health-card-province.ts'
 
@@ -30,59 +30,118 @@ const ONTARIO_HEALTH_CARD_VERSION_CODE_URL =
 
 /**
  * A health card number as an `Identifier` on the wire: always with its
- * `system` and `value`, so a source can key a record by it.
+ * `system` and a non-empty `value`, so a source can key a record by it.
  */
-type HealthCardIdentifier = typeof IdentifierAndReference.IdentifierSchema.Encoded & {
-  readonly system: string
-  readonly value: string
+const HealthCardIdentifierSchema = narrowFields(
+  Schema.encodedSchema(IdentifierAndReference.IdentifierSchema),
+  { system: Schema.String, value: Schema.NonEmptyString }
+)
+
+type HealthCardIdentifier = typeof HealthCardIdentifierSchema.Type
+
+/**
+ * A whole Ontario health card, its separators stripped: the ten-digit number,
+ * then the version code of one or two letters when the card prints one.
+ */
+const ONTARIO_HEALTH_CARD = /^(?<number>\d{10})(?<versionCode>[A-Za-z]{1,2})?$/
+
+/** A British Columbia PHN, its separators stripped: exactly ten digits. */
+const BRITISH_COLUMBIA_PHN = /^\d{10}$/
+
+/**
+ * How one province's printed number becomes its identifier.
+ *
+ * @remarks
+ * Each rule checks the number's shape only: neither Ontario's nor British
+ * Columbia's check digit is verified (#1523), so a misread number with the
+ * right shape still decodes.
+ */
+interface PrintedRule {
+  /** The identifier a number less its separators is; `None` when it is not this province's shape. */
+  readonly identifierOf: (card: string) => Option.Option<HealthCardIdentifier>
+  /** The failure message for a number that is not, naming the shape expected. */
+  readonly expected: string
 }
 
-/**
- * A printed Ontario health card number split into its number and its version
- * code, the one or two letters after the last digit, with any whitespace or
- * hyphens between them (`1234567890 AB`, `1234-567-890-AB`). A number printed
- * with no version code has none.
- */
-const ONTARIO_VERSION_CODE = /^(?<number>.*\d)[\s-]*(?<versionCode>[A-Za-z]{1,2})$/
+const PrintedRules: Readonly<Record<HealthCardProvince.Type, PrintedRule>> = {
+  ON: {
+    identifierOf: (card) =>
+      Option.fromNullable(ONTARIO_HEALTH_CARD.exec(card)?.groups).pipe(
+        Option.map(({ number, versionCode }) => ({
+          system: HealthCardNumberSystem.ON,
+          value: number,
+          ...Option.match(Option.fromNullable(versionCode), {
+            onNone: () => ({}),
+            onSome: (code) => ({
+              extension: [{ url: ONTARIO_HEALTH_CARD_VERSION_CODE_URL, valueString: code }],
+            }),
+          }),
+        }))
+      ),
+    expected:
+      'not an Ontario health card number: expected exactly ten digits, then a version code of up to two letters',
+  },
+  BC: {
+    identifierOf: (card) =>
+      Option.liftPredicate(card, (phn) => BRITISH_COLUMBIA_PHN.test(phn)).pipe(
+        Option.map((phn) => ({ system: HealthCardNumberSystem.BC, value: phn }))
+      ),
+    expected: 'not a British Columbia PHN: expected exactly ten digits',
+  },
+}
 
-const ontarioHealthCardIdentifier = (printed: string): HealthCardIdentifier =>
-  Option.fromNullable(ONTARIO_VERSION_CODE.exec(printed)?.groups).pipe(
-    Option.match({
-      onNone: () => ({ system: HealthCardNumberSystem.ON, value: printed }),
-      onSome: ({ number, versionCode }) => ({
-        system: HealthCardNumberSystem.ON,
-        value: number,
-        extension: [{ url: ONTARIO_HEALTH_CARD_VERSION_CODE_URL, valueString: versionCode }],
-      }),
-    })
-  )
+/** A printed number less the spaces and hyphens it may be printed with, anywhere in it. */
+const withoutSeparators = (printed: string): string => printed.replaceAll(/[\s-]/g, '')
+
+/** An identifier as its card prints it: the number, then the version code when it has one. */
+const printedOf = (identifier: HealthCardIdentifier): string =>
+  [
+    identifier.value,
+    ...(identifier.extension ?? []).flatMap(({ url, valueString }) =>
+      url === ONTARIO_HEALTH_CARD_VERSION_CODE_URL && valueString !== undefined ? [valueString] : []
+    ),
+  ].join(' ')
 
 /**
- * A health card number as printed, as the `Identifier` its province writes it
+ * A health card number as printed ⇄ the `Identifier` its province writes it
  * as.
  *
  * @param province - The province that issued the card
- * @param printed - The number as the source prints it
- * @returns The identifier in the province's {@link HealthCardNumberSystem}:
- *   Ontario's number in `value` with its version code, when it prints one, in
- *   the {@link ONTARIO_HEALTH_CARD_VERSION_CODE_URL} extension; British
- *   Columbia's PHN in `value`, which has no version code
- *
- * @remarks
- * Written as printed after that split, with no check that it is a valid
- * number: a source reports what a card says, and is not the registry that
- * issued it.
+ * @returns A schema that decodes the printed number, less any spaces and
+ *   hyphens, into an identifier in the province's
+ *   {@link HealthCardNumberSystem}: Ontario's ten digits in `value` and its
+ *   version code, when it prints one, in the
+ *   {@link ONTARIO_HEALTH_CARD_VERSION_CODE_URL} extension; British
+ *   Columbia's ten-digit PHN in `value`. Decoding fails when the number is
+ *   not that province's shape, with a message naming the shape expected, so a
+ *   wrong province choice reads as one. Encoding gives the printed form back
+ *   (`1234567890 AB`), and fails for an identifier in another system.
  */
-const of = (province: HealthCardProvince.Type, printed: string): HealthCardIdentifier =>
-  Match.value(province).pipe(
-    Match.when('ON', () => ontarioHealthCardIdentifier(printed)),
-    Match.when('BC', () => ({ system: HealthCardNumberSystem.BC, value: printed })),
-    Match.exhaustive
-  )
+const FromPrinted = (
+  province: HealthCardProvince.Type
+): Schema.Schema<HealthCardIdentifier, string> => {
+  const { identifierOf, expected } = PrintedRules[province]
+  const system = HealthCardNumberSystem[province]
+  return Schema.transformOrFail(Schema.String, HealthCardIdentifierSchema, {
+    strict: true,
+    decode: (printed, _, ast) =>
+      Option.match(identifierOf(withoutSeparators(printed)), {
+        onNone: () => ParseResult.fail(new ParseResult.Type(ast, printed, expected)),
+        onSome: ParseResult.succeed,
+      }),
+    encode: (identifier, _, ast) =>
+      identifier.system === system
+        ? ParseResult.succeed(printedOf(identifier))
+        : ParseResult.fail(
+            new ParseResult.Type(ast, identifier, `not a health card number in ${system}`)
+          ),
+  }).annotations({ identifier: `HealthCardIdentifier.FromPrinted('${province}')` })
+}
 
 export {
+  FromPrinted,
   HealthCardNumberSystem,
-  of,
   ONTARIO_HEALTH_CARD_VERSION_CODE_URL,
+  HealthCardIdentifierSchema as Schema,
   type HealthCardIdentifier as Type,
 }

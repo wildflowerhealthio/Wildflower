@@ -7,7 +7,7 @@ import { Schema } from 'effect'
  * @remarks
  * Not every province: each one here has its health card naming system in
  * Canada Health Infoway's URI registry and its rule for writing a printed
- * number ({@link HealthCardIdentifier.of}). Another province is added when a
+ * number ({@link HealthCardIdentifier.FromPrinted}). Another province is added when a
  * source needs it.
  */
 const HealthCardProvinceSchema = Schema.Literal('ON', 'BC')
