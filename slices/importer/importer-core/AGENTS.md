@@ -4,7 +4,8 @@ The **pure core** of the importer slice: the closed format registry and the
 batch machinery a shell drives. It sits between the format bindings
 (`har-importer-core`, `lifelabs-pdf-importer-core`, `dicom-importer-core`) and
 the React shell (`importer-react`), which adds each format's `SettingsPicker`
-(for a format that has settings) to the registry here and runs these functions from its hooks.
+(for a format that has settings) to the registry here and runs these functions
+from its hooks.
 
 No DOM, no `fs`, no React, no client: every export is a value or an Effect
 whose only requirement is **`DecodeRequirements`**, what the registered
@@ -23,19 +24,19 @@ package alone and a layer that provides those.
   their union, and **`BoundFormat<K>`** is one format's importer with its own
   settings, tag and requirement.
   **`FormatSettings`** is the per-format settings record and the source of
-  truth, `null` for a format with no settings (HAR) — **`FormatKind`** is its key union, **`defaultFormatSettings`** the
-  seed a fresh import starts from, and **`formatKinds`** the typed
-  registry-order walk, _derived_ from `formatRegistry` rather than listed,
-  because a hand-written `readonly FormatKind[]` was the one slot a missing
-  format could slip through silently. `defaultFormatSettings`, by contrast, is
-  written out per format on purpose: `Object.fromEntries` erases the
-  key-to-value correlation the record's type states, so a derived version needs
-  an `as FormatSettings` and checks nothing, while the literal makes a missing
-  format a compile error. Adding a format is one `FormatSettings`
-  entry, one registry entry, one default — and `collectFormats` below, which
-  `resolveMentions` also assembles its batch through. All four are
-  mapped or exhaustive types over `FormatKind`, so missing any of them is a
-  compile error.
+  truth, `null` for a format with no settings (HAR) — **`FormatKind`** is its
+  key union, **`defaultFormatSettings`** the seed a fresh import starts from,
+  and **`formatKinds`** the typed registry-order walk, _derived_ from
+  `formatRegistry` rather than listed, because a hand-written
+  `readonly FormatKind[]` was the one slot a missing format could slip through silently.
+  `defaultFormatSettings`, by contrast, is written out per format on purpose:
+  `Object.fromEntries` erases the key-to-value correlation the record's type
+  states, so a derived version needs an `as FormatSettings` and checks nothing,
+  while the literal makes a missing format a compile error. Adding a format is
+  one `FormatSettings` entry, one registry entry, one default — and
+  `collectFormats` below, which `resolveMentions` also assembles its batch
+  through. All four are mapped or exhaustive types over `FormatKind`, so missing
+  any of them is a compile error.
 - `src/import-decoded.ts` — **the import stage**, the one place a record is
   made the device's own, a source file is minted and `meta.source` is
   stamped. **`importDecoded(importer, decoded)`** takes one format's

@@ -90,9 +90,9 @@ Decode each wire with `DetachedResource.decodeUnknown(<Type>.Schema)`, which
 fails a wire that carries an `id`. A section carries no source base URL or
 system: everything the import stage needs is on the records. An entry's `fullUrl` is its identity within the
 set, as in a FHIR transaction bundle; for a format with settings it must be
-stable across a settings re-decode. The import stage titles every row by the reference it will be
-written under (`DecodedFileSet.writtenReferenceTitle`), and makes every `wf-`
-id; the decode makes neither.
+stable across a settings re-decode. The import stage titles every row by the
+reference it will be written under (`DecodedFileSet.writtenReferenceTitle`), and
+makes every `wf-` id; the decode makes neither.
 
 A format whose files stand alone reads `pickedFiles[0]` and says nothing more:
 each picked file is its own set by default, in the order the files were picked.
@@ -165,10 +165,11 @@ Four obligations:
   settings it must also be stable across settings changes where the
   underlying resource is unchanged (DICOM keys by the resource's role),
   because the reviewer's per-resource exclusions and inline edits are keyed
-  by it and must survive a settings re-decode. Key **within one set** and do not try to make keys unique
-  across the batch yourself — `DecodeFunction.make` prefixes each set's keys
-  with its first picked file (`FormatDecode.keyPrefix`), which is what makes
-  a fixed key like `patient` safe when the reviewer picked eight images at once.
+  by it and must survive a settings re-decode. Key **within one set** and do not
+  try to make keys unique across the batch yourself — `DecodeFunction.make`
+  prefixes each set's keys with its first picked file
+  (`FormatDecode.keyPrefix`), which is what makes a fixed key like `patient`
+  safe when the reviewer picked eight images at once.
 - **Sections are the display.** Pick a sectioning that means something to the
   reviewer: HAR sections by URL, LifeLabs by report. A section's `title` is the
   heading the shell renders.
@@ -420,9 +421,10 @@ A format with no settings takes its core importer as it is
 (`har: coreRegistry.har`). The picker slot is conditional on the format's
 `FormatSettings` entry: forbidden where it is `null`, required and typed
 against it everywhere else, so a format with settings that is missing its
-settings picker **fails to compile** rather than at runtime. The read and write halves need no new branch: `importer-core`
-dispatches generically (`<K extends FormatKind>(kind: K)` keeps `registry[kind]`
-and `settings[kind]` correlated), and the confirm is format-blind.
+settings picker **fails to compile** rather than at runtime. The read and write
+halves need no new branch: `importer-core` dispatches generically
+(`<K extends FormatKind>(kind: K)` keeps `registry[kind]` and `settings[kind]` correlated),
+and the confirm is format-blind.
 
 ## 7. Tests per layer
 
@@ -430,13 +432,13 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 `/javascript-testing-expert` command). Cover each layer where it lives:
 
 - **Decode** — a fixture file decodes to the expected sections and notes; for
-  a format with settings, keys are stable across a settings change. Pin the source file contract too: a pick
-  yields a "Source file" first section and `meta.source` on every extracted
-  resource, the minted id is the same for the same bytes and name, and malformed
-  bytes yield an `unreadableFiles` entry rather than a failed Effect. A format
-  with a `groupBy` also pins the grouping itself: which picks share a key, which
-  are `Left`, and that the resources are identical whatever order the files were
-  picked in.
+  a format with settings, keys are stable across a settings change. Pin the
+  source file contract too: a pick yields a "Source file" first section and
+  `meta.source` on every extracted resource, the minted id is the same for the
+  same bytes and name, and malformed bytes yield an `unreadableFiles` entry
+  rather than a failed Effect. A format with a `groupBy` also pins the grouping
+  itself: which picks share a key, which are `Left`, and that the resources are
+  identical whatever order the files were picked in.
 - **Settings picker** (a format with settings) — a change reports the next
   settings value verbatim.
 - **Shell** — the end-to-end flow: zero writes to reach a review, the confirm

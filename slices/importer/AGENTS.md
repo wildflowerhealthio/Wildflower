@@ -97,13 +97,14 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
   the React half of the registry (each `importer-core` importer spread with
-  that format's `SettingsPicker`, for a format that has settings) and the generalized sectioned review every format
-  shares (per-resource include/edit with the inline JSON `ResourceEditor`),
-  plus the identity map's state and its review: one select per referent above
-  the format groups, a select per mention on each row, and **Needs a patient**
-  / **Needs a provider** for what the referent choices leave unlinked. Also
-  `ServerSourceFileList`, the uploaded-source-files pick source the
-  anonymizer slice's shell takes through its `serverSource` slot.
+  that format's `SettingsPicker`, for a format that has settings) and the
+  generalized sectioned review every format shares (per-resource include/edit
+  with the inline JSON `ResourceEditor`), plus the identity map's state and its
+  review: one select per referent above the format groups, a select per mention
+  on each row, and **Needs a patient** / **Needs a provider** for what the
+  referent choices leave unlinked. Also `ServerSourceFileList`, the
+  uploaded-source-files pick source the anonymizer slice's shell takes through
+  its `serverSource` slot.
 
 A host that provides the FHIR write client and the authed runner sits above
 `importer-react` and mounts `ImporterScreen` — the Importer web app

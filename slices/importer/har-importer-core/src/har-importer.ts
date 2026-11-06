@@ -75,10 +75,11 @@ const sourceFileFormat = {
  *
  * @remarks
  * No settings: every response routes to its top-ranked kind, so the format's
- * settings are `null` and the shell shows no settings form for it. No `groupBy` — a HAR stands alone, so every pick is its own set — and no
- * `linkSourceFile`: a captured browsing session is an engineering artifact, so
- * its source file is stored exactly as minted rather than filed under a patient,
- * where it would land in `Patient/$everything`.
+ * settings are `null` and the shell shows no settings form for it. No `groupBy`
+ * — a HAR stands alone, so every pick is its own set — and no `linkSourceFile`:
+ * a captured browsing session is an engineering artifact, so its source file is
+ * stored exactly as minted rather than filed under a patient, where it would
+ * land in `Patient/$everything`.
  */
 const harImporter: FileImporter.Type<null, typeof format> = {
   format,

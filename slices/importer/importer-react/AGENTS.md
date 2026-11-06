@@ -8,10 +8,10 @@ One surface a host app mounts, reading the authed runner out of router context:
   chosen, or source files already on the device's FHIR server), review
   exactly what every format would write in one combined, **generalized**
   view — each format's decoded sections with per-resource include/edit, under
-  its own settings form when it has settings — confirm once to write the reviewed, included
-  resources across the batch (every file's source file among them), and read
-  the per-format results. Every source picks a **batch**: several local files,
-  several folder entries, several server rows.
+  its own settings form when it has settings — confirm once to write the
+  reviewed, included resources across the batch (every file's source file among
+  them), and read the per-format results. Every source picks a **batch**:
+  several local files, several folder entries, several server rows.
 
 The whole read half — grouping a pick by format, running each format's
 `decode`, re-decoding under new settings, and planning a format's write — is
@@ -38,14 +38,13 @@ It depends on `importer-core` (the importer registry, `readBatch` /
 vocabulary, the `FormatDecode.Result` and `DecodedFile` shapes, and the pure
 `StagedImport` model), each format's
 React package for its settings picker only (`lifelabs-pdf-importer-react`,
-`dicom-importer-react`; HAR has no settings and no React package), `fhir-r4` (the typed
-client, `persistTransactionBundle`, and the server-diff classifier), `fhir-r4-react`
-(the authed runner and the slice runtime layer), `positioned-text-web` (the
-pdfjs `PositionedTextExtractor` layer the read runs under), and
-`react-tundraish`. It
-names no format's core package and no `web-trace-core` at runtime — HAR
-fixtures in `importer-screen.test.tsx` are the only place `http-archive` and
-`web-trace-core` appear at all.
+`dicom-importer-react`; HAR has no settings and no React package), `fhir-r4`
+(the typed client, `persistTransactionBundle`, and the server-diff classifier),
+`fhir-r4-react` (the authed runner and the slice runtime layer),
+`positioned-text-web` (the pdfjs `PositionedTextExtractor` layer the read runs
+under), and `react-tundraish`. It names no format's core package and no
+`web-trace-core` at runtime — HAR fixtures in `importer-screen.test.tsx` are the
+only place `http-archive` and `web-trace-core` appear at all.
 
 The seam between this package and a format is its **`FileImporter`** (reached
 through `importer-core`'s registry) and the `StagedImport` model: the read half
@@ -445,13 +444,14 @@ The importer has no HTTP wire union to derive, so there is no separate
   format. `persistTransactionBundle`'s error channel is `never`, so a refusal
   is every entry's outcome under the one cause, not a raised error. A claimed
   format with no `Included` decision (nothing in it decoded to a resource, the
-  reviewer left every row out, or every file unreadable; `skipReasonFor` says which) is
-  `skipped`, never a failure, and never reaches the bundle. `isPartialBatch` lifts
-  `collectImportSummary` to the batch: any rejected resource, a linked record
-  included, makes it partial, and `import-results.tsx` frames a batch nothing
-  of which wrote as failed; a `skipped` format alone does neither. There is
-  **no** whole-flow `errored` state and no `uploadFailed` result — a refused
-  batch is its rows in the results, their cause the server's own response.
+  reviewer left every row out, or every file unreadable; `skipReasonFor` says
+  which) is `skipped`, never a failure, and never reaches the bundle.
+  `isPartialBatch` lifts `collectImportSummary` to the batch: any rejected
+  resource, a linked record included, makes it partial, and `import-results.tsx`
+  frames a batch nothing of which wrote as failed; a `skipped` format alone does
+  neither. There is **no** whole-flow `errored` state and no `uploadFailed`
+  result — a refused batch is its rows in the results, their cause the server's
+  own response.
 - **The confirm affordance is gated on the batch having a resource to
   write.** `PreviewPanel` shows the single confirm button only when
   `planWrite`'s plan — over the **claimed** formats' rows and the linked

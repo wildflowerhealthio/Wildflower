@@ -55,14 +55,13 @@ shell's shared `persistTransactionBundle`.
   responses that parsed to at least one resource), each entry's `fullUrl` its
   preview key, `<response id>:<index>` —
   plus one diagnostic note per response that yielded nothing (no kind
-  matched, parse failure, body absent, duplicate). The import stage adopts the records and
-  puts them under the source-file section described above. Never
-  fails: a malformed source file comes back as that file's `unreadableFiles` entry,
-  leaving the batch's other files reviewable. Resource keys are
+  matched, parse failure, body absent, duplicate). The import stage adopts the
+  records and puts them under the source-file section described above. Never
+  fails: a malformed source file comes back as that file's `unreadableFiles`
+  entry, leaving the batch's other files reviewable. Resource keys are
   `responseId:index`, unique **within one decode of one source file**;
-  `DecodeFunction.make` prefixes each set's keys with its slot
-  in the batch, so two source files in one pick cannot collide on
-  `responseId:index`.
+  `DecodeFunction.make` prefixes each set's keys with its slot in the batch, so
+  two source files in one pick cannot collide on `responseId:index`.
 - `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses)`
   routes each response to its top-specificity kind (`Extraction.routeTo` —
   there are no per-response overrides) and parses through it

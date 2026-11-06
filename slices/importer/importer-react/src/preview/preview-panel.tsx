@@ -42,22 +42,22 @@ import panelStyles from './preview-panel.module.css'
  * A pick is a *batch* of one or more files, grouped by format and decoded
  * into one `FormatDecode.Result` per format, rendered together under
  * one confirm. The display is fully general — the same for every format:
- * formats shown under that format's settings form (when it has settings), each format showing its
- * decoded sections (title + per-resource rows with include/edit/revert)
- * and its diagnostic notes, with unreadable files reported rather than
- * sinking the batch. Below the formats, the batch's linked records — the
- * records it names but holds no copy of, as the referent rows link them —
+ * formats shown under that format's settings form (when it has settings), each
+ * format showing its decoded sections (title + per-resource rows with
+ * include/edit/revert) and its diagnostic notes, with unreadable files reported
+ * rather than sinking the batch. Below the formats, the batch's linked records
+ * — the records it names but holds no copy of, as the referent rows link them —
  * are shown with their server diff and no toggle: which are written is
- * `importer-core`'s `planWrite`, which the confirm reads too — a stored
- * copy whenever the server does not hold it unchanged, a new record only
- * when a resource the batch writes names it. Each format's body lists what
- * the referent links leave unlinked in it (`UnlinkedMention.leftByReferentLinks`
- * on the batch's plan, of each row as decoded or edited) and offers a select
- * per linkable mention
- * (`mentionLinkOptions`, a pick calling `onChooseMention`). A settings change calls
- * `onSettingsChange`; the shell re-decodes that format. The confirm appears
- * only when that plan includes at least one resource, and it does not write —
- * it calls `onConfirm`; the confirm step writes exactly the reviewed objects.
+ * `importer-core`'s `planWrite`, which the confirm reads too — a stored copy
+ * whenever the server does not hold it unchanged, a new record only when a
+ * resource the batch writes names it. Each format's body lists what the
+ * referent links leave unlinked in it (`UnlinkedMention.leftByReferentLinks` on
+ * the batch's plan, of each row as decoded or edited) and offers a select per
+ * linkable mention (`mentionLinkOptions`, a pick calling `onChooseMention`). A
+ * settings change calls `onSettingsChange`; the shell re-decodes that format.
+ * The confirm appears only when that plan includes at least one resource, and
+ * it does not write — it calls `onConfirm`; the confirm step writes exactly the
+ * reviewed objects.
  *
  * @packageDocumentation
  */
