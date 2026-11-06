@@ -73,6 +73,12 @@ The host app's seeded client is allowed every grant, and so is a client trusted 
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/client/refresh_policy.rs RefreshPolicy::trusted_on_first_use tests="tests::a_first_use_client_s_policy_follows_its_scopes"}}
 
+#### `after_widening`
+
+**A widening only ever tightens a policy.** An app that can now manage the server ends with its browser session and goes idle within two hours, the policy migration `0050` gives such a row, while a limit the Owner already set tighter stays.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/client/refresh_policy.rs RefreshPolicy::after_widening tests="tests::a_widening_into_a_wildflower_scope_tightens_the_policy"}}
+
 #### `family_deadline`
 
 **A family's deadline is its earliest limit.** Starting a family sets it, and each rotation moves it, so an idle limit slides forward with use but never past the maximum lifetime or the ceiling.

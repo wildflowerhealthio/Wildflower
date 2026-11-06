@@ -64,13 +64,42 @@ impl RefreshPolicy {
     /// policy by the same rule.
     #[must_use]
     pub fn trusted_on_first_use(allowed_scopes: &[String]) -> Self {
-        if allowed_scopes
-            .iter()
-            .any(|scope| scope.starts_with("wildflower/"))
-        {
+        if holds_wildflower_scope(allowed_scopes) {
             WILDFLOWER_SCOPED_FIRST_USE_POLICY
         } else {
             DATA_SCOPED_FIRST_USE_POLICY
+        }
+    }
+
+    /// The policy a client holding this one has once an approval widens its
+    /// registration from `registered_scopes` to `widened_scopes`. A widening
+    /// that gives it its first `wildflower/` scope tightens it to at least
+    /// the policy a client trusted on first use with that scope starts with,
+    /// the one migration `0050` gives such a row, so a client that can now
+    /// manage the server doesn't keep a data app's week of refresh. Any other
+    /// widening leaves it as it is.
+    #[must_use]
+    pub fn after_widening(self, registered_scopes: &[String], widened_scopes: &[String]) -> Self {
+        if !holds_wildflower_scope(registered_scopes) && holds_wildflower_scope(widened_scopes) {
+            self.tightened_to(WILDFLOWER_SCOPED_FIRST_USE_POLICY)
+        } else {
+            self
+        }
+    }
+
+    /// This policy with each limit tightened to `stricter`'s where that one
+    /// is stricter: the shorter idle limit, the shorter maximum lifetime, and
+    /// ending with the browser session if either does. A limit this policy
+    /// already holds tighter is kept.
+    fn tightened_to(self, stricter: RefreshPolicy) -> Self {
+        let shorter = |limit: Option<Duration>, stricter_limit: Option<Duration>| {
+            limit.into_iter().chain(stricter_limit).min()
+        };
+        RefreshPolicy {
+            idle_ttl: shorter(self.idle_ttl, stricter.idle_ttl),
+            max_ttl: shorter(self.max_ttl, stricter.max_ttl),
+            ends_with_browser_session: self.ends_with_browser_session
+                || stricter.ends_with_browser_session,
         }
     }
 
@@ -122,6 +151,15 @@ impl RefreshPolicy {
     }
 }
 
+/// Whether any of `allowed_scopes` is a `wildflower/` scope, one that lets a
+/// client manage the server. Migration `0050` reads a row's scopes by the
+/// same prefix.
+fn holds_wildflower_scope(allowed_scopes: &[String]) -> bool {
+    allowed_scopes
+        .iter()
+        .any(|scope| scope.starts_with("wildflower/"))
+}
+
 /// `seconds` as a refresh limit, if a client may hold it: at least a second,
 /// and no longer than [`REFRESH_TOKEN_FAMILY_CEILING`], past which the
 /// ceiling ends the family anyway.
@@ -166,6 +204,59 @@ mod tests {
         assert_eq!(
             RefreshPolicy::trusted_on_first_use(&[]),
             DATA_SCOPED_FIRST_USE_POLICY
+        );
+    }
+
+    /// A widening that gives a client its first `wildflower/` scope tightens
+    /// each of its limits to the session-bound two-hour policy, keeping any
+    /// it already holds tighter; any other widening leaves the policy alone.
+    #[test]
+    fn a_widening_into_a_wildflower_scope_tightens_the_policy() {
+        let scopes = |scopes: &[&str]| scopes.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        let data = scopes(&["openid", "patient/*.rs"]);
+        let managing = scopes(&["openid", "patient/*.rs", "wildflower/Grant.r"]);
+        let more_data = scopes(&["openid", "patient/*.rs", "user/*.rs"]);
+        let more_managing = scopes(&["openid", "wildflower/Grant.r", "wildflower/Client.r"]);
+
+        assert_eq!(
+            DATA_SCOPED_FIRST_USE_POLICY.after_widening(&data, &managing),
+            RefreshPolicy {
+                idle_ttl: Some(Duration::hours(2)),
+                max_ttl: Some(Duration::days(7)),
+                ends_with_browser_session: true,
+            }
+        );
+        let ceiling_only = RefreshPolicy {
+            idle_ttl: None,
+            max_ttl: None,
+            ends_with_browser_session: false,
+        };
+        assert_eq!(
+            ceiling_only.after_widening(&data, &managing),
+            WILDFLOWER_SCOPED_FIRST_USE_POLICY
+        );
+        let owner_chosen = RefreshPolicy {
+            idle_ttl: Some(Duration::minutes(15)),
+            max_ttl: Some(Duration::hours(1)),
+            ends_with_browser_session: false,
+        };
+        assert_eq!(
+            owner_chosen.after_widening(&data, &managing),
+            RefreshPolicy {
+                ends_with_browser_session: true,
+                ..owner_chosen
+            }
+        );
+
+        assert_eq!(ceiling_only.after_widening(&data, &more_data), ceiling_only);
+        assert_eq!(
+            ceiling_only.after_widening(&scopes(&["wildflower/Grant.r"]), &more_managing),
+            ceiling_only
+        );
+        assert_eq!(
+            ceiling_only.after_widening(&data, &scopes(&["Wildflower/Grant.r"])),
+            ceiling_only,
+            "the prefix is case-sensitive, as migration 0050's is"
         );
     }
 

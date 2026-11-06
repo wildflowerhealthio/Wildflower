@@ -110,8 +110,10 @@ the row is created or widened only when the Owner approves — see
   migrations left (the SMART sample apps), starts with a policy by its
   scopes: with any `wildflower/` scope it ends with the browser session and
   lasts 2 hours idle; otherwise it lasts a day idle and 7 days at most.
-  Widening the registration later leaves the policy alone, and so does the
-  seeding every boot runs: only the Owner changes it.
+  A widening that gives a client its first `wildflower/` scope tightens its
+  policy to at least that session-bound two-hour one, keeping any limit it
+  already holds tighter. Any other widening leaves the policy alone, and so
+  does the seeding every boot runs.
 
 - **Owner management:** `GET /authorization/clients` lists every row (never the
   secret hash) with an `essential` flag and its `refreshPolicy`.
