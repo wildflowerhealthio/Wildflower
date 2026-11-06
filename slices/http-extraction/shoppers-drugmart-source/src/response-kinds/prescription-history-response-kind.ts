@@ -69,8 +69,8 @@ const decodeDispense = DetachedResource.decodeUnknown(MedicationDispense.Schema)
 /**
  * The `authorizingPrescription` wire linking a dispense to its request: the
  * logical reference to the `MedicationRequest` keyed by `prescriptionId`, else
- * an identifier-only reference by `prescriptionNumber`. `undefined` when
- * neither is present.
+ * the logical reference to the `MedicationRequest` carrying its
+ * `prescriptionNumber`. `undefined` when neither is present.
  *
  * @remarks
  * The slot holds one identifier, so a fill with a `prescriptionId` names the
@@ -92,10 +92,10 @@ const authorizingPrescriptionWire = (
   if (dispense.prescriptionNumber != null) {
     return [
       {
-        identifier: {
+        ...DetachedResource.logicalReferenceWire('MedicationRequest', {
           system: ShoppersIdentifierSystem.PrescriptionNumber,
           value: String(dispense.prescriptionNumber),
-        },
+        }),
       },
     ]
   }
