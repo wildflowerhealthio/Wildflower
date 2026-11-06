@@ -1,7 +1,8 @@
-import { Effect, Option } from 'effect'
+import { Array as Arr, Effect, Either, Option } from 'effect'
 
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
+  type Extraction,
   type HttpResponseKind,
   SourceDescriptor,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
@@ -53,32 +54,57 @@ const fullUrlOf = (responseUrl: string, key: string, resource: DetachedResource.
     : key
 
 /**
+ * The previews with every record whose `fullUrl` ({@link fullUrlOf}) an
+ * earlier record already has left out, and a response left with no record a
+ * `duplicate` of the response that first held it.
+ *
+ * @remarks
+ * So a Binary served by two reads (one with a query string, one without) is
+ * one record, and the second read is noted as a duplicate, as a response
+ * repeated byte for byte is. Every other record's `fullUrl` is its own
+ * preview key, so only a Binary repeats.
+ */
+const withRepeatedRecordsAsDuplicates = (
+  previews: readonly FhirPreview[]
+): readonly FhirPreview[] => {
+  const firstHolders = new Map<string, Extraction.ResponseRef>()
+  return previews.map((response): FhirPreview => {
+    const { outcome, ref } = response
+    if (outcome._tag !== 'resources') return response
+    // Each record kept, or the response that first held its `fullUrl`.
+    const [kept, holdersOfRepeats] = Arr.partitionMap(outcome.resources, (record) => {
+      const fullUrl = fullUrlOf(ref.url, record.key, record.resource)
+      const holder = firstHolders.get(fullUrl)
+      if (holder !== undefined) return Either.right(holder)
+      firstHolders.set(fullUrl, ref)
+      return Either.left(record)
+    })
+    return Arr.match(holdersOfRepeats, {
+      onEmpty: () => response,
+      onNonEmpty: ([firstHolder]) => ({
+        ...response,
+        outcome:
+          kept.length === 0
+            ? { _tag: 'duplicate', of: firstHolder }
+            : { _tag: 'resources', resources: kept },
+      }),
+    })
+  })
+}
+
+/**
  * The previews' records as one section per response URL, in the order each
  * URL first appears in the archive, each record's `fullUrl` from
  * {@link fullUrlOf}.
- *
- * @remarks
- * Only the first record per `fullUrl` is kept, so a Binary served by two
- * reads (one with a query string, one without) is one record; a section left
- * with no record is dropped.
  */
 const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFileSet.Section[] => {
   const byUrl = new Map<string, DecodedFileSet.Entry[]>()
-  const seenFullUrls = new Set<string>()
-  const isFirstOfItsFullUrl = ({ fullUrl }: DecodedFileSet.Entry): boolean => {
-    if (seenFullUrls.has(fullUrl)) return false
-    seenFullUrls.add(fullUrl)
-    return true
-  }
   for (const entry of previews) {
-    if (entry.outcome._tag !== 'resources') continue
-    const labeled = entry.outcome.resources
-      .map(({ key, resource }): DecodedFileSet.Entry => ({
-        fullUrl: fullUrlOf(entry.ref.url, key, resource),
-        resource,
-      }))
-      .filter(isFirstOfItsFullUrl)
-    if (labeled.length === 0) continue
+    if (entry.outcome._tag !== 'resources' || entry.outcome.resources.length === 0) continue
+    const labeled = entry.outcome.resources.map(({ key, resource }): DecodedFileSet.Entry => ({
+      fullUrl: fullUrlOf(entry.ref.url, key, resource),
+      resource,
+    }))
     const existing = byUrl.get(entry.ref.url)
     if (existing === undefined) byUrl.set(entry.ref.url, labeled)
     else existing.push(...labeled)
@@ -140,6 +166,7 @@ const harImporter: FileImporter.Type<HarSettings, typeof format> = {
       decodeHar(pickedFiles[0].bytes, settings).pipe(
         Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
         Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
+        Effect.map(withRepeatedRecordsAsDuplicates),
         Effect.map((previews) => ({
           sections: sectionsByUrl(previews),
           notes: notesFor(previews),

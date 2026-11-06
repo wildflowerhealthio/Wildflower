@@ -443,8 +443,12 @@ const pickedDocumentWithBinary = (): PickedFile.Type => ({
 })
 
 describe('harImporter.decode over a capture of a DocumentReference and its Binary', () => {
-  it("should hold a Binary read twice once, at the server's URL for it", async () => {
+  it("should hold a Binary read twice once, at the server's URL for it, and note the second read", async () => {
     const fileSet = await decodeOne(pickedDocumentWithBinary())
+
+    expect(fileSet.notes).toEqual([
+      `Duplicate of an earlier response — not imported: ${BINARY_URL}`,
+    ])
 
     expect(
       fileSet.sections.flatMap((section) =>

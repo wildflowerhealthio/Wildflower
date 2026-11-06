@@ -56,7 +56,8 @@ shell's shared `persistTransactionBundle`.
   (`fhir-r4-adoption`'s `DetachedResource.serverBinaryUrlIfRead`): the
   server's URL for it, which a reference or an `Attachment.url` naming it is
   detached to, so the import stage resolves one to the other. Only the first
-  entry per `fullUrl` is kept, so a Binary read twice is one record —
+  record per `fullUrl` is kept, so a Binary read twice is one record, and a
+  response left with none is noted as a duplicate of the one that held it —
   plus one diagnostic note per response that yielded nothing (no kind
   matched, every matching kind disabled, parse
   failure, body absent, duplicate, or a `Binary` read served as its raw
