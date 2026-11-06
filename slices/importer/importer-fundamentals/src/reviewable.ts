@@ -1,6 +1,6 @@
 /**
- * One reviewed row of an import: a record under its review key and title,
- * and where it came from.
+ * A reviewable: the review's address for one record of an import, its title,
+ * and where the record came from.
  *
  * @packageDocumentation
  */
@@ -15,15 +15,14 @@
 type Origin = 'Decoded' | 'Implied'
 
 /**
- * One reviewed record: its review key, its title, where it came from, and
- * the record, `R` being what the record is at its stage of the import (an id
- * to be written under, once adopted).
+ * The review's address for one record: the `key` the reviewer's ticks and
+ * edits, the server diff and the link choices all index by, the `title` the
+ * review shows it under, and where the record came from.
  */
-interface Type<R> {
+interface Type {
   readonly key: string
   readonly title: string
   readonly origin: Origin
-  readonly resource: R
 }
 
 export type { Origin, Type }

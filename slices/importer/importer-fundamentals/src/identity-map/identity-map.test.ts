@@ -33,7 +33,6 @@ import {
   MentionLinkChoiceSet,
   Referent,
   ReferentLinkChoiceSet,
-  type Row,
   type Section,
   SectionedList,
   UnlinkedMention,
@@ -89,7 +88,7 @@ const PERSON = JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1'])
 const NAME_BIRTH_DATE = 'https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date'
 
 const at = (file: DecodedFile.DecodedFile, key: string): FhirResourceWithId | undefined =>
-  SectionedList.rows(file.rows).find((row) => row.key === key)?.resource
+  SectionedList.rows(file.rows).find((row) => row.reviewable.key === key)?.resource
 
 /** The resource keyed `key` in `file`; throws when there is none. */
 const resourceAt = (file: DecodedFile.DecodedFile, key: string): FhirResourceWithId => {
@@ -204,9 +203,9 @@ describe('the identity map on one file', () => {
       HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })])
     )
 
-    expect(resolved.rows.sections.map((section) => section.rows.map((row) => row.key))).toEqual([
-      ['k-0', 'k-1', 'k-2', 'k-3'],
-    ])
+    expect(
+      resolved.rows.sections.map((section) => section.rows.map((row) => row.reviewable.key))
+    ).toEqual([['k-0', 'k-1', 'k-2', 'k-3']])
     expect(at(resolved, 'k-0')?.id).toBe('s-1')
     expect(identifiersOf(at(resolved, 'k-0'))).toEqual([
       `${DEVICE}|s-1`,
@@ -281,7 +280,9 @@ describe('the identity map on one file', () => {
       HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })])
     )
 
-    expect(SectionedList.rows(resolved.rows).map(({ key, title }) => [key, title])).toEqual([
+    expect(
+      SectionedList.rows(resolved.rows).map(({ reviewable }) => [reviewable.key, reviewable.title])
+    ).toEqual([
       ['k-0', 'Tyra Banks · 1990-01-02'],
       ['k-1', 'Patient/p-2'],
       ['k-2', 'MedicationRequest/rx-1'],
@@ -623,7 +624,7 @@ describe('the identity map across files', () => {
         SectionedList.rows(file.rows).map(({ resource }) => resource.id)
       )
     ).toEqual(['s-1', 's-1'])
-    expect(linkedRecords.map(({ key }) => key)).toEqual(['linked:Patient/p-1'])
+    expect(linkedRecords.map(({ reviewable }) => reviewable.key)).toEqual(['linked:Patient/p-1'])
   })
 
   /** The resource keyed `key` in the file at `index` of `files`. */
@@ -698,8 +699,8 @@ describe('the identity map across files', () => {
       fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
         const together = resolveAcrossOnTestClock(Array.of(file), choices)
         const apart = resolveAcrossOnTestClock(splitIntoFiles(file), choices)
-        const linkedWireOf = (linked: readonly Row.Type<FhirResourceWithId>[]): readonly string[] =>
-          linked.map((entry) => `${entry.key} ${wireOf(entry.resource)}`)
+        const linkedWireOf = (linked: readonly DecodedFile.Row[]): readonly string[] =>
+          linked.map((row) => `${row.reviewable.key} ${wireOf(row.resource)}`)
 
         expect(
           fileWireOf({
@@ -753,10 +754,8 @@ describe('identity map properties', () => {
     fc.assert(
       fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
         const resolved = resolveOnTestClock(file, choices)
-        const shape = (
-          sections: readonly Section.Type<Row.Type<FhirResourceWithId>>[]
-        ): readonly unknown[] =>
-          sections.map((section) => [section.title, section.rows.map((row) => row.key)])
+        const shape = (sections: readonly Section.Type<DecodedFile.Row>[]): readonly unknown[] =>
+          sections.map((section) => [section.title, section.rows.map((row) => row.reviewable.key)])
 
         expect(shape(resolved.rows.sections)).toEqual(shape(file.rows.sections))
       }),
@@ -819,7 +818,7 @@ describe('identity map properties', () => {
             const literal = wireFieldsOf(resource).subject?.reference
             return 'subject' in resource && literal?.startsWith('Patient/') !== true
           })
-          .map((entry) => entry.key)
+          .map((row) => row.reviewable.key)
 
         expect(listedSubjects).toEqual(unlinkedSubjects)
       }),

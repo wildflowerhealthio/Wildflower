@@ -5,7 +5,6 @@ import {
   FormatDecode,
   MetaSource,
   PickedFile,
-  type Row,
   Section,
   SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -108,14 +107,14 @@ const importFileSet = (
       )
     )
 
-    const sourceFileRows = linked.map(
-      ({ pickedFile, sourceFile }): Row.Type<PickedFile.SourceFile> => ({
+    const sourceFileRows = linked.map(({ pickedFile, sourceFile }): DecodedFile.Row => ({
+      reviewable: {
         key: sourceFileKey(pickedFile),
         title: pickedFile.fileName,
         origin: 'Decoded',
-        resource: sourceFile,
-      })
-    )
+      },
+      resource: sourceFile,
+    }))
     // Their own section ahead of what was read out of them, so the reviewer
     // sees what is about to be stored before what it yielded.
     const title =

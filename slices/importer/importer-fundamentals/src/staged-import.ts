@@ -1,9 +1,10 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option } from 'effect'
 
+import type * as DecodedFile from './decoded-file.ts'
 import * as FileResolution from './identity-map/file-resolution.ts'
 import type * as LinkPlan from './identity-map/link-plan.ts'
-import type * as Row from './row.ts'
+import type * as Reviewable from './reviewable.ts'
 
 /**
  * The pure model of an import that has been decoded but not yet written: which
@@ -16,7 +17,7 @@ import type * as Row from './row.ts'
  * UI renders over this is *a* review; the model is the staged import itself,
  * and outlives any particular way of reviewing it.
  *
- * Both axes key by a row's `key` ({@link Row.Type}) so the state stays
+ * Both axes key by a {@link Reviewable.Type}'s `key` so the state stays
  * serializable and survives a settings re-decode: a key the new decode no
  * longer produces simply stops applying, rather than dangling.
  *
@@ -38,15 +39,15 @@ import type * as Row from './row.ts'
  */
 interface Selection {
   /**
-   * The reviewer's own include/exclude choices, keyed by a row's `key`
-   * ({@link Row.Type}): `true` for a resource they ticked, `false` for one
+   * The reviewer's own include/exclude choices, keyed by a
+   * {@link Reviewable.Type}'s `key`: `true` for a resource they ticked, `false` for one
    * they unticked. A choice stands whatever the default becomes; a key absent
    * here takes the default.
    */
   readonly includedByReviewer: ReadonlyMap<string, boolean>
   /**
-   * Per-resource edit overrides, keyed by a row's `key` ({@link Row.Type}):
-   * a resource whose key is here has its parsed value replaced by the edited
+   * Per-resource edit overrides, keyed by a {@link Reviewable.Type}'s
+   * `key`: a resource whose key is here has its parsed value replaced by the edited
    * one at confirm, resolved on the batch's plan (`FileResolution.resolveEdit`).
    */
   readonly resourceOverrides: ReadonlyMap<string, FhirResourceWithId>
@@ -127,17 +128,17 @@ const editedResource = (selection: Selection, key: string): Option.Option<FhirRe
 
 /**
  * The resource the review writes for `resolvedRow`, a row of a file
- * resolved on `plan`: the edit override at its key resolved on the plan
+ * resolved on `plan`: the edit override at its reviewable's key resolved on the plan
  * (`FileResolution.resolveEdit`), else the row's own resource.
  */
 const resolvedResourceOf = (
   plan: LinkPlan.Type,
   selection: Selection,
-  resolvedRow: Row.Type<FhirResourceWithId>
+  resolvedRow: DecodedFile.Row
 ): FhirResourceWithId =>
-  Option.match(editedResource(selection, resolvedRow.key), {
+  Option.match(editedResource(selection, resolvedRow.reviewable.key), {
     onNone: () => resolvedRow.resource,
-    onSome: FileResolution.resolveEdit(plan, resolvedRow.key),
+    onSome: FileResolution.resolveEdit(plan, resolvedRow.reviewable.key),
   })
 
 export {

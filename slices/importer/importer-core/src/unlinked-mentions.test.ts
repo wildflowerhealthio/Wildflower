@@ -59,10 +59,12 @@ const resolvedHarBatchOf = (resources: readonly FhirResourceWithId[]): ResolvedB
         {
           title: 'Resources',
           rows: resources.map((resource, index) => ({
-            key: `k-${index}`,
-            title: `${resource.resourceType}/${resource.id}`,
+            reviewable: {
+              key: `k-${index}`,
+              title: `${resource.resourceType}/${resource.id}`,
+              origin: 'Decoded',
+            },
             resource,
-            origin: 'Decoded',
           })),
         },
       ]),

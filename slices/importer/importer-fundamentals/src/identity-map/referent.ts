@@ -17,11 +17,11 @@
  */
 
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { type FhirResourceWithId, LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
+import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Data, Effect, HashMap, Option, pipe, Record } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
-import type * as Row from '../row.ts'
+import type * as Reviewable from '../reviewable.ts'
 import * as SectionedList from '../sectioned-list.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
@@ -40,10 +40,8 @@ interface Type {
   /** The identifier the record's demographics derive, when they allow one: the last of `identifiers`. */
   readonly derivedIdentifier: Option.Option<IdentifierAndReference.IdentifierType>
   readonly resource: LinkableResource.WithId
-  /** The `Row` key the record is reviewed under. */
-  readonly reviewKey: string
-  /** Where the record came from: its row's `origin`. */
-  readonly origin: Row.Origin
+  /** The record's row's reviewable: the key it is reviewed under, and where it came from. */
+  readonly reviewable: Reviewable.Type
   readonly label: string
 }
 
@@ -56,7 +54,7 @@ interface Type {
 class DuplicateReferent extends Data.TaggedError('DuplicateReferent')<{
   /** The logical reference their `identifier[0]` makes. */
   readonly logicalReference: LinkableLogicalReference.Type
-  /** The `Row` keys of the resources, in review order. */
+  /** The resources' reviewables' keys, in review order. */
   readonly reviewKeys: readonly string[]
 }> {}
 
@@ -112,9 +110,7 @@ const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.
  * and for a Patient or Practitioner with an unqualified `identifier[0]`, which
  * nothing can be linked to, so the stage writes it as it is.
  */
-const tryFromDecodedResource = (
-  row: Row.Type<FhirResourceWithId>
-): Effect.Effect<Option.Option<Type>> =>
+const tryFromDecodedResource = (row: DecodedFile.Row): Effect.Effect<Option.Option<Type>> =>
   pipe(
     Option.liftPredicate(row.resource, LinkableResource.is),
     Option.flatMap((resource) =>
@@ -137,8 +133,7 @@ const tryFromDecodedResource = (
           ),
           derivedIdentifier,
           resource,
-          reviewKey: row.key,
-          origin: row.origin,
+          reviewable: row.reviewable,
           label,
         }))
       )
@@ -161,7 +156,7 @@ const firstDuplicateAmong = (referents: readonly Type[]): Option.Option<Duplicat
         : Option.some(
             new DuplicateReferent({
               logicalReference: sharingKey[0].logicalReference,
-              reviewKeys: sharingKey.map(({ reviewKey }) => reviewKey),
+              reviewKeys: sharingKey.map(({ reviewable }) => reviewable.key),
             })
           )
     )
@@ -174,7 +169,7 @@ const firstDuplicateAmong = (referents: readonly Type[]): Option.Option<Duplicat
  * @remarks
  * A resource decoded twice under one id (two file sets implying one
  * Practitioner, say) is one referent, in the place of its first copy: the
- * first copy a file decoded, else the first implied one (by its `origin`),
+ * first copy a file decoded, else the first implied one (by its reviewable's `origin`),
  * since an implied record says only what a reference to it said. Fails with
  * {@link DuplicateReferent} when two resources under different ids, in one
  * file or two, are keyed by one logical reference.
@@ -192,7 +187,7 @@ const discover = (
     const duplicate = firstDuplicateAmong(decodedReferents)
     if (Option.isSome(duplicate)) return yield* Effect.fail(duplicate.value)
     const firstDecodedByKey = byKey(
-      decodedReferents.filter(({ origin }) => origin === 'Decoded').toReversed()
+      decodedReferents.filter(({ reviewable }) => reviewable.origin === 'Decoded').toReversed()
     )
     return Array.dedupeWith(decodedReferents, (left, right) => key(left) === key(right)).map(
       (referent) => Option.getOrElse(HashMap.get(firstDecodedByKey, key(referent)), () => referent)

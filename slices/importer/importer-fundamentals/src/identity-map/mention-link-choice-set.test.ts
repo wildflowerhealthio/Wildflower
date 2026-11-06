@@ -61,7 +61,7 @@ const subjectAt = (
   file: DecodedFile.DecodedFile,
   key: string
 ): IdentifierAndReference.ReferenceType | null | undefined => {
-  const resource = SectionedList.rows(file.rows).find((row) => row.key === key)?.resource
+  const resource = SectionedList.rows(file.rows).find((row) => row.reviewable.key === key)?.resource
   return resource !== undefined && 'subject' in resource ? resource.subject : undefined
 }
 
@@ -256,8 +256,8 @@ describe('mention link choices and the referents', () => {
     file: DecodedFile.DecodedFile
   ): fc.Arbitrary<MentionLinkChoiceSet.Type> => {
     const referents = discoverOnTestClock(file)
-    const slots = SectionedList.rows(file.rows).flatMap(({ key, resource }) =>
-      Mention.linkableIn(resource).map((mention) => ({ key, mention }))
+    const slots = SectionedList.rows(file.rows).flatMap(({ reviewable, resource }) =>
+      Mention.linkableIn(resource).map((mention) => ({ key: reviewable.key, mention }))
     )
     return fc
       .tuple(
@@ -342,12 +342,14 @@ describe('mention link choices and the referents', () => {
           const withChosen = resolveOnTestClock(file, choices, mentionChoices)
 
           const unchosenMentionsOf = (resolved: DecodedFile.DecodedFile): readonly unknown[] =>
-            SectionedList.rows(resolved.rows).flatMap(({ key, resource }) =>
+            SectionedList.rows(resolved.rows).flatMap(({ reviewable, resource }) =>
               Mention.madeIn(resource)
                 .filter(({ path }) =>
-                  Option.isNone(MentionLinkChoiceSet.forMention(mentionChoices, key, path))
+                  Option.isNone(
+                    MentionLinkChoiceSet.forMention(mentionChoices, reviewable.key, path)
+                  )
                 )
-                .map((mention) => [key, mention])
+                .map((mention) => [reviewable.key, mention])
             )
           expect(unchosenMentionsOf(withChosen)).toEqual(unchosenMentionsOf(onReferents))
           expect(Array.map(withChosen.rows.sections, (section) => section.title)).toEqual(

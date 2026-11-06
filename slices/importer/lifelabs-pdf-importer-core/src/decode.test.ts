@@ -116,8 +116,8 @@ describe('decodeLifeLabsPdfDocument', () => {
           )
         )
         const written = SectionedList.rows(Either.getOrThrow(DecodedFileSet.adopt(decoded)).rows)
-        expect(written.map(({ title }) => title)).toEqual(
-          written.map(({ key, resource }) =>
+        expect(written.map(({ reviewable }) => reviewable.title)).toEqual(
+          written.map(({ reviewable: { key }, resource }) =>
             Option.isSome(DetachedResource.keyOf({ ...resource, id: null }))
               ? `${resource.resourceType}/${resource.id}`
               : `${resource.resourceType} (${key})`

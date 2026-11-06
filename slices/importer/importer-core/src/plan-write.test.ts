@@ -9,7 +9,8 @@ import {
   LinkableResource,
   LinkPlan,
   LinkTarget,
-  type Row,
+  type DecodedFile,
+  type Reviewable,
   Section,
   SectionedList,
   StagedImport,
@@ -31,16 +32,14 @@ const patient = (id: string, gender: 'male' | 'female' | null = null): FhirResou
 const row = (
   key: string,
   resource: FhirResourceWithId,
-  origin: Row.Origin = 'Decoded'
-): Row.Type<FhirResourceWithId> => ({
-  key,
-  title: `${resource.resourceType}/${resource.id}`,
+  origin: Reviewable.Origin = 'Decoded'
+): DecodedFile.Row => ({
+  reviewable: { key, title: `${resource.resourceType}/${resource.id}`, origin },
   resource,
-  origin,
 })
 
 /** A row keyed `key` holding the Patient of id `key`. */
-const patientRow = (key: string): Row.Type<FhirResourceWithId> => row(key, patient(key))
+const patientRow = (key: string): DecodedFile.Row => row(key, patient(key))
 
 /** An `unreadableFiles` row for one broken pick. */
 const unreadableFile = (fileName: string): FormatDecode.UnreadableFile => ({
@@ -55,7 +54,7 @@ const unreadableFile = (fileName: string): FormatDecode.UnreadableFile => ({
 /** `kind`'s result of one file and one section holding `resources`. */
 const resultOf = <K extends FormatKind>(
   kind: K,
-  resources: readonly Row.Type<FhirResourceWithId>[]
+  resources: readonly DecodedFile.Row[]
 ): FormatDecode.Result<K> => ({
   ...FormatDecode.emptyResult(kind),
   id: `${kind}/a`,
@@ -66,7 +65,7 @@ const resultOf = <K extends FormatKind>(
 
 /** A resolved batch of the given formats' rows, the others claiming nothing, with `linked` its linked records. */
 const batchOf = (
-  rows: { readonly [K in FormatKind]?: readonly Row.Type<FhirResourceWithId>[] },
+  rows: { readonly [K in FormatKind]?: readonly DecodedFile.Row[] },
   linked: readonly LinkedRecord[] = []
 ): ResolvedBatch => {
   const slot = <K extends FormatKind>(kind: K): FormatDecode.Result<K> => {
@@ -87,7 +86,7 @@ const batchOf = (
 const dispositionsOf = (
   plan: readonly WriteDecision[]
 ): readonly (readonly [ReviewGroup, string, Disposition])[] =>
-  plan.map(({ group, entry, disposition }) => [group, entry.key, disposition] as const)
+  plan.map(({ group, entry, disposition }) => [group, entry.reviewable.key, disposition] as const)
 
 /** No row out by default. */
 const NONE_BY_DEFAULT: ReadonlySet<string> = new Set()
@@ -178,7 +177,7 @@ describe('planWrite', () => {
     const selection = StagedImport.edit(StagedImport.initial(), 'obs-1', edited)
 
     const written = planWrite(withMentionLink, () => selection, noneByDefault, new Set()).find(
-      ({ entry }) => entry.key === 'obs-1'
+      ({ entry }) => entry.reviewable.key === 'obs-1'
     )
 
     expect(written?.entry.resource).toEqual(
@@ -263,13 +262,13 @@ describe('planWrite', () => {
     expect(
       dispositionsOf(planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set()))
     ).toEqual([
-      ['har', implied.key, 'Included'],
+      ['har', implied.reviewable.key, 'Included'],
       ['har', 'obs-1', 'Included'],
     ])
     expect(
       dispositionsOf(planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set()))
     ).toEqual([
-      ['har', implied.key, 'Unreferenced'],
+      ['har', implied.reviewable.key, 'Unreferenced'],
       ['har', 'obs-1', 'Excluded'],
     ])
   })
@@ -305,7 +304,7 @@ describe('planWrite', () => {
       )
     ).toEqual([
       ['har', 'p-9', 'Included'],
-      ['har', implied.key, 'Superseded'],
+      ['har', implied.reviewable.key, 'Superseded'],
       ['har', 'obs-1', 'Included'],
     ])
   })
@@ -397,7 +396,9 @@ describe('planWrite', () => {
         (ids, excludes, unchanged) => {
           const rows = ids.map((id, index) => row(`k-${index}`, patient(id)))
           let selection = StagedImport.initial()
-          for (const { key } of rows) {
+          for (const {
+            reviewable: { key },
+          } of rows) {
             if (excludes(key))
               selection = StagedImport.toggleResource(selection, NONE_BY_DEFAULT, key)
           }
@@ -425,9 +426,9 @@ describe('planWrite', () => {
                 : 'Included'
             )
           ).toEqual(candidates.map(({ disposition }) => disposition))
-          expect(candidates.map(({ entry }) => entry.key)).toEqual([
+          expect(candidates.map(({ entry }) => entry.reviewable.key)).toEqual([
             ...(unchanged ? [] : [STORED.key]),
-            ...rows.filter(({ key }) => !excludes(key)).map(({ key }) => key),
+            ...rows.map(({ reviewable }) => reviewable.key).filter((key) => !excludes(key)),
           ])
         }
       ),
@@ -449,7 +450,9 @@ describe('planWrite', () => {
             )
           )
           let selection = StagedImport.initial()
-          for (const { key } of observations) {
+          for (const {
+            reviewable: { key },
+          } of observations) {
             if (excludes(key))
               selection = StagedImport.toggleResource(selection, NONE_BY_DEFAULT, key)
           }
@@ -480,7 +483,7 @@ const STORED_PATIENT = 'Patient/s-1'
 interface LinkedRecord {
   readonly key: string
   readonly literalReference: string
-  readonly entry: Row.Type<FhirResourceWithId>
+  readonly entry: DecodedFile.Row
 }
 
 /** `linkedResource` as a linked record titled `title`. */
@@ -490,7 +493,7 @@ const linkedRecordOf = (linkedResource: LinkableResource.WithId, title: string):
   return {
     key,
     literalReference,
-    entry: { key, title, resource: linkedResource, origin: 'Decoded' },
+    entry: { reviewable: { key, title, origin: 'Decoded' }, resource: linkedResource },
   }
 }
 
@@ -508,9 +511,8 @@ const STORED_RESOURCE = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema)
 const STORED = linkedRecordOf(STORED_RESOURCE, 'Stored Patient')
 
 /** An Observation keyed `key` carrying the given reference fields. */
-const observationOf = (key: string, references: object): Row.Type<FhirResourceWithId> => ({
-  key,
-  title: `Observation/${key}`,
+const observationOf = (key: string, references: object): DecodedFile.Row => ({
+  reviewable: { key, title: `Observation/${key}`, origin: 'Decoded' },
   resource: Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
     resourceType: 'Observation',
     id: key,
@@ -518,5 +520,4 @@ const observationOf = (key: string, references: object): Row.Type<FhirResourceWi
     code: { text: 'Heart rate' },
     ...references,
   }),
-  origin: 'Decoded',
 })

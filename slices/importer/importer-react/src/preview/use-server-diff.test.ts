@@ -38,10 +38,8 @@ const formatResult = <K extends FormatKind>(
       {
         title: 's',
         rows: entries.map(([key, rid]) => ({
-          key,
-          title: `Patient/${rid}`,
+          reviewable: { key, title: `Patient/${rid}`, origin: 'Decoded' as const },
           resource: patient(rid),
-          origin: 'Decoded' as const,
         })),
       },
     ]),
@@ -74,10 +72,12 @@ describe('diffRowsOf / byGroupAndKey', () => {
       ...makeBatch({ har: formatResult('har', [['patient', 'p-har']]) }),
       linkedRecords: [
         {
-          key: 'linked:Patient/p-stored',
-          title: 'Patient/p-stored',
+          reviewable: {
+            key: 'linked:Patient/p-stored',
+            title: 'Patient/p-stored',
+            origin: 'Decoded',
+          },
           resource: patient('p-stored'),
-          origin: 'Decoded',
         },
       ],
     }
@@ -142,8 +142,14 @@ describe('diffRowsOf / byGroupAndKey', () => {
 describe('unchangedKeysOf', () => {
   it('should find exactly the unchanged keys, and nothing without verdicts', () => {
     const labeled = [
-      { key: 'a', title: 'Patient/a', resource: patient('a'), origin: 'Decoded' as const },
-      { key: 'b', title: 'Patient/b', resource: patient('b'), origin: 'Decoded' as const },
+      {
+        reviewable: { key: 'a', title: 'Patient/a', origin: 'Decoded' as const },
+        resource: patient('a'),
+      },
+      {
+        reviewable: { key: 'b', title: 'Patient/b', origin: 'Decoded' as const },
+        resource: patient('b'),
+      },
     ]
     const verdicts = new Map([
       ['a', UNCHANGED],

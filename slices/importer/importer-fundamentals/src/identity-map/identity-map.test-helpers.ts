@@ -19,7 +19,6 @@ import {
 import { Arbitrary, Array, Effect, FastCheck as fc, HashMap, Schema, TestContext } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
-import type * as Row from '../row.ts'
 import * as Section from '../section.ts'
 import * as SectionedList from '../sectioned-list.ts'
 import * as FileResolution from './file-resolution.ts'
@@ -59,7 +58,7 @@ const resolveAcross = (
 ): Effect.Effect<
   {
     readonly resolvedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
-    readonly linkedRecords: readonly Row.Type<FhirResourceWithId>[]
+    readonly linkedRecords: readonly DecodedFile.Row[]
   },
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
 > =>
@@ -105,8 +104,8 @@ const leftByReferentLinksOnTestClock = (
       LinkPlan.withMentionLinkChoiceSet(onReferents, byMention)
     )
   )
-  return SectionedList.rows(file.rows).flatMap(({ key, resource }) =>
-    UnlinkedMention.leftByReferentLinks(plan, key, resource)
+  return SectionedList.rows(file.rows).flatMap(({ reviewable, resource }) =>
+    UnlinkedMention.leftByReferentLinks(plan, reviewable.key, resource)
   )
 }
 
@@ -124,7 +123,11 @@ const fileWireOf = (file: DecodedFile.DecodedFile): string =>
   JSON.stringify(
     file.rows.sections.map((section) => ({
       title: section.title,
-      rows: section.rows.map((row) => [row.key, row.title, wireOf(row.resource)]),
+      rows: section.rows.map((row) => [
+        row.reviewable.key,
+        row.reviewable.title,
+        wireOf(row.resource),
+      ]),
     }))
   )
 
@@ -253,10 +256,12 @@ const fileOf = (...resources: readonly FhirResourceWithId[]): DecodedFile.Decode
     Section.make(
       'Resources',
       resources.map((resource, index) => ({
-        key: `k-${index}`,
-        title: `${resource.resourceType}/${resource.id}`,
+        reviewable: {
+          key: `k-${index}`,
+          title: `${resource.resourceType}/${resource.id}`,
+          origin: 'Decoded',
+        },
         resource,
-        origin: 'Decoded',
       }))
     ),
   ]),

@@ -12,18 +12,14 @@ import {
   ReferencePlan,
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
-import {
-  type FhirResourceWithId,
-  LogicalReference,
-  ResourceReferences,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Either, Option, type ParseResult, pipe } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
 import * as ImpliedRecord from './implied-record.ts'
 import type * as PickedFile from './picked-file.ts'
 import * as ResourcePlan from './resource-plan.ts'
-import type * as Row from './row.ts'
+import type * as Reviewable from './reviewable.ts'
 import * as Section from './section.ts'
 import * as SectionedList from './sectioned-list.ts'
 
@@ -154,7 +150,7 @@ const referencePlanEntriesOf = (
 interface PlannedEntry {
   readonly entry: Entry
   readonly plan: ResourcePlan.Type
-  readonly origin: Row.Origin
+  readonly origin: Reviewable.Origin
 }
 
 /** The reference plan of a set's planned entries ({@link referencePlanEntriesOf}). */
@@ -398,19 +394,17 @@ const takeSubjectFromPrescription =
 /**
  * Adopt: each planned record of `plannedEntries` given its plan's id, its
  * logical references `referencePlan` resolves made literal, after
- * `takeSubject`, keyed by its entry's `fullUrl` and titled by
- * {@link writtenReferenceTitle}, its origin kept.
+ * `takeSubject`, its reviewable keyed by its entry's `fullUrl`, titled by
+ * {@link writtenReferenceTitle} and keeping its origin.
  */
 const adoptEntries = (
   plannedEntries: SectionedList.Type<PlannedEntry>,
   referencePlan: ReferencePlan.Type,
   takeSubject: (record: DetachedResource.Type) => DetachedResource.Type
-): SectionedList.Type<Row.Type<FhirResourceWithId>> => {
+): SectionedList.Type<DecodedFile.Row> => {
   const adoptEntry = adoptRecord(referencePlan)
   return SectionedList.map(plannedEntries, ({ entry, plan, origin }) => ({
-    key: entry.fullUrl,
-    title: writtenReferenceTitle(plan, entry),
-    origin,
+    reviewable: { key: entry.fullUrl, title: writtenReferenceTitle(plan, entry), origin },
     resource: adoptEntry(takeSubject(entry.resource), plan.id),
   }))
 }

@@ -69,11 +69,12 @@ const keysWithoutPatientOf = (
   return new Set(
     SectionedList.rows(batch.formats[kind].decoded.rows)
       .filter((row) =>
-        leftUnlinked(row.key, StagedImport.resolvedResourceOf(batch.plan, selection, row)).some(
-          isOfPatient
-        )
+        leftUnlinked(
+          row.reviewable.key,
+          StagedImport.resolvedResourceOf(batch.plan, selection, row)
+        ).some(isOfPatient)
       )
-      .map(({ key }) => key)
+      .map(({ reviewable }) => reviewable.key)
   )
 }
 

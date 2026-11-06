@@ -6,12 +6,21 @@
  */
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 
-import type * as Row from './row.ts'
+import type * as Reviewable from './reviewable.ts'
 import * as SectionedList from './sectioned-list.ts'
+
+/**
+ * A decoded file's row: a record's {@link Reviewable.Type}, and the record it
+ * will write, with an id to be written under.
+ */
+interface Row {
+  readonly reviewable: Reviewable.Type
+  readonly resource: FhirResourceWithId
+}
 
 /** A file set's rows, each record with an id to be written under, in sections, beside its notes. */
 interface DecodedFile {
-  readonly rows: SectionedList.Type<Row.Type<FhirResourceWithId>>
+  readonly rows: SectionedList.Type<Row>
   readonly notes: readonly string[]
 }
 
@@ -25,4 +34,4 @@ const concatenateAll = (files: readonly DecodedFile[]): DecodedFile => ({
 })
 
 export { concatenateAll, empty }
-export type { DecodedFile }
+export type { DecodedFile, Row }

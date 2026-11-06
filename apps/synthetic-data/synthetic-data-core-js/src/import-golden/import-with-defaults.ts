@@ -177,8 +177,8 @@ const importWithDefaults = (
       excluded: encodedResourcesOf(plan, 'Excluded'),
       review: plan.map(({ group, entry, disposition }) => ({
         group,
-        key: entry.key,
-        title: entry.title,
+        key: entry.reviewable.key,
+        title: entry.reviewable.title,
         resource: literalReferenceOf(entry.resource),
         disposition,
       })),

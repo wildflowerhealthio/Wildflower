@@ -19,7 +19,6 @@ import {
   type FormatDecode,
   type PickedFile,
   Referent,
-  type Row,
   type Section,
   SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -102,7 +101,7 @@ describe('decodeStudy', () => {
   it('resolves ImagingStudy.started against the settings time zone', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
     const study = adoptedOf(result).rows.sections[0].rows.find(
-      (r) => r.key === 'imaging-study'
+      (r) => r.reviewable.key === 'imaging-study'
     )?.resource
     expect(study?.resourceType).toBe('ImagingStudy')
     if (study?.resourceType !== 'ImagingStudy') return
@@ -114,7 +113,7 @@ describe('decodeStudy', () => {
     const startedIn = async (timeZone: string): Promise<string | null | undefined> => {
       const result = await Effect.runPromise(decodeStudy(sample(), { timeZone }))
       const study = adoptedOf(result).rows.sections[0].rows.find(
-        (r) => r.key === 'imaging-study'
+        (r) => r.reviewable.key === 'imaging-study'
       )?.resource
       return study?.resourceType === 'ImagingStudy' ? study.started : undefined
     }
@@ -124,7 +123,7 @@ describe('decodeStudy', () => {
   it('yields one section with Patient, ServiceRequest, ImagingStudy', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
     expect(result.sections).toHaveLength(1)
-    const keys = adoptedOf(result).rows.sections[0].rows.map((r) => r.key)
+    const keys = adoptedOf(result).rows.sections[0].rows.map((r) => r.reviewable.key)
     expect(keys).toEqual(['patient', 'service-request', 'imaging-study'])
   })
 
@@ -142,7 +141,7 @@ describe('decodeStudy', () => {
   it('names no file on an ImagingStudy instance', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
     const study = adoptedOf(result).rows.sections[0].rows.find(
-      (r) => r.key === 'imaging-study'
+      (r) => r.reviewable.key === 'imaging-study'
     )?.resource
     if (study?.resourceType !== 'ImagingStudy') throw new Error('expected ImagingStudy')
     expect(study.series[0].instance[0].extension).toEqual([])
@@ -169,7 +168,7 @@ describe('decodeStudy', () => {
       decodeStudy(sample({ AccessionNumber: undefined }), defaultDicomSettings)
     )
     expect(result.notes.some((n) => n.includes('AccessionNumber'))).toBe(true)
-    const keys = adoptedOf(result).rows.sections[0].rows.map((r) => r.key)
+    const keys = adoptedOf(result).rows.sections[0].rows.map((r) => r.reviewable.key)
     expect(keys).not.toContain('service-request')
   })
 
@@ -202,7 +201,7 @@ describe('decodeStudy', () => {
   it('resource keys are stable across the empty settings', async () => {
     const keysOf = async (): Promise<readonly string[]> => {
       const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-      return adoptedOf(result).rows.sections.flatMap((s) => s.rows.map((r) => r.key))
+      return adoptedOf(result).rows.sections.flatMap((s) => s.rows.map((r) => r.reviewable.key))
     }
     expect(await keysOf()).toEqual(await keysOf())
   })
@@ -260,7 +259,7 @@ describe('decodeStudy', () => {
     it('is still one section with the same three keys', async () => {
       const result = await Effect.runPromise(decodeStudy(twoFiles, defaultDicomSettings))
       expect(result.sections).toHaveLength(1)
-      expect(adoptedOf(result).rows.sections[0].rows.map((r) => r.key)).toEqual([
+      expect(adoptedOf(result).rows.sections[0].rows.map((r) => r.reviewable.key)).toEqual([
         'patient',
         'service-request',
         'imaging-study',
@@ -292,7 +291,7 @@ describe('decodeStudy', () => {
       const result = await Effect.runPromise(decodeStudy(conflicting, defaultDicomSettings))
       expect(result.notes[0]).toContain('disagree on AccessionNumber')
       const request = adoptedOf(result).rows.sections[0].rows.find(
-        (r) => r.key === 'service-request'
+        (r) => r.reviewable.key === 'service-request'
       )?.resource
       if (request?.resourceType !== 'ServiceRequest') throw new Error('expected a ServiceRequest')
       // One request, built from the first accession in *study* order — a.dcm
@@ -368,9 +367,7 @@ const asBatch = (files: readonly PickedFile.NamedBytes[]): readonly PickedFile.T
 const run = (files: readonly PickedFile.NamedBytes[]): Promise<FormatDecode.Decoded<string>> =>
   Effect.runPromise(decode(asBatch(files), SETTINGS))
 
-const resourcesOf = (
-  result: FormatDecode.Decoded<string>
-): readonly Row.Type<FhirResourceWithId>[] =>
+const rowsOf = (result: FormatDecode.Decoded<string>): readonly DecodedFile.Row[] =>
   result.fileSets.flatMap((fileSet) => SectionedList.rows(adoptedOf(fileSet).rows))
 
 /** Every decoded resource of one type, across every section. */
@@ -378,8 +375,8 @@ const of = <K extends FhirResourceWithId['resourceType']>(
   result: FormatDecode.Decoded<string>,
   resourceType: K
 ): readonly Extract<FhirResourceWithId, { readonly resourceType: K }>[] =>
-  resourcesOf(result)
-    .map((entry) => entry.resource)
+  rowsOf(result)
+    .map((row) => row.resource)
     .filter(
       (resource): resource is Extract<FhirResourceWithId, { readonly resourceType: K }> =>
         resource.resourceType === resourceType
@@ -391,10 +388,10 @@ const studiesOf = (result: FormatDecode.Decoded<string>): readonly ImagingStudy.
 /** The sections a study was decoded into. */
 const studySections = (
   result: FormatDecode.Decoded<string>
-): readonly Section.Type<Row.Type<FhirResourceWithId>>[] =>
+): readonly Section.Type<DecodedFile.Row>[] =>
   result.fileSets
     .flatMap((fileSet) => adoptedOf(fileSet).rows.sections)
-    .filter((section) => section.rows.some((one) => one.key.endsWith('imaging-study')))
+    .filter((section) => section.rows.some((row) => row.reviewable.key.endsWith('imaging-study')))
 
 /** Each file set's source file as `linkToPatientAndStudy` links it, minted under `doc`. */
 const linkedSourceFilesOf = (
@@ -616,8 +613,8 @@ describe('the DICOM batch decode', () => {
           const forward = await run(files)
           const reversed = await run(files.toReversed())
           const bodies = (result: FormatDecode.Decoded<string>): readonly unknown[] =>
-            resourcesOf(result)
-              .map((entry) => entry.resource)
+            rowsOf(result)
+              .map((row) => row.resource)
               .toSorted((left, right) => left.id.localeCompare(right.id))
           expect(bodies(reversed)).toEqual(bodies(forward))
         }),

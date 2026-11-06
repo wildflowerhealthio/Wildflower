@@ -15,7 +15,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as DecodedFileSet from './decoded-file-set.ts'
-import type * as Row from './row.ts'
+import type * as DecodedFile from './decoded-file.ts'
 import * as Section from './section.ts'
 import * as SectionedList from './sectioned-list.ts'
 
@@ -458,7 +458,7 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
   /** Every adopted row of `sections`, with its section's title. */
   const rowsIn = (
     sections: readonly Section.Type<DecodedFileSet.Entry>[]
-  ): readonly (Row.Type<FhirResourceWithId> & { readonly section: string })[] =>
+  ): readonly (DecodedFile.Row & { readonly section: string })[] =>
     Either.getOrThrow(
       DecodedFileSet.adopt({ sections, notes: [] }, countingMinter())
     ).rows.sections.flatMap(({ title, rows }) => rows.map((row) => ({ ...row, section: title })))
@@ -467,7 +467,7 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
     resource?.resourceType === 'MedicationRequest' ? resource.requester : undefined
 
   const practitionersIn = (
-    rows: readonly Row.Type<FhirResourceWithId>[]
+    rows: readonly DecodedFile.Row[]
   ): readonly Extract<FhirResourceWithId, { readonly resourceType: 'Practitioner' }>[] =>
     rows.flatMap(({ resource }) => (resource.resourceType === 'Practitioner' ? [resource] : []))
 
@@ -494,7 +494,7 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
       name: ['Dr. A Smith'],
     })
     const impliedRow = rows.find(({ resource }) => resource.resourceType === 'Practitioner')
-    expect([impliedRow?.key, impliedRow?.title]).toEqual([
+    expect([impliedRow?.reviewable.key, impliedRow?.reviewable.title]).toEqual([
       `prescriptions:1#implied:Practitioner|${NAME_SYSTEM}|Dr. A Smith`,
       `Practitioner/${practitionerId}`,
     ])
@@ -654,11 +654,11 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
       ]),
     ])
 
-    const impliedRow = rows.find(({ origin }) => origin === 'Implied')
-    expect([impliedRow?.key, practitionersIn(rows).map(({ name }) => name[0]?.text)]).toEqual([
-      `prescriptions:1#implied:Practitioner|${NAME_SYSTEM}|Dr. A Smith`,
-      ['DR A SMITH'],
-    ])
+    const impliedRow = rows.find(({ reviewable }) => reviewable.origin === 'Implied')
+    expect([
+      impliedRow?.reviewable.key,
+      practitionersIn(rows).map(({ name }) => name[0]?.text),
+    ]).toEqual([`prescriptions:1#implied:Practitioner|${NAME_SYSTEM}|Dr. A Smith`, ['DR A SMITH']])
   })
 
   it('marks each implied row Implied and every decoded row Decoded', () => {
@@ -667,7 +667,11 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
     ])
 
     expect(
-      rows.map(({ section, origin, resource }) => [section, origin, resource.resourceType])
+      rows.map(({ section, reviewable, resource }) => [
+        section,
+        reviewable.origin,
+        resource.resourceType,
+      ])
     ).toEqual([
       ['prescriptions', 'Decoded', 'Patient'],
       ['prescriptions', 'Decoded', 'MedicationRequest'],
@@ -724,7 +728,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         notes: [],
       })
     ).rows.sections
-    expect(section?.rows.map(({ title }) => title)).toEqual([
+    expect(section?.rows.map(({ reviewable }) => reviewable.title)).toEqual([
       `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7')}`,
     ])
   })
@@ -736,9 +740,9 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         countingMinter()
       )
     ).rows.sections
-    expect(section?.rows.map(({ title, resource }) => [title, resource.id])).toEqual([
-      ['Patient (people:0)', 'minted-1'],
-    ])
+    expect(
+      section?.rows.map(({ reviewable, resource }) => [reviewable.title, resource.id])
+    ).toEqual([['Patient (people:0)', 'minted-1']])
   })
 
   it('keys each adopted row by its entry fullUrl', () => {
@@ -748,7 +752,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         notes: [],
       })
     ).rows.sections
-    expect(section?.rows.map(({ key }) => key)).toEqual(['people:0', 'people:1'])
+    expect(section?.rows.map(({ reviewable }) => reviewable.key)).toEqual(['people:0', 'people:1'])
   })
 })
 

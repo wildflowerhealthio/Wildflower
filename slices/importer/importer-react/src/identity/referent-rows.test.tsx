@@ -380,10 +380,8 @@ const batchOf = (resources: readonly FhirResourceWithId[]): DecodedBatch => ({
           {
             title: 'Resources',
             rows: resources.map((resource, index) => ({
-              key: `k-${index}`,
-              title: resource.resourceType,
+              reviewable: { key: `k-${index}`, title: resource.resourceType, origin: 'Decoded' },
               resource,
-              origin: 'Decoded',
             })),
           },
         ]),

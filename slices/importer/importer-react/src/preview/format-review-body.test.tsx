@@ -84,10 +84,12 @@ const fileOf = (resources: readonly FhirResourceWithId[]): DecodedFile.DecodedFi
     {
       title: 'Resources',
       rows: resources.map((resource, index) => ({
-        key: `k-${index}`,
-        title: `${resource.resourceType}/${resource.id}`,
+        reviewable: {
+          key: `k-${index}`,
+          title: `${resource.resourceType}/${resource.id}`,
+          origin: 'Decoded',
+        },
         resource,
-        origin: 'Decoded',
       })),
     },
   ]),
@@ -225,7 +227,7 @@ const Harness = ({
 /** The literal reference the subject of the resource keyed `key` carries in `file`, or `None` for none. */
 const subjectLiteral = (file: DecodedFile.DecodedFile, key: string): Option.Option<string> =>
   Option.fromNullable(
-    file.rows.sections.flatMap((section) => section.rows).find((row) => row.key === key)
+    file.rows.sections.flatMap((section) => section.rows).find((row) => row.reviewable.key === key)
   ).pipe(
     Option.flatMap(({ resource }) => Mention.at(resource, Mention.SUBJECT_PATH)),
     Option.flatMapNullable(({ reference }) => reference.reference)
@@ -254,7 +256,7 @@ const includedIn = (reported: Reported, key: string): boolean =>
 
 /** The resource the review writes for the row keyed `key`, as the harness last reported. */
 const writtenAt = (reported: Reported, key: string): FhirResourceWithId => {
-  const row = SectionedList.rows(reported.resolved.rows).find((one) => one.key === key)
+  const row = SectionedList.rows(reported.resolved.rows).find((one) => one.reviewable.key === key)
   if (row === undefined) throw new Error(`no row keyed ${key}`)
   return StagedImport.resolvedResourceOf(reported.plan, reported.selection, row)
 }

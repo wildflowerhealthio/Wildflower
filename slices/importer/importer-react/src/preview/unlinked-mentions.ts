@@ -12,7 +12,6 @@ import { isOfPatient, type LeftUnlinked } from '@wildflowerhealthio/importer-cor
 import {
   type DecodedFile,
   Mention,
-  type Row,
   SectionedList,
   StagedImport,
   UnlinkedMention,
@@ -44,8 +43,8 @@ const unlinkedInRows = (
   selection: StagedImport.Selection,
   leftUnlinked: LeftUnlinked
 ): readonly UnlinkedMention.Type[] =>
-  SectionedList.rows(decodedFile.rows).flatMap(({ key, resource }) =>
-    leftUnlinked(key, reviewedResource(selection, key, resource))
+  SectionedList.rows(decodedFile.rows).flatMap(({ reviewable, resource }) =>
+    leftUnlinked(reviewable.key, reviewedResource(selection, reviewable.key, resource))
   )
 
 /** Whether `unlinked` is the mention at `mentionPath` of the resource reviewed under `reviewKey`. */
@@ -62,8 +61,8 @@ const keysNeedingPatient = (unlinked: readonly UnlinkedMention.Type[]): Readonly
 
 /** The resources listed under Needs a patient and under Needs a provider. */
 interface Groups {
-  readonly needingPatient: readonly Row.Type<FhirResourceWithId>[]
-  readonly needingProvider: readonly Row.Type<FhirResourceWithId>[]
+  readonly needingPatient: readonly DecodedFile.Row[]
+  readonly needingProvider: readonly DecodedFile.Row[]
 }
 
 /**
@@ -78,10 +77,12 @@ const groupsOf = (
   const providerKeys = new Set(
     unlinked.filter((one) => !isOfPatient(one)).map((one) => one.mentioningResourceKey)
   )
-  const resources = SectionedList.rows(decodedFile.rows)
+  const rows = SectionedList.rows(decodedFile.rows)
   return {
-    needingPatient: resources.filter(({ key }) => patientKeys.has(key)),
-    needingProvider: resources.filter(({ key }) => providerKeys.has(key) && !patientKeys.has(key)),
+    needingPatient: rows.filter(({ reviewable }) => patientKeys.has(reviewable.key)),
+    needingProvider: rows.filter(
+      ({ reviewable }) => providerKeys.has(reviewable.key) && !patientKeys.has(reviewable.key)
+    ),
   }
 }
 

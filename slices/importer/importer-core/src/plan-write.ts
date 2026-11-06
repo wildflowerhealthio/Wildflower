@@ -1,8 +1,8 @@
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import {
+  type DecodedFile,
   type FormatDecode,
   Mention,
-  type Row,
   SectionedList,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -38,7 +38,7 @@ type Disposition = 'Included' | 'Excluded' | 'Unchanged' | 'Unreferenced' | 'Sup
 /** One reviewed resource's place in the write: the row as reviewed, edits applied, and its disposition. */
 interface WriteDecision {
   readonly group: ReviewGroup
-  readonly entry: Row.Type<FhirResourceWithId>
+  readonly entry: DecodedFile.Row
   readonly disposition: Disposition
 }
 
@@ -77,7 +77,7 @@ type Verdict = Exclude<Disposition, 'Included' | 'Superseded'> | 'Candidate'
 /** A reviewed resource with its {@link Verdict}. */
 interface ReviewedRow {
   readonly group: ReviewGroup
-  readonly entry: Row.Type<FhirResourceWithId>
+  readonly entry: DecodedFile.Row
   readonly verdict: Verdict
 }
 
@@ -93,7 +93,7 @@ const literalReferencesIn = (resources: readonly FhirResourceWithId[]): Readonly
 
 /**
  * A candidate format row as written: `Unreferenced` when it is a record the
- * import implied (its `origin`) and no candidate format row names it, which
+ * import implied (its reviewable's `origin`) and no candidate format row names it, which
  * would write it as an orphan; else still a candidate.
  *
  * @param named - The literal references the candidate format rows carry
@@ -102,7 +102,7 @@ const unlessUnreferenced =
   (named: ReadonlySet<string>) =>
   (row: ReviewedRow): ReviewedRow =>
     row.verdict === 'Candidate' &&
-    row.entry.origin === 'Implied' &&
+    row.entry.reviewable.origin === 'Implied' &&
     !named.has(literalReferenceOf(row.entry.resource))
       ? { ...row, verdict: 'Unreferenced' }
       : row
@@ -124,7 +124,7 @@ const formatRowsOf = (
     return SectionedList.rows(batch.formats[kind].decoded.rows).map((row): ReviewedRow => ({
       group: kind,
       entry: { ...row, resource: StagedImport.resolvedResourceOf(batch.plan, selection, row) },
-      verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, row.key)
+      verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, row.reviewable.key)
         ? 'Candidate'
         : 'Excluded',
     }))
@@ -138,10 +138,8 @@ const formatRowsOf = (
  * @param unchangedLinked - The keys of the linked records the server diff
  *   found unchanged
  */
-const linkedVerdictOf = (
-  record: Row.Type<FhirResourceWithId>,
-  unchangedLinked: ReadonlySet<string>
-): Verdict => (unchangedLinked.has(record.key) ? 'Unchanged' : 'Candidate')
+const linkedVerdictOf = (record: DecodedFile.Row, unchangedLinked: ReadonlySet<string>): Verdict =>
+  unchangedLinked.has(record.reviewable.key) ? 'Unchanged' : 'Candidate'
 
 /**
  * The confirm's plan: a decision per reviewed resource, in submit order,
@@ -163,13 +161,13 @@ const linkedVerdictOf = (
  *   unticked it, or never ticked one the default leaves out. Else it is a
  *   candidate. Its `entry.resource` is the edited resource, resolved on the
  *   batch's plan, where the reviewer made an edit. A record the import
- *   implied from the references naming it (its `origin`) is
+ *   implied from the references naming it (its reviewable's `origin`) is
  *   **`Unreferenced`** when no candidate format row carries its literal
  *   `Type/<id>` in any reference field (`Mention.madeIn`): one nothing
  *   written names would be an orphan.
  * - A linked record is read-only in the review (a link choice is how to
  *   change one), so this is the one place its write is decided. It is
- *   **`Unchanged`** when the server holds it as it is (its key in
+ *   **`Unchanged`** when the server holds it as it is (its reviewable's key in
  *   `unchangedLinked`). Else it — a resolved record no file holds, the
  *   batch's identifiers assumed — is a candidate whatever the reviewer
  *   excluded: the link choice is the consent to it, and excluding a resource
@@ -209,7 +207,7 @@ const planWrite = (
   ]
   const candidateIndexes = rows.flatMap(({ entry, verdict }, index) =>
     verdict === 'Candidate'
-      ? [[literalReferenceOf(entry.resource), index, entry.origin] as const]
+      ? [[literalReferenceOf(entry.resource), index, entry.reviewable.origin] as const]
       : []
   )
   // Built in submit order, implied records first, the map keeps each

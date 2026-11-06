@@ -11,7 +11,6 @@ import {
   LinkChoice,
   type LinkPlan,
   Mention,
-  type Row,
   SectionedList,
   StagedImport,
   type UnlinkedMention,
@@ -92,9 +91,13 @@ const perTypeTallies = (
 ): readonly TypeTally[] => {
   const order: string[] = []
   const totals = new Map<string, { total: number; excluded: number }>()
-  for (const resource of SectionedList.rows(decodedFile.rows)) {
-    const type = resourceTypeOf(resource.resource)
-    const excluded = StagedImport.isResourceIncluded(selection, excludedByDefault, resource.key)
+  for (const row of SectionedList.rows(decodedFile.rows)) {
+    const type = resourceTypeOf(row.resource)
+    const excluded = StagedImport.isResourceIncluded(
+      selection,
+      excludedByDefault,
+      row.reviewable.key
+    )
       ? 0
       : 1
     const bucket = totals.get(type)
@@ -418,12 +421,12 @@ const FormatReviewBody = ({
   // A pick is a mention link choice, which the resolved row, and its edit
   // override resolved on the plan, follow.
   const pick = (
-    { key }: Row.Type<FhirResourceWithId>,
+    { reviewable }: DecodedFile.Row,
     mention: Mention.Linkable,
     picked: Option.Option<MentionLinkOptions.Option>
   ): void =>
     onChooseMention(
-      key,
+      reviewable.key,
       mention.path,
       Option.match(picked, {
         onNone: (): LinkChoice.MentionLinkChoice => LinkChoice.DontLink(),
@@ -431,14 +434,14 @@ const FormatReviewBody = ({
       })
     )
 
-  const renderRow = (row: Row.Type<FhirResourceWithId>, listsReason: boolean): JSX.Element => (
+  const renderRow = (row: DecodedFile.Row, listsReason: boolean): JSX.Element => (
     <ResourceRow
-      key={row.key}
-      resourceKey={row.key}
+      key={row.reviewable.key}
+      resourceKey={row.reviewable.key}
       reviewed={StagedImport.resolvedResourceOf(plan, selection, row)}
-      included={StagedImport.isResourceIncluded(selection, excludedByDefault, row.key)}
-      isEdited={StagedImport.isResourceEdited(selection, row.key)}
-      comparison={comparisons?.get(row.key)}
+      included={StagedImport.isResourceIncluded(selection, excludedByDefault, row.reviewable.key)}
+      isEdited={StagedImport.isResourceEdited(selection, row.reviewable.key)}
+      comparison={comparisons?.get(row.reviewable.key)}
       mentionLinkOptions={mentionLinkOptions}
       unlinked={unlinked}
       leftUnlinked={leftUnlinked}
@@ -454,7 +457,7 @@ const FormatReviewBody = ({
   )
   const unlinkedGroup = (
     heading: string,
-    listed: readonly Row.Type<FhirResourceWithId>[]
+    listed: readonly DecodedFile.Row[]
   ): JSX.Element | null =>
     listed.length === 0 ? null : (
       <section aria-label={heading} className={styles['review-body__unlinked']}>
@@ -491,13 +494,13 @@ const FormatReviewBody = ({
           // (`FormatDecode.keyPrefix`), so it is unique across the format —
           // which lets a section's first resource identify it even when two
           // files contribute sections of the same title.
-          key={section.rows[0]?.key ?? section.title}
+          key={section.rows[0]?.reviewable.key ?? section.title}
           className={styles['review-body__section']}
           aria-label={section.title}
         >
           <SectionToggle
             title={section.title}
-            keys={section.rows.map((resource) => resource.key)}
+            keys={section.rows.map((row) => row.reviewable.key)}
             isIncluded={(key) => StagedImport.isResourceIncluded(selection, excludedByDefault, key)}
             onSetIncluded={(keys, included) => {
               onSelectionChange(StagedImport.setResourcesIncluded(selection, keys, included))

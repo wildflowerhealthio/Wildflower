@@ -86,10 +86,12 @@ const resultOf = <K extends FormatKind>(
             {
               title: 'Resources',
               rows: resources.map((resource, index) => ({
-                key: `${kind}/k-${index}`,
-                title: `${resource.resourceType}/${resource.id}`,
+                reviewable: {
+                  key: `${kind}/k-${index}`,
+                  title: `${resource.resourceType}/${resource.id}`,
+                  origin: 'Decoded',
+                },
                 resource,
-                origin: 'Decoded',
               })),
             },
           ]),
@@ -117,7 +119,8 @@ const resolvedOnTestClock = (
 
 /** The resource keyed `key` in `kind`'s decoded file. */
 const at = (batch: DecodedBatch, kind: FormatKind, key: string): FhirResource | undefined =>
-  SectionedList.rows(batch.formats[kind].decoded.rows).find((row) => row.key === key)?.resource
+  SectionedList.rows(batch.formats[kind].decoded.rows).find((row) => row.reviewable.key === key)
+    ?.resource
 
 const subjectOf = (resource: FhirResource | undefined): string | null | undefined =>
   resource !== undefined && 'subject' in resource ? resource.subject?.reference : undefined
@@ -154,7 +157,7 @@ describe('resolveMentions', () => {
       (['har', 'lifelabs-pdf'] as const).map((kind) =>
         resolved.formats[kind].decoded.rows.sections.map((section) => [
           section.title,
-          section.rows.map((row) => row.key),
+          section.rows.map((row) => row.reviewable.key),
         ])
       )
     ).toEqual([[['Resources', ['har/k-0']]], [['Resources', ['lifelabs-pdf/k-0']]]])
@@ -262,8 +265,8 @@ describe('resolveMentions with mention link choices', () => {
 
     const listed = (resolved: ResolvedBatch): readonly string[] =>
       SectionedList.rows(resolved.decodedBatch.formats.har.decoded.rows)
-        .flatMap(({ key, resource }) =>
-          UnlinkedMention.leftByReferentLinks(resolved.plan, key, resource)
+        .flatMap(({ reviewable, resource }) =>
+          UnlinkedMention.leftByReferentLinks(resolved.plan, reviewable.key, resource)
         )
         .map(({ _tag, mentioningResourceKey }) => `${_tag} ${mentioningResourceKey}`)
     expect(listed(onReferents)).toEqual(['Dangling har/k-0', 'Dangling har/k-1'])

@@ -121,10 +121,8 @@ describe('Referent.discover', () => {
       rows: SectionedList.make([
         Section.make('Resources', [
           {
-            key: 'k-0',
-            title: 'implied',
+            reviewable: { key: 'k-0', title: 'implied', origin: 'Implied' },
             resource: implied,
-            origin: 'Implied',
           },
         ]),
       ]),
@@ -133,7 +131,7 @@ describe('Referent.discover', () => {
 
     const referents = Effect.runSync(Referent.discover([impliedFile, fileOf(served)]))
 
-    expect(referents.map(({ reviewKey, resource }) => [reviewKey, resource])).toEqual([
+    expect(referents.map(({ reviewable, resource }) => [reviewable.key, resource])).toEqual([
       ['k-0', served],
     ])
   })

@@ -155,10 +155,10 @@ describe('harImporter.decode', () => {
       PATIENT_URL,
       OBSERVATION_URL,
     ])
-    expect(decoded.rows.sections[0]?.rows.map((row) => row.title)).toEqual([
+    expect(decoded.rows.sections[0]?.rows.map((row) => row.reviewable.title)).toEqual([
       expect.stringMatching(/^Patient\//),
     ])
-    expect(decoded.rows.sections[1]?.rows.map((row) => row.title)).toEqual([
+    expect(decoded.rows.sections[1]?.rows.map((row) => row.reviewable.title)).toEqual([
       expect.stringMatching(/^Observation\//),
       expect.stringMatching(/^Observation\//),
     ])
@@ -179,8 +179,10 @@ describe('harImporter.decode', () => {
   it('should title each record by the reference the import stage writes it under', async () => {
     const decoded = await readOne(pickedHar())
 
-    for (const { title, resource } of decoded.rows.sections.flatMap((section) => section.rows)) {
-      expect(title).toBe(`${resource.resourceType}/${resource.id}`)
+    for (const { reviewable, resource } of decoded.rows.sections.flatMap(
+      (section) => section.rows
+    )) {
+      expect(reviewable.title).toBe(`${resource.resourceType}/${resource.id}`)
     }
   })
 

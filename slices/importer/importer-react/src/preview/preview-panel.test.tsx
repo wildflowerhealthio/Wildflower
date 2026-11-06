@@ -2,11 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import {
-  type FhirResourceWithId,
-  Observation,
-  Patient,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import { Observation, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   defaultFormatSettings,
   type FormatKind,
@@ -23,7 +19,6 @@ import {
   LinkTarget,
   type PickedFile,
   type Referent,
-  type Row,
   Section,
   SectionedList,
   StagedImport,
@@ -531,11 +526,9 @@ describe('PreviewPanel', () => {
       ...onServer,
       gender: 'male',
     })
-    const labeled: Row.Type<FhirResourceWithId> = {
-      key: 'pat-1',
-      title: 'Patient/pat-1',
+    const labeled: DecodedFile.Row = {
+      reviewable: { key: 'pat-1', title: 'Patient/pat-1', origin: 'Decoded' },
       resource: patientResource,
-      origin: 'Decoded',
     }
     const batch = makeBatch({
       har: formatResult('a.har', decoded([section('s', [labeled])]), 'har'),
@@ -557,11 +550,9 @@ describe('PreviewPanel', () => {
       resourceType: 'Patient',
       id: 'pat-1',
     })
-    const labeled: Row.Type<FhirResourceWithId> = {
-      key: 'pat-1',
-      title: 'Patient/pat-1',
+    const labeled: DecodedFile.Row = {
+      reviewable: { key: 'pat-1', title: 'Patient/pat-1', origin: 'Decoded' },
       resource: patientResource,
-      origin: 'Decoded',
     }
     const batch = makeBatch({
       har: formatResult('a.har', decoded([section('s', [labeled])]), 'har'),
@@ -594,15 +585,13 @@ describe('PreviewPanel', () => {
 const valueSlot = (value: unknown): DiffSlot => ({ _tag: 'value', value })
 
 /** The Patient `pat-1` as the import has her: female, where the server has male. */
-const FEMALE_PAT_1: Row.Type<FhirResourceWithId> = {
-  key: 'pat-1',
-  title: 'Patient/pat-1',
+const FEMALE_PAT_1: DecodedFile.Row = {
+  reviewable: { key: 'pat-1', title: 'Patient/pat-1', origin: 'Decoded' },
   resource: Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
     resourceType: 'Patient',
     id: 'pat-1',
     gender: 'female',
   }),
-  origin: 'Decoded',
 }
 
 /** A gender the server has as male and the import as female. */
@@ -668,34 +657,33 @@ const comparisonsFor = (
 
 /** A decoded file from sections and optional notes. */
 const decoded = (
-  sections: readonly Section.Type<Row.Type<FhirResourceWithId>>[],
+  sections: readonly Section.Type<DecodedFile.Row>[],
   notes: readonly string[] = []
 ): DecodedFile.DecodedFile => ({ rows: SectionedList.make(sections), notes })
 
 /** One titled section holding the given resources. */
 const section = (
   title: string,
-  resources: readonly Row.Type<FhirResourceWithId>[]
-): Section.Type<Row.Type<FhirResourceWithId>> => Section.make(title, resources)
+  resources: readonly DecodedFile.Row[]
+): Section.Type<DecodedFile.Row> => Section.make(title, resources)
 
 /**
  * A labeled resource for the panel to count and display: a bare Patient, or
  * an Observation about a patient with an empty code, each summarised by its
  * `Type/id`.
  */
-const labeledResource = (key: string, title: string): Row.Type<FhirResourceWithId> => {
+const labeledResource = (key: string, title: string): DecodedFile.Row => {
   const [resourceType = 'Patient', id = key] = title.split('/')
   const resource =
     resourceType === 'Observation'
       ? observationOf(key, { code: {}, subject: { reference: 'Patient/p' } }).resource
       : Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
-  return { key, title, resource: { ...resource, id }, origin: 'Decoded' }
+  return { reviewable: { key, title, origin: 'Decoded' }, resource: { ...resource, id } }
 }
 
 /** An Observation carrying the given reference fields, labeled under `key`, for a linked record to be named by. */
-const observationOf = (key: string, references: object): Row.Type<FhirResourceWithId> => ({
-  key,
-  title: `Observation/${key}`,
+const observationOf = (key: string, references: object): DecodedFile.Row => ({
+  reviewable: { key, title: `Observation/${key}`, origin: 'Decoded' },
   resource: Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
     resourceType: 'Observation',
     id: key,
@@ -703,7 +691,6 @@ const observationOf = (key: string, references: object): Row.Type<FhirResourceWi
     code: { text: 'Heart rate' },
     ...references,
   }),
-  origin: 'Decoded',
 })
 
 /** `batch` with the stored `Patient/s-1` as its one linked record: a stored copy. */
@@ -720,14 +707,20 @@ const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch => {
     identifiers: logicalReference.identifier,
     derivedIdentifier: Option.none(),
     resource,
-    reviewKey: 'k-s-1',
-    origin: 'Decoded',
+    reviewable: { key: 'k-s-1', title: literalReference, origin: 'Decoded' },
     label: literalReference,
   }
   return {
     ...batch,
     linkedRecords: [
-      { key: `linked:${literalReference}`, title: literalReference, resource, origin: 'Decoded' },
+      {
+        reviewable: {
+          key: `linked:${literalReference}`,
+          title: literalReference,
+          origin: 'Decoded',
+        },
+        resource,
+      },
     ],
     plan: { ...LinkPlan.empty, links: [{ referent, target: LinkTarget.Stored({ resource }) }] },
   }

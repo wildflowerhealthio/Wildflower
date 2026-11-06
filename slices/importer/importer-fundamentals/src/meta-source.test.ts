@@ -6,7 +6,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as MetaSource from './meta-source.ts'
-import type * as Row from './row.ts'
+import type * as Reviewable from './reviewable.ts'
 import * as SectionedList from './sectioned-list.ts'
 
 const fakeResource = (id: string): FhirResourceWithId =>
@@ -67,10 +67,12 @@ describe('MetaSource.stampDecoded', () => {
             title: fc.string(),
             rows: fc.array(
               fc.record({
-                key: fc.string(),
-                title: fc.string(),
+                reviewable: fc.record({
+                  key: fc.string(),
+                  title: fc.string(),
+                  origin: fc.constant<Reviewable.Origin>('Decoded'),
+                }),
                 resource: fc.string().map(fakeResource),
-                origin: fc.constant<Row.Origin>('Decoded'),
               })
             ),
           })
@@ -85,8 +87,8 @@ describe('MetaSource.stampDecoded', () => {
             sections.map((section) => section.title)
           )
           for (const [index, section] of stamped.rows.sections.entries()) {
-            expect(section.rows.map((row) => row.key)).toEqual(
-              sections[index]?.rows.map((row) => row.key)
+            expect(section.rows.map((row) => row.reviewable.key)).toEqual(
+              sections[index]?.rows.map((row) => row.reviewable.key)
             )
             for (const row of section.rows) expect(row.resource.meta?.source).toBe(source)
           }

@@ -183,10 +183,8 @@ describe('ReferentSearch.defaultChoice', () => {
         rows: SectionedList.make([
           Section.make('Resources', [
             {
-              key: 'k-0',
-              title: 'Patient/p-1',
+              reviewable: { key: 'k-0', title: 'Patient/p-1', origin: 'Implied' },
               resource: patient({ id: 'p-1' }),
-              origin: 'Implied',
             },
           ]),
         ]),

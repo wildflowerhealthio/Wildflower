@@ -94,15 +94,18 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   and the review's memoized rows rely on.
 - `src/section.ts` — the **`Section`** namespace: **`Type<E>`**, one titled
   group of rows `{ title, rows }`, and **`make(title, rows)`**.
-- `src/row.ts` — the **`Row`** namespace: **`Type<R>`**, one reviewed record
-  `{ key, title, origin, resource }`, `R` being what the record is at its
-  stage, and **`Origin`** (`Decoded` or `Implied`, the one place a row says it
-  was implied; the import stage's source-file rows and the identity map's
+- `src/reviewable.ts` — the **`Reviewable`** namespace: **`Type`**, the
+  review's address for one record `{ key, title, origin }` (the `key` the
+  reviewer's ticks and edits, the server diff and the link choices index
+  by), and **`Origin`** (`Decoded` or `Implied`, the one place a record says
+  it was implied; the import stage's source-file rows and the identity map's
   linked records are `Decoded`).
-- `src/decoded-file.ts` — the **`DecodedFile`** namespace: **`DecodedFile`**,
-  a file set's records the device's own: its **`rows`**, a
-  `SectionedList.Type` of `Row.Type<FhirResourceWithId>`, beside its `notes`; **`empty`** and
-  **`concatenateAll`** (every file's sections in order, and every file's notes).
+- `src/decoded-file.ts` — the **`DecodedFile`** namespace: **`Row`**, a
+  decoded file's row `{ reviewable, resource }` (a `Reviewable.Type` and the
+  record it will write); **`DecodedFile`**, a file set's records the
+  device's own: its **`rows`**, a `SectionedList.Type` of `Row`, beside its
+  `notes`; **`empty`** and **`concatenateAll`** (every file's sections in
+  order, and every file's notes).
 - `src/decoded-file-set.ts` — the **`DecodedFileSet`** namespace: one file
   set as its format decoded it. **`Type`** is its `pickedFiles` (read
   together, in the order they were picked), its `sections` and its `notes`.
@@ -144,7 +147,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   decides which identifiers resolve; a keyless record's identifiers stay
   out), then runs `fhir-r4-adoption`'s `adopt` over each record with that
   reference plan and its plan's `id` (`adoptEntries`), each a
-  `Row.Type<FhirResourceWithId>` keeping its entry's **`origin`**. So a keyed record lands on the id its
+  `DecodedFile.Row` whose reviewable keeps its entry's **`origin`**. So a keyed record lands on the id its
   key derives, a keyless one on an id `mintId` mints (a random UUID unless a
   test injects one), in entry order, and a logical reference resolves when
   the set holds a keyed record it names by any of that record's identifiers,
@@ -227,7 +230,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two
   axes: `includedByReviewer` (their own include/exclude choices, `true` or
-  `false` by a row's `key`; a key absent there takes the
+  `false` by a row's reviewable's `key`; a key absent there takes the
   default the shell derives and passes in as `excludedByDefault`) and
   `resourceOverrides` (per-resource inline edits over `FhirResourceWithId`, same
   keying — the reviewer's edited resource, resolved on the batch's plan
@@ -313,7 +316,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     of, which may already exist on the device, once per identity: its
     decoded `resource` (keyed by its `identifier[0]`), carrying every
     identifier a search tries, its own and the derived one, and its row's
-    `origin`. Every referent
+    `reviewable` (its review key and `origin`). Every referent
     has a record: a reference to one the import never saw implies it at
     decode (`DecodedFileSet.adopt`). `ownLogicalReferencesOf` is the logical
     references a referent's source-given identifiers make (a derived
@@ -325,7 +328,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     also carries is that Patient. **`discover`** finds them over a batch's
     files, once per identity (a record two file sets imply under one id is
     one referent, and a copy a file decoded is taken over an implied one by
-    its `origin`), and fails with **`DuplicateReferent`** when two resources
+    its reviewable's `origin`), and fails with **`DuplicateReferent`** when two resources
     under different ids, in one file or two, share a key; `byKey` indexes
     into a `HashMap`.
   - **`LinkChoiceSet`** — the reviewer's whole answer (**`Type`**,
@@ -438,7 +441,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     label when it replaces the decoded one under another id, else as decoded,
     its mentions redirected to their referents' link targets either way
     (`ResourceReferences.mapReferences`, keeping `display` and `identifier`),
-    then each the reviewer chose a link for under the entry's review key
+    then each the reviewer chose a link for under the row's review key
     redirected where that choice says (`Mention.relinked`: on the chosen
     resource's literal reference, or, for `Unlinked`, with its literal
     dropped; an empty `subject` slot chosen for is filled);
@@ -448,11 +451,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     stored one now stands in for, or a mention chosen for, is written where
     the plan says now;
     **`linkedRecords(plan)`**: the batch's linked records, the resolved
-    resources no resolved file holds, each a `Row.Type<FhirResourceWithId>`
+    resources no resolved file holds, each a `DecodedFile.Row`
     (a decoded record whose id a stored record,
     linked to under another of the record's keys, stands in for in every
     file), as
-    they will be written, keyed by
+    they will be written, their reviewables keyed by
     **`linkedKey`** and titled by their label, in the order the links first
     reach them, no file's and so no format's.
   - **`UnlinkedMention`** — **`leftByReferentLinks(plan, reviewKey,

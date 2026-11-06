@@ -5,7 +5,7 @@ import {
   DecodeFunction,
   type FormatDecode,
   type PickedFile,
-  type Row,
+  type DecodedFile,
   type Section,
   SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -59,7 +59,7 @@ const kindOf = (fileName: string): FormatKind | undefined => {
 
 /** Every review key a format's result offers, in review order. */
 const reviewKeys = (result: FormatDecode.Result<FormatKind>): readonly string[] =>
-  SectionedList.rows(result.decoded.rows).map((resource) => resource.key)
+  SectionedList.rows(result.decoded.rows).map((resource) => resource.reviewable.key)
 
 /** A Patient its source calls `id`, detached as a decoder hands it over. */
 const fakeResource = (id: string): DetachedResource.Type =>
@@ -104,7 +104,7 @@ const sourceFileFormatOf = (kind: FormatKind): PickedFile.FormatValue => ({
 /** The sections a format's decode read out of its files, its source file sections left out. */
 const extractedSections = (
   result: FormatDecode.Result<FormatKind>
-): readonly Section.Type<Row.Type<FhirResourceWithId>>[] =>
+): readonly Section.Type<DecodedFile.Row>[] =>
   result.decoded.rows.sections.filter((section) => section.title !== 'Source file')
 
 const fakeRegistry: ReadRegistry<never> = {

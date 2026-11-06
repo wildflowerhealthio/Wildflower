@@ -13,7 +13,6 @@ import { type FhirResourceWithId, ResourceReferences } from '@wildflowerhealthio
 import { Array, Option, pipe } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
-import type * as Row from '../row.ts'
 import * as SectionedList from '../sectioned-list.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkTarget from './link-target.ts'
@@ -84,25 +83,23 @@ const redirectMentions =
     )
 
 /** Whether `after` holds the very resource and title `before` does. */
-const sameRow = (
-  before: Row.Type<FhirResourceWithId>,
-  after: Row.Type<FhirResourceWithId>
-): boolean => after.resource === before.resource && after.title === before.title
+const sameRow = (before: DecodedFile.Row, after: DecodedFile.Row): boolean =>
+  after.resource === before.resource && after.reviewable.title === before.reviewable.title
 
 /**
  * `decodedRow` as it is resolved under `plan`: a referent's resource
  * written as its resolved resource (a stored resource standing in for it, or
  * itself having assumed what the referents linked to it bring), any other
  * written as decoded, with its mentions redirected either way, those the
- * reviewer chose a link for under the row's review key where their choice
- * says. A row whose resource the resolved one replaces under another id
+ * reviewer chose a link for under the row's reviewable's key where their
+ * choice says. A row whose resource the resolved one replaces under another id
  * takes the resolved resource's label as its title; any other keeps its own.
  * The same object when nothing changes.
  */
 const resolveRow =
   (plan: LinkPlan.Type) =>
-  (decodedRow: Row.Type<FhirResourceWithId>): Row.Type<FhirResourceWithId> => {
-    const redirect = redirectMentions(plan, decodedRow.key)
+  (decodedRow: DecodedFile.Row): DecodedFile.Row => {
+    const redirect = redirectMentions(plan, decodedRow.reviewable.key)
     const resolvedRow = Option.match(
       LinkPlan.resolvedResourceIfReferent(plan, decodedRow.resource),
       {
@@ -111,12 +108,11 @@ const resolveRow =
           resource: redirect(decodedRow.resource),
         }),
         onSome: (resolvedResource) => ({
-          ...decodedRow,
-          resource: redirect(resolvedResource.resource),
-          title:
+          reviewable:
             resolvedResource.resource.id === decodedRow.resource.id
-              ? decodedRow.title
-              : resolvedResource.label,
+              ? decodedRow.reviewable
+              : { ...decodedRow.reviewable, title: resolvedResource.label },
+          resource: redirect(resolvedResource.resource),
         }),
       }
     )
@@ -144,15 +140,13 @@ const resolveEdit = (
  * written, in the order the links first reach them. No resolved file holds
  * them; they are the batch's own, reviewed and written beside the files.
  */
-const linkedRecords = (plan: LinkPlan.Type): readonly Row.Type<FhirResourceWithId>[] =>
+const linkedRecords = (plan: LinkPlan.Type): readonly DecodedFile.Row[] =>
   pipe(
     LinkPlan.resolvedResources(plan),
     Array.filter(({ resourceExistsInBatch }) => !resourceExistsInBatch),
-    Array.map(({ resource, label }): Row.Type<FhirResourceWithId> => ({
-      key: linkedKey(resource),
-      title: label,
+    Array.map(({ resource, label }): DecodedFile.Row => ({
+      reviewable: { key: linkedKey(resource), title: label, origin: 'Decoded' },
       resource,
-      origin: 'Decoded',
     }))
   )
 

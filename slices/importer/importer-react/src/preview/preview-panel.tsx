@@ -1,6 +1,6 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { type Row, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import { type DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 import { Array, Data, Option } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
@@ -91,7 +91,7 @@ interface PreviewPanelProps {
    * Each labeled resource's server comparison (`new` / `unchanged` /
    * `changed`, and for `changed` the leaf-level field diffs), keyed by the
    * group it is reviewed in (a format, or the linked records) and then by
-   * `Row`'s `key`. Rendered as a badge on each row — the
+   * its reviewable's `key`. Rendered as a badge on each row — the
    * `changed` badge opens to show `field "server" -> "import"` with a
    * per-field reset on a format's row. A key absent from the map (the
    * pre-fetch is still in flight, or the resource is not covered by the
@@ -199,7 +199,7 @@ const LinkedRecords = ({
   labels,
   comparisons,
 }: {
-  readonly linkedRecords: readonly Row.Type<FhirResourceWithId>[]
+  readonly linkedRecords: readonly DecodedFile.Row[]
   /** The label of each record a subject may be redirected to, by its literal reference. */
   readonly labels: ReadonlyMap<string, string>
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
@@ -211,13 +211,13 @@ const LinkedRecords = ({
     <h3 className={panelStyles['preview-panel__format-heading']}>{LINKED_RECORDS_HEADING}</h3>
     <p className={panelStyles['preview-panel__linked-note']}>{LINKED_RECORDS_NOTE}</p>
     <ul className={panelStyles['preview-panel__linked-list']}>
-      {linkedRecords.map((entry) => {
-        const description = describeResource(entry.resource, labels)
+      {linkedRecords.map((row) => {
+        const description = describeResource(row.resource, labels)
         return (
-          <li key={entry.key} className={panelStyles['preview-panel__linked-row']}>
+          <li key={row.reviewable.key} className={panelStyles['preview-panel__linked-row']}>
             <span className={panelStyles['preview-panel__linked-type']}>{description.type}</span>
             <span>{description.summary}</span>
-            <DiffBadge comparison={comparisons?.get(entry.key)} current={entry.resource} />
+            <DiffBadge comparison={comparisons?.get(row.reviewable.key)} current={row.resource} />
           </li>
         )
       })}

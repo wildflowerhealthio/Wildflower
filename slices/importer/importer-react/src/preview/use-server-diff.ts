@@ -5,7 +5,7 @@ import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type Row,
+  type DecodedFile,
   SectionedList,
   type StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -59,7 +59,7 @@ interface DiffRow {
 
 /**
  * Every previewed resource's server comparison, keyed by the group it is
- * reviewed in and then by `Row`'s `key` within the group.
+ * reviewed in and then by its reviewable's `key` within the group.
  *
  * @remarks
  * A resource key is unique within one format — a per-file decode's keys are
@@ -137,14 +137,14 @@ const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] => [
   ...formatKinds.flatMap((kind) =>
     SectionedList.rows(batch.formats[kind].decoded.rows).map((row): DiffRow => ({
       group: kind,
-      key: row.key,
+      key: row.reviewable.key,
       resource: row.resource,
     }))
   ),
-  ...batch.linkedRecords.map((entry): DiffRow => ({
+  ...batch.linkedRecords.map((row): DiffRow => ({
     group: LINKED_GROUP,
-    key: entry.key,
-    resource: entry.resource,
+    key: row.reviewable.key,
+    resource: row.resource,
   })),
 ]
 
@@ -252,11 +252,13 @@ const useServerDiff = (batch: ResolvedBatch | undefined, batchId: number): Serve
  *   when the diff has none for it, which finds nothing unchanged)
  */
 const unchangedKeysOf = (
-  labeled: readonly Row.Type<FhirResourceWithId>[],
+  labeled: readonly DecodedFile.Row[],
   comparisons: ReadonlyMap<string, ServerComparison> | undefined
 ): ReadonlySet<string> =>
   new Set(
-    labeled.filter(({ key }) => comparisons?.get(key)?.status === 'unchanged').map(({ key }) => key)
+    labeled
+      .map(({ reviewable }) => reviewable.key)
+      .filter((key) => comparisons?.get(key)?.status === 'unchanged')
   )
 
 /**
