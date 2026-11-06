@@ -5,6 +5,8 @@ import { Patient, type FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/re
 import { Effect, Exit, HashMap, Layer, Match, Option, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as Section from '../section.ts'
+import * as SectionedList from '../sectioned-list.ts'
 import {
   SOURCE_PATIENT,
   SOURCE_PRACTITIONER,
@@ -178,19 +180,16 @@ describe('ReferentSearch.defaultChoice', () => {
   it('should keep the stored copy of a record the import implied, rather than write the name alone over it', async () => {
     const implied = Referent.discover([
       {
-        sections: [
-          {
-            title: 'Resources',
-            rows: [
-              {
-                key: 'k-0',
-                title: 'Patient/p-1',
-                resource: patient({ id: 'p-1' }),
-                origin: 'Implied',
-              },
-            ],
-          },
-        ],
+        rows: SectionedList.make([
+          Section.make('Resources', [
+            {
+              key: 'k-0',
+              title: 'Patient/p-1',
+              resource: patient({ id: 'p-1' }),
+              origin: 'Implied',
+            },
+          ]),
+        ]),
       },
     ])
     const [referent] = await Effect.runPromise(

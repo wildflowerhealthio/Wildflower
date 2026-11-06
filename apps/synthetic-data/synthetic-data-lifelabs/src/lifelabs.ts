@@ -327,7 +327,7 @@ const render = (
       timeZone: laboratory.timeZone,
       healthCardProvince: HEALTH_CARD_PROVINCE,
     })
-    return SectionedList.rows(yield* DecodedFileSet.adopt(decoded))
+    return SectionedList.rows((yield* DecodedFileSet.adopt(decoded)).rows)
       .map((row) => row.resource)
       .filter((resource) => resource.resourceType !== 'Patient')
       .map(withSubject(pharmacyPatient))

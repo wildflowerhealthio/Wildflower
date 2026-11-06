@@ -24,7 +24,8 @@ import {
   type PickedFile,
   type Referent,
   type Row,
-  type Section,
+  Section,
+  SectionedList,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Option, Schema, type ParseResult } from 'effect'
@@ -669,13 +670,13 @@ const comparisonsFor = (
 const decoded = (
   sections: readonly Section.Type<Row.Type<FhirResourceWithId>>[],
   notes: readonly string[] = []
-): DecodedFile.DecodedFile => ({ sections, notes })
+): DecodedFile.DecodedFile => ({ rows: SectionedList.make(sections), notes })
 
 /** One titled section holding the given resources. */
 const section = (
   title: string,
   resources: readonly Row.Type<FhirResourceWithId>[]
-): Section.Type<Row.Type<FhirResourceWithId>> => ({ title, rows: resources })
+): Section.Type<Row.Type<FhirResourceWithId>> => Section.make(title, resources)
 
 /**
  * A labeled resource for the panel to count and display: a bare Patient, or

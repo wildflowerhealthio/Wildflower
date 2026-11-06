@@ -100,8 +100,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   was implied; the import stage's source-file rows and the identity map's
   linked records are `Decoded`).
 - `src/decoded-file.ts` — the **`DecodedFile`** namespace: **`DecodedFile`**,
-  a file set's records the device's own, a `SectionedList.Type` of
-  `Row.Type<FhirResourceWithId>` beside its `notes`; **`empty`** and
+  a file set's records the device's own: its **`rows`**, a
+  `SectionedList.Type` of `Row.Type<FhirResourceWithId>`, beside its `notes`; **`empty`** and
   **`concatenateAll`** (every file's sections in order, and every file's notes).
 - `src/decoded-file-set.ts` — the **`DecodedFileSet`** namespace: one file
   set as its format decoded it. **`Type`** is its `pickedFiles` (read

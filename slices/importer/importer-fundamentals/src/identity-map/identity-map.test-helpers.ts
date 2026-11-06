@@ -20,6 +20,7 @@ import { Arbitrary, Array, Effect, FastCheck as fc, HashMap, Schema, TestContext
 
 import type * as DecodedFile from '../decoded-file.ts'
 import type * as Row from '../row.ts'
+import * as Section from '../section.ts'
 import * as SectionedList from '../sectioned-list.ts'
 import * as FileResolution from './file-resolution.ts'
 import * as LinkChoice from './link-choice.ts'
@@ -104,7 +105,7 @@ const leftByReferentLinksOnTestClock = (
       LinkPlan.withMentionLinkChoiceSet(onReferents, byMention)
     )
   )
-  return SectionedList.rows(file).flatMap(({ key, resource }) =>
+  return SectionedList.rows(file.rows).flatMap(({ key, resource }) =>
     UnlinkedMention.leftByReferentLinks(plan, key, resource)
   )
 }
@@ -121,7 +122,7 @@ const wireOf = (resource: FhirResource): string => JSON.stringify(encodeResource
 /** A decoded file as wire JSON text, keys and titles included. */
 const fileWireOf = (file: DecodedFile.DecodedFile): string =>
   JSON.stringify(
-    file.sections.map((section) => ({
+    file.rows.sections.map((section) => ({
       title: section.title,
       rows: section.rows.map((row) => [row.key, row.title, wireOf(row.resource)]),
     }))
@@ -248,17 +249,17 @@ const observation = (
 
 /** A decoded file of one section, keyed `k-<index>`. */
 const fileOf = (...resources: readonly FhirResourceWithId[]): DecodedFile.DecodedFile => ({
-  sections: [
-    {
-      title: 'Resources',
-      rows: resources.map((resource, index) => ({
+  rows: SectionedList.make([
+    Section.make(
+      'Resources',
+      resources.map((resource, index) => ({
         key: `k-${index}`,
         title: `${resource.resourceType}/${resource.id}`,
         resource,
         origin: 'Decoded',
-      })),
-    },
-  ],
+      }))
+    ),
+  ]),
   notes: [],
 })
 
@@ -339,13 +340,13 @@ const fileArbitrary: fc.Arbitrary<DecodedFile.DecodedFile> = fc
   .chain((resources) =>
     fc.integer({ min: 0, max: resources.length }).map((split) => {
       const file = fileOf(...resources)
-      const entries = file.sections.flatMap((section) => section.rows)
+      const rows = SectionedList.rows(file.rows)
       return {
         ...file,
-        sections: [
-          { title: 'First', rows: entries.slice(0, split) },
-          { title: 'Second', rows: entries.slice(split) },
-        ],
+        rows: SectionedList.make([
+          Section.make('First', rows.slice(0, split)),
+          Section.make('Second', rows.slice(split)),
+        ]),
       }
     })
   )

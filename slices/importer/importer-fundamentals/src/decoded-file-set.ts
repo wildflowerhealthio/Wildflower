@@ -456,7 +456,7 @@ const adopt = (
       prescriptionSubjectsOf(referencePlan, everyPlannedEntry)
     )
     return {
-      sections: adoptEntries(plannedEntries, referencePlan, takeSubject).sections,
+      rows: adoptEntries(plannedEntries, referencePlan, takeSubject),
       notes: decoded.notes,
     }
   })

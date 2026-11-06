@@ -54,8 +54,10 @@ const stampDecoded = (
   source: Reference
 ): DecodedFile.DecodedFile => ({
   ...decoded,
-  sections: SectionedList.map(decoded, (row) => ({ ...row, resource: stamp(row.resource, source) }))
-    .sections,
+  rows: SectionedList.map(decoded.rows, (row) => ({
+    ...row,
+    resource: stamp(row.resource, source),
+  })),
 })
 
 export { makeReference, stamp, stampDecoded }

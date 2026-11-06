@@ -83,7 +83,7 @@ const adoptedIn = (
   sections: readonly Section.Type<DecodedFileSet.Entry>[]
 ): readonly FhirResourceWithId[] =>
   SectionedList.rows(
-    Either.getOrThrow(DecodedFileSet.adopt({ sections, notes: [] }, countingMinter()))
+    Either.getOrThrow(DecodedFileSet.adopt({ sections, notes: [] }, countingMinter())).rows
   ).map(({ resource }) => resource)
 
 const subjectOf = (resource: FhirResourceWithId | undefined): string | null | undefined =>
@@ -461,7 +461,7 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
   ): readonly (Row.Type<FhirResourceWithId> & { readonly section: string })[] =>
     Either.getOrThrow(
       DecodedFileSet.adopt({ sections, notes: [] }, countingMinter())
-    ).sections.flatMap(({ title, rows }) => rows.map((row) => ({ ...row, section: title })))
+    ).rows.sections.flatMap(({ title, rows }) => rows.map((row) => ({ ...row, section: title })))
 
   const requesterOf = (resource: FhirResourceWithId | undefined): unknown =>
     resource?.resourceType === 'MedicationRequest' ? resource.requester : undefined
@@ -683,7 +683,7 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
       )
     )
 
-    expect(adopted.sections.map(({ title }) => title)).toEqual(['people'])
+    expect(adopted.rows.sections.map(({ title }) => title)).toEqual(['people'])
   })
 
   it('property: implies one record per distinct provider named, and resolves every reference to one', () => {
@@ -723,7 +723,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         sections: [sectionOf('people', [patient('pat-7')])],
         notes: [],
       })
-    ).sections
+    ).rows.sections
     expect(section?.rows.map(({ title }) => title)).toEqual([
       `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7')}`,
     ])
@@ -735,7 +735,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         { sections: [sectionOf('people', [patient(null)])], notes: [] },
         countingMinter()
       )
-    ).sections
+    ).rows.sections
     expect(section?.rows.map(({ title, resource }) => [title, resource.id])).toEqual([
       ['Patient (people:0)', 'minted-1'],
     ])
@@ -747,7 +747,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
         sections: [sectionOf('people', [patient('pat-7'), patient(null)])],
         notes: [],
       })
-    ).sections
+    ).rows.sections
     expect(section?.rows.map(({ key }) => key)).toEqual(['people:0', 'people:1'])
   })
 })

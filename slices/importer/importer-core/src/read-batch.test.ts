@@ -59,7 +59,7 @@ const kindOf = (fileName: string): FormatKind | undefined => {
 
 /** Every review key a format's result offers, in review order. */
 const reviewKeys = (result: FormatDecode.Result<FormatKind>): readonly string[] =>
-  SectionedList.rows(result.decoded).map((resource) => resource.key)
+  SectionedList.rows(result.decoded.rows).map((resource) => resource.key)
 
 /** A Patient its source calls `id`, detached as a decoder hands it over. */
 const fakeResource = (id: string): DetachedResource.Type =>
@@ -105,7 +105,7 @@ const sourceFileFormatOf = (kind: FormatKind): PickedFile.FormatValue => ({
 const extractedSections = (
   result: FormatDecode.Result<FormatKind>
 ): readonly Section.Type<Row.Type<FhirResourceWithId>>[] =>
-  result.decoded.sections.filter((section) => section.title !== 'Source file')
+  result.decoded.rows.sections.filter((section) => section.title !== 'Source file')
 
 const fakeRegistry: ReadRegistry<never> = {
   har: {
@@ -275,8 +275,8 @@ describe('readBatch over the real registry', () => {
       'blank.pdf',
     ])
     expect(batch.formats.dicom.files.length).toBe(1)
-    expect(batch.formats.dicom.decoded.sections[0]?.title).toBe('Source file')
-    expect(batch.formats.dicom.decoded.sections.length).toBeGreaterThan(1)
+    expect(batch.formats.dicom.decoded.rows.sections[0]?.title).toBe('Source file')
+    expect(batch.formats.dicom.decoded.rows.sections.length).toBeGreaterThan(1)
     expect(batch.unrecognizedFiles.length).toBe(1)
     expect(batch.unrecognizedFiles[0]?.title).toBe('notes.txt')
   })
@@ -307,7 +307,7 @@ describe('a DICOM study read over the real registry', () => {
       )
     )
     expect(batch.formats.dicom.unreadableFiles).toEqual([])
-    return SectionedList.rows(batch.formats.dicom.decoded).map((row) => row.resource)
+    return SectionedList.rows(batch.formats.dicom.decoded.rows).map((row) => row.resource)
   }
 
   it("files every source file under the study's patient, each instance naming its own, every record stamped with the smallest", async () => {

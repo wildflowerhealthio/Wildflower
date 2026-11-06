@@ -95,11 +95,11 @@ const importFileSet = (
     }))
 
     const linkToSourceFiles = importer.linkToSourceFiles ?? Effect.succeed
-    const linkedToSourceFiles = yield* SectionedList.forEach(adopted, (row) =>
+    const linkedToSourceFiles = yield* SectionedList.forEach(adopted.rows, (row) =>
       Effect.map(linkToSourceFiles(row.resource, linked), (resource) => ({ ...row, resource }))
     )
     const stamped = MetaSource.stampDecoded(
-      { ...linkedToSourceFiles, notes: adopted.notes },
+      { rows: linkedToSourceFiles, notes: adopted.notes },
       MetaSource.makeReference(
         Arr.min(
           Arr.map(linked, ({ sourceFile }) => sourceFile.id),
@@ -121,8 +121,8 @@ const importFileSet = (
     const title =
       sourceFileRows.length === 1 ? SOURCE_FILE_SECTION_TITLE : SOURCE_FILES_SECTION_TITLE
     return {
-      ...SectionedList.prepend(stamped, Section.make(title, sourceFileRows)),
-      notes: stamped.notes,
+      ...stamped,
+      rows: SectionedList.prepend(stamped.rows, Section.make(title, sourceFileRows)),
     }
   })
 

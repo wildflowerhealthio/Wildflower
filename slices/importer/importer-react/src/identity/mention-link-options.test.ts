@@ -6,6 +6,7 @@ import {
   LinkChoice,
   LinkPlan,
   type ReferentLinkChoiceSet,
+  SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
@@ -56,7 +57,7 @@ const STORED_JAN: LinkableResource.WithId = decodePatient({
 })
 
 const file: DecodedFile.DecodedFile = {
-  sections: [
+  rows: SectionedList.make([
     {
       title: 'Resources',
       rows: [
@@ -73,7 +74,7 @@ const file: DecodedFile.DecodedFile = {
         }),
       ].map((resource, index) => ({ key: `k-${index}`, title: '', resource, origin: 'Decoded' })),
     },
-  ],
+  ]),
   notes: [],
 }
 

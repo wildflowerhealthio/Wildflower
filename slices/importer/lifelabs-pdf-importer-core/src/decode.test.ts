@@ -115,7 +115,7 @@ describe('decodeLifeLabsPdfDocument', () => {
             )
           )
         )
-        const written = SectionedList.rows(Either.getOrThrow(DecodedFileSet.adopt(decoded)))
+        const written = SectionedList.rows(Either.getOrThrow(DecodedFileSet.adopt(decoded)).rows)
         expect(written.map(({ title }) => title)).toEqual(
           written.map(({ key, resource }) =>
             Option.isSome(DetachedResource.keyOf({ ...resource, id: null }))
@@ -160,7 +160,7 @@ describe('decodeLifeLabsPdfDocument', () => {
         )
 
         const adoptedReferences = SectionedList.rows(
-          Either.getOrThrow(DecodedFileSet.adopt(decoded))
+          Either.getOrThrow(DecodedFileSet.adopt(decoded)).rows
         ).map(({ resource }) => `${resource.resourceType}/${resource.id}`)
         for (const reference of keyedReferences) {
           expect(reference).toMatch(/^[A-Za-z]+\/wf-[0-9a-f]{32}$/)
@@ -200,10 +200,10 @@ describe('decodeLifeLabsPdfDocument', () => {
         const adopted = Either.getOrThrow(DecodedFileSet.adopt(decoded))
         const referents = Effect.runSync(Referent.discover([adopted]))
 
-        const practitioners = SectionedList.rows(adopted).flatMap(({ resource }) =>
+        const practitioners = SectionedList.rows(adopted.rows).flatMap(({ resource }) =>
           resource.resourceType === 'Practitioner' ? [resource] : []
         )
-        for (const { resource } of SectionedList.rows(adopted)) {
+        for (const { resource } of SectionedList.rows(adopted.rows)) {
           if (resource.resourceType !== 'DiagnosticReport') continue
           for (const interpreter of resource.resultsInterpreter) {
             const practitioner = practitioners.find(

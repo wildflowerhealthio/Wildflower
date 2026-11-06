@@ -61,7 +61,7 @@ const subjectAt = (
   file: DecodedFile.DecodedFile,
   key: string
 ): IdentifierAndReference.ReferenceType | null | undefined => {
-  const resource = SectionedList.rows(file).find((row) => row.key === key)?.resource
+  const resource = SectionedList.rows(file.rows).find((row) => row.key === key)?.resource
   return resource !== undefined && 'subject' in resource ? resource.subject : undefined
 }
 
@@ -114,8 +114,10 @@ describe('a mention link choice on a resolved file', () => {
 
     expect(subjectAt(resolved, 'k-1')?.reference).toBe('Patient/s-2')
     expect(subjectAt(resolved, 'k-2')?.reference).toBe(null)
-    expect(resolved.sections.map((section) => section.title)).toEqual(['Resources'])
-    expect(SectionedList.rows(resolved).filter(({ resource }) => resource.id === 's-2')).toEqual([])
+    expect(resolved.rows.sections.map((section) => section.title)).toEqual(['Resources'])
+    expect(
+      SectionedList.rows(resolved.rows).filter(({ resource }) => resource.id === 's-2')
+    ).toEqual([])
   })
 
   it('drops a DontLink mention’s literal and keeps its identifier and display', () => {
@@ -219,7 +221,7 @@ describe('Mention.relinked', () => {
     )
     fc.assert(
       fc.property(fileWithChoicesArbitrary, fc.nat(), literals, ({ file }, pick, literal) => {
-        const rows = SectionedList.rows(file)
+        const rows = SectionedList.rows(file.rows)
         const row = rows[pick % Math.max(rows.length, 1)]
         if (row === undefined) return
         const mentions = Mention.linkableIn(row.resource)
@@ -254,7 +256,7 @@ describe('mention link choices and the referents', () => {
     file: DecodedFile.DecodedFile
   ): fc.Arbitrary<MentionLinkChoiceSet.Type> => {
     const referents = discoverOnTestClock(file)
-    const slots = SectionedList.rows(file).flatMap(({ key, resource }) =>
+    const slots = SectionedList.rows(file.rows).flatMap(({ key, resource }) =>
       Mention.linkableIn(resource).map((mention) => ({ key, mention }))
     )
     return fc
@@ -340,7 +342,7 @@ describe('mention link choices and the referents', () => {
           const withChosen = resolveOnTestClock(file, choices, mentionChoices)
 
           const unchosenMentionsOf = (resolved: DecodedFile.DecodedFile): readonly unknown[] =>
-            SectionedList.rows(resolved).flatMap(({ key, resource }) =>
+            SectionedList.rows(resolved.rows).flatMap(({ key, resource }) =>
               Mention.madeIn(resource)
                 .filter(({ path }) =>
                   Option.isNone(MentionLinkChoiceSet.forMention(mentionChoices, key, path))
@@ -348,8 +350,8 @@ describe('mention link choices and the referents', () => {
                 .map((mention) => [key, mention])
             )
           expect(unchosenMentionsOf(withChosen)).toEqual(unchosenMentionsOf(onReferents))
-          expect(Array.map(withChosen.sections, (section) => section.title)).toEqual(
-            Array.map(onReferents.sections, (section) => section.title)
+          expect(Array.map(withChosen.rows.sections, (section) => section.title)).toEqual(
+            Array.map(onReferents.rows.sections, (section) => section.title)
           )
         }
       ),

@@ -3,6 +3,7 @@ import { Effect, FastCheck as fc } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 import type * as DecodedFile from '../decoded-file.ts'
+import * as Section from '../section.ts'
 import * as SectionedList from '../sectioned-list.ts'
 import {
   SOURCE_PATIENT,
@@ -47,7 +48,7 @@ const wireKeyOf = (
  */
 const wireKeysOf = (file: DecodedFile.DecodedFile): readonly string[] => [
   ...new Set(
-    SectionedList.rows(file)
+    SectionedList.rows(file.rows)
       .map(({ resource }) => wireFieldsOf(resource))
       .filter((wire) => wire.resourceType === 'Patient' || wire.resourceType === 'Practitioner')
       .flatMap((wire) => wireKeyOf(wire.resourceType, wire.identifier?.[0]))
@@ -117,19 +118,16 @@ describe('Referent.discover', () => {
     const implied = practitioner('pr-1', 'Dr. A Smith')
     const served = { ...practitioner('pr-1', 'Dr. A Smith'), gender: 'female' as const }
     const impliedFile: DecodedFile.DecodedFile = {
-      sections: [
-        {
-          title: 'Resources',
-          rows: [
-            {
-              key: 'k-0',
-              title: 'implied',
-              resource: implied,
-              origin: 'Implied',
-            },
-          ],
-        },
-      ],
+      rows: SectionedList.make([
+        Section.make('Resources', [
+          {
+            key: 'k-0',
+            title: 'implied',
+            resource: implied,
+            origin: 'Implied',
+          },
+        ]),
+      ]),
       notes: [],
     }
 

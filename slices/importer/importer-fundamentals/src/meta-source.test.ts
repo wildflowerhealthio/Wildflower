@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import * as MetaSource from './meta-source.ts'
 import type * as Row from './row.ts'
+import * as SectionedList from './sectioned-list.ts'
 
 const fakeResource = (id: string): FhirResourceWithId =>
   Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
@@ -76,11 +77,14 @@ describe('MetaSource.stampDecoded', () => {
         ),
         fc.string({ minLength: 1 }).map(MetaSource.makeReference),
         (sections, source) => {
-          const stamped = MetaSource.stampDecoded({ sections, notes: [] }, source)
-          expect(stamped.sections.map((section) => section.title)).toEqual(
+          const stamped = MetaSource.stampDecoded(
+            { rows: SectionedList.make(sections), notes: [] },
+            source
+          )
+          expect(stamped.rows.sections.map((section) => section.title)).toEqual(
             sections.map((section) => section.title)
           )
-          for (const [index, section] of stamped.sections.entries()) {
+          for (const [index, section] of stamped.rows.sections.entries()) {
             expect(section.rows.map((row) => row.key)).toEqual(
               sections[index]?.rows.map((row) => row.key)
             )

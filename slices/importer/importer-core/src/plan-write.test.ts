@@ -10,6 +10,8 @@ import {
   LinkPlan,
   LinkTarget,
   type Row,
+  Section,
+  SectionedList,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -59,7 +61,7 @@ const resultOf = <K extends FormatKind>(
   id: `${kind}/a`,
   title: `${kind} a`,
   files: [{ id: `0:${kind}`, fileName: kind, bytes: new Uint8Array([1]) }],
-  decoded: { sections: [{ title: 's', rows: resources }], notes: [] },
+  decoded: { rows: SectionedList.make([Section.make('s', resources)]), notes: [] },
 })
 
 /** A resolved batch of the given formats' rows, the others claiming nothing, with `linked` its linked records. */

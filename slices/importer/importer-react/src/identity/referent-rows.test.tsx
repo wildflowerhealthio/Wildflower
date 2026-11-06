@@ -11,7 +11,7 @@ import {
   hasId,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import type { DecodedBatch, ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import { FormatDecode, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFile, FormatDecode, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Layer, Option, Schema } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
@@ -376,7 +376,7 @@ const batchOf = (resources: readonly FhirResourceWithId[]): DecodedBatch => ({
       title: 'a.har',
       files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
       decoded: {
-        sections: [
+        rows: SectionedList.make([
           {
             title: 'Resources',
             rows: resources.map((resource, index) => ({
@@ -386,7 +386,7 @@ const batchOf = (resources: readonly FhirResourceWithId[]): DecodedBatch => ({
               origin: 'Decoded',
             })),
           },
-        ],
+        ]),
         notes: [],
       },
     },
@@ -539,16 +539,16 @@ const renderRows = async (
 }
 
 const subjectOfRequest = (): string | null | undefined => {
-  const request = SectionedList.rows(resolved?.formats.har.decoded ?? { sections: [] }).find(
-    (entry) => entry.resource.resourceType === 'MedicationRequest'
-  )?.resource
+  const request = SectionedList.rows(
+    (resolved?.formats.har.decoded ?? DecodedFile.empty).rows
+  ).find((row) => row.resource.resourceType === 'MedicationRequest')?.resource
   return request !== undefined && 'subject' in request ? request.subject?.reference : undefined
 }
 
 /** The literal reference the resolved request's `requester` names. */
 const requesterOfRequest = (): string | null | undefined => {
-  const request = SectionedList.rows(resolved?.formats.har.decoded ?? { sections: [] }).find(
-    (entry) => entry.resource.resourceType === 'MedicationRequest'
-  )?.resource
+  const request = SectionedList.rows(
+    (resolved?.formats.har.decoded ?? DecodedFile.empty).rows
+  ).find((row) => row.resource.resourceType === 'MedicationRequest')?.resource
   return request !== undefined && 'requester' in request ? request.requester?.reference : undefined
 }

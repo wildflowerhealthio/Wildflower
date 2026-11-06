@@ -165,8 +165,8 @@ const linkedRecords = (plan: LinkPlan.Type): readonly Row.Type<FhirResourceWithI
 const resolveFile =
   (plan: LinkPlan.Type) =>
   (decodedFile: DecodedFile.DecodedFile): DecodedFile.DecodedFile => {
-    const resolved = SectionedList.map(decodedFile, resolveRow(plan))
-    return resolved === decodedFile ? decodedFile : { ...decodedFile, sections: resolved.sections }
+    const rows = SectionedList.map(decodedFile.rows, resolveRow(plan))
+    return rows === decodedFile.rows ? decodedFile : { ...decodedFile, rows }
   }
 
 export { linkedKey, linkedRecords, resolveEdit, resolveFile }

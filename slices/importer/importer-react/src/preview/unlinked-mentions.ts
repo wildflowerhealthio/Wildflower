@@ -44,7 +44,7 @@ const unlinkedInRows = (
   selection: StagedImport.Selection,
   leftUnlinked: LeftUnlinked
 ): readonly UnlinkedMention.Type[] =>
-  SectionedList.rows(decodedFile).flatMap(({ key, resource }) =>
+  SectionedList.rows(decodedFile.rows).flatMap(({ key, resource }) =>
     leftUnlinked(key, reviewedResource(selection, key, resource))
   )
 
@@ -78,7 +78,7 @@ const groupsOf = (
   const providerKeys = new Set(
     unlinked.filter((one) => !isOfPatient(one)).map((one) => one.mentioningResourceKey)
   )
-  const resources = SectionedList.rows(decodedFile)
+  const resources = SectionedList.rows(decodedFile.rows)
   return {
     needingPatient: resources.filter(({ key }) => patientKeys.has(key)),
     needingProvider: resources.filter(({ key }) => providerKeys.has(key) && !patientKeys.has(key)),

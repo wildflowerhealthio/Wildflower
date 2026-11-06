@@ -102,7 +102,7 @@ const literalReferencesWrittenAsDecoded = (
   decodedFiles: readonly DecodedFile.DecodedFile[]
 ): readonly string[] =>
   pipe(
-    decodedFiles.flatMap(SectionedList.rows),
+    decodedFiles.flatMap((file) => SectionedList.rows(file.rows)),
     Array.filterMap(({ resource }) =>
       Option.map(
         Option.liftPredicate(resource, LinkableResource.is),

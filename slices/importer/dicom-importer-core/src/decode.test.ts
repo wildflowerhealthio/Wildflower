@@ -101,7 +101,7 @@ const adoptedOf = (
 describe('decodeStudy', () => {
   it('resolves ImagingStudy.started against the settings time zone', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-    const study = adoptedOf(result).sections[0].rows.find(
+    const study = adoptedOf(result).rows.sections[0].rows.find(
       (r) => r.key === 'imaging-study'
     )?.resource
     expect(study?.resourceType).toBe('ImagingStudy')
@@ -113,7 +113,7 @@ describe('decodeStudy', () => {
   it('reads the same file as a different instant under a different zone', async () => {
     const startedIn = async (timeZone: string): Promise<string | null | undefined> => {
       const result = await Effect.runPromise(decodeStudy(sample(), { timeZone }))
-      const study = adoptedOf(result).sections[0].rows.find(
+      const study = adoptedOf(result).rows.sections[0].rows.find(
         (r) => r.key === 'imaging-study'
       )?.resource
       return study?.resourceType === 'ImagingStudy' ? study.started : undefined
@@ -124,7 +124,7 @@ describe('decodeStudy', () => {
   it('yields one section with Patient, ServiceRequest, ImagingStudy', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
     expect(result.sections).toHaveLength(1)
-    const keys = adoptedOf(result).sections[0].rows.map((r) => r.key)
+    const keys = adoptedOf(result).rows.sections[0].rows.map((r) => r.key)
     expect(keys).toEqual(['patient', 'service-request', 'imaging-study'])
   })
 
@@ -141,7 +141,7 @@ describe('decodeStudy', () => {
 
   it('names no file on an ImagingStudy instance', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-    const study = adoptedOf(result).sections[0].rows.find(
+    const study = adoptedOf(result).rows.sections[0].rows.find(
       (r) => r.key === 'imaging-study'
     )?.resource
     if (study?.resourceType !== 'ImagingStudy') throw new Error('expected ImagingStudy')
@@ -169,7 +169,7 @@ describe('decodeStudy', () => {
       decodeStudy(sample({ AccessionNumber: undefined }), defaultDicomSettings)
     )
     expect(result.notes.some((n) => n.includes('AccessionNumber'))).toBe(true)
-    const keys = adoptedOf(result).sections[0].rows.map((r) => r.key)
+    const keys = adoptedOf(result).rows.sections[0].rows.map((r) => r.key)
     expect(keys).not.toContain('service-request')
   })
 
@@ -202,7 +202,7 @@ describe('decodeStudy', () => {
   it('resource keys are stable across the empty settings', async () => {
     const keysOf = async (): Promise<readonly string[]> => {
       const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-      return adoptedOf(result).sections.flatMap((s) => s.rows.map((r) => r.key))
+      return adoptedOf(result).rows.sections.flatMap((s) => s.rows.map((r) => r.key))
     }
     expect(await keysOf()).toEqual(await keysOf())
   })
@@ -215,7 +215,7 @@ describe('decodeStudy', () => {
       )
     )
 
-    const resources = SectionedList.rows(adoptedOf(result)).map(({ resource }) => resource)
+    const resources = SectionedList.rows(adoptedOf(result).rows).map(({ resource }) => resource)
     const physician = resources.find((resource) => resource.resourceType === 'Practitioner')
     const request = resources.find((resource) => resource.resourceType === 'ServiceRequest')
 
@@ -260,7 +260,7 @@ describe('decodeStudy', () => {
     it('is still one section with the same three keys', async () => {
       const result = await Effect.runPromise(decodeStudy(twoFiles, defaultDicomSettings))
       expect(result.sections).toHaveLength(1)
-      expect(adoptedOf(result).sections[0].rows.map((r) => r.key)).toEqual([
+      expect(adoptedOf(result).rows.sections[0].rows.map((r) => r.key)).toEqual([
         'patient',
         'service-request',
         'imaging-study',
@@ -291,7 +291,7 @@ describe('decodeStudy', () => {
       ]
       const result = await Effect.runPromise(decodeStudy(conflicting, defaultDicomSettings))
       expect(result.notes[0]).toContain('disagree on AccessionNumber')
-      const request = adoptedOf(result).sections[0].rows.find(
+      const request = adoptedOf(result).rows.sections[0].rows.find(
         (r) => r.key === 'service-request'
       )?.resource
       if (request?.resourceType !== 'ServiceRequest') throw new Error('expected a ServiceRequest')
@@ -371,7 +371,7 @@ const run = (files: readonly PickedFile.NamedBytes[]): Promise<FormatDecode.Deco
 const resourcesOf = (
   result: FormatDecode.Decoded<string>
 ): readonly Row.Type<FhirResourceWithId>[] =>
-  result.fileSets.flatMap((fileSet) => SectionedList.rows(adoptedOf(fileSet)))
+  result.fileSets.flatMap((fileSet) => SectionedList.rows(adoptedOf(fileSet).rows))
 
 /** Every decoded resource of one type, across every section. */
 const of = <K extends FhirResourceWithId['resourceType']>(
@@ -393,7 +393,7 @@ const studySections = (
   result: FormatDecode.Decoded<string>
 ): readonly Section.Type<Row.Type<FhirResourceWithId>>[] =>
   result.fileSets
-    .flatMap((fileSet) => adoptedOf(fileSet).sections)
+    .flatMap((fileSet) => adoptedOf(fileSet).rows.sections)
     .filter((section) => section.rows.some((one) => one.key.endsWith('imaging-study')))
 
 /** Each file set's source file as `linkToPatientAndStudy` links it, minted under `doc`. */

@@ -180,11 +180,14 @@ const firstDuplicateAmong = (referents: readonly Type[]): Option.Option<Duplicat
  * file or two, are keyed by one logical reference.
  */
 const discover = (
-  decodedFiles: readonly Pick<DecodedFile.DecodedFile, 'sections'>[]
+  decodedFiles: readonly Pick<DecodedFile.DecodedFile, 'rows'>[]
 ): Effect.Effect<readonly Type[], DuplicateReferent> =>
   Effect.gen(function* () {
     const decodedReferents = Array.getSomes(
-      yield* Effect.forEach(decodedFiles.flatMap(SectionedList.rows), tryFromDecodedResource)
+      yield* Effect.forEach(
+        decodedFiles.flatMap((file) => SectionedList.rows(file.rows)),
+        tryFromDecodedResource
+      )
     )
     const duplicate = firstDuplicateAmong(decodedReferents)
     if (Option.isSome(duplicate)) return yield* Effect.fail(duplicate.value)

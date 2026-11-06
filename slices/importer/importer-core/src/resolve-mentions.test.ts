@@ -82,7 +82,7 @@ const resultOf = <K extends FormatKind>(
         title: `${kind} file`,
         files: [{ id: `0:${kind}`, fileName: kind, bytes: new Uint8Array([1]) }],
         decoded: {
-          sections: [
+          rows: SectionedList.make([
             {
               title: 'Resources',
               rows: resources.map((resource, index) => ({
@@ -92,7 +92,7 @@ const resultOf = <K extends FormatKind>(
                 origin: 'Decoded',
               })),
             },
-          ],
+          ]),
           notes: [],
         },
       }
@@ -117,7 +117,7 @@ const resolvedOnTestClock = (
 
 /** The resource keyed `key` in `kind`'s decoded file. */
 const at = (batch: DecodedBatch, kind: FormatKind, key: string): FhirResource | undefined =>
-  SectionedList.rows(batch.formats[kind].decoded).find((row) => row.key === key)?.resource
+  SectionedList.rows(batch.formats[kind].decoded.rows).find((row) => row.key === key)?.resource
 
 const subjectOf = (resource: FhirResource | undefined): string | null | undefined =>
   resource !== undefined && 'subject' in resource ? resource.subject?.reference : undefined
@@ -152,7 +152,7 @@ describe('resolveMentions', () => {
 
     expect(
       (['har', 'lifelabs-pdf'] as const).map((kind) =>
-        resolved.formats[kind].decoded.sections.map((section) => [
+        resolved.formats[kind].decoded.rows.sections.map((section) => [
           section.title,
           section.rows.map((row) => row.key),
         ])
@@ -261,7 +261,7 @@ describe('resolveMentions with mention link choices', () => {
     )
 
     const listed = (resolved: ResolvedBatch): readonly string[] =>
-      SectionedList.rows(resolved.decodedBatch.formats.har.decoded)
+      SectionedList.rows(resolved.decodedBatch.formats.har.decoded.rows)
         .flatMap(({ key, resource }) =>
           UnlinkedMention.leftByReferentLinks(resolved.plan, key, resource)
         )

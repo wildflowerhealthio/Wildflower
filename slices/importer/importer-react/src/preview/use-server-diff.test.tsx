@@ -7,7 +7,7 @@ import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/c
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import { FormatDecode, LinkPlan } from '@wildflowerhealthio/importer-fundamentals'
+import { FormatDecode, LinkPlan, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Layer, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
@@ -47,7 +47,7 @@ const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => {
         title: 'a.har',
         files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
         decoded: {
-          sections: [
+          rows: SectionedList.make([
             {
               title: 'Resources',
               rows: resources.map((resource, index) => ({
@@ -57,7 +57,7 @@ const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => {
                 origin: 'Decoded' as const,
               })),
             },
-          ],
+          ]),
           notes: [],
         },
       },

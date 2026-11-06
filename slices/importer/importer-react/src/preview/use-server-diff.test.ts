@@ -6,7 +6,7 @@ import {
   LINKED_GROUP,
   type ResolvedBatch,
 } from '@wildflowerhealthio/importer-core'
-import { FormatDecode, LinkPlan } from '@wildflowerhealthio/importer-fundamentals'
+import { FormatDecode, LinkPlan, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
@@ -34,7 +34,7 @@ const formatResult = <K extends FormatKind>(
   files: [{ id: '0:test', fileName: 'test', bytes: new Uint8Array([1]) }],
   format,
   decoded: {
-    sections: [
+    rows: SectionedList.make([
       {
         title: 's',
         rows: entries.map(([key, rid]) => ({
@@ -44,7 +44,7 @@ const formatResult = <K extends FormatKind>(
           origin: 'Decoded' as const,
         })),
       },
-    ],
+    ]),
     notes: [],
   },
   unreadableFiles: [],

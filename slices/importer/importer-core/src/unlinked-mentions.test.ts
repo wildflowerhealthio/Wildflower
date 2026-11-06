@@ -8,6 +8,7 @@ import {
 import {
   FormatDecode,
   LinkChoiceSet,
+  SectionedList,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Schema, TestContext } from 'effect'
@@ -54,7 +55,7 @@ const resolvedHarBatchOf = (resources: readonly FhirResourceWithId[]): ResolvedB
     ...FormatDecode.emptyResult('har'),
     files: [{ id: '0:har', fileName: 'har', bytes: new Uint8Array([1]) }],
     decoded: {
-      sections: [
+      rows: SectionedList.make([
         {
           title: 'Resources',
           rows: resources.map((resource, index) => ({
@@ -64,7 +65,7 @@ const resolvedHarBatchOf = (resources: readonly FhirResourceWithId[]): ResolvedB
             origin: 'Decoded',
           })),
         },
-      ],
+      ]),
       notes: [],
     },
   }

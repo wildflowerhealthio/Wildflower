@@ -104,7 +104,7 @@ const revertCopiesOf = (
   decodedFile: DecodedFile.DecodedFile,
   referent: Referent.Type
 ): StagedImport.Selection =>
-  SectionedList.rows(decodedFile)
+  SectionedList.rows(decodedFile.rows)
     .filter(({ resource }) =>
       Option.exists(Option.liftPredicate(resource, LinkableResource.is), (linkable) =>
         LinkableResource.sameRecord(linkable, referent.resource)
