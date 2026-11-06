@@ -51,17 +51,17 @@ interface MergedIdentity {
  *   later copies dropped. A source without a merge keeps every copy, and so
  *   does every keyless record.
  */
-const mergeSharedResources = <K>(
+const mergeSharedResources = (
   sources: readonly SourceDescriptor.SourceDescriptor<DetachedResource.Type>[],
-  previews: readonly PreviewedResponse<K, DetachedResource.Type>[]
-): readonly PreviewedResponse<K, DetachedResource.Type>[] => {
+  previews: readonly PreviewedResponse<DetachedResource.Type>[]
+): readonly PreviewedResponse<DetachedResource.Type>[] => {
   const mergingSourceByKindName = new Map(
     sources
       .filter(givesMerge)
       .flatMap((source) => source.responseKinds.map((kind) => [kind.name, source] as const))
   )
   const mergingSourceOf = (
-    preview: PreviewedResponse<K, DetachedResource.Type>
+    preview: PreviewedResponse<DetachedResource.Type>
   ): Option.Option<MergingSource> =>
     Option.flatMap(preview.pickKindName, (kindName) =>
       Option.fromNullable(mergingSourceByKindName.get(kindName))

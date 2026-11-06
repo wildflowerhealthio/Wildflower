@@ -3,9 +3,9 @@ import { Array as Arr, Effect, Match, Option, type ParseResult } from 'effect'
 import { Extraction, type HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 /**
- * The HAR-specific preview pipeline: given decoded responses and the enabled
- * kind names, recognize each response against the kind pool and parse the
- * chosen ones into previewed records. The importer's decode folds these
+ * The HAR-specific preview pipeline: given decoded responses, recognize each
+ * response against the kind pool and parse it through its top-ranked kind into
+ * previewed records. The importer's decode folds these
  * previews into the sections and notes the shell reviews; the per-resource
  * selection (exclude/edit) lives in `importer-fundamentals`' `StagedImport`
  * namespace.
@@ -14,9 +14,8 @@ import { Extraction, type HttpResponseKind } from '@wildflowerhealthio/http-extr
  */
 
 /**
- * The stable key one previewed resource is tracked by: the response id plus its
- * index in the parse output. Independent of the enabled-kind filter, so a
- * settings change never renumbers the resources that survive it.
+ * The key one previewed resource is tracked by: the response id plus its index
+ * in the parse output, unique within one decode of the archive.
  */
 const resourceKey = (responseId: string, index: number): string => `${responseId}:${index}`
 
@@ -37,43 +36,34 @@ type PreviewedOutcome<TParsed> =
   | { readonly _tag: 'noPick' }
   | { readonly _tag: 'duplicate'; readonly of: Extraction.ResponseRef }
 
-/** One response's preview: recognition, resolved pick, and parse outcome. */
-interface PreviewedResponse<K, TParsed> {
+/** One response's preview: the response, the kind it routed to, and the parse outcome. */
+interface PreviewedResponse<TParsed> {
   readonly ref: Extraction.ResponseRef
-  readonly recognized: Extraction.RecognizedResponse<K>
   readonly pickKindName: Option.Option<string>
   readonly outcome: PreviewedOutcome<TParsed>
 }
 
 /**
- * The candidate one response resolves to: its top-specificity candidate among
- * the enabled kinds, or none when every matching kind is disabled (or nothing
- * matched at all). With no per-response overrides, the default routing pick is
- * the only pick.
+ * The candidate one response resolves to: its top-specificity candidate, or
+ * none when nothing matched. With no per-response overrides, the routing pick
+ * is the only pick.
  */
-const pickFor = <K extends Pick<HttpResponseKind.HttpResponseKind<unknown>, 'name'>>(
-  recognized: Extraction.RecognizedResponse<K>,
-  enabledKinds: ReadonlySet<string>
-): Option.Option<Extraction.RecognitionCandidate<K>> =>
-  Arr.head(recognized.candidates.filter((candidate) => enabledKinds.has(candidate.kind.name)))
+const pickFor = <K>(
+  recognized: Extraction.RecognizedResponse<K>
+): Option.Option<Extraction.RecognitionCandidate<K>> => Arr.head(recognized.candidates)
 
 /**
- * Parse every response the enabled kinds choose through its top-specificity
- * kind, producing one {@link PreviewedResponse} per input response, in input
- * order.
+ * Parse every response through its top-specificity kind, producing one
+ * {@link PreviewedResponse} per input response, in input order.
  *
  * @param pool - The kinds to route through
  * @param responses - The archive's responses
- * @param enabledKinds - The names of the kinds the settings leave on
  */
 const preview = <TParsed>(
   pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
-  responses: readonly Extraction.Input[],
-  enabledKinds: ReadonlySet<string>
-): Effect.Effect<
-  readonly PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>[]
-> => {
-  type Previewed = PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>
+  responses: readonly Extraction.Input[]
+): Effect.Effect<readonly PreviewedResponse<TParsed>[]> => {
+  type Previewed = PreviewedResponse<TParsed>
   const duplicates = Extraction.findDuplicates(responses)
   return Effect.forEach(
     Arr.zip(responses, Extraction.recognize(pool, responses)),
@@ -82,16 +72,14 @@ const preview = <TParsed>(
       if (duplicateOf !== undefined) {
         return Effect.succeed<Previewed>({
           ref: recognized.ref,
-          recognized,
           pickKindName: Option.none(),
           outcome: { _tag: 'duplicate', of: duplicateOf },
         })
       }
-      const pick = pickFor(recognized, enabledKinds)
+      const pick = pickFor(recognized)
       if (Option.isNone(pick)) {
         return Effect.succeed<Previewed>({
           ref: recognized.ref,
-          recognized,
           pickKindName: Option.none(),
           outcome: { _tag: 'noPick' },
         })
@@ -115,7 +103,7 @@ const preview = <TParsed>(
             Match.tag('bodyAbsent', (): PreviewedOutcome<TParsed> => ({ _tag: 'bodyAbsent' })),
             Match.exhaustive
           )
-          return { ref: recognized.ref, recognized, pickKindName, outcome: previewed }
+          return { ref: recognized.ref, pickKindName, outcome: previewed }
         })
       )
     }

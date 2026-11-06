@@ -1,5 +1,4 @@
 import { DicomSettingsPicker } from '@wildflowerhealthio/dicom-importer-react'
-import { HarSettingsPicker } from '@wildflowerhealthio/har-importer-react'
 import {
   type BoundFormat as CoreBoundFormat,
   type FormatKind,
@@ -63,9 +62,12 @@ const withComponents = <K extends FormatKind>(
   componentSet: SettingsPickerSlot<K>
 ): FormatWithComponents<K> => ({ ...importer, ...componentSet })
 
-/** The closed registry; its keys are the {@link FormatKind} union. */
+/**
+ * The closed registry; its keys are the {@link FormatKind} union. HAR has no
+ * settings, so its entry is the core importer as it is.
+ */
 const formatRegistry: { readonly [K in FormatKind]: FormatWithComponents<K> } = {
-  har: withComponents(coreRegistry.har, { SettingsPicker: HarSettingsPicker }),
+  har: coreRegistry.har,
   'lifelabs-pdf': withComponents(coreRegistry['lifelabs-pdf'], {
     SettingsPicker: LifeLabsPdfSettingsPicker,
   }),

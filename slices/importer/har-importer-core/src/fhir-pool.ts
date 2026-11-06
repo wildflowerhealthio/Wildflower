@@ -8,10 +8,11 @@ import { shoppersDrugMartSource } from '@wildflowerhealthio/shoppers-drugmart-so
  * The registered sources a HAR archive's traffic is recognized and decoded
  * through — each grouping its kinds under a user-facing name and detail
  * (recognition is per-URL against the kinds flattened, never one source
- * claiming the archive). The review menu groups its include toggles by these,
- * and the flat pool routing needs is `SourceDescriptor.poolOf(fhirSources)` —
- * derived on demand, so there is no second copy to keep in sync. Registering
- * another source is one static append here.
+ * claiming the archive). The flat pool routing needs is
+ * `SourceDescriptor.poolOf(fhirSources)`, and `mergeSharedResources` finds a
+ * response's source by its kind here — both derived on demand, so there is no
+ * second copy to keep in sync. Registering another source is one static append
+ * here.
  */
 const fhirSources: readonly SourceDescriptor.SourceDescriptor<DetachedResource.Type>[] = [
   fhirR4Source,
