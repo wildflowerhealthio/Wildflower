@@ -92,7 +92,7 @@ const encodedResourcesOf = (
 ): readonly unknown[] =>
   plan
     .filter((decision) => decision.disposition === disposition)
-    .map(({ entry }) => entry.resource)
+    .map(({ row }) => row.resource)
     .toSorted(Order.mapInput(Order.string, literalReferenceOf))
     .map((resource) => encodeResource(resource))
 
@@ -161,9 +161,9 @@ const importWithDefaults = (
     )
     const included = plan.filter(({ disposition }) => disposition === 'Included')
     const sourceFileRePicks = yield* Effect.forEach(
-      included.flatMap(({ group, entry }) =>
-        group !== LINKED_GROUP && isSourceFileOf(group, entry.resource)
-          ? [{ kind: group, sourceFile: entry.resource }]
+      included.flatMap(({ group, row }) =>
+        group !== LINKED_GROUP && isSourceFileOf(group, row.resource)
+          ? [{ kind: group, sourceFile: row.resource }]
           : []
       ),
       ({ kind, sourceFile }) =>
@@ -175,11 +175,11 @@ const importWithDefaults = (
     return {
       written: encodedResourcesOf(plan, 'Included'),
       excluded: encodedResourcesOf(plan, 'Excluded'),
-      review: plan.map(({ group, entry, disposition }) => ({
+      review: plan.map(({ group, row, disposition }) => ({
         group,
-        key: entry.reviewable.key,
-        title: entry.reviewable.title,
-        resource: literalReferenceOf(entry.resource),
+        key: row.reviewable.key,
+        title: row.reviewable.title,
+        resource: literalReferenceOf(row.resource),
         disposition,
       })),
       notes: Object.fromEntries(kinds.map((kind) => [kind, batch.formats[kind].decoded.notes])),

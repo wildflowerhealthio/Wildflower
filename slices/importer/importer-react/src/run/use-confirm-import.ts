@@ -127,7 +127,7 @@ const importBatch = (
 ): Effect.Effect<BatchOutcome, never, FhirR4ResourcesHttpApiClient> => {
   const plan = planWrite(batch, selectionFor, excludedByDefaultFor, unchangedLinked)
   const included = plan.filter(({ disposition }) => disposition === 'Included')
-  return persistTransactionBundle(included.map(({ entry }) => entry.resource)).pipe(
+  return persistTransactionBundle(included.map(({ row }) => row.resource)).pipe(
     Effect.map((outcomes): BatchOutcome => {
       const outcomesByGroup = Array.groupBy(
         Array.zip(included, outcomes),

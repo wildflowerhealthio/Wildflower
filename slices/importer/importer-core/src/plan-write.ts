@@ -20,14 +20,18 @@ import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
  * the rest; nothing here touches a client.
  *
  * @remarks
+ * Each reviewed row first gets a provisional decision, settled or a
+ * candidate; the candidates under one `Type/id` are then told apart, and
+ * every provisional decision becomes the write decision it settles into.
+ *
  * The write set is the reviewed objects themselves — the exclusions applied
  * and the inline edits substituted — with no re-parse and no rewriting: a
  * batch's import stage (`importDecoded`) already minted each source-file
  * `DocumentReference` and stamped every extracted resource's `meta.source`, so
- * the confirm has no provenance to add. A source-file row the reviewer excluded is simply not
- * written; the resources that name it keep their `meta.source` (the id is
- * deterministic in the file's bytes and name, so a later upload of the same
- * file resolves the link).
+ * the confirm has no provenance to add. A source-file row the reviewer
+ * excluded is simply not written; the resources that name it keep their
+ * `meta.source` (the id is deterministic in the file's bytes and name, so a
+ * later upload of the same file resolves the link).
  *
  * @packageDocumentation
  */
@@ -38,7 +42,7 @@ type Disposition = 'Included' | 'Excluded' | 'Unchanged' | 'Unreferenced' | 'Sup
 /** One reviewed resource's place in the write: the row as reviewed, edits applied, and its disposition. */
 interface WriteDecision {
   readonly group: ReviewGroup
-  readonly entry: DecodedFile.Row
+  readonly row: DecodedFile.Row
   readonly disposition: Disposition
 }
 
@@ -74,10 +78,13 @@ type ExcludedByDefaultFor = (format: FormatKind) => ReadonlySet<string>
  */
 type Verdict = Exclude<Disposition, 'Included' | 'Superseded'> | 'Candidate'
 
-/** A reviewed resource with its {@link Verdict}. */
-interface ReviewedRow {
+/**
+ * A {@link WriteDecision} before the candidates under one `Type/id` are told
+ * apart: the row as reviewed, edits applied, with its {@link Verdict}.
+ */
+interface ProvisionalDecision {
   readonly group: ReviewGroup
-  readonly entry: DecodedFile.Row
+  readonly row: DecodedFile.Row
   readonly verdict: Verdict
 }
 
@@ -92,38 +99,40 @@ const literalReferencesIn = (resources: readonly FhirResourceWithId[]): Readonly
   )
 
 /**
- * A candidate format row as written: `Unreferenced` when it is a record the
- * import implied (its reviewable's `origin`) and no candidate format row names it, which
- * would write it as an orphan; else still a candidate.
+ * A provisional decision on a format row: `Unreferenced` when it is a
+ * candidate for a record the import implied (its reviewable's `origin`) and
+ * no candidate format row names it, which would write it as an orphan; else
+ * as it was.
  *
  * @param named - The literal references the candidate format rows carry
  */
 const unlessUnreferenced =
   (named: ReadonlySet<string>) =>
-  (row: ReviewedRow): ReviewedRow =>
-    row.verdict === 'Candidate' &&
-    row.entry.reviewable.origin === 'Implied' &&
-    !named.has(literalReferenceOf(row.entry.resource))
-      ? { ...row, verdict: 'Unreferenced' }
-      : row
+  (decision: ProvisionalDecision): ProvisionalDecision =>
+    decision.verdict === 'Candidate' &&
+    decision.row.reviewable.origin === 'Implied' &&
+    !named.has(literalReferenceOf(decision.row.resource))
+      ? { ...decision, verdict: 'Unreferenced' }
+      : decision
 
 /**
- * Every claimed format's rows, in registry order and then review order, as
- * reviewed: the edit, resolved on the batch's plan, substituted where the
- * reviewer made one (`StagedImport.resolvedResourceOf`), `Excluded` where
- * the row is not included, else a candidate.
+ * A provisional decision on every claimed format's rows, in registry order
+ * and then review order, each row as reviewed: the edit, resolved on the
+ * batch's plan, substituted where the reviewer made one
+ * (`StagedImport.resolvedResourceOf`), `Excluded` where the row is not
+ * included, else a candidate.
  */
-const formatRowsOf = (
+const formatDecisionsOf = (
   batch: ResolvedBatch,
   selectionFor: SelectionFor,
   excludedByDefaultFor: ExcludedByDefaultFor
-): readonly ReviewedRow[] =>
+): readonly ProvisionalDecision[] =>
   claimedFormats(batch.formats).flatMap((kind) => {
     const selection = selectionFor(kind)
     const excludedByDefault = excludedByDefaultFor(kind)
-    return SectionedList.rows(batch.formats[kind].decoded.rows).map((row): ReviewedRow => ({
+    return SectionedList.rows(batch.formats[kind].decoded.rows).map((row): ProvisionalDecision => ({
       group: kind,
-      entry: { ...row, resource: StagedImport.resolvedResourceOf(batch.plan, selection, row) },
+      row: { ...row, resource: StagedImport.resolvedResourceOf(batch.plan, selection, row) },
       verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, row.reviewable.key)
         ? 'Candidate'
         : 'Excluded',
@@ -159,7 +168,7 @@ const linkedVerdictOf = (record: DecodedFile.Row, unchangedLinked: ReadonlySet<s
  *
  * - A format row is **`Excluded`** when it is not included: the reviewer
  *   unticked it, or never ticked one the default leaves out. Else it is a
- *   candidate. Its `entry.resource` is the edited resource, resolved on the
+ *   candidate. Its `row.resource` is the edited resource, resolved on the
  *   batch's plan, where the reviewer made an edit. A record the import
  *   implied from the references naming it (its reviewable's `origin`) is
  *   **`Unreferenced`** when no candidate format row carries its literal
@@ -193,21 +202,21 @@ const planWrite = (
   excludedByDefaultFor: ExcludedByDefaultFor,
   unchangedLinked: ReadonlySet<string>
 ): readonly WriteDecision[] => {
-  const formatRows = formatRowsOf(batch, selectionFor, excludedByDefaultFor)
+  const formatDecisions = formatDecisionsOf(batch, selectionFor, excludedByDefaultFor)
   const named = literalReferencesIn(
-    formatRows.flatMap(({ entry, verdict }) => (verdict === 'Candidate' ? [entry.resource] : []))
+    formatDecisions.flatMap(({ row, verdict }) => (verdict === 'Candidate' ? [row.resource] : []))
   )
-  const rows: readonly ReviewedRow[] = [
-    ...batch.linkedRecords.map((record): ReviewedRow => ({
+  const decisions: readonly ProvisionalDecision[] = [
+    ...batch.linkedRecords.map((record): ProvisionalDecision => ({
       group: LINKED_GROUP,
-      entry: record,
+      row: record,
       verdict: linkedVerdictOf(record, unchangedLinked),
     })),
-    ...formatRows.map(unlessUnreferenced(named)),
+    ...formatDecisions.map(unlessUnreferenced(named)),
   ]
-  const candidateIndexes = rows.flatMap(({ entry, verdict }, index) =>
+  const candidateIndexes = decisions.flatMap(({ row, verdict }, index) =>
     verdict === 'Candidate'
-      ? [[literalReferenceOf(entry.resource), index, entry.reviewable.origin] as const]
+      ? [[literalReferenceOf(row.resource), index, row.reviewable.origin] as const]
       : []
   )
   // Built in submit order, implied records first, the map keeps each
@@ -221,12 +230,12 @@ const planWrite = (
       ([literalReference, index]) => [literalReference, index] as const
     )
   )
-  return rows.map(({ group, entry, verdict }, index): WriteDecision => ({
+  return decisions.map(({ group, row, verdict }, index): WriteDecision => ({
     group,
-    entry,
+    row,
     disposition: Match.value(verdict).pipe(
       Match.when('Candidate', (): Disposition =>
-        lastCandidateIndexByLiteralReference.get(literalReferenceOf(entry.resource)) === index
+        lastCandidateIndexByLiteralReference.get(literalReferenceOf(row.resource)) === index
           ? 'Included'
           : 'Superseded'
       ),
