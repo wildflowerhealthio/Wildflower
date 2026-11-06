@@ -182,8 +182,7 @@ says which namespace such an id is in, and the identifier the source put on
 it is what says what it links to. An R4 type this package does not model
 (`Encounter/1`) is detached like any other. A reference that is
 already identifier-only (Shoppers' `priorPrescription` by prescription
-number, the history feed's account `subject`) is kept exactly as the source
-wrote it.
+number) is kept exactly as the source wrote it.
 
 **An identifier the source also put on a literal reference it detaches is
 replaced** by the target's key. `Reference.identifier` is 0..1 and the logical
@@ -258,17 +257,15 @@ stays logical too, whichever of its identifiers it names it by.
 
 One record is filed before it is adopted. A source can know who a
 prescription is for and not who one of its fills was for: Shoppers' history
-feed names only the account. So a `MedicationDispense` with no `subject`, or
-whose `subject` is a logical reference to a Patient that the reference plan
-resolves to no Patient of the batch (none carries the identifier, or several
-do), takes the `subject` of its `authorizingPrescription`, as the
-prescription spells it, replacing its own: every prescription it names that
-resolves to a `MedicationRequest` of the batch must have a `subject` naming a
-Patient of the batch, and all the same one. Otherwise the dispense keeps its
-own `subject`, for the identity map. A literal `subject` (a contained
-`#…`, a `Patient/…` the batch does not hold, a URL) or a logical one to
-another type, such as a `Group`, is the source's own statement of who
-received the fill, and is never replaced.
+feed names only the account, so its fills have no `subject`. A
+`MedicationDispense` with no `subject` takes the `subject` of its
+`authorizingPrescription`, as the prescription spells it, when its
+prescriptions agree: every prescription it names that resolves to a
+`MedicationRequest` of the batch has a copy whose `subject` names a Patient of
+the batch (a copy that names none is skipped), and every copy that names one
+names the same Patient. Otherwise it is left with no `subject`. A dispense
+that has a `subject` keeps it, whatever it names and whether or not it
+resolves: it is the source's own statement of who received the fill.
 
 `originalIdOf(system, resource)` reads the source's id back off a stored
 resource: the value of its identifier in `system` (`<baseUrl>/<Type>` for a
@@ -436,8 +433,7 @@ narrowed to a `Patient` or `Practitioner` and an identifier with both a
   identifier it brings: its own, and the one its demographics derive (below).
   A keyless one names nothing the map can link, so it is written as it is.
 - **By mention only**: mentions name it by a logical reference and no decode
-  emitted its resource. A Shoppers account id on a history fill is one; so is
-  a prescriber known only by name.
+  emitted its resource. A prescriber known only by name is one.
 
 Which type a mention names is the reference's own business. A logical
 reference states its `type`; an identifier-only reference that states none
