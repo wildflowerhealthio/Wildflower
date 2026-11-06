@@ -18,12 +18,8 @@ import * as LinkTarget from './link-target.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as Mention from './mention.ts'
 
-/**
- * A record the batch only mentions, as it will be written, with where it
- * comes from: a `Stored` resource the device already holds, or a
- * `Provisional` one the map makes from a logical reference alone.
- */
-type LinkedRecord = DecodedFile.Resource & { readonly origin: 'Stored' | 'Provisional' }
+/** A resolved resource no resolved file holds, as it will be written (`linkedRecords`). */
+type LinkedRecord = DecodedFile.Resource
 
 /** The review key a resource the batch only mentions is reviewed under, among the batch's linked records. */
 const linkedKey = (onlyMentioned: LinkableResource.WithId): string =>
@@ -144,24 +140,17 @@ const resolveEdit = (
 /**
  * The batch's linked records under `plan`: the resolved resources no
  * resolved file holds where a decoded resource was, as they will be
- * written, in the order the links first reach them. Each is `Provisional`
- * when a referent of the batch owns it (a provisional resource is its
- * referent's own record), else `Stored`: a `Decoded` target's resource is
- * always in the batch. No resolved file holds them; they are the batch's
- * own, reviewed and written beside the files.
+ * written, in the order the links first reach them. No resolved file holds
+ * them; they are the batch's own, reviewed and written beside the files.
  */
 const linkedRecords = (plan: LinkPlan.Type): readonly LinkedRecord[] =>
   pipe(
     LinkPlan.resolvedResources(plan),
     Array.filter(({ resourceExistsInBatch }) => !resourceExistsInBatch),
-    Array.map(({ resource, label, ownerReferent }): LinkedRecord => ({
+    Array.map(({ resource, label }): LinkedRecord => ({
       key: linkedKey(resource),
       title: label,
       resource,
-      origin: Option.match(ownerReferent, {
-        onNone: () => 'Stored' as const,
-        onSome: () => 'Provisional' as const,
-      }),
     }))
   )
 

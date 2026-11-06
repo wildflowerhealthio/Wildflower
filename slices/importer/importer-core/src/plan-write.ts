@@ -1,9 +1,8 @@
-import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
+import { literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodedFile,
   type FileResolution,
   type FormatDecode,
-  Mention,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Match } from 'effect'
@@ -33,7 +32,7 @@ import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
  */
 
 /** Why a reviewed resource is, or is not, in the transaction. */
-type Disposition = 'Included' | 'Excluded' | 'Unchanged' | 'Unreferenced' | 'Superseded'
+type Disposition = 'Included' | 'Excluded' | 'Unchanged' | 'Superseded'
 
 /** One reviewed resource's place in the write: the row as reviewed, edits applied, and its disposition. */
 interface WriteDecision {
@@ -81,16 +80,6 @@ interface ReviewedRow {
   readonly verdict: Verdict
 }
 
-/** Every literal reference `resources` carry, in any reference field. */
-const literalReferencesIn = (resources: readonly FhirResourceWithId[]): ReadonlySet<string> =>
-  new Set(
-    resources.flatMap((resource) =>
-      Mention.madeIn(resource).flatMap(({ reference }) =>
-        reference.reference === null ? [] : [reference.reference]
-      )
-    )
-  )
-
 /**
  * Every claimed format's rows, in registry order and then review order, as
  * reviewed: the edit, resolved on the batch's plan, substituted where the
@@ -116,28 +105,16 @@ const formatRowsOf = (
 
 /**
  * A linked record's verdict: `Unchanged` when the server holds it as it is;
- * else a stored copy is a candidate, the link choice being the consent to
- * it, and a new record a candidate only when a candidate format row names it.
+ * else a candidate, the link choice being the consent to it.
  *
  * @param record - The linked record
  * @param unchangedLinked - The keys of the linked records the server diff
  *   found unchanged
- * @param named - The literal references the candidate format rows carry
  */
 const linkedVerdictOf = (
   record: FileResolution.LinkedRecord,
-  unchangedLinked: ReadonlySet<string>,
-  named: ReadonlySet<string>
-): Verdict =>
-  unchangedLinked.has(record.key)
-    ? 'Unchanged'
-    : Match.value(record.origin).pipe(
-        Match.when('Stored', (): Verdict => 'Candidate'),
-        Match.when('Provisional', (): Verdict =>
-          named.has(literalReferenceOf(record.resource)) ? 'Candidate' : 'Unreferenced'
-        ),
-        Match.exhaustive
-      )
+  unchangedLinked: ReadonlySet<string>
+): Verdict => (unchangedLinked.has(record.key) ? 'Unchanged' : 'Candidate')
 
 /**
  * The confirm's plan: a decision per reviewed resource, in submit order,
@@ -162,14 +139,10 @@ const linkedVerdictOf = (
  * - A linked record is read-only in the review (a link choice is how to
  *   change one), so this is the one place its write is decided. It is
  *   **`Unchanged`** when the server holds it as it is (its key in
- *   `unchangedLinked`). Else a `Stored` one — a stored resource a link targets
- *   on, the batch's identifiers assumed — is a candidate whatever the
- *   reviewer excluded: the link choice is the consent to it, and excluding a
- *   resource says nothing about who its subject is. A `Provisional` one,
- *   made from a mention alone, is a candidate only when some candidate
- *   format row's resource carries its literal `Type/<id>` in any reference
- *   field (`Mention.madeIn`), else **`Unreferenced`**: one nothing written
- *   names would be an orphan.
+ *   `unchangedLinked`). Else it — a resolved record no file holds, the
+ *   batch's identifiers assumed — is a candidate whatever the reviewer
+ *   excluded: the link choice is the consent to it, and excluding a resource
+ *   says nothing about who its subject is.
  * - Among the candidates, in submit order, the last under each `Type/id` is
  *   **`Included`** and every earlier one **`Superseded`**. That is the rule
  *   the transaction bundle applies to its entries (last occurrence wins), so
@@ -188,17 +161,13 @@ const planWrite = (
   excludedByDefaultFor: ExcludedByDefaultFor,
   unchangedLinked: ReadonlySet<string>
 ): readonly WriteDecision[] => {
-  const formatRows = formatRowsOf(batch, selectionFor, excludedByDefaultFor)
-  const named = literalReferencesIn(
-    formatRows.flatMap(({ entry, verdict }) => (verdict === 'Candidate' ? [entry.resource] : []))
-  )
   const rows: readonly ReviewedRow[] = [
     ...batch.linkedRecords.map((record): ReviewedRow => ({
       group: LINKED_GROUP,
       entry: record,
-      verdict: linkedVerdictOf(record, unchangedLinked, named),
+      verdict: linkedVerdictOf(record, unchangedLinked),
     })),
-    ...formatRows,
+    ...formatRowsOf(batch, selectionFor, excludedByDefaultFor),
   ]
   // Built in submit order, the map keeps each `Type/id`'s last candidate.
   const lastCandidateIndexByLiteralReference = new Map(

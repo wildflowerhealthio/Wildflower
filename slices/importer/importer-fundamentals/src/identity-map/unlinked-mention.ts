@@ -46,8 +46,7 @@ interface OutsidePatientCompartment {
 
 /**
  * A mention the map could link and its referent links do not: a linkable
- * logical reference, in any field, whose referent's link target is
- * `Unlinked` or that no link of the plan answers.
+ * logical reference, in any field, that no link of the plan answers.
  */
 interface Dangling {
   readonly _tag: 'Dangling'

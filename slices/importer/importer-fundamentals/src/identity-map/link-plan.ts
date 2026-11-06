@@ -66,15 +66,12 @@ const storedStandInIfLinked = (
   decodedLiteralReference: string
 ): Option.Option<LinkableResource.WithId> =>
   Array.findFirst(links, ({ referent, target }) =>
-    Option.all({
-      asResource: Option.liftPredicate(referent, Referent.is('AsResource')),
-      stored: Option.liftPredicate(target, LinkTarget.is('Stored')),
-    }).pipe(
+    pipe(
+      Option.liftPredicate(target, LinkTarget.is('Stored')),
       Option.filter(
-        ({ asResource }) =>
-          LinkableResource.literalReferenceOf(asResource.resource) === decodedLiteralReference
+        () => LinkableResource.literalReferenceOf(referent.resource) === decodedLiteralReference
       ),
-      Option.map(({ stored }) => stored.resource)
+      Option.map(({ resource }) => resource)
     )
   )
 
@@ -124,12 +121,12 @@ const literalReferencesWrittenAsDecoded = (
  * no mention link yet ({@link withMentionLinkChoiceSet}).
  *
  * @remarks
- * The referents are the whole batch's (`Referent.discover`), so a
- * `LinkToDecodedReferent` naming a referent one file holds is the link
- * target of a mention in another, and every file is resolved on the same
- * plan. Fails with `Referent.DuplicateReferent` when two decoded resources
- * answer to one logical reference, and with `LinkChoice.InvalidLinkChoice`
- * when a choice cannot be followed for its referent.
+ * The referents are the whole batch's (`Referent.discover`), so a referent
+ * one file holds is the link target of a mention in another, and every file
+ * is resolved on the same plan. Fails with `Referent.DuplicateReferent` when
+ * two decoded resources answer to one logical reference, and with
+ * `LinkChoice.InvalidLinkChoice` when a choice cannot be followed for its
+ * referent.
  */
 const make = (
   decodedFiles: readonly DecodedFile.DecodedFile[],
@@ -158,11 +155,13 @@ const withMentionLinkChoiceSet = (plan: Type, byMention: MentionLinkChoiceSet.Ty
 })
 
 /** The link target of the referent keyed `referentKey`, when it is a referent of the batch. */
-const linkTargetIfReferentKey = (plan: Type, referentKey: string): Option.Option<LinkTarget.Type> =>
-  Link.targetIfReferentKey(plan.links, referentKey)
+const linkTargetIfReferentKey = (
+  plan: Type,
+  referentKey: string
+): Option.Option<LinkTarget.Linked> => Link.targetIfReferentKey(plan.links, referentKey)
 
 /** Every referent's link target, in discovery order. */
-const linkTargets = (plan: Type): readonly LinkTarget.Type[] =>
+const linkTargets = (plan: Type): readonly LinkTarget.Linked[] =>
   plan.links.map(({ target }) => target)
 
 /** The resource under each literal reference the links redirect to, as it will be written, in the order the links first reach it. */
@@ -193,10 +192,10 @@ const linkIfNamedBy = (plan: Type, logicalReferenceKey: string): Option.Option<L
 
 /**
  * The literal reference `referenceAsDecoded` is redirected to under `plan`,
- * when it names a referent whose link target holds a resource: for a decoded
- * literal reference, the stored resource that stands in for its decoded
- * resource; for a logical reference, its referent's link target. `None`
- * when it names no such referent, so it stays as decoded.
+ * when it names a referent: for a decoded literal reference, the stored
+ * resource that stands in for its decoded resource; for a logical reference,
+ * its referent's link target. `None` when it names no such referent, so it
+ * stays as decoded.
  */
 const redirectionIfLinked = (
   plan: Type,
@@ -209,8 +208,7 @@ const redirectionIfLinked = (
         Option.flatMap((logicalReference) =>
           linkIfNamedBy(plan, LinkableLogicalReference.key(logicalReference))
         ),
-        Option.flatMap(({ target }) => LinkTarget.resourceIfLinked(target)),
-        Option.map(LinkableResource.literalReferenceOf)
+        Option.map(({ target }) => LinkableResource.literalReferenceOf(target.resource))
       ),
     onSome: (decodedLiteralReference) =>
       Option.map(

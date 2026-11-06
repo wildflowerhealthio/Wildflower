@@ -10,7 +10,7 @@ import { Array, Option } from 'effect'
 import { type JSX, memo, useId } from 'react'
 
 import * as LinkChoiceOptions from './link-choice-options.ts'
-import { IN_IMPORT_GROUP, ON_SERVER_GROUP } from './referent-text.ts'
+import { ON_SERVER_GROUP } from './referent-text.ts'
 import styles from './referent-rows.module.css'
 
 /** One option of a referent's select. */
@@ -62,16 +62,6 @@ const ReferentRow = memo(function ReferentRow({
             ))}
           </optgroup>
         )}
-        {options.inImport.length > 0 && (
-          <optgroup label={IN_IMPORT_GROUP}>
-            {options.inImport.map((option) => (
-              <SelectOption key={option.value} option={option} />
-            ))}
-          </optgroup>
-        )}
-        {options.trailing.map((option) => (
-          <SelectOption key={option.value} option={option} />
-        ))}
       </select>
       {warning.pipe(
         Option.map((text) => (

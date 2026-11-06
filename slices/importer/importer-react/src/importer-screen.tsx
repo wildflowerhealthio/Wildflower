@@ -101,7 +101,7 @@ const NONE_BY_DEFAULT: ReadonlySet<string> = new Set()
 const revertCopiesOf = (
   selection: StagedImport.Selection,
   decodedFile: DecodedFile.DecodedFile,
-  referent: Referent.AsResource
+  referent: Referent.Type
 ): StagedImport.Selection =>
   DecodedFile.resources(decodedFile)
     .filter(({ resource }) =>
@@ -189,12 +189,7 @@ const ImporterScreen = (): JSX.Element => {
     (referentKey: string, choice: LinkChoice.Type): void => {
       choose(referentKey, choice)
       const changed = referents?.find((referent) => Referent.key(referent) === referentKey)
-      if (
-        changed === undefined ||
-        decodedBatch === undefined ||
-        !Referent.is('AsResource')(changed)
-      )
-        return
+      if (changed === undefined || decodedBatch === undefined) return
       setSelections(
         (previous) =>
           new Map(

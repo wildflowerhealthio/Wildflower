@@ -6,10 +6,12 @@
  */
 
 import { HumanName, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { type Practitioner,
+import {
+  type Practitioner,
   type FhirResourceWithId,
   literalReferenceOf,
-  Patient } from '@wildflowerhealthio/fhir-r4/resources'
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, DateTime, Effect, Match, Option, pipe } from 'effect'
 
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
@@ -95,24 +97,6 @@ const labelOf = (resource: Type, fallback: string): Effect.Effect<string> =>
   })
 
 /**
- * The provisional resource `logicalReference` alone stands for; `None` when
- * nothing can: a provider's printed name stands for a `Practitioner`
- * (`Practitioner.tryFromNameIdentifier`); nothing stands for a `Patient`, who
- * is never less than a demographic record.
- *
- * @remarks
- * Exhaustive over the resource types a logical reference names, so a type
- * with no provisional form says so here rather than by omission.
- */
-const tryProvisionalFrom: (
-  logicalReference: LinkableLogicalReference.Type
-) => Option.Option<WithId> = Match.type<LinkableLogicalReference.Type>().pipe(
-  Match.when({ type: 'Practitioner' }, () => Option.none()),
-  Match.when({ type: 'Patient' }, () => Option.none()),
-  Match.exhaustive
-)
-
-/**
  * `resource` with every qualified identifier of `identifiersToAssume` it does not
  * already carry appended after its own, matched on `system` + `value`: assumed
  * as one assumes an identity, not presumed.
@@ -148,6 +132,5 @@ export {
   maybeDisplayName,
   sameRecord,
   tryIntoLogicalReference,
-  tryProvisionalFrom,
 }
 export type { Type, WithId }

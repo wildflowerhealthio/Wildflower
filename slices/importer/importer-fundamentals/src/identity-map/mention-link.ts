@@ -24,15 +24,9 @@ interface Type {
  * The link target a mention choice gives its mention, given the batch's
  * links: a `LinkToStoredResource` that stored resource, a `DontLink`
  * `Unlinked`, and a `LinkToDecodedReferent` its referent's link target.
- * `None` for a `LinkToDecodedReferent` whose referent is `Unlinked`, or that
- * the batch does not hold: that mention is redirected where its own
- * referent's link target says, as one with no choice is.
- *
- * @remarks
- * Only an explicit `DontLink` unlinks a mention. Resolving a resolved batch
- * again discovers no referent for an identity whose every mention was
- * redirected, so reading a missing referent as unlinked would move a mention
- * the first resolution had redirected.
+ * `None` for a `LinkToDecodedReferent` whose referent the batch does not
+ * hold: that mention is redirected where its own referent's link target
+ * says, as one with no choice is.
  */
 const linkTargetOfChoice = (
   links: readonly Link.Type[],
@@ -40,13 +34,10 @@ const linkTargetOfChoice = (
 ): Option.Option<LinkTarget.Type> =>
   Match.value(choice).pipe(
     Match.tag('LinkToStoredResource', ({ resource }) =>
-      Option.some(LinkTarget.Stored({ resource }))
+      Option.some<LinkTarget.Type>(LinkTarget.Stored({ resource }))
     ),
     Match.tag('LinkToDecodedReferent', ({ referentKey }) =>
-      pipe(
-        Link.targetIfReferentKey(links, referentKey),
-        Option.filter((target) => !LinkTarget.is('Unlinked')(target))
-      )
+      Link.targetIfReferentKey(links, referentKey)
     ),
     Match.tag('DontLink', () => Option.some(LinkTarget.Unlinked())),
     Match.exhaustive

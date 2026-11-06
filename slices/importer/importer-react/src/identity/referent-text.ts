@@ -29,7 +29,7 @@ const SEARCHING_SERVER_MESSAGE = 'Looking for these people and providers on the 
 
 /** The alert when the default search failed. */
 const SEARCH_ERROR_MESSAGE =
-  'Could not search the server for these people and providers. Each starts as new, or not linked.'
+  'Could not search the server for these people and providers. Each starts as new.'
 
 /** The alert under a group whose stored list could not be read: only the search's hits are offered. */
 const STORED_LIST_ERROR_MESSAGE =
@@ -53,26 +53,17 @@ const REFUSED_OVER_PREVIOUS_HINT =
 /** The action that leaves the refused batch for another pick. */
 const CHOOSE_OTHER_FILES_LABEL = 'Choose other files'
 
-/** The choice that writes the referent's own resource, or a provisional one, as a new record. */
+/** The choice that writes the referent's own record as a new record. */
 const NEW_LABEL = 'New'
 
 /** The choice that writes the referent's own resource over the stored copy the search found under its id. */
 const UPDATE_LABEL = 'Update the record on the server'
 
-/** The choice that leaves a referent's mentions as they are. */
+/** The choice that leaves a mention linked to nothing. */
 const DONT_LINK_LABEL = "Don't link"
 
 /** The option group of stored resources. */
 const ON_SERVER_GROUP = 'On the server'
-
-/** The option group of the records other referents of this import create. */
-const IN_IMPORT_GROUP = 'In this import'
-
-/** A choice of the new record another referent of this import creates. */
-const newAsLabel = (label: string): string => `New: ${label}`
-
-/** A choice of another referent that no longer creates a record of its own. */
-const sameAsLabel = (label: string): string => `Same as: ${label}`
 
 /** Each compared demographic as {@link differingDemographicsWarning} names it. */
 const DEMOGRAPHIC_NAMES: Readonly<Record<DifferingDemographics.Demographic, string>> = {
@@ -90,13 +81,9 @@ const differingDemographicsWarning = (
 ): string =>
   `The record on the server has a different ${differing.map((demographic) => DEMOGRAPHIC_NAMES[demographic]).join(' and ')}. Check it is the same person.`
 
-/** The tally line: how many stored records are linked to, how many records this import writes, how many referents are neither. */
-const referentTallyLine = ({ onServer, fromImport, unlinked }: ReferentTally.Type): string =>
-  [
-    `${onServer} ${plural(onServer, 'record')} on the server`,
-    `${fromImport} ${plural(fromImport, 'record')} from this import`,
-    ...(unlinked > 0 ? [`${unlinked} not linked`] : []),
-  ].join(', ')
+/** The tally line: how many stored records are linked to, and how many records this import writes. */
+const referentTallyLine = ({ onServer, fromImport }: ReferentTally.Type): string =>
+  `${onServer} ${plural(onServer, 'record')} on the server, ${fromImport} ${plural(fromImport, 'record')} from this import`
 
 export {
   CHOOSE_OTHER_FILES_LABEL,
@@ -104,16 +91,13 @@ export {
   DONT_LINK_LABEL,
   duplicateReferentMessage,
   GROUP_HEADINGS,
-  IN_IMPORT_GROUP,
   NEW_LABEL,
-  newAsLabel,
   ON_SERVER_GROUP,
   REFERENTS_HEADING,
   referentTallyLine,
   REFUSED_OVER_PREVIOUS_HINT,
   SEARCH_ERROR_MESSAGE,
   SEARCHING_SERVER_MESSAGE,
-  sameAsLabel,
   STORED_LIST_ERROR_MESSAGE,
   STORED_LIST_TRUNCATED_MESSAGE,
   UPDATE_LABEL,
