@@ -15,22 +15,22 @@
       "disposition": "Included",
       "group": "dicom",
       "key": "0:chest-x-ray.dcm/patient",
-      "resource": "Patient/wf-ad7916b90543748aa8d3c17085d90b81",
-      "title": "Patient/wf-ad7916b90543748aa8d3c17085d90b81"
+      "resource": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524",
+      "title": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524"
     },
     {
       "disposition": "Included",
       "group": "dicom",
       "key": "0:chest-x-ray.dcm/service-request",
-      "resource": "ServiceRequest/wf-2747b2b5cec8bc60e3f9cd572ad7fce3",
-      "title": "ServiceRequest/wf-2747b2b5cec8bc60e3f9cd572ad7fce3"
+      "resource": "ServiceRequest/wf-b00c3a0ae723d30921e15d659e32746a",
+      "title": "ServiceRequest/wf-b00c3a0ae723d30921e15d659e32746a"
     },
     {
       "disposition": "Included",
       "group": "dicom",
       "key": "0:chest-x-ray.dcm/imaging-study",
-      "resource": "ImagingStudy/wf-d45a66f6a11d5ff365d0e5a4199e5438",
-      "title": "ImagingStudy/wf-d45a66f6a11d5ff365d0e5a4199e5438"
+      "resource": "ImagingStudy/wf-f3ba3c309dbf22d6a316d589b1e9968b",
+      "title": "ImagingStudy/wf-f3ba3c309dbf22d6a316d589b1e9968b"
     }
   ],
   "sourceFileRePicks": [
@@ -79,7 +79,7 @@
         "related": [
           {
             "extension": [],
-            "reference": "ImagingStudy/wf-d45a66f6a11d5ff365d0e5a4199e5438"
+            "reference": "ImagingStudy/wf-f3ba3c309dbf22d6a316d589b1e9968b"
           }
         ]
       },
@@ -99,7 +99,7 @@
       "status": "current",
       "subject": {
         "extension": [],
-        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81"
+        "reference": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524"
       },
       "type": {
         "coding": [
@@ -118,10 +118,10 @@
           "extension": [],
           "identifier": {
             "extension": [],
-            "system": "https://wildflowerhealth.io/fhir/sid/dicom",
-            "value": "d4beb9c067c2b2db"
+            "system": "https://wildflowerhealth.io/fhir/sid/dicom/accession-number",
+            "value": "ACC1"
           },
-          "reference": "ServiceRequest/wf-2747b2b5cec8bc60e3f9cd572ad7fce3",
+          "reference": "ServiceRequest/wf-b00c3a0ae723d30921e15d659e32746a",
           "type": "ServiceRequest"
         }
       ],
@@ -129,13 +129,8 @@
       "description": "CHEST PA",
       "endpoint": [],
       "extension": [],
-      "id": "wf-d45a66f6a11d5ff365d0e5a4199e5438",
+      "id": "wf-f3ba3c309dbf22d6a316d589b1e9968b",
       "identifier": [
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
-          "value": "5571855be678fefb"
-        },
         {
           "extension": [],
           "system": "urn:dicom:uid",
@@ -210,10 +205,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
-          "value": "ed3fb2303ba15aa9"
+          "system": "https://wildflowerhealth.io/fhir/sid/dicom/patient-id",
+          "value": "MRN1"
         },
-        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81",
+        "reference": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524",
         "type": "Patient"
       }
     },
@@ -226,16 +221,11 @@
       "extension": [],
       "gender": "female",
       "generalPractitioner": [],
-      "id": "wf-ad7916b90543748aa8d3c17085d90b81",
+      "id": "wf-1663f041018c0f6bb4bbdc67ce94f524",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
-          "value": "ed3fb2303ba15aa9"
-        },
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
+          "system": "https://wildflowerhealth.io/fhir/sid/dicom/patient-id",
           "value": "MRN1"
         },
         {
@@ -279,16 +269,21 @@
       },
       "contained": [],
       "extension": [],
-      "id": "wf-2747b2b5cec8bc60e3f9cd572ad7fce3",
+      "id": "wf-b00c3a0ae723d30921e15d659e32746a",
       "identifier": [
         {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
-          "value": "d4beb9c067c2b2db"
-        },
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
+          "system": "https://wildflowerhealth.io/fhir/sid/dicom/accession-number",
+          "type": {
+            "coding": [
+              {
+                "code": "ACSN",
+                "extension": [],
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203"
+              }
+            ],
+            "extension": []
+          },
           "value": "ACC1"
         }
       ],
@@ -318,10 +313,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/sid/dicom",
-          "value": "ed3fb2303ba15aa9"
+          "system": "https://wildflowerhealth.io/fhir/sid/dicom/patient-id",
+          "value": "MRN1"
         },
-        "reference": "Patient/wf-ad7916b90543748aa8d3c17085d90b81",
+        "reference": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524",
         "type": "Patient"
       },
       "supportingInfo": []

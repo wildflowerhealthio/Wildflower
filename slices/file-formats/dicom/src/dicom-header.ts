@@ -8,6 +8,7 @@
 import { parseDicom, type DataSet } from 'dicom-parser'
 import { Either } from 'effect'
 
+import type * as HierarchicDesignator from './hierarchic-designator.ts'
 import * as PersonName from './person-name.ts'
 import * as PixelDataDescription from './pixel-data-description.ts'
 import * as SpecificCharacterSet from './specific-character-set.ts'
@@ -24,6 +25,7 @@ const Tag = {
   PatientName: 'x00100010',
   PatientID: 'x00100020',
   IssuerOfPatientID: 'x00100021',
+  IssuerOfPatientIDQualifiersSequence: 'x00100024',
   PatientBirthDate: 'x00100030',
   PatientSex: 'x00100040',
   // Study
@@ -32,6 +34,7 @@ const Tag = {
   StudyTime: 'x00080030',
   StudyDescription: 'x00081030',
   AccessionNumber: 'x00080050',
+  IssuerOfAccessionNumberSequence: 'x00080051',
   ReferringPhysicianName: 'x00080090',
   RequestedProcedureDescription: 'x00321060',
   RequestAttributesSequence: 'x00400275',
@@ -66,6 +69,10 @@ const Tag = {
   Manufacturer: 'x00080070',
   ManufacturerModelName: 'x00081090',
   InstitutionName: 'x00080080',
+  // HL7v2 Hierarchic Designator — read inside an issuer sequence's item
+  LocalNamespaceEntityID: 'x00400031',
+  UniversalEntityID: 'x00400032',
+  UniversalEntityIDType: 'x00400033',
 } as const
 
 /**
@@ -87,6 +94,8 @@ interface Type {
   readonly patientName: PersonName.Type | undefined
   readonly patientId: string | undefined
   readonly issuerOfPatientId: string | undefined
+  /** The first item of Issuer of Patient ID Qualifiers Sequence (0010,0024). */
+  readonly issuerOfPatientIdQualifiers: HierarchicDesignator.Type | undefined
   readonly patientBirthDate: string | undefined
   readonly patientSex: string | undefined
 
@@ -96,6 +105,8 @@ interface Type {
   readonly studyTime: string | undefined
   readonly studyDescription: string | undefined
   readonly accessionNumber: string | undefined
+  /** The first item of Issuer of Accession Number Sequence (0008,0051). */
+  readonly issuerOfAccessionNumber: HierarchicDesignator.Type | undefined
   readonly referringPhysicianName: PersonName.Type | undefined
   readonly requestedProcedureDescription: string | undefined
   readonly hasRequestAttributesSequence: boolean
@@ -214,16 +225,22 @@ const NUL = 0x00
  * first NUL on are dropped, as `dicom-parser` drops them; no supported set
  * uses 0x00 inside a character. A blank value is absence, as in
  * {@link trimmedString}.
- *
- * @param label - How the tag is named in a decode failure, e.g.
- *   `'PatientName (0010,0010)'`
  */
-const decodedText = (
-  dataSet: DataSet,
-  characterSet: SpecificCharacterSet.Type,
-  tag: string,
-  label: string
-): Either.Either<string | undefined, SpecificCharacterSet.UndecodableText> => {
+const decodedText = ({
+  dataSet,
+  characterSet,
+  tag,
+  label,
+}: {
+  /** The data set holding the tag: the file's, or a sequence item's. */
+  readonly dataSet: DataSet
+  /** The character set the value is encoded under. */
+  readonly characterSet: SpecificCharacterSet.Type
+  /** The tag read, as `dicom-parser` spells it (`'x00100010'`). */
+  readonly tag: string
+  /** How the tag is named in a decode failure, e.g. `'PatientName (0010,0010)'`. */
+  readonly label: string
+}): Either.Either<string | undefined, SpecificCharacterSet.UndecodableText> => {
   const element = dataSet.elements[tag]
   if (element === undefined) return Either.right(undefined)
   const value = dataSet.byteArray.subarray(element.dataOffset, element.dataOffset + element.length)
@@ -243,7 +260,7 @@ const decodedText = (
 const readText =
   (tag: string, label: string): Reader<string | undefined> =>
   (dataSet, characterSet) =>
-    decodedText(dataSet, characterSet, tag, label)
+    decodedText({ dataSet, characterSet, tag, label })
 
 /** A UI (UID) tag's value, trimmed of the null bytes the spec pads UIDs with. */
 const uid = (dataSet: DataSet, tag: string): string | undefined => {
@@ -325,9 +342,55 @@ const readUs =
 const readPn =
   (tag: string, label: string): Reader<PersonName.Type | undefined> =>
   (dataSet, characterSet) =>
-    Either.map(decodedText(dataSet, characterSet, tag, label), (value) =>
+    Either.map(decodedText({ dataSet, characterSet, tag, label }), (value) =>
       value === undefined ? undefined : PersonName.tryFromPnString(value)
     )
+
+/**
+ * Read the first item of an issuer sequence as a {@link HierarchicDesignator.Type},
+ * or `undefined` for an absent or empty sequence and for an item stating none
+ * of the three attributes.
+ *
+ * @remarks
+ * Only the first item: each issuer sequence the standard defines holds one
+ * (VM 1). The two UT values are decoded under the item's own Specific
+ * Character Set (0008,0005) when it declares one, else under the file's, which
+ * an item inherits (PS3.5 7.5.3).
+ *
+ * @param label - How the sequence is named in a decode failure, e.g.
+ *   `'IssuerOfAccessionNumberSequence (0008,0051)'`
+ */
+const readHierarchicDesignator =
+  (tag: string, label: string): Reader<HierarchicDesignator.Type | undefined> =>
+  (dataSet, fileCharacterSet) => {
+    const item = dataSet.elements[tag]?.items?.[0]?.dataSet
+    if (item === undefined) return Either.right(undefined)
+    const itemCharacterSet =
+      item.elements[Tag.SpecificCharacterSet] === undefined
+        ? Either.right(fileCharacterSet)
+        : SpecificCharacterSet.fromValue(item.string(Tag.SpecificCharacterSet))
+    return Either.flatMap(itemCharacterSet, (characterSet) =>
+      Either.map(
+        Either.all({
+          localNamespaceEntityId: decodedText({
+            dataSet: item,
+            characterSet,
+            tag: Tag.LocalNamespaceEntityID,
+            label: `${label} › LocalNamespaceEntityID (0040,0031)`,
+          }),
+          universalEntityId: decodedText({
+            dataSet: item,
+            characterSet,
+            tag: Tag.UniversalEntityID,
+            label: `${label} › UniversalEntityID (0040,0032)`,
+          }),
+          universalEntityIdType: Either.right(trimmedString(item, Tag.UniversalEntityIDType)),
+        }),
+        (designator): HierarchicDesignator.Type | undefined =>
+          Object.values(designator).every((value) => value === undefined) ? undefined : designator
+      )
+    )
+  }
 
 /** Report whether a tag is present at all, without reading its value. */
 const readPresence =
@@ -350,6 +413,10 @@ const READERS = {
   patientName: readPn(Tag.PatientName, 'PatientName (0010,0010)'),
   patientId: readText(Tag.PatientID, 'PatientID (0010,0020)'),
   issuerOfPatientId: readText(Tag.IssuerOfPatientID, 'IssuerOfPatientID (0010,0021)'),
+  issuerOfPatientIdQualifiers: readHierarchicDesignator(
+    Tag.IssuerOfPatientIDQualifiersSequence,
+    'IssuerOfPatientIDQualifiersSequence (0010,0024)'
+  ),
   patientBirthDate: readDa(Tag.PatientBirthDate),
   patientSex: readDefaultRepertoire(Tag.PatientSex),
 
@@ -359,6 +426,10 @@ const READERS = {
   studyTime: readTm(Tag.StudyTime),
   studyDescription: readText(Tag.StudyDescription, 'StudyDescription (0008,1030)'),
   accessionNumber: readText(Tag.AccessionNumber, 'AccessionNumber (0008,0050)'),
+  issuerOfAccessionNumber: readHierarchicDesignator(
+    Tag.IssuerOfAccessionNumberSequence,
+    'IssuerOfAccessionNumberSequence (0008,0051)'
+  ),
   referringPhysicianName: readPn(Tag.ReferringPhysicianName, 'ReferringPhysicianName (0008,0090)'),
   requestedProcedureDescription: readText(
     Tag.RequestedProcedureDescription,

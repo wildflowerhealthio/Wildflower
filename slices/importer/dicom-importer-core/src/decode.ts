@@ -6,22 +6,25 @@
  * @packageDocumentation
  */
 import { DicomHeader } from '@wildflowerhealthio/dicom'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type DecodedFileSet,
   DecodedFile,
   type DecodeFunction,
+  type FormatDecode,
   type PickedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 
 import { dicomCalendarDate } from './fhir/dates.ts'
+import { unresolvedUniversalIssuerOf } from './fhir/issuer.ts'
 import {
   accessionNumbers,
   orderedInstances,
-  patientOriginalId,
+  patientKeyOf,
   toFhirResources,
 } from './fhir/to-fhir.ts'
 import type { StudyInstance } from './fhir/to-fhir.ts'
@@ -84,13 +87,18 @@ const headerOf = (
  * what this keys on. A `PatientID` the files disagree on means one of them is
  * mislabelled or anonymized differently, and merging them would file one
  * patient's images in another's record — so a differing patient splits the set
- * instead, and the reviewer sees two studies with the same UID rather than one
- * silently merged. Patient identity is the id the synthesis derives
- * (`PatientID` + issuer, else name + birth date), not the raw tag, so two
- * spellings that mint the same `Patient` stay one set.
+ * instead, and the reviewer sees two sets with the same UID rather than one
+ * silently merged. Both sets key one `ImagingStudy`, its Study Instance UID
+ * (accepted), and {@link withSharedStudyNotes} says so on each. The patient is
+ * the key the synthesis gives the `Patient` (Patient ID under its issuer, else
+ * name and birth date), not the raw tag, so two spellings that key one
+ * `Patient` stay one set.
  */
 const studyKey = (header: DicomHeader.Type): string =>
-  `${header.studyInstanceUid}\u0000${patientOriginalId(header) ?? ''}`
+  JSON.stringify([
+    header.studyInstanceUid,
+    Option.getOrNull(Option.map(patientKeyOf(header), ({ system, value }) => [system, value])),
+  ])
 
 /**
  * Which study a picked `.dcm` belongs to — the `groupBy` the DICOM importer
@@ -130,9 +138,41 @@ const sectionTitle = (header: DicomHeader.Type): string => {
 const contributionNote = ({ fileName, header }: StudyFile): string =>
   `${fileName}: series ${header.seriesNumber ?? header.seriesInstanceUid}, instance ${header.instanceNumber ?? header.sopInstanceUid}.`
 
+/**
+ * The notes for a stated issuer that names no URI — its number is then keyed
+ * as one whose issuer the file does not state, beside every other such number:
+ * the Patient ID's, read off the study's representative header, and the
+ * Accession Number's, off the first file in study order stating one, as the
+ * synthesis reads them.
+ */
+const unresolvedIssuerNotes = (files: readonly StudyFile[]): readonly string[] => {
+  const ordered = orderedInstances(files)
+  const patientIssuer = Option.flatMap(Arr.head(ordered), ({ header }) =>
+    header.patientId === undefined
+      ? Option.none()
+      : unresolvedUniversalIssuerOf(header.issuerOfPatientIdQualifiers)
+  )
+  const accessionIssuer = Option.flatMap(
+    Arr.findFirst(ordered, ({ header }) => header.accessionNumber !== undefined),
+    ({ header }) => unresolvedUniversalIssuerOf(header.issuerOfAccessionNumber)
+  )
+  return Arr.getSomes([
+    Option.map(
+      patientIssuer,
+      (issuer) =>
+        `IssuerOfPatientIDQualifiersSequence names ${issuer}, which is no URI — the PatientID is keyed as one whose issuer is not stated.`
+    ),
+    Option.map(
+      accessionIssuer,
+      (issuer) =>
+        `IssuerOfAccessionNumberSequence names ${issuer}, which is no URI — the AccessionNumber is keyed as one whose issuer is not stated.`
+    ),
+  ])
+}
+
 /** The notes a study's headers earn, beyond the resources they synthesize. */
 const studyNotes = (files: readonly StudyFile[]): readonly string[] => {
-  const notes: string[] = []
+  const notes: string[] = [...unresolvedIssuerNotes(files)]
   const accessions = accessionNumbers(files)
   if (accessions.length === 0) {
     notes.push('No AccessionNumber — no ServiceRequest will be created.')
@@ -212,7 +252,7 @@ const linkToPatientAndStudy = (
 
 /**
  * Decode one study's picked files into a section of labeled FHIR resources,
- * each written detached, keyed in `DICOM_SYSTEM`.
+ * each written detached, keyed by the identifiers its files carry.
  *
  * @param pickedFiles - Every picked `.dcm` of one study, in the order they were
  *   picked
@@ -262,7 +302,7 @@ const decodeStudy = (
     const head = ordered[0]
     if (head === undefined) return { sections: [], notes: [], pickedFiles: identifiedPickedFiles }
 
-    if (patientOriginalId(head.header) === undefined) {
+    if (Option.isNone(patientKeyOf(head.header))) {
       return {
         sections: [],
         notes: ['No patient identity in the DICOM header (no PatientID or PatientName).'],
@@ -280,12 +320,64 @@ const decodeStudy = (
     return { sections, notes, pickedFiles: identifiedPickedFiles }
   })
 
+/**
+ * The note a set earns when another set of its batch states its Study
+ * Instance UID: under a different patient key, which is a different person or
+ * the same Patient ID under an issuer spelled differently.
+ */
+const SHARED_STUDY_NOTE =
+  'Other files in this pick state the same StudyInstanceUID under a different PatientID or issuer — they are read apart, and both are filed as one ImagingStudy.'
+
+/** The `ImagingStudy` keys a set's sections carry: one per study, so at most one. */
+const imagingStudyKeysOf = (fileSet: DecodedFileSet.Type): readonly string[] =>
+  Arr.filterMap(
+    fileSet.sections.flatMap((section) => section.entries),
+    ({ resource }) =>
+      resource.resourceType === 'ImagingStudy'
+        ? Option.map(DetachedResource.keyOf(resource), ({ system, value }) =>
+            JSON.stringify([system, value])
+          )
+        : Option.none()
+  )
+
+/**
+ * A batch's decode with {@link SHARED_STUDY_NOTE} on each set whose
+ * `ImagingStudy` another set of the batch keys too.
+ *
+ * @remarks
+ * Files stating one Study Instance UID under two patient keys — two people,
+ * or one Patient ID whose issuer the files spell differently — decode as two
+ * sets ({@link studyKey}), and both key one `ImagingStudy` by that UID: the import
+ * files them as one study (accepted). Only the whole batch sees both sets, so
+ * the note is added here rather than in {@link decodeStudy}.
+ */
+const withSharedStudyNotes = <TFormat extends string>(
+  decoded: FormatDecode.Decoded<TFormat>
+): FormatDecode.Decoded<TFormat> => {
+  const studyKeysBySet = decoded.fileSets.map(imagingStudyKeysOf)
+  const setCountByStudyKey = Arr.reduce(
+    studyKeysBySet.flat(),
+    new Map<string, number>(),
+    (counts, key) => counts.set(key, (counts.get(key) ?? 0) + 1)
+  )
+  return {
+    ...decoded,
+    fileSets: Arr.zipWith(decoded.fileSets, studyKeysBySet, (fileSet, studyKeys) =>
+      studyKeys.some((key) => (setCountByStudyKey.get(key) ?? 0) > 1)
+        ? { ...fileSet, notes: [...fileSet.notes, SHARED_STUDY_NOTE] }
+        : fileSet
+    ),
+  }
+}
+
 export {
   decodeStudy,
   linkToPatientAndStudy,
   sectionTitle,
+  SHARED_STUDY_NOTE,
   sopInstanceIdentifier,
   studyGroupKey,
   studyKey,
+  withSharedStudyNotes,
 }
 export type { StudyFile }

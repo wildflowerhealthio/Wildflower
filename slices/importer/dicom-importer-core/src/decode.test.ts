@@ -33,13 +33,14 @@ import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
   decodeStudy,
   linkToPatientAndStudy,
+  SHARED_STUDY_NOTE,
   sopInstanceIdentifier,
   studyGroupKey,
   studyKey,
 } from './decode.ts'
 import { dicomImporter } from './dicom-importer.ts'
 import { type DicomSettings } from './settings.ts'
-import { DICOM_SYSTEM } from './source-system.ts'
+import { DicomIdentifierSystem } from './source-system.ts'
 
 /**
  * A fixed zone rather than the default, whose `timeZone` is the runtime's own:
@@ -147,15 +148,72 @@ describe('decodeStudy', () => {
     expect(study.series[0].instance[0].extension).toEqual([])
   })
 
-  it('writes each record detached, keyed in the DICOM system', async () => {
+  it('writes each record detached, keyed by the identifier its file carries', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
     const [section] = result.sections
     if (section === undefined) throw expect.fail('expected a section')
-    for (const { resource } of section.entries) {
-      expect(resource.id).toBeNull()
-      const key = DetachedResource.keyOf(resource)
-      expect(Option.map(key, ({ system }) => system)).toEqual(Option.some(DICOM_SYSTEM))
-    }
+    expect(section.entries.map(({ resource }) => resource.id)).toEqual([null, null, null])
+    expect(section.entries.map(({ resource }) => DetachedResource.keyOf(resource))).toEqual([
+      Option.some({ system: DicomIdentifierSystem.PatientId, value: 'P001' }),
+      Option.some({ system: DicomIdentifierSystem.AccessionNumber, value: 'ACC001' }),
+      Option.some({ system: 'urn:dicom:uid', value: 'urn:oid:1.2.3.4.5' }),
+    ])
+  })
+
+  it('notes a stated issuer that names no URI, keying its number under the fallback', async () => {
+    const result = await Effect.runPromise(
+      decodeStudy(
+        sample({
+          IssuerOfPatientIDQualifiersSequence: {
+            localNamespaceEntityId: undefined,
+            universalEntityId: 'pacs.example.org',
+            universalEntityIdType: 'DNS',
+          },
+          IssuerOfAccessionNumberSequence: {
+            localNamespaceEntityId: undefined,
+            universalEntityId: '1.02.3',
+            universalEntityIdType: 'ISO',
+          },
+        }),
+        defaultDicomSettings
+      )
+    )
+    expect(result.notes).toEqual([
+      'IssuerOfPatientIDQualifiersSequence names pacs.example.org (DNS), which is no URI — the PatientID is keyed as one whose issuer is not stated.',
+      'IssuerOfAccessionNumberSequence names 1.02.3 (ISO), which is no URI — the AccessionNumber is keyed as one whose issuer is not stated.',
+    ])
+    expect(
+      result.sections[0]?.entries.map(({ resource }) =>
+        Option.map(DetachedResource.keyOf(resource), ({ system }) => system)
+      )
+    ).toEqual([
+      Option.some(DicomIdentifierSystem.PatientId),
+      Option.some(DicomIdentifierSystem.AccessionNumber),
+      Option.some('urn:dicom:uid'),
+    ])
+  })
+
+  it('keys the ServiceRequest under the ISO OID Issuer of Accession Number Sequence names', async () => {
+    const result = await Effect.runPromise(
+      decodeStudy(
+        sample({
+          IssuerOfAccessionNumberSequence: {
+            localNamespaceEntityId: 'RADIOLOGY',
+            universalEntityId: '2.16.840.1.113883.3.42',
+            universalEntityIdType: 'ISO',
+          },
+        }),
+        defaultDicomSettings
+      )
+    )
+    const request = result.sections[0]?.entries.find(
+      ({ resource }) => resource.resourceType === 'ServiceRequest'
+    )?.resource
+    if (request?.resourceType !== 'ServiceRequest') throw expect.fail('expected a ServiceRequest')
+    expect(DetachedResource.keyOf(request)).toEqual(
+      Option.some({ system: 'urn:oid:2.16.840.1.113883.3.42', value: 'ACC001' })
+    )
+    expect(request.identifier[0]?.assigner?.display).toBe('RADIOLOGY')
   })
 
   it('section title includes modality, description, and date', async () => {
@@ -223,7 +281,7 @@ describe('decodeStudy', () => {
         referent.logicalReference.identifier.system.href,
       ])
     ).toEqual([
-      ['AsResource', 'Patient', DICOM_SYSTEM],
+      ['AsResource', 'Patient', DicomIdentifierSystem.PatientId],
       ['ByMentionOnly', 'Practitioner', Practitioner.NAME_IDENTIFIER_SYSTEM],
     ])
     const [, physician] = referents
@@ -455,40 +513,94 @@ describe('the DICOM batch decode', () => {
     expect(studySections(result)).toHaveLength(2)
   })
 
-  it('splits one study whose files name different patients', async () => {
+  it('decodes one study whose files name different patients as two sets, keying one ImagingStudy', async () => {
     const result = await run([
       file('1', { PatientID: 'P001', SOPInstanceUID: 'I1' }),
       file('2', { PatientID: 'P002', SOPInstanceUID: 'I2' }),
     ])
-    // Two reviewable file sets under two patients, never one silently merged
-    // study — and two ids, so storing the second never overwrites the first.
+    // Two reviewable file sets under two patients; the Study Instance UID is
+    // the study's key, so both copies are one ImagingStudy (accepted), and
+    // each set says so.
+    expect(studySections(result)).toHaveLength(2)
+    expect(new Set(of(result, 'Patient').map((one) => one.id)).size).toBe(2)
     const studies = studiesOf(result)
     expect(studies).toHaveLength(2)
-    expect(new Set(of(result, 'Patient').map((one) => one.id)).size).toBe(2)
-    expect(new Set(studies.map((one) => one.id)).size).toBe(2)
+    expect(new Set(studies.map((one) => one.id)).size).toBe(1)
     expect(new Set(studies.map((one) => one.subject.reference)).size).toBe(2)
-
-    const studyById = new Map(studies.map((one) => [`ImagingStudy/${one.id}`, one]))
-    for (const sourceFile of linkedSourceFilesOf(result)) {
-      const [related] = sourceFile.context?.related.map((one) => one.reference) ?? []
-      expect(studyById.get(related ?? '')?.subject.reference).toBe(sourceFile.subject?.reference)
-    }
+    expect(result.fileSets.map((fileSet) => fileSet.notes.includes(SHARED_STUDY_NOTE))).toEqual([
+      true,
+      true,
+    ])
   })
 
-  it('gives each patient of one shared accession their own ServiceRequest', async () => {
+  it('notes the shared study when one Patient ID is issued under two spellings', async () => {
+    const result = await run([
+      file('1', { PatientID: 'P001', SOPInstanceUID: 'I1' }),
+      file('2', {
+        PatientID: 'P001',
+        SOPInstanceUID: 'I2',
+        IssuerOfPatientIDQualifiersSequence: {
+          localNamespaceEntityId: undefined,
+          universalEntityId: '2.16.840.1.113883.3.42',
+          universalEntityIdType: 'ISO',
+        },
+      }),
+    ])
+    expect(result.fileSets.map((fileSet) => fileSet.notes.includes(SHARED_STUDY_NOTE))).toEqual([
+      true,
+      true,
+    ])
+  })
+
+  it('notes nothing shared when two sets state different Study Instance UIDs', async () => {
+    const result = await run([
+      file('1', { PatientID: 'P001', SOPInstanceUID: 'I1' }),
+      file('2', { PatientID: 'P002', SOPInstanceUID: 'I2', StudyInstanceUID: '9.9.9' }),
+    ])
+    expect(result.fileSets.map((fileSet) => fileSet.notes.includes(SHARED_STUDY_NOTE))).toEqual([
+      false,
+      false,
+    ])
+  })
+
+  it('keys one ServiceRequest for two patients stating one accession', async () => {
     const result = await run([
       file('1', { PatientID: 'P001', SOPInstanceUID: 'I1', AccessionNumber: 'ACC001' }),
       file('2', { PatientID: 'P002', SOPInstanceUID: 'I2', AccessionNumber: 'ACC001' }),
     ])
     const requests = of(result, 'ServiceRequest')
     expect(requests).toHaveLength(2)
-    expect(new Set(requests.map((one) => one.id)).size).toBe(2)
-
-    const requestById = new Map(requests.map((one) => [`ServiceRequest/${one.id}`, one]))
+    expect(new Set(requests.map((one) => one.id)).size).toBe(1)
     for (const study of studiesOf(result)) {
-      const [basedOn] = study.basedOn.map((one) => one.reference)
-      expect(requestById.get(basedOn ?? '')?.subject.reference).toBe(study.subject.reference)
+      expect(study.basedOn.map((one) => one.reference)).toEqual([
+        `ServiceRequest/${requests[0]?.id}`,
+      ])
     }
+  })
+
+  it('adopts the same study picked twice, or from two discs, to the same records', async () => {
+    const idsOf = async (
+      files: readonly PickedFile.NamedBytes[]
+    ): Promise<readonly (readonly string[])[]> => {
+      const result = await run(files)
+      return ['Patient', 'ServiceRequest', 'ImagingStudy'].map((resourceType) =>
+        resourcesOf(result)
+          .filter(({ resource }) => resource.resourceType === resourceType)
+          .map(({ resource }) => resource.id)
+      )
+    }
+    const firstDisc = [
+      file('1', { SOPInstanceUID: 'I1', AccessionNumber: 'ACC001' }),
+      file('2', { SOPInstanceUID: 'I2', AccessionNumber: 'ACC001' }),
+    ]
+    const secondDisc = [
+      { ...file('2', { SOPInstanceUID: 'I2', AccessionNumber: 'ACC001' }), fileName: 'IM0001' },
+      { ...file('1', { SOPInstanceUID: 'I1', AccessionNumber: 'ACC001' }), fileName: 'IM0002' },
+    ]
+    const first = await idsOf(firstDisc)
+    expect(first.map((ids) => ids.length)).toEqual([1, 1, 1])
+    expect(await idsOf(firstDisc)).toEqual(first)
+    expect(await idsOf(secondDisc)).toEqual(first)
   })
 
   it('reports an unparsable file on its own, leaving the study readable', async () => {

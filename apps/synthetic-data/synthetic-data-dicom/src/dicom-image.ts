@@ -17,7 +17,11 @@ import { Data, DateTime, Effect, Either } from 'effect'
  * image — a de-identified Part 10 file the data set carries under its own
  * licence — and changes only its header ({@link reidentify}):
  *
- * - the patient (`PatientID`, name, sex, birth date) is the person's;
+ * - the patient (`PatientID`, name, sex, birth date) is the person's, and the
+ *   source's issuers of the patient id and accession number (`IssuerOfPatientID`,
+ *   its qualifiers sequence, `IssuerOfAccessionNumberSequence`) are removed:
+ *   the numbers written are the generator's, which no issuer of the source's
+ *   issued, so the import keys them under its unstated-issuer systems;
  * - the study, series, acquisition and content dates are the story day, at a
  *   time of day hashed from the person and image; `AcquisitionDateTime` is
  *   rewritten to match when present, and every other top-level date or time,
@@ -142,8 +146,11 @@ const Tag = {
   AcquisitionTime: 0x0008_0032,
   ContentTime: 0x0008_0033,
   AccessionNumber: 0x0008_0050,
+  IssuerOfAccessionNumberSequence: 0x0008_0051,
   PatientName: 0x0010_0010,
   PatientID: 0x0010_0020,
+  IssuerOfPatientID: 0x0010_0021,
+  IssuerOfPatientIDQualifiersSequence: 0x0010_0024,
   PatientBirthDate: 0x0010_0030,
   PatientSex: 0x0010_0040,
   PatientAge: 0x0010_1010,
@@ -277,15 +284,23 @@ const rewrittenElementsOf = (
   return Either.all(written)
 }
 
+/** The source's issuers of the numbers this generator writes in place of the source's. */
+const SOURCE_ISSUER_TAGS: ReadonlySet<number> = new Set([
+  Tag.IssuerOfPatientID,
+  Tag.IssuerOfPatientIDQualifiersSequence,
+  Tag.IssuerOfAccessionNumberSequence,
+])
+
 /**
  * Whether an element is dropped: private, a data set group length (which the
- * edits would falsify), `PatientAge`, or a date or time this generator does not
- * write.
+ * edits would falsify), `PatientAge`, an issuer of the source's patient id or
+ * accession number, or a date or time this generator does not write.
  */
 const isDropped = (element: DataElement.Type): boolean =>
   DataElement.isPrivate(element) ||
   (element.tag & 0xffff) === 0 ||
   element.tag === Tag.PatientAge ||
+  SOURCE_ISSUER_TAGS.has(element.tag) ||
   element.vr === 'DA' ||
   element.vr === 'DT' ||
   element.vr === 'TM'
@@ -377,7 +392,7 @@ const reidentify = (
  * @returns What the import makes of the file — the source-file
  *   `DocumentReference` carrying its bytes, the `ImagingStudy` and, when an
  *   accession number was written, the `ServiceRequest` — adopted under
- *   `DICOM_SYSTEM`, with no `Patient` and every `subject` replaced by
+ *   the identifiers its file carries, with no `Patient` and every `subject` replaced by
  *   `subject`; an {@link UnreadableReidentifiedFile} if the importer rejects it
  *
  * @remarks
