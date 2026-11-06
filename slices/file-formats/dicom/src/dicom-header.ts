@@ -225,16 +225,22 @@ const NUL = 0x00
  * first NUL on are dropped, as `dicom-parser` drops them; no supported set
  * uses 0x00 inside a character. A blank value is absence, as in
  * {@link trimmedString}.
- *
- * @param label - How the tag is named in a decode failure, e.g.
- *   `'PatientName (0010,0010)'`
  */
-const decodedText = (
-  dataSet: DataSet,
-  characterSet: SpecificCharacterSet.Type,
-  tag: string,
-  label: string
-): Either.Either<string | undefined, SpecificCharacterSet.UndecodableText> => {
+const decodedText = ({
+  dataSet,
+  characterSet,
+  tag,
+  label,
+}: {
+  /** The data set holding the tag: the file's, or a sequence item's. */
+  readonly dataSet: DataSet
+  /** The character set the value is encoded under. */
+  readonly characterSet: SpecificCharacterSet.Type
+  /** The tag read, as `dicom-parser` spells it (`'x00100010'`). */
+  readonly tag: string
+  /** How the tag is named in a decode failure, e.g. `'PatientName (0010,0010)'`. */
+  readonly label: string
+}): Either.Either<string | undefined, SpecificCharacterSet.UndecodableText> => {
   const element = dataSet.elements[tag]
   if (element === undefined) return Either.right(undefined)
   const value = dataSet.byteArray.subarray(element.dataOffset, element.dataOffset + element.length)
@@ -254,7 +260,7 @@ const decodedText = (
 const readText =
   (tag: string, label: string): Reader<string | undefined> =>
   (dataSet, characterSet) =>
-    decodedText(dataSet, characterSet, tag, label)
+    decodedText({ dataSet, characterSet, tag, label })
 
 /** A UI (UID) tag's value, trimmed of the null bytes the spec pads UIDs with. */
 const uid = (dataSet: DataSet, tag: string): string | undefined => {
@@ -336,7 +342,7 @@ const readUs =
 const readPn =
   (tag: string, label: string): Reader<PersonName.Type | undefined> =>
   (dataSet, characterSet) =>
-    Either.map(decodedText(dataSet, characterSet, tag, label), (value) =>
+    Either.map(decodedText({ dataSet, characterSet, tag, label }), (value) =>
       value === undefined ? undefined : PersonName.tryFromPnString(value)
     )
 
@@ -366,18 +372,18 @@ const readHierarchicDesignator =
     return Either.flatMap(itemCharacterSet, (characterSet) =>
       Either.map(
         Either.all({
-          localNamespaceEntityId: decodedText(
-            item,
+          localNamespaceEntityId: decodedText({
+            dataSet: item,
             characterSet,
-            Tag.LocalNamespaceEntityID,
-            `${label} › LocalNamespaceEntityID (0040,0031)`
-          ),
-          universalEntityId: decodedText(
-            item,
+            tag: Tag.LocalNamespaceEntityID,
+            label: `${label} › LocalNamespaceEntityID (0040,0031)`,
+          }),
+          universalEntityId: decodedText({
+            dataSet: item,
             characterSet,
-            Tag.UniversalEntityID,
-            `${label} › UniversalEntityID (0040,0032)`
-          ),
+            tag: Tag.UniversalEntityID,
+            label: `${label} › UniversalEntityID (0040,0032)`,
+          }),
           universalEntityIdType: Either.right(trimmedString(item, Tag.UniversalEntityIDType)),
         }),
         (designator): HierarchicDesignator.Type | undefined =>
