@@ -506,6 +506,15 @@ describe('DecodedFileSet.adopt, a Binary named by its fullUrl', () => {
     expect(binaryLinksOf(document)).toEqual([binaryUrl('bin-1'), binaryUrl('bin-1')])
   })
 
+  // `URL` reads a HAR preview key as an absolute URL in the scheme `har-entry-3:`.
+  it('names nothing by a keyless record whose fullUrl is a preview key', () => {
+    const [document] = adoptedIn([
+      sectionOf('documents', [documentNaming('har-entry-3:0')]),
+      { title: 'binaries', entries: [{ fullUrl: 'har-entry-3:0', resource: binary('bin-1') }] },
+    ])
+    expect(binaryLinksOf(document)).toEqual(['har-entry-3:0', 'har-entry-3:0'])
+  })
+
   it('names nothing by a keyed record, whatever its fullUrl', () => {
     const [observation] = adoptedIn([
       sectionOf('results', [observationOn({ reference: `${BASE_URL}/Patient/pat-1` })]),

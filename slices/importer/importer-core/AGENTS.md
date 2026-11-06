@@ -48,7 +48,7 @@ package alone and a layer that provides those.
   `DecodedFileSet.adopt` (a keyed record under the id its key derives, a
   keyless one under a random id, each logical reference to a record of the set
   resolved to a literal one, and each literal reference or `Attachment.url`
-  spelling a keyless record's absolute `fullUrl` to that record), and
+  spelling a keyless record's `http(s)` `fullUrl` to that record), and
   namespaces their review keys by the set's first picked file
   (`DecodedFile.namespaceKeys`, `FormatDecode.keyPrefix`); runs `linkSourceFile` over each source file with the
   set's adopted records, then `linkToSourceFiles` over every record with each

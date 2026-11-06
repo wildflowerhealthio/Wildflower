@@ -94,8 +94,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   id, keyed by its first identifier, naming every other decoded record by a
   logical reference). The `fullUrl` is as its format gave it, unique within
   the set; the import stage namespaces the review key it becomes. A keyless
-  record whose `fullUrl` is an absolute URL (a FHIR server's `Binary`, at
-  the server's URL for it) is named by it. A decoder writes or detaches its
+  record whose `fullUrl` is an `http:` or `https:` URL (a FHIR server's
+  `Binary`, at the server's URL for it) is named by it. A decoder writes or detaches its
   own records, so a section carries no source base URL or system. It is a
   separate type from `DecodedFile.Section`, the same records adopted: the two
   hold different records, and every reader of a decoded file reads
@@ -114,10 +114,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   entry for each qualified identifier of a keyed record, its key and every
   other, each resolving to its plan's literal reference: the one place that
   decides which identifiers resolve; a keyless record's identifiers stay
-  out) and from the `Minted` plans whose entry's `fullUrl` is an absolute URL
-  (one `fullUrl` entry each, resolving to its plan's literal reference; a
-  `fullUrl` that is no URL, LifeLabs' `<Type>/<key value>` or DICOM's fixed
-  one, names nothing), then runs `fhir-r4-adoption`'s `adopt` over each record with that
+  out) and from the `Minted` plans whose entry's `fullUrl` is an `http:` or
+  `https:` URL (one `fullUrl` entry each, resolving to its plan's literal
+  reference; any other `fullUrl`, LifeLabs' `<Type>/<key value>`, DICOM's
+  fixed one or a HAR preview key, names nothing), then runs `fhir-r4-adoption`'s `adopt` over each record with that
   reference plan and its plan's `id`. So a keyed record lands on the id its
   key derives, a keyless one on an id `mintId` mints (a random UUID unless a
   test injects one), in entry order, and a logical reference resolves when

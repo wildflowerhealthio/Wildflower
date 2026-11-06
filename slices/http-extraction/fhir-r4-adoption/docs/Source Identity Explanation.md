@@ -240,10 +240,10 @@ record, its key and every other, each resolving to the literal reference its
 record is written under, as a FHIR conditional reference matches a record by
 any of its identifiers. A keyless record's id is minted at import, so it puts
 no identifier in for one, whatever identifiers it carries; a keyless record
-whose entry's `fullUrl` is an absolute URL (a FHIR server's `Binary`) gets a
+whose entry's `fullUrl` is an `http:` or `https:` URL (a FHIR server's `Binary`) gets a
 `fullUrl` entry instead, resolving to the literal reference it is written
 under. A `fullUrl` that is no URL (LifeLabs' `<Type>/<key value>`, DICOM's
-fixed one per type) names nothing.
+fixed one per type, a HAR preview key) names nothing.
 
 `adopt(referencePlan)(record, id)` stores `record` under the id its resource
 plan gave it, and resolves each reference and attachment URL through the

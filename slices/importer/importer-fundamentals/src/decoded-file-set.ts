@@ -30,7 +30,7 @@ import * as ResourcePlan from './resource-plan.ts'
  * review tracks an exclusion or an edit by. It is stable across a settings
  * re-decode and unique within the set; the import stage namespaces the review
  * key it becomes by the set's first picked file. A keyless record whose
- * `fullUrl` is an absolute URL (a FHIR server's `Binary`, at the server's URL
+ * `fullUrl` is an `http:` or `https:` URL (a FHIR server's `Binary`, at the server's URL
  * for it) is named by it: a reference or an `Attachment.url` spelling it
  * resolves to the record. It is not the record's `id`: `id: null` is what
  * marks a record detached.
@@ -145,18 +145,27 @@ const referencePlanEntriesOf = (
     Minted: () => [],
   })
 
+/** The `fullUrl` as an `http:` or `https:` URL, the one kind of `fullUrl` that names a record. */
+const webUrlIf = (fullUrl: string): Option.Option<URL> =>
+  pipe(
+    Option.fromNullable(URL.parse(fullUrl)),
+    Option.filter(({ protocol }) => protocol === 'http:' || protocol === 'https:')
+  )
+
 /**
  * The `fullUrl` entry a planned record gives its set's reference plan: one
- * for a keyless record whose `fullUrl` is an absolute URL, resolving to the
- * literal reference the record is written under; none for any other.
+ * for a keyless record whose `fullUrl` is an `http:` or `https:` URL,
+ * resolving to the literal reference the record is written under; none for
+ * any other.
  *
  * @remarks
  * How a record with no identifier is named, as a FHIR transaction bundle
  * names an entry by its `fullUrl`: a FHIR server's `Binary`, whose entry's
  * `fullUrl` is the server's URL for it. A keyed record is named by its
- * identifiers instead, and a `fullUrl` that is no URL (LifeLabs'
- * `<Type>/<key value>`, DICOM's fixed one per type) names nothing a
- * reference spells.
+ * identifiers instead, and any other `fullUrl` names nothing a reference
+ * spells: LifeLabs' `<Type>/<key value>`, DICOM's fixed one per type, and a
+ * HAR preview key, `har-entry-3:0`, which `URL` reads as an absolute URL in
+ * the scheme `har-entry-3:`.
  */
 const fullUrlEntriesOf = (
   plan: ResourcePlan.Type,
@@ -166,7 +175,7 @@ const fullUrlEntriesOf = (
     Derived: () => [],
     Minted: (minted) =>
       pipe(
-        Option.fromNullable(URL.parse(fullUrl)),
+        webUrlIf(fullUrl),
         Option.map((url) => ({
           fullUrl: url,
           literalReference: ResourcePlan.literalReference(minted),
@@ -308,7 +317,7 @@ const takeSubjectFromPrescription =
  * (`ResourcePlan.of`) is decided first, a keyed record's id derived from its
  * key and a keyless one's minted, in entry order; the set's reference plan is
  * built from the keyed records' plans and qualified identifiers, and from the
- * keyless records' absolute `fullUrl`s; then each record is adopted under its
+ * keyless records' `http:` and `https:` `fullUrl`s; then each record is adopted under its
  * plan's id, a logical reference resolving when the set holds a keyed record
  * it names by any of that record's identifiers, whichever section holds it,
  * and a literal reference or an `Attachment.url` when it spells a keyless

@@ -112,7 +112,7 @@ every format's `decode`) then, per set:
   `wf-` id its key derives, a keyless one under a random id, and each logical
   reference to a record of the set resolved to a literal one (a reference to
   anything else stays logical, for the identity map), and a literal reference
-  or an `Attachment.url` spelling a keyless record's absolute `fullUrl` to that
+  or an `Attachment.url` spelling a keyless record's `http(s)` `fullUrl` to that
   record, so every record has its id before the hooks below run;
 - **namespaces every review key** with the set's first picked file, so two sets
   cannot collide on a key (see the obligations below);
