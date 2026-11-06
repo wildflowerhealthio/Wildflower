@@ -65,6 +65,18 @@ const of = (entries: Iterable<Entry>): Type => ({
 })
 
 /**
+ * `plan` with `entries` added, as {@link of} of the entries `plan` was built
+ * from and `entries` would be.
+ */
+const extend = (plan: Type, entries: Iterable<Entry>): Type => ({
+  literalReferencesByTypedIdentifier: Record.union(
+    plan.literalReferencesByTypedIdentifier,
+    of(entries).literalReferencesByTypedIdentifier,
+    (held, added) => Arr.dedupe(Arr.appendAll(held, added))
+  ),
+})
+
+/**
  * The literal reference a logical reference to `resourceType` by
  * `identifier` resolves to: `None` when `plan` holds no entry for them, or
  * several that disagree ({@link of}).
@@ -88,20 +100,35 @@ const literalReferenceFor = (
   )
 
 /**
- * The literal reference `reference` resolves to under `plan`: `None` unless
- * it is a logical reference (no literal, an R4 resource type as its `type`,
- * an `identifier` with a `system` and a `value`) that {@link
- * literalReferenceFor} resolves by its type and identifier.
+ * Whether `plan` holds any entry for a logical reference to `resourceType` by
+ * `identifier`: one, which {@link literalReferenceFor} resolves to, or
+ * several that disagree, which it resolves to nothing.
  *
  * @remarks
- * As a FHIR server resolves a conditional reference against the transaction
- * bundle it processes. `adopt` writes what it gives; the import stage also
- * reads it to ask whether a reference names a record of the set.
+ * Matches as {@link literalReferenceFor} does. The question the import stage
+ * asks before implying a record a reference names: a record the set holds,
+ * once or twice, is no record the set never saw.
  */
-const literalReferenceIfResolved = (
+const holds = (
   plan: Type,
-  reference: ReferenceType
-): Option.Option<string> => {
+  resourceType: string,
+  identifier: IdentifierAndReference.QualifiedIdentifierType
+): boolean =>
+  Record.has(plan.literalReferencesByTypedIdentifier, typedIdentifierText(resourceType, identifier))
+
+/** What a logical reference names: an R4 resource type and a qualified identifier. */
+interface LogicalTarget {
+  readonly resourceType: ResourceType.Type
+  readonly identifier: IdentifierAndReference.QualifiedIdentifierType
+}
+
+/**
+ * What `reference` names when it is a logical reference: no literal, an R4
+ * resource type as its `type`, an `identifier` with a `system` and a
+ * `value`. `None` for a literal reference, an untyped or display-only one,
+ * and one whose `type` names no R4 resource.
+ */
+const logicalTargetIfLogical = (reference: ReferenceType): Option.Option<LogicalTarget> => {
   const { identifier, type } = reference
   return reference.reference !== null ||
     type === null ||
@@ -109,8 +136,31 @@ const literalReferenceIfResolved = (
     identifier === null ||
     !IdentifierAndReference.isQualifiedIdentifier(identifier)
     ? Option.none()
-    : literalReferenceFor(plan, type, identifier)
+    : Option.some({ resourceType: type, identifier })
 }
 
-export { literalReferenceFor, literalReferenceIfResolved, of }
-export type { Entry, Type }
+/**
+ * The literal reference `reference` resolves to under `plan`: `None` unless
+ * it is a logical reference ({@link logicalTargetIfLogical}) that {@link
+ * literalReferenceFor} resolves by its type and identifier.
+ *
+ * @remarks
+ * As a FHIR server resolves a conditional reference against the transaction
+ * bundle it processes. `adopt` writes what it gives; the import stage also
+ * reads it to ask whether a reference names a record of the set.
+ */
+const literalReferenceIfResolved = (plan: Type, reference: ReferenceType): Option.Option<string> =>
+  Option.flatMap(logicalTargetIfLogical(reference), ({ resourceType, identifier }) =>
+    literalReferenceFor(plan, resourceType, identifier)
+  )
+
+export {
+  extend,
+  holds,
+  literalReferenceFor,
+  literalReferenceIfResolved,
+  logicalTargetIfLogical,
+  of,
+  typedIdentifierText,
+}
+export type { Entry, LogicalTarget, Type }

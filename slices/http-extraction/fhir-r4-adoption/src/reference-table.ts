@@ -1,7 +1,8 @@
 /**
  * The per-type reference table: every `Reference` a resource holds, reached
  * by one walk, which detaching a server's record and adopting a detached one
- * both rewrite through.
+ * both rewrite through, and the import stage reads to imply the records a
+ * set's references name.
  *
  * @packageDocumentation
  */
@@ -350,7 +351,7 @@ const mapProcedureReferences = (
  * @remarks
  * The per-type reference table, the one place a resource's references are
  * walked: `DetachedResource.fromServerRecord` and `adopt` both rewrite
- * through it.
+ * through it, and `DetachedResource.referencesOf` reads through it.
  * `Match.exhaustive` over the closed union rather than a `switch`: a resource
  * type added to `FhirResource` without a row here is a compile error, not a
  * resource whose references silently keep the source's ids.

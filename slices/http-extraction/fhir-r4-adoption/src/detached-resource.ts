@@ -14,6 +14,7 @@ import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import { type FhirResource, ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   Array as Arr,
+  type Either,
   Option,
   type ParseResult,
   pipe,
@@ -91,6 +92,33 @@ const decodeUnknown = <TResource extends FhirResource, TEncoded>(
       Schema.filter(isDetached, { message: () => 'a detached record carries no id' })
     )
   )
+
+/**
+ * {@link decodeUnknown} as an `Either`: the detached record, or the
+ * `ParseError` for a wire its schema rejects or one that carries an `id`, for
+ * a caller that builds records synchronously.
+ */
+const decodeUnknownEither = <TResource extends FhirResource, TEncoded>(
+  resourceSchema: Schema.Schema<TResource, TEncoded>
+): ((wire: unknown) => Either.Either<Detached<TResource>, ParseResult.ParseError>) =>
+  Schema.decodeUnknownEither(
+    resourceSchema.pipe(
+      Schema.filter(isDetached, { message: () => 'a detached record carries no id' })
+    )
+  )
+
+/**
+ * Every reference `record` holds that the per-type table reaches, in the
+ * table's order: the references `adopt` resolves.
+ */
+const referencesOf = (record: Type): readonly ReferenceType[] => {
+  const found: ReferenceType[] = []
+  mapReferences((reference: ReferenceType) => {
+    found.push(reference)
+    return reference
+  })(record)
+  return found
+}
 
 /**
  * The `Identifier` wire a detached record is keyed by, `{ system, value }`:
@@ -307,6 +335,7 @@ const fromServerRecord = (baseUrl: string) => {
 
 export {
   decodeUnknown,
+  decodeUnknownEither,
   fromServerRecord,
   hasIdentifier,
   isDetached,
@@ -314,6 +343,7 @@ export {
   keyIdentifierWire,
   keyOf,
   logicalReferenceWire,
+  referencesOf,
   storedReferenceOf,
 }
 export type { Detached, Key, Type }
