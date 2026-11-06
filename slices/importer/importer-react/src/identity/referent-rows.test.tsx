@@ -383,6 +383,7 @@ const batchOf = (resources: readonly FhirResourceWithId[]): DecodedBatch => ({
               key: `k-${index}`,
               title: resource.resourceType,
               resource,
+              origin: 'Decoded',
             })),
           },
         ],

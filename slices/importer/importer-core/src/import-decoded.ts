@@ -117,6 +117,7 @@ const importFileSet = (
       key: sourceFileKey(pickedFile),
       title: pickedFile.fileName,
       resource: sourceFile,
+      origin: 'Decoded',
     }))
     // Their own section ahead of what was read out of them, so the reviewer
     // sees what is about to be stored before what it yielded.

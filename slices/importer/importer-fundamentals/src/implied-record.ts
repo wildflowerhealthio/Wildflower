@@ -101,29 +101,22 @@ const of = (
     impliedRecordOf(identifier, display)
   )
 
-/** What {@link fullUrlOf} puts between the referencing entry's `fullUrl` and the target. */
-const IMPLIED_MARK = '#implied:'
-
 /**
  * The `fullUrl` of the record a reference to `resourceType` by `identifier`
  * implies, first named by the entry under `referencingFullUrl`:
  * `<referencingFullUrl>#implied:<Type>|<system>|<value>`.
  *
  * @remarks
- * Stable across a settings re-decode, since it is read off the entry and the
+ * Only a key, stable and unique, which the review tracks the row by: stable
+ * across a settings re-decode, since it is read off the entry and the
  * reference, and unique across the batch, since the referencing entry's
- * `fullUrl` is (`FormatDecode.keyPrefix`).
+ * `fullUrl` is (`FormatDecode.keyPrefix`). Nothing reads it back: a row says
+ * it is implied by its `origin` (`DecodedFile.Origin`).
  */
 const fullUrlOf = (
   referencingFullUrl: string,
   resourceType: string,
   { system, value }: IdentifierAndReference.QualifiedIdentifierType
-): string => `${referencingFullUrl}${IMPLIED_MARK}${resourceType}|${system.href}|${value}`
+): string => `${referencingFullUrl}#implied:${resourceType}|${system.href}|${value}`
 
-/**
- * Whether `fullUrl`, or the review key an adopted row carries it as, is one
- * {@link fullUrlOf} made: the row is an implied record.
- */
-const isFullUrl = (fullUrl: string): boolean => fullUrl.includes(IMPLIED_MARK)
-
-export { fullUrlOf, isFullUrl, of }
+export { fullUrlOf, of }

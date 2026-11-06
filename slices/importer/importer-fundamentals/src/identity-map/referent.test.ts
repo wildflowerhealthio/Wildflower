@@ -120,7 +120,12 @@ describe('Referent.discover', () => {
         {
           title: 'Resources',
           resources: [
-            { key: 'k-0#implied:Practitioner|x|pr-1', title: 'implied', resource: implied },
+            {
+              key: 'k-0#implied:Practitioner|x|pr-1',
+              title: 'implied',
+              resource: implied,
+              origin: 'Implied',
+            },
           ],
         },
       ],

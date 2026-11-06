@@ -151,6 +151,7 @@ const linkedRecords = (plan: LinkPlan.Type): readonly LinkedRecord[] =>
       key: linkedKey(resource),
       title: label,
       resource,
+      origin: 'Decoded',
     }))
   )
 

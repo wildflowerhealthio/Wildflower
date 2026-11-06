@@ -253,6 +253,7 @@ const fileOf = (...resources: readonly FhirResourceWithId[]): DecodedFile.Decode
         key: `k-${index}`,
         title: `${resource.resourceType}/${resource.id}`,
         resource,
+        origin: 'Decoded',
       })),
     },
   ],

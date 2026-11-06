@@ -41,6 +41,7 @@ const formatResult = <K extends FormatKind>(
           key,
           title: `Patient/${rid}`,
           resource: patient(rid),
+          origin: 'Decoded' as const,
         })),
       },
     ],
@@ -76,6 +77,7 @@ describe('diffRowsOf / byGroupAndKey', () => {
           key: 'linked:Patient/p-stored',
           title: 'Patient/p-stored',
           resource: patient('p-stored'),
+          origin: 'Decoded',
         },
       ],
     }
@@ -140,8 +142,8 @@ describe('diffRowsOf / byGroupAndKey', () => {
 describe('unchangedKeysOf', () => {
   it('should find exactly the unchanged keys, and nothing without verdicts', () => {
     const labeled = [
-      { key: 'a', title: 'Patient/a', resource: patient('a') },
-      { key: 'b', title: 'Patient/b', resource: patient('b') },
+      { key: 'a', title: 'Patient/a', resource: patient('a'), origin: 'Decoded' as const },
+      { key: 'b', title: 'Patient/b', resource: patient('b'), origin: 'Decoded' as const },
     ]
     const verdicts = new Map([
       ['a', UNCHANGED],

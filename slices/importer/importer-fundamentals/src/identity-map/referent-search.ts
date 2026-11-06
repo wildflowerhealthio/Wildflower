@@ -20,7 +20,6 @@ import {
 import { TokenSearchParam } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Effect, HashMap, Match, Option } from 'effect'
 
-import * as ImpliedRecord from '../implied-record.ts'
 import * as LinkChoice from './link-choice.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
@@ -100,17 +99,19 @@ const isStoredCopyOf = (referent: Referent.Type, stored: LinkableResource.WithId
 /**
  * The choice `referent` takes over `storedCopy`, the stored copy of its own
  * resource: `UpdateStoredResource`, so a re-import writes the newer decode
- * over it; but `LinkToStoredResource` for a record the import implied
- * (`ImpliedRecord.isFullUrl` of its review key), which holds only what a
- * reference said of it and would write over everything else the copy holds.
+ * over it; but `LinkToStoredResource` for a record the import implied (its
+ * `origin`), which holds only what a reference said of it and would write
+ * over everything else the copy holds.
  */
 const storedCopyChoiceOf = (
   referent: Referent.Type,
   storedCopy: LinkableResource.WithId
 ): LinkChoice.Type =>
-  ImpliedRecord.isFullUrl(referent.reviewKey)
-    ? LinkChoice.LinkToStoredResource({ resource: storedCopy })
-    : LinkChoice.UpdateStoredResource({ resource: storedCopy })
+  Match.value(referent.origin).pipe(
+    Match.when('Decoded', () => LinkChoice.UpdateStoredResource({ resource: storedCopy })),
+    Match.when('Implied', () => LinkChoice.LinkToStoredResource({ resource: storedCopy })),
+    Match.exhaustive
+  )
 
 /**
  * The choice the `hits` of one search give `referent`: the one over the

@@ -71,7 +71,7 @@ const file: DecodedFile.DecodedFile = {
           subject: { reference: 'Patient/p-1' },
           requester: { reference: 'Practitioner/dr-smith', display: 'Dr. A Smith' },
         }),
-      ].map((resource, index) => ({ key: `k-${index}`, title: '', resource })),
+      ].map((resource, index) => ({ key: `k-${index}`, title: '', resource, origin: 'Decoded' })),
     },
   ],
   notes: [],

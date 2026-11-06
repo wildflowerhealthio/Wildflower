@@ -26,11 +26,16 @@ import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
 const patient = (id: string, gender: 'male' | 'female' | null = null): FhirResourceWithId =>
   Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id, gender })
 
-/** A row keyed `key` holding `resource`. */
-const row = (key: string, resource: FhirResourceWithId): DecodedFile.Resource => ({
+/** A row keyed `key` holding `resource`, from `origin`. */
+const row = (
+  key: string,
+  resource: FhirResourceWithId,
+  origin: DecodedFile.Origin = 'Decoded'
+): DecodedFile.Resource => ({
   key,
   title: `${resource.resourceType}/${resource.id}`,
   resource,
+  origin,
 })
 
 /** A row keyed `key` holding the Patient of id `key`. */
@@ -249,7 +254,11 @@ describe('planWrite', () => {
   })
 
   it('writes a record the import implied only while a written row names it', () => {
-    const implied = row(`obs-1#implied:Patient|${PATIENT_SYSTEM}|mrn-9`, patient('implied-9'))
+    const implied = row(
+      `obs-1#implied:Patient|${PATIENT_SYSTEM}|mrn-9`,
+      patient('implied-9'),
+      'Implied'
+    )
     const batch = batchOf({
       har: [implied, observationOf('obs-1', { subject: { reference: 'Patient/implied-9' } })],
     })
@@ -269,7 +278,7 @@ describe('planWrite', () => {
   })
 
   it('writes the record a file decoded over the copy another file set implied under its id, whatever their order', () => {
-    const implied = row(`obs-1#implied:Patient|${PATIENT_SYSTEM}|mrn-9`, patient('p-9'))
+    const implied = row(`obs-1#implied:Patient|${PATIENT_SYSTEM}|mrn-9`, patient('p-9'), 'Implied')
     const decoded = row('p-9', patient('p-9', 'female'))
     const naming = observationOf('obs-1', { subject: { reference: 'Patient/p-9' } })
 
@@ -466,7 +475,11 @@ interface LinkedRecord {
 const linkedRecordOf = (linkedResource: LinkableResource.WithId, title: string): LinkedRecord => {
   const literalReference = LinkableResource.literalReferenceOf(linkedResource)
   const key = `linked:${literalReference}`
-  return { key, literalReference, entry: { key, title, resource: linkedResource } }
+  return {
+    key,
+    literalReference,
+    entry: { key, title, resource: linkedResource, origin: 'Decoded' },
+  }
 }
 
 /** The system the stored Patient is keyed in. */
@@ -493,4 +506,5 @@ const observationOf = (key: string, references: object): DecodedFile.Resource =>
     code: { text: 'Heart rate' },
     ...references,
   }),
+  origin: 'Decoded',
 })

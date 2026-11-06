@@ -86,6 +86,7 @@ const fileOf = (resources: readonly FhirResourceWithId[]): DecodedFile.DecodedFi
         key: `k-${index}`,
         title: `${resource.resourceType}/${resource.id}`,
         resource,
+        origin: 'Decoded',
       })),
     },
   ],

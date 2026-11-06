@@ -21,7 +21,6 @@ import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Data, Effect, HashMap, Option, pipe, Record } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
-import * as ImpliedRecord from '../implied-record.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
 
@@ -41,6 +40,8 @@ interface Type {
   readonly resource: LinkableResource.WithId
   /** The `DecodedFile.Resource` key the record is reviewed under. */
   readonly reviewKey: string
+  /** Where the record came from: its row's `origin`. */
+  readonly origin: DecodedFile.Origin
   readonly label: string
 }
 
@@ -133,6 +134,7 @@ const tryFromDecodedResource = (entry: DecodedFile.Resource): Effect.Effect<Opti
           derivedIdentifier,
           resource,
           reviewKey: entry.key,
+          origin: entry.origin,
           label,
         }))
       )
@@ -168,9 +170,8 @@ const firstDuplicateAmong = (referents: readonly Type[]): Option.Option<Duplicat
  * @remarks
  * A resource decoded twice under one id (two file sets implying one
  * Practitioner, say) is one referent, in the place of its first copy: the
- * first copy a file decoded, else the first implied one
- * (`ImpliedRecord.isFullUrl`), since an implied record says only what a
- * reference to it said. Fails with
+ * first copy a file decoded, else the first implied one (by its `origin`),
+ * since an implied record says only what a reference to it said. Fails with
  * {@link DuplicateReferent} when two resources under different ids, in one
  * file or two, are keyed by one logical reference.
  */
@@ -184,7 +185,7 @@ const discover = (
     const duplicate = firstDuplicateAmong(decodedReferents)
     if (Option.isSome(duplicate)) return yield* Effect.fail(duplicate.value)
     const firstDecodedByKey = byKey(
-      decodedReferents.filter(({ reviewKey }) => !ImpliedRecord.isFullUrl(reviewKey)).toReversed()
+      decodedReferents.filter(({ origin }) => origin === 'Decoded').toReversed()
     )
     return Array.dedupeWith(decodedReferents, (left, right) => key(left) === key(right)).map(
       (referent) => Option.getOrElse(HashMap.get(firstDecodedByKey, key(referent)), () => referent)

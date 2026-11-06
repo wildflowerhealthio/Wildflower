@@ -1,10 +1,23 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 
-/** One reviewed resource: its review key, its title, and the resource, which has an id to be written under. */
+/**
+ * Where a reviewed record came from. `Decoded`: the record as a source holds
+ * it, read out of a picked file (or, beside the files, a set's source file
+ * or a stored record the batch links to). `Implied`: built by the import
+ * from a reference to a record no file of its set holds
+ * (`DecodedFileSet.adopt`), so it says only what that reference said of it.
+ */
+type Origin = 'Decoded' | 'Implied'
+
+/**
+ * One reviewed resource: its review key, its title, the resource, which has
+ * an id to be written under, and where it came from.
+ */
 interface Resource {
   readonly key: string
   readonly title: string
   readonly resource: FhirResourceWithId
+  readonly origin: Origin
 }
 
 interface Section {
@@ -39,4 +52,4 @@ const mapResources = (decodedFile: DecodedFile, f: (entry: Resource) => Resource
 
 export { mapResources, resources }
 
-export type { Resource, Section, DecodedFile }
+export type { DecodedFile, Origin, Resource, Section }

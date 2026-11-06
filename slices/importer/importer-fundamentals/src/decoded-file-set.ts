@@ -155,10 +155,15 @@ const referencePlanEntriesOf = (
     Minted: () => [],
   })
 
-/** One entry of a set beside its plan, decided before any record of the set is adopted. */
+/**
+ * One entry of a set beside its plan, decided before any record of the set is
+ * adopted, and where it came from: a decoder's entry, or one the set's
+ * references imply.
+ */
 interface PlannedEntry {
   readonly entry: Entry
   readonly plan: ResourcePlan.Type
+  readonly origin: DecodedFile.Origin
 }
 
 /** A section with each of its entries planned. */
@@ -283,7 +288,11 @@ const implyReferencedRecords = (
   return Either.map(impliedEntriesOf(plannedSections, heldPlan), (impliedEntries) => {
     const implied = impliedEntries.map(({ sectionIndex, entry }) => ({
       sectionIndex,
-      plannedEntry: { entry, plan: ResourcePlan.of(entry.resource, mintId) },
+      plannedEntry: {
+        entry,
+        plan: ResourcePlan.of(entry.resource, mintId),
+        origin: 'Implied' as const,
+      },
     }))
     return {
       plannedSections: plannedSections.map(({ title, plannedEntries }, sectionIndex) => ({
@@ -459,9 +468,10 @@ const adopt = (
     implyReferencedRecords(
       decoded.sections.map(({ title, entries }) => ({
         title,
-        plannedEntries: entries.map((entry) => ({
+        plannedEntries: entries.map((entry): PlannedEntry => ({
           entry,
           plan: ResourcePlan.of(entry.resource, mintId),
+          origin: 'Decoded',
         })),
       })),
       mintId
@@ -476,10 +486,11 @@ const adopt = (
       return {
         sections: plannedSections.map(({ title, plannedEntries }) => ({
           title,
-          resources: plannedEntries.map(({ entry, plan }) => ({
+          resources: plannedEntries.map(({ entry, plan, origin }) => ({
             key: entry.fullUrl,
             title: writtenReferenceTitle(plan, entry),
             resource: adoptEntry(takeSubject(entry.resource), plan.id),
+            origin,
           })),
         })),
         notes: decoded.notes,

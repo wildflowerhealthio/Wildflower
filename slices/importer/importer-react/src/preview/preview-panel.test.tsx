@@ -528,6 +528,7 @@ describe('PreviewPanel', () => {
       key: 'pat-1',
       title: 'Patient/pat-1',
       resource: patientResource,
+      origin: 'Decoded',
     }
     const batch = makeBatch({
       har: formatResult('a.har', decoded([section('s', [labeled])]), 'har'),
@@ -553,6 +554,7 @@ describe('PreviewPanel', () => {
       key: 'pat-1',
       title: 'Patient/pat-1',
       resource: patientResource,
+      origin: 'Decoded',
     }
     const batch = makeBatch({
       har: formatResult('a.har', decoded([section('s', [labeled])]), 'har'),
@@ -593,6 +595,7 @@ const FEMALE_PAT_1: DecodedFile.Resource = {
     id: 'pat-1',
     gender: 'female',
   }),
+  origin: 'Decoded',
 }
 
 /** A gender the server has as male and the import as female. */
@@ -679,7 +682,7 @@ const labeledResource = (key: string, title: string): DecodedFile.Resource => {
     resourceType === 'Observation'
       ? observationOf(key, { code: {}, subject: { reference: 'Patient/p' } }).resource
       : Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
-  return { key, title, resource: { ...resource, id } }
+  return { key, title, resource: { ...resource, id }, origin: 'Decoded' }
 }
 
 /** An Observation carrying the given reference fields, labeled under `key`, for a linked record to be named by. */
@@ -693,6 +696,7 @@ const observationOf = (key: string, references: object): DecodedFile.Resource =>
     code: { text: 'Heart rate' },
     ...references,
   }),
+  origin: 'Decoded',
 })
 
 /** `batch` with the stored `Patient/s-1` as its one linked record: a stored copy. */
@@ -710,11 +714,14 @@ const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch => {
     derivedIdentifier: Option.none(),
     resource,
     reviewKey: 'k-s-1',
+    origin: 'Decoded',
     label: literalReference,
   }
   return {
     ...batch,
-    linkedRecords: [{ key: `linked:${literalReference}`, title: literalReference, resource }],
+    linkedRecords: [
+      { key: `linked:${literalReference}`, title: literalReference, resource, origin: 'Decoded' },
+    ],
     plan: { ...LinkPlan.empty, links: [{ referent, target: LinkTarget.Stored({ resource }) }] },
   }
 }

@@ -89,6 +89,7 @@ const resultOf = <K extends FormatKind>(
                 key: `${kind}/k-${index}`,
                 title: `${resource.resourceType}/${resource.id}`,
                 resource,
+                origin: 'Decoded',
               })),
             },
           ],

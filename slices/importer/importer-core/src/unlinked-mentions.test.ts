@@ -61,6 +61,7 @@ const resolvedHarBatchOf = (resources: readonly FhirResourceWithId[]): ResolvedB
             key: `k-${index}`,
             title: `${resource.resourceType}/${resource.id}`,
             resource,
+            origin: 'Decoded',
           })),
         },
       ],

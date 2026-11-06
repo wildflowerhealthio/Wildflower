@@ -5,6 +5,7 @@ import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import type * as DecodedFile from './decoded-file.ts'
 import * as MetaSource from './meta-source.ts'
 
 const fakeResource = (id: string): FhirResourceWithId =>
@@ -68,6 +69,7 @@ describe('MetaSource.stampDecoded', () => {
                 key: fc.string(),
                 title: fc.string(),
                 resource: fc.string().map(fakeResource),
+                origin: fc.constant<DecodedFile.Origin>('Decoded'),
               })
             ),
           })

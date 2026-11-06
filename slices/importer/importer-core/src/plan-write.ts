@@ -3,7 +3,6 @@ import {
   DecodedFile,
   type FileResolution,
   type FormatDecode,
-  ImpliedRecord,
   Mention,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -94,8 +93,8 @@ const literalReferencesIn = (resources: readonly FhirResourceWithId[]): Readonly
 
 /**
  * A candidate format row as written: `Unreferenced` when it is a record the
- * import implied (`ImpliedRecord.isFullUrl`) and no candidate format row
- * names it, which would write it as an orphan; else still a candidate.
+ * import implied (its `origin`) and no candidate format row names it, which
+ * would write it as an orphan; else still a candidate.
  *
  * @param named - The literal references the candidate format rows carry
  */
@@ -103,7 +102,7 @@ const unlessUnreferenced =
   (named: ReadonlySet<string>) =>
   (row: ReviewedRow): ReviewedRow =>
     row.verdict === 'Candidate' &&
-    ImpliedRecord.isFullUrl(row.entry.key) &&
+    row.entry.origin === 'Implied' &&
     !named.has(literalReferenceOf(row.entry.resource))
       ? { ...row, verdict: 'Unreferenced' }
       : row
@@ -164,7 +163,7 @@ const linkedVerdictOf = (
  *   unticked it, or never ticked one the default leaves out. Else it is a
  *   candidate. Its `entry.resource` is the edited resource, resolved on the
  *   batch's plan, where the reviewer made an edit. A record the import
- *   implied from the references naming it (`ImpliedRecord.isFullUrl`) is
+ *   implied from the references naming it (its `origin`) is
  *   **`Unreferenced`** when no candidate format row carries its literal
  *   `Type/<id>` in any reference field (`Mention.madeIn`): one nothing
  *   written names would be an orphan.
@@ -209,12 +208,15 @@ const planWrite = (
     ...formatRows.map(unlessUnreferenced(named)),
   ]
   const candidateIndexes = rows.flatMap(({ entry, verdict }, index) =>
-    verdict === 'Candidate' ? [[literalReferenceOf(entry.resource), index, entry.key] as const] : []
+    verdict === 'Candidate'
+      ? [[literalReferenceOf(entry.resource), index, entry.origin] as const]
+      : []
   )
   // Built in submit order, implied records first, the map keeps each
   // `Type/id`'s last candidate, a decoded one over any implied one.
-  const [decodedCandidates, impliedCandidates] = Arr.partition(candidateIndexes, ([, , key]) =>
-    ImpliedRecord.isFullUrl(key)
+  const [decodedCandidates, impliedCandidates] = Arr.partition(
+    candidateIndexes,
+    ([, , origin]) => origin === 'Implied'
   )
   const lastCandidateIndexByLiteralReference = new Map(
     [...impliedCandidates, ...decodedCandidates].map(
