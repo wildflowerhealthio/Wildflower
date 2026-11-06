@@ -220,7 +220,7 @@ describe('decodeLifeLabsPdfDocument', () => {
           referents
             .map(
               ({ logicalReference }) =>
-                `${logicalReference.type}|${logicalReference.identifier.system.href}|${logicalReference.identifier.value}`
+                `${logicalReference.resourceType}|${logicalReference.identifier[0].system.href}|${logicalReference.identifier[0].value}`
             )
             .toSorted()
         ).toEqual(expected.toSorted())

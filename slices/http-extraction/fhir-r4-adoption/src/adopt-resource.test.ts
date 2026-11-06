@@ -10,6 +10,7 @@ import {
   type CarePlanActivityDetail,
   DiagnosticReport,
   DocumentReference,
+  LogicalReference,
   type FhirResource,
   type FhirResourceWithId,
   Goal,
@@ -85,8 +86,7 @@ const adoptionOver = (
     ReferencePlan.of(
       Arr.filterMap(batch, (record) =>
         Option.map(DetachedResource.keyIdentifierOf(record), (identifier) => ({
-          resourceType: record.resourceType,
-          identifier,
+          logicalReference: LogicalReference.make(record.resourceType, identifier),
           literalReference: `${record.resourceType}/${idOf(record)}`,
         }))
       )

@@ -12,6 +12,7 @@ import {
   ReferencePlan,
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
+import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Either, Option, type ParseResult, pipe } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
@@ -147,8 +148,7 @@ const referencePlanEntriesOf = (
         ? resource.identifier
             .filter(IdentifierAndReference.isQualifiedIdentifier)
             .map((identifier) => ({
-              resourceType: derived.resourceType,
-              identifier,
+              logicalReference: LogicalReference.make(derived.resourceType, identifier),
               literalReference: ResourcePlan.literalReference(derived),
             }))
         : [],
@@ -198,14 +198,10 @@ const referencesInSet = (plannedSections: readonly PlannedSection[]): readonly R
     )
   )
 
-/** How a logical target is told apart from another, spelt as the reference plan spells it. */
-const targetText = ({ resourceType, identifier }: ReferencePlan.LogicalTarget): string =>
-  ReferencePlan.typedIdentifierText(resourceType, identifier)
-
 /**
  * The records the references of `plannedSections` imply, once per target, in
  * the order they are first named: for each logical reference
- * (`ReferencePlan.logicalTargetIfLogical`) with a `display` whose target no
+ * (`LogicalReference.tryFromReference`) with a `display` whose target no
  * record of the set holds by any identifier (`ReferencePlan.holds`), the
  * record `ImpliedRecord.of` builds for its type, keyed by its identifier and
  * named by that reference's display, under a `fullUrl` read off the entry
@@ -220,28 +216,27 @@ const impliedEntriesOf = (
     new Map<string, Either.Either<ImpliedEntry, ParseResult.ParseError>>(),
     (implied, { sectionIndex, referencingFullUrl, reference }) =>
       pipe(
-        ReferencePlan.logicalTargetIfLogical(reference),
+        LogicalReference.tryFromReference(reference),
         Option.filter(
           (target) =>
-            !implied.has(targetText(target)) &&
-            !ReferencePlan.holds(heldPlan, target.resourceType, target.identifier)
+            !implied.has(LogicalReference.key(target)) && !ReferencePlan.holds(heldPlan, target)
         ),
         Option.flatMap((target) =>
           pipe(
             Option.fromNullable(reference.display),
             Option.flatMap((display) =>
-              ImpliedRecord.of(target.resourceType, target.identifier, display)
+              ImpliedRecord.of(target.resourceType, target.identifier[0], display)
             ),
             Option.map((decodedRecord) =>
               implied.set(
-                targetText(target),
+                LogicalReference.key(target),
                 Either.map(decodedRecord, (resource) => ({
                   sectionIndex,
                   entry: {
                     fullUrl: ImpliedRecord.fullUrlOf(
                       referencingFullUrl,
                       target.resourceType,
-                      target.identifier
+                      target.identifier[0]
                     ),
                     resource,
                   },

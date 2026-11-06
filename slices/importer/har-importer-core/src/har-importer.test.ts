@@ -490,9 +490,9 @@ const REXALL_PRACTITIONER_NAME_SYSTEM =
 /** The referents of `result`, as `[type, system, value]`. */
 const referentKeysOf = (result: DecodedFile.DecodedFile): readonly (readonly string[])[] =>
   Effect.runSync(Referent.discover([result])).map(({ logicalReference }) => [
-    logicalReference.type,
-    logicalReference.identifier.system.href,
-    logicalReference.identifier.value,
+    logicalReference.resourceType,
+    logicalReference.identifier[0].system.href,
+    logicalReference.identifier[0].value,
   ])
 
 /** The `requester` of `result`'s MedicationRequest. */

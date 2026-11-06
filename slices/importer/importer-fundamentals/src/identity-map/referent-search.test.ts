@@ -307,8 +307,14 @@ describe('ReferentSearch.defaultChoices', () => {
         Option.map(HashMap.get(choices, Referent.key(referent)), describeChoice),
       ])
     ).toEqual([
-      [`Patient|${SOURCE_PATIENT}|p-1`, Option.some('LinkToStoredResource Patient/s-1')],
-      [`Practitioner|${SOURCE_PRACTITIONER}|pr-1`, Option.some('CreateResource')],
+      [
+        JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1']),
+        Option.some('LinkToStoredResource Patient/s-1'),
+      ],
+      [
+        JSON.stringify(['Practitioner', SOURCE_PRACTITIONER, 'pr-1']),
+        Option.some('CreateResource'),
+      ],
     ])
     expect(HashMap.size(choices)).toBe(2)
     expect(server.urls).toHaveLength(2)
@@ -330,6 +336,11 @@ describe('ReferentSearch.defaultChoices', () => {
         Referent.key(referent),
         Option.map(HashMap.get(choices, Referent.key(referent)), describeChoice),
       ])
-    ).toEqual([[`Patient|${SOURCE_PATIENT}|p-1`, Option.some('UpdateStoredResource Patient/p-1')]])
+    ).toEqual([
+      [
+        JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1']),
+        Option.some('UpdateStoredResource Patient/p-1'),
+      ],
+    ])
   })
 })

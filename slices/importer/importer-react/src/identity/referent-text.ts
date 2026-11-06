@@ -44,7 +44,7 @@ const duplicateReferentMessage = ({
   logicalReference,
   reviewKeys,
 }: Referent.DuplicateReferent): string =>
-  `These files hold two ${logicalReference.type} records with the identifier ${logicalReference.identifier.value} under different ids (${reviewKeys.join(', ')}). The import cannot tell which one its references mean, so these files cannot be imported together.`
+  `These files hold two ${logicalReference.resourceType} records with the identifier ${logicalReference.identifier[0].value} under different ids (${reviewKeys.join(', ')}). The import cannot tell which one its references mean, so these files cannot be imported together.`
 
 /** Under the refusal, when the review shown is the batch as it resolved before the change that refused it. */
 const REFUSED_OVER_PREVIOUS_HINT =

@@ -10,6 +10,7 @@ import {
   type Practitioner,
   type FhirResourceWithId,
   literalReferenceOf,
+  LogicalReference,
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, DateTime, Effect, Match, Option, pipe } from 'effect'
@@ -42,7 +43,7 @@ const sameRecord = (a: WithId, b: WithId): boolean =>
 const tryIntoLogicalReference = (resource: Type): Option.Option<LinkableLogicalReference.Type> =>
   Array.head(resource.identifier).pipe(
     Option.flatMap((identifier) =>
-      LinkableLogicalReference.tryFromIdentifier(resource.resourceType, identifier)
+      LogicalReference.tryFromIdentifier(resource.resourceType, identifier)
     )
   )
 

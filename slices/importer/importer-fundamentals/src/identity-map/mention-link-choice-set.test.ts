@@ -52,8 +52,8 @@ afterAll(() => {
 
 const RUNS = numRunsFor({ base: 30 })
 
-const PERSON = `Patient|${SOURCE_PATIENT}|p-1`
-const ACCOUNT = `Patient|${CUSTOMER}|c-9`
+const PERSON = JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1'])
+const ACCOUNT = JSON.stringify(['Patient', CUSTOMER, 'c-9'])
 
 /** The `subject` of the resource keyed `key` in `file`: `null` for an empty slot, `undefined` for none. */
 const subjectAt = (
@@ -169,7 +169,9 @@ describe('a mention link choice on a resolved file', () => {
         ['k-2', LinkChoice.LinkToDecodedReferent({ referentKey: ACCOUNT })],
         [
           'k-3',
-          LinkChoice.LinkToDecodedReferent({ referentKey: 'Patient|https://nowhere.example|x' }),
+          LinkChoice.LinkToDecodedReferent({
+            referentKey: JSON.stringify(['Patient', 'https://nowhere.example/', 'x']),
+          }),
         ],
       ])
     )
@@ -270,12 +272,16 @@ describe('mention link choices and the referents', () => {
                 fc
                   .constantFrom(...STORED.filter((stored) => stored.resourceType === mention.type))
                   .map((resource) => LinkChoice.LinkToStoredResource({ resource })),
-                ...(referents.some((referent) => referent.logicalReference.type === mention.type)
+                ...(referents.some(
+                  (referent) => referent.logicalReference.resourceType === mention.type
+                )
                   ? [
                       fc
                         .constantFrom(
                           ...referents
-                            .filter((referent) => referent.logicalReference.type === mention.type)
+                            .filter(
+                              (referent) => referent.logicalReference.resourceType === mention.type
+                            )
                             .map(Referent.key)
                         )
                         .map((referentKey) => LinkChoice.LinkToDecodedReferent({ referentKey })),

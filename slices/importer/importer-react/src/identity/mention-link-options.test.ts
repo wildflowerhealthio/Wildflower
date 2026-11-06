@@ -20,9 +20,9 @@ import * as MentionLinkOptions from './mention-link-options.ts'
 const SOURCE = 'https://source.example/patient-id'
 const NAME = 'https://source.example/practitioner-name'
 const DEVICE = 'https://device.example/id'
-const PERSON = `Patient|${SOURCE}|p-1`
-const OTHER_PERSON = `Patient|${SOURCE}|p-2`
-const PRESCRIBER = `Practitioner|${NAME}|Dr. A Smith`
+const PERSON = JSON.stringify(['Patient', SOURCE, 'p-1'])
+const OTHER_PERSON = JSON.stringify(['Patient', SOURCE, 'p-2'])
+const PRESCRIBER = JSON.stringify(['Practitioner', NAME, 'Dr. A Smith'])
 
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))

@@ -233,8 +233,8 @@ describe('decodeStudy', () => {
     const referents = Effect.runSync(Referent.discover([adoptedOf(result)]))
     expect(
       referents.map(({ logicalReference }) => [
-        logicalReference.type,
-        logicalReference.identifier.system.href,
+        logicalReference.resourceType,
+        logicalReference.identifier[0].system.href,
       ])
     ).toEqual([
       ['Practitioner', DICOM_PRACTITIONER_NAME_SYSTEM],

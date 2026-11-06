@@ -280,8 +280,8 @@ const STORED: readonly LinkableResource.WithId[] = [STORED_TYRA, STORED_JAN, STO
 
 /** Every referent key a generated file can hold. */
 const POOL_KEYS: readonly string[] = [
-  ...POOL.map((value) => `Patient|${SOURCE_PATIENT}|${value}`),
-  ...POOL.map((value) => `Practitioner|${SOURCE_PRACTITIONER}|pr-${value}`),
+  ...POOL.map((value) => JSON.stringify(['Patient', SOURCE_PATIENT, value])),
+  ...POOL.map((value) => JSON.stringify(['Practitioner', SOURCE_PRACTITIONER, `pr-${value}`])),
 ]
 
 const valueArbitrary = fc.constantFrom(...POOL)
@@ -385,7 +385,7 @@ const choiceForArbitrary = (referent: Referent.Type): fc.Arbitrary<LinkChoice.Ty
     fc.constant(LinkChoice.UpdateStoredResource({ resource: storedCopyOf(referent.resource) })),
     fc
       .constantFrom(
-        ...STORED.filter((stored) => stored.resourceType === referent.logicalReference.type)
+        ...STORED.filter((stored) => stored.resourceType === referent.logicalReference.resourceType)
       )
       .map((resource) => LinkChoice.LinkToStoredResource({ resource }))
   )

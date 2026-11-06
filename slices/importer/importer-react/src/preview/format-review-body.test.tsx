@@ -46,7 +46,7 @@ const SOURCE = 'https://source.example/patient-id'
 const CUSTOMER = 'https://source.example/customer-id'
 const TYRA = 'Tyra Banks · 1990-01-02'
 const NAOMI = 'Naomi Campbell · 1970-05-22'
-const TYRA_KEY = `Patient|${SOURCE}|p-1`
+const TYRA_KEY = JSON.stringify(['Patient', SOURCE, 'p-1'])
 
 const decodePatient = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))
 const decodeObservation = Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))

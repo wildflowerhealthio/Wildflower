@@ -82,7 +82,7 @@ afterAll(() => {
 
 const RUNS = numRunsFor({ base: 50 })
 
-const PERSON = `Patient|${SOURCE_PATIENT}|p-1`
+const PERSON = JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1'])
 const NAME_BIRTH_DATE = 'https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date'
 
 const at = (file: DecodedFile.DecodedFile, key: string): FhirResourceWithId | undefined =>
@@ -248,7 +248,7 @@ describe('the identity map on one file', () => {
         _tag: 'Left',
         left: {
           _tag: 'DuplicateReferent',
-          logicalReference: { type: 'Patient', identifier: { value: 'p-1' } },
+          logicalReference: { resourceType: 'Patient', identifier: [{ value: 'p-1' }] },
           reviewKeys: ['k-0', 'k-1'],
         },
       })
@@ -303,7 +303,7 @@ describe('the identity map on one file', () => {
 
     expect(discoverOnTestClock(file).map(Referent.key)).toEqual([
       PERSON,
-      `Patient|${SOURCE_PATIENT}|p-2`,
+      JSON.stringify(['Patient', SOURCE_PATIENT, 'p-2']),
     ])
     expect(
       subjectAndRequesterOf(at(resolveOnTestClock(file, HashMap.empty()), 'k-2')).subject?.reference
@@ -318,7 +318,7 @@ describe('the identity map on one file', () => {
     )
 
     expect(discoverOnTestClock(file).map(Referent.key)).toEqual([
-      `Practitioner|${SOURCE_PRACTITIONER}|pr-1`,
+      JSON.stringify(['Practitioner', SOURCE_PRACTITIONER, 'pr-1']),
     ])
     const resolved = resolveOnTestClock(file, HashMap.empty())
     expect(at(resolved, 'k-0')).toBe(decodedSmith)
@@ -341,7 +341,7 @@ describe('the identity map on one file', () => {
       request('rx-2', literalSubject('p-1'), requester),
       request('rx-3', literalSubject('p-1'), requester)
     )
-    const prescriber = `Practitioner|${PRACTITIONER_NAME}|dr-smith`
+    const prescriber = JSON.stringify(['Practitioner', PRACTITIONER_NAME, 'dr-smith'])
 
     const referents = discoverOnTestClock(file)
     expect(referents.map(Referent.key)).toEqual([prescriber])
@@ -610,7 +610,7 @@ describe('the identity map across files', () => {
     const { resolvedFiles, linkedRecords } = resolveAcrossOnTestClock(
       [fileOf(patient({ id: 'p-1', value: 'a' })), fileOf(patient({ id: 'p-1', value: 'b' }))],
       HashMap.make([
-        `Patient|${SOURCE_PATIENT}|b`,
+        JSON.stringify(['Patient', SOURCE_PATIENT, 'b']),
         LinkChoice.LinkToStoredResource({ resource: stored }),
       ])
     )

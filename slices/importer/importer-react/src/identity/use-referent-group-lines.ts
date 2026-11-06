@@ -52,7 +52,7 @@ const useReferentGroupLines = (
 ): ReferentGroupLines => {
   const { referents, linkChoices, found } = props
   const ofType = useMemo(
-    () => referents.filter((referent) => referent.logicalReference.type === resourceType),
+    () => referents.filter((referent) => referent.logicalReference.resourceType === resourceType),
     [referents, resourceType]
   )
   const stored = useStoredResourcesOfType(resourceType, ofType.length > 0)

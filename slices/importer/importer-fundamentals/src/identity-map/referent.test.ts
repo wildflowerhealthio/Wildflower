@@ -38,7 +38,7 @@ const wireKeyOf = (
 ): readonly string[] =>
   identifier?.system === undefined || identifier.value === undefined || identifier.value === ''
     ? []
-    : [`${type}|${new URL(identifier.system).href}|${identifier.value}`]
+    : [JSON.stringify([type, new URL(identifier.system).href, identifier.value])]
 
 /**
  * The referent keys a file's wire form names: each Patient's and
@@ -65,8 +65,8 @@ describe('Referent.discover', () => {
     expect(
       discoverOnTestClock(file).map((referent) => [Referent.key(referent), referent.label])
     ).toEqual([
-      [`Patient|${SOURCE_PATIENT}|p-1`, 'Tyra Banks · 1990-01-02'],
-      [`Practitioner|${SOURCE_PRACTITIONER}|pr-1`, 'Dr. A Smith'],
+      [JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1']), 'Tyra Banks · 1990-01-02'],
+      [JSON.stringify(['Practitioner', SOURCE_PRACTITIONER, 'pr-1']), 'Dr. A Smith'],
     ])
   })
 

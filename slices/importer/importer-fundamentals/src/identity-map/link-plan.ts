@@ -27,7 +27,7 @@
  */
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResourceWithId, LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Effect, Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
@@ -181,8 +181,7 @@ const linkIfNamedBy = (plan: Type, logicalReferenceKey: string): Option.Option<L
         plan.links,
         Array.filter(({ referent }) =>
           Referent.logicalReferencesOf(referent).some(
-            (logicalReference) =>
-              LinkableLogicalReference.key(logicalReference) === logicalReferenceKey
+            (logicalReference) => LogicalReference.key(logicalReference) === logicalReferenceKey
           )
         ),
         Option.liftPredicate((answering) => answering.length === 1),
@@ -206,7 +205,7 @@ const redirectionIfLinked = (
       pipe(
         LinkableLogicalReference.tryFromReference(referenceAsDecoded),
         Option.flatMap((logicalReference) =>
-          linkIfNamedBy(plan, LinkableLogicalReference.key(logicalReference))
+          linkIfNamedBy(plan, LogicalReference.key(logicalReference))
         ),
         Option.map(({ target }) => LinkableResource.literalReferenceOf(target.resource))
       ),

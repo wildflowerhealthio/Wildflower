@@ -64,7 +64,7 @@ const storedNamedBy = (
         const request = {
           urlParams: {
             identifier: TokenSearchParam.anyOf(
-              Array.map(named, ({ identifier }) =>
+              Array.map(named, ({ identifier: [identifier] }) =>
                 TokenSearchParam.fromQualifiedIdentifier(identifier)
               )
             ),
@@ -155,11 +155,11 @@ const defaultChoice = (
   referent: Referent.Type
 ): Effect.Effect<LinkChoice.Type, SearchFailure, FhirR4ResourcesHttpApiClient> =>
   Effect.gen(function* () {
-    const { type } = referent.logicalReference
-    const namedByOwn = yield* storedNamedBy(type, Referent.ownLogicalReferencesOf(referent))
+    const { resourceType } = referent.logicalReference
+    const namedByOwn = yield* storedNamedBy(resourceType, Referent.ownLogicalReferencesOf(referent))
     const namedByDerived = Array.isEmptyReadonlyArray(namedByOwn)
       ? yield* storedNamedBy(
-          type,
+          resourceType,
           Option.toArray(Referent.maybeDerivedLogicalReferenceOf(referent))
         )
       : []

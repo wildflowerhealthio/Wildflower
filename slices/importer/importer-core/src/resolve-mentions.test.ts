@@ -38,7 +38,7 @@ import {
 const SOURCE_PATIENT = 'https://source.example/patient-id'
 const CUSTOMER = 'https://source.example/customer-id'
 const DEVICE = 'https://device.example/id'
-const PERSON = `Patient|${SOURCE_PATIENT}|p-1`
+const PERSON = JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1'])
 
 /** `effect` run on a `TestClock` standing at the epoch; throws its failure. */
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>

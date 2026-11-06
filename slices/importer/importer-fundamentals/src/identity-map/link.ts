@@ -54,7 +54,7 @@ const linkTargetOf = (
         : Either.left(invalid(referent, update, 'StoredResourceUnderAnotherId'))
     ),
     Match.tag('LinkToStoredResource', (link) =>
-      link.resource.resourceType === referent.logicalReference.type
+      link.resource.resourceType === referent.logicalReference.resourceType
         ? Either.right(LinkTarget.Stored({ resource: link.resource }))
         : Either.left(invalid(referent, link, 'StoredResourceOfAnotherType'))
     ),

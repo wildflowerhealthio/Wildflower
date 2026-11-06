@@ -17,11 +17,12 @@
  */
 
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Data, Effect, HashMap, Option, pipe, Record } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
 import * as ImpliedRecord from '../implied-record.ts'
-import * as LinkableLogicalReference from './linkable-logical-reference.ts'
+import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
 
 /**
@@ -57,7 +58,7 @@ class DuplicateReferent extends Data.TaggedError('DuplicateReferent')<{
 }> {}
 
 /** The identity map's key for `referent`. */
-const key = (referent: Type): string => LinkableLogicalReference.key(referent.logicalReference)
+const key = (referent: Type): string => LogicalReference.key(referent.logicalReference)
 
 /**
  * The logical references `referent`'s own identifiers make, its key's first:
@@ -73,7 +74,7 @@ const ownLogicalReferencesOf = ({
     resource.identifier,
     Array.filter((identifier) => !LinkableResource.isDerivedIdentifier(identifier)),
     Array.filterMap((identifier) =>
-      LinkableLogicalReference.tryFromIdentifier(logicalReference.type, identifier)
+      LogicalReference.tryFromIdentifier(logicalReference.resourceType, identifier)
     )
   )
 
@@ -86,7 +87,7 @@ const maybeDerivedLogicalReferenceOf = ({
   derivedIdentifier,
 }: Type): Option.Option<LinkableLogicalReference.Type> =>
   Option.flatMap(derivedIdentifier, (identifier) =>
-    LinkableLogicalReference.tryFromIdentifier(logicalReference.type, identifier)
+    LogicalReference.tryFromIdentifier(logicalReference.resourceType, identifier)
   )
 
 /**
@@ -100,7 +101,7 @@ const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.
       ...ownLogicalReferencesOf(referent),
       ...Option.toArray(maybeDerivedLogicalReferenceOf(referent)),
     ],
-    LinkableLogicalReference.equivalence
+    LogicalReference.equivalence
   )
 
 /**
@@ -120,7 +121,7 @@ const tryFromDecodedResource = (entry: DecodedFile.Resource): Effect.Effect<Opti
     Effect.transposeMapOption(({ resource, logicalReference }) =>
       Effect.all({
         derivedIdentifier: LinkableResource.maybeDerivedIdentifier(resource),
-        label: LinkableResource.labelOf(resource, logicalReference.identifier.value),
+        label: LinkableResource.labelOf(resource, logicalReference.identifier[0].value),
       }).pipe(
         Effect.map(({ derivedIdentifier, label }): Type => ({
           logicalReference,

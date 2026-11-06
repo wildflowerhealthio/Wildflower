@@ -706,7 +706,7 @@ const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch => {
   const logicalReference = Option.getOrThrow(LinkableResource.tryIntoLogicalReference(resource))
   const referent: Referent.Type = {
     logicalReference,
-    identifiers: [logicalReference.identifier],
+    identifiers: logicalReference.identifier,
     derivedIdentifier: Option.none(),
     resource,
     reviewKey: 'k-s-1',
