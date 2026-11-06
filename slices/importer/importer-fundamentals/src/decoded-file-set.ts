@@ -12,7 +12,7 @@ import {
   ReferencePlan,
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Array as Arr, Option, pipe, Record } from 'effect'
+import { Array as Arr, Option, pipe } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
@@ -177,70 +177,66 @@ interface PrescriptionSubject {
 
 /**
  * For each keyed `MedicationRequest` of a set, by the literal reference it is
- * written under, its `subject`, resolved to a Patient of the set once
- * ({@link patientReferenceIfInSet}): `None` for one naming no Patient of the
- * set.
- */
-type SubjectsByPrescription = Record.ReadonlyRecord<
-  string,
-  Arr.NonEmptyReadonlyArray<Option.Option<PrescriptionSubject>>
->
-
-/**
- * The {@link SubjectsByPrescription} of a set's planned records.
+ * written under, the `subject` of each of its copies that names a Patient of
+ * the set ({@link patientReferenceIfInSet}): empty for a request none of whose
+ * copies does.
  *
  * @remarks
  * Only a keyed request is one a reference resolves to; a keyless one's
- * minted reference never is.
+ * minted reference never is. A request has several copies when the set holds
+ * it more than once under one key.
  */
-const subjectsByPrescriptionOf = (
+type PrescriptionSubjects = ReadonlyMap<string, readonly PrescriptionSubject[]>
+
+/** The {@link PrescriptionSubjects} of a set's planned records. */
+const prescriptionSubjectsOf = (
   referencePlan: ReferencePlan.Type,
   plannedEntries: readonly { readonly entry: Entry; readonly plan: ResourcePlan.Type }[]
-): SubjectsByPrescription =>
-  Record.map(
-    Arr.groupBy(
-      Arr.filterMap(plannedEntries, ({ entry: { resource }, plan }) =>
-        resource.resourceType === 'MedicationRequest'
-          ? ResourcePlan.match(plan, {
-              Derived: (derived) =>
-                Option.some({ literalReference: ResourcePlan.literalReference(derived), resource }),
-              Minted: () => Option.none(),
-            })
-          : Option.none()
-      ),
-      ({ literalReference }) => literalReference
-    ),
-    Arr.map(({ resource: { subject } }) =>
-      Option.map(patientReferenceIfInSet(referencePlan, subject), (patient) => ({
-        subject,
-        patient,
-      }))
-    )
+): PrescriptionSubjects =>
+  Arr.reduce(
+    plannedEntries,
+    new Map<string, readonly PrescriptionSubject[]>(),
+    (prescriptionSubjects, { entry: { resource }, plan }) => {
+      if (resource.resourceType !== 'MedicationRequest' || plan._tag !== 'Derived') {
+        return prescriptionSubjects
+      }
+      const literalReference = ResourcePlan.literalReference(plan)
+      const { subject } = resource
+      return prescriptionSubjects.set(literalReference, [
+        ...(prescriptionSubjects.get(literalReference) ?? []),
+        ...Option.toArray(
+          Option.map(patientReferenceIfInSet(referencePlan, subject), (patient) => ({
+            subject,
+            patient,
+          }))
+        ),
+      ])
+    }
   )
 
 /**
  * The `subject` the prescriptions a dispense names agree it is for: `None`
  * unless every `authorizingPrescription` that resolves to a
- * `MedicationRequest` of the set has a `subject` naming a Patient of the
- * set, at least one does, and all name the same Patient.
+ * `MedicationRequest` of the set has a copy naming a Patient of the set, at
+ * least one does, and every copy that names one names the same Patient.
  *
  * @returns The first such `subject`, as its prescription spells it
  */
 const prescriptionSubjectIfAgreed = (
   referencePlan: ReferencePlan.Type,
-  subjectsByPrescription: SubjectsByPrescription,
+  prescriptionSubjects: PrescriptionSubjects,
   authorizingPrescriptions: readonly ReferenceType[]
 ): Option.Option<ReferenceType> =>
   pipe(
     authorizingPrescriptions,
-    Arr.flatMap((prescription) =>
-      pipe(
+    Arr.filterMap((prescription) =>
+      Option.flatMapNullable(
         ReferencePlan.literalReferenceIfResolved(referencePlan, prescription),
-        Option.flatMap((literalReference) => Record.get(subjectsByPrescription, literalReference)),
-        Option.getOrElse((): readonly Option.Option<PrescriptionSubject>[] => [])
+        (literalReference) => prescriptionSubjects.get(literalReference)
       )
     ),
-    Option.all,
+    Option.liftPredicate(Arr.every(Arr.isNonEmptyReadonlyArray)),
+    Option.map(Arr.flatten),
     Option.flatMap(
       Arr.match({
         onEmpty: Option.none,
@@ -264,13 +260,13 @@ const prescriptionSubjectIfAgreed = (
  * received the fill, so it is kept.
  */
 const takeSubjectFromPrescription =
-  (referencePlan: ReferencePlan.Type, subjectsByPrescription: SubjectsByPrescription) =>
+  (referencePlan: ReferencePlan.Type, prescriptionSubjects: PrescriptionSubjects) =>
   (record: DetachedResource.Type): DetachedResource.Type =>
     record.resourceType === 'MedicationDispense' && record.subject === null
       ? Option.match(
           prescriptionSubjectIfAgreed(
             referencePlan,
-            subjectsByPrescription,
+            prescriptionSubjects,
             record.authorizingPrescription
           ),
           { onNone: () => record, onSome: (subject) => ({ ...record, subject }) }
@@ -314,8 +310,10 @@ const adopt = (
   const referencePlan = ReferencePlan.of(
     setEntries.flatMap(({ entry, plan }) => referencePlanEntriesOf(plan, entry.resource))
   )
-  const subjectsByPrescription = subjectsByPrescriptionOf(referencePlan, setEntries)
-  const takeSubject = takeSubjectFromPrescription(referencePlan, subjectsByPrescription)
+  const takeSubject = takeSubjectFromPrescription(
+    referencePlan,
+    prescriptionSubjectsOf(referencePlan, setEntries)
+  )
   const adoptEntry = adoptRecord(referencePlan)
   return {
     sections: plannedSections.map(({ title, plannedEntries }) => ({
