@@ -20,6 +20,7 @@ import {
 import { TokenSearchParam } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Effect, HashMap, Match, Option } from 'effect'
 
+import * as ImpliedRecord from '../implied-record.ts'
 import * as LinkChoice from './link-choice.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
@@ -97,9 +98,24 @@ const isStoredCopyOf = (referent: Referent.Type, stored: LinkableResource.WithId
   LinkableResource.sameRecord(referent.resource, stored)
 
 /**
- * The choice the `hits` of one search give `referent`: `UpdateStoredResource`
- * when one is the stored copy of its own decoded resource
- * ({@link isStoredCopyOf}), whatever else was found; else
+ * The choice `referent` takes over `storedCopy`, the stored copy of its own
+ * resource: `UpdateStoredResource`, so a re-import writes the newer decode
+ * over it; but `LinkToStoredResource` for a record the import implied
+ * (`ImpliedRecord.isFullUrl` of its review key), which holds only what a
+ * reference said of it and would write over everything else the copy holds.
+ */
+const storedCopyChoiceOf = (
+  referent: Referent.Type,
+  storedCopy: LinkableResource.WithId
+): LinkChoice.Type =>
+  ImpliedRecord.isFullUrl(referent.reviewKey)
+    ? LinkChoice.LinkToStoredResource({ resource: storedCopy })
+    : LinkChoice.UpdateStoredResource({ resource: storedCopy })
+
+/**
+ * The choice the `hits` of one search give `referent`: the one over the
+ * stored copy of its own resource ({@link isStoredCopyOf},
+ * {@link storedCopyChoiceOf}), whatever else was found; else
  * `LinkToStoredResource` to the one hit ({@link theOneOf}); else none.
  */
 const choiceAmong = (
@@ -107,7 +123,7 @@ const choiceAmong = (
   hits: readonly LinkableResource.WithId[]
 ): Option.Option<LinkChoice.Type> =>
   Array.findFirst(hits, (resource): Option.Option<LinkChoice.Type> =>
-    Option.liftPredicate(LinkChoice.UpdateStoredResource({ resource }), () =>
+    Option.liftPredicate(storedCopyChoiceOf(referent, resource), () =>
       isStoredCopyOf(referent, resource)
     )
   ).pipe(
@@ -123,7 +139,8 @@ const choiceAmong = (
  * (`ReferentLinkChoiceSet.DEFAULT_CHOICE`). A hit that is the stored copy of
  * the referent's own decoded resource ({@link isStoredCopyOf}) is `UpdateStoredResource`,
  * whatever else the search found, so a re-import writes the newer decode over
- * it, keeping what the copy assumed.
+ * it, keeping what the copy assumed; for an implied record it is
+ * `LinkToStoredResource`, keeping the copy ({@link storedCopyChoiceOf}).
  *
  * @remarks
  * The identifiers a source gave a referent are searched before the one its
