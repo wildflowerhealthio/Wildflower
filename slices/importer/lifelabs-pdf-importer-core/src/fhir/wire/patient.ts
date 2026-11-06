@@ -1,6 +1,5 @@
 import { HealthCardIdentifier, type HealthCardProvince } from '@wildflowerhealthio/fhir-ca-infoway'
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Array as Arr, Option } from 'effect'
 
 import type * as Report from '../../entities/report.ts'
@@ -8,9 +7,12 @@ import { LifeLabsIdentifierSystem } from '../../source-system.ts'
 import { parsePrintedDate } from '../dates.ts'
 import type { Wire } from './shared.ts'
 
-/** An identifier the synthesis writes for the patient: always with its `system` and `value`. */
-type PatientIdentifier = DetachedResource.Key &
-  typeof IdentifierAndReference.IdentifierSchema.Encoded
+/**
+ * An identifier the synthesis writes for the patient: an `Identifier` wire
+ * with its `system` and `value` always set, the shape a health card number is
+ * written in, so the patient's key can be read off any of them.
+ */
+type PatientIdentifier = HealthCardIdentifier.Type
 
 /**
  * The identifiers the report prints for its patient: `Patient ID` as printed,
