@@ -2548,6 +2548,47 @@ mod tests {
         );
     }
 
+    /// A client row inserted after `0050` without its refresh columns, as a
+    /// later seed migration listing only the registration columns would,
+    /// fails safe: tied to its browser session with a two-hour idle limit.
+    #[test]
+    fn a_client_inserted_without_its_refresh_columns_gets_the_strict_policy() {
+        use chrono::Duration;
+        use diesel::connection::SimpleConnection as _;
+
+        use crate::db::clients::clients;
+        use crate::domain::client::{Client, RefreshPolicy};
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0050"),
+        )
+        .expect("migrate through 0050");
+        conn.batch_execute(
+            "INSERT INTO clients (client_id, name, kind, redirect_uris, allowed_scopes, \
+             allowed_grant_types, registered_at) \
+             VALUES ('seeded-later', 'Seeded later', 'public', '[]', '[]', '[]', \
+                     '2026-11-01 00:00:00+00:00')",
+        )
+        .expect("a row naming only its registration columns");
+
+        let seeded_later = clients::table
+            .find("seeded-later")
+            .select(Client::as_select())
+            .first(&mut conn)
+            .expect("the row reads back as a client");
+        assert_eq!(
+            seeded_later.refresh_policy,
+            RefreshPolicy {
+                idle_ttl: Some(Duration::hours(2)),
+                max_ttl: None,
+                ends_with_browser_session: true,
+            }
+        );
+    }
+
     /// An install already at `0049` gives every client a refresh policy when
     /// `0050` runs: the ticket's table for the first-party clients the
     /// migrations seeded, the same policy boot-time seeding writes for the

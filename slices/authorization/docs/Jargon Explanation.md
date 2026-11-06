@@ -88,6 +88,10 @@ the row is created or widened only when the Owner approves — see
     with no `sid` (the device flow) has none to end with, so only the two
     limits apply to it.
 
+  A row inserted without the three columns defaults to the policy of a
+  client that holds a `wildflower/` scope: tied to the browser session, two
+  hours idle.
+
   Every family also ends 365 days after it was issued
   (`REFRESH_TOKEN_FAMILY_CEILING`), and revoking a browser session ends the
   families it minted whatever the policy says. The policy is read on every

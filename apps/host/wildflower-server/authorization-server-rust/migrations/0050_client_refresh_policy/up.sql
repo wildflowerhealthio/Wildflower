@@ -8,9 +8,14 @@
 --                                      issued; NULL for only the 365-day ceiling
 --   refresh_ends_with_browser_session  1 if a family ends when the browser
 --                                      session it was minted under expires
-ALTER TABLE clients ADD COLUMN refresh_idle_ttl_seconds INTEGER;
+--
+-- The defaults are the strictest policy below, the one a client holding a
+-- `wildflower/` scope gets: a later insert that names none of the three
+-- columns fails safe, tied to its browser session with a two-hour idle
+-- limit, rather than getting a year of refresh.
+ALTER TABLE clients ADD COLUMN refresh_idle_ttl_seconds INTEGER DEFAULT 7200;
 ALTER TABLE clients ADD COLUMN refresh_max_ttl_seconds INTEGER;
-ALTER TABLE clients ADD COLUMN refresh_ends_with_browser_session INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE clients ADD COLUMN refresh_ends_with_browser_session INTEGER NOT NULL DEFAULT 1;
 
 -- Every client starts with the policy a client trusted on first use is given
 -- at registration (`RefreshPolicy::trusted_on_first_use`): any `wildflower/`
