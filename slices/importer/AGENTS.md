@@ -68,7 +68,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   response-kind recognition; this format is documents, not archived HTTP
   traffic).
 - **[`lifelabs-pdf-importer-react`](./lifelabs-pdf-importer-react/AGENTS.md)**
-  (the LifeLabs PDF UI) — `LifeLabsPdfSettingsPicker` (the report's time zone).
+  (the LifeLabs PDF UI) — `LifeLabsPdfSettingsPicker` (the report's time zone and health card province).
 - **[`dicom-importer-core`](./dicom-importer-core/AGENTS.md)** (the DICOM
   binding) — `dicomImporter` for format `'dicom'`: byte-level `.dcm`
   detection (DICM magic at offset 128 or `.dcm` extension), the source-file
@@ -153,7 +153,7 @@ sits above `http-extraction` and below every binding.
   reviewed objects (`importer-core`'s `planWrite`) with no re-parse — the same
   "is the same object" argument the anonymizer's preview makes. This split
   is the whole point; do not collapse it. A settings change (a HAR kind
-  toggle, the LifeLabs time zone) re-runs `decode` from the retained bytes —
+  toggle, the LifeLabs time zone or health card province) re-runs `decode` from the retained bytes —
   still the read half. The identity map's defaults are reads too: one
   identifier search per referent, never a write.
 - **Identity is linked before the review, in one stage.** The patients and

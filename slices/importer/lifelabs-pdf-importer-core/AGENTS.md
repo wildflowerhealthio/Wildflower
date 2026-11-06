@@ -62,10 +62,13 @@ that hands back a hand-written positioned-text document.
   `Patient` or `Practitioner` several reports share (one key) is minted once,
   in the group of the first report naming it, so flattening the groups in
   order writes every reference target before its referrer. The keys:
-  the Patient's printed `Patient ID`, else its health card number less its
-  version code (the letters after the number, so a reissued card keys the
-  same Patient), else `<name>, <date of birth>` as printed (`patientKeyOf`,
-  the other printed identifiers behind the key); the `DiagnosticReport`'s
+  the Patient's printed `Patient ID`, else its `HC #` in the settings'
+  province's health card system (`fhir-ca-infoway`'s
+  `HealthCardIdentifier.of`: an Ontario number less its version code, which
+  goes in Ontario Health's version-code extension, so a reissued card keys the
+  same Patient; a British Columbia PHN as printed), else
+  `<name>, <date of birth>` as printed (`patientKeyOf`, the other printed
+  identifiers behind the key); the `DiagnosticReport`'s
   `Lab No` (`reportKeyOf`); a result row's
   `<Lab No>/<section>/<test name>/<ordinal>` (`observationKeyOf`); a
   provider's printed name, inner whitespace collapsed (`practitionerKeyOf`).
@@ -83,10 +86,11 @@ that hands back a hand-written positioned-text document.
 - `src/source-system.ts` — **`LIFELABS_SYSTEM`** and
   **`LifeLabsIdentifierSystem`**: the source file's coding system, and the
   identifier systems the synthesis keys its records in — the printed
-  `Lab No`, `Patient ID` and Ontario health card number (less its version
-  code), and the
+  `Lab No` and `Patient ID`, and the
   Wildflower-minted name-and-birth-date, result and practitioner-name
-  systems for what the report prints no number for. A leaf module so the
+  systems for what the report prints no number for. The health card number
+  is not among them: it is written in its province's Infoway system, which
+  `fhir-ca-infoway` declares. A leaf module so the
   importer and the FHIR synthesis import it without a cycle.
 - `src/decode.ts` — **`decodeLifeLabsPdf`** (the `decodeFileSet` the format's
   importer lifts into its batch `decode`) and **`decodeLifeLabsPdfDocument`** (the pure
@@ -151,10 +155,15 @@ that hands back a hand-written positioned-text document.
   `meta.source` with it. What the import returns is what the user reviews —
   this format has no routing decisions to interpose, and the write is the
   shell's one `persistBatchBundle`, not an importer field.
-- `src/settings.ts` — **`LifeLabsPdfSettings`** `{ timeZone }`, default
-  `America/Toronto`: the report prints local clock times with no zone, and
-  FHIR's `dateTime`-with-time / `instant` need one. The zone is passed to
-  `decode` as a setting.
+- `src/settings.ts` — **`LifeLabsPdfSettings`** `{ timeZone,
+  healthCardProvince }`, default `America/Toronto` and Ontario (`'ON'`): the
+  report prints local clock times with no zone, and FHIR's
+  `dateTime`-with-time / `instant` need one; and it prints the `HC #` but not
+  which province issued the card (LifeLabs runs labs in Ontario and British
+  Columbia, and the report prints the lab's address). Both are passed to
+  `decode` as settings and to the synthesis as `SynthesisOptions`. Changing
+  the province re-decodes, and a Patient keyed by its `HC #` changes key, so
+  its review row and any choice made on it reset.
 - `src/test-helpers.ts` (`./test-helpers` subpath) — `layoutReport` /
   `layoutDocument`, the print's inverse: a `LifeLabsReport` laid out as
   positioned text at the real column x's, header labels and footer. The
@@ -169,6 +178,7 @@ dependencies, directly or through other packages. Depends on
 extraction and the dialect, and the `PositionedTextExtractor` service the
 decode requires), `fhir-r4` (resource schemas), `fhir-r4-adoption` (`DetachedResource`),
 `importer-fundamentals` (`DecodeFunction.make`, `DecodedFileSet`, `PickedFile`),
+`fhir-ca-infoway` (`HealthCardIdentifier`, `HealthCardProvince`),
 `kitchen-sink`
 (`checkTimeZone`, `numRunsFor` in tests), and `effect`
 (peer; `Report.tryFromDocument` returns an `Effect`). `fast-check` is a

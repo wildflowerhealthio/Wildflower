@@ -1,9 +1,9 @@
 # AGENTS.md — slices/importer/lifelabs-pdf-importer-react
 
 The **LifeLabs PDF format's UI** for the importer slice: the
-`LifeLabsPdfSettingsPicker` (the report's time zone), mounted by the shell in
-its per-format settings form — a change re-decodes the batch's LifeLabs files
-under the new zone. Presentation and interaction only — nothing here decodes
+`LifeLabsPdfSettingsPicker` (the report's time zone and health card
+province), mounted by the shell in its per-format settings form — a change
+re-decodes the batch's LifeLabs files under the new settings. Presentation and interaction only — nothing here decodes
 a report, recognizes it, or writes resources. The format has no review UI of
 its own; the shell's generalized sectioned review (per-report sections,
 per-resource include/edit) covers it.
@@ -17,7 +17,9 @@ per-resource include/edit) covers it.
   shell owns the settings); a name the runtime does not know is flagged inline
   (`aria-invalid`, an alert) with the same `DateTime.zoneMakeNamed` check the
   import's `parse` makes, so the reviewer sees the problem before the import
-  fails on it.
+  fails on it. Beside it, a `<select>` of the provinces whose health cards
+  `fhir-ca-infoway` names (`HealthCardProvince.all`, labelled by
+  `HealthCardProvince.names`), read back through `HealthCardProvince.is`.
 - `src/index.ts` — the package barrel: `LifeLabsPdfSettingsPicker`, the
   `SUGGESTED_TIME_ZONES` list and `UNKNOWN_ZONE_MESSAGE` sentence the picker
   renders, and the `SettingsPickerProps` type re-exported from
@@ -25,7 +27,8 @@ per-resource include/edit) covers it.
 
 ## Layering
 
-Depends on `lifelabs-pdf-importer-core` (the settings type),
+Depends on `lifelabs-pdf-importer-core` (the settings type), `fhir-ca-infoway`
+(`HealthCardProvince`),
 `importer-fundamentals` (`SettingsPickerProps`), `effect`, and `react`. Never
 imports `importer-react` or a sibling format's UI package.
 

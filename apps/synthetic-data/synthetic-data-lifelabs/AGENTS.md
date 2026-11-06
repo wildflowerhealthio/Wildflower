@@ -31,8 +31,12 @@ module as in `synthetic-data-fundamentals/story`:
 - `src/lifelabs.ts` — `LifeLabs.reportsOf`, given the as-of date, the story,
   the laboratory and the requisition: one `LifeLabsReport` per day drawn, rows in the laboratory's
   print order, the flag read off the printed (rounded) result, specimens
-  collected in the morning and reported the same evening at seeded minutes;
+  collected in the morning and reported the same evening at seeded minutes,
+  the patient block printing the person's Ontario health card number (ten
+  digits and a two-letter version code, seeded from the person);
   fails with `UncataloguedLabTest` for a draw the laboratory does not print.
+  `LifeLabs.HEALTH_CARD_PROVINCE` (`'ON'`) is the province that number is
+  read in.
   `LifeLabs.render(…, pharmacyPatient)`: those reports through the importer's
   `decodedReportsOf`, adopted with `importer-fundamentals`'
   `DecodedFileSet.adopt` (the adoption the import stage runs), without the
@@ -70,9 +74,10 @@ the Rexall and Shoppers generators, as dev dependencies only. Never imports a
   `Report.tryFromDocument`, and checks the read-back equals the report and
   `render` equals `decodeLifeLabsPdfDocument` of the print, apart from the
   Patient and the subject.
-- **The printed clock is the laboratory's**: `render` synthesizes with
-  `{ timeZone: laboratory.timeZone }`, the setting the importer would be given
-  to read the print, and the tests decode the print with the same zone.
+- **The printed clock is the laboratory's, the health card Ontario's**:
+  `render` synthesizes with `{ timeZone: laboratory.timeZone,
+  healthCardProvince: HEALTH_CARD_PROVINCE }`, the settings the importer would
+  be given to read the print, and the tests decode the print with the same.
 
 ## Traps
 
