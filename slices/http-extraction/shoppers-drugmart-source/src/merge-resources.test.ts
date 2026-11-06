@@ -141,19 +141,14 @@ describe('shoppersDrugMartSource', () => {
     ])
   })
 
-  it("should name the person by their key in the status copy, and leave the history copy's naming the account by identifier alone", () => {
+  it('should name the person by their key in the status copy, and no one in the history copy', () => {
     expect(statusCopy().subject).toStrictEqual(
       decodeReference({
         type: 'Patient',
         identifier: { system: ShoppersIdentifierSystem.PatientId, value: PERSON_ID },
       })
     )
-    expect(historyCopy().subject).toStrictEqual(
-      decodeReference({
-        type: 'Patient',
-        identifier: { system: ShoppersIdentifierSystem.CustomerId, value: ACCOUNT_ID },
-      })
-    )
+    expect(historyCopy().subject).toBeNull()
   })
 
   it("should name the history copy's prescription by its key, which replaces the number on the reference", () => {

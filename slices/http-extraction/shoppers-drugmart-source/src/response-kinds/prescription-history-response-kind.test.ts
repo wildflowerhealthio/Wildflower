@@ -26,12 +26,6 @@ const HISTORY_URL = `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID
 const makeResponse = (body: string, url: string = HISTORY_URL): HttpResponse.HttpResponse =>
   makeHttpResponse({ url, body })
 
-/** The identifier-only reference to the account `customerId` names, as a history dispense's subject. */
-const accountSubject = (customerId: string = ACCOUNT_ID): Record<string, unknown> => ({
-  type: 'Patient',
-  identifier: { system: ShoppersIdentifierSystem.CustomerId, value: customerId },
-})
-
 const parse = (payload: unknown): readonly FhirResource[] =>
   Effect.runSync(PrescriptionHistoryResponseKind.parse(makeResponse(JSON.stringify(payload))))
 
@@ -120,7 +114,6 @@ describe('PrescriptionHistoryResponseKind', () => {
           resourceType: 'MedicationDispense',
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-1' }],
           status: 'completed',
-          subject: accountSubject(),
           medicationCodeableConcept: {
             coding: [
               { system: CanadianCodingSystem.Din, code: '51480840', display: 'Amoxicillin 500mg' },
@@ -141,7 +134,6 @@ describe('PrescriptionHistoryResponseKind', () => {
           resourceType: 'MedicationDispense',
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-2' }],
           status: 'completed',
-          subject: accountSubject(),
           medicationCodeableConcept: {
             coding: [
               { system: CanadianCodingSystem.Din, code: '80717730', display: 'Amoxicillin 500mg' },
@@ -175,42 +167,30 @@ describe('PrescriptionHistoryResponseKind', () => {
       expect(dispense.location?.display).toBe('Shoppers Drug Mart (store 9000)')
     })
 
-    it.each([
-      { customerId: ACCOUNT_ID, query: `customerId=${ACCOUNT_ID}` },
-      // customerId need not be the first query parameter.
-      { customerId: 'other-account', query: 'lang=en&customerId=other-account' },
-    ])(
-      "names the account by the URL's customerId alone, with no literal reference ($query)",
-      ({ customerId, query }) => {
-        // Arrange
-        const url = `${BASE}/api/v1/prescription-history?${query}`
-
-        // Act
-        const result = Effect.runSync(
-          PrescriptionHistoryResponseKind.parse(makeResponse(JSON.stringify(historyPayload()), url))
+    // The payload names only the account, which no Patient stands for.
+    it('names no subject on any fill', () => {
+      expect(
+        parse(historyPayload()).map((resource) =>
+          resource.resourceType === 'MedicationDispense' ? resource.subject : undefined
         )
+      ).toStrictEqual([null, null])
+    })
 
-        // Assert
-        const subject = decodeReference(accountSubject(customerId))
-        expect(subject.reference).toBeNull()
-        expect(
-          result.map((resource) =>
-            resource.resourceType === 'MedicationDispense' ? resource.subject : null
-          )
-        ).toStrictEqual([subject, subject])
-      }
-    )
+    it('names the prescription of a fill with no prescriptionId by its number, as a MedicationRequest', () => {
+      // Arrange
+      const payload = { dispenses: [{ dispenseId: 'disp-1', prescriptionNumber: 9534360 }] }
 
-    it('fails with ParseError when the URL names no customerId', () => {
-      const url = `${BASE}/api/v1/prescription-history?customerId=`
+      // Act
+      const [dispense] = parse(payload)
 
-      const result = Effect.runSync(
-        Effect.either(
-          PrescriptionHistoryResponseKind.parse(makeResponse(JSON.stringify(historyPayload()), url))
-        )
-      )
-
-      expect(result).toMatchObject({ _tag: 'Left', left: { _tag: 'ParseError' } })
+      // Assert
+      if (dispense?.resourceType !== 'MedicationDispense') throw new Error('expected a dispense')
+      expect(dispense.authorizingPrescription).toStrictEqual([
+        decodeReference({
+          type: 'MedicationRequest',
+          identifier: { system: ShoppersIdentifierSystem.PrescriptionNumber, value: '9534360' },
+        }),
+      ])
     })
 
     it('drops a dispense with no dispenseId and keeps the rest', () => {
@@ -231,7 +211,6 @@ describe('PrescriptionHistoryResponseKind', () => {
           resourceType: 'MedicationDispense',
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-9' }],
           status: 'completed',
-          subject: accountSubject(),
           medicationCodeableConcept: {
             coding: [{ system: CanadianCodingSystem.Din, code: '51480840' }],
           },

@@ -115,3 +115,52 @@ describe('ReferencePlan.literalReferenceFor', () => {
     ]).toEqual([Option.some('Patient/stored-7'), Option.some('Patient/stored-7')])
   })
 })
+
+describe('ReferencePlan.literalReferenceIfResolved', () => {
+  const decodeReference = Schema.decodeUnknownSync(IdentifierAndReference.ReferenceSchema)
+
+  const resolved = (plan: ReferencePlan.Type, wire: unknown): Option.Option<string> =>
+    ReferencePlan.literalReferenceIfResolved(plan, decodeReference(wire))
+
+  it('resolves a logical reference by an R4 type and an identifier the plan holds', () => {
+    expect(
+      resolved(patientPlan(), { type: 'Patient', identifier: { system: SYSTEM, value: 'pat-7' } })
+    ).toEqual(Option.some('Patient/stored-7'))
+  })
+
+  it.each([
+    {
+      name: 'one that already has a literal',
+      wire: {
+        reference: 'Patient/other',
+        type: 'Patient',
+        identifier: { system: SYSTEM, value: 'pat-7' },
+      },
+    },
+    { name: 'one that states no type', wire: { identifier: { system: SYSTEM, value: 'pat-7' } } },
+    {
+      name: 'one whose type is not an R4 resource type',
+      wire: { type: 'Pet', identifier: { system: SYSTEM, value: 'pat-7' } },
+    },
+    {
+      name: 'an identifier with no system',
+      wire: { type: 'Patient', identifier: { value: 'pat-7' } },
+    },
+    {
+      name: 'an identifier the plan does not hold',
+      wire: { type: 'Patient', identifier: { system: SYSTEM, value: 'pat-8' } },
+    },
+  ])('resolves nothing for $name', ({ wire }) => {
+    expect(resolved(patientPlan(), wire)).toEqual(Option.none())
+  })
+
+  it('resolves nothing for an identifier given two different literal references', () => {
+    const plan = ReferencePlan.of([
+      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-7' },
+      { resourceType: 'Patient', identifier: PATIENT_KEY, literalReference: 'Patient/stored-8' },
+    ])
+    expect(
+      resolved(plan, { type: 'Patient', identifier: { system: SYSTEM, value: 'pat-7' } })
+    ).toEqual(Option.none())
+  })
+})

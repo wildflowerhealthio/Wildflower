@@ -186,11 +186,6 @@ describe("DecodedFileSet.adopt, a dispense's subject and its prescription's", ()
   const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
   const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
 
-  const ACCOUNT = {
-    type: 'Patient',
-    identifier: { system: 'https://portal.example/fhir/identifier/customer-id', value: 'acct-1' },
-  }
-
   const RX_NUMBER_SYSTEM = 'https://pharmacy.example/rx-number'
 
   /**
@@ -254,28 +249,15 @@ describe("DecodedFileSet.adopt, a dispense's subject and its prescription's", ()
 
   it.each([
     {
-      name: 'its subject names the account',
-      records: [patient('pat-7'), prescriptionFor('rx-7', 'pat-7'), dispenseOf(ACCOUNT, ['rx-7'])],
-    },
-    {
       name: 'it has no subject',
       records: [patient('pat-7'), prescriptionFor('rx-7', 'pat-7'), dispenseOf(null, ['rx-7'])],
-    },
-    {
-      name: 'its subject names a Patient by an identifier two Patients of the set share',
-      records: [
-        patientWith('pat-7', [{ system: HEALTH_CARD_SYSTEM, value: '1111' }]),
-        patientWith('pat-8', [{ system: HEALTH_CARD_SYSTEM, value: '1111' }]),
-        prescriptionFor('rx-7', 'pat-7'),
-        dispenseOf(byHealthCard('1111'), ['rx-7']),
-      ],
     },
     {
       name: 'it names its prescription by an identifier other than its key',
       records: [
         patient('pat-7'),
         prescriptionFor('rx-7', 'pat-7', [{ system: RX_NUMBER_SYSTEM, value: '7000' }]),
-        dispenseOf(ACCOUNT, [
+        dispenseOf(null, [
           { type: 'MedicationRequest', identifier: { system: RX_NUMBER_SYSTEM, value: '7000' } },
         ]),
       ],
@@ -286,7 +268,16 @@ describe("DecodedFileSet.adopt, a dispense's subject and its prescription's", ()
         patient('pat-7'),
         prescriptionFor('rx-7', 'pat-7'),
         prescriptionFor('rx-8', 'pat-7'),
-        dispenseOf(ACCOUNT, ['rx-7', 'rx-8']),
+        dispenseOf(null, ['rx-7', 'rx-8']),
+      ],
+    },
+    {
+      name: 'one of two copies of its prescription names no Patient of the set',
+      records: [
+        patient('pat-7'),
+        prescriptionFor('rx-7', 'pat-7'),
+        prescriptionFor('rx-7', 'pat-9'),
+        dispenseOf(null, ['rx-7']),
       ],
     },
   ])(
@@ -303,11 +294,11 @@ describe("DecodedFileSet.adopt, a dispense's subject and its prescription's", ()
   it.each([
     {
       name: 'its prescription is not in the set',
-      records: [patient('pat-7'), dispenseOf(ACCOUNT, ['rx-7'])],
+      records: [patient('pat-7'), dispenseOf(null, ['rx-7'])],
     },
     {
       name: "its prescription's subject names no Patient of the set",
-      records: [patient('pat-7'), prescriptionFor('rx-7', 'pat-9'), dispenseOf(ACCOUNT, ['rx-7'])],
+      records: [patient('pat-7'), prescriptionFor('rx-7', 'pat-9'), dispenseOf(null, ['rx-7'])],
     },
     {
       name: 'its prescriptions name different Patients',
@@ -316,7 +307,7 @@ describe("DecodedFileSet.adopt, a dispense's subject and its prescription's", ()
         patient('pat-8'),
         prescriptionFor('rx-7', 'pat-7'),
         prescriptionFor('rx-8', 'pat-8'),
-        dispenseOf(ACCOUNT, ['rx-7', 'rx-8']),
+        dispenseOf(null, ['rx-7', 'rx-8']),
       ],
     },
     {
@@ -325,20 +316,34 @@ describe("DecodedFileSet.adopt, a dispense's subject and its prescription's", ()
         patient('pat-7'),
         prescriptionFor('rx-7', 'pat-7'),
         prescriptionFor('rx-8', 'pat-9'),
-        dispenseOf(ACCOUNT, ['rx-7', 'rx-8']),
+        dispenseOf(null, ['rx-7', 'rx-8']),
       ],
     },
-  ])('keeps its own subject when $name', ({ records }) => {
+    {
+      name: 'the copies of its prescription name different Patients',
+      records: [
+        patient('pat-7'),
+        patient('pat-8'),
+        prescriptionFor('rx-7', 'pat-7'),
+        prescriptionFor('rx-7', 'pat-8'),
+        dispenseOf(null, ['rx-7']),
+      ],
+    },
+    {
+      name: 'it names its prescription by an identifier alone, stating no type',
+      records: [
+        patient('pat-7'),
+        prescriptionFor('rx-7', 'pat-7', [{ system: RX_NUMBER_SYSTEM, value: '7000' }]),
+        dispenseOf(null, [{ identifier: { system: RX_NUMBER_SYSTEM, value: '7000' } }]),
+      ],
+    },
+  ])('leaves it with no subject when $name', ({ records }) => {
     const { dispense } = adoptedFill(records)
-    expect(subjectOfDispense(dispense)).toMatchObject({
-      reference: null,
-      type: 'Patient',
-      identifier: { value: 'acct-1' },
-    })
+    expect(subjectOfDispense(dispense)).toBeNull()
   })
 
   // A subject the source stated is who received the fill, whatever the
-  // prescription says.
+  // prescription says, even one the set cannot resolve.
   it.each([
     { name: 'a contained Patient', subject: { reference: '#recipient' } },
     {
@@ -352,9 +357,36 @@ describe("DecodedFileSet.adopt, a dispense's subject and its prescription's", ()
         identifier: { system: 'https://portal.example/fhir/identifier/household', value: 'h-1' },
       },
     },
+    // `fromServerRecord` turns the literal into a logical reference by the
+    // source's id, which no record of the set is keyed by.
+    {
+      name: 'a Patient of the source the set does not hold',
+      subject: { reference: 'Patient/123' },
+    },
+    {
+      name: 'a Patient by an identifier no record of the set carries',
+      subject: byHealthCard('1111'),
+    },
+    {
+      name: 'a Patient by an identifier with no system',
+      subject: { type: 'Patient', identifier: { value: '1111' } },
+    },
   ])('keeps a subject naming $name', ({ subject }) => {
     const fill = dispenseOf(subject, ['rx-7'])
     const { dispense } = adoptedFill([patient('pat-7'), prescriptionFor('rx-7', 'pat-7'), fill])
+    expect(subjectOfDispense(dispense)).toEqual(
+      fill.resourceType === 'MedicationDispense' ? fill.subject : undefined
+    )
+  })
+
+  it('keeps a subject naming a Patient by an identifier two Patients of the set share', () => {
+    const fill = dispenseOf(byHealthCard('1111'), ['rx-7'])
+    const { dispense } = adoptedFill([
+      patientWith('pat-7', [{ system: HEALTH_CARD_SYSTEM, value: '1111' }]),
+      patientWith('pat-8', [{ system: HEALTH_CARD_SYSTEM, value: '1111' }]),
+      prescriptionFor('rx-7', 'pat-7'),
+      fill,
+    ])
     expect(subjectOfDispense(dispense)).toEqual(
       fill.resourceType === 'MedicationDispense' ? fill.subject : undefined
     )
