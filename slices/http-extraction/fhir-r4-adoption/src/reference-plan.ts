@@ -10,7 +10,8 @@
  *
  * @packageDocumentation
  */
-import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
+import { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Option, pipe, Record } from 'effect'
 
 /** One entry of a plan: a logical reference by `resourceType` and `identifier` resolves to `literalReference`. */
@@ -86,5 +87,30 @@ const literalReferenceFor = (
     Option.map(Arr.headNonEmpty)
   )
 
-export { literalReferenceFor, of }
+/**
+ * The literal reference `reference` resolves to under `plan`: `None` unless
+ * it is a logical reference (no literal, an R4 resource type as its `type`,
+ * an `identifier` with a `system` and a `value`) that {@link
+ * literalReferenceFor} resolves by its type and identifier.
+ *
+ * @remarks
+ * As a FHIR server resolves a conditional reference against the transaction
+ * bundle it processes. `adopt` writes what it gives; the import stage also
+ * reads it to ask whether a reference names a record of the set.
+ */
+const literalReferenceIfResolved = (
+  plan: Type,
+  reference: ReferenceType
+): Option.Option<string> => {
+  const { identifier, type } = reference
+  return reference.reference !== null ||
+    type === null ||
+    !ResourceType.is(type) ||
+    identifier === null ||
+    !IdentifierAndReference.isQualifiedIdentifier(identifier)
+    ? Option.none()
+    : literalReferenceFor(plan, type, identifier)
+}
+
+export { literalReferenceFor, literalReferenceIfResolved, of }
 export type { Entry, Type }

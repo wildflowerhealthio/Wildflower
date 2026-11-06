@@ -1,9 +1,5 @@
 import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
-import {
-  type FhirResource,
-  type FhirResourceWithId,
-  ResourceType,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option } from 'effect'
 
 import * as DetachedResource from './detached-resource.ts'
@@ -19,32 +15,18 @@ const randomResourceId = (): string => crypto.randomUUID()
  * reference exactly as it is.
  *
  * @remarks
- * As a FHIR server resolves a conditional reference against the transaction
- * bundle it processes: a reference with no literal, an R4 resource type as
- * its `type`, and an `identifier` with a `system` and `value` resolves when
- * the plan names a literal reference for that type and identifier. One the
- * plan does not resolve — a target the source never served, an account
- * number, a provider's printed name — stays logical, for the importer's
- * identity map (and, later, a match against what the device already holds).
+ * Resolved by `ReferencePlan.literalReferenceIfResolved`. One the plan does
+ * not resolve — a target the source never served, an account number, a
+ * provider's printed name — stays logical, for the importer's identity map
+ * (and, later, a match against what the device already holds).
  */
 const adoptReference =
   (referencePlan: ReferencePlan.Type) =>
-  (reference: ReferenceType): ReferenceType => {
-    const { identifier, type } = reference
-    if (
-      reference.reference !== null ||
-      type === null ||
-      !ResourceType.is(type) ||
-      identifier === null ||
-      !IdentifierAndReference.isQualifiedIdentifier(identifier)
-    ) {
-      return reference
-    }
-    return Option.match(ReferencePlan.literalReferenceFor(referencePlan, type, identifier), {
+  (reference: ReferenceType): ReferenceType =>
+    Option.match(ReferencePlan.literalReferenceIfResolved(referencePlan, reference), {
       onSome: (literalReference) => ({ ...reference, reference: literalReference }),
       onNone: () => reference,
     })
-  }
 
 /**
  * Adopt a detached record into the store: give it the id it is stored under,
