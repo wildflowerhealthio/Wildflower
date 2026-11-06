@@ -28,8 +28,12 @@ import * as ResourcePlan from './resource-plan.ts'
  * `fullUrl` plays the part of FHIR's `Bundle.entry.fullUrl` in a transaction:
  * the record's identity within the set before it is stored, which the
  * review tracks an exclusion or an edit by. It is stable across a settings
- * re-decode, and unique within the set once `namespaceKeys` prefixes it. It is
- * not the record's `id`: `id: null` is what marks a record detached.
+ * re-decode and unique within the set; the import stage namespaces the review
+ * key it becomes by the set's first picked file. A keyless record whose
+ * `fullUrl` is an absolute URL (a FHIR server's `Binary`, at the server's URL
+ * for it) is named by it: a reference or an `Attachment.url` spelling it
+ * resolves to the record. It is not the record's `id`: `id: null` is what
+ * marks a record detached.
  */
 interface Entry {
   readonly fullUrl: string
@@ -93,9 +97,8 @@ interface PickedFileIdentity {
 
 /**
  * One file set's decode: its picked files, in the order they were picked, each
- * with what it identifies itself as, and its sections and notes, every review
- * key already namespaced by the set's first picked file
- * (`FormatDecode.keyPrefix`).
+ * with what it identifies itself as, and its sections and notes, each entry's
+ * `fullUrl` as its format gave it.
  */
 interface Type {
   readonly pickedFiles: Arr.NonEmptyReadonlyArray<PickedFileIdentity>
@@ -108,18 +111,6 @@ const unidentified = (pickedFile: PickedFile.Type): PickedFileIdentity => ({
   pickedFile,
   identifiedAs: Option.none(),
 })
-
-/**
- * Prefix every `fullUrl` in `sections`, so one file set's cannot collide with
- * another's once the batch merges their sections.
- *
- * @param prefix - The set's key namespace, from `FormatDecode.keyPrefix`
- */
-const namespaceKeys = (sections: readonly Section[], prefix: string): readonly Section[] =>
-  sections.map(({ title, entries }) => ({
-    title,
-    entries: entries.map((entry) => ({ ...entry, fullUrl: `${prefix}${entry.fullUrl}` })),
-  }))
 
 /**
  * The entries a planned record gives its set's reference plan: one for each
@@ -152,6 +143,36 @@ const referencePlanEntriesOf = (
             }))
         : [],
     Minted: () => [],
+  })
+
+/**
+ * The `fullUrl` entry a planned record gives its set's reference plan: one
+ * for a keyless record whose `fullUrl` is an absolute URL, resolving to the
+ * literal reference the record is written under; none for any other.
+ *
+ * @remarks
+ * How a record with no identifier is named, as a FHIR transaction bundle
+ * names an entry by its `fullUrl`: a FHIR server's `Binary`, whose entry's
+ * `fullUrl` is the server's URL for it. A keyed record is named by its
+ * identifiers instead, and a `fullUrl` that is no URL (LifeLabs'
+ * `<Type>/<key value>`, DICOM's fixed one per type) names nothing a
+ * reference spells.
+ */
+const fullUrlEntriesOf = (
+  plan: ResourcePlan.Type,
+  { fullUrl }: Entry
+): readonly ReferencePlan.FullUrlEntry[] =>
+  ResourcePlan.match(plan, {
+    Derived: () => [],
+    Minted: (minted) =>
+      pipe(
+        Option.fromNullable(URL.parse(fullUrl)),
+        Option.map((url) => ({
+          fullUrl: url,
+          literalReference: ResourcePlan.literalReference(minted),
+        })),
+        Option.toArray
+      ),
   })
 
 /**
@@ -286,12 +307,15 @@ const takeSubjectFromPrescription =
  * As a FHIR server processes one transaction bundle: every record's plan
  * (`ResourcePlan.of`) is decided first, a keyed record's id derived from its
  * key and a keyless one's minted, in entry order; the set's reference plan is
- * built from the keyed records' plans and qualified identifiers; then each
- * record is adopted under its plan's id, a logical reference resolving when
- * the set holds a keyed record it names by any of that record's identifiers,
- * whichever section holds it. One that names a record the set does not hold,
- * a keyless one, or an identifier two records of the set share, stays
- * logical, for the identity map. Before it is adopted, a `MedicationDispense`
+ * built from the keyed records' plans and qualified identifiers, and from the
+ * keyless records' absolute `fullUrl`s; then each record is adopted under its
+ * plan's id, a logical reference resolving when the set holds a keyed record
+ * it names by any of that record's identifiers, whichever section holds it,
+ * and a literal reference or an `Attachment.url` when it spells a keyless
+ * record's `fullUrl`. A logical one that names a record the set does not
+ * hold, a keyless one, or an identifier two records of the set share, stays
+ * logical, for the identity map; a literal one that names no entry keeps its
+ * literal. Before it is adopted, a `MedicationDispense`
  * with no `subject` takes the `subject` of the prescriptions of the set it
  * names ({@link takeSubjectFromPrescription}).
  */
@@ -308,7 +332,8 @@ const adopt = (
   }))
   const setEntries = plannedSections.flatMap(({ plannedEntries }) => plannedEntries)
   const referencePlan = ReferencePlan.of(
-    setEntries.flatMap(({ entry, plan }) => referencePlanEntriesOf(plan, entry.resource))
+    setEntries.flatMap(({ entry, plan }) => referencePlanEntriesOf(plan, entry.resource)),
+    setEntries.flatMap(({ entry, plan }) => fullUrlEntriesOf(plan, entry))
   )
   const takeSubject = takeSubjectFromPrescription(
     referencePlan,
@@ -328,5 +353,5 @@ const adopt = (
   }
 }
 
-export { adopt, namespaceKeys, unidentified, writtenReferenceTitle }
+export { adopt, unidentified, writtenReferenceTitle }
 export type { Entry, PickedFileIdentity, Section, Type }

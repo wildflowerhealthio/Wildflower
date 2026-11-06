@@ -15,8 +15,9 @@
  * HAR's per-archive `har-entry-<index>` — because that is all it can see, while
  * the batch merges every claimed file's sections into one review whose
  * selection, server-diff verdicts and write plan are keyed by `(format, key)`.
- * Prefixing by the set's first picked file is what keeps the merged keys
- * distinct, so unticking one file's row cannot drop another's resource.
+ * Prefixing by the set's first picked file, which the import stage does to
+ * each set's adopted records, is what keeps the merged keys distinct, so
+ * unticking one file's row cannot drop another's resource.
  *
  * @packageDocumentation
  */

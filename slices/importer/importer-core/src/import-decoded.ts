@@ -1,5 +1,5 @@
 import {
-  type DecodedFile,
+  DecodedFile,
   DecodedFileSet,
   type FileImporter,
   FormatDecode,
@@ -20,7 +20,8 @@ import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema
  * (`DecodedFileSet.adopt`: a keyed record under the id its key derives, a
  * keyless one under a minted id, each logical reference to a record of the set
  * resolved to a literal one, a dispense with no subject filed on its
- * prescription's), runs the format's `linkSourceFile` over every source file
+ * prescription's), namespaces their review keys by the set's first picked
+ * file (`FormatDecode.keyPrefix`), runs the format's `linkSourceFile` over every source file
  * and its `linkToSourceFiles` over every record, stamps every
  * record's `meta.source` with the set's representative source file, and leads
  * with the source files as the set's own section. Each set's records are keyed
@@ -83,7 +84,10 @@ const importFileSet = (
       ),
       { concurrency: 'unbounded' }
     )
-    const adopted = DecodedFileSet.adopt(fileSet)
+    const adopted = DecodedFile.namespaceKeys(
+      DecodedFileSet.adopt(fileSet),
+      FormatDecode.keyPrefix(fileSet.pickedFiles[0].pickedFile)
+    )
 
     const linkSourceFile = importer.linkSourceFile ?? Function.identity
     const linked = Arr.map(sourceFiles, ({ pickedFile, sourceFile }) => ({
