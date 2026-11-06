@@ -269,6 +269,23 @@ describe('DicomHeader.tryFromDicomFile issuer sequences', () => {
     )
     expect(headerOf(bytes).issuerOfAccessionNumber?.localNamespaceEntityId).toBe('München')
   })
+
+  it('decodes an item declaring its own character set under that set', () => {
+    const bytes = fileWithAccessionIssuers(
+      [
+        itemOf([
+          elementBytesOf({ tag: 0x0008_0005, vr: 'CS', value: 'ISO_IR 100' }),
+          elementBytesOf({
+            tag: LOCAL_NAMESPACE_ENTITY_ID,
+            vr: 'UT',
+            value: new Uint8Array([0x4d, 0xfc, 0x6e, 0x63, 0x68, 0x65, 0x6e]),
+          }),
+        ]),
+      ],
+      'ISO_IR 192'
+    )
+    expect(headerOf(bytes).issuerOfAccessionNumber?.localNamespaceEntityId).toBe('München')
+  })
 })
 
 /** A file declaring `characterSet`, with one text element's bytes spliced in as that set encodes them. */

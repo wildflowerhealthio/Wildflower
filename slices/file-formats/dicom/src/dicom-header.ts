@@ -347,35 +347,42 @@ const readPn =
  *
  * @remarks
  * Only the first item: each issuer sequence the standard defines holds one
- * (VM 1). The two UT values are decoded under the file's character set, which
- * an item inherits.
+ * (VM 1). The two UT values are decoded under the item's own Specific
+ * Character Set (0008,0005) when it declares one, else under the file's, which
+ * an item inherits (PS3.5 7.5.3).
  *
  * @param label - How the sequence is named in a decode failure, e.g.
  *   `'IssuerOfAccessionNumberSequence (0008,0051)'`
  */
 const readHierarchicDesignator =
   (tag: string, label: string): Reader<HierarchicDesignator.Type | undefined> =>
-  (dataSet, characterSet) => {
+  (dataSet, fileCharacterSet) => {
     const item = dataSet.elements[tag]?.items?.[0]?.dataSet
     if (item === undefined) return Either.right(undefined)
-    return Either.map(
-      Either.all({
-        localNamespaceEntityId: decodedText(
-          item,
-          characterSet,
-          Tag.LocalNamespaceEntityID,
-          `${label} › LocalNamespaceEntityID (0040,0031)`
-        ),
-        universalEntityId: decodedText(
-          item,
-          characterSet,
-          Tag.UniversalEntityID,
-          `${label} › UniversalEntityID (0040,0032)`
-        ),
-        universalEntityIdType: Either.right(trimmedString(item, Tag.UniversalEntityIDType)),
-      }),
-      (designator): HierarchicDesignator.Type | undefined =>
-        Object.values(designator).every((value) => value === undefined) ? undefined : designator
+    const itemCharacterSet =
+      item.elements[Tag.SpecificCharacterSet] === undefined
+        ? Either.right(fileCharacterSet)
+        : SpecificCharacterSet.fromValue(item.string(Tag.SpecificCharacterSet))
+    return Either.flatMap(itemCharacterSet, (characterSet) =>
+      Either.map(
+        Either.all({
+          localNamespaceEntityId: decodedText(
+            item,
+            characterSet,
+            Tag.LocalNamespaceEntityID,
+            `${label} › LocalNamespaceEntityID (0040,0031)`
+          ),
+          universalEntityId: decodedText(
+            item,
+            characterSet,
+            Tag.UniversalEntityID,
+            `${label} › UniversalEntityID (0040,0032)`
+          ),
+          universalEntityIdType: Either.right(trimmedString(item, Tag.UniversalEntityIDType)),
+        }),
+        (designator): HierarchicDesignator.Type | undefined =>
+          Object.values(designator).every((value) => value === undefined) ? undefined : designator
+      )
     )
   }
 
