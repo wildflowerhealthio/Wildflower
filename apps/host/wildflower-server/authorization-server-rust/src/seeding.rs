@@ -576,6 +576,7 @@ mod tests {
     /// The app's scope string and both client ids are read out of `config.ts`
     /// itself, the one place the app writes them, so neither client can drift
     /// from it unnoticed.
+    #[cfg(debug_assertions)]
     #[test]
     fn seeds_the_plots_dev_client_with_the_apps_own_scopes() {
         const PLOTS_CONFIG_TS: &str = include_str!(concat!(
@@ -626,6 +627,7 @@ mod tests {
     /// loopback root with exactly the scopes the app requests, and the
     /// production client (the authorization server migration `0028`) allows the same set, read
     /// out of `config.ts` itself with both client ids, as Plots' are.
+    #[cfg(debug_assertions)]
     #[test]
     fn seeds_the_synthetic_data_dev_client_with_the_apps_own_scopes() {
         const SYNTHETIC_DATA_CONFIG_TS: &str = include_str!(concat!(
@@ -672,6 +674,7 @@ mod tests {
     /// allows the same set. The app's `MEDICATIONS_SCOPE` and both client ids are
     /// read out of `config.ts` itself, the one place the app writes them, so
     /// neither client can drift from it unnoticed.
+    #[cfg(debug_assertions)]
     #[test]
     fn seeds_the_medications_dev_client_with_the_apps_own_scopes() {
         const MEDICATIONS_CONFIG_TS: &str = include_str!(concat!(
@@ -724,6 +727,7 @@ mod tests {
     /// app's `STRENGTH_SCOPE` and both client ids are read out of `config.ts`
     /// itself, the one place the app writes them, so neither client can drift
     /// from it unnoticed.
+    #[cfg(debug_assertions)]
     #[test]
     fn seeds_the_strength_dev_client_with_the_apps_own_scopes() {
         const STRENGTH_CONFIG_TS: &str = include_str!(concat!(

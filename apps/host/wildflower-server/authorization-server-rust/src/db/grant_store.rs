@@ -2553,7 +2553,9 @@ mod tests {
     /// migrations seeded, the same policy boot-time seeding writes for the
     /// clients it owns (so an install where those rows already exist and a
     /// fresh one agree), and the trust-on-first-use defaults by scope for every
-    /// other row. Reverting `0050` drops the columns.
+    /// other row. Reverting `0050` drops the columns. Debug builds only, as
+    /// the dev clients' rows and policies are.
+    #[cfg(debug_assertions)]
     #[test]
     fn an_install_already_at_0049_gives_every_client_a_refresh_policy() {
         use std::collections::BTreeMap;
