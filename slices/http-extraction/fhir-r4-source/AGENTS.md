@@ -14,6 +14,15 @@ whose `responseKinds` an archive import (`har-importer-core`) extracts with. It 
 - `src/response-kinds/observation-list-response-kind.ts` — `…/Observation?…` → the
   `Observation`s of a searchset `Bundle`, dropping-and-counting entries that
   carry no resource.
+- `src/response-kinds/document-reference-response-kind.ts` —
+  `…/DocumentReference/<id>` → one R4 `DocumentReference`, its attachments'
+  and references' `Binary/<id>` detached to the server's absolute URL for the
+  Binary.
+- `src/response-kinds/binary-response-kind.ts` — `…/Binary/<id>` → one R4
+  `Binary`, keyless, read only when the server served it as a JSON `Binary`
+  resource: a read served as its raw content (an `image/*` or PDF body) fails
+  to parse. The HAR importer names its entry by the read's URL, its
+  `fullUrl`.
 - `src/fhir-server-response-kind.ts` — `FhirServerResponseKind.make({ name,
   url, readRecords })`, the one way a kind here is built: it declares its
   `UrlMatch.UrlMatcher` and how it reads the server's records off a body.
@@ -31,8 +40,8 @@ whose `responseKinds` an archive import (`har-importer-core`) extracts with. It 
   `responseKinds`). Consumers reach the tuple through
   `fhirR4Source.responseKinds`, sharing it by reference.
 - `src/response-kinds.ts` — `fhirR4ResponseKinds` (internal, the descriptor's
-  `responseKinds`): the tuple (Patient, Observation, Observation-list, in that
-  order), as `HttpResponseKind<DetachedResource.Type>`. Each parses the
+  `responseKinds`): the tuple (Patient, Observation, Observation-list,
+  DocumentReference, Binary, in that order), as `HttpResponseKind<DetachedResource.Type>`. Each parses the
   server's resources and detaches them under the response URL's root. A module-level constant, so the array is stable by
   identity and every consumer shares the same kinds. Kinds only — no
   navigation, no provenance.

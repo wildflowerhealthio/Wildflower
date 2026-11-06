@@ -47,7 +47,10 @@ package alone and a layer that provides those.
   what the picked file identified itself as; adopts its detached records with
   `DecodedFileSet.adopt` (a keyed record under the id its key derives, a
   keyless one under a random id, each logical reference to a record of the set
-  resolved to a literal one); runs `linkSourceFile` over each source file with the
+  resolved to a literal one, and each literal reference or `Attachment.url`
+  spelling a keyless record's absolute `fullUrl` to that record), and
+  namespaces their review keys by the set's first picked file
+  (`DecodedFile.namespaceKeys`, `FormatDecode.keyPrefix`); runs `linkSourceFile` over each source file with the
   set's adopted records, then `linkToSourceFiles` over every record with each
   picked file and its linked source file; stamps every record's `meta.source`
   with the set's **representative** — the picked file whose source file id is

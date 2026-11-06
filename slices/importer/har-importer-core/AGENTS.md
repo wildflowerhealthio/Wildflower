@@ -51,7 +51,11 @@ shell's shared `persistTransactionBundle`.
   `mergeSharedResources`, folded into `DecodedFileSet` sections —
   one section per URL, a plain insertion-ordered map (first-seen order, only
   responses that parsed to at least one resource), each entry's `fullUrl` its
-  preview key, `<response id>:<index>` —
+  preview key, `<response id>:<index>`, except a `Binary` a read served, whose
+  `fullUrl` is the read's URL less its query, `<root>/Binary/<id>`: the
+  server's URL for it, which a reference or an `Attachment.url` naming it is
+  detached to, so the import stage resolves one to the other. Only the first
+  entry per `fullUrl` is kept, so a Binary read twice is one record —
   plus one diagnostic note per response that yielded nothing (no kind
   matched, every matching kind disabled, parse
   failure, body absent, duplicate). The import stage adopts the records and
@@ -60,7 +64,7 @@ shell's shared `persistTransactionBundle`.
   leaving the batch's other files reviewable. Resource keys are
   `responseId:index` — independent of the kind toggles, so a settings change
   re-decodes to the same keys for the resources that survive it. They are keyed
-  **within one source file**; `DecodeFunction.make` prefixes each set's keys with its slot
+  **within one source file**; the import stage prefixes each set's keys with its slot
   in the batch, so two source files in one pick cannot collide on
   `responseId:index`.
 - `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses,
