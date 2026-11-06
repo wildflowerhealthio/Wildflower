@@ -500,6 +500,25 @@ describe('the DICOM batch decode', () => {
     ])
   })
 
+  it('notes the shared study when one Patient ID is issued under two spellings', async () => {
+    const result = await run([
+      file('1', { PatientID: 'P001', SOPInstanceUID: 'I1' }),
+      file('2', {
+        PatientID: 'P001',
+        SOPInstanceUID: 'I2',
+        IssuerOfPatientIDQualifiersSequence: {
+          localNamespaceEntityId: undefined,
+          universalEntityId: '2.16.840.1.113883.3.42',
+          universalEntityIdType: 'ISO',
+        },
+      }),
+    ])
+    expect(result.fileSets.map((fileSet) => fileSet.notes.includes(SHARED_STUDY_NOTE))).toEqual([
+      true,
+      true,
+    ])
+  })
+
   it('notes nothing shared when two sets state different Study Instance UIDs', async () => {
     const result = await run([
       file('1', { PatientID: 'P001', SOPInstanceUID: 'I1' }),

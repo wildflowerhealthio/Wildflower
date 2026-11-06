@@ -287,9 +287,13 @@ const decodeStudy = (
     return { sections, notes, pickedFiles: identifiedPickedFiles }
   })
 
-/** The note a set earns when another set of its batch states its Study Instance UID. */
+/**
+ * The note a set earns when another set of its batch states its Study
+ * Instance UID: under a different patient key, which is a different person or
+ * the same Patient ID under an issuer spelled differently.
+ */
 const SHARED_STUDY_NOTE =
-  "Another patient's files in this pick state the same StudyInstanceUID — both are filed as one ImagingStudy."
+  'Other files in this pick state the same StudyInstanceUID under a different PatientID or issuer — they are read apart, and both are filed as one ImagingStudy.'
 
 /** The `ImagingStudy` keys a set's sections carry: one per study, so at most one. */
 const imagingStudyKeysOf = (fileSet: DecodedFileSet.Type): readonly string[] =>
@@ -308,8 +312,9 @@ const imagingStudyKeysOf = (fileSet: DecodedFileSet.Type): readonly string[] =>
  * `ImagingStudy` another set of the batch keys too.
  *
  * @remarks
- * Two patients' files stating one Study Instance UID decode as two sets
- * ({@link studyKey}), and both key one `ImagingStudy` by that UID: the import
+ * Files stating one Study Instance UID under two patient keys — two people,
+ * or one Patient ID whose issuer the files spell differently — decode as two
+ * sets ({@link studyKey}), and both key one `ImagingStudy` by that UID: the import
  * files them as one study (accepted). Only the whole batch sees both sets, so
  * the note is added here rather than in {@link decodeStudy}.
  */
