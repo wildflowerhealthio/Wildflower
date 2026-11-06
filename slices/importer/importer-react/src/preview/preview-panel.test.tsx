@@ -307,7 +307,7 @@ describe('PreviewPanel', () => {
     expect(screen.getByText('Matched no importer: https://example.org/tracker.js')).toBeDefined()
   })
 
-  it('mounts one settings form per format present and reports a change against its format', async () => {
+  it('renders no settings form for HAR, and reports a LifeLabs settings change against its format', async () => {
     const onSettingsChange = vi.fn()
     const batch = makeBatch({
       har: formatResult(
@@ -323,12 +323,22 @@ describe('PreviewPanel', () => {
     })
     render(<PreviewPanel {...panelProps(batch, { onSettingsChange })} />)
 
-    // One group per format, titled by the format's display title.
-    expect(screen.getByRole('region', { name: 'HAR archive' })).toBeDefined()
-    expect(screen.getByRole('region', { name: 'LifeLabs report' })).toBeDefined()
+    // One group per format, titled by the format's display title; only
+    // LifeLabs, which has settings, carries the settings form's box.
+    const harGroup = screen.getByRole('region', { name: 'HAR archive' })
+    const lifeLabsGroup = screen.getByRole('region', { name: 'LifeLabs report' })
+    const lifeLabsPicker = within(lifeLabsGroup).getByRole('button', {
+      name: 'change lifelabs settings',
+    })
+    const settingsFormClass = lifeLabsPicker.parentElement?.className ?? ''
+    expect(settingsFormClass).not.toBe('')
+    expect(harGroup.getElementsByClassName(settingsFormClass)).toHaveLength(0)
 
-    await userEvent.click(screen.getByRole('button', { name: 'change har settings' }))
-    expect(onSettingsChange).toHaveBeenCalledWith('har', defaultFormatSettings.har)
+    await userEvent.click(lifeLabsPicker)
+    expect(onSettingsChange).toHaveBeenCalledWith(
+      'lifelabs-pdf',
+      defaultFormatSettings['lifelabs-pdf']
+    )
   })
 
   it("mounts each format's own settings picker, DICOM included", async () => {
@@ -759,16 +769,12 @@ const withLinkedPractitioner = (batch: ResolvedBatch): ResolvedBatch =>
     (resource) => LinkTarget.Provisional({ resource })
   )
 
-/** A settings registry whose pickers are one-button stubs reporting the default settings back. */
+/**
+ * A settings registry whose pickers are one-button stubs reporting the default
+ * settings back; HAR, which has no settings, has no picker.
+ */
 const settingsRegistry: SettingsRegistry = {
-  har: {
-    display: { title: 'HAR archive', description: 'HAR' },
-    SettingsPicker: ({ onChange }): JSX.Element => (
-      <button type="button" onClick={() => onChange(defaultFormatSettings.har)}>
-        change har settings
-      </button>
-    ),
-  },
+  har: { display: { title: 'HAR archive', description: 'HAR' } },
   'lifelabs-pdf': {
     display: { title: 'LifeLabs report', description: 'LifeLabs' },
     SettingsPicker: ({ onChange }): JSX.Element => (

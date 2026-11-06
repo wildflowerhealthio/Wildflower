@@ -487,20 +487,21 @@ describe('ImporterScreen', () => {
   })
 
   it('keeps the preview painted and the settings control focused across a settings change', async () => {
-    // Arrange — reach a preview over a local HAR pick
+    // Arrange — reach a preview over a local DICOM pick
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
-    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+    await userEvent.upload(
+      screen.getByLabelText('Import file'),
+      dicomFile('I1.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I1' })
+    )
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
 
-    // Act — change the format's settings, which re-decodes and re-classifies
-    const settingsForm = screen.getByRole('group', { name: 'Include' })
-    const kindToggle = within(settingsForm).getAllByRole('checkbox')[0]
-    expect(kindToggle).toBeDefined()
-    if (kindToggle === undefined) return
-    await userEvent.click(kindToggle)
+    // Act — commit a new equipment time zone, which re-decodes and re-classifies
+    const zoneInput = screen.getByLabelText('Equipment time zone')
+    await userEvent.clear(zoneInput)
+    await userEvent.type(zoneInput, 'UTC{Enter}')
 
     // Assert — the re-classification resolves *underneath* the panel. Blocking
     // the preview on it would unmount the whole panel, dropping the focus of
@@ -508,14 +509,12 @@ describe('ImporterScreen', () => {
     // the time-zone text field eject the cursor on every keystroke.
     expect(screen.queryByText(CHECKING_SERVER_MESSAGE)).toBeNull()
     expect(screen.getByRole('heading', { name: /to import/i })).toBeDefined()
-    expect(document.activeElement).toBe(kindToggle)
+    expect(document.activeElement).toBe(zoneInput)
 
     await waitFor(() => {
-      expect(
-        within(screen.getByRole('group', { name: 'Include' })).getAllByRole('checkbox')[0]
-      ).toBe(kindToggle)
+      expect(screen.getByLabelText('Equipment time zone')).toBe(zoneInput)
     })
-    expect(document.activeElement).toBe(kindToggle)
+    expect(document.activeElement).toBe(zoneInput)
   })
 
   it('reads only the source list, one search per referent and the diff bundle to reach a review', async () => {

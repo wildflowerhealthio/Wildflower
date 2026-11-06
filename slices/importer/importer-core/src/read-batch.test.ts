@@ -186,12 +186,15 @@ describe('readBatch', () => {
   })
 
   it('should decode each format under its own settings', async () => {
-    const settings = { ...defaultFormatSettings, har: { disabledKinds: ['X'] } }
+    const settings = {
+      ...defaultFormatSettings,
+      'lifelabs-pdf': { ...defaultFormatSettings['lifelabs-pdf'], timeZone: 'America/Vancouver' },
+    }
     const batch = await Effect.runPromise(
-      readBatch(fakeRegistry, settings, [{ fileName: 'har-a', bytes: new Uint8Array([1]) }])
+      readBatch(fakeRegistry, settings, [{ fileName: 'pdf-a', bytes: new Uint8Array([1]) }])
     )
-    expect(extractedSections(batch.formats.har)[0]?.title).toBe(
-      `har:${JSON.stringify(settings.har)}`
+    expect(extractedSections(batch.formats['lifelabs-pdf'])[0]?.title).toBe(
+      `lifelabs-pdf:${JSON.stringify(settings['lifelabs-pdf'])}`
     )
   })
 })

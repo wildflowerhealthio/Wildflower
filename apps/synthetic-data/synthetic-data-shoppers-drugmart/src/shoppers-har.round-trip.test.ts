@@ -3,7 +3,7 @@ import type {
   MedicationDispense,
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { defaultHarSettings, harImporter } from '@wildflowerhealthio/har-importer-core'
+import { harImporter } from '@wildflowerhealthio/har-importer-core'
 import { importDecoded } from '@wildflowerhealthio/importer-core'
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -79,7 +79,7 @@ const importHar = async (har: string): Promise<Imported> => {
   }
   const result = await Effect.runPromise(
     harImporter
-      .decode([picked], defaultHarSettings)
+      .decode([picked], null)
       .pipe(Effect.flatMap((decoded) => importDecoded(harImporter, decoded)))
   )
   const sections = result.decoded.sections
