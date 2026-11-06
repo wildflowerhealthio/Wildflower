@@ -1,5 +1,6 @@
-import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import { Array as Arr, Option } from 'effect'
+import { HealthCardIdentifier, type HealthCardProvince } from '@wildflowerhealthio/fhir-ca-infoway'
+import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { Array as Arr, Effect, Option, type ParseResult, Schema } from 'effect'
 
 import type * as Report from '../../entities/report.ts'
 import { LifeLabsIdentifierSystem } from '../../source-system.ts'
@@ -7,46 +8,71 @@ import { parsePrintedDate } from '../dates.ts'
 import type { Wire } from './shared.ts'
 
 /**
- * A printed Ontario health card number less its version code: the one or two
- * letters after the number, and any whitespace before them (`1234567890 AB` →
- * `1234567890`).
- *
- * @remarks
- * The version code changes when a card is reissued, and the number names the
- * person, so two reports printing one number under different version codes
- * key one Patient. The rest is kept as printed.
+ * An identifier the synthesis writes for the patient: an `Identifier` wire
+ * with its `system` and `value` always set, the shape a health card number is
+ * written in, so the patient's key can be read off any of them.
  */
-const healthCardNumberWithoutVersionCode = (printed: string): string =>
-  printed.replace(/(?<=\d)\s*[A-Za-z]{1,2}$/, '')
+type PatientIdentifier = HealthCardIdentifier.Type
 
 /**
  * The identifiers the report prints for its patient: `Patient ID` as printed,
- * then `HC #` less its version code.
+ * then `HC #` decoded by `healthCardProvince`'s rule; fails with a
+ * `ParseError` when the `HC #` is not that province's shape.
  */
-const printedIdentifiersOf = (patient: Report.Type['patient']): DetachedResource.Key[] => [
-  ...(patient.patientId === ''
-    ? []
-    : [{ system: LifeLabsIdentifierSystem.PatientId, value: patient.patientId }]),
-  ...(patient.healthCardNumber === ''
-    ? []
-    : [
-        {
-          system: LifeLabsIdentifierSystem.OntarioHealthCardNumber,
-          value: healthCardNumberWithoutVersionCode(patient.healthCardNumber),
-        },
-      ]),
-]
+const printedIdentifiersOf = (
+  patient: Report.Type['patient'],
+  healthCardProvince: HealthCardProvince.Type
+): Effect.Effect<PatientIdentifier[], ParseResult.ParseError> =>
+  Effect.gen(function* () {
+    const patientIds =
+      patient.patientId === ''
+        ? []
+        : [{ system: LifeLabsIdentifierSystem.PatientId, value: patient.patientId }]
+    const healthCards =
+      patient.healthCardNumber === ''
+        ? []
+        : [
+            yield* Schema.decode(HealthCardIdentifier.FromPrinted(healthCardProvince))(
+              patient.healthCardNumber
+            ),
+          ]
+    return [...patientIds, ...healthCards]
+  })
+
+/**
+ * The patient's identifiers, its key first: the identifiers the report
+ * prints, else the name and date of birth as printed,
+ * `<name>, <date of birth>`.
+ */
+const patientIdentifiersOf = (
+  patient: Report.Type['patient'],
+  healthCardProvince: HealthCardProvince.Type
+): Effect.Effect<Arr.NonEmptyReadonlyArray<PatientIdentifier>, ParseResult.ParseError> =>
+  Effect.map(printedIdentifiersOf(patient, healthCardProvince), (printed) =>
+    Arr.match(printed, {
+      onEmpty: () =>
+        Arr.of({
+          system: LifeLabsIdentifierSystem.PatientNameBirthDate,
+          value: `${patient.name.trim()}, ${patient.dateOfBirth}`,
+        }),
+      onNonEmpty: (identifiers) => identifiers,
+    })
+  )
 
 /**
  * The key the report gives its patient: the printed `Patient ID`, else the
- * health card number less its version code, else the name and date of birth
- * as printed, `<name>, <date of birth>`.
+ * health card number (Ontario's less its version code, so a reissued card
+ * keys the same Patient), else the name and date of birth as printed; fails
+ * with a `ParseError` when the `HC #` is not `healthCardProvince`'s shape.
  */
-const patientKeyOf = (patient: Report.Type['patient']): DetachedResource.Key =>
-  Option.getOrElse(Arr.head(printedIdentifiersOf(patient)), () => ({
-    system: LifeLabsIdentifierSystem.PatientNameBirthDate,
-    value: `${patient.name.trim()}, ${patient.dateOfBirth}`,
-  }))
+const patientKeyOf = (
+  patient: Report.Type['patient'],
+  healthCardProvince: HealthCardProvince.Type
+): Effect.Effect<DetachedResource.Key, ParseResult.ParseError> =>
+  Effect.map(patientIdentifiersOf(patient, healthCardProvince), (identifiers) => {
+    const { system, value } = Arr.headNonEmpty(identifiers)
+    return { system, value }
+  })
 
 /** `FAMILY, GIVEN GIVEN` → a HumanName; any other shape becomes `text`. */
 const humanNameWire = (printed: string): Wire => {
@@ -68,26 +94,27 @@ const genderOf = (sex: string): string | undefined => {
   }
 }
 
-const patientWire = (report: Report.Type): Wire => {
-  const { patient } = report
-  const key = patientKeyOf(patient)
-  // The key first, then every other identifier the report prints.
-  const wire: Wire = {
-    resourceType: 'Patient',
-    identifier: [
-      DetachedResource.keyIdentifierWire(key),
-      ...printedIdentifiersOf(patient)
-        .filter(({ system }) => system !== key.system)
-        .map(DetachedResource.keyIdentifierWire),
-    ],
-  }
-  if (patient.name !== '') wire['name'] = [humanNameWire(patient.name)]
-  const gender = genderOf(patient.sex)
-  if (gender !== undefined) wire['gender'] = gender
-  const birthDate = parsePrintedDate(patient.dateOfBirth)
-  if (Option.isSome(birthDate)) wire['birthDate'] = birthDate.value
-  if (patient.phone !== '') wire['telecom'] = [{ system: 'phone', value: patient.phone }]
-  return wire
-}
+/**
+ * The Patient `report`'s patient block describes; fails with a `ParseError`
+ * when its `HC #` is not `healthCardProvince`'s shape.
+ */
+const patientWire = (
+  report: Report.Type,
+  healthCardProvince: HealthCardProvince.Type
+): Effect.Effect<Wire, ParseResult.ParseError> =>
+  Effect.gen(function* () {
+    const { patient } = report
+    const wire: Wire = {
+      resourceType: 'Patient',
+      identifier: yield* patientIdentifiersOf(patient, healthCardProvince),
+    }
+    if (patient.name !== '') wire['name'] = [humanNameWire(patient.name)]
+    const gender = genderOf(patient.sex)
+    if (gender !== undefined) wire['gender'] = gender
+    const birthDate = parsePrintedDate(patient.dateOfBirth)
+    if (Option.isSome(birthDate)) wire['birthDate'] = birthDate.value
+    if (patient.phone !== '') wire['telecom'] = [{ system: 'phone', value: patient.phone }]
+    return wire
+  })
 
 export { patientKeyOf, patientWire }

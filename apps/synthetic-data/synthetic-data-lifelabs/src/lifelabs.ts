@@ -8,6 +8,7 @@ import {
   type ReportPatient,
   type ReportRow,
   type ReportSection,
+  type SynthesisOptions,
 } from '@wildflowerhealthio/lifelabs-pdf-importer-core/synthesis'
 import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'
 import {
@@ -46,7 +47,8 @@ import { type LabRequisition, Laboratory, PrintedRange } from './story/index.ts'
  *
  * Specimens are collected in the morning (fasting) and reported the same
  * evening, at minutes hashed from the person and day; the report's printed
- * clock is in the laboratory's zone.
+ * clock is in the laboratory's zone. The patient block prints the person's
+ * Ontario health card number, hashed from the person.
  */
 
 const FINAL_RESULTS = 'FINAL RESULTS'
@@ -73,6 +75,13 @@ const LATEST_COLLECTION_MINUTE = 10 * 60 + 45
 /** Minutes from collection to the report: five to ten hours, the same evening. */
 const EARLIEST_REPORT_AFTER_MINUTES = 5 * 60
 const LATEST_REPORT_AFTER_MINUTES = 10 * 60
+
+/**
+ * The province that issued every person's health card: the `HC #` a report
+ * prints is an Ontario number and version code ({@link healthCardNumberOf}),
+ * so the reports are read with Ontario chosen.
+ */
+const HEALTH_CARD_PROVINCE: SynthesisOptions['healthCardProvince'] = 'ON'
 
 /** A story draws a test the laboratory prints no row for. */
 class UncataloguedLabTest extends Data.TaggedError('UncataloguedLabTest')<{
@@ -113,6 +122,21 @@ const yearsBetween = (birthDate: DateTime.Utc, date: DateTime.Utc): number => {
   return on.year - born.year - (beforeBirthday ? 1 : 0)
 }
 
+/** Two capital letters, the same for the same `keys`. */
+const capitalLettersOf = (keys: readonly string[]): string => {
+  const letters = Seeding.integerOf(keys, 0, 26 * 26 - 1)
+  return String.fromCodePoint(65 + Math.floor(letters / 26), 65 + (letters % 26))
+}
+
+/**
+ * The person's Ontario health card number as the report prints it: ten digits
+ * and a two-letter version code (`1234567890 AB`).
+ */
+const healthCardNumberOf = (person: Person.Person): string => {
+  const keys = [person.key, 'health-card']
+  return `${Seeding.digitsOf([...keys, 'number'], 10)} ${capitalLettersOf([...keys, 'version-code'])}`
+}
+
 /** The patient block on the report of the draws on `day`. */
 const patientBlockOf = (
   asOf: DateTime.Utc,
@@ -125,7 +149,7 @@ const patientBlockOf = (
     age: `${yearsBetween(birthDate, StoryDay.toDateTime(asOf, day))} years`,
     sex: SEX_PRINTED[person.gender],
     dateOfBirth: printedDateOf(birthDate),
-    healthCardNumber: '',
+    healthCardNumber: healthCardNumberOf(person),
     phone: '',
     patientId: '',
   }
@@ -142,8 +166,7 @@ const labNumberOf = (
   day: StoryDay.StoryDay
 ): LabNumber.Type => {
   const keys = [person.key, 'lifelabs', 'lab-no', String(day)]
-  const letters = Seeding.integerOf([...keys, 'letters'], 0, 26 * 26 - 1)
-  const prefix = String.fromCodePoint(65 + Math.floor(letters / 26), 65 + (letters % 26))
+  const prefix = capitalLettersOf([...keys, 'letters'])
   const { year } = DateTime.toPartsUtc(StoryDay.toDateTime(asOf, day))
   return LabNumber.make(`${year}-${prefix}${Seeding.digitsOf(keys, 7)}`)
 }
@@ -300,11 +323,14 @@ const render = (
 ): Effect.Effect<readonly FhirResource[], UncataloguedLabTest | ParseResult.ParseError> =>
   Effect.gen(function* () {
     const reports = yield* reportsOf(asOf, story, laboratory, requisition)
-    const decoded = yield* decodedReportsOf(reports, { timeZone: laboratory.timeZone })
+    const decoded = yield* decodedReportsOf(reports, {
+      timeZone: laboratory.timeZone,
+      healthCardProvince: HEALTH_CARD_PROVINCE,
+    })
     return DecodedFile.resources(DecodedFileSet.adopt(decoded))
       .map((entry) => entry.resource)
       .filter((resource) => resource.resourceType !== 'Patient')
       .map(withSubject(pharmacyPatient))
   })
 
-export { render, reportsOf, UncataloguedLabTest }
+export { HEALTH_CARD_PROVINCE, render, reportsOf, UncataloguedLabTest }

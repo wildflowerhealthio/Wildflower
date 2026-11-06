@@ -29,7 +29,7 @@ import { layoutDocument } from './test-helpers.ts'
  * inverse, and `decodeLifeLabsPdf` under a fake extractor.
  */
 
-const SETTINGS = { timeZone: 'America/Vancouver' }
+const SETTINGS = { timeZone: 'America/Vancouver', healthCardProvince: 'ON' } as const
 
 /** A one-page report with no results: its header is all a page-level test reads. */
 const headerOnly: Report.Type = {
@@ -55,8 +55,20 @@ const headerOnly: Report.Type = {
   sections: [],
 }
 
-/** Every system the synthesis keys a record in. */
-const KEY_SYSTEMS: readonly string[] = Object.values(LifeLabsIdentifierSystem)
+/**
+ * Every system the synthesis keys a record in: LifeLabs' own, and the health
+ * card system of {@link SETTINGS}' province, which keys a Patient printing only
+ * an `HC #`.
+ */
+const KEY_SYSTEMS: readonly string[] = [
+  ...Object.values(LifeLabsIdentifierSystem),
+  Effect.runSync(
+    patientKeyOf(
+      { ...headerOnly.patient, healthCardNumber: '9123456789' },
+      SETTINGS.healthCardProvince
+    )
+  ).system,
+]
 
 /** Every record of a decode, detached. */
 const entriesOf = (decoded: DecodeFunction.FileSetDecode): readonly DecodedFileSet.Entry[] =>
@@ -170,7 +182,9 @@ describe('decodeLifeLabsPdfDocument', () => {
         const expected = [
           ...new Set(
             reports.map((report) => {
-              const { system, value } = patientKeyOf(report.patient)
+              const { system, value } = Effect.runSync(
+                patientKeyOf(report.patient, SETTINGS.healthCardProvince)
+              )
               return `Patient|${system}|${value}`
             })
           ),
@@ -247,7 +261,7 @@ describe('decodeLifeLabsPdfDocument', () => {
   it('fails with a ParseError for an invalid time zone', () => {
     const document = layoutDocument([])
     const outcome = Effect.runSync(
-      Effect.either(decodeLifeLabsPdfDocument(document, { timeZone: 'Not/A_Zone' }))
+      Effect.either(decodeLifeLabsPdfDocument(document, { ...SETTINGS, timeZone: 'Not/A_Zone' }))
     )
     expect(Either.isLeft(outcome)).toBe(true)
     if (Either.isLeft(outcome)) expect(ParseResult.isParseError(outcome.left)).toBe(true)

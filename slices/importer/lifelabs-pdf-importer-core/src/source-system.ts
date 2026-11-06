@@ -11,7 +11,9 @@ const LIFELABS_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/lifelabs'
 /**
  * The identifier systems the synthesis keys its records in and writes beside
  * them: the numbers the report prints, and, for a record the report prints no
- * number for, a Wildflower-minted system over what it does print.
+ * number for, a Wildflower-minted system over what it does print. The health
+ * card number (`HC #`) is not one of these: it is written in its province's
+ * Infoway system (`fhir-ca-infoway`'s `HealthCardIdentifier`).
  *
  * @remarks
  * **Persisted wire format.** A record's key, `identifier[0]`, is one of
@@ -24,11 +26,6 @@ const LifeLabsIdentifierSystem = {
   LabNumber: 'https://wildflowerhealth.io/fhir/sid/lifelabs/lab-number',
   /** The report's `Patient ID`, when it prints one, in a Wildflower-minted system. */
   PatientId: 'https://wildflowerhealth.io/fhir/sid/lifelabs/patient-id',
-  /**
-   * The Ontario health card number the report prints as `HC #`, less its
-   * version code — Canada Health Infoway's naming system for it.
-   */
-  OntarioHealthCardNumber: 'https://fhir.infoway-inforoute.ca/NamingSystem/ca-on-patient-hcn',
   /**
    * A patient by the name and date of birth the report prints,
    * `<name>, <date of birth>`: Wildflower-minted, for a report that prints

@@ -1,6 +1,6 @@
 # AGENTS.md — slices/fhir
 
-FHIR R4 slice: pure wire schemas (Patient / Practitioner / Observation / DiagnosticReport / MedicationRequest / MedicationDispense / DocumentReference / Binary / ServiceRequest / ImagingStudy / CarePlan / Goal / PlanDefinition / Procedure), the `HttpApi` description, and the HTTP client for the off-the-shelf HFS FHIR server embedded by `fhir-r4-rust`. Read the [Packages Explanation](./docs/Packages%20Explanation.md) before restructuring anything here.
+FHIR R4 slice: pure wire schemas (Patient / Practitioner / Observation / DiagnosticReport / MedicationRequest / MedicationDispense / DocumentReference / Binary / ServiceRequest / ImagingStudy / CarePlan / Goal / PlanDefinition / Procedure), the `HttpApi` description, and the HTTP client for the off-the-shelf HFS FHIR server embedded by `fhir-r4-rust`; and `fhir-ca-infoway`, Canada Health Infoway's provincial health card naming systems and how a printed health card number becomes an `Identifier` ([its AGENTS.md](./fhir-ca-infoway/AGENTS.md)). Read the [Packages Explanation](./docs/Packages%20Explanation.md) before restructuring anything here.
 
 ## Guardrails
 

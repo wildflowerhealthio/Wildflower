@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-ca-infoway": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/har-importer-core": "workspace:*",
@@ -54,6 +55,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@wildflowerhealthio/fhir-ca-infoway": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/lifelabs-pdf-importer-core": "workspace:*",

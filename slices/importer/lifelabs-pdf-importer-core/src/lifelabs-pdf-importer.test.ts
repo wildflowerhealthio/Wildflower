@@ -1,3 +1,4 @@
+import { HealthCardIdentifier, type HealthCardProvince } from '@wildflowerhealthio/fhir-ca-infoway'
 import { PickedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
@@ -34,13 +35,16 @@ describe('lifeLabsPdfImporter', () => {
     expect(lifeLabsPdfImporter.detect(jsonLike, 'export.json')).toBe(false)
   })
 
-  it('defaultSettings has a timeZone', () => {
+  it("defaultSettings are Toronto's zone and Ontario's health card", () => {
     expect(lifeLabsPdfImporter.defaultSettings).toEqual(defaultLifeLabsPdfSettings)
-    expect(lifeLabsPdfImporter.defaultSettings.timeZone).toBe('America/Toronto')
+    expect(lifeLabsPdfImporter.defaultSettings).toEqual({
+      timeZone: 'America/Toronto',
+      healthCardProvince: 'ON',
+    })
   })
 })
 
-const SETTINGS = { timeZone: 'America/Vancouver' }
+const SETTINGS = { timeZone: 'America/Vancouver', healthCardProvince: 'ON' } as const
 
 /** An extractor that reads any PDF as `reports` printed. */
 const extractorPrinting = (reports: readonly Report.Type[]): Layer.Layer<PositionedTextExtractor> =>
@@ -53,6 +57,58 @@ const extractorRefusing: Layer.Layer<PositionedTextExtractor> = Layer.succeed(
   PositionedTextExtractor,
   { extract: () => Effect.fail(new UnreadablePdf({ cause: new Error('Invalid PDF structure.') })) }
 )
+
+const pickedReport: PickedFile.Type = {
+  id: '0:Reports.pdf',
+  fileName: 'Reports.pdf',
+  bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
+}
+
+/** `characters` printed with a run of spaces and hyphens before, between and after each. */
+const printedWithSeparators = (characters: string): fc.Arbitrary<string> =>
+  fc
+    .array(fc.stringMatching(/^[ -]{0,2}$/), {
+      minLength: characters.length + 1,
+      maxLength: characters.length + 1,
+    })
+    .map((between) =>
+      between.map((separator, index) => `${separator}${characters[index] ?? ''}`).join('')
+    )
+
+/** An `HC #` printed in a province's shape, and the identifier it is written as. */
+interface PrintedHealthCard {
+  readonly province: HealthCardProvince.Type
+  readonly printed: string
+  readonly value: string
+  readonly versionCode: readonly string[]
+}
+
+const printedHealthCardArbitrary: fc.Arbitrary<PrintedHealthCard> = fc
+  .oneof(
+    fc.record({
+      province: fc.constant('ON' as const),
+      number: fc.stringMatching(/^\d{10}$/),
+      versionCode: fc.array(fc.stringMatching(/^[A-Z]{1,2}$/), { maxLength: 1 }),
+    }),
+    fc.record({
+      province: fc.constant('BC' as const),
+      number: fc.stringMatching(/^\d{10}$/),
+      versionCode: fc.constant([]),
+    }),
+    fc.record({
+      province: fc.constant('Other' as const),
+      number: fc.stringMatching(/^[0-9A-Z]{1,12}$/),
+      versionCode: fc.constant([]),
+    })
+  )
+  .chain(({ province, number, versionCode }) =>
+    printedWithSeparators([number, ...versionCode].join('')).map((printed) => ({
+      province,
+      printed,
+      value: number,
+      versionCode,
+    }))
+  )
 
 describe('lifeLabsPdfImporter decode', () => {
   it('property: a picked file is one file set of detached records, keyed under the picked file', async () => {
@@ -87,6 +143,76 @@ describe('lifeLabsPdfImporter decode', () => {
         }
       ),
       { numRuns: numRunsFor({ base: 10 }) }
+    )
+  })
+
+  it("property: writes the HC # in the chosen province's health card system", async () => {
+    await fc.assert(
+      fc.asyncProperty(reportArbitrary, printedHealthCardArbitrary, async (printed, card) => {
+        const report = {
+          ...printed,
+          patient: { ...printed.patient, patientId: '', healthCardNumber: card.printed },
+        }
+
+        const decoded = await Effect.runPromise(
+          lifeLabsPdfImporter
+            .decode([pickedReport], { ...SETTINGS, healthCardProvince: card.province })
+            .pipe(Effect.provide(extractorPrinting([report])))
+        )
+
+        expect(
+          decoded.fileSets
+            .flatMap((fileSet) => fileSet.sections)
+            .flatMap((section) => section.entries)
+            .flatMap(({ resource }) =>
+              resource.resourceType === 'Patient' ? resource.identifier : []
+            )
+        ).toEqual([
+          expect.objectContaining({
+            system: new URL(HealthCardIdentifier.HealthCardNumberSystem[card.province]),
+            value: card.value,
+            extension: card.versionCode.map((valueString) =>
+              expect.objectContaining({
+                url: HealthCardIdentifier.ONTARIO_HEALTH_CARD_VERSION_CODE_URL,
+                valueString,
+              })
+            ),
+          }),
+        ])
+      }),
+      { numRuns: numRunsFor({ base: 10 }) }
+    )
+  })
+
+  it("property: fails the import of an Ontario HC # read as British Columbia's", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        reportArbitrary,
+        fc.stringMatching(/^\d{10}$/),
+        fc.stringMatching(/^[A-Z]{1,2}$/),
+        async (printed, number, versionCode) => {
+          const report = {
+            ...printed,
+            patient: {
+              ...printed.patient,
+              patientId: '',
+              healthCardNumber: `${number} ${versionCode}`,
+            },
+          }
+
+          const decoded = await Effect.runPromise(
+            lifeLabsPdfImporter
+              .decode([pickedReport], { ...SETTINGS, healthCardProvince: 'BC' })
+              .pipe(Effect.provide(extractorPrinting([report])))
+          )
+
+          expect(decoded.fileSets).toEqual([])
+          expect(decoded.unreadableFiles.map(({ error }) => error.message)).toEqual([
+            expect.stringContaining('not a British Columbia PHN: expected exactly ten digits'),
+          ])
+        }
+      ),
+      { numRuns: numRunsFor({ base: 5 }) }
     )
   })
 

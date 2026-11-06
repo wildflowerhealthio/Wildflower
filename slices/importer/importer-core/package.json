@@ -31,6 +31,7 @@
     "@types/node": "catalog:",
     "@wildflowerhealthio/dicom": "workspace:*",
     "@wildflowerhealthio/dicom-importer-core": "workspace:*",
+    "@wildflowerhealthio/fhir-ca-infoway": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/har-importer-core": "workspace:*",
@@ -47,6 +48,7 @@
   },
   "peerDependencies": {
     "@wildflowerhealthio/dicom-importer-core": "workspace:*",
+    "@wildflowerhealthio/fhir-ca-infoway": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/har-importer-core": "workspace:*",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",

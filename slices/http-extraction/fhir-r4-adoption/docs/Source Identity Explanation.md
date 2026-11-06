@@ -118,8 +118,11 @@ portal's own namespace for it (`patient-id`, `prescription-id`,
 carebook's Patient system, `<REXALL_STU3_BASE_URL>/Patient`, the key
 carebook's searchset names it by. LifeLabs keys each record by a real
 identifier in a specific system, never a digest (`LifeLabsIdentifierSystem`):
-the Patient by its `Patient ID`, else its health card number less its
-version code, else its name and date of birth; the `DiagnosticReport` by its
+the Patient by its `Patient ID`, else its health card number in the
+province's health card system the import's settings name (`fhir-ca-infoway`'s
+`HealthCardIdentifier.FromPrinted`, spaces and hyphens stripped: Ontario's ten
+digits less its version code, British Columbia's ten-digit PHN, any other
+province's number in a Wildflower-minted system), else its name and date of birth; the `DiagnosticReport` by its
 `Lab No` (a page printing none is skipped, and of two reports printing one
 only the latest is kept); each result row and each provider in a
 Wildflower-minted system over the printed facts. Where a record has no

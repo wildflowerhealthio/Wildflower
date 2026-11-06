@@ -77,7 +77,10 @@ Write each resource detached (`fhir-r4-adoption`'s `DetachedResource`): no
 linked to your other resources by logical reference by their key
 (`DetachedResource.logicalReferenceWire`). Key a record by a real identifier
 the file prints, in that identifier's own system (LifeLabs keys a report by
-its `Lab No`, a Patient by its `Patient ID` or health card number); where the
+its `Lab No`, a Patient by its `Patient ID` or health card number, the latter
+decoded with `fhir-ca-infoway`'s `HealthCardIdentifier.FromPrinted` rather
+than in a system of your own, so a number that is not its province's shape
+fails the decode); where the
 file prints none for a record that must be referenced, use a Wildflower-minted
 system with a readable value made of what it does print (LifeLabs' result rows
 and providers), never a digest (DICOM still keys by one; #1508 moves it to
@@ -191,7 +194,7 @@ shell mounts the format's `SettingsPicker` above its sections in the preview, an
 a change re-runs `decode` on that format's files from their retained bytes.
 Anything the user should be able to change about _how_ a file decodes is a
 setting — HAR's response-kind toggles (`disabledKinds`), the LifeLabs report time
-zone, and DICOM's equipment time zone all live here. There is no post-decode
+zone and health card province, and DICOM's equipment time zone all live here. There is no post-decode
 review state besides the shell's per-resource selection.
 
 ## 3. Persistence — nothing to write
