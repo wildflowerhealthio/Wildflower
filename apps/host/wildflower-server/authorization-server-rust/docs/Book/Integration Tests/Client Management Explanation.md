@@ -88,6 +88,12 @@ Relies on [`ValidatedRefreshToken::revalidate`](<../Authority/Redemption Explana
 
 Relies on [`refresh_policy_from_body`](<../HTTP/Routes/Owner Resource Routes Explanation.md#item-refresh_policy_from_body>).
 
+### `a_refused_patch_body_says_why`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs a_refused_patch_body_says_why}}
+
+Relies on [`UpdateClientFields`](<../HTTP/Routes/Owner Resource Routes Explanation.md#item-UpdateClientFields>) and [`refresh_policy_from_body`](<../HTTP/Routes/Owner Resource Routes Explanation.md#item-refresh_policy_from_body>).
+
 ### `changing_a_refresh_policy_takes_client_update`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs changing_a_refresh_policy_takes_client_update}}

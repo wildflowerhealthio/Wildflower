@@ -17,8 +17,11 @@ use crate::live_bindings::LiveClientsUpdater;
 /// Body of `PATCH /authorization/clients/{clientId}` — one of the two things
 /// the Owner can change about a client, each its own shape: whether it is
 /// disabled, or its refresh policy.
+// Read through `UpdateClientFields`, so a field's own error (a refresh
+// limit out of range, a time that doesn't parse) is the one the caller hears;
+// `untagged` only shapes the schema.
 #[derive(Debug, Deserialize, ToSchema)]
-#[serde(untagged)]
+#[serde(untagged, try_from = "UpdateClientFields")]
 pub(crate) enum UpdateClientBody {
     /// Disable or re-enable the client.
     DisabledAt(DisabledAtChange),
@@ -27,28 +30,75 @@ pub(crate) enum UpdateClientBody {
 }
 
 /// Disable or re-enable a client.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct DisabledAtChange {
     /// Any time to disable the client now, or `null` to re-enable it. The
     /// server stamps its own now whatever time is sent, so a disable can't be
     /// scheduled or backdated. Required, `null` included.
-    // `Option::deserialize` stops serde reading a missing field as `null`, so an
-    // empty body can't re-enable a client by omission.
-    #[serde(deserialize_with = "Option::deserialize")]
     #[schema(value_type = Option<String>, format = DateTime, required = true)]
     disabled_at: Option<DateTime<Utc>>,
 }
 
 /// Replace a client's refresh policy.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct RefreshPolicyChange {
     /// The whole new policy. Each limit is at least a second and at most the
     /// 365-day ceiling; a body outside that is refused.
-    #[serde(deserialize_with = "refresh_policy_from_body")]
     #[schema(value_type = RefreshPolicyBody)]
     refresh_policy: RefreshPolicy,
+}
+
+/// The fields of an [`UpdateClientBody`] as sent, each read on its own so
+/// its error names it, before exactly one is required. An absent field is
+/// `None`; a sent `"disabledAt": null` is `Some(None)`, so leaving the field
+/// out can't re-enable a client.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UpdateClientFields {
+    /// The sent `disabledAt`, `null` included.
+    #[serde(default, deserialize_with = "present_disabled_at")]
+    disabled_at: Option<Option<DateTime<Utc>>>,
+    /// The sent `refreshPolicy`, its limits checked.
+    #[serde(default, deserialize_with = "present_refresh_policy")]
+    refresh_policy: Option<RefreshPolicy>,
+}
+
+impl TryFrom<UpdateClientFields> for UpdateClientBody {
+    type Error = &'static str;
+
+    fn try_from(sent_fields: UpdateClientFields) -> Result<Self, Self::Error> {
+        match sent_fields {
+            UpdateClientFields {
+                disabled_at: Some(disabled_at),
+                refresh_policy: None,
+            } => Ok(UpdateClientBody::DisabledAt(DisabledAtChange {
+                disabled_at,
+            })),
+            UpdateClientFields {
+                disabled_at: None,
+                refresh_policy: Some(refresh_policy),
+            } => Ok(UpdateClientBody::RefreshPolicy(RefreshPolicyChange {
+                refresh_policy,
+            })),
+            UpdateClientFields { .. } => Err("send exactly one of disabledAt and refreshPolicy"),
+        }
+    }
+}
+
+/// A sent `disabledAt`, `null` included, as present.
+fn present_disabled_at<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Option<DateTime<Utc>>>, D::Error> {
+    Option::<DateTime<Utc>>::deserialize(deserializer).map(Some)
+}
+
+/// A sent `refreshPolicy`, as present: see [`refresh_policy_from_body`].
+fn present_refresh_policy<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<RefreshPolicy>, D::Error> {
+    refresh_policy_from_body(deserializer).map(Some)
 }
 
 /// Read a [`RefreshPolicyBody`] as a [`RefreshPolicy`], refusing a limit a

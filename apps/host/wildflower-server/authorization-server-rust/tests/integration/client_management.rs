@@ -642,6 +642,48 @@ async fn a_refresh_policy_is_checked_and_an_essential_client_s_can_change() {
     );
 }
 
+/// A refresh limit out of range is a `422` that says which limit and the
+/// range a limit must fall in, and a body sending both changes says to send
+/// one.
+#[tokio::test]
+async fn a_refused_patch_body_says_why() {
+    let (g, owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+
+    for (body, why) in [
+        (
+            serde_json::json!({ "refreshPolicy": {
+                "idleTtlSeconds": 0, "maxTtlSeconds": null, "endsWithBrowserSession": false,
+            }}),
+            "a refresh limit of 0 seconds is not between a second and 365 days",
+        ),
+        (
+            serde_json::json!({ "refreshPolicy": {
+                "idleTtlSeconds": null, "maxTtlSeconds": 31_536_001, "endsWithBrowserSession": false,
+            }}),
+            "a refresh limit of 31536001 seconds is not between a second and 365 days",
+        ),
+        (
+            serde_json::json!({
+                "disabledAt": null,
+                "refreshPolicy": {
+                    "idleTtlSeconds": 60, "maxTtlSeconds": null, "endsWithBrowserSession": false,
+                },
+            }),
+            "send exactly one of disabledAt and refreshPolicy",
+        ),
+        (
+            serde_json::json!({}),
+            "send exactly one of disabledAt and refreshPolicy",
+        ),
+    ] {
+        let res = patch_client(&g, &owner_token, "test-app", &body).await;
+        assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        let message = body_string(res.into_body()).await;
+        assert!(message.contains(why), "{body}: {message}");
+    }
+}
+
 /// Changing a refresh policy takes `wildflower/Client.u` like a disable, and
 /// the gate runs before the handler.
 #[tokio::test]
