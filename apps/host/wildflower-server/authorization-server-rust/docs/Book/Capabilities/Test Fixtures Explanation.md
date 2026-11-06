@@ -38,7 +38,7 @@ The tests name the two essential apps by the crate's own ids.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs tests::BROWSER_SESSION_CLIENT}}
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs tests::disabler_with}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs tests::updater_with}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs tests::at}}
 

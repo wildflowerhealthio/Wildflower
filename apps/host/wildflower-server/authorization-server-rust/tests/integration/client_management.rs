@@ -1,9 +1,11 @@
 //! Owner client management (`/authorization/clients`), the other half of
 //! trust on first use: the Owner can see every client they trust (seeded, or
-//! created by a trust-on-first-use approval) and take that trust back by
-//! PATCHing its `disabledAt`. A disabled client is refused at both OAuth front
-//! doors at once; re-enabling (`null`) restores it with its registration
-//! intact. An essential client can't be disabled.
+//! created by a trust-on-first-use approval), take that trust back by
+//! PATCHing its `disabledAt`, and change how long its sign-ins last by
+//! PATCHing its `refreshPolicy`. A disabled client is refused at both OAuth
+//! front doors at once; re-enabling (`null`) restores it with its registration
+//! intact. An essential client can't be disabled. A refresh policy applies to
+//! the client's families on their next refresh.
 
 use chrono::DateTime;
 
@@ -121,7 +123,21 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
             "registeredAt": tofu["registeredAt"],
             "disabledAt": null,
             "essential": false,
+            "refreshPolicy": {
+                "idleTtlSeconds": 86_400,
+                "maxTtlSeconds": 604_800,
+                "endsWithBrowserSession": false,
+            },
         }),
+    );
+    assert_eq!(
+        host["refreshPolicy"],
+        serde_json::json!({
+            "idleTtlSeconds": null,
+            "maxTtlSeconds": null,
+            "endsWithBrowserSession": false,
+        }),
+        "seeded with the host app's policy"
     );
     assert!(tofu["registeredAt"].is_string());
 
@@ -405,4 +421,207 @@ async fn under_scoped_callers_are_rejected_before_the_handler() {
         );
     }
     assert_eq!(stored_disabled_at(&db, "test-app"), None);
+}
+
+/// The client `client_id`'s stored refresh policy.
+fn stored_refresh_policy(db: &TestDb, client_id: &str) -> RefreshPolicy {
+    store_handle(db)
+        .read(|tx| tx.client_by_id(client_id))
+        .unwrap()
+        .expect("row")
+        .refresh_policy
+}
+
+/// Plant a family for the confidential client issued `issued_ago` before now
+/// whose one live token, `plaintext`, was issued `rotated_ago` before now,
+/// under no browser session and the ceiling as its deadline.
+fn plant_aged_family(db: &TestDb, plaintext: &str, issued_ago: Duration, rotated_ago: Duration) {
+    let now = Utc::now();
+    let family_id = format!("family-{plaintext}");
+    store_handle(db)
+        .write(|tx| {
+            tx.insert_refresh_token_family_row(&RefreshTokenFamily {
+                family_id: family_id.clone(),
+                client_id: CONFIDENTIAL_CLIENT_ID.to_owned(),
+                scopes: vec!["read".to_owned(), "offline_access".to_owned()],
+                patient: None,
+                issued_at: now - issued_ago,
+                expires_at: now - issued_ago + Duration::days(365),
+                authorization_code_hash: None,
+                grant_id: None,
+                sid: None,
+            })?;
+            tx.insert_refresh_token(&RefreshToken {
+                token_hash: token_storage_hash(plaintext),
+                family_id: family_id.clone(),
+                issued_at: now - rotated_ago,
+                consumed_at: None,
+            })
+        })
+        .expect("plant the aged family");
+}
+
+/// The confidential client's refresh of `refresh_token`, authenticated with
+/// `client_secret_basic`.
+async fn refresh_confidential(
+    g: &AuthorizationServer,
+    refresh_token: &str,
+) -> axum::response::Response {
+    post_form_with_authorization(
+        &g.router,
+        "/oauth/token",
+        format!("grant_type=refresh_token&refresh_token={refresh_token}"),
+        &basic_authorization(CONFIDENTIAL_CLIENT_ID, CONFIDENTIAL_CLIENT_SECRET),
+    )
+    .await
+}
+
+/// A changed refresh policy is answered back as stored and applies to the
+/// client's families on their next refresh: a family past the new maximum
+/// lifetime is refused, and one within it refreshes, its deadline moved to
+/// the new idle limit from that refresh.
+#[tokio::test]
+async fn a_changed_refresh_policy_applies_on_the_next_refresh() {
+    let (g, db) = spin_up_with_confidential_client();
+    let owner = mint_scoped_token(&db, &["wildflower/Client.u"]);
+    plant_aged_family(&db, "aged-token", Duration::days(2), Duration::hours(1));
+
+    let res = refresh_confidential(&g, "aged-token").await;
+    assert_eq!(res.status(), StatusCode::OK, "the ceiling alone admits it");
+    let aged_successor = body_json(res.into_body()).await["refresh_token"]
+        .as_str()
+        .expect("a successor")
+        .to_owned();
+
+    let refresh_policy = serde_json::json!({
+        "idleTtlSeconds": 3_600,
+        "maxTtlSeconds": 86_400,
+        "endsWithBrowserSession": false,
+    });
+    let res = patch_client(
+        &g,
+        &owner,
+        CONFIDENTIAL_CLIENT_ID,
+        &serde_json::json!({ "refreshPolicy": refresh_policy }),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(res.into_body()).await["refreshPolicy"],
+        refresh_policy
+    );
+    assert_eq!(
+        stored_refresh_policy(&db, CONFIDENTIAL_CLIENT_ID),
+        RefreshPolicy {
+            idle_ttl: Some(Duration::hours(1)),
+            max_ttl: Some(Duration::days(1)),
+            ends_with_browser_session: false,
+        }
+    );
+
+    let res = refresh_confidential(&g, &aged_successor).await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(res.into_body()).await;
+    assert_eq!(body["error"], "invalid_grant");
+    assert_eq!(body["error_description"], "Refresh token has expired");
+
+    let before = Utc::now();
+    let res = refresh_confidential(&g, "conf-token").await;
+    let after = Utc::now();
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "a day-old family is within it"
+    );
+    let successor = body_json(res.into_body()).await["refresh_token"]
+        .as_str()
+        .expect("a successor")
+        .to_owned();
+    let (_, family) = store_handle(&db)
+        .read(|tx| tx.refresh_token_with_family_by_hash(&token_storage_hash(&successor)))
+        .unwrap()
+        .expect("the successor resolves");
+    assert!(
+        (before + Duration::hours(1)..=after + Duration::hours(1)).contains(&family.expires_at),
+        "the deadline is the idle limit from the refresh"
+    );
+}
+
+/// A refresh-policy body with a limit under a second or past the 365-day
+/// ceiling, a missing field, or both changes at once is refused and leaves
+/// the client as it was. An essential client's policy can be changed.
+#[tokio::test]
+async fn a_refresh_policy_is_checked_and_an_essential_client_s_can_change() {
+    let (g, owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    let stored = stored_refresh_policy(&db, "test-app");
+
+    for body in [
+        serde_json::json!({ "refreshPolicy": {
+            "idleTtlSeconds": 0, "maxTtlSeconds": null, "endsWithBrowserSession": false,
+        }}),
+        serde_json::json!({ "refreshPolicy": {
+            "idleTtlSeconds": null, "maxTtlSeconds": 31_536_001, "endsWithBrowserSession": false,
+        }}),
+        serde_json::json!({ "refreshPolicy": {
+            "maxTtlSeconds": null, "endsWithBrowserSession": false,
+        }}),
+        serde_json::json!({
+            "disabledAt": null,
+            "refreshPolicy": {
+                "idleTtlSeconds": 60, "maxTtlSeconds": null, "endsWithBrowserSession": false,
+            },
+        }),
+    ] {
+        let res = patch_client(&g, &owner_token, "test-app", &body).await;
+        assert!(res.status().is_client_error(), "{body}");
+        assert_eq!(stored_refresh_policy(&db, "test-app"), stored, "{body}");
+    }
+
+    let res = patch_client(
+        &g,
+        &owner_token,
+        WILDFLOWER_HOST_APP_CLIENT_ID,
+        &serde_json::json!({ "refreshPolicy": {
+            "idleTtlSeconds": 604_800, "maxTtlSeconds": 31_536_000, "endsWithBrowserSession": false,
+        }}),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        stored_refresh_policy(&db, WILDFLOWER_HOST_APP_CLIENT_ID),
+        RefreshPolicy {
+            idle_ttl: Some(Duration::days(7)),
+            max_ttl: Some(Duration::days(365)),
+            ends_with_browser_session: false,
+        }
+    );
+}
+
+/// Changing a refresh policy takes `wildflower/Client.u` like a disable, and
+/// the gate runs before the handler.
+#[tokio::test]
+async fn changing_a_refresh_policy_takes_client_update() {
+    let (g, _owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    let stored = stored_refresh_policy(&db, "test-app");
+    let clients_reader = mint_scoped_token(&db, &["wildflower/Client.r"]);
+
+    for client_id in ["test-app", "ghost"] {
+        let res = patch_client(
+            &g,
+            &clients_reader,
+            client_id,
+            &serde_json::json!({ "refreshPolicy": {
+                "idleTtlSeconds": 60, "maxTtlSeconds": null, "endsWithBrowserSession": true,
+            }}),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN, "{client_id}");
+        assert_eq!(
+            body_json(res.into_body()).await["missingScopes"],
+            serde_json::json!(["wildflower/Client.u"]),
+        );
+    }
+    assert_eq!(stored_refresh_policy(&db, "test-app"), stored);
 }

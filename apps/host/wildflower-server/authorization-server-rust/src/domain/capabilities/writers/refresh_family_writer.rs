@@ -10,9 +10,9 @@ use uuid::Uuid;
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
 use crate::domain::authority::{GrantRedemption, ValidatedRefreshToken};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client::RefreshPolicy;
 use crate::domain::refresh_token::{
     consume_refresh_token, RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily,
-    REFRESH_TOKEN_FAMILY_TTL,
 };
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
 use crate::domain::GrantTx;
@@ -39,7 +39,9 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
     /// first. The family records the redemption's scopes and patient
     /// verbatim, the code it consumed (so a replay of that code can revoke
     /// the lineage), the standing grant behind it, and the browser session it
-    /// was made under (so revoking that session ends it).
+    /// was made under (so revoking that session ends it). Its deadline is the
+    /// earliest of the client's `refresh_policy` limits from `now`, and the
+    /// ceiling.
     ///
     /// # Errors
     ///
@@ -47,6 +49,7 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
     pub(crate) fn start_family(
         &mut self,
         redemption: GrantRedemption<'_>,
+        refresh_policy: &RefreshPolicy,
         now: DateTime<Utc>,
     ) -> Result<String, AuthorizationServerError> {
         let plaintext = generate_refresh_token();
@@ -56,7 +59,7 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
             scopes: redemption.granted_scopes().to_vec(),
             patient: redemption.patient().map(str::to_owned),
             issued_at: now,
-            expires_at: now + REFRESH_TOKEN_FAMILY_TTL,
+            expires_at: refresh_policy.family_deadline(now, now),
             authorization_code_hash: redemption.authorization_code().map(token_storage_hash),
             grant_id: redemption.grant_id().map(str::to_owned),
             sid: redemption.sid().map(str::to_owned),
@@ -73,7 +76,9 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
     }
 
     /// Consume the presented token and, only if that consume won, insert its
-    /// successor and return the successor's plaintext. A family made under a
+    /// successor, move the family's deadline to where the client's refresh
+    /// policy puts it from `now` (an idle limit slides with each rotation),
+    /// and return the successor's plaintext. A family made under a
     /// browser session moves that session's `last_seen_at` to `now`: an app
     /// refreshing is the session in use. A family a device grant earned
     /// stamps that grant's `last_used_at` with `now`: a device refreshing is
@@ -104,6 +109,10 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
                     issued_at: now,
                     consumed_at: None,
                 })?;
+                self.tx.set_refresh_token_family_expires_at(
+                    family_id,
+                    validated_refresh_token.family_deadline_once_rotated_at(now),
+                )?;
                 if let Some(sid) = validated_refresh_token.sid() {
                     self.tx.touch_browser_session_last_seen(sid, now, now)?;
                 }
@@ -135,9 +144,13 @@ mod tests {
     use super::*;
     use crate::domain::grant_store::*;
 
+    use chrono::Duration;
+
+    use crate::domain::client::Client;
+    use crate::domain::refresh_token::REFRESH_TOKEN_FAMILY_CEILING;
     use crate::domain::test_fake::{
         authenticated_public_client, client, code_grant, redeemed_code,
-        seed_fixture_browser_session, FakeGrantStore, NothingRevoked,
+        seed_fixture_browser_session, FakeGrantStore, NothingRevoked, CEILING_ONLY_REFRESH_POLICY,
     };
 
     /// Only a grant carrying `offline_access` earns a refresh token.
@@ -151,7 +164,8 @@ mod tests {
     }
 
     /// The family records the redemption's scopes, patient, code hash, and
-    /// grant, and the returned plaintext resolves to its first token.
+    /// grant, its deadline is the client's earliest limit from now, and the
+    /// returned plaintext resolves to its first token.
     #[test]
     fn start_family_records_the_redemption() {
         let store = FakeGrantStore::default();
@@ -161,8 +175,17 @@ mod tests {
             .unwrap();
         let redeemed_code = redeemed_code(&store, "client", &["openid", "offline_access"]);
         let now = Utc::now();
+        let refresh_policy = RefreshPolicy {
+            idle_ttl: Some(Duration::hours(2)),
+            max_ttl: Some(Duration::days(7)),
+            ends_with_browser_session: true,
+        };
         let plaintext = RefreshFamilyWriter::within(&mut store.tx())
-            .start_family(GrantRedemption::AuthorizationCode(&redeemed_code), now)
+            .start_family(
+                GrantRedemption::AuthorizationCode(&redeemed_code),
+                &refresh_policy,
+                now,
+            )
             .unwrap();
         let (token, family) = store
             .tx()
@@ -178,21 +201,32 @@ mod tests {
             Some(token_storage_hash(redeemed_code.authorization_code()).as_str())
         );
         assert_eq!(family.grant_id.as_deref(), Some("grant-1"));
-        assert_eq!(family.expires_at, now + REFRESH_TOKEN_FAMILY_TTL);
+        assert_eq!(family.expires_at, now + Duration::hours(2));
     }
 
     /// Validate the refresh token `plaintext` for public client "client",
     /// with no client epoch bumped.
     fn validated(store: &FakeGrantStore, plaintext: &str) -> ValidatedRefreshToken {
-        let client = authenticated_public_client(store, client("client", &["openid"]));
-        ValidatedRefreshToken::validate(
-            &mut store.tx(),
-            &NothingRevoked,
-            &client,
-            plaintext,
-            Utc::now(),
-        )
-        .unwrap()
+        validated_under(store, plaintext, CEILING_ONLY_REFRESH_POLICY, Utc::now())
+    }
+
+    /// Validate the refresh token `plaintext` at `now` for public client
+    /// "client" holding `refresh_policy`, with no client epoch bumped.
+    fn validated_under(
+        store: &FakeGrantStore,
+        plaintext: &str,
+        refresh_policy: RefreshPolicy,
+        now: DateTime<Utc>,
+    ) -> ValidatedRefreshToken {
+        let client = authenticated_public_client(
+            store,
+            Client {
+                refresh_policy,
+                ..client("client", &["openid"])
+            },
+        );
+        ValidatedRefreshToken::validate(&mut store.tx(), &NothingRevoked, &client, plaintext, now)
+            .unwrap()
     }
 
     /// Rotating a family made under a browser session moves the session's
@@ -221,7 +255,7 @@ mod tests {
                     scopes: vec!["offline_access".to_owned()],
                     patient: None,
                     issued_at: signed_in_at,
-                    expires_at: signed_in_at + REFRESH_TOKEN_FAMILY_TTL,
+                    expires_at: signed_in_at + REFRESH_TOKEN_FAMILY_CEILING,
                     authorization_code_hash: None,
                     grant_id: None,
                     sid: sid.cloned(),
@@ -304,7 +338,7 @@ mod tests {
                     scopes: vec!["offline_access".to_owned()],
                     patient: None,
                     issued_at,
-                    expires_at: issued_at + REFRESH_TOKEN_FAMILY_TTL,
+                    expires_at: issued_at + REFRESH_TOKEN_FAMILY_CEILING,
                     authorization_code_hash,
                     grant_id: Some(grant_id.to_owned()),
                     sid: None,
@@ -349,7 +383,11 @@ mod tests {
         let now = Utc::now();
         let redeemed_code = redeemed_code(&store, "client", &["offline_access"]);
         let first = writer
-            .start_family(GrantRedemption::AuthorizationCode(&redeemed_code), now)
+            .start_family(
+                GrantRedemption::AuthorizationCode(&redeemed_code),
+                &CEILING_ONLY_REFRESH_POLICY,
+                now,
+            )
             .unwrap();
         let presented = validated(&store, &first);
 
@@ -375,5 +413,75 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(family.expires_at, now, "the whole family is expired");
+    }
+
+    /// Each rotation moves the family's deadline to where the client's policy
+    /// puts it from the rotation: an idle limit slides forward with use, but
+    /// never past the maximum lifetime measured from the family's issue.
+    #[test]
+    fn rotate_moves_the_deadline_by_the_client_s_policy() {
+        let store = FakeGrantStore::default();
+        let issued_at = Utc::now() - Duration::days(6);
+        let refresh_policy = RefreshPolicy {
+            idle_ttl: Some(Duration::days(3)),
+            max_ttl: Some(Duration::days(7)),
+            ends_with_browser_session: false,
+        };
+        store
+            .tx()
+            .insert_refresh_token_family_row(&RefreshTokenFamily {
+                family_id: "family".to_owned(),
+                client_id: "client".to_owned(),
+                scopes: vec!["offline_access".to_owned()],
+                patient: None,
+                issued_at,
+                expires_at: issued_at + Duration::days(4),
+                authorization_code_hash: None,
+                grant_id: None,
+                sid: None,
+            })
+            .unwrap();
+        store
+            .tx()
+            .insert_refresh_token(&RefreshToken {
+                token_hash: token_storage_hash("first"),
+                family_id: "family".to_owned(),
+                issued_at: issued_at + Duration::days(1),
+                consumed_at: None,
+            })
+            .unwrap();
+        let expires_at = || {
+            store
+                .tx()
+                .refresh_token_with_family_by_hash(&token_storage_hash("first"))
+                .unwrap()
+                .unwrap()
+                .1
+                .expires_at
+        };
+
+        let rotated_at = issued_at + Duration::days(2);
+        let successor = RefreshFamilyWriter::within(&mut store.tx())
+            .rotate(
+                &validated_under(&store, "first", refresh_policy, rotated_at),
+                rotated_at,
+            )
+            .unwrap()
+            .expect("rotates");
+        assert_eq!(expires_at(), rotated_at + Duration::days(3), "idle slides");
+
+        let rotated_again_at = issued_at + Duration::days(4) + Duration::hours(12);
+        RefreshFamilyWriter::within(&mut store.tx())
+            .rotate(
+                &validated_under(&store, &successor, refresh_policy, rotated_again_at),
+                rotated_again_at,
+            )
+            .unwrap()
+            .expect("rotates");
+        assert_eq!(
+            expires_at(),
+            issued_at + Duration::days(7),
+            "the maximum lifetime caps the slide"
+        );
     }
 }

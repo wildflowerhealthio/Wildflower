@@ -4,7 +4,7 @@
 
 The other half of trusting a [client](<../Domain/Client Explanation.md>) on first use: the Owner can see every client the server trusts and take that trust back. `GET /authorization/clients` lists them; `PATCH /authorization/clients/{id}` with `disabledAt` disables or re-enables one. **A disabled client is refused at both OAuth front doors at once, and re-enabling it restores it with its registration intact.** The [essential clients](<../Domain/Client Explanation.md#item-is_essential_client>) can't be disabled: that would leave the Owner no way in.
 
-The write goes through [`ClientsDisabler::set_disabled_at`](<../Capabilities/Access/Clients Explanation.md#item-ClientsDisabler--set_disabled_at>).
+The write goes through [`ClientsUpdater::set_disabled_at`](<../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_disabled_at>).
 
 This file's own helpers are on the [Test Fixtures](<Test Fixtures Explanation.md#integrationclient_management>) page, with the shared ones.
 
@@ -32,25 +32,25 @@ Relies on [`AuthenticatedClient::authenticate`](<../Authority/Authenticated Clie
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs any_sent_disabled_at_disables_now_with_the_servers_time}}
 
-Relies on [`ClientsDisabler::set_disabled_at`](<../Capabilities/Access/Clients Explanation.md#item-ClientsDisabler--set_disabled_at>). Fixtures first used here: [`disabled_at_of`](<Test Fixtures Explanation.md#item-disabled_at_of>) and [`stored_disabled_at`](<Test Fixtures Explanation.md#item-stored_disabled_at>).
+Relies on [`ClientsUpdater::set_disabled_at`](<../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_disabled_at>). Fixtures first used here: [`disabled_at_of`](<Test Fixtures Explanation.md#item-disabled_at_of>) and [`stored_disabled_at`](<Test Fixtures Explanation.md#item-stored_disabled_at>).
 
 ### `disable_and_enable_are_idempotent`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs disable_and_enable_are_idempotent}}
 
-Relies on [`ClientsDisabler::set_disabled_at`](<../Capabilities/Access/Clients Explanation.md#item-ClientsDisabler--set_disabled_at>).
+Relies on [`ClientsUpdater::set_disabled_at`](<../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_disabled_at>).
 
 ### `an_unknown_client_is_a_404_either_way`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs an_unknown_client_is_a_404_either_way}}
 
-Relies on [`ClientsDisabler::set_disabled_at`](<../Capabilities/Access/Clients Explanation.md#item-ClientsDisabler--set_disabled_at>). Fixtures first used here: [`patch_client`](<Test Fixtures Explanation.md#item-patch_client>).
+Relies on [`ClientsUpdater::set_disabled_at`](<../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_disabled_at>). Fixtures first used here: [`patch_client`](<Test Fixtures Explanation.md#item-patch_client>).
 
 ### `a_body_without_disabled_at_is_rejected_and_writes_nothing`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs a_body_without_disabled_at_is_rejected_and_writes_nothing}}
 
-Relies on [`ClientsDisabler::set_disabled_at`](<../Capabilities/Access/Clients Explanation.md#item-ClientsDisabler--set_disabled_at>).
+Relies on [`ClientsUpdater::set_disabled_at`](<../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_disabled_at>).
 
 ### `an_essential_client_cannot_be_disabled`
 

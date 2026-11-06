@@ -88,7 +88,7 @@ The scope half of the change.
 
 ## `domain::essential_client`
 
-The host app's client is how the Owner reaches the server at all, and the browser-session client is how a browser on the Owner's device signs in as the Owner. {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs ClientsDisabler}} refuses to disable either, and the Owner's list of clients flags both.
+The host app's client is how the Owner reaches the server at all, and the browser-session client is how a browser on the Owner's device signs in as the Owner. {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs ClientsUpdater}} refuses to disable either, and the Owner's list of clients flags both.
 
 ### `is_essential_client`
 

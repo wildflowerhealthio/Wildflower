@@ -1,13 +1,18 @@
 //! `clients` — the registered OAuth clients, loaded and stored as
 //! [`Client`]: the [`ClientsTx`] primitives on [`SqliteGrantTx`].
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
+use diesel::expression::AsExpression;
 use diesel::prelude::*;
+use diesel::sql_types::{BigInt, Nullable};
+use diesel::sqlite::Sqlite;
 
 use crate::db::grant_store::SqliteGrantTx;
 use crate::db::shared::{json_text_column, text_enum_column};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
+use crate::domain::client::{
+    AllowedGrantType, Client, ClientKind, RefreshPolicy, RegistrationSource,
+};
 use crate::domain::grant_store::ClientsTx;
 
 diesel::table! {
@@ -22,6 +27,9 @@ diesel::table! {
         registered_at -> TimestamptzSqlite,
         disabled_at -> Nullable<TimestamptzSqlite>,
         registration_source -> Text,
+        refresh_idle_ttl_seconds -> Nullable<BigInt>,
+        refresh_max_ttl_seconds -> Nullable<BigInt>,
+        refresh_ends_with_browser_session -> Bool,
     }
 }
 
@@ -44,6 +52,47 @@ text_enum_column!(ClientKind);
 
 // Who defines the registration, stored as its strum wire string.
 text_enum_column!(RegistrationSource);
+
+/// An optional length of time as a nullable INTEGER column of whole seconds:
+/// a [`RefreshPolicy`](crate::domain::client::RefreshPolicy) limit, `NULL`
+/// for none. A stored count too large for a [`Duration`] is a read error, not
+/// a panic.
+#[derive(Debug)]
+pub struct OptionalSeconds(Option<Duration>);
+
+impl From<Option<Duration>> for OptionalSeconds {
+    fn from(limit: Option<Duration>) -> Self {
+        Self(limit)
+    }
+}
+
+impl From<OptionalSeconds> for Option<Duration> {
+    fn from(column: OptionalSeconds) -> Self {
+        column.0
+    }
+}
+
+impl AsExpression<Nullable<BigInt>> for OptionalSeconds {
+    type Expression = <Option<i64> as AsExpression<Nullable<BigInt>>>::Expression;
+
+    fn as_expression(self) -> Self::Expression {
+        AsExpression::<Nullable<BigInt>>::as_expression(self.0.map(|limit| limit.num_seconds()))
+    }
+}
+
+impl Queryable<Nullable<BigInt>, Sqlite> for OptionalSeconds {
+    type Row = Option<i64>;
+
+    fn build(seconds: Option<i64>) -> diesel::deserialize::Result<Self> {
+        seconds
+            .map(|seconds| {
+                Duration::try_seconds(seconds)
+                    .ok_or_else(|| format!("{seconds} seconds is out of range").into())
+            })
+            .transpose()
+            .map(Self)
+    }
+}
 
 impl ClientsTx for SqliteGrantTx<'_> {
     /// Look up a registered client by its `client_id`, or `None` when absent.
@@ -103,13 +152,37 @@ impl ClientsTx for SqliteGrantTx<'_> {
         Ok(updated > 0)
     }
 
-    /// Insert a client, or update its policy fields if one with the same
-    /// `client_id` already exists. Used by the seeding every boot runs, so a
-    /// seeded client's definition always matches the code, and by the grant
-    /// recorder's trust-on-first-use registration. Uses `ON CONFLICT … DO
-    /// UPDATE`, so it never deletes the row and preserves `registered_at` and
-    /// `disabled_at` — the original registration time and any admin disable
-    /// survive rather than the client being resurrected.
+    /// Write a client's three refresh columns, returning whether a row matched.
+    /// Only those columns are written.
+    fn set_client_refresh_policy(
+        &mut self,
+        client_id: &str,
+        refresh_policy: &RefreshPolicy,
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let updated = diesel::update(clients::table.find(client_id))
+            .set((
+                clients::refresh_idle_ttl_seconds
+                    .eq(OptionalSeconds::from(refresh_policy.idle_ttl)),
+                clients::refresh_max_ttl_seconds.eq(OptionalSeconds::from(refresh_policy.max_ttl)),
+                clients::refresh_ends_with_browser_session
+                    .eq(refresh_policy.ends_with_browser_session),
+            ))
+            .execute(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("set_client_refresh_policy failed", e)
+            })?;
+        Ok(updated > 0)
+    }
+
+    /// Insert a client, or update its registration fields if one with the
+    /// same `client_id` already exists. Used by the seeding every boot runs,
+    /// so a seeded client's definition always matches the code, and by the
+    /// grant recorder's trust-on-first-use registration. Uses `ON CONFLICT …
+    /// DO UPDATE`, so it never deletes the row and preserves `registered_at`,
+    /// `disabled_at` and the refresh policy — the original registration time,
+    /// any admin disable and the Owner's refresh limits survive rather than
+    /// being reset.
     fn upsert_client(&mut self, client: &Client) -> Result<(), AuthorizationServerError> {
         let conn = &mut *self.conn;
         use diesel::upsert::excluded;
@@ -157,6 +230,7 @@ mod tests {
                 Just(RegistrationSource::ServerDefined),
                 Just(RegistrationSource::TrustedOnFirstUse)
             ],
+            arb_refresh_policy(),
         )
             .prop_map(
                 |(
@@ -169,6 +243,7 @@ mod tests {
                     registered_at,
                     disabled_at,
                     registration_source,
+                    refresh_policy,
                 )| Client {
                     client_id,
                     name,
@@ -180,8 +255,27 @@ mod tests {
                     registered_at,
                     disabled_at,
                     registration_source,
+                    refresh_policy,
                 },
             )
+    }
+
+    /// A refresh policy with each limit present or not, in whole seconds from
+    /// one second up to the ceiling.
+    fn arb_refresh_policy() -> impl Strategy<Value = RefreshPolicy> {
+        let arb_limit = || {
+            prop::option::of(
+                (1..=crate::domain::refresh_token::REFRESH_TOKEN_FAMILY_CEILING.num_seconds())
+                    .prop_map(Duration::seconds),
+            )
+        };
+        (arb_limit(), arb_limit(), any::<bool>()).prop_map(
+            |(idle_ttl, max_ttl, ends_with_browser_session)| RefreshPolicy {
+                idle_ttl,
+                max_ttl,
+                ends_with_browser_session,
+            },
+        )
     }
 
     proptest! {
@@ -279,10 +373,11 @@ mod tests {
         }
     }
 
-    /// Upserting an existing client updates its name and policy in place but
-    /// keeps its first `registered_at` and the Owner's disable.
+    /// Upserting an existing client updates its name and registration in
+    /// place but keeps its first `registered_at`, the Owner's disable and its
+    /// refresh policy.
     #[test]
-    fn upsert_updates_policy_but_preserves_registration_and_disable() {
+    fn upsert_updates_registration_but_preserves_registered_at_disable_and_refresh_policy() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let registered_at = chrono::DateTime::from_timestamp(1_000, 0).unwrap();
         let disabled_at = chrono::DateTime::from_timestamp(1_500, 0).unwrap();
@@ -297,7 +392,13 @@ mod tests {
             registered_at,
             disabled_at: Some(disabled_at),
             registration_source: RegistrationSource::TrustedOnFirstUse,
+            refresh_policy: RefreshPolicy {
+                idle_ttl: Some(Duration::minutes(30)),
+                max_ttl: None,
+                ends_with_browser_session: true,
+            },
         };
+        let first_refresh_policy = client.refresh_policy;
         store.write(|tx| tx.upsert_client(&client)).expect("insert");
 
         // Re-seed with drifted policy, a newer registered_at, and disabled_at
@@ -308,6 +409,11 @@ mod tests {
         client.registered_at = chrono::DateTime::from_timestamp(2_000, 0).unwrap();
         client.disabled_at = None;
         client.registration_source = RegistrationSource::ServerDefined;
+        client.refresh_policy = RefreshPolicy {
+            idle_ttl: None,
+            max_ttl: Some(Duration::days(1)),
+            ends_with_browser_session: false,
+        };
         store.write(|tx| tx.upsert_client(&client)).expect("update");
 
         let fetched = store
@@ -322,6 +428,48 @@ mod tests {
             fetched.registration_source,
             RegistrationSource::ServerDefined,
             "seeding marks the rows it owns server-defined"
+        );
+        assert_eq!(
+            fetched.refresh_policy, first_refresh_policy,
+            "only the Owner changes a refresh policy"
+        );
+    }
+
+    /// Setting a refresh policy writes exactly the three refresh columns,
+    /// clearing a limit to `NULL`, and reports a miss for an unknown id.
+    #[test]
+    fn set_client_refresh_policy_writes_only_the_policy() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        let registered = Client {
+            refresh_policy: RefreshPolicy {
+                idle_ttl: Some(Duration::hours(2)),
+                max_ttl: Some(Duration::days(7)),
+                ends_with_browser_session: false,
+            },
+            registered_at: chrono::DateTime::from_timestamp(1_000, 0).unwrap(),
+            ..crate::domain::test_fake::client("app", &["openid"])
+        };
+        store
+            .write(|tx| tx.upsert_client(&registered))
+            .expect("insert");
+        let changed_policy = RefreshPolicy {
+            idle_ttl: None,
+            max_ttl: Some(Duration::days(30)),
+            ends_with_browser_session: true,
+        };
+
+        assert!(store
+            .write(|tx| tx.set_client_refresh_policy("app", &changed_policy))
+            .expect("update"));
+        assert!(!store
+            .write(|tx| tx.set_client_refresh_policy("ghost", &changed_policy))
+            .expect("update"));
+        assert_eq!(
+            store.read(|tx| tx.client_by_id("app")).expect("read"),
+            Some(Client {
+                refresh_policy: changed_policy,
+                ..registered
+            })
         );
     }
 
