@@ -1,11 +1,6 @@
 import type { HealthCardProvince } from '@wildflowerhealthio/fhir-ca-infoway'
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import {
-  DiagnosticReport,
-  Observation,
-  Patient,
-  Practitioner,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import { DiagnosticReport, Observation, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, DateTime, Effect, Option, Order, type ParseResult } from 'effect'
 
@@ -14,7 +9,6 @@ import { parsePrintedDateTime } from './dates.ts'
 import { diagnosticReportWire, reportKeyOf } from './wire/diagnostic-report.ts'
 import { observationKeyOf, observationWire } from './wire/observation.ts'
 import { patientKeyOf, patientWire } from './wire/patient.ts'
-import { practitionerKeyOf, practitionerWire } from './wire/practitioner.ts'
 import type { Wire } from './wire/shared.ts'
 
 /** The per-import inputs the synthesis needs beyond the reports themselves. */
@@ -32,11 +26,11 @@ interface SynthesisOptions {
  *
  * @remarks
  * Each resource is an entry whose `fullUrl` is its type and its key's value,
- * `<Type>/<value>`, which a settings re-decode keeps. A `Patient` or
- * `Practitioner` several reports share appears once, in the group of the
- * first report that names it (each is deduplicated by key across the whole
- * document), so flattening the groups in order writes every reference target
- * before its referrer.
+ * `<Type>/<value>`, which a settings re-decode keeps. A `Patient` several
+ * reports share appears once, in the group of the first report that names it
+ * (deduplicated by key across the whole document). A provider is no entry:
+ * each report names its providers by printed name, and the import stage
+ * implies their Practitioners.
  */
 interface ReportResources {
   readonly report: Report.Type
@@ -44,7 +38,6 @@ interface ReportResources {
 }
 
 const decodePatient = DetachedResource.decodeUnknown(Patient.Schema)
-const decodePractitioner = DetachedResource.decodeUnknown(Practitioner.Schema)
 const decodeDiagnosticReport = DetachedResource.decodeUnknown(DiagnosticReport.Schema)
 const decodeObservation = DetachedResource.decodeUnknown(Observation.Schema)
 
@@ -90,13 +83,11 @@ const latestReportByPatientKey = (
  * @param options - The time zone the reports' printed clocks are in, and the
  *   province that issued the health card they print
  * @returns One {@link ReportResources} per report, in report order: the
- *   `Practitioner`s and `Patient` this report is first to name (the
- *   `Patient` written from the latest report naming it), then its
- *   `Observation`s and the `DiagnosticReport` that lists them — so the
- *   flattened groups are an order a writer can persist in, a reference never
- *   preceding its target; fails with a `ParseError` when a report's `HC #`
- *   is not the chosen province's shape, or a synthesized resource does not
- *   satisfy its `fhir-r4` schema
+ *   `Patient` when this report is first to name it (the `Patient` written
+ *   from the latest report naming it), then its `Observation`s and the
+ *   `DiagnosticReport` that lists them; fails with a `ParseError` when a
+ *   report's `HC #` is not the chosen province's shape, or a synthesized
+ *   resource does not satisfy its `fhir-r4` schema
  *
  * @remarks
  * Every report is its own `DiagnosticReport`, keyed by the `Lab No` it
@@ -116,30 +107,9 @@ const toFhirResources = (
     const reportsWithPatientKeys = Arr.zip(reports, patientKeys)
     const latestReportNaming = latestReportByPatientKey(reportsWithPatientKeys, timeZone)
     const seenPatients = new Set<string>()
-    const seenPractitioners = new Set<string>()
     const groups: ReportResources[] = []
     for (const [report, patientKey] of reportsWithPatientKeys) {
       const entries: DecodedFileSet.Entry[] = []
-      // Every provider the report names — the ordering provider and each CC'd
-      // provider — becomes a `resultsInterpreter` reference on this report's
-      // DiagnosticReport. The keys are collected per report (deduped within
-      // it), while the Practitioner resources they name are minted once
-      // across the whole document, in the first group that names each.
-      const providerNames = [report.orderedBy, ...report.copyTo]
-        .map((name) => name.trim())
-        .filter((name) => name !== '')
-      const interpreterKeys: DetachedResource.Key[] = []
-      const seenInReport = new Set<string>()
-      for (const name of providerNames) {
-        const key = practitionerKeyOf(name)
-        if (!seenInReport.has(keyText(key))) {
-          seenInReport.add(keyText(key))
-          interpreterKeys.push(key)
-        }
-        if (seenPractitioners.has(keyText(key))) continue
-        seenPractitioners.add(keyText(key))
-        entries.push(entryOf(key, yield* decodePractitioner(practitionerWire(name))))
-      }
       if (!seenPatients.has(keyText(patientKey))) {
         seenPatients.add(keyText(patientKey))
         const latest = latestReportNaming[keyText(patientKey)] ?? report
@@ -178,7 +148,7 @@ const toFhirResources = (
         entryOf(
           reportKeyOf(report),
           yield* decodeDiagnosticReport(
-            diagnosticReportWire(report, patientKey, observationKeys, timeZone, interpreterKeys)
+            diagnosticReportWire(report, patientKey, observationKeys, timeZone)
           )
         )
       )
@@ -187,5 +157,5 @@ const toFhirResources = (
     return groups
   })
 
-export { observationKeyOf, patientKeyOf, practitionerKeyOf, reportKeyOf, toFhirResources }
+export { observationKeyOf, patientKeyOf, reportKeyOf, toFhirResources }
 export type { ReportResources, SynthesisOptions }
