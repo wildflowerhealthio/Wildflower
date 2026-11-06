@@ -1,14 +1,17 @@
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
+import { linkShoppersResponses } from './link-across-responses.ts'
 import { mergeShoppersResources } from './merge-resources.ts'
 import { shoppersDrugMartResponseKinds } from './response-kinds.ts'
 
 /**
  * The Shoppers Drug Mart source as one value — what a consumer extracts
  * with. The archive importer reaches the `responseKinds` tuple through it by
- * reference. See `response-kinds.ts`, and `merge-resources.ts`
- * for how a dispense seen in both prescription feeds becomes one.
+ * reference. See `response-kinds.ts`, `merge-resources.ts` for how a
+ * dispense seen in both prescription feeds becomes one, and
+ * `link-across-responses.ts` for how an account of one's history fills are
+ * filed on its person.
  */
 const shoppersDrugMartSource: SourceDescriptor.SourceDescriptor<DetachedResource.Type> =
   SourceDescriptor.make({
@@ -20,6 +23,7 @@ const shoppersDrugMartSource: SourceDescriptor.SourceDescriptor<DetachedResource
     },
     responseKinds: shoppersDrugMartResponseKinds,
     mergeResources: mergeShoppersResources,
+    linkAcrossResponses: linkShoppersResponses,
   })
 
 export { shoppersDrugMartSource }

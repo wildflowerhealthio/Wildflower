@@ -107,4 +107,4 @@ const mergeShoppersResources: SourceDescriptor.ResourceMerge<DetachedResource.Ty
     : mergeDispenseCopies(earlier, later)
 }
 
-export { mergeShoppersResources }
+export { isDispense, isHistoryCopy, mergeShoppersResources }
