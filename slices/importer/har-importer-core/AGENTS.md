@@ -59,7 +59,8 @@ shell's shared `persistTransactionBundle`.
   entry per `fullUrl` is kept, so a Binary read twice is one record —
   plus one diagnostic note per response that yielded nothing (no kind
   matched, every matching kind disabled, parse
-  failure, body absent, duplicate). The import stage adopts the records and
+  failure, body absent, duplicate, or a `Binary` read served as its raw
+  content, which parses to no record). The import stage adopts the records and
   puts them under the source-file section described above. Never
   fails: a malformed source file comes back as that file's `unreadableFiles` entry,
   leaving the batch's other files reviewable. Resource keys are

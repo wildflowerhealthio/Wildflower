@@ -20,8 +20,8 @@ whose `responseKinds` an archive import (`har-importer-core`) extracts with. It 
   Binary.
 - `src/response-kinds/binary-response-kind.ts` — `…/Binary/<id>` → one R4
   `Binary`, keyless, read only when the server served it as a JSON `Binary`
-  resource: a read served as its raw content (an `image/*` or PDF body) fails
-  to parse. The HAR importer names its entry by the read's URL, its
+  resource: a read served as its raw content (a PDF body, say) holds no
+  record, and JSON that is no `Binary` fails to parse. The HAR importer names its entry by the read's URL, its
   `fullUrl`.
 - `src/fhir-server-response-kind.ts` — `FhirServerResponseKind.make({ name,
   url, readRecords })`, the one way a kind here is built: it declares its

@@ -476,6 +476,36 @@ describe('harImporter.decode over a capture of a DocumentReference and its Binar
   })
 })
 
+describe('harImporter.decode over a Binary read served as its raw content', () => {
+  it('should note the read as a raw Binary, not imported', async () => {
+    const pdf = '%PDF-1.7'
+    const decoded = await readOne({
+      id: '0:raw-binary.har',
+      fileName: 'raw-binary.har',
+      bytes: harBytesOf([
+        traceExchange({
+          requestId: 'req-0',
+          url: BINARY_URL,
+          headers: [['content-type', 'application/pdf']],
+          body: {
+            _tag: 'StoredBody',
+            contentType: 'application/pdf',
+            data: btoa(pdf),
+            size: pdf.length,
+            hash: ANY_HASH,
+          },
+          startedAtMillis: CAPTURE_FLOOR,
+        }),
+      ]),
+    })
+
+    expect({ sections: decoded.sections, notes: decoded.notes }).toEqual({
+      sections: [],
+      notes: [`A Binary served as its raw content, not as FHIR JSON — not imported: ${BINARY_URL}`],
+    })
+  })
+})
+
 describe('harImporter.decode over a Shoppers capture', () => {
   it.each([
     { order: 'status feed first', exchanges: shoppersExchanges() },

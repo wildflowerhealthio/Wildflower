@@ -1,7 +1,7 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
-import { Effect, Option } from 'effect'
+import { Effect, Either, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { fhirR4ResponseKinds } from './response-kinds.ts'
@@ -65,7 +65,7 @@ describe('fhirR4ResponseKinds', () => {
     })
   })
 
-  it('fails a Binary read served as its raw content', () => {
+  it('reads a Binary read served as its raw content as no record', () => {
     const result = Effect.runSync(
       Effect.either(
         kindNamed('BinaryResponseKind').parse(
@@ -73,6 +73,21 @@ describe('fhirR4ResponseKinds', () => {
             url: 'https://r4.example.org/baseR4/Binary/bin-1',
             headers: [['content-type', 'application/pdf']],
             body: '%PDF-1.7',
+          })
+        )
+      )
+    )
+    expect(result).toEqual(Either.right([]))
+  })
+
+  it('fails a Binary read whose JSON is no Binary', () => {
+    const result = Effect.runSync(
+      Effect.either(
+        kindNamed('BinaryResponseKind').parse(
+          makeHttpResponse({
+            url: 'https://r4.example.org/baseR4/Binary/bin-1',
+            headers: [['content-type', 'application/fhir+json']],
+            body: JSON.stringify({ resourceType: 'Patient', id: 'bin-1' }),
           })
         )
       )
