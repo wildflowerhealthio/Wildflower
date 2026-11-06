@@ -6,8 +6,6 @@ import type {
 import type { MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
-import { ShoppersIdentifierSystem } from './shoppers.ts'
-
 /**
  * The Shoppers source's `mergeResources`: one dispense seen in both the
  * prescription-status feed and the prescription-history feed, as one
@@ -20,19 +18,17 @@ type Reference = IdentifierAndReference.ReferenceType
 type Concept = typeof CodeableConcept.Schema.Type
 
 /**
- * Whether `dispense` is the history feed's copy: its `subject` names the
- * account, by `ShoppersIdentifierSystem.CustomerId`.
+ * Whether `dispense` is the history feed's copy: it names no `subject`.
  *
  * @remarks
- * The two copies are told apart by this marker because it is the difference
- * the merge is about: the history feed knows only the account, and the status
- * feed knows the person, whom it names by the logical reference to their
- * `patientId` key. Reading it off the resource, rather than asking which kind
- * emitted it, keeps the merge a function of the two resources alone, with the
- * same answer in either arrival order.
+ * The two copies are told apart by this because it is the difference the
+ * merge is about: the history feed knows only the account, so its copy names
+ * no one, and the status feed knows the person, whom it names by the logical
+ * reference to their `patientId` key. Reading it off the resource, rather
+ * than asking which kind emitted it, keeps the merge a function of the two
+ * resources alone, with the same answer in either arrival order.
  */
-const isHistoryCopy = (dispense: MedicationDispense.Type): boolean =>
-  dispense.subject?.identifier?.system?.href === ShoppersIdentifierSystem.CustomerId
+const isHistoryCopy = (dispense: MedicationDispense.Type): boolean => dispense.subject === null
 
 /**
  * The status copy's store link, labelled with the history copy's store name

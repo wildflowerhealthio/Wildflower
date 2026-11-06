@@ -19,10 +19,9 @@ import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema
  * picked file identified itself as), adopts its detached records
  * (`DecodedFileSet.adopt`: a keyed record under the id its key derives, a
  * keyless one under a minted id, each logical reference to a record of the set
- * resolved to a literal one, a dispense with no subject, or a Patient
- * identifier resolving to none of the set, filed on its prescription's), runs
- * the format's `linkSourceFile` over every source file and its
- * `linkToSourceFiles` over every record, stamps every
+ * resolved to a literal one, a dispense with no subject filed on its
+ * prescription's), runs the format's `linkSourceFile` over every source file
+ * and its `linkToSourceFiles` over every record, stamps every
  * record's `meta.source` with the set's representative source file, and leads
  * with the source files as the set's own section. Each set's records are keyed
  * as they are: nothing is de-duplicated across sets or files.
