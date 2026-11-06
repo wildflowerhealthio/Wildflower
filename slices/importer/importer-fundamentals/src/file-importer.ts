@@ -43,7 +43,7 @@ class SourceFileNotFound extends Data.TaggedError('SourceFileNotFound')<{
  *
  * @remarks
  * A plain record, not a class instance: an adapter layer extends an importer
- * by spreading it — which is how `importer-react`'s registry attaches each
+ * by spreading it — which is how `importer-react`'s registry attaches a
  * format's `SettingsPicker` — and a spread is only total when there is no
  * prototype to lose.
  *

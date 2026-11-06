@@ -1,5 +1,6 @@
 /**
- * The props contract every format's settings picker renders against.
+ * The props contract a format's settings picker renders against, for each
+ * format that has settings.
  *
  * @remarks
  * Its own module rather than a member of `file-importer.ts`: it describes a
