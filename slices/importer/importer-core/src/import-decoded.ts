@@ -83,7 +83,7 @@ const importFileSet = (
       ),
       { concurrency: 'unbounded' }
     )
-    const adopted = DecodedFileSet.adopt(fileSet)
+    const adopted = yield* DecodedFileSet.adopt(fileSet)
 
     const linkSourceFile = importer.linkSourceFile ?? Function.identity
     const linked = Arr.map(sourceFiles, ({ pickedFile, sourceFile }) => ({
