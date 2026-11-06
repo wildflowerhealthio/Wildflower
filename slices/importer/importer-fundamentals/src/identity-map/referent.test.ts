@@ -91,7 +91,7 @@ const wireKeysOf = (file: DecodedFile.DecodedFile): readonly string[] => {
 }
 
 describe('Referent.discover', () => {
-  it('finds the Shoppers shapes: a person, the account id and a named prescriber', () => {
+  it('finds a person, an account id and a named prescriber', () => {
     const file = fileOf(
       patient({ id: 'p-1' }),
       request('rx-1', literalSubject('p-1'), namedRequester('Dr. A Smith')),
