@@ -319,6 +319,27 @@ describe('toFhirResources', () => {
     ).toBe('1234-567-890')
   })
 
+  it("writes a shared Patient's version code from the latest report naming it", () => {
+    const versionCodesOf = (reports: readonly Report.Type[]): readonly unknown[] =>
+      ofType(synthesize(reports), 'Patient').flatMap((patient) =>
+        patient.identifier.flatMap((identifier) =>
+          identifier.extension.map((extension) => extension.valueString)
+        )
+      )
+    const reissued: Report.Type = {
+      ...sample,
+      labNo: LabNumber.make('2024-JJ0000001'),
+      reportedOn: 'Sep 1 2026 10:00',
+      patient: { ...sample.patient, healthCardNumber: '1234567890 AC' },
+    }
+
+    // The reissued card's report is later, wherever it is in the document.
+    expect(versionCodesOf([reissued, sample])).toEqual(['AC'])
+    expect(versionCodesOf([sample, reissued])).toEqual(['AC'])
+    // Reported at once, the earlier in the document.
+    expect(versionCodesOf([sample, { ...reissued, reportedOn: sample.reportedOn }])).toEqual(['AB'])
+  })
+
   it("writes the health card number in British Columbia's system when British Columbia is chosen", () => {
     const british = { ...sample.patient, healthCardNumber: '9123456789' }
     const [patient] = ofType(

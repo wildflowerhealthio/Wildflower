@@ -61,7 +61,10 @@ that hands back a hand-written positioned-text document.
   resource an entry whose `fullUrl` is `<Type>/<key value>` — a
   `Patient` or `Practitioner` several reports share (one key) is minted once,
   in the group of the first report naming it, so flattening the groups in
-  order writes every reference target before its referrer. The keys:
+  order writes every reference target before its referrer. A shared
+  Patient is written from the latest-reported of its reports (the earlier in
+  the document on a tie), so a card reissued between reports carries its
+  current version code. The keys:
   the Patient's printed `Patient ID`, else its `HC #` in the settings'
   province's health card system (`fhir-ca-infoway`'s
   `HealthCardIdentifier.of`: an Ontario number less its version code, which

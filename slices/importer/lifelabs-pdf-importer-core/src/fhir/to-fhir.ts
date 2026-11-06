@@ -7,9 +7,10 @@ import {
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import type { DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
-import { Array as Arr, Effect, type ParseResult } from 'effect'
+import { Array as Arr, DateTime, Effect, Option, Order, type ParseResult } from 'effect'
 
 import type * as Report from '../entities/report.ts'
+import { parsePrintedDateTime } from './dates.ts'
 import { diagnosticReportWire, reportKeyOf } from './wire/diagnostic-report.ts'
 import { observationKeyOf, observationWire } from './wire/observation.ts'
 import { patientKeyOf, patientWire } from './wire/patient.ts'
@@ -60,6 +61,30 @@ const entryOf = (
 })
 
 /**
+ * Each Patient's latest report, by its key: the one whose patient block the
+ * Patient is written from, so a card reissued between reports carries its
+ * current version code. Reports are ordered by when they were reported, one
+ * printing no readable time first, and of two reported at once the earlier in
+ * the document wins.
+ */
+const latestReportByPatientKey = (
+  reports: readonly Report.Type[],
+  { timeZone, healthCardProvince }: SynthesisOptions
+): Readonly<Record<string, Report.Type>> => {
+  const byReportedOn = Order.mapInput(
+    Option.getOrder(DateTime.Order),
+    (report: Report.Type): Option.Option<DateTime.Utc> =>
+      parsePrintedDateTime(report.reportedOn, timeZone)
+  )
+  const naming = Arr.groupBy(reports, (report) =>
+    keyText(patientKeyOf(report.patient, healthCardProvince))
+  )
+  return Object.fromEntries(
+    Object.entries(naming).map(([key, group]) => [key, Arr.max(group, byReportedOn)])
+  )
+}
+
+/**
  * Synthesize the FHIR resources for a set of parsed LifeLabs reports, grouped
  * per report.
  *
@@ -67,7 +92,8 @@ const entryOf = (
  * @param options - The time zone the reports' printed clocks are in, and the
  *   province that issued the health card they print
  * @returns One {@link ReportResources} per report, in report order: the
- *   `Practitioner`s and `Patient` this report is first to name, then its
+ *   `Practitioner`s and `Patient` this report is first to name (the
+ *   `Patient` written from the latest report naming it), then its
  *   `Observation`s and the `DiagnosticReport` that lists them — so the
  *   flattened groups are an order a writer can persist in, a reference never
  *   preceding its target; fails with a `ParseError` when a synthesized
@@ -85,6 +111,7 @@ const toFhirResources = (
 ): Effect.Effect<readonly ReportResources[], ParseResult.ParseError> =>
   Effect.gen(function* () {
     const { timeZone, healthCardProvince } = options
+    const latestReportNaming = latestReportByPatientKey(reports, options)
     const seenPatients = new Set<string>()
     const seenPractitioners = new Set<string>()
     const groups: ReportResources[] = []
@@ -113,8 +140,9 @@ const toFhirResources = (
       const patientKey = patientKeyOf(report.patient, healthCardProvince)
       if (!seenPatients.has(keyText(patientKey))) {
         seenPatients.add(keyText(patientKey))
+        const latest = latestReportNaming[keyText(patientKey)] ?? report
         entries.push(
-          entryOf(patientKey, yield* decodePatient(patientWire(report, healthCardProvince)))
+          entryOf(patientKey, yield* decodePatient(patientWire(latest, healthCardProvince)))
         )
       }
 
