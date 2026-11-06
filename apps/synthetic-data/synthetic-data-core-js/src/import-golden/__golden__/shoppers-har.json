@@ -19,13 +19,6 @@
     {
       "disposition": "Included",
       "group": "har",
-      "key": "0:shoppers.har/har-entry-3:0#implied:Practitioner|https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/practitioner-name|Dr. Lee Nguyen",
-      "resource": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6",
-      "title": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6"
-    },
-    {
-      "disposition": "Included",
-      "group": "har",
       "key": "0:shoppers.har/har-entry-3:0",
       "resource": "MedicationRequest/wf-894a2cb76071d22b5a607debd3a504a2",
       "title": "MedicationRequest/wf-894a2cb76071d22b5a607debd3a504a2"
@@ -127,6 +120,13 @@
       "key": "0:shoppers.har/har-entry-8:0",
       "resource": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209",
       "title": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209"
+    },
+    {
+      "disposition": "Included",
+      "group": "har",
+      "key": "0:shoppers.har/har-entry-3:0#implied:Practitioner|https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/practitioner-name|Dr. Lee Nguyen",
+      "resource": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6",
+      "title": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6"
     }
   ],
   "sourceFileRePicks": [
