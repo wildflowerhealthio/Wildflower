@@ -1,4 +1,5 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   Binary,
@@ -181,7 +182,7 @@ describe('DecodedFileSet.adopt', () => {
   })
 })
 
-describe('DecodedFileSet.adopt, a dispense whose subject names no Patient of the set', () => {
+describe("DecodedFileSet.adopt, a dispense's subject and its prescription's", () => {
   const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
   const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
 
@@ -190,12 +191,22 @@ describe('DecodedFileSet.adopt, a dispense whose subject names no Patient of the
     identifier: { system: 'https://portal.example/fhir/identifier/customer-id', value: 'acct-1' },
   }
 
-  /** The prescription `id` on the source, for the Patient `patientId`. */
-  const prescriptionFor = (id: string, patientId: string): DetachedResource.Type =>
+  const RX_NUMBER_SYSTEM = 'https://pharmacy.example/rx-number'
+
+  /**
+   * The prescription `id` on the source, for the Patient `patientId`, carrying
+   * `identifier` behind the key its id gives it.
+   */
+  const prescriptionFor = (
+    id: string,
+    patientId: string,
+    identifier: readonly Record<string, unknown>[] = []
+  ): DetachedResource.Type =>
     detachTest(
       decodeRequest({
         resourceType: 'MedicationRequest',
         id,
+        identifier,
         status: 'active',
         intent: 'order',
         medicationCodeableConcept: { text: 'Amoxicillin' },
@@ -203,10 +214,13 @@ describe('DecodedFileSet.adopt, a dispense whose subject names no Patient of the
       })
     )
 
-  /** A fill of the prescriptions `prescriptionIds`, on `subject` when it has one. */
+  /**
+   * A fill of `prescriptions`, each a prescription's id on the source or a
+   * reference wire to it, on `subject` when it has one.
+   */
   const dispenseOf = (
     subject: Record<string, unknown> | null,
-    prescriptionIds: readonly string[]
+    prescriptions: readonly (string | Record<string, unknown>)[]
   ): DetachedResource.Type =>
     detachTest(
       decodeDispense({
@@ -215,9 +229,11 @@ describe('DecodedFileSet.adopt, a dispense whose subject names no Patient of the
         status: 'completed',
         medicationCodeableConcept: { text: 'Amoxicillin' },
         ...(subject === null ? {} : { subject }),
-        authorizingPrescription: prescriptionIds.map((id) => ({
-          reference: `MedicationRequest/${id}`,
-        })),
+        authorizingPrescription: prescriptions.map((prescription) =>
+          typeof prescription === 'string'
+            ? { reference: `MedicationRequest/${prescription}` }
+            : prescription
+        ),
       })
     )
 
@@ -244,6 +260,25 @@ describe('DecodedFileSet.adopt, a dispense whose subject names no Patient of the
     {
       name: 'it has no subject',
       records: [patient('pat-7'), prescriptionFor('rx-7', 'pat-7'), dispenseOf(null, ['rx-7'])],
+    },
+    {
+      name: 'its subject names a Patient by an identifier two Patients of the set share',
+      records: [
+        patientWith('pat-7', [{ system: HEALTH_CARD_SYSTEM, value: '1111' }]),
+        patientWith('pat-8', [{ system: HEALTH_CARD_SYSTEM, value: '1111' }]),
+        prescriptionFor('rx-7', 'pat-7'),
+        dispenseOf(byHealthCard('1111'), ['rx-7']),
+      ],
+    },
+    {
+      name: 'it names its prescription by an identifier other than its key',
+      records: [
+        patient('pat-7'),
+        prescriptionFor('rx-7', 'pat-7', [{ system: RX_NUMBER_SYSTEM, value: '7000' }]),
+        dispenseOf(ACCOUNT, [
+          { type: 'MedicationRequest', identifier: { system: RX_NUMBER_SYSTEM, value: '7000' } },
+        ]),
+      ],
     },
     {
       name: 'its prescriptions agree on one Patient',
@@ -300,6 +335,45 @@ describe('DecodedFileSet.adopt, a dispense whose subject names no Patient of the
       type: 'Patient',
       identifier: { value: 'acct-1' },
     })
+  })
+
+  // A subject the source stated is who received the fill, whatever the
+  // prescription says.
+  it.each([
+    { name: 'a contained Patient', subject: { reference: '#recipient' } },
+    {
+      name: "another server's Patient, by its URL",
+      subject: { reference: 'https://other.example/fhir/Patient/123' },
+    },
+    {
+      name: 'a Group, by an identifier',
+      subject: {
+        type: 'Group',
+        identifier: { system: 'https://portal.example/fhir/identifier/household', value: 'h-1' },
+      },
+    },
+  ])('keeps a subject naming $name', ({ subject }) => {
+    const fill = dispenseOf(subject, ['rx-7'])
+    const { dispense } = adoptedFill([patient('pat-7'), prescriptionFor('rx-7', 'pat-7'), fill])
+    expect(subjectOfDispense(dispense)).toEqual(
+      fill.resourceType === 'MedicationDispense' ? fill.subject : undefined
+    )
+  })
+
+  // A decoder writing its records detached may keep a literal `Patient/<id>`
+  // the set does not hold: `fromServerRecord` would turn one into a logical
+  // reference.
+  it('keeps a literal subject naming a Patient the set does not hold', () => {
+    const subject = Schema.decodeUnknownSync(IdentifierAndReference.ReferenceSchema)({
+      reference: 'Patient/123',
+    })
+    const fill = dispenseOf(null, ['rx-7'])
+    const { dispense } = adoptedFill([
+      patient('pat-7'),
+      prescriptionFor('rx-7', 'pat-7'),
+      fill.resourceType === 'MedicationDispense' ? { ...fill, subject } : fill,
+    ])
+    expect(subjectOfDispense(dispense)).toEqual(subject)
   })
 
   it('leaves a dispense whose subject names a Patient of the set on that Patient', () => {
