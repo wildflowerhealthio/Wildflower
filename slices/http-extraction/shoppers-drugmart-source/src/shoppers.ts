@@ -22,8 +22,7 @@
  *   `CustomerId` names the account itself. They are distinct systems because
  *   they identify different things: a prescription is filled for a person,
  *   while the account is only an id the history feed's fills carry. No Patient
- *   stands for the account, but an account that manages just one person
- *   names them, so their Patient carries its `CustomerId` after their key.
+ *   stands for the account.
  * - There is deliberately **no** Shoppers DIN system: the portal does not
  *   namespace DINs, so a DIN is coded under `fhir-r4`'s canonical
  *   `CanadianCodingSystem.Din` only.
@@ -52,10 +51,8 @@ const ShoppersIdentifierSystem = {
    * The account's id: the `customerId` query parameter of the account-wide
    * XHRs (the account's `pcid`). Names the account, not a person: an account
    * manages one or more people, and the history feed's fills name only it.
-   * When the account manages just one person, their Patient carries it as
-   * its second identifier, so the importer's identity map files those fills
-   * on them; otherwise the map resolves it to the person a reviewer says the
-   * account's fills are for.
+   * It exists so the importer's identity map can resolve it to the person a
+   * reviewer says the account's fills are for.
    */
   CustomerId: `${SYSTEM_BASE}/identifier/customer-id`,
   /**
