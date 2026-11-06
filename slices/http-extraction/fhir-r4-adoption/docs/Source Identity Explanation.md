@@ -169,11 +169,12 @@ names `(<baseUrl>/Patient, Patient, abc)`. For one `Reference`:
 
 ```text
 reference.reference is null                                        → unchanged
+the literal, less a leading `<baseUrl>/`, matches
+  `^Binary/([^/?#]+)$`                                             → reference  := <baseUrl>/Binary/<id>
+                                                                     (type and identifier kept)
 the literal, less a leading `<baseUrl>/`, does not match
   `^[A-Za-z]+/[A-Za-z0-9\-.]{1,64}$`                               → unchanged
 the type token is not an R4 resource type                          → unchanged
-Type is Binary                                                     → reference  := <baseUrl>/Binary/<id>
-                                                                     (type and identifier kept)
 otherwise → reference  := null
             type       := Type
             identifier := { system: <baseUrl>/<Type>, value: id }
@@ -182,7 +183,10 @@ otherwise → reference  := null
 A `Binary` is the one R4 type with no `identifier` element, so nothing could
 resolve a logical reference to one: the server's absolute URL names it
 instead. It is absolute, not relative, because `adopt` takes no base URL to
-resolve a relative literal against. An `Attachment.url` follows the same rule:
+resolve a relative literal against. Its id is any one URL path segment, not
+R4's id grammar: a Binary is named by its URL and stored under a minted id,
+so an id past 64 characters still names it, as the read kinds claim a
+`Binary/<id>` URL by any segment. An `Attachment.url` follows the same rule:
 `Binary/<id>`, relative or under the base, becomes `<baseUrl>/Binary/<id>`,
 and every other URL (a foreign absolute URL, a `data:` URL, a `#fragment`,
 another type's `Type/id`) is kept.

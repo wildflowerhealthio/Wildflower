@@ -233,6 +233,25 @@ const serverRecordNamedBy = (baseUrl: string, literal: string): Option.Option<Se
   )
 
 /**
+ * A relative `Binary` literal: `Binary/` and one URL path segment, its id.
+ *
+ * @remarks
+ * Looser than {@link RELATIVE_REFERENCE}'s id grammar on purpose. A Binary is
+ * named by its server's URL and stored under a minted id, never one derived
+ * from the server's, so any id the server serves a read at (one past 64
+ * characters, one with a `_`) names it: the same segment the read kinds claim
+ * a `Binary/<id>` URL by (`UrlMatch.id`, anything but `/`, `?` and `#`).
+ */
+const BINARY_REFERENCE = /^Binary\/([^/?#]+)$/
+
+/**
+ * The id of the server's own `Binary` that `literal`, {@link relativise}d
+ * against `baseUrl`, names: `None` for any other literal.
+ */
+const serverBinaryIdIn = (baseUrl: string, literal: string): Option.Option<string> =>
+  Option.fromNullable(BINARY_REFERENCE.exec(relativise(baseUrl, literal))?.[1])
+
+/**
  * The server's absolute URL for its `Binary` `id`, `<baseUrl>/Binary/<id>`:
  * what a reference or an `Attachment.url` naming the Binary is detached to,
  * and, through {@link serverBinaryUrlIfRead}, the `fullUrl` its decoder gives
@@ -249,8 +268,8 @@ const serverBinaryUrlOf = (baseUrl: string, id: string): string =>
 /**
  * The server's URL for the `Binary` a read at `readUrl` served: the read's
  * URL less its query and fragment, `<base>/Binary/<id>`, built by
- * {@link serverBinaryUrlOf} under the same id rule a reference to it is
- * detached by, so the two spell it alike. `None` for a URL that is no
+ * {@link serverBinaryUrlOf} under the same rule a reference to it is
+ * detached by ({@link serverBinaryIdIn}), so the two spell it alike. `None` for a URL that is no
  * `Binary` read.
  *
  * @remarks
@@ -265,10 +284,8 @@ const serverBinaryUrlIfRead = (readUrl: string): Option.Option<string> =>
         Option.liftPredicate(pathname.lastIndexOf('/Binary/'), (at) => at >= 0),
         Option.map((at) => `${origin}${pathname.slice(0, at)}`),
         Option.flatMap((baseUrl) =>
-          pipe(
-            serverRecordNamedBy(baseUrl, `${origin}${pathname}`),
-            Option.filter(({ resourceType }) => resourceType === 'Binary'),
-            Option.map(({ id }) => serverBinaryUrlOf(baseUrl, id))
+          Option.map(serverBinaryIdIn(baseUrl, `${origin}${pathname}`), (id) =>
+            serverBinaryUrlOf(baseUrl, id)
           )
         )
       )
@@ -307,19 +324,25 @@ const detachReference =
   (reference: ReferenceType): ReferenceType =>
     pipe(
       Option.fromNullable(reference.reference),
-      Option.flatMap((literal) => serverRecordNamedBy(baseUrl, literal)),
-      Option.match({
-        onNone: () => reference,
-        onSome: ({ resourceType, id }) =>
-          resourceType === 'Binary'
-            ? { ...reference, reference: serverBinaryUrlOf(baseUrl, id) }
-            : {
+      Option.flatMap((literal) =>
+        Option.orElse(
+          Option.map(serverBinaryIdIn(baseUrl, literal), (id): ReferenceType => ({
+            ...reference,
+            reference: serverBinaryUrlOf(baseUrl, id),
+          })),
+          () =>
+            Option.map(
+              serverRecordNamedBy(baseUrl, literal),
+              ({ resourceType, id }): ReferenceType => ({
                 ...reference,
                 reference: null,
                 type: resourceType,
                 identifier: identifierOf(urlOf(serverSystemOf(baseUrl, resourceType)), id),
-              },
-      })
+              })
+            )
+        )
+      ),
+      Option.getOrElse(() => reference)
     )
 
 /**
@@ -330,11 +353,10 @@ const detachReference =
 const detachAttachmentUrl =
   (baseUrl: string) =>
   (url: string): string =>
-    pipe(
-      serverRecordNamedBy(baseUrl, url),
-      Option.filter(({ resourceType }) => resourceType === 'Binary'),
-      Option.match({ onNone: () => url, onSome: ({ id }) => serverBinaryUrlOf(baseUrl, id) })
-    )
+    Option.match(serverBinaryIdIn(baseUrl, url), {
+      onNone: () => url,
+      onSome: (id) => serverBinaryUrlOf(baseUrl, id),
+    })
 
 /**
  * A record a FHIR server served, detached: the server's id becomes the key

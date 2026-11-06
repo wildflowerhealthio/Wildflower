@@ -1282,6 +1282,16 @@ describe('naming a Binary by its server URL', () => {
     })
   })
 
+  // A Binary is named by its URL, never by a key from its id, so an id past
+  // R4's grammar names it too, as the read kinds claim its URL.
+  test("detaches a Binary whose id is past R4's id grammar to the server URL", () => {
+    const id = `${'e'.repeat(80)}_1`
+    expect(binaryLinksOf(detachFhir(documentNaming(`Binary/${id}`, `Binary/${id}`)))).toEqual({
+      attachmentUrl: `${BASE}/Binary/${id}`,
+      target: reference({ reference: `${BASE}/Binary/${id}` }),
+    })
+  })
+
   test("keeps a Binary reference's type and identifier as the server wrote them", () => {
     const named = reference({
       reference: 'Binary/bin-1',

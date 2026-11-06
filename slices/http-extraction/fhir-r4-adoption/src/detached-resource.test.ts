@@ -63,6 +63,11 @@ describe('DetachedResource.serverBinaryUrlIfRead', () => {
     ['https://fhir.example/R4/Binary/bin-1', 'https://fhir.example/R4/Binary/bin-1'],
     ['https://fhir.example/R4/Binary/bin-1?_format=json', 'https://fhir.example/R4/Binary/bin-1'],
     ['https://fhir.example/Binary/bin-1#top', 'https://fhir.example/Binary/bin-1'],
+    // Past R4's 64-character id grammar, and with a `_`: still a Binary read.
+    [
+      `https://fhir.example/Binary/${'e'.repeat(80)}_1`,
+      `https://fhir.example/Binary/${'e'.repeat(80)}_1`,
+    ],
   ])('names the Binary read at %s by %s', (readUrl, binaryUrl) => {
     expect(DetachedResource.serverBinaryUrlIfRead(readUrl)).toEqual(Option.some(binaryUrl))
   })
