@@ -108,17 +108,20 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   **`adopt({ sections, notes }, mintId?)`** is how the import stage makes a
   decode's records the device's own, as a `DecodedFile`: it plans every
   entry (`ResourcePlan.of`), keeping each plan beside its entry, builds the
-  set's `fhir-r4-adoption` `ReferencePlan` from the `Derived` plans (each
-  keyed record's type and key, resolving to its plan's literal reference: the
-  one place that decides which identifiers resolve), then runs
-  `fhir-r4-adoption`'s `adopt` over each record with that reference plan and
-  its plan's `id`. So a keyed record lands on the id its key derives, a
-  keyless one on an id `mintId` mints (a random UUID unless a test injects
-  one), in entry order, and a logical reference resolves when the set holds
-  the record it names by key, whichever section holds it, as a FHIR server
-  resolves a conditional reference against a transaction bundle; one naming
-  a record the set does not hold, or a keyless one, stays logical, for the
-  identity map. The format decode tests adopt through it too.
+  set's `fhir-r4-adoption` `ReferencePlan` from the `Derived` plans (one
+  entry for each qualified identifier of a keyed record, its key and every
+  other, each resolving to its plan's literal reference: the one place that
+  decides which identifiers resolve; a keyless record's identifiers stay
+  out), then runs `fhir-r4-adoption`'s `adopt` over each record with that
+  reference plan and its plan's `id`. So a keyed record lands on the id its
+  key derives, a keyless one on an id `mintId` mints (a random UUID unless a
+  test injects one), in entry order, and a logical reference resolves when
+  the set holds a keyed record it names by any of that record's identifiers,
+  whichever section holds it, as a FHIR server resolves a conditional
+  reference against a transaction bundle; one naming a record the set does
+  not hold, a keyless one, or an identifier two records of the set share
+  (`ReferencePlan`'s ambiguous case; a record listing one identifier twice
+  is no clash), stays logical, for the identity map. The format decode tests adopt through it too.
 - `src/resource-plan.ts` — the **`ResourcePlan`** namespace: where one
   decoded record is written, decided before any record of its set is
   adopted, as a FHIR server decides each transaction entry's id before

@@ -28,6 +28,20 @@ const decodeBinary = Schema.decodeUnknownSync(Binary.Schema)
 const patient = (id: string | null): DetachedResource.Type =>
   detachTest(decodePatient({ resourceType: 'Patient', ...(id === null ? {} : { id }) }))
 
+/** The Patient with `id` on the source, carrying `identifier` behind the key its id gives it. */
+const patientWith = (
+  id: string,
+  identifier: readonly Record<string, unknown>[]
+): DetachedResource.Type => detachTest(decodePatient({ resourceType: 'Patient', id, identifier }))
+
+const HEALTH_CARD_SYSTEM = 'https://health.example/health-card-number'
+
+/** A logical reference to the Patient carrying the health card number `value`. */
+const byHealthCard = (value: string): Record<string, unknown> => ({
+  type: 'Patient',
+  identifier: { system: HEALTH_CARD_SYSTEM, value },
+})
+
 const observationOn = (subject: Record<string, unknown>): DetachedResource.Type =>
   detachTest(
     decodeObservation({
@@ -106,6 +120,46 @@ describe('DecodedFileSet.adopt', () => {
       ...account,
       identifier: { system: new URL(account.identifier.system), value: 'acct-1' },
     })
+  })
+
+  // As a FHIR conditional reference matches a record by any of its identifiers.
+  it('resolves a reference by an identifier of a record other than its key', () => {
+    const [person, observation] = adoptedIn([
+      sectionOf('people', [
+        patientWith('pat-7', [{ system: HEALTH_CARD_SYSTEM, value: '1234-567-890' }]),
+      ]),
+      sectionOf('results', [observationOn(byHealthCard('1234-567-890'))]),
+    ])
+    expect(subjectOf(observation)).toBe(`Patient/${person?.id}`)
+  })
+
+  it('leaves a reference by an identifier two records of the set share logical, naming neither', () => {
+    const sharedCard = [{ system: HEALTH_CARD_SYSTEM, value: '1234-567-890' }]
+    const [first, , byCard, byKey] = adoptedIn([
+      sectionOf('people', [patientWith('pat-7', sharedCard), patientWith('pat-8', sharedCard)]),
+      sectionOf('results', [
+        observationOn(byHealthCard('1234-567-890')),
+        observationOn({ reference: 'Patient/pat-7' }),
+      ]),
+    ])
+    expect([subjectOf(byCard), subjectOf(byKey)]).toEqual([null, `Patient/${first?.id}`])
+  })
+
+  it('resolves a reference to a record listing its key, or another identifier, twice', () => {
+    const card = { system: HEALTH_CARD_SYSTEM, value: '1234-567-890' }
+    const [person, byCard, byKey] = adoptedIn([
+      sectionOf('people', [
+        patientWith('pat-7', [card, { system: `${BASE_URL}/Patient`, value: 'pat-7' }, card]),
+      ]),
+      sectionOf('results', [
+        observationOn(byHealthCard('1234-567-890')),
+        observationOn({ reference: 'Patient/pat-7' }),
+      ]),
+    ])
+    expect([subjectOf(byCard), subjectOf(byKey)]).toEqual([
+      `Patient/${person?.id}`,
+      `Patient/${person?.id}`,
+    ])
   })
 
   // A keyless record's id is minted at import, so nothing names it by key:

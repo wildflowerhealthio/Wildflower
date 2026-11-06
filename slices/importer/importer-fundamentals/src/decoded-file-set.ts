@@ -7,11 +7,11 @@
  */
 import {
   adopt as adoptRecord,
-  type DetachedResource,
+  DetachedResource,
   randomResourceId,
   ReferencePlan,
 } from '@wildflowerhealthio/fhir-r4-adoption'
-import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type Array as Arr, Option } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
@@ -122,19 +122,35 @@ const namespaceKeys = (sections: readonly Section[], prefix: string): readonly S
   }))
 
 /**
- * The entries a planned record gives its set's reference plan: a keyed
- * record's key, resolving to the literal reference it is written under; none
- * for a keyless record, which nothing names by key.
+ * The entries a planned record gives its set's reference plan: one for each
+ * qualified identifier of a keyed record, its key and every other, each
+ * resolving to the literal reference the record is written under; none for a
+ * keyless record, which nothing names.
+ *
+ * @remarks
+ * A FHIR conditional reference matches a record by any of its identifiers,
+ * so a reference resolves whichever of them it names. The same identifier
+ * listed twice gives the same entry twice, which `ReferencePlan.of` holds as
+ * one; an identifier two records share is the clash it holds as ambiguous.
+ *
+ * @param plan - The plan of `resource`
+ * @param resource - The detached record `plan` was planned from
  */
-const referencePlanEntriesOf = (plan: ResourcePlan.Type): readonly ReferencePlan.Entry[] =>
+const referencePlanEntriesOf = (
+  plan: ResourcePlan.Type,
+  resource: DetachedResource.Type
+): readonly ReferencePlan.Entry[] =>
   ResourcePlan.match(plan, {
-    Derived: (derived) => [
-      {
-        resourceType: derived.resourceType,
-        identifier: derived.identifier,
-        literalReference: ResourcePlan.literalReference(derived),
-      },
-    ],
+    Derived: (derived) =>
+      DetachedResource.hasIdentifier(resource)
+        ? resource.identifier
+            .filter(IdentifierAndReference.isQualifiedIdentifier)
+            .map((identifier) => ({
+              resourceType: derived.resourceType,
+              identifier,
+              literalReference: ResourcePlan.literalReference(derived),
+            }))
+        : [],
     Minted: () => [],
   })
 
@@ -151,10 +167,12 @@ const referencePlanEntriesOf = (plan: ResourcePlan.Type): readonly ReferencePlan
  * As a FHIR server processes one transaction bundle: every record's plan
  * (`ResourcePlan.of`) is decided first, a keyed record's id derived from its
  * key and a keyless one's minted, in entry order; the set's reference plan is
- * built from the keyed records' plans; then each record is adopted under its
- * plan's id, a logical reference resolving when the record it names by key
- * is in the set, whichever section holds it. One that names a record the set
- * does not hold, or a keyless one, stays logical, for the identity map.
+ * built from the keyed records' plans and qualified identifiers; then each
+ * record is adopted under its plan's id, a logical reference resolving when
+ * the set holds a keyed record it names by any of that record's identifiers,
+ * whichever section holds it. One that names a record the set does not hold,
+ * a keyless one, or an identifier two records of the set share, stays
+ * logical, for the identity map.
  */
 const adopt = (
   decoded: Pick<Type, 'sections' | 'notes'>,
@@ -170,7 +188,7 @@ const adopt = (
   const adoptEntry = adoptRecord(
     ReferencePlan.of(
       plannedSections.flatMap(({ plannedEntries }) =>
-        plannedEntries.flatMap(({ plan }) => referencePlanEntriesOf(plan))
+        plannedEntries.flatMap(({ entry, plan }) => referencePlanEntriesOf(plan, entry.resource))
       )
     )
   )
