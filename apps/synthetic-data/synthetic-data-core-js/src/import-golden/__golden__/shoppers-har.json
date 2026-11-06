@@ -19,6 +19,13 @@
     {
       "disposition": "Included",
       "group": "har",
+      "key": "0:shoppers.har/har-entry-3:0#implied:Practitioner|https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/practitioner-name|Dr. Lee Nguyen",
+      "resource": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6",
+      "title": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6"
+    },
+    {
+      "disposition": "Included",
+      "group": "har",
       "key": "0:shoppers.har/har-entry-3:0",
       "resource": "MedicationRequest/wf-894a2cb76071d22b5a607debd3a504a2",
       "title": "MedicationRequest/wf-894a2cb76071d22b5a607debd3a504a2"
@@ -1094,9 +1101,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/practitioner-name",
           "value": "Dr. Lee Nguyen"
         },
+        "reference": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6",
         "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
@@ -1209,9 +1217,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/practitioner-name",
           "value": "Dr. Lee Nguyen"
         },
+        "reference": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6",
         "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
@@ -1324,9 +1333,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/practitioner-name",
           "value": "Dr. Lee Nguyen"
         },
+        "reference": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6",
         "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
@@ -1418,6 +1428,40 @@
           "value": "6135550101"
         }
       ]
+    },
+    {
+      "address": [],
+      "communication": [],
+      "contained": [],
+      "extension": [],
+      "id": "wf-a9dfcfafef24c975c196ce750003dfe6",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/practitioner-name",
+          "value": "Dr. Lee Nguyen"
+        }
+      ],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-0e1e698b827b1113735d4b7a0d260788",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "name": [
+        {
+          "extension": [],
+          "given": [],
+          "prefix": [],
+          "suffix": [],
+          "text": "Dr. Lee Nguyen"
+        }
+      ],
+      "photo": [],
+      "qualification": [],
+      "resourceType": "Practitioner",
+      "telecom": []
     }
   ]
 }

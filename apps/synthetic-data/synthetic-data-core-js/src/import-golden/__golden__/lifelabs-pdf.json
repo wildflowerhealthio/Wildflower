@@ -14,14 +14,14 @@
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "0:lifelabs-report.pdf/Practitioner/ROY DR. ANNE",
+      "key": "0:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400#implied:Practitioner|https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name|ROY DR. ANNE",
       "resource": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba",
       "title": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba"
     },
     {
       "disposition": "Included",
       "group": "lifelabs-pdf",
-      "key": "0:lifelabs-report.pdf/Practitioner/OSEI DR. KWAME",
+      "key": "0:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400#implied:Practitioner|https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name|OSEI DR. KWAME",
       "resource": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77",
       "title": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77"
     },
@@ -158,6 +158,7 @@
       ],
       "resultsInterpreter": [
         {
+          "display": "ROY DR. ANNE",
           "extension": [],
           "identifier": {
             "extension": [],
@@ -168,6 +169,7 @@
           "type": "Practitioner"
         },
         {
+          "display": "OSEI DR. KWAME",
           "extension": [],
           "identifier": {
             "extension": [],
@@ -262,6 +264,7 @@
       ],
       "resultsInterpreter": [
         {
+          "display": "ROY DR. ANNE",
           "extension": [],
           "identifier": {
             "extension": [],
@@ -272,6 +275,7 @@
           "type": "Practitioner"
         },
         {
+          "display": "OSEI DR. KWAME",
           "extension": [],
           "identifier": {
             "extension": [],
@@ -703,11 +707,6 @@
           "extension": [],
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
           "value": "OSEI DR. KWAME"
-        },
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
-          "value": "OSEI DR. KWAME"
         }
       ],
       "meta": {
@@ -741,11 +740,6 @@
         {
           "extension": [],
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
-          "value": "ROY DR. ANNE"
-        },
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
           "value": "ROY DR. ANNE"
         }
       ],
