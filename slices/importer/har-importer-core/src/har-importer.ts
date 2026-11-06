@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Option, pipe } from 'effect'
 
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import {
@@ -37,19 +37,63 @@ const enabledKindNames = (settings: HarSettings): ReadonlySet<string> => {
   return new Set(fhirPool.map((kind) => kind.name).filter((name) => !disabled.has(name)))
 }
 
+/** The tail of a FHIR server's `Binary` read path: `/Binary/<id>`, the id in R4's id grammar. */
+const BINARY_READ_PATH = /\/Binary\/[A-Za-z0-9\-.]{1,64}$/
+
+/**
+ * The URL a `Binary` read served at `responseUrl` names the Binary by: the
+ * read's URL less its query and fragment, `<root>/Binary/<id>`. `None` for a
+ * response that is no `Binary` read.
+ */
+const binaryUrlIfRead = (responseUrl: string): Option.Option<string> =>
+  pipe(
+    Option.fromNullable(URL.parse(responseUrl)),
+    Option.filter(({ pathname }) => BINARY_READ_PATH.test(pathname)),
+    Option.map(({ origin, pathname }) => `${origin}${pathname}`)
+  )
+
+/**
+ * A previewed record's `fullUrl`: for a `Binary` a read served, the server's
+ * URL for it ({@link binaryUrlIfRead}); for any other record, its preview
+ * key, `<response id>:<index>`.
+ *
+ * @remarks
+ * A Binary has no identifier, so its `fullUrl` is what names it: a reference
+ * or an `Attachment.url` naming it is detached to the same URL, and the import
+ * stage resolves one to the other.
+ */
+const fullUrlOf = (responseUrl: string, key: string, resource: DetachedResource.Type): string =>
+  resource.resourceType === 'Binary'
+    ? Option.getOrElse(binaryUrlIfRead(responseUrl), () => key)
+    : key
+
 /**
  * The previews' records as one section per response URL, in the order each
- * URL first appears in the archive, each record's `fullUrl` its preview key
- * (`<response id>:<index>`).
+ * URL first appears in the archive, each record's `fullUrl` from
+ * {@link fullUrlOf}.
+ *
+ * @remarks
+ * Only the first record per `fullUrl` is kept, so a Binary served by two
+ * reads (one with a query string, one without) is one record; a section left
+ * with no record is dropped.
  */
 const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFileSet.Section[] => {
   const byUrl = new Map<string, DecodedFileSet.Entry[]>()
+  const seenFullUrls = new Set<string>()
+  const isFirstOfItsFullUrl = ({ fullUrl }: DecodedFileSet.Entry): boolean => {
+    if (seenFullUrls.has(fullUrl)) return false
+    seenFullUrls.add(fullUrl)
+    return true
+  }
   for (const entry of previews) {
-    if (entry.outcome._tag !== 'resources' || entry.outcome.resources.length === 0) continue
-    const labeled = entry.outcome.resources.map(({ key, resource }): DecodedFileSet.Entry => ({
-      fullUrl: key,
-      resource,
-    }))
+    if (entry.outcome._tag !== 'resources') continue
+    const labeled = entry.outcome.resources
+      .map(({ key, resource }): DecodedFileSet.Entry => ({
+        fullUrl: fullUrlOf(entry.ref.url, key, resource),
+        resource,
+      }))
+      .filter(isFirstOfItsFullUrl)
+    if (labeled.length === 0) continue
     const existing = byUrl.get(entry.ref.url)
     if (existing === undefined) byUrl.set(entry.ref.url, labeled)
     else existing.push(...labeled)
