@@ -64,9 +64,9 @@ shell's shared `persistTransactionBundle`.
   in the batch, so two source files in one pick cannot collide on
   `responseId:index`.
 - `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses)`
-  recognizes each response (`Extraction.recognize`), takes its
-  top-specificity candidate (`pickFor` — there are no per-response
-  overrides), and parses through it (`Extraction.parseWith`). A previewed
+  routes each response to its top-specificity kind (`Extraction.routeTo` —
+  there are no per-response overrides) and parses through it
+  (`Extraction.parseWith`). A previewed
   response keeps its response ref and the name of the kind it routed to. Every
   non-resource outcome is folded to data so one bad response cannot abort the
   batch. Consumed by the importer's `decodeFileSet`; the per-resource selection

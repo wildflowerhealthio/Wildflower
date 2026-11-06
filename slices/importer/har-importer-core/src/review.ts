@@ -1,11 +1,11 @@
-import { Array as Arr, Effect, Match, Option, type ParseResult } from 'effect'
+import { Effect, Match, Option, type ParseResult } from 'effect'
 
 import { Extraction, type HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 /**
- * The HAR-specific preview pipeline: given decoded responses, recognize each
- * response against the kind pool and parse it through its top-ranked kind into
- * previewed records. The importer's decode folds these
+ * The HAR-specific preview pipeline: given decoded responses, route each
+ * response to its top-ranked kind in the pool (`Extraction.routeTo`) and parse
+ * it through that kind into previewed records. The importer's decode folds these
  * previews into the sections and notes the shell reviews; the per-resource
  * selection (exclude/edit) lives in `importer-fundamentals`' `StagedImport`
  * namespace.
@@ -44,15 +44,6 @@ interface PreviewedResponse<TParsed> {
 }
 
 /**
- * The candidate one response resolves to: its top-specificity candidate, or
- * none when nothing matched. With no per-response overrides, the routing pick
- * is the only pick.
- */
-const pickFor = <K>(
-  recognized: Extraction.RecognizedResponse<K>
-): Option.Option<Extraction.RecognitionCandidate<K>> => Arr.head(recognized.candidates)
-
-/**
  * Parse every response through its top-specificity kind, producing one
  * {@link PreviewedResponse} per input response, in input order.
  *
@@ -65,50 +56,48 @@ const preview = <TParsed>(
 ): Effect.Effect<readonly PreviewedResponse<TParsed>[]> => {
   type Previewed = PreviewedResponse<TParsed>
   const duplicates = Extraction.findDuplicates(responses)
-  return Effect.forEach(
-    Arr.zip(responses, Extraction.recognize(pool, responses)),
-    ([response, recognized]) => {
-      const duplicateOf = duplicates.get(response.id)
-      if (duplicateOf !== undefined) {
-        return Effect.succeed<Previewed>({
-          ref: recognized.ref,
-          pickKindName: Option.none(),
-          outcome: { _tag: 'duplicate', of: duplicateOf },
-        })
-      }
-      const pick = pickFor(recognized)
-      if (Option.isNone(pick)) {
-        return Effect.succeed<Previewed>({
-          ref: recognized.ref,
-          pickKindName: Option.none(),
-          outcome: { _tag: 'noPick' },
-        })
-      }
-      const candidate = pick.value
-      const pickKindName = Option.some(candidate.kind.name)
-      return Extraction.parseWith(candidate.kind, response).pipe(
-        Effect.map((outcome): Previewed => {
-          const previewed = Match.value(outcome).pipe(
-            Match.tag('resources', ({ resources }): PreviewedOutcome<TParsed> => ({
-              _tag: 'resources',
-              resources: resources.map((resource, index): PreviewedResource<TParsed> => ({
-                key: resourceKey(recognized.ref.id, index),
-                resource,
-              })),
-            })),
-            Match.tag('parseError', ({ error }): PreviewedOutcome<TParsed> => ({
-              _tag: 'parseError',
-              error,
-            })),
-            Match.tag('bodyAbsent', (): PreviewedOutcome<TParsed> => ({ _tag: 'bodyAbsent' })),
-            Match.exhaustive
-          )
-          return { ref: recognized.ref, pickKindName, outcome: previewed }
-        })
-      )
+  return Effect.forEach(responses, (response) => {
+    const ref: Extraction.ResponseRef = { id: response.id, url: response.url }
+    const duplicateOf = duplicates.get(response.id)
+    if (duplicateOf !== undefined) {
+      return Effect.succeed<Previewed>({
+        ref,
+        pickKindName: Option.none(),
+        outcome: { _tag: 'duplicate', of: duplicateOf },
+      })
     }
-  )
+    const pick = Extraction.routeTo(pool, response.url, response.method)
+    if (Option.isNone(pick)) {
+      return Effect.succeed<Previewed>({
+        ref,
+        pickKindName: Option.none(),
+        outcome: { _tag: 'noPick' },
+      })
+    }
+    const candidate = pick.value
+    const pickKindName = Option.some(candidate.kind.name)
+    return Extraction.parseWith(candidate.kind, response).pipe(
+      Effect.map((outcome): Previewed => {
+        const previewed = Match.value(outcome).pipe(
+          Match.tag('resources', ({ resources }): PreviewedOutcome<TParsed> => ({
+            _tag: 'resources',
+            resources: resources.map((resource, index): PreviewedResource<TParsed> => ({
+              key: resourceKey(ref.id, index),
+              resource,
+            })),
+          })),
+          Match.tag('parseError', ({ error }): PreviewedOutcome<TParsed> => ({
+            _tag: 'parseError',
+            error,
+          })),
+          Match.tag('bodyAbsent', (): PreviewedOutcome<TParsed> => ({ _tag: 'bodyAbsent' })),
+          Match.exhaustive
+        )
+        return { ref, pickKindName, outcome: previewed }
+      })
+    )
+  })
 }
 
-export { pickFor, preview, resourceKey }
+export { preview, resourceKey }
 export type { PreviewedOutcome, PreviewedResource, PreviewedResponse }
