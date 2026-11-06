@@ -169,11 +169,54 @@ const patientReferenceIfInSet = (
     Option.flatMap((patient) => ReferencePlan.literalReferenceIfResolved(referencePlan, patient))
   )
 
-/** The `subject` of each `MedicationRequest` of a set, by the literal reference it is written under. */
+/** A prescription's `subject`, as it spells it, beside the literal reference of the Patient of the set it names. */
+interface PrescriptionSubject {
+  readonly subject: ReferenceType
+  readonly patient: string
+}
+
+/**
+ * For each keyed `MedicationRequest` of a set, by the literal reference it is
+ * written under, its `subject`, resolved to a Patient of the set once
+ * ({@link patientReferenceIfInSet}): `None` for one naming no Patient of the
+ * set.
+ */
 type SubjectsByPrescription = Record.ReadonlyRecord<
   string,
-  Arr.NonEmptyReadonlyArray<ReferenceType>
+  Arr.NonEmptyReadonlyArray<Option.Option<PrescriptionSubject>>
 >
+
+/**
+ * The {@link SubjectsByPrescription} of a set's planned records.
+ *
+ * @remarks
+ * Only a keyed request is one a reference resolves to; a keyless one's
+ * minted reference never is.
+ */
+const subjectsByPrescriptionOf = (
+  referencePlan: ReferencePlan.Type,
+  plannedEntries: readonly { readonly entry: Entry; readonly plan: ResourcePlan.Type }[]
+): SubjectsByPrescription =>
+  Record.map(
+    Arr.groupBy(
+      Arr.filterMap(plannedEntries, ({ entry: { resource }, plan }) =>
+        resource.resourceType === 'MedicationRequest'
+          ? ResourcePlan.match(plan, {
+              Derived: (derived) =>
+                Option.some({ literalReference: ResourcePlan.literalReference(derived), resource }),
+              Minted: () => Option.none(),
+            })
+          : Option.none()
+      ),
+      ({ literalReference }) => literalReference
+    ),
+    Arr.map(({ resource: { subject } }) =>
+      Option.map(patientReferenceIfInSet(referencePlan, subject), (patient) => ({
+        subject,
+        patient,
+      }))
+    )
+  )
 
 /**
  * The `subject` the prescriptions a dispense names agree it is for: `None`
@@ -194,20 +237,19 @@ const prescriptionSubjectIfAgreed = (
       pipe(
         ReferencePlan.literalReferenceIfResolved(referencePlan, prescription),
         Option.flatMap((literalReference) => Record.get(subjectsByPrescription, literalReference)),
-        Option.getOrElse((): readonly ReferenceType[] => [])
+        Option.getOrElse((): readonly Option.Option<PrescriptionSubject>[] => [])
       )
     ),
-    Arr.map((subject) =>
-      Option.map(patientReferenceIfInSet(referencePlan, subject), (patient) => ({
-        subject,
-        patient,
-      }))
-    ),
     Option.all,
-    Option.map(Arr.dedupeWith((first, second) => first.patient === second.patient)),
-    Option.filter((namedPatients) => namedPatients.length === 1),
-    Option.flatMap(Arr.head),
-    Option.map(({ subject }) => subject)
+    Option.flatMap(
+      Arr.match({
+        onEmpty: Option.none,
+        onNonEmpty: ([first, ...rest]) =>
+          Arr.every(rest, ({ patient }) => patient === first.patient)
+            ? Option.some(first.subject)
+            : Option.none(),
+      })
+    )
   )
 
 /**
@@ -296,18 +338,7 @@ const adopt = (
   const referencePlan = ReferencePlan.of(
     setEntries.flatMap(({ entry, plan }) => referencePlanEntriesOf(plan, entry.resource))
   )
-  // A keyless request's minted reference is never what a reference resolves to.
-  const subjectsByPrescription = Record.map(
-    Arr.groupBy(
-      Arr.filterMap(setEntries, ({ entry: { resource }, plan }) =>
-        resource.resourceType === 'MedicationRequest'
-          ? Option.some({ literalReference: ResourcePlan.literalReference(plan), resource })
-          : Option.none()
-      ),
-      ({ literalReference }) => literalReference
-    ),
-    Arr.map(({ resource }) => resource.subject)
-  )
+  const subjectsByPrescription = subjectsByPrescriptionOf(referencePlan, setEntries)
   const takeSubject = takeSubjectFromPrescription(referencePlan, subjectsByPrescription)
   const adoptEntry = adoptRecord(referencePlan)
   return {
