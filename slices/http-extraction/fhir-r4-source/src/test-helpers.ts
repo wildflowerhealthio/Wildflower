@@ -1,4 +1,6 @@
 export { PatientResponseKind } from './response-kinds/patient-response-kind.ts'
 export { ObservationResponseKind } from './response-kinds/observation-response-kind.ts'
 export { ObservationListResponseKind } from './response-kinds/observation-list-response-kind.ts'
+export { DocumentReferenceResponseKind } from './response-kinds/document-reference-response-kind.ts'
+export { BinaryResponseKind } from './response-kinds/binary-response-kind.ts'
 export { extractJson } from './extract-json.ts'

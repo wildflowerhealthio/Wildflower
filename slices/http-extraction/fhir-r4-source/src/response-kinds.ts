@@ -1,13 +1,15 @@
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
+import { BinaryResponseKind } from './response-kinds/binary-response-kind.ts'
+import { DocumentReferenceResponseKind } from './response-kinds/document-reference-response-kind.ts'
 import { ObservationListResponseKind } from './response-kinds/observation-list-response-kind.ts'
 import { ObservationResponseKind } from './response-kinds/observation-response-kind.ts'
 import { PatientResponseKind } from './response-kinds/patient-response-kind.ts'
 
 /**
- * The three FHIR R4 response kinds — Patient, Observation, Observation-list —
- * each parsing the server's resources and detaching them under the server's
+ * The five FHIR R4 response kinds — Patient, Observation, Observation-list,
+ * DocumentReference, Binary — each parsing the server's resources and detaching them under the server's
  * root, the one its `tryRecognize` claimed the URL by.
  *
  * @remarks
@@ -22,6 +24,8 @@ const fhirR4ResponseKinds: readonly HttpResponseKind.HttpResponseKind<DetachedRe
   PatientResponseKind,
   ObservationResponseKind,
   ObservationListResponseKind,
+  DocumentReferenceResponseKind,
+  BinaryResponseKind,
 ]
 
 export { fhirR4ResponseKinds }
