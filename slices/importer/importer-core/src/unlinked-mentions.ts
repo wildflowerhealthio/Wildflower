@@ -67,7 +67,7 @@ const keysWithoutPatientOf = (
 ): ReadonlySet<string> => {
   const leftUnlinked = leftUnlinkedIn(batch.plan, kind)
   return new Set(
-    SectionedList.rows(batch.formats[kind].decoded.rows)
+    SectionedList.rows(batch.formats[kind].decoded.sectionedList)
       .filter((row) =>
         leftUnlinked(
           row.reviewable.key,

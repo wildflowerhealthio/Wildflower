@@ -57,7 +57,7 @@ const STORED_JAN: LinkableResource.WithId = decodePatient({
 })
 
 const file: DecodedFile.DecodedFile = {
-  rows: SectionedList.make([
+  sectionedList: SectionedList.make([
     {
       title: 'Resources',
       rows: [

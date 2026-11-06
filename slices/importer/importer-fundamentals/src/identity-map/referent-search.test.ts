@@ -180,7 +180,7 @@ describe('ReferentSearch.defaultChoice', () => {
   it('should keep the stored copy of a record the import implied, rather than write the name alone over it', async () => {
     const implied = Referent.discover([
       {
-        rows: SectionedList.make([
+        sectionedList: SectionedList.make([
           Section.make('Resources', [
             {
               reviewable: { key: 'k-0', title: 'Patient/p-1', origin: 'Implied' },

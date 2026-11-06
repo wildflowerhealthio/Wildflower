@@ -157,7 +157,7 @@ const referenceTo = (
   resourceType: 'Patient' | 'ImagingStudy'
 ): Option.Option<string> =>
   Arr.findFirst(
-    SectionedList.rows(decoded.rows),
+    SectionedList.rows(decoded.sectionedList),
     (row) => row.resource.resourceType === resourceType
   ).pipe(Option.map((row) => `${resourceType}/${row.resource.id}`))
 

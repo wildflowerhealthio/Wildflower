@@ -135,7 +135,7 @@ const byGroupAndKey = (
  */
 const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] => [
   ...formatKinds.flatMap((kind) =>
-    SectionedList.rows(batch.formats[kind].decoded.rows).map((row): DiffRow => ({
+    SectionedList.rows(batch.formats[kind].decoded.sectionedList).map((row): DiffRow => ({
       group: kind,
       key: row.reviewable.key,
       resource: row.resource,
@@ -281,7 +281,7 @@ const formatExcludedByDefault = (
   selection: StagedImport.Selection
 ): ReadonlySet<string> =>
   new Set([
-    ...unchangedKeysOf(SectionedList.rows(batch.formats[kind].decoded.rows), comparisons),
+    ...unchangedKeysOf(SectionedList.rows(batch.formats[kind].decoded.sectionedList), comparisons),
     ...keysWithoutPatientOf(batch, kind, selection),
   ])
 

@@ -159,8 +159,10 @@ const linkedRecords = (plan: LinkPlan.Type): readonly DecodedFile.Row[] =>
 const resolveFile =
   (plan: LinkPlan.Type) =>
   (decodedFile: DecodedFile.DecodedFile): DecodedFile.DecodedFile => {
-    const rows = SectionedList.modify(decodedFile.rows, resolveRow(plan))
-    return rows === decodedFile.rows ? decodedFile : { ...decodedFile, rows }
+    const sectionedList = SectionedList.modify(decodedFile.sectionedList, resolveRow(plan))
+    return sectionedList === decodedFile.sectionedList
+      ? decodedFile
+      : { ...decodedFile, sectionedList }
   }
 
 export { linkedKey, linkedRecords, resolveEdit, resolveFile }

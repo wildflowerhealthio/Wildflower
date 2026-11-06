@@ -286,7 +286,7 @@ describe('LifeLabs.reportsOf', () => {
         )
         // Adopted as the import stage adopts them, without its source file.
         const imported = SectionedList.rows(
-          Either.getOrThrow(DecodedFileSet.adopt(decoded)).rows
+          Either.getOrThrow(DecodedFileSet.adopt(decoded)).sectionedList
         ).map((row) => row.resource)
         const withoutSubject = (resource: FhirResource): FhirResource =>
           resource.resourceType === 'Observation' || resource.resourceType === 'DiagnosticReport'
@@ -322,7 +322,7 @@ describe('LifeLabs.reportsOf', () => {
           })
         )
         const patients = SectionedList.rows(
-          Either.getOrThrow(DecodedFileSet.adopt(decoded)).rows
+          Either.getOrThrow(DecodedFileSet.adopt(decoded)).sectionedList
         ).flatMap(({ resource }) => (resource.resourceType === 'Patient' ? [resource] : []))
         expect(
           patients.map((patient) =>

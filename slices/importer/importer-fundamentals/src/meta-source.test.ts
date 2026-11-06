@@ -80,13 +80,13 @@ describe('MetaSource.stampDecoded', () => {
         fc.string({ minLength: 1 }).map(MetaSource.makeReference),
         (sections, source) => {
           const stamped = MetaSource.stampDecoded(
-            { rows: SectionedList.make(sections), notes: [] },
+            { sectionedList: SectionedList.make(sections), notes: [] },
             source
           )
-          expect(stamped.rows.sections.map((section) => section.title)).toEqual(
+          expect(stamped.sectionedList.sections.map((section) => section.title)).toEqual(
             sections.map((section) => section.title)
           )
-          for (const [index, section] of stamped.rows.sections.entries()) {
+          for (const [index, section] of stamped.sectionedList.sections.entries()) {
             expect(section.rows.map((row) => row.reviewable.key)).toEqual(
               sections[index]?.rows.map((row) => row.reviewable.key)
             )

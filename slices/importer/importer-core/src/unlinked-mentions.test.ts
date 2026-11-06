@@ -55,7 +55,7 @@ const resolvedHarBatchOf = (resources: readonly FhirResourceWithId[]): ResolvedB
     ...FormatDecode.emptyResult('har'),
     files: [{ id: '0:har', fileName: 'har', bytes: new Uint8Array([1]) }],
     decoded: {
-      rows: SectionedList.make([
+      sectionedList: SectionedList.make([
         {
           title: 'Resources',
           rows: resources.map((resource, index) => ({

@@ -20,16 +20,16 @@ interface Row {
 
 /** A file set's rows, each record with an id to be written under, in sections, beside its notes. */
 interface DecodedFile {
-  readonly rows: SectionedList.Type<Row>
+  readonly sectionedList: SectionedList.Type<Row>
   readonly notes: readonly string[]
 }
 
 /** No rows and no notes: a format with no claimed files. */
-const empty: DecodedFile = { rows: SectionedList.empty(), notes: [] }
+const empty: DecodedFile = { sectionedList: SectionedList.empty(), notes: [] }
 
 /** Every file's sections, in order ({@link SectionedList.concatenateAll}), and every file's notes. */
 const concatenateAll = (files: readonly DecodedFile[]): DecodedFile => ({
-  rows: SectionedList.concatenateAll(files.map((file) => file.rows)),
+  sectionedList: SectionedList.concatenateAll(files.map((file) => file.sectionedList)),
   notes: files.flatMap((file) => file.notes),
 })
 

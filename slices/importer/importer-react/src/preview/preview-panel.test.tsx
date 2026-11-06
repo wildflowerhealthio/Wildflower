@@ -659,7 +659,7 @@ const comparisonsFor = (
 const decoded = (
   sections: readonly Section.Type<DecodedFile.Row>[],
   notes: readonly string[] = []
-): DecodedFile.DecodedFile => ({ rows: SectionedList.make(sections), notes })
+): DecodedFile.DecodedFile => ({ sectionedList: SectionedList.make(sections), notes })
 
 /** One titled section holding the given resources. */
 const section = (

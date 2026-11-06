@@ -104,7 +104,7 @@ const leftByReferentLinksOnTestClock = (
       LinkPlan.withMentionLinkChoiceSet(onReferents, byMention)
     )
   )
-  return SectionedList.rows(file.rows).flatMap(({ reviewable, resource }) =>
+  return SectionedList.rows(file.sectionedList).flatMap(({ reviewable, resource }) =>
     UnlinkedMention.leftByReferentLinks(plan, reviewable.key, resource)
   )
 }
@@ -121,7 +121,7 @@ const wireOf = (resource: FhirResource): string => JSON.stringify(encodeResource
 /** A decoded file as wire JSON text, keys and titles included. */
 const fileWireOf = (file: DecodedFile.DecodedFile): string =>
   JSON.stringify(
-    file.rows.sections.map((section) => ({
+    file.sectionedList.sections.map((section) => ({
       title: section.title,
       rows: section.rows.map((row) => [
         row.reviewable.key,
@@ -252,7 +252,7 @@ const observation = (
 
 /** A decoded file of one section, keyed `k-<index>`. */
 const fileOf = (...resources: readonly FhirResourceWithId[]): DecodedFile.DecodedFile => ({
-  rows: SectionedList.make([
+  sectionedList: SectionedList.make([
     Section.make(
       'Resources',
       resources.map((resource, index) => ({
@@ -345,10 +345,10 @@ const fileArbitrary: fc.Arbitrary<DecodedFile.DecodedFile> = fc
   .chain((resources) =>
     fc.integer({ min: 0, max: resources.length }).map((split) => {
       const file = fileOf(...resources)
-      const rows = SectionedList.rows(file.rows)
+      const rows = SectionedList.rows(file.sectionedList)
       return {
         ...file,
-        rows: SectionedList.make([
+        sectionedList: SectionedList.make([
           Section.make('First', rows.slice(0, split)),
           Section.make('Second', rows.slice(split)),
         ]),

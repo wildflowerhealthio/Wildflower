@@ -48,7 +48,7 @@ const wireKeyOf = (
  */
 const wireKeysOf = (file: DecodedFile.DecodedFile): readonly string[] => [
   ...new Set(
-    SectionedList.rows(file.rows)
+    SectionedList.rows(file.sectionedList)
       .map(({ resource }) => wireFieldsOf(resource))
       .filter((wire) => wire.resourceType === 'Patient' || wire.resourceType === 'Practitioner')
       .flatMap((wire) => wireKeyOf(wire.resourceType, wire.identifier?.[0]))
@@ -118,7 +118,7 @@ describe('Referent.discover', () => {
     const implied = practitioner('pr-1', 'Dr. A Smith')
     const served = { ...practitioner('pr-1', 'Dr. A Smith'), gender: 'female' as const }
     const impliedFile: DecodedFile.DecodedFile = {
-      rows: SectionedList.make([
+      sectionedList: SectionedList.make([
         Section.make('Resources', [
           {
             reviewable: { key: 'k-0', title: 'implied', origin: 'Implied' },

@@ -41,7 +41,7 @@ const importHar = (bytes: Uint8Array, fileName: string): Promise<readonly FhirRe
     harImporter
       .decode([{ id: `0:${fileName}`, fileName, bytes }], null)
       .pipe(Effect.flatMap((decoded) => importDecoded(harImporter, decoded)))
-  ).then((result) => SectionedList.rows(result.decoded.rows).map((row) => row.resource))
+  ).then((result) => SectionedList.rows(result.decoded.sectionedList).map((row) => row.resource))
 
 /** A generated person's Rexall records, and a chest image re-identified as them. */
 interface RexallPersonCase {

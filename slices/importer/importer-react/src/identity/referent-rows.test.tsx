@@ -376,7 +376,7 @@ const batchOf = (resources: readonly FhirResourceWithId[]): DecodedBatch => ({
       title: 'a.har',
       files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
       decoded: {
-        rows: SectionedList.make([
+        sectionedList: SectionedList.make([
           {
             title: 'Resources',
             rows: resources.map((resource, index) => ({
@@ -538,7 +538,7 @@ const renderRows = async (
 
 const subjectOfRequest = (): string | null | undefined => {
   const request = SectionedList.rows(
-    (resolved?.formats.har.decoded ?? DecodedFile.empty).rows
+    (resolved?.formats.har.decoded ?? DecodedFile.empty).sectionedList
   ).find((row) => row.resource.resourceType === 'MedicationRequest')?.resource
   return request !== undefined && 'subject' in request ? request.subject?.reference : undefined
 }
@@ -546,7 +546,7 @@ const subjectOfRequest = (): string | null | undefined => {
 /** The literal reference the resolved request's `requester` names. */
 const requesterOfRequest = (): string | null | undefined => {
   const request = SectionedList.rows(
-    (resolved?.formats.har.decoded ?? DecodedFile.empty).rows
+    (resolved?.formats.har.decoded ?? DecodedFile.empty).sectionedList
   ).find((row) => row.resource.resourceType === 'MedicationRequest')?.resource
   return request !== undefined && 'requester' in request ? request.requester?.reference : undefined
 }

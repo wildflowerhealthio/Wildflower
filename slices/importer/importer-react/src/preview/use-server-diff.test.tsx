@@ -47,7 +47,7 @@ const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => {
         title: 'a.har',
         files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
         decoded: {
-          rows: SectionedList.make([
+          sectionedList: SectionedList.make([
             {
               title: 'Resources',
               rows: resources.map((resource, index) => ({

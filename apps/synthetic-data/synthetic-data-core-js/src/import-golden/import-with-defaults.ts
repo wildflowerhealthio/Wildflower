@@ -98,7 +98,7 @@ const encodedResourcesOf = (
 
 /** Every source file of `kind` in `batch`'s decode. */
 const sourceFilesOf = (batch: DecodedBatch, kind: FormatKind): readonly FhirResourceWithId[] =>
-  SectionedList.rows(batch.formats[kind].decoded.rows)
+  SectionedList.rows(batch.formats[kind].decoded.sectionedList)
     .map(({ resource }) => resource)
     .filter((resource) => isSourceFileOf(kind, resource))
 

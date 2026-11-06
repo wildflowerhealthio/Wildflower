@@ -105,7 +105,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 - `src/decoded-file.ts` — the **`DecodedFile`** namespace: **`Row`**, a
   decoded file's row `{ reviewable, resource }` (a `Reviewable.Type` and the
   record it will write); **`DecodedFile`**, a file set's records the
-  device's own: its **`rows`**, a `SectionedList.Type` of `Row`, beside its
+  device's own: its **`sectionedList`**, a `SectionedList.Type` of `Row`, beside its
   `notes`; **`empty`** and **`concatenateAll`** (every file's sections in
   order, and every file's notes).
 - `src/decoded-file-set.ts` — the **`DecodedFileSet`** namespace: one file

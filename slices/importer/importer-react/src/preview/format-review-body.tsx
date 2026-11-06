@@ -91,7 +91,7 @@ const perTypeTallies = (
 ): readonly TypeTally[] => {
   const order: string[] = []
   const totals = new Map<string, { total: number; excluded: number }>()
-  for (const row of SectionedList.rows(decodedFile.rows)) {
+  for (const row of SectionedList.rows(decodedFile.sectionedList)) {
     const type = resourceTypeOf(row.resource)
     const excluded = StagedImport.isResourceIncluded(
       selection,
@@ -406,7 +406,7 @@ const FormatReviewBody = ({
   /** The identity map's action a pick drives. */
   readonly onChooseMention?: ChooseMention
 }): JSX.Element => {
-  const { rows, notes } = result.decoded
+  const { sectionedList, notes } = result.decoded
   const tallies = useMemo(
     () => perTypeTallies(result.decoded, selection, excludedByDefault),
     [result.decoded, selection, excludedByDefault]
@@ -476,7 +476,7 @@ const FormatReviewBody = ({
       )}
       {unlinkedGroup(NEEDS_A_PATIENT_HEADING, groups.needingPatient)}
       {unlinkedGroup(NEEDS_A_PROVIDER_HEADING, groups.needingProvider)}
-      {rows.sections.length === 0 && result.unreadableFiles.length === 0 && (
+      {sectionedList.sections.length === 0 && result.unreadableFiles.length === 0 && (
         <p className={styles['review-body__empty']}>{NO_RESOURCES_MESSAGE}</p>
       )}
       {result.unreadableFiles.length > 0 && (
@@ -488,7 +488,7 @@ const FormatReviewBody = ({
           ))}
         </ul>
       )}
-      {rows.sections.map((section) => (
+      {sectionedList.sections.map((section) => (
         <section
           // A resource key is namespaced by the file it came from
           // (`FormatDecode.keyPrefix`), so it is unique across the format —

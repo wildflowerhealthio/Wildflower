@@ -59,7 +59,7 @@ type SkipReason = 'nothing' | 'unreadable'
  * unreadable, else `nothing`.
  */
 const skipReasonFor = (result: FormatDecode.Result<FormatKind>): SkipReason =>
-  SectionedList.rows(result.decoded.rows).length === 0 && result.unreadableFiles.length > 0
+  SectionedList.rows(result.decoded.sectionedList).length === 0 && result.unreadableFiles.length > 0
     ? 'unreadable'
     : 'nothing'
 
@@ -130,13 +130,15 @@ const formatDecisionsOf = (
   claimedFormats(batch.formats).flatMap((kind) => {
     const selection = selectionFor(kind)
     const excludedByDefault = excludedByDefaultFor(kind)
-    return SectionedList.rows(batch.formats[kind].decoded.rows).map((row): ProvisionalDecision => ({
-      group: kind,
-      row: { ...row, resource: StagedImport.resolvedResourceOf(batch.plan, selection, row) },
-      verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, row.reviewable.key)
-        ? 'Candidate'
-        : 'Excluded',
-    }))
+    return SectionedList.rows(batch.formats[kind].decoded.sectionedList).map(
+      (row): ProvisionalDecision => ({
+        group: kind,
+        row: { ...row, resource: StagedImport.resolvedResourceOf(batch.plan, selection, row) },
+        verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, row.reviewable.key)
+          ? 'Candidate'
+          : 'Excluded',
+      })
+    )
   })
 
 /**

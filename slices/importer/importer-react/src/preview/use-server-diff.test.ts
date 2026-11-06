@@ -34,7 +34,7 @@ const formatResult = <K extends FormatKind>(
   files: [{ id: '0:test', fileName: 'test', bytes: new Uint8Array([1]) }],
   format,
   decoded: {
-    rows: SectionedList.make([
+    sectionedList: SectionedList.make([
       {
         title: 's',
         rows: entries.map(([key, rid]) => ({

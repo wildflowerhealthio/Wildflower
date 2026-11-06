@@ -61,7 +61,9 @@ const subjectAt = (
   file: DecodedFile.DecodedFile,
   key: string
 ): IdentifierAndReference.ReferenceType | null | undefined => {
-  const resource = SectionedList.rows(file.rows).find((row) => row.reviewable.key === key)?.resource
+  const resource = SectionedList.rows(file.sectionedList).find(
+    (row) => row.reviewable.key === key
+  )?.resource
   return resource !== undefined && 'subject' in resource ? resource.subject : undefined
 }
 
@@ -114,9 +116,9 @@ describe('a mention link choice on a resolved file', () => {
 
     expect(subjectAt(resolved, 'k-1')?.reference).toBe('Patient/s-2')
     expect(subjectAt(resolved, 'k-2')?.reference).toBe(null)
-    expect(resolved.rows.sections.map((section) => section.title)).toEqual(['Resources'])
+    expect(resolved.sectionedList.sections.map((section) => section.title)).toEqual(['Resources'])
     expect(
-      SectionedList.rows(resolved.rows).filter(({ resource }) => resource.id === 's-2')
+      SectionedList.rows(resolved.sectionedList).filter(({ resource }) => resource.id === 's-2')
     ).toEqual([])
   })
 
@@ -221,7 +223,7 @@ describe('Mention.relinked', () => {
     )
     fc.assert(
       fc.property(fileWithChoicesArbitrary, fc.nat(), literals, ({ file }, pick, literal) => {
-        const rows = SectionedList.rows(file.rows)
+        const rows = SectionedList.rows(file.sectionedList)
         const row = rows[pick % Math.max(rows.length, 1)]
         if (row === undefined) return
         const mentions = Mention.linkableIn(row.resource)
@@ -256,7 +258,7 @@ describe('mention link choices and the referents', () => {
     file: DecodedFile.DecodedFile
   ): fc.Arbitrary<MentionLinkChoiceSet.Type> => {
     const referents = discoverOnTestClock(file)
-    const slots = SectionedList.rows(file.rows).flatMap(({ reviewable, resource }) =>
+    const slots = SectionedList.rows(file.sectionedList).flatMap(({ reviewable, resource }) =>
       Mention.linkableIn(resource).map((mention) => ({ key: reviewable.key, mention }))
     )
     return fc
@@ -342,7 +344,7 @@ describe('mention link choices and the referents', () => {
           const withChosen = resolveOnTestClock(file, choices, mentionChoices)
 
           const unchosenMentionsOf = (resolved: DecodedFile.DecodedFile): readonly unknown[] =>
-            SectionedList.rows(resolved.rows).flatMap(({ reviewable, resource }) =>
+            SectionedList.rows(resolved.sectionedList).flatMap(({ reviewable, resource }) =>
               Mention.madeIn(resource)
                 .filter(({ path }) =>
                   Option.isNone(
@@ -352,8 +354,8 @@ describe('mention link choices and the referents', () => {
                 .map((mention) => [reviewable.key, mention])
             )
           expect(unchosenMentionsOf(withChosen)).toEqual(unchosenMentionsOf(onReferents))
-          expect(Array.map(withChosen.rows.sections, (section) => section.title)).toEqual(
-            Array.map(onReferents.rows.sections, (section) => section.title)
+          expect(Array.map(withChosen.sectionedList.sections, (section) => section.title)).toEqual(
+            Array.map(onReferents.sectionedList.sections, (section) => section.title)
           )
         }
       ),

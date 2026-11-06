@@ -79,7 +79,7 @@ const importHar = async (har: string): Promise<Imported> => {
       .decode([picked], null)
       .pipe(Effect.flatMap((decoded) => importDecoded(harImporter, decoded)))
   )
-  const resources = result.decoded.rows.sections
+  const resources = result.decoded.sectionedList.sections
     .filter((section) => section.title !== 'Source file')
     .flatMap((section) => section.rows.map((row) => row.resource))
   return {
