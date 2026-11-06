@@ -3,6 +3,7 @@ import {
   type DocumentReference,
   type FhirResource,
   FhirResourceSchema,
+  ResourceType,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { harImporter } from '@wildflowerhealthio/har-importer-core'
 import { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
@@ -140,6 +141,22 @@ const isUnlinkedSourceFile = (resource: FhirResource): boolean => {
   )
 }
 
+/**
+ * Whether an attachment `url` is a path into the snapshot: relative, and no
+ * FHIR `<Type>/<id>` reference (an imported `Binary/<id>`), so only an
+ * attachment link spells it.
+ */
+const isSnapshotPath = (url: string): boolean =>
+  !URL.canParse(url) && !ResourceType.is(url.split('/')[0])
+
+/**
+ * Whether a resource names a path into the snapshot by an attachment `url`:
+ * what only its file may carry, as the link to an {@link Attachment}.
+ */
+const namesSnapshotPath = (resource: FhirResource): boolean =>
+  resource.resourceType === 'DocumentReference' &&
+  resource.content.some(({ attachment: { url } }) => url !== null && isSnapshotPath(url))
+
 /** A resource in the store, as its import wrote it. */
 const ResourceSchema = Schema.TaggedStruct('Resource', {
   resource: StoredResourceSchema,
@@ -156,6 +173,13 @@ const ResourceSchema = Schema.TaggedStruct('Resource', {
         attachmentPath === undefined ||
         isUnlinkedSourceFile(resource) ||
         'A resource linking an attachment is a DocumentReference whose one attachment carries neither data nor url.'
+    ),
+    // A path in the resource itself would be written into its file as a link
+    // it does not make: `har/a.har` beside `data`, or `har/../index.json`.
+    Schema.filter(
+      ({ resource }) =>
+        !namesSnapshotPath(resource) ||
+        'A resource names a path into the snapshot only through its attachmentPath.'
     )
   )
   .annotations({ identifier: 'SnapshotResourceEntry' })
@@ -207,20 +231,6 @@ const attachmentPathLinkedBy = (json: ResourceJson): string | undefined => {
 }
 
 /**
- * Whether a resource file's JSON names a file in one of the snapshot's
- * attachment directories (`<format>/…`) by an attachment `url` without
- * linking it ({@link attachmentPathLinkedBy}): a link that carries `data`
- * beside it, sits in a `DocumentReference` of several attachments, or is no
- * {@link AttachmentPathSchema} path (`har/../index.json`).
- */
-const namesAttachmentWithoutLinking = (json: ResourceJson): boolean =>
-  json.resourceType === 'DocumentReference' &&
-  attachmentPathLinkedBy(json) === undefined &&
-  json.content.some(({ attachment: { url } }) =>
-    FORMATS.some((format) => url?.startsWith(`${format}/`) === true)
-  )
-
-/**
  * A source file's JSON with its attachment linking to `attachmentPath`: `url`
  * is the path, relative to the snapshot's root, where `fhir-r4` encodes an
  * attachment's `url`, and there is no `data`.
@@ -265,15 +275,6 @@ const ResourceFileSchema: Schema.Schema<Resource, SnapshotFile.Text> = Schema.tr
     decode: (file, _, ast) =>
       Either.gen(function* () {
         const json = yield* ParseResult.decodeUnknownEither(ResourceJsonSchema)(file.text)
-        if (namesAttachmentWithoutLinking(json)) {
-          return yield* Either.left(
-            new ParseResult.Type(
-              ast,
-              file,
-              `${file.path} names a snapshot attachment by url without linking it.`
-            )
-          )
-        }
         const attachmentPath = attachmentPathLinkedBy(json)
         const resource = yield* ParseResult.decodeUnknownEither(FhirResourceSchema)(
           attachmentPath !== undefined && json.resourceType === 'DocumentReference'
