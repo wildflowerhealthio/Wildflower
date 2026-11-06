@@ -7,17 +7,23 @@
  */
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { type FhirResource, Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResource,
+  type LogicalReference,
+  Patient,
+  Practitioner,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { type Either, Option, type ParseResult, Record } from 'effect'
 
 /**
- * The record a reference to one type implies from its identifier and
- * display, as its schema decodes it, or `None` when it implies none.
+ * Makes the record a reference to one type implies, from the identifier and
+ * the display the reference gives: the record as its schema decodes it, or
+ * the `ParseError` its schema rejects it with.
  */
-type ImpliedRecordOf = (
+type ImpliedRecordMaker = (
   identifier: IdentifierAndReference.QualifiedIdentifierType,
   display: string
-) => Option.Option<Either.Either<DetachedResource.Type, ParseResult.ParseError>>
+) => Either.Either<DetachedResource.Type, ParseResult.ParseError>
 
 /**
  * The wire of a record of `resourceType` keyed by `identifier`, its one name
@@ -36,74 +42,77 @@ const namedRecordWire = (
 const decodePatient = DetachedResource.decodeUnknownEither(Patient.Schema)
 const decodePractitioner = DetachedResource.decodeUnknownEither(Practitioner.Schema)
 
-/** A type a reference implies no record of. */
-const impliesNone: ImpliedRecordOf = () => Option.none()
-
 /**
- * What a reference to each type `fhir-r4` models implies: a Patient or a
- * Practitioner named by its display, and nothing for a type whose record
- * needs more than a reference can say, each with the elements R4 requires
- * that a reference does not carry.
+ * The maker of the record a reference to each type `fhir-r4` models implies:
+ * a Patient or a Practitioner named by its display, and none for a type
+ * whose record needs more than a reference can say, each with the elements
+ * R4 requires that a reference does not carry.
  *
  * @remarks
  * Exhaustive over `FhirResource`, so a type added to it states here whether
  * a reference implies its record.
  */
-const IMPLIED_RECORD_OF: { readonly [TType in FhirResource['resourceType']]: ImpliedRecordOf } = {
-  Patient: (identifier, display) =>
-    Option.some(decodePatient(namedRecordWire('Patient', identifier, display))),
-  Practitioner: (identifier, display) =>
-    Option.some(decodePractitioner(namedRecordWire('Practitioner', identifier, display))),
+const IMPLIED_RECORD_MAKERS: {
+  readonly [TType in FhirResource['resourceType']]: Option.Option<ImpliedRecordMaker>
+} = {
+  Patient: Option.some((identifier, display) =>
+    decodePatient(namedRecordWire('Patient', identifier, display))
+  ),
+  Practitioner: Option.some((identifier, display) =>
+    decodePractitioner(namedRecordWire('Practitioner', identifier, display))
+  ),
   // No `identifier` element to key it by.
-  Binary: impliesNone,
+  Binary: Option.none(),
   // `status` and `code`.
-  Observation: impliesNone,
+  Observation: Option.none(),
   // `status`, `intent`, `medication[x]` and `subject`.
-  MedicationRequest: impliesNone,
+  MedicationRequest: Option.none(),
   // `status` and `medication[x]`.
-  MedicationDispense: impliesNone,
+  MedicationDispense: Option.none(),
   // `status` and `content`.
-  DocumentReference: impliesNone,
+  DocumentReference: Option.none(),
   // `status` and `code`.
-  DiagnosticReport: impliesNone,
+  DiagnosticReport: Option.none(),
   // `status`, `intent` and `subject`.
-  ServiceRequest: impliesNone,
+  ServiceRequest: Option.none(),
   // `status` and `subject`.
-  ImagingStudy: impliesNone,
+  ImagingStudy: Option.none(),
   // `status`, `intent` and `subject`.
-  CarePlan: impliesNone,
+  CarePlan: Option.none(),
   // `lifecycleStatus`, `description` and `subject`.
-  Goal: impliesNone,
+  Goal: Option.none(),
   // `status`.
-  PlanDefinition: impliesNone,
+  PlanDefinition: Option.none(),
   // `status` and `subject`.
-  Procedure: impliesNone,
+  Procedure: Option.none(),
 }
 
-/** {@link IMPLIED_RECORD_OF} read by any type token, a type it does not list answering nothing. */
-const impliedRecordOfByType: Record.ReadonlyRecord<string, ImpliedRecordOf> = IMPLIED_RECORD_OF
+/** {@link IMPLIED_RECORD_MAKERS} read by any R4 type, a type it does not list answering nothing. */
+const impliedRecordMakersByType: Record.ReadonlyRecord<
+  string,
+  Option.Option<ImpliedRecordMaker>
+> = IMPLIED_RECORD_MAKERS
 
 /**
- * The record a reference to `resourceType` by `identifier`, shown as
- * `display`, implies: keyed by that identifier, with no `id`, as every
- * decoded record is.
+ * The record `logicalReference`, shown as `display`, implies: keyed by its
+ * identifier, with no `id`, as every decoded record is.
  *
  * @returns `None` for a type `fhir-r4` does not model (an `Organization`,
  *   until it does) and a type whose record needs more than a reference says;
  *   else the record, or the `ParseError` its schema rejects it with
  */
-const of = (
-  resourceType: string,
-  identifier: IdentifierAndReference.QualifiedIdentifierType,
+const tryFromLogicalReference = (
+  logicalReference: LogicalReference.Type,
   display: string
 ): Option.Option<Either.Either<DetachedResource.Type, ParseResult.ParseError>> =>
-  Option.flatMap(Record.get(impliedRecordOfByType, resourceType), (impliedRecordOf) =>
-    impliedRecordOf(identifier, display)
+  Option.map(
+    Option.flatten(Record.get(impliedRecordMakersByType, logicalReference.resourceType)),
+    (makeImpliedRecord) => makeImpliedRecord(logicalReference.identifier[0], display)
   )
 
 /**
- * The `fullUrl` of the record a reference to `resourceType` by `identifier`
- * implies, first named by the entry under `referencingFullUrl`:
+ * The `fullUrl` of the record `logicalReference` implies, first named by the
+ * entry under `referencingFullUrl`:
  * `<referencingFullUrl>#implied:<Type>|<system>|<value>`.
  *
  * @remarks
@@ -115,8 +124,7 @@ const of = (
  */
 const fullUrlOf = (
   referencingFullUrl: string,
-  resourceType: string,
-  { system, value }: IdentifierAndReference.QualifiedIdentifierType
+  { resourceType, identifier: [{ system, value }] }: LogicalReference.Type
 ): string => `${referencingFullUrl}#implied:${resourceType}|${system.href}|${value}`
 
-export { fullUrlOf, of }
+export { fullUrlOf, tryFromLogicalReference }

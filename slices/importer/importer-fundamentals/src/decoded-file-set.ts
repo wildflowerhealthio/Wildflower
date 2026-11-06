@@ -246,7 +246,7 @@ const impliedTargetsOf = (
  * Imply: the section of the records the references of `plannedSections`
  * imply, `None` when they imply none. Each record is one a logical reference
  * names and no record of the set holds ({@link impliedTargetsOf}), built for
- * its type by `ImpliedRecord.of`, keyed by the reference's identifier and
+ * its type by `ImpliedRecord.tryFromLogicalReference`, keyed by the reference's identifier and
  * named by its display, under a `fullUrl` read off the entry holding it
  * (`ImpliedRecord.fullUrlOf`), planned and `Implied`. One record covers
  * every reference to one target: the first to name it, in entry order, is
@@ -259,7 +259,7 @@ const impliedTargetsOf = (
  * the set holds the record, every reference to it resolves to it, and the
  * review shows it as a row of its own. A reference with no `display`, a
  * literal one, an untyped identifier, a type `fhir-r4` does not model, and a
- * type whose record needs more than a reference says (`ImpliedRecord.of`)
+ * type whose record needs more than a reference says (`ImpliedRecord.tryFromLogicalReference`)
  * imply nothing, so it is left as the source wrote it. An implied record is keyed, so planning it mints nothing.
  *
  * @returns The section, or the `ParseError` an implied record's schema
@@ -277,14 +277,10 @@ const impliedSectionOf = (
     ),
     Arr.filterMap(({ logicalReference, display, referencingFullUrl }) =>
       Option.map(
-        ImpliedRecord.of(logicalReference.resourceType, logicalReference.identifier[0], display),
+        ImpliedRecord.tryFromLogicalReference(logicalReference, display),
         Either.map((resource): PlannedEntry => ({
           entry: {
-            fullUrl: ImpliedRecord.fullUrlOf(
-              referencingFullUrl,
-              logicalReference.resourceType,
-              logicalReference.identifier[0]
-            ),
+            fullUrl: ImpliedRecord.fullUrlOf(referencingFullUrl, logicalReference),
             resource,
           },
           plan: ResourcePlan.of(resource, mintId),

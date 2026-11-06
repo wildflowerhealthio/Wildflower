@@ -62,8 +62,6 @@ const maybeBirthDate: (resource: Type) => Option.Option<string> = Match.type<Typ
   Match.exhaustive
 )
 
-const DERIVED_IDENTIFIER_SYSTEM_HREF = new URL(Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM).href
-
 /**
  * Whether `identifier` is one demographics derive, under a Wildflower system
  * ({@link maybeDerivedIdentifier}'s), rather than one a source gave: what a
@@ -71,7 +69,7 @@ const DERIVED_IDENTIFIER_SYSTEM_HREF = new URL(Patient.NAME_BIRTH_DATE_IDENTIFIE
  * source's identifiers leaves out.
  */
 const isDerivedIdentifier = (identifier: IdentifierAndReference.IdentifierType): boolean =>
-  identifier.system?.href === DERIVED_IDENTIFIER_SYSTEM_HREF
+  identifier.system?.href === Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM
 
 /**
  * The identifier `resource`'s own demographics derive, under a Wildflower
