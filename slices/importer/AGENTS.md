@@ -10,7 +10,7 @@ The HAR importer is the one format whose contents _are_ HTTP traffic, so it alon
 reaches into the `http-extraction` slice to recognize which registered response
 kinds claim each archived response and to extract with them.
 
-The slice is layered as a resource-agnostic
+The slice is layered as a mostly resource-agnostic
 **fundamentals** package under a **format binding** (core + React), under a
 pure **core** (the registry and the batch machinery) and a **shell**. See the [Adding a File-Format Importer How-To](./docs/Adding%20a%20File-Format%20Importer%20How-To.md)
 before adding a format.
@@ -27,9 +27,11 @@ Part of the offline FHIR HAR importer epic (#489).
 Each package's own AGENTS.md is the authority on its shape; the roles:
 
 - **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
-  (resource-agnostic, format-agnostic) — the `FileImporter` contract (an
-  interface a binding writes as a literal, with its `sourceFileFormat` coding
-  constants and optional `linkSourceFile` and `linkToSourceFiles` hooks) and
+  (format-agnostic; resource-agnostic but for one FHIR import rule in
+  `DecodedFileSet.adopt`, where a `MedicationDispense` with no `subject`
+  takes its prescription's) — the `FileImporter` contract (an interface a binding
+  writes as a literal, with its `sourceFileFormat` coding constants and
+  optional `linkSourceFile` and `linkToSourceFiles` hooks) and
   `DecodeFunction.make`, the one constructor of the batch `decode`: a binding
   gives how one set of files decodes (`decodeFileSet`) and — only if its files
   are read together — the key they share (`groupBy`). Back comes one

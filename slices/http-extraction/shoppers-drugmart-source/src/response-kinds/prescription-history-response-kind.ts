@@ -9,7 +9,6 @@ import {
   Array as Arr,
   Effect,
   Option,
-  type ParseResult,
   pipe,
   RegExp as EffectRegExp,
   Schema,
@@ -65,34 +64,13 @@ const HistoryPayload = Schema.Struct({
 })
 
 const decodeHistory = Schema.decode(Schema.parseJson(HistoryPayload))
-const decodeCustomerId = Schema.decodeUnknown(Schema.NonEmptyString)
 const decodeDispense = DetachedResource.decodeUnknown(MedicationDispense.Schema)
-
-/**
- * The account a history XHR is for: its `customerId` query parameter. A
- * `ParseError` when the URL carries none.
- */
-const customerIdOf = (url: string): Effect.Effect<string, ParseResult.ParseError> =>
-  decodeCustomerId(URL.parse(url)?.searchParams.get('customerId'))
-
-/**
- * The `subject` wire: the account the history is for, as a logical reference
- * to a `Patient` by `customerId` under `ShoppersIdentifierSystem.CustomerId`,
- * with no literal `reference`. The feed names no managed person and no
- * Patient stands for the account, so the identifier is all it can say, for
- * the importer's identity map to resolve to a person; the stated `type` is
- * what tells the map it names a patient.
- */
-const accountSubjectWire = (customerId: string): Record<string, unknown> => ({
-  type: 'Patient',
-  identifier: { system: ShoppersIdentifierSystem.CustomerId, value: customerId },
-})
 
 /**
  * The `authorizingPrescription` wire linking a dispense to its request: the
  * logical reference to the `MedicationRequest` keyed by `prescriptionId`, else
- * an identifier-only reference by `prescriptionNumber`. `undefined` when
- * neither is present.
+ * the logical reference to the `MedicationRequest` carrying its
+ * `prescriptionNumber`. `undefined` when neither is present.
  *
  * @remarks
  * The slot holds one identifier, so a fill with a `prescriptionId` names the
@@ -114,10 +92,10 @@ const authorizingPrescriptionWire = (
   if (dispense.prescriptionNumber != null) {
     return [
       {
-        identifier: {
+        ...DetachedResource.logicalReferenceWire('MedicationRequest', {
           system: ShoppersIdentifierSystem.PrescriptionNumber,
           value: String(dispense.prescriptionNumber),
-        },
+        }),
       },
     ]
   }
@@ -150,13 +128,9 @@ const locationWire = (
  * Build the detached R4 `MedicationDispense` **wire** for one history entry,
  * keyed by its `dispenseId` in `ShoppersIdentifierSystem.DispenseId`;
  * `undefined` when it has no `dispenseId` (so it drops-and-counts). `status` is a flat
- * `'completed'`, and the `subject` names the account the history is for, by
- * identifier alone — the payload carries no `patientId`.
+ * `'completed'`, and there is no `subject`: the payload carries no `patientId`.
  */
-const dispenseWire = (
-  dispense: SourceHistoryDispense,
-  customerId: string
-): Record<string, unknown> | undefined => {
+const dispenseWire = (dispense: SourceHistoryDispense): Record<string, unknown> | undefined => {
   if (dispense.dispenseId == null) return undefined
   const wire: Record<string, unknown> = {
     resourceType: 'MedicationDispense',
@@ -167,7 +141,6 @@ const dispenseWire = (
       }),
     ],
     status: 'completed',
-    subject: accountSubjectWire(customerId),
   }
   const medication = medicationWire(dispense)
   if (medication != null) wire['medicationCodeableConcept'] = medication
@@ -196,18 +169,19 @@ const historyUrl = new RegExp(
  * Entity for the Shoppers prescription-history XHR: one payload carrying **every**
  * dispense across all prescriptions of an account. Each entry synthesizes one
  * **`MedicationDispense`** (no Patient, no MedicationRequest), linked to its
- * request via `authorizingPrescription`. Its `subject` names the **account**
- * by the URL's `customerId`, as an identifier-only reference under
- * `ShoppersIdentifierSystem.CustomerId`, not the managed person the fill was
- * for: the payload does not say which person that is. A prescription's
- * latest fill also appears in the status feed under the same `dispenseId`,
- * which names the person; the source's `mergeResources` combines the two
- * copies wherever one extraction holds both (`merge-resources.ts`). A
- * dispense entry that does not decode as a {@link SourceHistoryDispense} (a
- * `quantityDispensed` sent as a string, say, or an entry that is not an
- * object), and one with no `dispenseId` (absent or `null`), drops-and-counts
- * via `Effect.logInfo`; its siblings are still emitted. A URL with no
- * `customerId` fails the parse.
+ * request via `authorizingPrescription`. It has no `subject`: the payload
+ * names only the account, not the managed person the fill was for, and no
+ * Patient stands for the account. The import stage files the fill on the
+ * person its prescription is for when that `MedicationRequest` is in the
+ * same import (`importer-fundamentals`' `DecodedFileSet.adopt`). A
+ * prescription's latest fill also appears in the status feed under the same
+ * `dispenseId`, which names the person; the source's `mergeResources`
+ * combines the two copies wherever one extraction holds both
+ * (`merge-resources.ts`). A dispense entry that does not decode as a
+ * {@link SourceHistoryDispense} (a `quantityDispensed` sent as a string, say,
+ * or an entry that is not an object), and one with no `dispenseId` (absent or
+ * `null`), drops-and-counts via `Effect.logInfo`; its siblings are still
+ * emitted.
  */
 const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<DetachedResource.Type> =
   HttpResponseKind.make({
@@ -215,12 +189,11 @@ const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<Detache
     tryRecognize: recognizePortal(portalGetMatcher(historyUrl)),
     parse: (response) =>
       Effect.gen(function* () {
-        const customerId = yield* customerIdOf(response.url)
         const { dispenses: entries } = yield* decodeHistory(extractJson(response.text()))
         const { decoded, undecodable } = entries ?? { decoded: [], undecodable: 0 }
 
         const dispenseWires = Arr.filterMap(decoded, (dispense) =>
-          Option.fromNullable(dispenseWire(dispense, customerId))
+          Option.fromNullable(dispenseWire(dispense))
         )
         const withoutId = decoded.length - dispenseWires.length
         const dispenses = yield* Effect.forEach(dispenseWires, (wire) => decodeDispense(wire))

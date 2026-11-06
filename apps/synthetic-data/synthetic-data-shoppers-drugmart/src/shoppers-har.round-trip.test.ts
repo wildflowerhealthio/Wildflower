@@ -393,12 +393,12 @@ describe(
       })
     })
 
-    test('property: every latest fill names the patient, and every earlier fill the account by its customerId alone', async () => {
+    // The history feed names only the account; the import stage files each
+    // of its fills on the person its prescription is for.
+    test('property: every fill names the patient its prescription is for', async () => {
       await assertRoundTrip(({ asOf, shoppersCase }, imported) => {
-        const accountSubject = `${ShoppersIdentifierSystem.CustomerId}|${shoppersCase.account.pcid}`
         for (const each of prescriptionsOf(shoppersCase)) {
           const request = requestFor(asOf, imported, each)
-          const lastFillDate = isoDateOn(asOf, each.expected.lastFillDay)
           expect(
             (request === undefined ? [] : dispensesOf(imported, request))
               .map((dispense) => `${isoDateOf(dispense.whenHandedOver)} ${subjectOf(dispense)}`)
@@ -406,12 +406,7 @@ describe(
             each.expected.key
           ).toEqual(
             each.expected.fillDays
-              .map((day) => {
-                const fillDate = isoDateOn(asOf, day)
-                const subject =
-                  fillDate === lastFillDate ? request?.subject.reference : accountSubject
-                return `${fillDate} ${subject}`
-              })
+              .map((day) => `${isoDateOn(asOf, day)} ${request?.subject.reference}`)
               .toSorted()
           )
         }

@@ -121,7 +121,17 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   reference against a transaction bundle; one naming a record the set does
   not hold, a keyless one, or an identifier two records of the set share
   (`ReferencePlan`'s ambiguous case; a record listing one identifier twice
-  is no clash), stays logical, for the identity map. The format decode tests adopt through it too.
+  is no clash), stays logical, for the identity map. Before adopting, a
+  `MedicationDispense` with no `subject` takes its authorizing
+  prescriptions' `subject`, as they spell it, when they agree: every
+  `authorizingPrescription` resolving (`ReferencePlan.literalReferenceIfResolved`)
+  to a keyed `MedicationRequest` of the set has a copy whose `subject` names a
+  Patient of the set (copies naming none are skipped), and every copy that
+  names one names the same Patient; otherwise it is left with no `subject`.
+  A dispense that has a `subject` keeps it, whatever it names: it is the
+  source's own statement of who received the fill. It is how a source that
+  knows who a prescription is for, but not who a fill was for, files the
+  fill. The format decode tests adopt through it too.
 - `src/resource-plan.ts` — the **`ResourcePlan`** namespace: where one
   decoded record is written, decided before any record of its set is
   adopted, as a FHIR server decides each transaction entry's id before
@@ -259,7 +269,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     record that is a referent's own (its decoded resource, or the provisional
     one its logical reference stands for). A logical reference names the
     referent it is the key of, else the one referent that answers to it, so
-    a Shoppers account id a decoded Patient also carries is that Patient. `tryFromDecodedResource` and `mentionedIn` read
+    a health card number a decoded Patient also carries is that Patient. `tryFromDecodedResource` and `mentionedIn` read
     them off one decoded resource; **`discover`** finds both over a batch's
     files, resources first, once per identity, so a person one file decodes
     and another only mentions is one referent, and fails with

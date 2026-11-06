@@ -28,8 +28,8 @@ rather than a copy, and what it writes is what the response kinds read.
   `MedicationDispense` per dispense entry.
 - `src/response-kinds/prescription-history-response-kind.ts` —
   `…/prescription-history?customerId=…` → one `MedicationDispense` per history
-  entry (no Patient, no MedicationRequest), its `subject` the **account** by
-  identifier alone (see [Conventional slots](#conventional-slots)).
+  entry (no Patient, no MedicationRequest), with no `subject` (see
+  [Conventional slots](#conventional-slots)).
 - `src/response-kinds/medication-wire.ts` — the `medicationCodeableConcept`
   builder (brand/chemical text + DIN codings) shared by the two dispense-emitting
   entities.
@@ -101,13 +101,13 @@ What a synthesized resource carries where, so one reader covers this source
 and `rexall-be-well-source` alike:
 
 - **Subject** — a status-feed `MedicationRequest` or `MedicationDispense` names
-  the managed **person** (the logical reference by their `patientId` key). A history-feed
-  `MedicationDispense` names the **account** by an identifier-only reference,
-  the URL's `customerId` under `ShoppersIdentifierSystem.CustomerId`, with no
-  literal `reference`: the history payload does not say which managed person
-  a fill was for, and no Patient stands for the account. The identifier is
-  there for the importer's identity map to resolve to a person; adopting
-  leaves it as it is, since no record of the import is keyed by it.
+  the managed **person** (the logical reference by their `patientId` key). A
+  history-feed `MedicationDispense` has no `subject`: the history payload
+  names only the account, not which managed person a fill was for, and no
+  Patient stands for the account. The import stage files it on the person its
+  `authorizingPrescription` is for when that `MedicationRequest` is in the
+  same import and its `subject` names a Patient there
+  (`importer-fundamentals`' `DecodedFileSet.adopt`).
 - **Prescriber** — a status-feed `MedicationRequest.requester` is
   `fhir-r4`'s `Practitioner.tryReferenceWireFromName` of `prescriberName`,
   since the portal knows the prescriber only by that name: a logical
@@ -149,17 +149,16 @@ and `rexall-be-well-source` alike:
   `mergeShoppersResources` makes them one: the status copy's `subject`,
   `status`, `authorizingPrescription` and `location.reference`, with the
   history copy's store name as `location.display`, and its DIN coding when the
-  status copy has none. It tells the copies apart by the history copy's
-  `subject`, which names the account by `ShoppersIdentifierSystem.CustomerId`,
-  so the result is the same in either arrival order. Only a consumer that
+  status copy has none. It tells the copies apart by the history copy having
+  no `subject`, so the result is the same in either arrival order. Only a consumer that
   holds both copies applies it (the HAR import).
 - **A history fill's link to its prescription is by the prescription's key.**
   `authorizingPrescription` is the logical reference to the
   `MedicationRequest` keyed by `prescriptionId`. The slot holds one
   identifier, so the `prescriptionNumber` survives only on the
   `MedicationRequest` itself, and only where the status feed was captured. A
-  fill with no `prescriptionId` names its prescription by the number, as an
-  identifier-only reference.
+  fill with no `prescriptionId` names its prescription by the number, as the
+  logical reference to the `MedicationRequest` carrying it.
 - **`responseKinds` order is not load-bearing, and should stay that way.** The
   three recognizers are disjoint by construction (different path segments:
   `customers/pcid/<uuid>`, `prescriptions/<uuid>/prescription-status`,

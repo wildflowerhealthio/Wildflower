@@ -215,7 +215,7 @@ const literalSubject = (id: string): object => ({
   identifier: { system: SOURCE_PATIENT, value: id },
 })
 
-/** A Shoppers-style history `subject`: a logical reference to the account. */
+/** An account `subject`: a logical reference to a `Patient` by the account's id alone. */
 const customerSubject = (customerId: string): object => ({
   type: 'Patient',
   identifier: { system: CUSTOMER, value: customerId },
