@@ -120,7 +120,6 @@ const RECOGNIZED_WITH_NOISE = harBytesOf([
   }),
 ])
 
-/** The two kinds that claim the source file's Observation response. */
 /** The fixture source file, as the batch read hands it over. */
 const pickedHar = (): PickedFile.Type => ({
   id: '0:archive.har',
