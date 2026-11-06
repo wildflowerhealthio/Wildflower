@@ -16,6 +16,7 @@ import {
   linkToPatientAndStudy,
   sopInstanceIdentifier,
   studyGroupKey,
+  withSharedStudyNotes,
 } from './decode.ts'
 import { detectDicom } from './detect.ts'
 import { defaultDicomSettings, type DicomSettings } from './settings.ts'
@@ -130,6 +131,13 @@ const addGridfsFileIds = (
   )
 }
 
+/** Each study the format claimed, decoded as its own set. */
+const decodeStudies = DecodeFunction.make({
+  format,
+  groupBy: studyGroupKey,
+  decodeFileSet: decodeStudy,
+})
+
 /**
  * The DICOM importer: a pick of `.dcm` files in, one `ImagingStudy` per study
  * out.
@@ -151,11 +159,7 @@ const dicomImporter: FileImporter.Type<DicomSettings, typeof format> = {
   sourceFileFormat,
   linkSourceFile: linkToPatientAndStudy,
   linkToSourceFiles: addGridfsFileIds,
-  decode: DecodeFunction.make({
-    format,
-    groupBy: studyGroupKey,
-    decodeFileSet: decodeStudy,
-  }),
+  decode: (files, settings) => Effect.map(decodeStudies(files, settings), withSharedStudyNotes),
 }
 
 export { addGridfsFileIds, dicomImporter, GRIDFS_FILE_ID_EXTENSION_URL }

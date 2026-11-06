@@ -13,27 +13,26 @@ import type { DicomHeader, PersonName } from '@wildflowerhealthio/dicom'
  * one study is `decode.ts`; what this module does with one is described on
  * {@link toFhirResources}.
  *
- * Every record is written detached: keyed by a source id in `DICOM_SYSTEM`
- * (`identifier[0]`), naming the others by logical reference. Source ids are
- * deterministic — the same tags produce the same ids — so re-importing the
- * same study overwrites rather than duplicates, and the order the files were
- * picked in changes nothing (see {@link compareInstances}). The derivation
- * mirrors `lifelabs-pdf-importer-core`'s wire-builder pattern: a `sourceId`
- * from `joinIdComponents` through `fnv1a64`, validated through
+ * Every record is written detached: keyed (`identifier[0]`) by the identifier
+ * the file itself carries for it, naming the others by logical reference — a
+ * Patient by its Patient ID under its issuer, a ServiceRequest by its
+ * Accession Number under its issuer, an ImagingStudy by its Study Instance
+ * UID, as FHIR R4's own DICOM mapping for `ImagingStudy.identifier` reads
+ * them. The same study picked twice, or from two discs, keys the same
+ * records, and the order the files were picked in changes nothing (see
+ * {@link compareInstances}). Each wire is validated through
  * `fhir-r4-adoption`'s `DetachedResource.decodeUnknown`.
  *
  * @packageDocumentation
  */
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { HumanName, type IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { joinIdComponents } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   ImagingStudy,
   Patient,
   Practitioner,
   ServiceRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
 import {
   Array as Arr,
   DateTime,
@@ -45,23 +44,11 @@ import {
 } from 'effect'
 
 import type { DicomSettings } from '../settings.ts'
-import { DICOM_PRACTITIONER_NAME_SYSTEM, DICOM_SYSTEM } from '../source-system.ts'
+import { DICOM_PRACTITIONER_NAME_SYSTEM, DicomIdentifierSystem } from '../source-system.ts'
 import { dicomCalendarDate, dicomInstant } from './dates.ts'
+import { issuedIdentifierOf, issuedIdentifierWire, type IssuedIdentifier } from './issuer.ts'
 
 type Wire = Record<string, unknown>
-
-/** The key identifier wire of the record the synthesis gave `id`: `identifier[0]`. */
-const keyWire = (id: string): Wire => ({
-  ...DetachedResource.keyIdentifierWire({ system: DICOM_SYSTEM, value: id }),
-})
-
-/** The logical reference wire to the record of `resourceType` the synthesis gave `id`. */
-const referenceWire = (resourceType: 'Patient' | 'ServiceRequest', id: string): Wire => ({
-  ...DetachedResource.logicalReferenceWire(resourceType, { system: DICOM_SYSTEM, value: id }),
-})
-
-const sourceId = (components: readonly string[]): string =>
-  fnv1a64(joinIdComponents(components)).toString(16).padStart(16, '0')
 
 const DCM_CODING_SYSTEM = 'http://dicom.nema.org/resources/ontology/DCM'
 const DICOM_UID_SYSTEM = 'urn:dicom:uid'
@@ -147,35 +134,51 @@ const naturalOrderName = (pn: PersonName.Type): string =>
 // Patient
 // ---------------------------------------------------------------------------
 
-const patientOriginalId = (header: DicomHeader.Type): string | undefined => {
-  if (header.patientId !== undefined && header.patientId !== '') {
-    const issuer = header.issuerOfPatientId ?? DICOM_SYSTEM
-    return sourceId(['patient-id', issuer, header.patientId])
+/**
+ * The identifier a header gives its patient: the Patient ID under its issuer,
+ * else the Patient Name and birth date, else `None` — a patient the header
+ * does not name at all, whom no `subject` could reference.
+ *
+ * @remarks
+ * The issuer is Issuer of Patient ID Qualifiers Sequence (0010,0024)'s
+ * Universal Entity ID; Issuer of Patient ID (0010,0021) is its local
+ * namespace, displayed as the assigner. A patient named only by name is keyed
+ * `<name>, <YYYY-MM-DD>` in `DicomIdentifierSystem.PatientNameBirthDate`, the
+ * name alone when the header states no valid birth date, as LifeLabs keys a
+ * report that prints no number.
+ */
+const patientIdentifierOf = (header: DicomHeader.Type): Option.Option<IssuedIdentifier> => {
+  if (header.patientId !== undefined) {
+    return Option.some(
+      issuedIdentifierOf(
+        header.patientId,
+        {
+          localNamespaceEntityId: header.issuerOfPatientId,
+          universalEntityId: header.issuerOfPatientIdQualifiers?.universalEntityId,
+          universalEntityIdType: header.issuerOfPatientIdQualifiers?.universalEntityIdType,
+        },
+        DicomIdentifierSystem.PatientId
+      )
+    )
   }
-  if (header.patientName !== undefined) {
-    return sourceId(['patient-name', header.patientName.text, header.patientBirthDate ?? ''])
-  }
-  return undefined
+  return Option.map(Option.fromNullable(header.patientName), (name) => ({
+    key: {
+      system: DicomIdentifierSystem.PatientNameBirthDate,
+      value: Option.match(dicomCalendarDate(header.patientBirthDate), {
+        onNone: () => name.text,
+        onSome: (birthDate) => `${name.text}, ${birthDate}`,
+      }),
+    },
+    assignerDisplay: Option.none(),
+  }))
 }
 
-const patientWire = (header: DicomHeader.Type): Wire | undefined => {
-  const id = patientOriginalId(header)
-  if (id === undefined) return undefined
+/** The key a header's `Patient` is stored under, `None` when the header names no patient. */
+const patientKeyOf = (header: DicomHeader.Type): Option.Option<DetachedResource.Key> =>
+  Option.map(patientIdentifierOf(header), (identifier) => identifier.key)
 
-  const wire: Wire = { resourceType: 'Patient' }
-
-  const identifier: Wire[] = [keyWire(id)]
-  if (header.patientId !== undefined && header.patientId !== '') {
-    const patIdentifier: Wire = {
-      system: DICOM_SYSTEM,
-      value: header.patientId,
-    }
-    if (header.issuerOfPatientId !== undefined && header.issuerOfPatientId !== '') {
-      patIdentifier['assigner'] = { display: header.issuerOfPatientId }
-    }
-    identifier.push(patIdentifier)
-  }
-  wire['identifier'] = identifier
+const patientWire = (header: DicomHeader.Type, identifier: IssuedIdentifier): Wire => {
+  const wire: Wire = { resourceType: 'Patient', identifier: [issuedIdentifierWire(identifier)] }
 
   if (header.patientName !== undefined) wire['name'] = [humanNameWire(header.patientName)]
 
@@ -192,14 +195,29 @@ const patientWire = (header: DicomHeader.Type): Wire | undefined => {
 // ServiceRequest — emitted only when AccessionNumber is present
 // ---------------------------------------------------------------------------
 
+/** HL7 v2 table 0203's code for an accession number, the `type` FHIR's DICOM mapping gives one. */
+const ACCESSION_IDENTIFIER_TYPE = {
+  coding: [{ system: 'http://terminology.hl7.org/CodeSystem/v2-0203', code: 'ACSN' }],
+}
+
 /**
- * The `ServiceRequest` id: the accession together with the patient identity,
- * since two patients' files can state one `AccessionNumber` and each is filed
- * as its own request. `toFhirResources` emits nothing without a patient
- * identity, so the empty component never names a stored request.
+ * The identifier a file gives the order it was acquired for: its Accession
+ * Number under the issuer Issuer of Accession Number Sequence (0008,0051)
+ * states, the sequence's Local Namespace Entity ID displayed as the assigner.
+ *
+ * @remarks
+ * The accession is the order's identity, so two patients' files stating one
+ * Accession Number under one issuer are one `ServiceRequest`.
  */
-const serviceRequestOriginalId = (header: DicomHeader.Type): string =>
-  sourceId(['accession', header.accessionNumber!, patientOriginalId(header) ?? ''])
+const accessionIdentifierOf = (
+  accessionNumber: string,
+  header: DicomHeader.Type
+): IssuedIdentifier =>
+  issuedIdentifierOf(
+    accessionNumber,
+    header.issuerOfAccessionNumber,
+    DicomIdentifierSystem.AccessionNumber
+  )
 
 /**
  * The `requester` wire for the referring physician, whom a DICOM header names
@@ -216,16 +234,17 @@ const requesterWire = (
     naturalOrderName(referringPhysician)
   )
 
-const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire | undefined => {
-  if (header.accessionNumber === undefined || header.accessionNumber === '') return undefined
-
-  const id = serviceRequestOriginalId(header)
+const serviceRequestWire = (
+  header: DicomHeader.Type,
+  accession: IssuedIdentifier,
+  patientKey: DetachedResource.Key
+): Wire => {
   const wire: Wire = {
     resourceType: 'ServiceRequest',
     status: 'completed',
     intent: 'order',
-    subject: referenceWire('Patient', patientId),
-    identifier: [keyWire(id), { system: DICOM_SYSTEM, value: header.accessionNumber }],
+    subject: DetachedResource.logicalReferenceWire('Patient', patientKey),
+    identifier: [{ ...issuedIdentifierWire(accession), type: ACCESSION_IDENTIFIER_TYPE }],
   }
 
   const description = header.requestedProcedureDescription ?? header.studyDescription
@@ -276,13 +295,17 @@ interface StudySeries<T extends StudyInstance = StudyInstance> {
 }
 
 /**
- * The `ImagingStudy` id: the `StudyInstanceUID` together with the patient
- * identity — the same pair `studyKey` splits a pick on, so each file set
- * names its own study. `toFhirResources` emits nothing without a patient
- * identity, so the empty component never names a stored study.
+ * The key a study's `ImagingStudy` is stored under: its Study Instance UID as
+ * FHIR spells a DICOM UID, `urn:oid:<uid>` in `urn:dicom:uid`.
+ *
+ * @remarks
+ * The UID alone, so two patients' files stating one UID key one
+ * `ImagingStudy` (accepted); `studyKey` still decodes them as two sets.
  */
-const imagingStudyOriginalId = (header: DicomHeader.Type): string =>
-  sourceId(['study', header.studyInstanceUid, patientOriginalId(header) ?? ''])
+const imagingStudyKeyOf = (header: DicomHeader.Type): DetachedResource.Key => ({
+  system: DicomIdentifierSystem.StudyInstanceUid,
+  value: `urn:oid:${header.studyInstanceUid}`,
+})
 
 /**
  * Where an absent `SeriesNumber` / `InstanceNumber` sorts: after every stated
@@ -446,25 +469,18 @@ const seriesWire = (series: StudySeries): Wire => {
 
 const imagingStudyWire = (
   instances: readonly StudyInstance[],
-  patientId: string,
-  serviceRequestId: string | undefined,
+  patientKey: DetachedResource.Key,
+  serviceRequestKey: Option.Option<DetachedResource.Key>,
   timeZone: string
 ): Wire => {
   const series = studySeries(instances)
   const head = series[0].instances[0].header
-  const id = imagingStudyOriginalId(head)
 
   const wire: Wire = {
     resourceType: 'ImagingStudy',
     status: 'available',
-    subject: referenceWire('Patient', patientId),
-    identifier: [
-      keyWire(id),
-      {
-        system: DICOM_UID_SYSTEM,
-        value: `urn:oid:${head.studyInstanceUid}`,
-      },
-    ],
+    subject: DetachedResource.logicalReferenceWire('Patient', patientKey),
+    identifier: [DetachedResource.keyIdentifierWire(imagingStudyKeyOf(head))],
     numberOfSeries: series.length,
     numberOfInstances: instances.length,
     series: series.map(seriesWire),
@@ -486,8 +502,10 @@ const imagingStudyWire = (
   )
   if (Option.isSome(described)) wire['description'] = described.value.header.studyDescription
 
-  if (serviceRequestId !== undefined) {
-    wire['basedOn'] = [referenceWire('ServiceRequest', serviceRequestId)]
+  if (Option.isSome(serviceRequestKey)) {
+    wire['basedOn'] = [
+      DetachedResource.logicalReferenceWire('ServiceRequest', serviceRequestKey.value),
+    ]
   }
 
   return wire
@@ -512,8 +530,8 @@ type DicomFhirResources = DetachedResource.Detached<
  *   same patient — in any order
  * @param settings - The import's settings; its `timeZone` is what
  *   `ImagingStudy.started` is resolved against (see `dates.ts`)
- * @returns The resources in write order: Patient first (when the headers carry
- *   a patient identity), then ServiceRequest (when any file states an
+ * @returns The resources in write order: Patient first (when the headers name
+ *   a patient, by Patient ID or by name), then ServiceRequest (when any file states an
  *   `AccessionNumber`), then the one ImagingStudy. Fails with a `ParseError`
  *   when a wire object does not satisfy its schema.
  *
@@ -524,12 +542,12 @@ type DicomFhirResources = DetachedResource.Detached<
  * is built from is the first stated in that same order. Every choice this
  * makes is a function of the files' headers (see {@link compareInstances}), so
  * the same study picked in any order, or re-picked file by file, synthesizes
- * identical resources under identical ids.
+ * identical resources under identical keys.
  *
  * Files that disagree on `AccessionNumber` are *not* merged into one request:
  * the first is used and {@link accessionNumbers} is what a caller reports the
  * disagreement from. Files that disagree on the patient never reach here — a
- * differing `PatientID` splits the file set upstream.
+ * differing patient key splits the file set upstream (`studyKey`).
  */
 const toFhirResources = (
   instances: readonly StudyInstance[],
@@ -541,30 +559,33 @@ const toFhirResources = (
     const head = ordered[0]
     if (head === undefined) return resources
 
-    const patientId = patientOriginalId(head.header)
-    if (patientId === undefined) return resources
-
-    const patientWireObj = patientWire(head.header)
-    if (patientWireObj !== undefined) {
-      resources.push(yield* decodePatient(patientWireObj))
-    }
+    const patientIdentifier = patientIdentifierOf(head.header)
+    if (Option.isNone(patientIdentifier)) return resources
+    const patientKey = patientIdentifier.value.key
+    resources.push(yield* decodePatient(patientWire(head.header, patientIdentifier.value)))
 
     // The accession the request is built from: the first stated in study
-    // order, which is the same one for any pick order of the same files.
-    const [accessionNumber] = accessionNumbers(instances)
-    let serviceRequestId: string | undefined
-    if (accessionNumber !== undefined) {
-      const requestHeader = { ...head.header, accessionNumber }
-      const srWire = serviceRequestWire(requestHeader, patientId)
-      if (srWire !== undefined) {
-        serviceRequestId = serviceRequestOriginalId(requestHeader)
-        resources.push(yield* decodeServiceRequest(srWire))
-      }
+    // order, under the issuer the file stating it gives, which is the same one
+    // for any pick order of the same files.
+    const accession = Arr.findFirst(ordered, ({ header }) =>
+      Option.map(Option.fromNullable(header.accessionNumber), (accessionNumber) =>
+        accessionIdentifierOf(accessionNumber, header)
+      )
+    )
+    if (Option.isSome(accession)) {
+      resources.push(
+        yield* decodeServiceRequest(serviceRequestWire(head.header, accession.value, patientKey))
+      )
     }
 
     resources.push(
       yield* decodeImagingStudy(
-        imagingStudyWire(instances, patientId, serviceRequestId, settings.timeZone)
+        imagingStudyWire(
+          instances,
+          patientKey,
+          Option.map(accession, (one) => one.key),
+          settings.timeZone
+        )
       )
     )
 
@@ -575,10 +596,9 @@ export {
   accessionNumbers,
   fhirDate,
   fhirDateTime,
-  imagingStudyOriginalId,
+  imagingStudyKeyOf,
   orderedInstances,
-  patientOriginalId,
-  serviceRequestOriginalId,
+  patientKeyOf,
   studySeries,
   toFhirResources,
 }

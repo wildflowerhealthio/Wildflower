@@ -6,12 +6,14 @@
  * @packageDocumentation
  */
 import { DicomHeader } from '@wildflowerhealthio/dicom'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type AdoptedFileSet,
   type DecodedFileSet,
   type FileSetRecord,
+  type FormatDecode,
   type PickedFile,
   Section,
   SectionedList,
@@ -23,7 +25,7 @@ import { dicomCalendarDate } from './fhir/dates.ts'
 import {
   accessionNumbers,
   orderedInstances,
-  patientOriginalId,
+  patientKeyOf,
   toFhirResources,
 } from './fhir/to-fhir.ts'
 import type { StudyInstance } from './fhir/to-fhir.ts'
@@ -86,13 +88,18 @@ const headerOf = (
  * what this keys on. A `PatientID` the files disagree on means one of them is
  * mislabelled or anonymized differently, and merging them would file one
  * patient's images in another's record — so a differing patient splits the set
- * instead, and the reviewer sees two studies with the same UID rather than one
- * silently merged. Patient identity is the id the synthesis derives
- * (`PatientID` + issuer, else name + birth date), not the raw tag, so two
- * spellings that mint the same `Patient` stay one set.
+ * instead, and the reviewer sees two sets with the same UID rather than one
+ * silently merged. Both sets key one `ImagingStudy`, its Study Instance UID
+ * (accepted), and {@link withSharedStudyNotes} says so on each. The patient is
+ * the key the synthesis gives the `Patient` (Patient ID under its issuer, else
+ * name and birth date), not the raw tag, so two spellings that key one
+ * `Patient` stay one set.
  */
 const studyKey = (header: DicomHeader.Type): string =>
-  `${header.studyInstanceUid}\u0000${patientOriginalId(header) ?? ''}`
+  JSON.stringify([
+    header.studyInstanceUid,
+    Option.getOrNull(Option.map(patientKeyOf(header), ({ system, value }) => [system, value])),
+  ])
 
 /**
  * Which study a picked `.dcm` belongs to — the `groupBy` the DICOM importer
@@ -214,7 +221,7 @@ const linkToPatientAndStudy = (
 
 /**
  * Decode one study's picked files into a section of labeled FHIR resources,
- * each written detached, keyed in `DICOM_SYSTEM`.
+ * each written detached, keyed by the identifiers its files carry.
  *
  * @param pickedFiles - Every picked `.dcm` of one study, in the order they were
  *   picked
@@ -271,7 +278,7 @@ const decodeStudy = (
       }
     }
 
-    if (patientOriginalId(head.header) === undefined) {
+    if (Option.isNone(patientKeyOf(head.header))) {
       return {
         pickedFiles: identifiedPickedFiles,
         sectionedList: SectionedList.empty(),
@@ -290,12 +297,52 @@ const decodeStudy = (
     return { pickedFiles: identifiedPickedFiles, sectionedList, notes }
   })
 
+/** The note a set earns when another set of its batch states its Study Instance UID. */
+const SHARED_STUDY_NOTE =
+  "Another patient's files in this pick state the same StudyInstanceUID — both are filed as one ImagingStudy."
+
+/** The `ImagingStudy` keys a set's records carry: one per study, so at most one. */
+const imagingStudyKeysOf = (fileSet: DecodedFileSet.Type): readonly string[] =>
+  Arr.filterMap(SectionedList.rows(fileSet.sectionedList), ({ resource }) =>
+    resource.resourceType === 'ImagingStudy'
+      ? Option.map(DetachedResource.keyOf(resource), ({ system, value }) =>
+          JSON.stringify([system, value])
+        )
+      : Option.none()
+  )
+
+/**
+ * The format's decode with {@link SHARED_STUDY_NOTE} on each set whose
+ * `ImagingStudy` another set of the batch keys too.
+ *
+ * @remarks
+ * Two patients' files stating one Study Instance UID decode as two sets
+ * ({@link studyKey}), and both key one `ImagingStudy` by that UID: the import
+ * files them as one study (accepted). Only the format's whole decode sees both sets, so
+ * the note is added here rather than in {@link decodeStudy}.
+ */
+const withSharedStudyNotes = <TFormat extends string>(
+  decoded: FormatDecode.Decoded<TFormat>
+): FormatDecode.Decoded<TFormat> => {
+  const setsByStudyKey = Arr.groupBy(decoded.fileSets.flatMap(imagingStudyKeysOf), (key) => key)
+  return {
+    ...decoded,
+    fileSets: decoded.fileSets.map((fileSet) =>
+      imagingStudyKeysOf(fileSet).some((key) => (setsByStudyKey[key]?.length ?? 0) > 1)
+        ? { ...fileSet, notes: [...fileSet.notes, SHARED_STUDY_NOTE] }
+        : fileSet
+    ),
+  }
+}
+
 export {
   decodeStudy,
   linkToPatientAndStudy,
   sectionTitle,
+  SHARED_STUDY_NOTE,
   sopInstanceIdentifier,
   studyGroupKey,
   studyKey,
+  withSharedStudyNotes,
 }
 export type { StudyFile }
