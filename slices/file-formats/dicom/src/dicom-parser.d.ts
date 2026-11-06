@@ -11,7 +11,8 @@ declare module 'dicom-parser' {
     readonly vr: string | undefined
     readonly dataOffset: number
     readonly length: number
-    readonly items?: readonly DataSet[] | undefined
+    /** A sequence's items, each an item element carrying its own nested data set. */
+    readonly items?: readonly Item[] | undefined
     /**
      * Set on Pixel Data (7FE0,0010) written with an undefined length, which is
      * how every compressed transfer syntax carries its frames. `fragments`
@@ -19,6 +20,11 @@ declare module 'dicom-parser' {
      */
     readonly encapsulatedPixelData?: boolean | undefined
     readonly fragments?: readonly Fragment[] | undefined
+  }
+
+  /** One item of a sequence (FFFE,E000): an element whose value is a data set. */
+  interface Item extends Element {
+    readonly dataSet?: DataSet | undefined
   }
 
   interface DataSet {
