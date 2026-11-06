@@ -29,7 +29,7 @@ import { layoutDocument } from './test-helpers.ts'
  * inverse, and `decodeLifeLabsPdf` under a fake extractor.
  */
 
-const SETTINGS = { timeZone: 'America/Vancouver', healthCardProvince: 'BC' } as const
+const SETTINGS = { timeZone: 'America/Vancouver', healthCardProvince: 'ON' } as const
 
 /** A one-page report with no results: its header is all a page-level test reads. */
 const headerOnly: Report.Type = {
