@@ -138,13 +138,16 @@ const literalReferenceFor = (
  * Matches on the URL's `href`, so two spellings of one absolute URL (a host
  * in capitals, a default port) are one `fullUrl`. A relative URL resolves to
  * nothing: a `fullUrl` is absolute, and nothing here knows a base to resolve
- * one against.
+ * one against. A plan holding no `fullUrl` (a batch with no `Binary`, which
+ * is most of them) parses nothing.
  */
 const literalReferenceForFullUrl = (plan: Type, url: string): Option.Option<string> =>
-  pipe(
-    Option.fromNullable(URL.parse(url)),
-    Option.flatMap(({ href }) => unambiguous(Record.get(plan.literalReferencesByFullUrl, href)))
-  )
+  Record.isEmptyRecord(plan.literalReferencesByFullUrl)
+    ? Option.none()
+    : pipe(
+        Option.fromNullable(URL.parse(url)),
+        Option.flatMap(({ href }) => unambiguous(Record.get(plan.literalReferencesByFullUrl, href)))
+      )
 
 /**
  * The literal reference `reference` resolves to under `plan`: for a literal
