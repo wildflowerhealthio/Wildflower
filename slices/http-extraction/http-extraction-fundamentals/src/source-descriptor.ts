@@ -77,9 +77,9 @@ interface ResponseRecords<TParsed> {
  * A source needs one when what a record means depends on another response:
  * one feed names an account, say, and another, captured beside it, says who
  * the account's one person is. Only a consumer that holds every response's
- * records before it writes them can apply it, as an archive import does, and
- * it applies it after `mergeResources`. A pure function: what it decides
- * lasts only as long as the one file it was given.
+ * records before it writes them can apply it, as an archive import does,
+ * after `mergeResources`. A pure function: what it decides lasts only as long
+ * as the one file it was given.
  */
 type CrossResponseLink<TParsed> = (
   responses: readonly ResponseRecords<TParsed>[]

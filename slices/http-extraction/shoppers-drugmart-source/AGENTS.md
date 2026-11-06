@@ -38,11 +38,11 @@ rather than a copy, and what it writes is what the response kinds read.
   `prescriptionHistoryUrlOf`, and `tryPcidFromUrlParam`, the account's `pcid`
   read back from the customers URL's path or the history URL's `customerId`,
   both decoded by `decodeURIComponent` (`tryDecodeUriComponent`), so the two
-  URLs of one account yield the same id. The response kinds build their matchers from
-  `SHOPPERS_API_BASE_URL`, through `portalGetMatcher` (no verb but `GET` —
-  a request whose method the archive dropped, as every Recorder capture's
-  is, still matches), so a built URL is one exactly one kind recognizes
-  (`portal-url.test.ts` pins that).
+  URLs of one account yield the same id. The response kinds build their
+  matchers from `SHOPPERS_API_BASE_URL`, through `portalGetMatcher` (no verb
+  but `GET` — a request whose method the archive dropped, as every Recorder
+  capture's is, still matches), so a built URL is one exactly one kind
+  recognizes (`portal-url.test.ts` pins that).
 - The payload schemas, exported for a producer to type its bodies as their
   `.Encoded`: `CustomerPayload` and `SourcePatient` (the customers body and one
   managed person), `SourcePrescription` and `SourceDispense` (the status body

@@ -32,11 +32,11 @@ const isSamePerson = (first: PersonKey, second: PersonKey): boolean =>
   first.system.href === second.system.href && first.value === second.value
 
 /**
- * The person each account in the file is theirs alone, by the account's
- * `pcid`: the one Patient its customers responses list. An account whose
- * customers responses list several people, or disagree on who its one person
- * is, maps to `None`. A response is a customers response when its records are
- * Patients: only that feed emits them.
+ * Each account's one person in the file, by the account's `pcid`: the key of
+ * the one Patient its customers responses list. An account whose customers
+ * responses list several people, or disagree on who its one person is, maps
+ * to `None`. A response is a customers response when its records include a
+ * Patient: only that feed emits them.
  */
 const onePersonByAccount = (
   responses: readonly SourceDescriptor.ResponseRecords<DetachedResource.Type>[]
