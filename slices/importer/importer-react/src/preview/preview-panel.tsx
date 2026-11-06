@@ -16,7 +16,7 @@ import {
 } from '@wildflowerhealthio/importer-core'
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
-import type { FormatSettingsPicker, FormatWithComponents } from '../registry.ts'
+import type { FormatSettingsPicker, FormatWithComponents, SettingsPickerSlot } from '../registry.ts'
 import { describeResource } from './describe-resource.ts'
 import { DiffBadge } from './diff-badge.tsx'
 import { type ChooseMention, FormatReviewBody } from './format-review-body.tsx'
@@ -68,9 +68,7 @@ import panelStyles from './preview-panel.module.css'
  * `SettingsPicker` for its form.
  */
 type SettingsRegistry = {
-  readonly [K in FormatKind]: Pick<FormatWithComponents<K>, 'display'> & {
-    readonly SettingsPicker?: FormatSettingsPicker<K>
-  }
+  readonly [K in FormatKind]: Pick<FormatWithComponents<K>, 'display'> & SettingsPickerSlot<K>
 }
 
 type SettingsChangeHandler<K extends FormatKind> = (format: K, settings: FormatSettings[K]) => void
@@ -138,8 +136,11 @@ const FormatSettingsForm = <TFormat extends FormatKind>({
   readonly settings: FormatSettings
   readonly settingsRegistry: SettingsRegistry
   readonly onSettingsChange: SettingsChangeHandler<TFormat>
-}): JSX.Element | null =>
-  Option.fromNullable(settingsRegistry[kind].SettingsPicker).pipe(
+}): JSX.Element | null => {
+  // Widened to the slot either branch satisfies: the conditional slot stays
+  // deferred under a generic kind, so its picker could not be rendered as is.
+  const slot: { readonly SettingsPicker?: FormatSettingsPicker<TFormat> } = settingsRegistry[kind]
+  return Option.fromNullable(slot.SettingsPicker).pipe(
     Option.map((Picker) => (
       <div key="settings-form" className={panelStyles['preview-panel__settings-form']}>
         <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
@@ -147,6 +148,7 @@ const FormatSettingsForm = <TFormat extends FormatKind>({
     )),
     Option.getOrNull
   )
+}
 
 /** The single action row for the whole batch: confirm (when anything is chosen) and cancel. */
 const PreviewActions = ({

@@ -81,4 +81,4 @@ const formatRegistry: { readonly [K in FormatKind]: FormatWithComponents<K> } = 
 // from there directly — re-exporting them here gave the package two routes to
 // the same symbol, and it used both.
 export { formatRegistry, withComponents }
-export type { FormatSettingsPicker, FormatWithComponents }
+export type { FormatSettingsPicker, FormatWithComponents, SettingsPickerSlot }
