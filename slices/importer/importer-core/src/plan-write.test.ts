@@ -86,7 +86,7 @@ const batchOf = (
 const dispositionsOf = (
   plan: readonly WriteDecision[]
 ): readonly (readonly [ReviewGroup, string, Disposition])[] =>
-  plan.map(({ group, row, disposition }) => [group, row.reviewable.key, disposition] as const)
+  plan.map(({ group, reviewable, disposition }) => [group, reviewable.key, disposition] as const)
 
 /** No row out by default. */
 const NONE_BY_DEFAULT: ReadonlySet<string> = new Set()
@@ -177,10 +177,10 @@ describe('planWrite', () => {
     const selection = StagedImport.edit(StagedImport.initial(), 'obs-1', edited)
 
     const written = planWrite(withMentionLink, () => selection, noneByDefault, new Set()).find(
-      ({ row }) => row.reviewable.key === 'obs-1'
+      ({ reviewable }) => reviewable.key === 'obs-1'
     )
 
-    expect(written?.row.resource).toEqual(
+    expect(written?.resource).toEqual(
       observationOf('obs-1', { subject: { reference: STORED_PATIENT }, code: { text: 'Pulse' } })
         .resource
     )
@@ -210,8 +210,8 @@ describe('planWrite', () => {
 
           expect(plan).toEqual(
             keys.map((key): WriteDecision => ({
+              ...rowOf(key, edits(key) ? patient(key, 'female') : patient(key)),
               group: 'har',
-              row: rowOf(key, edits(key) ? patient(key, 'female') : patient(key)),
               disposition: excludes(key) ? 'Excluded' : 'Included',
             }))
           )
@@ -368,8 +368,8 @@ describe('planWrite', () => {
     const plan = planWrite(batch, selectionFor, noneByDefault, new Set())
 
     expect(plan).toEqual([
-      { group: 'har', row: rowOf('a', patient('p')), disposition: 'Superseded' },
-      { group: 'lifelabs-pdf', row: rowOf('b', edited), disposition: 'Included' },
+      { ...rowOf('a', patient('p')), group: 'har', disposition: 'Superseded' },
+      { ...rowOf('b', edited), group: 'lifelabs-pdf', disposition: 'Included' },
     ])
   })
 
@@ -413,8 +413,8 @@ describe('planWrite', () => {
           const candidates = plan.filter(
             ({ disposition }) => disposition === 'Included' || disposition === 'Superseded'
           )
-          const literalReferenceOf = ({ row }: WriteDecision): string =>
-            `${row.resource.resourceType}/${row.resource.id}`
+          const literalReferenceOf = ({ resource }: WriteDecision): string =>
+            `${resource.resourceType}/${resource.id}`
           const included = plan.filter(({ disposition }) => disposition === 'Included')
           expect(included.length).toBe(new Set(candidates.map(literalReferenceOf)).size)
           expect(
@@ -426,7 +426,7 @@ describe('planWrite', () => {
                 : 'Included'
             )
           ).toEqual(candidates.map(({ disposition }) => disposition))
-          expect(candidates.map(({ row }) => row.reviewable.key)).toEqual([
+          expect(candidates.map(({ reviewable }) => reviewable.key)).toEqual([
             ...(unchanged ? [] : [STORED.key]),
             ...rows.map(({ reviewable }) => reviewable.key).filter((key) => !excludes(key)),
           ])
@@ -465,8 +465,8 @@ describe('planWrite', () => {
           )
 
           expect(plan[0]).toEqual({
+            ...STORED.row,
             group: LINKED_GROUP,
-            row: STORED.row,
             disposition: unchanged ? 'Unchanged' : 'Included',
           })
         }

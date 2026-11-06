@@ -174,12 +174,13 @@ package alone and a layer that provides those.
 - `src/plan-write.ts` — **`planWrite(batch, selectionFor,
   excludedByDefaultFor, unchangedLinked)`**,
   the pure half of the confirm: one **`WriteDecision`** per reviewed
-  resource — its `ReviewGroup`, its `row` as reviewed (the inline edit,
-  resolved on the batch's plan, substituted), and its **`Disposition`** — in
-  submit order: the linked records first, then each claimed format in
-  registry order, rows in review order. Each row first gets a
-  `ProvisionalDecision` (internal), settled or a candidate, which becomes its
-  `WriteDecision` once the candidates under one `Type/id` are told apart. It
+  resource — the `DecodedFile.Row` as reviewed (the inline edit, resolved on
+  the batch's plan, substituted) with its `ReviewGroup` and its
+  **`Disposition`** — in submit order: the linked records first, then each
+  claimed format in registry order, rows in review order. Each row first
+  gets a `ProvisionalDecision` (internal), the row with its `ReviewGroup`
+  and a verdict, settled or a candidate, which becomes its `WriteDecision`
+  once the candidates under one `Type/id` are told apart. It
   adds no provenance and rewrites nothing: the import stage already minted
   the source file and stamped `meta.source`. The five dispositions, in the
   order they are decided:

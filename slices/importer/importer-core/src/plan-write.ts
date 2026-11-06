@@ -39,10 +39,12 @@ import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
 /** Why a reviewed resource is, or is not, in the transaction. */
 type Disposition = 'Included' | 'Excluded' | 'Unchanged' | 'Unreferenced' | 'Superseded'
 
-/** One reviewed resource's place in the write: the row as reviewed, edits applied, and its disposition. */
-interface WriteDecision {
+/**
+ * One reviewed resource's place in the write: the row as reviewed, edits
+ * applied, with its review group and its disposition.
+ */
+interface WriteDecision extends DecodedFile.Row {
   readonly group: ReviewGroup
-  readonly row: DecodedFile.Row
   readonly disposition: Disposition
 }
 
@@ -80,11 +82,11 @@ type Verdict = Exclude<Disposition, 'Included' | 'Superseded'> | 'Candidate'
 
 /**
  * A {@link WriteDecision} before the candidates under one `Type/id` are told
- * apart: the row as reviewed, edits applied, with its {@link Verdict}.
+ * apart: the row as reviewed, edits applied, with its review group and its
+ * {@link Verdict}.
  */
-interface ProvisionalDecision {
+interface ProvisionalDecision extends DecodedFile.Row {
   readonly group: ReviewGroup
-  readonly row: DecodedFile.Row
   readonly verdict: Verdict
 }
 
@@ -110,8 +112,8 @@ const unlessUnreferenced =
   (named: ReadonlySet<string>) =>
   (decision: ProvisionalDecision): ProvisionalDecision =>
     decision.verdict === 'Candidate' &&
-    decision.row.reviewable.origin === 'Implied' &&
-    !named.has(literalReferenceOf(decision.row.resource))
+    decision.reviewable.origin === 'Implied' &&
+    !named.has(literalReferenceOf(decision.resource))
       ? { ...decision, verdict: 'Unreferenced' }
       : decision
 
@@ -132,8 +134,9 @@ const formatDecisionsOf = (
     const excludedByDefault = excludedByDefaultFor(kind)
     return SectionedList.rows(batch.formats[kind].decoded.sectionedList).map(
       (row): ProvisionalDecision => ({
+        ...row,
         group: kind,
-        row: { ...row, resource: StagedImport.resolvedResourceOf(batch.plan, selection, row) },
+        resource: StagedImport.resolvedResourceOf(batch.plan, selection, row),
         verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, row.reviewable.key)
           ? 'Candidate'
           : 'Excluded',
@@ -170,7 +173,7 @@ const linkedVerdictOf = (record: DecodedFile.Row, unchangedLinked: ReadonlySet<s
  *
  * - A format row is **`Excluded`** when it is not included: the reviewer
  *   unticked it, or never ticked one the default leaves out. Else it is a
- *   candidate. Its `row.resource` is the edited resource, resolved on the
+ *   candidate. Its `resource` is the edited resource, resolved on the
  *   batch's plan, where the reviewer made an edit. A record the import
  *   implied from the references naming it (its reviewable's `origin`) is
  *   **`Unreferenced`** when no candidate format row carries its literal
@@ -206,19 +209,19 @@ const planWrite = (
 ): readonly WriteDecision[] => {
   const formatDecisions = formatDecisionsOf(batch, selectionFor, excludedByDefaultFor)
   const named = literalReferencesIn(
-    formatDecisions.flatMap(({ row, verdict }) => (verdict === 'Candidate' ? [row.resource] : []))
+    formatDecisions.flatMap(({ resource, verdict }) => (verdict === 'Candidate' ? [resource] : []))
   )
   const decisions: readonly ProvisionalDecision[] = [
     ...batch.linkedRecords.map((record): ProvisionalDecision => ({
+      ...record,
       group: LINKED_GROUP,
-      row: record,
       verdict: linkedVerdictOf(record, unchangedLinked),
     })),
     ...formatDecisions.map(unlessUnreferenced(named)),
   ]
-  const candidateIndexes = decisions.flatMap(({ row, verdict }, index) =>
+  const candidateIndexes = decisions.flatMap(({ reviewable, resource, verdict }, index) =>
     verdict === 'Candidate'
-      ? [[literalReferenceOf(row.resource), index, row.reviewable.origin] as const]
+      ? [[literalReferenceOf(resource), index, reviewable.origin] as const]
       : []
   )
   // Built in submit order, implied records first, the map keeps each
@@ -232,12 +235,11 @@ const planWrite = (
       ([literalReference, index]) => [literalReference, index] as const
     )
   )
-  return decisions.map(({ group, row, verdict }, index): WriteDecision => ({
-    group,
-    row,
+  return decisions.map(({ verdict, ...decided }, index): WriteDecision => ({
+    ...decided,
     disposition: Match.value(verdict).pipe(
       Match.when('Candidate', (): Disposition =>
-        lastCandidateIndexByLiteralReference.get(literalReferenceOf(row.resource)) === index
+        lastCandidateIndexByLiteralReference.get(literalReferenceOf(decided.resource)) === index
           ? 'Included'
           : 'Superseded'
       ),
