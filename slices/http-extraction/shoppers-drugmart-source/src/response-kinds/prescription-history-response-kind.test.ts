@@ -201,8 +201,11 @@ describe('PrescriptionHistoryResponseKind', () => {
       }
     )
 
-    it('fails with ParseError when the URL names no customerId', () => {
-      const url = `${BASE}/api/v1/prescription-history?customerId=`
+    it.each([
+      { label: 'names no customerId', query: 'customerId=' },
+      { label: 'names a customerId that does not decode', query: 'customerId=%E0%A4%A' },
+    ])('fails with ParseError when the URL $label', ({ query }) => {
+      const url = `${BASE}/api/v1/prescription-history?${query}`
 
       const result = Effect.runSync(
         Effect.either(

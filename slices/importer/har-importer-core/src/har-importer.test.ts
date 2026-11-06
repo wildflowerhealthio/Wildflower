@@ -334,8 +334,14 @@ const SHOPPERS_PERSON_ID = 'c0ffee00-0000-4000-8000-000000000001'
 const SHOPPERS_PRESCRIPTION_ID = 'rx-uuid-1'
 const SHOPPERS_STORE_NAME = 'SDM Pharmacy #9000'
 
-/** The Shoppers portal's three XHRs for that account, in the portal's page order. */
-const shoppersExchanges = (): readonly TraceExchange[] =>
+/**
+ * The Shoppers portal's three XHRs for that account, in the portal's page
+ * order; the history feed also lists each of `historyOnlyDispenseIds`, fills
+ * the status feed does not carry.
+ */
+const shoppersExchanges = (
+  historyOnlyDispenseIds: readonly string[] = []
+): readonly TraceExchange[] =>
   [
     {
       url: customerUrlOf(SHOPPERS_ACCOUNT_ID),
@@ -362,6 +368,10 @@ const shoppersExchanges = (): readonly TraceExchange[] =>
             din: '80717730',
             store: { id: 9000, storeName: SHOPPERS_STORE_NAME },
           },
+          ...historyOnlyDispenseIds.map((dispenseId) => ({
+            prescriptionId: SHOPPERS_PRESCRIPTION_ID,
+            dispenseId,
+          })),
         ],
       },
     },
@@ -405,6 +415,22 @@ describe('harImporter.decode over a Shoppers capture', () => {
           store: dispense.location?.display,
         }))
       ).toEqual([{ subject: `Patient/${person?.id}`, store: SHOPPERS_STORE_NAME }])
+    }
+  )
+
+  it.each([
+    { order: 'customers feed first', exchanges: shoppersExchanges(['disp-0']) },
+    { order: 'customers feed last', exchanges: shoppersExchanges(['disp-0']).toReversed() },
+  ])(
+    "should file a history-only fill on the account's one person ($order)",
+    async ({ exchanges }) => {
+      const resources = await shoppersResourcesOf(exchanges)
+      const person = resources.find((resource) => resource.resourceType === 'Patient')
+      const subjects = resources.flatMap((resource) =>
+        resource.resourceType === 'MedicationDispense' ? [resource.subject?.reference] : []
+      )
+
+      expect(subjects).toEqual([`Patient/${person?.id}`, `Patient/${person?.id}`])
     }
   )
 })

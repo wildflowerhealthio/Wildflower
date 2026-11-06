@@ -19,13 +19,31 @@ describe('SourceDescriptor.make', () => {
     expect(source.mergeResources).toBe(mergeResources)
   })
 
-  it('should leave the merge absent for a source that gives none', () => {
+  it('should keep the link across responses a source gives, by reference', () => {
+    const linkAcrossResponses: SourceDescriptor.CrossResponseLink<unknown> = (responses) =>
+      responses
+
+    const source = SourceDescriptor.make<unknown>({
+      name: 'sample',
+      display,
+      responseKinds: [SimpleResponseKind],
+      linkAcrossResponses,
+    })
+
+    expect(source.linkAcrossResponses).toBe(linkAcrossResponses)
+  })
+
+  it('should leave the merge and the link absent for a source that gives neither', () => {
     const source = SourceDescriptor.make<unknown>({
       name: 'sample',
       display,
       responseKinds: [SimpleResponseKind],
     })
 
-    expect(source).not.toHaveProperty('mergeResources')
+    expect(source).toStrictEqual({
+      name: 'sample',
+      display,
+      responseKinds: [SimpleResponseKind],
+    })
   })
 })

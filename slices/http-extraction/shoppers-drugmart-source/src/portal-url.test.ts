@@ -9,6 +9,8 @@ import {
   prescriptionHistoryUrlOf,
   prescriptionStatusUrlOf,
   SHOPPERS_API_BASE_URL,
+  tryDecodeUriComponent,
+  tryPcidFromUrlParam,
 } from './portal-url.ts'
 import { CustomerResponseKind } from './response-kinds/customer-response-kind.ts'
 import { PrescriptionHistoryResponseKind } from './response-kinds/prescription-history-response-kind.ts'
@@ -102,6 +104,69 @@ describe('portal URLs', () => {
       expect(recognizes(Option.some('OPTIONS'))).toBe(false)
       // The Recorder writes every method as UNKNOWN, which the archive drops.
       expect(recognizes(Option.none())).toBe(true)
+    })
+  })
+
+  describe('tryPcidFromUrlParam', () => {
+    it("property: reads the same pcid from an account's customers and history URLs", () => {
+      fc.assert(
+        fc.property(portalIdArbitrary, (pcid) => {
+          expect(tryPcidFromUrlParam(customerUrlOf(pcid))).toStrictEqual(Option.some(pcid))
+          expect(tryPcidFromUrlParam(`${customerUrlOf(pcid)}?expand=patients`)).toStrictEqual(
+            Option.some(pcid)
+          )
+          expect(tryPcidFromUrlParam(prescriptionHistoryUrlOf(pcid))).toStrictEqual(
+            Option.some(pcid)
+          )
+        }),
+        { numRuns: RUNS }
+      )
+    })
+
+    it.each([
+      { label: 'in the customers path', url: `${SHOPPERS_API_BASE_URL}/customers/pcid/a+b` },
+      {
+        label: 'in the history query',
+        url: `${SHOPPERS_API_BASE_URL}/prescription-history?customerId=a+b`,
+      },
+    ])('reads a raw + as itself $label', ({ url }) => {
+      expect(tryPcidFromUrlParam(url)).toStrictEqual(Option.some('a+b'))
+    })
+
+    it('reads customerId wherever it sits in the history query', () => {
+      expect(
+        tryPcidFromUrlParam(`${SHOPPERS_API_BASE_URL}/prescription-history?lang=en&customerId=abc`)
+      ).toStrictEqual(Option.some('abc'))
+    })
+
+    it.each([
+      {
+        label: 'an id that does not decode',
+        url: `${SHOPPERS_API_BASE_URL}/customers/pcid/%E0%A4%A`,
+      },
+      { label: 'a status URL', url: prescriptionStatusUrlOf('rx-uuid-1') },
+      { label: 'a customers sub-resource', url: `${customerUrlOf('abc')}/toasts` },
+      {
+        label: "another host's customers URL",
+        url: 'https://example.org/api/v1/customers/pcid/abc',
+      },
+    ])('reads no pcid from $label', ({ url }) => {
+      expect(tryPcidFromUrlParam(url)).toStrictEqual(Option.none())
+    })
+  })
+
+  describe('tryDecodeUriComponent', () => {
+    it('property: decodes what encodeURIComponent encodes', () => {
+      fc.assert(
+        fc.property(fc.string(), (text) => {
+          expect(tryDecodeUriComponent(encodeURIComponent(text))).toStrictEqual(Option.some(text))
+        }),
+        { numRuns: RUNS }
+      )
+    })
+
+    it('is None for a malformed percent-encoding', () => {
+      expect(tryDecodeUriComponent('%E0%A4%A')).toStrictEqual(Option.none())
     })
   })
 })
