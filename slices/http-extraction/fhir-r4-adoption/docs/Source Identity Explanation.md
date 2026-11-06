@@ -127,8 +127,12 @@ province's number in a Wildflower-minted system), else its name and date of birt
 only the latest is kept); each result row and each provider in a
 Wildflower-minted system over the printed facts. Where a record has no
 printed identifier but must be referenced, the system is a fictitious
-Wildflower one with a readable value. DICOM keys every type in its one
-Wildflower-minted system (`DICOM_SYSTEM`).
+Wildflower one with a readable value. DICOM keys each record by the
+identifier its file carries (`DicomIdentifierSystem`): the Patient by its
+Patient ID and the ServiceRequest by its Accession Number, each under the URI
+its issuer names (HL7 v2's HD-to-URI rule) or a Wildflower-minted system for
+an unstated issuer, and the ImagingStudy by its Study Instance UID in
+`urn:dicom:uid`.
 
 ## Detaching a server's record
 
