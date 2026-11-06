@@ -51,8 +51,10 @@ const ShoppersIdentifierSystem = {
    * The account's id: the `customerId` query parameter of the account-wide
    * XHRs (the account's `pcid`). Names the account, not a person: an account
    * manages one or more people, and the history feed's fills name only it.
-   * It exists so the importer's identity map can resolve it to the person a
-   * reviewer says the account's fills are for.
+   * A history-only fill names a person instead only when the same file holds
+   * the account's customers response listing exactly one person; otherwise
+   * the importer's identity map resolves it to the person a reviewer says the
+   * account's fills are for.
    */
   CustomerId: `${SYSTEM_BASE}/identifier/customer-id`,
   /**

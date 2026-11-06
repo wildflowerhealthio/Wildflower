@@ -80,9 +80,11 @@ const customerIdOf = (url: string): Effect.Effect<string, ParseResult.ParseError
  * The `subject` wire: the account the history is for, as a logical reference
  * to a `Patient` by `customerId` under `ShoppersIdentifierSystem.CustomerId`,
  * with no literal `reference`. The feed names no managed person and no
- * Patient stands for the account, so the identifier is all it can say, for
- * the importer's identity map to resolve to a person; the stated `type` is
- * what tells the map it names a patient.
+ * Patient stands for the account, so the identifier is all it can say; the
+ * stated `type` is what tells the importer's identity map it names a patient.
+ * The source's `linkAcrossResponses` files the fill on the person when the
+ * same file holds the account's customers response listing exactly one
+ * person.
  */
 const accountSubjectWire = (customerId: string): Record<string, unknown> => ({
   type: 'Patient',
@@ -204,6 +206,10 @@ const historyUrl = new RegExp(
  * latest fill also appears in the status feed under the same `dispenseId`,
  * which names the person; the source's `mergeResources` combines the two
  * copies wherever one extraction holds both (`merge-resources.ts`). A
+ * history-only fill is filed on the person when the same file holds that
+ * account's customers response listing exactly one person
+ * (`link-across-responses.ts`); otherwise it names the account and stays
+ * unlinked. A
  * dispense entry that does not decode as a {@link SourceHistoryDispense} (a
  * `quantityDispensed` sent as a string, say, or an entry that is not an
  * object), and one with no `dispenseId` (absent or `null`), drops-and-counts

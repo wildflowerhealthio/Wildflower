@@ -48,7 +48,8 @@ shell's shared `persistTransactionBundle`.
   archive:
   `decodeHar`, then `review.ts`'s `preview` over the pool filtered by the
   settings' enabled kinds (each kind yields detached records), then
-  `mergeSharedResources`, folded into `DecodedFileSet` sections —
+  `mergeSharedResources`, then `linkAcrossSourceResponses`, folded into
+  `DecodedFileSet` sections —
   one section per URL, a plain insertion-ordered map (first-seen order, only
   responses that parsed to at least one resource), each entry's `fullUrl` its
   preview key, `<response id>:<index>` —
@@ -78,6 +79,13 @@ shell's shared `persistTransactionBundle`.
   copies dropped. A keyless record never merges. A response's pick is matched
   to its source by kind name. A source without a merge keeps every copy, and
   the batch write's later PUT wins.
+- `src/link-across-responses.ts` — **`linkAcrossSourceResponses`**, where a
+  source's `linkAcrossResponses` runs: right after the merge, over the whole
+  preview, once per source that gives one. The link is handed that source's
+  parsed responses alone, in archive order (each one's URL and records), and
+  the records it returns take their place one for one, so every preview
+  keeps its review keys and order. A source without a link keeps its records
+  as parsed.
 - `src/decode-har.ts` — **`decodeHar`** (the byte-level parse step) and
   `toInput`. `HttpArchive.LogFromHarJson` (`http-archive`) decodes the
   archive into an `HttpArchive.Log`; each `HttpArchive.Entry` is restated

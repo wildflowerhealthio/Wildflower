@@ -49,7 +49,8 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   against.
 - **`SourceDescriptor`** (`src/source-descriptor.ts`) — "a source package" as
   one first-class value: `name`, `display` strings, the `responseKinds` the
-  source contributes, and an optional `mergeResources`. Recognition and identity
+  source contributes, and an optional `mergeResources` and
+  `linkAcrossResponses`. Recognition and identity
   stay on each kind's `tryRecognize`; this must never grow back the deleted
   recognition-carrying `Source`'s role. `make` shallow-clones and deep-freezes.
 - **`SourceDescriptor.ResourceMerge`** — the `mergeResources` hook,
@@ -60,6 +61,15 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   kinds, which is why it sits on the source and not on a kind. Only a consumer
   that holds a whole extraction before writing applies it: `har-importer-core`
   does, over the whole preview. A source without one keeps every copy.
+- **`SourceDescriptor.CrossResponseLink`** — the `linkAcrossResponses` hook,
+  `(responses) => responses`: given every one of a source's parsed responses
+  in one file (`ResponseRecords`: its URL and records), the same responses
+  with their records rewritten one for one, for a source where what a record
+  means depends on another response (Shoppers: who an account's one person
+  is). Like `mergeResources`, no single kind can own it, and only a consumer
+  that holds a whole extraction applies it: `har-importer-core` does, right
+  after the merge. A pure function, so what it decides lasts only as long as
+  the file. A source without one keeps its records as its kinds parsed them.
 - **`Specificity`** (`src/specificity.ts`) — the exported cross-source tier
   constants a kind's `tryRecognize` draws its `specificity` from and routing
   ranks by, **highest wins**: `PORTAL` (100, a named patient portal) > `PROTOCOL`

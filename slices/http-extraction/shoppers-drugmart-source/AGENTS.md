@@ -35,7 +35,10 @@ rather than a copy, and what it writes is what the response kinds read.
   entities.
 - `src/portal-url.ts` — the API's URLs: `SHOPPERS_API_BASE_URL` and the
   three XHR builders `customerUrlOf`, `prescriptionStatusUrlOf` and
-  `prescriptionHistoryUrlOf`. The response kinds build their matchers from
+  `prescriptionHistoryUrlOf`, and `tryPcidFromUrlParam`, the account's `pcid`
+  read back from the customers URL's path or the history URL's `customerId`,
+  both decoded by `decodeURIComponent` (`tryDecodeUriComponent`), so the two
+  URLs of one account yield the same id. The response kinds build their matchers from
   `SHOPPERS_API_BASE_URL`, through `portalGetMatcher` (no verb but `GET` —
   a request whose method the archive dropped, as every Recorder capture's
   is, still matches), so a built URL is one exactly one kind recognizes
@@ -81,9 +84,13 @@ rather than a copy, and what it writes is what the response kinds read.
 - `src/merge-resources.ts` — `mergeShoppersResources`, the source's
   `mergeResources`: a fill seen in both prescription feeds, as one
   `MedicationDispense` (see [Traps](#traps)).
+- `src/link-across-responses.ts` — `linkShoppersResponses`, the source's
+  `linkAcrossResponses`: a history-only fill is filed on the person when the
+  same file holds that account's customers response listing exactly one
+  person (see [Conventional slots](#conventional-slots)).
 - `src/source.ts` — `shoppersDrugMartSource`, the package's primary export: the
   `SourceDescriptor` (`name: 'shoppers-drugmart'`, display strings, the
-  `responseKinds`, and `mergeShoppersResources`).
+  `responseKinds`, `mergeShoppersResources` and `linkShoppersResponses`).
 
 ## Layering
 
@@ -105,9 +112,14 @@ and `rexall-be-well-source` alike:
   `MedicationDispense` names the **account** by an identifier-only reference,
   the URL's `customerId` under `ShoppersIdentifierSystem.CustomerId`, with no
   literal `reference`: the history payload does not say which managed person
-  a fill was for, and no Patient stands for the account. The identifier is
-  there for the importer's identity map to resolve to a person; adopting
-  leaves it as it is, since no record of the import is keyed by it.
+  a fill was for, and no Patient stands for the account. A history-only fill
+  is filed on the person when the same file holds that account's customers
+  response listing exactly one person: the source's `linkAcrossResponses`
+  points its `subject` at that person, by the logical reference the status
+  feed uses. Otherwise it names the account and stays unlinked, for a
+  reviewer to file; adopting leaves it as it is, since no record of the
+  import is keyed by it. A fill the status feed also carries is merged
+  first, so it names its person either way.
 - **Prescriber** — a status-feed `MedicationRequest.requester` is
   `fhir-r4`'s `Practitioner.tryReferenceWireFromName` of `prescriberName`,
   since the portal knows the prescriber only by that name: a logical
@@ -153,6 +165,15 @@ and `rexall-be-well-source` alike:
   `subject`, which names the account by `ShoppersIdentifierSystem.CustomerId`,
   so the result is the same in either arrival order. Only a consumer that
   holds both copies applies it (the HAR import).
+- **The link runs on the merge's result and reads the same marker.**
+  `linkShoppersResponses` rewrites only history copies, told apart by that
+  `CustomerId` subject, so a fill the merge already combined keeps the status
+  copy's person. A rewritten copy no longer reads as a history copy, so the
+  link must not run before the merge. It judges an account of one by the
+  records: its customers response's records are exactly one Patient. A
+  `patients` entry that does not decode leaves no record, so one person
+  beside such an entry still counts as the account's one person here, while
+  `CustomerResponseKind` keeps the account's contacts off them.
 - **A history fill's link to its prescription is by the prescription's key.**
   `authorizingPrescription` is the logical reference to the
   `MedicationRequest` keyed by `prescriptionId`. The slot holds one
