@@ -22,7 +22,7 @@ import {
   type Effect,
 } from 'effect'
 
-import { identifierOf, mapReferences } from './reference-table.ts'
+import { identifierOf, mapAttachmentUrls, mapReferences } from './reference-table.ts'
 
 /**
  * `TResource` with no logical id, distributed over a union so each variant
@@ -40,7 +40,10 @@ type Detached<TResource extends FhirResource> = TResource extends unknown
  * so a record read out of a source carries none. It names itself by its
  * {@link Key}, its first identifier, when it has one, and it names every other
  * decoded record by a logical reference (`type` and `identifier`, no
- * literal). The import stage (`adopt`) gives it the id it is stored under.
+ * literal). A `Binary` has no identifier to be named by: its decoder names it
+ * by its entry's `fullUrl`, the server's URL for it, and a reference or an
+ * `Attachment.url` to it is that absolute URL. The import stage (`adopt`)
+ * gives it the id it is stored under.
  */
 type Type = Detached<FhirResource>
 
@@ -208,11 +211,48 @@ const serverSystemOf = (baseUrl: string, resourceType: string): string =>
 const relativise = (baseUrl: string, reference: string): string =>
   reference.startsWith(`${baseUrl}/`) ? reference.slice(baseUrl.length + 1) : reference
 
+/** The server's own record a literal names, by its R4 resource type and id. */
+interface ServerRecordName {
+  readonly resourceType: ResourceType.Type
+  readonly id: string
+}
+
+/**
+ * The server's own record `literal` names: its type and id when the literal,
+ * {@link relativise}d against `baseUrl`, is a relative `Type/id` of an R4
+ * resource type; `None` for any other literal.
+ */
+const serverRecordNamedBy = (baseUrl: string, literal: string): Option.Option<ServerRecordName> =>
+  pipe(
+    Option.fromNullable(RELATIVE_REFERENCE.exec(relativise(baseUrl, literal))),
+    Option.flatMap(([, resourceType, id]) =>
+      resourceType !== undefined && id !== undefined && ResourceType.is(resourceType)
+        ? Option.some({ resourceType, id })
+        : Option.none()
+    )
+  )
+
+/**
+ * The server's absolute URL for its `Binary` `id`, `<baseUrl>/Binary/<id>`:
+ * what a reference or an `Attachment.url` naming the Binary is detached to.
+ * It is the URL the server serves the Binary's read at, which is the
+ * `fullUrl` its decoder gives the Binary's entry.
+ *
+ * @remarks
+ * R4 gives `Binary` no `identifier` element, so nothing can name one by a key;
+ * the import stage resolves this URL against the batch's `fullUrl`s, and one
+ * naming a Binary the batch does not hold points at the server's record.
+ */
+const serverBinaryUrlOf = (baseUrl: string, id: string): string =>
+  `${serverSystemOf(baseUrl, 'Binary')}/${id}`
+
 /**
  * A reference whose literal, relativised against `baseUrl`, is a relative
  * `Type/id`, as the logical reference to its target: no literal, `type` the
  * target's type, and `identifier` the target's key, `<baseUrl>/<Type>` and
- * the id as its value. Every other reference exactly as it is.
+ * the id as its value. A `Binary/<id>` instead keeps a literal, the server's
+ * absolute URL for the Binary ({@link serverBinaryUrlOf}), its `type` and
+ * `identifier` as they were. Every other reference exactly as it is.
  *
  * @remarks
  * The literal is read through {@link relativise}, so a FHIR server's absolute
@@ -235,28 +275,42 @@ const relativise = (baseUrl: string, reference: string): string =>
  */
 const detachReference =
   (baseUrl: string, urlOf: (url: string) => URL) =>
-  (reference: ReferenceType): ReferenceType => {
-    const match =
-      reference.reference === null
-        ? null
-        : RELATIVE_REFERENCE.exec(relativise(baseUrl, reference.reference))
-    const resourceType = match?.[1]
-    const id = match?.[2]
-    if (resourceType === undefined || id === undefined || !ResourceType.is(resourceType)) {
-      return reference
-    }
-    return {
-      ...reference,
-      reference: null,
-      type: resourceType,
-      identifier: identifierOf(urlOf(serverSystemOf(baseUrl, resourceType)), id),
-    }
-  }
+  (reference: ReferenceType): ReferenceType =>
+    pipe(
+      Option.fromNullable(reference.reference),
+      Option.flatMap((literal) => serverRecordNamedBy(baseUrl, literal)),
+      Option.match({
+        onNone: () => reference,
+        onSome: ({ resourceType, id }) =>
+          resourceType === 'Binary'
+            ? { ...reference, reference: serverBinaryUrlOf(baseUrl, id) }
+            : {
+                ...reference,
+                reference: null,
+                type: resourceType,
+                identifier: identifierOf(urlOf(serverSystemOf(baseUrl, resourceType)), id),
+              },
+      })
+    )
+
+/**
+ * An `Attachment.url` naming the server's own `Binary`, relative or under
+ * `baseUrl`, as the server's absolute URL for it ({@link serverBinaryUrlOf});
+ * every other URL exactly as it is.
+ */
+const detachAttachmentUrl =
+  (baseUrl: string) =>
+  (url: string): string =>
+    pipe(
+      serverRecordNamedBy(baseUrl, url),
+      Option.filter(({ resourceType }) => resourceType === 'Binary'),
+      Option.match({ onNone: () => url, onSome: ({ id }) => serverBinaryUrlOf(baseUrl, id) })
+    )
 
 /**
  * A record a FHIR server served, detached: the server's id becomes the key
  * identifier in `<base>/<Type>`, and references to the server's own records
- * become logical.
+ * become logical, or, to a `Binary`, its absolute URL.
  *
  * @param baseUrl - The server's base URL, the `[base]` of its
  *   `[base]/[type]/[id]`
@@ -276,7 +330,8 @@ const detachReference =
  *   `id` keep only what they had, so they are keyless unless the server's own
  *   first identifier names them.
  * - Every reference the per-type table ({@link mapReferences}) reaches is run
- *   through {@link detachReference}.
+ *   through {@link detachReference}, and every `Attachment.url` it reaches
+ *   ({@link mapAttachmentUrls}) through {@link detachAttachmentUrl}.
  *
  * There is deliberately no "already keyed?" guard: a server that publishes
  * its own id as an identifier in the same system yields a benign duplicate.
@@ -284,8 +339,9 @@ const detachReference =
 const fromServerRecord = (baseUrl: string) => {
   const urlOf = memoisedUrlOf()
   const detachReferences = mapReferences(detachReference(baseUrl, urlOf))
+  const detachAttachmentUrls = mapAttachmentUrls(detachAttachmentUrl(baseUrl))
   return <TResource extends FhirResource>(resource: TResource): Detached<TResource> => {
-    const detached = detachReferences(resource)
+    const detached = detachAttachmentUrls(detachReferences(resource))
     const { id } = resource
     const keyed: Type =
       id !== null && hasIdentifier(detached)
@@ -298,7 +354,7 @@ const fromServerRecord = (baseUrl: string) => {
             ],
           }
         : { ...detached, id: null }
-    // `mapReferences` maps each variant to itself, so `keyed` is `resource`'s
+    // `mapReferences` and `mapAttachmentUrls` map each variant to itself, so `keyed` is `resource`'s
     // own type, detached; the type system cannot see that (see its remarks).
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     return keyed as Detached<TResource>
