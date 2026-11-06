@@ -68,19 +68,17 @@ const entryOf = (
  * the document wins.
  */
 const latestReportByPatientKey = (
-  reports: readonly Report.Type[],
-  { timeZone, healthCardProvince }: SynthesisOptions
+  reportsWithPatientKeys: readonly (readonly [Report.Type, DetachedResource.Key])[],
+  timeZone: string
 ): Readonly<Record<string, Report.Type>> => {
   const byReportedOn = Order.mapInput(
     Option.getOrder(DateTime.Order),
-    (report: Report.Type): Option.Option<DateTime.Utc> =>
+    ([report]: readonly [Report.Type, DetachedResource.Key]): Option.Option<DateTime.Utc> =>
       parsePrintedDateTime(report.reportedOn, timeZone)
   )
-  const naming = Arr.groupBy(reports, (report) =>
-    keyText(patientKeyOf(report.patient, healthCardProvince))
-  )
+  const naming = Arr.groupBy(reportsWithPatientKeys, ([, patientKey]) => keyText(patientKey))
   return Object.fromEntries(
-    Object.entries(naming).map(([key, group]) => [key, Arr.max(group, byReportedOn)])
+    Object.entries(naming).map(([key, group]) => [key, Arr.max(group, byReportedOn)[0]])
   )
 }
 
@@ -96,8 +94,9 @@ const latestReportByPatientKey = (
  *   `Patient` written from the latest report naming it), then its
  *   `Observation`s and the `DiagnosticReport` that lists them — so the
  *   flattened groups are an order a writer can persist in, a reference never
- *   preceding its target; fails with a `ParseError` when a synthesized
- *   resource does not satisfy its `fhir-r4` schema
+ *   preceding its target; fails with a `ParseError` when a report's `HC #`
+ *   is not the chosen province's shape, or a synthesized resource does not
+ *   satisfy its `fhir-r4` schema
  *
  * @remarks
  * Every report is its own `DiagnosticReport`, keyed by the `Lab No` it
@@ -111,11 +110,15 @@ const toFhirResources = (
 ): Effect.Effect<readonly ReportResources[], ParseResult.ParseError> =>
   Effect.gen(function* () {
     const { timeZone, healthCardProvince } = options
-    const latestReportNaming = latestReportByPatientKey(reports, options)
+    const patientKeys = yield* Effect.forEach(reports, (report) =>
+      patientKeyOf(report.patient, healthCardProvince)
+    )
+    const reportsWithPatientKeys = Arr.zip(reports, patientKeys)
+    const latestReportNaming = latestReportByPatientKey(reportsWithPatientKeys, timeZone)
     const seenPatients = new Set<string>()
     const seenPractitioners = new Set<string>()
     const groups: ReportResources[] = []
-    for (const report of reports) {
+    for (const [report, patientKey] of reportsWithPatientKeys) {
       const entries: DecodedFileSet.Entry[] = []
       // Every provider the report names — the ordering provider and each CC'd
       // provider — becomes a `resultsInterpreter` reference on this report's
@@ -137,12 +140,11 @@ const toFhirResources = (
         seenPractitioners.add(keyText(key))
         entries.push(entryOf(key, yield* decodePractitioner(practitionerWire(name))))
       }
-      const patientKey = patientKeyOf(report.patient, healthCardProvince)
       if (!seenPatients.has(keyText(patientKey))) {
         seenPatients.add(keyText(patientKey))
         const latest = latestReportNaming[keyText(patientKey)] ?? report
         entries.push(
-          entryOf(patientKey, yield* decodePatient(patientWire(latest, healthCardProvince)))
+          entryOf(patientKey, yield* decodePatient(yield* patientWire(latest, healthCardProvince)))
         )
       }
 

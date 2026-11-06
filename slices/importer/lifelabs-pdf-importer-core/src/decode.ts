@@ -43,8 +43,8 @@ const pageWithoutLabNoNote = (pageNumber: number): string =>
  *   one section per report, titled by its `Lab No` and date of service, its
  *   records detached and keyed by what the report prints, with a note for
  *   each page skipped for printing no `Lab No`; fails only with a
- *   `ParseError` when the document is not a recognized LifeLabs report;
- *   requires nothing
+ *   `ParseError` when the document is not a recognized LifeLabs report or
+ *   an `HC #` it prints is not the chosen province's shape; requires nothing
  *
  * @remarks
  * Exported so property tests can drive it directly, feeding `layoutDocument`'s
@@ -75,10 +75,10 @@ const decodeLifeLabsPdfDocument = (
  * @param settings - The import's settings (time zone for date interpretation,
  *   health card province for the `HC #`)
  * @returns One section per report, and a note per page skipped for printing
- *   no `Lab No`; fails only
- *   with a `ParseError` when the bytes are not a PDF the extractor can open or
- *   the extracted text is not a recognized LifeLabs report; requires the
- *   {@link PositionedTextExtractor}
+ *   no `Lab No`; fails only with a `ParseError` when the bytes are not a PDF
+ *   the extractor can open, the extracted text is not a recognized LifeLabs
+ *   report, or an `HC #` it prints is not the chosen province's shape;
+ *   requires the {@link PositionedTextExtractor}
  *
  * @remarks
  * The extractor is the caller's to provide. A host provides

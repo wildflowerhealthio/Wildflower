@@ -36,10 +36,11 @@ const reportSectionTitle = (report: Report.Type): string => {
  * entry's `fullUrl` `<Type>/<key value>`, no notes.
  *
  * @param reports - The parsed reports, in print order, one per `Lab No`
- * @param options - The zone the reports' printed clock is in
+ * @param options - The zone the reports' printed clock is in, and the province
+ *   that issued the health card they print
  * @returns The set's decode, for the import stage to adopt; fails with a
- *   `ParseError` when a synthesized resource does not satisfy its `fhir-r4`
- *   schema
+ *   `ParseError` when a report's `HC #` is not the chosen province's shape,
+ *   or a synthesized resource does not satisfy its `fhir-r4` schema
  *
  * @remarks
  * The decode's own last leg, after the PDF's text is read into reports, one
