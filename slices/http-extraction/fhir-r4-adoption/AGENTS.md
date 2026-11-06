@@ -48,13 +48,18 @@ vocabulary) stays FHIR-free and below it.
   plan does not hold or holds with two different literal references: as a
   FHIR conditional reference matching several records, it is ambiguous, so
   the reference stays logical (the same entry given twice is no clash).
+  **`literalReferenceIfResolved(plan, reference)`** is what a reference
+  resolves to: `None` unless it is a logical reference (no literal, an R4
+  resource type, a qualified identifier) `literalReferenceFor` resolves.
+  `adopt` writes it, and the import stage reads it to ask whether a reference
+  names a record of the set.
 - `src/adopt-resource.ts` — `adopt(referencePlan)(record, id)` stores a
   record under the id it is given (the import stage's resource plan decides
   it: `localResourceId(key.system, Type, key.value)` for a keyed record, a
   minted one for a keyless record, `randomResourceId`, a UUID, outside
   tests), and resolves a logical reference to the literal reference
-  `ReferencePlan.literalReferenceFor` gives its type and own qualified
-  identifier, keeping `type` and `identifier`; one the plan does not resolve
+  `ReferencePlan.literalReferenceIfResolved` gives it, keeping `type` and
+  `identifier`; one the plan does not resolve
   stays logical, for the importer's identity map.
   `adoptedReferenceOf(system, Type, id)` is the literal reference the
   import stores the record with that key under, for a resource written

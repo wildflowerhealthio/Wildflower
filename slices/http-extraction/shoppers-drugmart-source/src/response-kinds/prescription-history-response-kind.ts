@@ -79,9 +79,11 @@ const customerIdOf = (url: string): Effect.Effect<string, ParseResult.ParseError
  * The `subject` wire: the account the history is for, as a logical reference
  * to a `Patient` by `customerId` under `ShoppersIdentifierSystem.CustomerId`,
  * with no literal `reference`. The feed names no managed person and no
- * Patient stands for the account, so the identifier is all it can say, for
- * the importer's identity map to resolve to a person; the stated `type` is
- * what tells the map it names a patient.
+ * Patient stands for the account, so the identifier is all it can say. The
+ * import stage files the fill on the person its prescription is for when that
+ * `MedicationRequest` is in the same import; otherwise the identifier is left
+ * for the importer's identity map to resolve to a person, the stated `type`
+ * telling the map it names a patient.
  */
 const accountSubjectWire = (customerId: string): Record<string, unknown> => ({
   type: 'Patient',

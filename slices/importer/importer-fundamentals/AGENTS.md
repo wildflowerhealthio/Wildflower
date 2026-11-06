@@ -121,7 +121,15 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   reference against a transaction bundle; one naming a record the set does
   not hold, a keyless one, or an identifier two records of the set share
   (`ReferencePlan`'s ambiguous case; a record listing one identifier twice
-  is no clash), stays logical, for the identity map. The format decode tests adopt through it too.
+  is no clash), stays logical, for the identity map. Before adopting, a
+  `MedicationDispense` whose `subject` names no Patient of the set (by
+  `ReferencePlan.literalReferenceIfResolved`) takes its authorizing
+  prescriptions' `subject`, as they spell it, replacing its own: every
+  `authorizingPrescription` resolving to a `MedicationRequest` of the set
+  must have a `subject` naming a Patient of the set, and all the same one;
+  otherwise the dispense is left as it is. It is how a source that knows who
+  a prescription is for, but not who a fill was for, files the fill. The
+  format decode tests adopt through it too.
 - `src/resource-plan.ts` — the **`ResourcePlan`** namespace: where one
   decoded record is written, decided before any record of its set is
   adopted, as a FHIR server decides each transaction entry's id before

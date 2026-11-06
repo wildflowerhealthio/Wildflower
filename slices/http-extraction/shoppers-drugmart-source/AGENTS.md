@@ -105,9 +105,12 @@ and `rexall-be-well-source` alike:
   `MedicationDispense` names the **account** by an identifier-only reference,
   the URL's `customerId` under `ShoppersIdentifierSystem.CustomerId`, with no
   literal `reference`: the history payload does not say which managed person
-  a fill was for, and no Patient stands for the account. The identifier is
-  there for the importer's identity map to resolve to a person; adopting
-  leaves it as it is, since no record of the import is keyed by it.
+  a fill was for, and no Patient stands for the account. The import stage
+  replaces it with the person its `authorizingPrescription` is for when that
+  `MedicationRequest` is in the same import and its `subject` names a
+  Patient there (`importer-fundamentals`' `DecodedFileSet.adopt`); otherwise
+  the identifier is left for the importer's identity map to resolve to a
+  person, since no record of the import is keyed by it.
 - **Prescriber** — a status-feed `MedicationRequest.requester` is
   `fhir-r4`'s `Practitioner.tryReferenceWireFromName` of `prescriberName`,
   since the portal knows the prescriber only by that name: a logical

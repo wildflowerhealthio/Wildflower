@@ -3,6 +3,8 @@ import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   Binary,
   type FhirResourceWithId,
+  MedicationDispense,
+  MedicationRequest,
   Observation,
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
@@ -176,6 +178,140 @@ describe('DecodedFileSet.adopt', () => {
       sectionOf('results', [observationOn({ reference: 'Patient/pat-7' })]),
     ])
     expect([person?.id, subjectOf(observation)]).toEqual(['minted-1', null])
+  })
+})
+
+describe('DecodedFileSet.adopt, a dispense whose subject names no Patient of the set', () => {
+  const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
+  const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
+
+  const ACCOUNT = {
+    type: 'Patient',
+    identifier: { system: 'https://portal.example/fhir/identifier/customer-id', value: 'acct-1' },
+  }
+
+  /** The prescription `id` on the source, for the Patient `patientId`. */
+  const prescriptionFor = (id: string, patientId: string): DetachedResource.Type =>
+    detachTest(
+      decodeRequest({
+        resourceType: 'MedicationRequest',
+        id,
+        status: 'active',
+        intent: 'order',
+        medicationCodeableConcept: { text: 'Amoxicillin' },
+        subject: { reference: `Patient/${patientId}` },
+      })
+    )
+
+  /** A fill of the prescriptions `prescriptionIds`, on `subject` when it has one. */
+  const dispenseOf = (
+    subject: Record<string, unknown> | null,
+    prescriptionIds: readonly string[]
+  ): DetachedResource.Type =>
+    detachTest(
+      decodeDispense({
+        resourceType: 'MedicationDispense',
+        id: 'fill-1',
+        status: 'completed',
+        medicationCodeableConcept: { text: 'Amoxicillin' },
+        ...(subject === null ? {} : { subject }),
+        authorizingPrescription: prescriptionIds.map((id) => ({
+          reference: `MedicationRequest/${id}`,
+        })),
+      })
+    )
+
+  /** The adopted dispense and the Patient its prescription `rx-7` is for, read out of `records`. */
+  const adoptedFill = (
+    records: readonly DetachedResource.Type[]
+  ): { readonly dispense: FhirResourceWithId | undefined; readonly onPrescription: unknown } => {
+    const adopted = adoptedIn([sectionOf('records', records)])
+    const request = adopted.find(({ resourceType }) => resourceType === 'MedicationRequest')
+    return {
+      dispense: adopted.find(({ resourceType }) => resourceType === 'MedicationDispense'),
+      onPrescription: request?.resourceType === 'MedicationRequest' ? request.subject : undefined,
+    }
+  }
+
+  const subjectOfDispense = (dispense: FhirResourceWithId | undefined): unknown =>
+    dispense?.resourceType === 'MedicationDispense' ? dispense.subject : undefined
+
+  it.each([
+    {
+      name: 'its subject names the account',
+      records: [patient('pat-7'), prescriptionFor('rx-7', 'pat-7'), dispenseOf(ACCOUNT, ['rx-7'])],
+    },
+    {
+      name: 'it has no subject',
+      records: [patient('pat-7'), prescriptionFor('rx-7', 'pat-7'), dispenseOf(null, ['rx-7'])],
+    },
+    {
+      name: 'its prescriptions agree on one Patient',
+      records: [
+        patient('pat-7'),
+        prescriptionFor('rx-7', 'pat-7'),
+        prescriptionFor('rx-8', 'pat-7'),
+        dispenseOf(ACCOUNT, ['rx-7', 'rx-8']),
+      ],
+    },
+  ])(
+    "takes its prescription's subject, as the prescription spells it, when $name",
+    ({ records }) => {
+      const { dispense, onPrescription } = adoptedFill(records)
+      expect(subjectOfDispense(dispense)).toEqual(onPrescription)
+      expect(onPrescription).toMatchObject({
+        reference: `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7')}`,
+      })
+    }
+  )
+
+  it.each([
+    {
+      name: 'its prescription is not in the set',
+      records: [patient('pat-7'), dispenseOf(ACCOUNT, ['rx-7'])],
+    },
+    {
+      name: "its prescription's subject names no Patient of the set",
+      records: [patient('pat-7'), prescriptionFor('rx-7', 'pat-9'), dispenseOf(ACCOUNT, ['rx-7'])],
+    },
+    {
+      name: 'its prescriptions name different Patients',
+      records: [
+        patient('pat-7'),
+        patient('pat-8'),
+        prescriptionFor('rx-7', 'pat-7'),
+        prescriptionFor('rx-8', 'pat-8'),
+        dispenseOf(ACCOUNT, ['rx-7', 'rx-8']),
+      ],
+    },
+    {
+      name: "one of its prescriptions' subject names no Patient of the set",
+      records: [
+        patient('pat-7'),
+        prescriptionFor('rx-7', 'pat-7'),
+        prescriptionFor('rx-8', 'pat-9'),
+        dispenseOf(ACCOUNT, ['rx-7', 'rx-8']),
+      ],
+    },
+  ])('keeps its own subject when $name', ({ records }) => {
+    const { dispense } = adoptedFill(records)
+    expect(subjectOfDispense(dispense)).toMatchObject({
+      reference: null,
+      type: 'Patient',
+      identifier: { value: 'acct-1' },
+    })
+  })
+
+  it('leaves a dispense whose subject names a Patient of the set on that Patient', () => {
+    const { dispense } = adoptedFill([
+      patient('pat-7'),
+      patient('pat-8'),
+      prescriptionFor('rx-7', 'pat-7'),
+      dispenseOf({ reference: 'Patient/pat-8' }, ['rx-7']),
+    ])
+    expect(subjectOfDispense(dispense)).toMatchObject({
+      reference: `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-8')}`,
+    })
   })
 })
 

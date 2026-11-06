@@ -256,6 +256,15 @@ are left for the importer's identity map (below), and nothing is written that
 points at an id nothing is stored under. A reference to a **keyless** record
 stays logical too, whichever of its identifiers it names it by.
 
+One record is filed before it is adopted. A source can know who a
+prescription is for and not who one of its fills was for: Shoppers' history
+feed names only the account. So a `MedicationDispense` whose `subject` names
+no Patient of the batch, by the reference plan, takes the `subject` of its
+`authorizingPrescription`, as the prescription spells it, replacing its own:
+every prescription it names that resolves to a `MedicationRequest` of the
+batch must have a `subject` naming a Patient of the batch, and all the same
+one. Otherwise the dispense keeps its own `subject`, for the identity map.
+
 `originalIdOf(system, resource)` reads the source's id back off a stored
 resource: the value of its identifier in `system` (`<baseUrl>/<Type>` for a
 FHIR server's record, not the base). Anything that needs the source's id after
