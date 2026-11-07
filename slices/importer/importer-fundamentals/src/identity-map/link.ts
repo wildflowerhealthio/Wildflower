@@ -5,8 +5,7 @@
  * @packageDocumentation
  */
 
-import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Either, Match, Option } from 'effect'
+import { Either, Match, Option } from 'effect'
 
 import * as LinkChoice from './link-choice.ts'
 import * as LinkTarget from './link-target.ts'
@@ -80,14 +79,5 @@ const fromChoices = (
     )
   )
 
-/** The link target of the referent keyed `referentKey` among `links`, when one of them is its link. */
-const targetIfReferentKey = (
-  links: readonly Type[],
-  referentKey: LogicalReference.Key
-): Option.Option<LinkTarget.Linked> =>
-  Array.findFirst(links, ({ referent, target }) =>
-    Option.liftPredicate(target, () => Referent.key(referent) === referentKey)
-  )
-
-export { fromChoices, targetIfReferentKey }
+export { fromChoices }
 export type { Type }

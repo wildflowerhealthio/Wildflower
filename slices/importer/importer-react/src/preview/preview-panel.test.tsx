@@ -699,7 +699,11 @@ const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch => {
         },
       ]),
     },
-    plan: { ...LinkPlan.empty, links: [{ referent, target: LinkTarget.Stored({ resource }) }] },
+    plan: LinkPlan.fromLists({
+      links: [{ referent, target: LinkTarget.Stored({ resource }) }],
+      mentionLinks: [],
+      resolvedResources: [],
+    }),
   }
 }
 

@@ -156,8 +156,8 @@ describe('planWrite', () => {
     const batch = batchOf({ har: [asDecoded] }, [STORED])
     const withMentionLink: ResolvedBatch = {
       ...batch,
-      plan: {
-        ...batch.plan,
+      plan: LinkPlan.fromLists({
+        links: batch.plan.links,
         mentionLinks: [
           {
             reviewKey: 'obs-1',
@@ -165,7 +165,8 @@ describe('planWrite', () => {
             target: LinkTarget.Stored({ resource: STORED_RESOURCE }),
           },
         ],
-      },
+        resolvedResources: batch.plan.resolvedResources,
+      }),
     }
     const edited = observationOf('obs-1', {
       subject: { reference: 'Patient/elsewhere' },

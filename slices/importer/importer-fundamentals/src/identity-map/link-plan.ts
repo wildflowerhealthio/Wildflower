@@ -5,7 +5,7 @@
  * @remarks
  * The reviewer's choices become links, the links are the plan, the plan
  * resolves the batch, and the screen offers what the plan will write. The
- * plan is three lists:
+ * plan is three lists, each indexed by what its lookups ask:
  *
  * - **links**: each referent with its link target, made from the link
  *   choice set by referent (`Link.fromChoices`);
@@ -28,7 +28,7 @@
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Effect, Option, pipe } from 'effect'
+import { Array, Effect, HashMap, Option, pipe } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
 import * as SectionedList from '../sectioned-list.ts'
@@ -37,54 +37,126 @@ import * as LinkTarget from './link-target.ts'
 import * as Link from './link.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import type * as MentionLinkChoiceSet from './mention-link-choice-set.ts'
+import * as MentionLinkChoiceSet from './mention-link-choice-set.ts'
 import * as MentionLink from './mention-link.ts'
 import type * as Mention from './mention.ts'
 import type * as ReferentLinkChoiceSet from './referent-link-choice-set.ts'
 import * as Referent from './referent.ts'
 import * as ResolvedResource from './resolved-resource.ts'
 
+/** The lists a plan is built from ({@link fromLists}), each in the order its walks read it. */
+interface Lists {
+  /** Every referent of the batch with its link target, in discovery order. */
+  readonly links: readonly Link.Type[]
+  /** Every mention chosen for on its own with its link target. */
+  readonly mentionLinks: readonly MentionLink.Type[]
+  /** The resource under each literal reference the links redirect to, as it will be written, in the order the links first reach it. */
+  readonly resolvedResources: readonly ResolvedResource.Type[]
+}
+
 /** The link plan for a batch's decoded files, built once by {@link make}. */
 interface Type {
   /** Every referent of the batch with its link target, in discovery order. */
   readonly links: readonly Link.Type[]
-  /** Every mention chosen for on its own with its link target; none until {@link withMentionLinkChoiceSet}. */
-  readonly mentionLinks: readonly MentionLink.Type[]
-  /** The resource under each literal reference the links redirect to, as it will be written. */
+  /** Each link by its referent's key (`Referent.key`). */
+  readonly linksByReferent: HashMap.HashMap<LogicalReference.Key, Link.Type>
+  /**
+   * The links answering to each logical reference, by its key: every one a
+   * referent answers to (`Referent.logicalReferencesOf`), its key among them.
+   */
+  readonly linksByLogicalReference: HashMap.HashMap<
+    LogicalReference.Key,
+    Array.NonEmptyReadonlyArray<Link.Type>
+  >
+  /** The stored resource standing in for each decoded resource a link replaces, by the decoded resource's literal reference. */
+  readonly standInByDecodedLiteralReference: HashMap.HashMap<string, LinkableResource.WithId>
+  /** Each mention chosen for on its own with its link target, by `MentionLinkChoiceSet.key`; none until {@link withMentionLinkChoiceSet}. */
+  readonly mentionLinksByMention: HashMap.HashMap<MentionLinkChoiceSet.Key, MentionLink.Type>
+  /** The resource under each literal reference the links redirect to, as it will be written, in the order the links first reach it. */
   readonly resolvedResources: readonly ResolvedResource.Type[]
+  /** Each resolved resource by the literal reference it is written under. */
+  readonly resolvedByLiteralReference: HashMap.HashMap<string, ResolvedResource.Type>
 }
 
-/** The plan of a batch with no referent: no links, no mention links, no resolved resources. */
-const empty: Type = { links: [], mentionLinks: [], resolvedResources: [] }
+/**
+ * `items` by `keyOf`, the first item under each key kept, as the scans the
+ * index answers for kept the first match.
+ */
+const firstByKey = <K, V>(items: readonly V[], keyOf: (item: V) => K): HashMap.HashMap<K, V> =>
+  Array.reduce(items, HashMap.empty<K, V>(), (byKey, item) => {
+    const key = keyOf(item)
+    return HashMap.has(byKey, key) ? byKey : HashMap.set(byKey, key, item)
+  })
 
 /**
- * The stored resource standing in for the decoded resource under
- * `decodedLiteralReference`, when `links` link the referent whose decoded
- * resource it is to a stored one.
+ * The stored resource standing in for each decoded resource `links` replace:
+ * a referent linked to a stored resource, by the literal reference of the
+ * referent's decoded resource.
  */
-const storedStandInIfLinked = (
-  links: readonly Link.Type[],
-  decodedLiteralReference: string
-): Option.Option<LinkableResource.WithId> =>
-  Array.findFirst(links, ({ referent, target }) =>
-    pipe(
-      Option.liftPredicate(target, LinkTarget.is('Stored')),
-      Option.filter(
-        () => LinkableResource.literalReferenceOf(referent.resource) === decodedLiteralReference
-      ),
-      Option.map(({ resource }) => resource)
+const standInsOf = (
+  links: readonly Link.Type[]
+): HashMap.HashMap<string, LinkableResource.WithId> =>
+  pipe(
+    links,
+    Array.filterMap(({ referent, target }) =>
+      Option.map(
+        Option.liftPredicate(target, LinkTarget.is('Stored')),
+        ({ resource }) =>
+          [LinkableResource.literalReferenceOf(referent.resource), resource] as const
+      )
+    ),
+    (standIns) => firstByKey(standIns, ([decoded]) => decoded),
+    HashMap.map(([, resource]) => resource)
+  )
+
+/** The links answering to each logical reference, each link once under each of its keys. */
+const linksByLogicalReferenceOf = (
+  links: readonly Link.Type[]
+): HashMap.HashMap<LogicalReference.Key, Array.NonEmptyReadonlyArray<Link.Type>> =>
+  Array.reduce(links, HashMap.empty(), (byKey, link) =>
+    Array.reduce(
+      Array.dedupe(Referent.logicalReferencesOf(link.referent).map(LogicalReference.key)),
+      byKey,
+      (indexed, key) =>
+        HashMap.set(
+          indexed,
+          key,
+          Option.match(HashMap.get(indexed, key), {
+            onNone: () => Array.of(link),
+            onSome: (answering) => Array.append(answering, link),
+          })
+        )
     )
   )
+
+/** The plan of `lists`, indexed for its lookups. */
+const fromLists = ({ links, mentionLinks, resolvedResources }: Lists): Type => ({
+  links,
+  linksByReferent: firstByKey(links, ({ referent }) => Referent.key(referent)),
+  linksByLogicalReference: linksByLogicalReferenceOf(links),
+  standInByDecodedLiteralReference: standInsOf(links),
+  mentionLinksByMention: firstByKey(mentionLinks, ({ reviewKey, path }) =>
+    MentionLinkChoiceSet.key(reviewKey, path)
+  ),
+  resolvedResources,
+  resolvedByLiteralReference: firstByKey(
+    resolvedResources,
+    ({ resolvedLiteralReference }) => resolvedLiteralReference
+  ),
+})
+
+/** The plan of a batch with no referent: no links, no mention links, no resolved resources. */
+const empty: Type = fromLists({ links: [], mentionLinks: [], resolvedResources: [] })
 
 /**
  * The literal reference the decoded resource under `decodedLiteralReference`
  * is written under: the stored stand-in's, else its own.
  */
 const resolvedLiteralReferenceOf = (
-  links: readonly Link.Type[],
+  standIns: HashMap.HashMap<string, LinkableResource.WithId>,
   decodedLiteralReference: string
 ): string =>
-  Option.match(storedStandInIfLinked(links, decodedLiteralReference), {
+  Option.match(HashMap.get(standIns, decodedLiteralReference), {
     onNone: () => decodedLiteralReference,
     onSome: LinkableResource.literalReferenceOf,
   })
@@ -98,7 +170,7 @@ const resolvedLiteralReferenceOf = (
  * resolved file.
  */
 const literalReferencesWrittenAsDecoded = (
-  links: readonly Link.Type[],
+  standIns: HashMap.HashMap<string, LinkableResource.WithId>,
   decodedFiles: readonly DecodedFile.DecodedFile[]
 ): readonly string[] =>
   pipe(
@@ -111,7 +183,7 @@ const literalReferencesWrittenAsDecoded = (
     ),
     Array.filter(
       (decodedLiteralReference) =>
-        resolvedLiteralReferenceOf(links, decodedLiteralReference) === decodedLiteralReference
+        resolvedLiteralReferenceOf(standIns, decodedLiteralReference) === decodedLiteralReference
     )
   )
 
@@ -138,9 +210,9 @@ const make = (
     const links = yield* Link.fromChoices(referents, byReferent)
     const resolvedResources = yield* ResolvedResource.fromLinks(
       links,
-      literalReferencesWrittenAsDecoded(links, decodedFiles)
+      literalReferencesWrittenAsDecoded(standInsOf(links), decodedFiles)
     )
-    return { links, mentionLinks: [], resolvedResources }
+    return fromLists({ links, mentionLinks: [], resolvedResources })
   })
 
 /**
@@ -152,14 +224,18 @@ const make = (
  */
 const withMentionLinkChoiceSet = (plan: Type, byMention: MentionLinkChoiceSet.Type): Type => ({
   ...plan,
-  mentionLinks: MentionLink.fromChoices(plan.links, byMention),
+  mentionLinksByMention: firstByKey(
+    MentionLink.fromChoices(plan.linksByReferent, byMention),
+    ({ reviewKey, path }) => MentionLinkChoiceSet.key(reviewKey, path)
+  ),
 })
 
 /** The link target of the referent keyed `referentKey`, when it is a referent of the batch. */
 const linkTargetIfReferentKey = (
   plan: Type,
   referentKey: LogicalReference.Key
-): Option.Option<LinkTarget.Linked> => Link.targetIfReferentKey(plan.links, referentKey)
+): Option.Option<LinkTarget.Linked> =>
+  Option.map(HashMap.get(plan.linksByReferent, referentKey), ({ target }) => target)
 
 /** Every referent's link target, in discovery order. */
 const linkTargets = (plan: Type): readonly LinkTarget.Linked[] =>
@@ -178,19 +254,12 @@ const linkIfNamedBy = (
   plan: Type,
   logicalReferenceKey: LogicalReference.Key
 ): Option.Option<Link.Type> =>
-  Option.orElse(
-    Array.findFirst(plan.links, ({ referent }) => Referent.key(referent) === logicalReferenceKey),
-    () =>
-      pipe(
-        plan.links,
-        Array.filter(({ referent }) =>
-          Referent.logicalReferencesOf(referent).some(
-            (logicalReference) => LogicalReference.key(logicalReference) === logicalReferenceKey
-          )
-        ),
-        Option.liftPredicate((answering) => answering.length === 1),
-        Option.flatMap(Array.head)
-      )
+  Option.orElse(HashMap.get(plan.linksByReferent, logicalReferenceKey), () =>
+    pipe(
+      HashMap.get(plan.linksByLogicalReference, logicalReferenceKey),
+      Option.filter((answering) => answering.length === 1),
+      Option.map(Array.headNonEmpty)
+    )
   )
 
 /**
@@ -215,7 +284,7 @@ const redirectionIfLinked = (
       ),
     onSome: (decodedLiteralReference) =>
       Option.map(
-        storedStandInIfLinked(plan.links, decodedLiteralReference),
+        HashMap.get(plan.standInByDecodedLiteralReference, decodedLiteralReference),
         LinkableResource.literalReferenceOf
       ),
   })
@@ -236,13 +305,13 @@ const resolvedResourceIfReferent = (
   pipe(
     Option.liftPredicate(decodedResource, LinkableResource.is),
     Option.map((linkable) =>
-      resolvedLiteralReferenceOf(plan.links, LinkableResource.literalReferenceOf(linkable))
+      resolvedLiteralReferenceOf(
+        plan.standInByDecodedLiteralReference,
+        LinkableResource.literalReferenceOf(linkable)
+      )
     ),
     Option.flatMap((resolvedLiteralReference) =>
-      Array.findFirst(
-        plan.resolvedResources,
-        (resolvedResource) => resolvedResource.resolvedLiteralReference === resolvedLiteralReference
-      )
+      HashMap.get(plan.resolvedByLiteralReference, resolvedLiteralReference)
     )
   )
 
@@ -259,10 +328,7 @@ const linkTargetIfChosenForMention = (
   mention: Mention.Linkable
 ): Option.Option<LinkTarget.Type> =>
   pipe(
-    Array.findFirst(
-      plan.mentionLinks,
-      (mentionLink) => mentionLink.reviewKey === reviewKey && mentionLink.path === mention.path
-    ),
+    HashMap.get(plan.mentionLinksByMention, MentionLinkChoiceSet.key(reviewKey, mention.path)),
     Option.map(({ target }) => target),
     Option.filter((target) =>
       Option.match(LinkTarget.resourceIfLinked(target), {
@@ -274,6 +340,7 @@ const linkTargetIfChosenForMention = (
 
 export {
   empty,
+  fromLists,
   linkTargetIfChosenForMention,
   linkTargetIfReferentKey,
   linkTargets,
@@ -283,4 +350,4 @@ export {
   resolvedResources,
   withMentionLinkChoiceSet,
 }
-export type { Type }
+export type { Lists, Type }
