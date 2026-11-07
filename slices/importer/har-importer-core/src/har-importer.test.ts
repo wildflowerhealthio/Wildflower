@@ -33,7 +33,7 @@ import {
   jsonBody,
   traceExchange,
 } from '@wildflowerhealthio/web-trace-core/test-helpers'
-import { Effect, Option, Schema, Either } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it, test } from 'vite-plus/test'
 
@@ -145,7 +145,7 @@ const decodeOne = async (file: PickedFile.Type): Promise<DecodedFileSet.Type> =>
  * adopted as the import stage adopts it.
  */
 const readOne = async (file: PickedFile.Type): Promise<DecodedFile.DecodedFile> =>
-  Either.getOrThrow(DecodedFileSet.adopt(await decodeOne(file)))
+  Effect.runSync(DecodedFileSet.adopt(await decodeOne(file)))
 
 describe('harImporter.decode', () => {
   it('should fold a recognized source file into one section per URL, in first-seen order', async () => {

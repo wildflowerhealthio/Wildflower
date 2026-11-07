@@ -95,7 +95,7 @@ const sample = (overrides: DicomTagMap = {}): Arr.NonEmptyReadonlyArray<PickedFi
 /** A decode's records adopted as the import stage adopts them. */
 const adoptedOf = (
   decoded: Pick<DecodedFileSet.Type, 'sections' | 'notes'>
-): DecodedFile.DecodedFile => Either.getOrThrow(DecodedFileSet.adopt(decoded))
+): DecodedFile.DecodedFile => Effect.runSync(DecodedFileSet.adopt(decoded))
 
 describe('decodeStudy', () => {
   it('resolves ImagingStudy.started against the settings time zone', async () => {

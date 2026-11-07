@@ -13,7 +13,7 @@ import { decodeLifeLabsPdfDocument, Report } from '@wildflowerhealthio/lifelabs-
 import { layoutDocument } from '@wildflowerhealthio/lifelabs-pdf-importer-core/test-helpers'
 import { type Story, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import { asOfArbitrary } from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
-import { DateTime, Effect, Option, Schema, Either } from 'effect'
+import { DateTime, Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -286,7 +286,7 @@ describe('LifeLabs.reportsOf', () => {
         )
         // Adopted as the import stage adopts them, without its source file.
         const imported = SectionedList.rows(
-          Either.getOrThrow(DecodedFileSet.adopt(decoded)).sectionedList
+          Effect.runSync(DecodedFileSet.adopt(decoded)).sectionedList
         ).map((row) => row.resource)
         const withoutSubject = (resource: FhirResource): FhirResource =>
           resource.resourceType === 'Observation' || resource.resourceType === 'DiagnosticReport'
@@ -322,7 +322,7 @@ describe('LifeLabs.reportsOf', () => {
           })
         )
         const patients = SectionedList.rows(
-          Either.getOrThrow(DecodedFileSet.adopt(decoded)).sectionedList
+          Effect.runSync(DecodedFileSet.adopt(decoded)).sectionedList
         ).flatMap(({ resource }) => (resource.resourceType === 'Patient' ? [resource] : []))
         expect(
           patients.map((patient) =>

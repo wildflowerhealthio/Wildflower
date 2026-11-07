@@ -10,7 +10,7 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Schema, Either } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -83,7 +83,7 @@ const adoptedIn = (
   sections: readonly Section.Type<DecodedFileSet.Entry>[]
 ): readonly FhirResourceWithId[] =>
   SectionedList.rows(
-    Either.getOrThrow(DecodedFileSet.adopt({ sections, notes: [] }, countingMinter())).sectionedList
+    Effect.runSync(DecodedFileSet.adopt({ sections, notes: [] }, countingMinter())).sectionedList
   ).map(({ resource }) => resource)
 
 const subjectOf = (resource: FhirResourceWithId | undefined): string | null | undefined =>
@@ -459,7 +459,7 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
   const rowsIn = (
     sections: readonly Section.Type<DecodedFileSet.Entry>[]
   ): readonly (DecodedFile.Row & { readonly section: string })[] =>
-    Either.getOrThrow(
+    Effect.runSync(
       DecodedFileSet.adopt({ sections, notes: [] }, countingMinter())
     ).sectionedList.sections.flatMap(({ title, rows }) =>
       rows.map((row) => ({ ...row, section: title }))
@@ -682,7 +682,7 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
   })
 
   it('adds no section when the references imply nothing', () => {
-    const adopted = Either.getOrThrow(
+    const adopted = Effect.runSync(
       DecodedFileSet.adopt(
         { sections: [sectionOf('people', [patient('pat-7')])], notes: [] },
         countingMinter()
@@ -724,7 +724,7 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
 
 describe('DecodedFileSet.writtenReferenceTitle', () => {
   it('names a keyed record by the reference the import stage writes it under', () => {
-    const [section] = Either.getOrThrow(
+    const [section] = Effect.runSync(
       DecodedFileSet.adopt({
         sections: [sectionOf('people', [patient('pat-7')])],
         notes: [],
@@ -736,7 +736,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
   })
 
   it('names a keyless record by its type and its fullUrl, which a re-decode keeps', () => {
-    const [section] = Either.getOrThrow(
+    const [section] = Effect.runSync(
       DecodedFileSet.adopt(
         { sections: [sectionOf('people', [patient(null)])], notes: [] },
         countingMinter()
@@ -748,7 +748,7 @@ describe('DecodedFileSet.writtenReferenceTitle', () => {
   })
 
   it('keys each adopted row by its entry fullUrl', () => {
-    const [section] = Either.getOrThrow(
+    const [section] = Effect.runSync(
       DecodedFileSet.adopt({
         sections: [sectionOf('people', [patient('pat-7'), patient(null)])],
         notes: [],

@@ -13,7 +13,7 @@ import {
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Either, Option, type ParseResult, pipe } from 'effect'
+import { Array as Arr, Effect, Either, Option, type ParseResult, pipe } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
 import * as ImpliedRecord from './implied-record.ts'
@@ -274,17 +274,18 @@ const impliedSectionOf = (
 
 /**
  * The literal reference of the Patient of the set `reference` names, by the
- * set's reference plan: `None` for no reference, one to another type, or one
- * that does not resolve in the set.
+ * reference plan in force: `None` for no reference, one to another type, or
+ * one that does not resolve in the set.
  */
 const patientReferenceIfInSet = (
-  referencePlan: ReferencePlan.Type,
   reference: ReferenceType | null
-): Option.Option<string> =>
-  pipe(
-    Option.fromNullable(reference),
-    Option.filter(({ type }) => type === 'Patient'),
-    Option.flatMap((patient) => ReferencePlan.literalReferenceIfResolved(referencePlan, patient))
+): Effect.Effect<Option.Option<string>, never, ReferencePlan.InForce> =>
+  Effect.map(ReferencePlan.InForce, (referencePlan) =>
+    pipe(
+      Option.fromNullable(reference),
+      Option.filter(({ type }) => type === 'Patient'),
+      Option.flatMap((patient) => ReferencePlan.literalReferenceIfResolved(referencePlan, patient))
+    )
   )
 
 /** A prescription's `subject`, as it spells it, beside the literal reference of the Patient of the set it names. */
@@ -308,27 +309,23 @@ type PrescriptionSubjects = ReadonlyMap<string, readonly PrescriptionSubject[]>
 
 /** The {@link PrescriptionSubjects} of a set's planned records. */
 const prescriptionSubjectsOf = (
-  referencePlan: ReferencePlan.Type,
   plannedEntries: readonly PlannedEntry[]
-): PrescriptionSubjects =>
-  Arr.reduce(
+): Effect.Effect<PrescriptionSubjects, never, ReferencePlan.InForce> =>
+  Effect.reduce(
     plannedEntries,
     new Map<string, readonly PrescriptionSubject[]>(),
     (prescriptionSubjects, { entry: { resource }, plan }) => {
       if (resource.resourceType !== 'MedicationRequest' || plan._tag !== 'Derived') {
-        return prescriptionSubjects
+        return Effect.succeed(prescriptionSubjects)
       }
       const literalReference = ResourcePlan.literalReference(plan)
       const { subject } = resource
-      return prescriptionSubjects.set(literalReference, [
-        ...(prescriptionSubjects.get(literalReference) ?? []),
-        ...Option.toArray(
-          Option.map(patientReferenceIfInSet(referencePlan, subject), (patient) => ({
-            subject,
-            patient,
-          }))
-        ),
-      ])
+      return Effect.map(patientReferenceIfInSet(subject), (patient) =>
+        prescriptionSubjects.set(literalReference, [
+          ...(prescriptionSubjects.get(literalReference) ?? []),
+          ...Option.toArray(Option.map(patient, (literal) => ({ subject, patient: literal }))),
+        ])
+      )
     }
   )
 
@@ -341,28 +338,29 @@ const prescriptionSubjectsOf = (
  * @returns The first such `subject`, as its prescription spells it
  */
 const prescriptionSubjectIfAgreed = (
-  referencePlan: ReferencePlan.Type,
   prescriptionSubjects: PrescriptionSubjects,
   authorizingPrescriptions: readonly ReferenceType[]
-): Option.Option<ReferenceType> =>
-  pipe(
-    authorizingPrescriptions,
-    Arr.filterMap((prescription) =>
-      Option.flatMapNullable(
-        ReferencePlan.literalReferenceIfResolved(referencePlan, prescription),
-        (literalReference) => prescriptionSubjects.get(literalReference)
+): Effect.Effect<Option.Option<ReferenceType>, never, ReferencePlan.InForce> =>
+  Effect.map(ReferencePlan.InForce, (referencePlan) =>
+    pipe(
+      authorizingPrescriptions,
+      Arr.filterMap((prescription) =>
+        Option.flatMapNullable(
+          ReferencePlan.literalReferenceIfResolved(referencePlan, prescription),
+          (literalReference) => prescriptionSubjects.get(literalReference)
+        )
+      ),
+      Option.liftPredicate(Arr.every(Arr.isNonEmptyReadonlyArray)),
+      Option.map(Arr.flatten),
+      Option.flatMap(
+        Arr.match({
+          onEmpty: Option.none,
+          onNonEmpty: ([first, ...rest]) =>
+            Arr.every(rest, ({ patient }) => patient === first.patient)
+              ? Option.some(first.subject)
+              : Option.none(),
+        })
       )
-    ),
-    Option.liftPredicate(Arr.every(Arr.isNonEmptyReadonlyArray)),
-    Option.map(Arr.flatten),
-    Option.flatMap(
-      Arr.match({
-        onEmpty: Option.none,
-        onNonEmpty: ([first, ...rest]) =>
-          Arr.every(rest, ({ patient }) => patient === first.patient)
-            ? Option.some(first.subject)
-            : Option.none(),
-      })
     )
   )
 
@@ -378,36 +376,38 @@ const prescriptionSubjectIfAgreed = (
  * received the fill, so it is kept.
  */
 const takeSubjectFromPrescription =
-  (referencePlan: ReferencePlan.Type, prescriptionSubjects: PrescriptionSubjects) =>
-  (record: DetachedResource.Type): DetachedResource.Type =>
+  (prescriptionSubjects: PrescriptionSubjects) =>
+  (
+    record: DetachedResource.Type
+  ): Effect.Effect<DetachedResource.Type, never, ReferencePlan.InForce> =>
     record.resourceType === 'MedicationDispense' && record.subject === null
-      ? Option.match(
-          prescriptionSubjectIfAgreed(
-            referencePlan,
-            prescriptionSubjects,
-            record.authorizingPrescription
-          ),
-          { onNone: () => record, onSome: (subject) => ({ ...record, subject }) }
+      ? Effect.map(
+          prescriptionSubjectIfAgreed(prescriptionSubjects, record.authorizingPrescription),
+          Option.match({ onNone: () => record, onSome: (subject) => ({ ...record, subject }) })
         )
-      : record
+      : Effect.succeed(record)
 
 /**
  * Adopt: each planned record of `plannedEntries` given its plan's id, its
- * logical references `referencePlan` resolves made literal, after
- * `takeSubject`, its reviewable keyed by its entry's `fullUrl`, titled by
- * {@link writtenReferenceTitle} and keeping its origin.
+ * logical references the reference plan in force resolves made literal,
+ * after `takeSubject`, its reviewable keyed by its entry's `fullUrl`, titled
+ * by {@link writtenReferenceTitle} and keeping its origin.
  */
 const adoptEntries = (
   plannedEntries: SectionedList.Type<PlannedEntry>,
-  referencePlan: ReferencePlan.Type,
-  takeSubject: (record: DetachedResource.Type) => DetachedResource.Type
-): SectionedList.Type<DecodedFile.Row> => {
-  const adoptEntry = adoptRecord(referencePlan)
-  return SectionedList.map(plannedEntries, ({ entry, plan, origin }) => ({
-    reviewable: { key: entry.fullUrl, title: writtenReferenceTitle(plan, entry), origin },
-    resource: adoptEntry(takeSubject(entry.resource), plan.id),
-  }))
-}
+  takeSubject: (
+    record: DetachedResource.Type
+  ) => Effect.Effect<DetachedResource.Type, never, ReferencePlan.InForce>
+): Effect.Effect<SectionedList.Type<DecodedFile.Row>, never, ReferencePlan.InForce> =>
+  Effect.flatMap(ReferencePlan.InForce, (referencePlan) => {
+    const adoptEntry = adoptRecord(referencePlan)
+    return SectionedList.forEach(plannedEntries, ({ entry, plan, origin }) =>
+      Effect.map(takeSubject(entry.resource), (record) => ({
+        reviewable: { key: entry.fullUrl, title: writtenReferenceTitle(plan, entry), origin },
+        resource: adoptEntry(record, plan.id),
+      }))
+    )
+  })
 
 /**
  * A decode's sections adopted beside its notes: how the import stage makes a
@@ -424,8 +424,9 @@ const adoptEntries = (
  * every record's id ({@link planEntries}); imply the records the set's
  * references name and no record of the set is, in a section of their own,
  * last ({@link impliedSectionOf}); build the reference plan over every
- * record, the implied ones included ({@link referencePlanOf}); and adopt
- * each record ({@link adoptEntries}), a `MedicationDispense` with no
+ * record, the implied ones included ({@link referencePlanOf}), and put it in
+ * force (`ReferencePlan.InForce`); and adopt each record
+ * ({@link adoptEntries}), a `MedicationDispense` with no
  * `subject` first taking the `subject` of the prescriptions of the set it
  * names ({@link takeSubjectFromPrescription}). A logical reference resolves
  * when the set holds a keyed record it names by any of that record's
@@ -436,25 +437,21 @@ const adoptEntries = (
 const adopt = (
   decoded: Pick<Type, 'sections' | 'notes'>,
   mintId: () => string = randomResourceId
-): Either.Either<DecodedFile.DecodedFile, ParseResult.ParseError> => {
-  const decodedEntries = planEntries(decoded, mintId)
-  return Either.map(impliedSectionOf(decodedEntries, mintId), (impliedSection) => {
-    const plannedEntries = Option.match(impliedSection, {
+): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
+  Effect.gen(function* () {
+    const decodedEntries = planEntries(decoded, mintId)
+    const plannedEntries = Option.match(yield* impliedSectionOf(decodedEntries, mintId), {
       onNone: () => decodedEntries,
       onSome: (section) => SectionedList.append(decodedEntries, section),
     })
     const everyPlannedEntry = SectionedList.rows(plannedEntries)
-    const referencePlan = referencePlanOf(everyPlannedEntry)
-    const takeSubject = takeSubjectFromPrescription(
-      referencePlan,
-      prescriptionSubjectsOf(referencePlan, everyPlannedEntry)
-    )
-    return {
-      sectionedList: adoptEntries(plannedEntries, referencePlan, takeSubject),
-      notes: decoded.notes,
-    }
+    const sectionedList = yield* Effect.flatMap(
+      prescriptionSubjectsOf(everyPlannedEntry),
+      (prescriptionSubjects) =>
+        adoptEntries(plannedEntries, takeSubjectFromPrescription(prescriptionSubjects))
+    ).pipe(Effect.provideService(ReferencePlan.InForce, referencePlanOf(everyPlannedEntry)))
+    return { sectionedList, notes: decoded.notes }
   })
-}
 
 export { adopt, namespaceKeys, unidentified, writtenReferenceTitle }
 export type { Entry, PickedFileIdentity, Type }
