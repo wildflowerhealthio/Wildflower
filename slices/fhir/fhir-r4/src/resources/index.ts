@@ -4,6 +4,7 @@ export { type FhirResourceWithId, hasId, literalReferenceOf } from './fhir-resou
 export * as LogicalReference from './logical-reference.ts'
 export * as DateSearchParam from './search/date-search-param.ts'
 export * as TokenSearchParam from './search/token-search-param.ts'
+export * as ReferenceRewrite from './reference-rewrite.ts'
 export * as ResourceReferences from './resource-references.ts'
 export * as ResourceType from './resource-type.ts'
 export { SUBJECT_RESOURCE_TYPES, withSubject } from './with-subject.ts'

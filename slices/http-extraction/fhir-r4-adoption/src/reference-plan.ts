@@ -5,13 +5,13 @@
  * @remarks
  * A plain data structure. It holds the entries it is given and decides
  * nothing about which identifiers go in: that is its builder's policy (the
- * import stage's, for a file set). `adopt` reads it to resolve each
- * logical reference of the records it adopts.
+ * import stage's, for a file set). `adopt` resolves each logical reference
+ * of the records it adopts through its rewrite ({@link toRewrite}).
  *
  * @packageDocumentation
  */
 import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
-import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
+import { LogicalReference, ReferenceRewrite } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Option, pipe, Record } from 'effect'
 
 /** One entry of a plan: `logicalReference` resolves to `literalReference`. */
@@ -94,5 +94,13 @@ const literalReferenceIfResolved = (plan: Type, reference: ReferenceType): Optio
     literalReferenceFor(plan, logicalReference)
   )
 
-export { holds, literalReferenceFor, literalReferenceIfResolved, of }
+/**
+ * `plan` as a reference rewrite: each logical reference it resolves
+ * ({@link literalReferenceIfResolved}) pointed at its literal reference,
+ * every other reference left as it is.
+ */
+const toRewrite = (plan: Type): ReferenceRewrite.Type =>
+  ReferenceRewrite.fromLookup((reference) => literalReferenceIfResolved(plan, reference))
+
+export { holds, literalReferenceFor, literalReferenceIfResolved, of, toRewrite }
 export type { Entry, Type }

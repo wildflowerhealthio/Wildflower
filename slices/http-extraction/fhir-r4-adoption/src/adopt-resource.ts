@@ -2,34 +2,14 @@ import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/
 import {
   type FhirResource,
   type FhirResourceWithId,
-  ResourceReferences,
+  ReferenceRewrite,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Option } from 'effect'
 
 import * as DetachedResource from './detached-resource.ts'
 import * as ReferencePlan from './reference-plan.ts'
 
 /** A fresh random id for a keyless record: a v4 UUID, a legal FHIR id. */
 const randomResourceId = (): string => crypto.randomUUID()
-
-/**
- * A logical reference the batch's reference plan resolves, as the literal
- * reference the plan gives it, `type` and `identifier` kept; every other
- * reference exactly as it is.
- *
- * @remarks
- * Resolved by `ReferencePlan.literalReferenceIfResolved`. One the plan does
- * not resolve — a target the source never served, an account number, a
- * provider's printed name — stays logical, for the importer's identity map
- * (and, later, a match against what the device already holds).
- */
-const adoptReference =
-  (referencePlan: ReferencePlan.Type) =>
-  (reference: ReferenceType): ReferenceType =>
-    Option.match(ReferencePlan.literalReferenceIfResolved(referencePlan, reference), {
-      onSome: (literalReference) => ({ ...reference, reference: literalReference }),
-      onNone: () => reference,
-    })
 
 /**
  * Adopt a detached record into the store: give it the id it is stored under,
@@ -45,16 +25,20 @@ const adoptReference =
  * The id and the reference plan are decided before adoption, by the import
  * stage: the id a keyed record's key derives, so a re-import lands on the
  * same id, or a minted one for a keyless record. Every reference the
- * record carries, at any depth (`ResourceReferences.mapReferences`),
- * resolves through {@link adoptReference}. Nothing else changes: the
- * record's identifiers, its key first, are written as they are.
+ * record carries, at any depth, is rewritten by the plan's rewrite
+ * (`ReferencePlan.toRewrite`): a logical reference the plan resolves gets
+ * the literal reference the plan gives it, `type` and `identifier` kept; one
+ * it does not resolve — a target the source never served, an account
+ * number, a provider's printed name — stays logical, for the importer's
+ * identity map. Nothing else changes: the record's identifiers, its key
+ * first, are written as they are.
  *
  * Takes no base URL: everything it needs is on the records.
  */
 const adopt = (referencePlan: ReferencePlan.Type) => {
-  const adoptOne = adoptReference(referencePlan)
+  const rewrite = ReferencePlan.toRewrite(referencePlan)
   return (record: DetachedResource.Type, id: string): FhirResourceWithId => ({
-    ...ResourceReferences.mapReferences(record, adoptOne),
+    ...ReferenceRewrite.apply(record, rewrite),
     id,
   })
 }
