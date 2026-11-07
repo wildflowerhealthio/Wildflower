@@ -4,7 +4,6 @@ import { Option } from 'effect'
 import type * as DecodedFile from './decoded-file.ts'
 import * as FileResolution from './identity-map/file-resolution.ts'
 import type * as LinkPlan from './identity-map/link-plan.ts'
-import type * as Reviewable from './reviewable.ts'
 
 /**
  * The pure model of an import that has been decoded but not yet written: which
@@ -17,7 +16,7 @@ import type * as Reviewable from './reviewable.ts'
  * UI renders over this is *a* review; the model is the staged import itself,
  * and outlives any particular way of reviewing it.
  *
- * Both axes key by a {@link Reviewable.Type}'s `key` so the state stays
+ * Both axes key by a `Reviewable.Type`'s `key` so the state stays
  * serializable and survives a settings re-decode: a key the new decode no
  * longer produces simply stops applying, rather than dangling.
  *
@@ -40,13 +39,13 @@ import type * as Reviewable from './reviewable.ts'
 interface Selection {
   /**
    * The reviewer's own include/exclude choices, keyed by a
-   * {@link Reviewable.Type}'s `key`: `true` for a resource they ticked, `false` for one
+   * `Reviewable.Type`'s `key`: `true` for a resource they ticked, `false` for one
    * they unticked. A choice stands whatever the default becomes; a key absent
    * here takes the default.
    */
   readonly includedByReviewer: ReadonlyMap<string, boolean>
   /**
-   * Per-resource edit overrides, keyed by a {@link Reviewable.Type}'s
+   * Per-resource edit overrides, keyed by a `Reviewable.Type`'s
    * `key`: a resource whose key is here has its parsed value replaced by the edited
    * one at confirm, resolved on the batch's plan (`FileResolution.resolveEdit`).
    */
