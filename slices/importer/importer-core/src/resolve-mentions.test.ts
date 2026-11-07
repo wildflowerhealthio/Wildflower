@@ -5,6 +5,7 @@ import {
   type FhirResourceWithId,
   MedicationRequest,
   Patient,
+  LogicalReference,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type LinkableResource,
@@ -30,6 +31,25 @@ import {
 } from './resolve-mentions.ts'
 import * as ReviewGroup from './review-group.ts'
 
+/** The key of the logical reference to the `resourceType` record named `value` in `system`. */
+const keyOf = (
+  resourceType: 'Patient' | 'Practitioner',
+  system: string,
+  value: string
+): LogicalReference.Key =>
+  LogicalReference.key(
+    LogicalReference.make(resourceType, {
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(system),
+      type: null,
+      use: null,
+      value,
+    })
+  )
+
 /**
  * A batch built by hand, its mentions resolved: each format's decoded
  * file one section of the given resources, keyed `<kind>/k-<index>`.
@@ -38,7 +58,7 @@ import * as ReviewGroup from './review-group.ts'
 const SOURCE_PATIENT = 'https://source.example/patient-id'
 const CUSTOMER = 'https://source.example/customer-id'
 const DEVICE = 'https://device.example/id'
-const PERSON = JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1'])
+const PERSON = keyOf('Patient', SOURCE_PATIENT, 'p-1')
 
 /** `effect` run on a `TestClock` standing at the epoch; throws its failure. */
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>

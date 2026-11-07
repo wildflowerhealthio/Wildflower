@@ -1,3 +1,4 @@
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   LinkableLogicalReference,
   type LinkChoice,
@@ -46,7 +47,7 @@ interface ReferentRowsProps {
   /** Whether the selects take no choice: while the batch is refused, a choice could not be resolved or shown. */
   readonly disabled: boolean
   /** Called with the reviewer's new choice for a referent. */
-  readonly onChoose: (referentKey: string, choice: LinkChoice.Type) => void
+  readonly onChoose: (referentKey: LogicalReference.Key, choice: LinkChoice.Type) => void
 }
 
 /** One resource type's referents under their heading, or nothing when it has none. */

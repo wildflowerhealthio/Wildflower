@@ -31,6 +31,7 @@ import {
   resolveOnTestClock,
   STORED,
   leftByReferentLinksOnTestClock,
+  keyOf,
 } from './identity-map.test-helpers.ts'
 
 /**
@@ -53,8 +54,8 @@ afterAll(() => {
 
 const RUNS = numRunsFor({ base: 30 })
 
-const PERSON = JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1'])
-const ACCOUNT = JSON.stringify(['Patient', CUSTOMER, 'c-9'])
+const PERSON = keyOf('Patient', SOURCE_PATIENT, 'p-1')
+const ACCOUNT = keyOf('Patient', CUSTOMER, 'c-9')
 
 /** The `subject` of the resource keyed `key` in `file`: `null` for an empty slot, `undefined` for none. */
 const subjectAt = (
@@ -173,7 +174,7 @@ describe('a mention link choice on a resolved file', () => {
         [
           'k-3',
           LinkChoice.LinkToDecodedReferent({
-            referentKey: JSON.stringify(['Patient', 'https://nowhere.example/', 'x']),
+            referentKey: keyOf('Patient', 'https://nowhere.example/', 'x'),
           }),
         ],
       ])

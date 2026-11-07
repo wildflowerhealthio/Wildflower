@@ -6,6 +6,7 @@ import {
   Patient,
   Practitioner,
   type FhirResource,
+  type LogicalReference,
   type FhirResourceWithId,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -70,6 +71,7 @@ import {
   wireFieldsOf,
   wireOf,
   leftByReferentLinksOnTestClock,
+  keyOf,
 } from './identity-map.test-helpers.ts'
 
 // Schema-generated resources at fast-check's default size run to hundreds of
@@ -84,7 +86,7 @@ afterAll(() => {
 
 const RUNS = numRunsFor({ base: 50 })
 
-const PERSON = JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1'])
+const PERSON = keyOf('Patient', SOURCE_PATIENT, 'p-1')
 const NAME_BIRTH_DATE = 'https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date'
 
 const at = (file: DecodedFile.DecodedFile, key: string): FhirResourceWithId | undefined =>
@@ -245,7 +247,7 @@ describe('the identity map on one file', () => {
     )
 
     for (const choices of [
-      HashMap.empty<string, LinkChoice.Type>(),
+      HashMap.empty<LogicalReference.Key, LinkChoice.Type>(),
       HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })]),
     ]) {
       expect(failureOf(file, choices)).toMatchObject({
@@ -312,7 +314,7 @@ describe('the identity map on one file', () => {
 
     expect(discoverOnTestClock(file).map(Referent.key)).toEqual([
       PERSON,
-      JSON.stringify(['Patient', SOURCE_PATIENT, 'p-2']),
+      keyOf('Patient', SOURCE_PATIENT, 'p-2'),
     ])
     expect(
       subjectAndRequesterOf(at(resolveOnTestClock(file, HashMap.empty()), 'k-2')).subject?.reference
@@ -327,7 +329,7 @@ describe('the identity map on one file', () => {
     )
 
     expect(discoverOnTestClock(file).map(Referent.key)).toEqual([
-      JSON.stringify(['Practitioner', SOURCE_PRACTITIONER, 'pr-1']),
+      keyOf('Practitioner', SOURCE_PRACTITIONER, 'pr-1'),
     ])
     const resolved = resolveOnTestClock(file, HashMap.empty())
     expect(at(resolved, 'k-0')).toBe(decodedSmith)
@@ -350,7 +352,7 @@ describe('the identity map on one file', () => {
       request('rx-2', literalSubject('p-1'), requester),
       request('rx-3', literalSubject('p-1'), requester)
     )
-    const prescriber = JSON.stringify(['Practitioner', PRACTITIONER_NAME, 'dr-smith'])
+    const prescriber = keyOf('Practitioner', PRACTITIONER_NAME, 'dr-smith')
 
     const referents = discoverOnTestClock(file)
     expect(referents.map(Referent.key)).toEqual([prescriber])
@@ -619,7 +621,7 @@ describe('the identity map across files', () => {
     const { resolvedFiles, linkedRecords } = resolveAcrossOnTestClock(
       [fileOf(patient({ id: 'p-1', value: 'a' })), fileOf(patient({ id: 'p-1', value: 'b' }))],
       HashMap.make([
-        JSON.stringify(['Patient', SOURCE_PATIENT, 'b']),
+        keyOf('Patient', SOURCE_PATIENT, 'b'),
         LinkChoice.LinkToStoredResource({ resource: stored }),
       ])
     )

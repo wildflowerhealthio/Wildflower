@@ -20,6 +20,7 @@ import {
   request,
   untypedSubject,
   wireFieldsOf,
+  keyOf,
 } from './identity-map.test-helpers.ts'
 import * as Referent from './referent.ts'
 
@@ -67,8 +68,8 @@ describe('Referent.discover', () => {
     expect(
       discoverOnTestClock(file).map((referent) => [Referent.key(referent), referent.label])
     ).toEqual([
-      [JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1']), 'Tyra Banks · 1990-01-02'],
-      [JSON.stringify(['Practitioner', SOURCE_PRACTITIONER, 'pr-1']), 'Dr. A Smith'],
+      [keyOf('Patient', SOURCE_PATIENT, 'p-1'), 'Tyra Banks · 1990-01-02'],
+      [keyOf('Practitioner', SOURCE_PRACTITIONER, 'pr-1'), 'Dr. A Smith'],
     ])
   })
 

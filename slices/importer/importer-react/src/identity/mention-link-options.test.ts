@@ -1,5 +1,10 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import { MedicationRequest, Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  MedicationRequest,
+  Patient,
+  Practitioner,
+  LogicalReference,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type LinkableResource,
   type DecodedFile,
@@ -13,6 +18,25 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import * as MentionLinkOptions from './mention-link-options.ts'
 
+/** The key of the logical reference to the `resourceType` record named `value` in `system`. */
+const keyOf = (
+  resourceType: 'Patient' | 'Practitioner',
+  system: string,
+  value: string
+): LogicalReference.Key =>
+  LogicalReference.key(
+    LogicalReference.make(resourceType, {
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(system),
+      type: null,
+      use: null,
+      value,
+    })
+  )
+
 /**
  * What a mention select offers: exactly the plan's resolved resources, once
  * each, and the mention link choice picking each makes.
@@ -21,9 +45,9 @@ import * as MentionLinkOptions from './mention-link-options.ts'
 const SOURCE = 'https://source.example/patient-id'
 const NAME = 'https://source.example/practitioner-name'
 const DEVICE = 'https://device.example/id'
-const PERSON = JSON.stringify(['Patient', SOURCE, 'p-1'])
-const OTHER_PERSON = JSON.stringify(['Patient', SOURCE, 'p-2'])
-const PRESCRIBER = JSON.stringify(['Practitioner', NAME, 'Dr. A Smith'])
+const PERSON = keyOf('Patient', SOURCE, 'p-1')
+const OTHER_PERSON = keyOf('Patient', SOURCE, 'p-2')
+const PRESCRIBER = keyOf('Practitioner', NAME, 'Dr. A Smith')
 
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))

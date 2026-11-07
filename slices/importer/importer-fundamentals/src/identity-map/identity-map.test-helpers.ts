@@ -9,6 +9,7 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   FhirResourceSchema,
+  LogicalReference,
   MedicationRequest,
   Observation,
   Patient,
@@ -276,6 +277,25 @@ const storedOf = (resource: FhirResourceWithId): LinkableResource.WithId => {
   return resource
 }
 
+/** The key of the logical reference to the `resourceType` record named `value` in `system`. */
+const keyOf = (
+  resourceType: 'Patient' | 'Practitioner',
+  system: string,
+  value: string
+): LogicalReference.Key =>
+  LogicalReference.key(
+    LogicalReference.make(resourceType, {
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(system),
+      type: null,
+      use: null,
+      value,
+    })
+  )
+
 const POOL = ['a', 'b'] as const
 const NAMES = ['Dr. A Smith', 'Dr. B Jones'] as const
 
@@ -288,9 +308,9 @@ const STORED_SMITH = storedOf(practitioner('sp-1', 'Dr. A Smith', DEVICE))
 const STORED: readonly LinkableResource.WithId[] = [STORED_TYRA, STORED_JAN, STORED_SMITH]
 
 /** Every referent key a generated file can hold. */
-const POOL_KEYS: readonly string[] = [
-  ...POOL.map((value) => JSON.stringify(['Patient', SOURCE_PATIENT, value])),
-  ...POOL.map((value) => JSON.stringify(['Practitioner', SOURCE_PRACTITIONER, `pr-${value}`])),
+const POOL_KEYS: readonly LogicalReference.Key[] = [
+  ...POOL.map((value) => keyOf('Patient', SOURCE_PATIENT, value)),
+  ...POOL.map((value) => keyOf('Practitioner', SOURCE_PRACTITIONER, `pr-${value}`)),
 ]
 
 const valueArbitrary = fc.constantFrom(...POOL)
@@ -447,6 +467,7 @@ export {
   fileOf,
   fileWireOf,
   fileWithChoicesArbitrary,
+  keyOf,
   leftByReferentLinksOnTestClock,
   literalSubject,
   resolveAcross,

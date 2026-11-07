@@ -3,7 +3,6 @@ import { claimedFormats, ReviewGroup } from '@wildflowerhealthio/importer-core'
 import {
   type DecodedFile,
   LinkableResource,
-  type LinkChoice,
   Referent,
   SectionedList,
   StagedImport,
@@ -189,8 +188,8 @@ const ImporterScreen = (): JSX.Element => {
   const { choose } = identity
   const referents = shown?.referents
   const decodedBatch = shown?.resolved.decoded
-  const chooseLink = useCallback(
-    (referentKey: string, choice: LinkChoice.Type): void => {
+  const chooseLink = useCallback<typeof choose>(
+    (referentKey, choice) => {
       choose(referentKey, choice)
       const changed = referents?.find((referent) => Referent.key(referent) === referentKey)
       if (changed === undefined || decodedBatch === undefined) return

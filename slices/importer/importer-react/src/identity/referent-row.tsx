@@ -5,6 +5,7 @@
  * @packageDocumentation
  */
 
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { type LinkChoice, Referent } from '@wildflowerhealthio/importer-fundamentals'
 import { Array, Option } from 'effect'
 import { type JSX, memo, useId } from 'react'
@@ -32,7 +33,7 @@ const ReferentRow = memo(function ReferentRow({
   readonly choice: LinkChoice.Type
   readonly warning: Option.Option<string>
   readonly disabled: boolean
-  readonly onChoose: (referentKey: string, choice: LinkChoice.Type) => void
+  readonly onChoose: (referentKey: LogicalReference.Key, choice: LinkChoice.Type) => void
 }): JSX.Element {
   const selectId = useId()
   const handleChange = (value: string): void =>

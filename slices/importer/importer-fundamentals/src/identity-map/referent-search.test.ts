@@ -14,6 +14,7 @@ import {
   fileOf,
   patient,
   practitioner,
+  keyOf,
 } from './identity-map.test-helpers.ts'
 import type * as LinkChoice from './link-choice.ts'
 import * as ReferentSearch from './referent-search.ts'
@@ -305,14 +306,8 @@ describe('ReferentSearch.defaultChoices', () => {
         Option.map(HashMap.get(choices, Referent.key(referent)), describeChoice),
       ])
     ).toEqual([
-      [
-        JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1']),
-        Option.some('LinkToStoredResource Patient/s-1'),
-      ],
-      [
-        JSON.stringify(['Practitioner', SOURCE_PRACTITIONER, 'pr-1']),
-        Option.some('CreateResource'),
-      ],
+      [keyOf('Patient', SOURCE_PATIENT, 'p-1'), Option.some('LinkToStoredResource Patient/s-1')],
+      [keyOf('Practitioner', SOURCE_PRACTITIONER, 'pr-1'), Option.some('CreateResource')],
     ])
     expect(HashMap.size(choices)).toBe(2)
     expect(server.urls).toHaveLength(2)
@@ -335,10 +330,7 @@ describe('ReferentSearch.defaultChoices', () => {
         Option.map(HashMap.get(choices, Referent.key(referent)), describeChoice),
       ])
     ).toEqual([
-      [
-        JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1']),
-        Option.some('UpdateStoredResource Patient/p-1'),
-      ],
+      [keyOf('Patient', SOURCE_PATIENT, 'p-1'), Option.some('UpdateStoredResource Patient/p-1')],
     ])
   })
 })

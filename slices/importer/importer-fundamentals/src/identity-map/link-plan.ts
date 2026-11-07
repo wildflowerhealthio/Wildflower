@@ -158,7 +158,7 @@ const withMentionLinkChoiceSet = (plan: Type, byMention: MentionLinkChoiceSet.Ty
 /** The link target of the referent keyed `referentKey`, when it is a referent of the batch. */
 const linkTargetIfReferentKey = (
   plan: Type,
-  referentKey: string
+  referentKey: LogicalReference.Key
 ): Option.Option<LinkTarget.Linked> => Link.targetIfReferentKey(plan.links, referentKey)
 
 /** Every referent's link target, in discovery order. */
@@ -174,7 +174,10 @@ const resolvedResources = (plan: Type): readonly ResolvedResource.Type[] => plan
  * to it (`Referent.logicalReferencesOf`). A logical reference several
  * referents answer to, and none is keyed by, names none of them.
  */
-const linkIfNamedBy = (plan: Type, logicalReferenceKey: string): Option.Option<Link.Type> =>
+const linkIfNamedBy = (
+  plan: Type,
+  logicalReferenceKey: LogicalReference.Key
+): Option.Option<Link.Type> =>
   Option.orElse(
     Array.findFirst(plan.links, ({ referent }) => Referent.key(referent) === logicalReferenceKey),
     () =>

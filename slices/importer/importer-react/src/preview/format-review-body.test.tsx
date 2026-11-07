@@ -5,6 +5,7 @@ import {
   type FhirResourceWithId,
   Observation,
   Patient,
+  LogicalReference,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type DecodedFile,
@@ -34,6 +35,25 @@ import {
 } from './preview-text.ts'
 import { formatExcludedByDefault } from './use-server-diff.ts'
 
+/** The key of the logical reference to the `resourceType` record named `value` in `system`. */
+const keyOf = (
+  resourceType: 'Patient' | 'Practitioner',
+  system: string,
+  value: string
+): LogicalReference.Key =>
+  LogicalReference.key(
+    LogicalReference.make(resourceType, {
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(system),
+      type: null,
+      use: null,
+      value,
+    })
+  )
+
 /**
  * One format's review body over a file resolved on the identity map: the Needs
  * a patient group, and the per-resource mention selects whose picks are
@@ -46,7 +66,7 @@ const SOURCE = 'https://source.example/patient-id'
 const CUSTOMER = 'https://source.example/customer-id'
 const TYRA = 'Tyra Banks · 1990-01-02'
 const NAOMI = 'Naomi Campbell · 1970-05-22'
-const TYRA_KEY = JSON.stringify(['Patient', SOURCE, 'p-1'])
+const TYRA_KEY = keyOf('Patient', SOURCE, 'p-1')
 
 const decodePatient = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))
 const decodeObservation = Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))
