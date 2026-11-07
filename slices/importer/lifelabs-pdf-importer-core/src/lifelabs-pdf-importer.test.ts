@@ -133,7 +133,7 @@ describe('lifeLabsPdfImporter decode', () => {
             [{ pickedFile: file, identifiedAs: Option.none() }],
           ])
           const sections = decoded.fileSets.flatMap((fileSet) => fileSet.sections)
-          const entries = sections.flatMap((section) => section.entries)
+          const entries = sections.flatMap((section) => section.rows)
           expect(entries.map(({ resource }) => resource.id)).toEqual(entries.map(() => null))
           const keys = entries.map((entry) => entry.fullUrl)
           expect(keys.length).toBeGreaterThan(0)
@@ -163,7 +163,7 @@ describe('lifeLabsPdfImporter decode', () => {
         expect(
           decoded.fileSets
             .flatMap((fileSet) => fileSet.sections)
-            .flatMap((section) => section.entries)
+            .flatMap((section) => section.rows)
             .flatMap(({ resource }) =>
               resource.resourceType === 'Patient' ? resource.identifier : []
             )

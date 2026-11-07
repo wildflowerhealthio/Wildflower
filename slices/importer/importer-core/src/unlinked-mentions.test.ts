@@ -6,8 +6,8 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  FormatDecode,
   LinkChoiceSet,
+  SectionedList,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Schema, TestContext } from 'effect'
@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { formatRegistry } from './registry.ts'
 import { resolveMentions, type ResolvedBatch } from './resolve-mentions.ts'
+import * as ReviewGroup from './review-group.ts'
 import { keysWithoutPatientOf } from './unlinked-mentions.ts'
 
 const SOURCE_PATIENT = 'https://source.example/patient-id'
@@ -50,31 +51,30 @@ const PATIENT = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
  * referent on its default, on a `TestClock` standing at the epoch.
  */
 const resolvedHarBatchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => {
-  const har: FormatDecode.Result<'har'> = {
-    ...FormatDecode.emptyResult('har'),
-    files: [{ id: '0:har', fileName: 'har', bytes: new Uint8Array([1]) }],
-    decoded: {
-      sections: [
+  const har: ReviewGroup.Type = {
+    ...ReviewGroup.empty,
+    decodedFile: {
+      sectionedList: SectionedList.make([
         {
           title: 'Resources',
-          resources: resources.map((resource, index) => ({
-            key: `k-${index}`,
-            title: `${resource.resourceType}/${resource.id}`,
+          rows: resources.map((resource, index) => ({
+            reviewable: {
+              key: `k-${index}`,
+              title: `${resource.resourceType}/${resource.id}`,
+              origin: 'Decoded',
+            },
             resource,
           })),
         },
-      ],
+      ]),
       notes: [],
     },
   }
   return Effect.runSync(
     resolveMentions(
       {
-        formats: {
-          har,
-          'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-          dicom: FormatDecode.emptyResult('dicom'),
-        },
+        groups: { har },
+        files: { har: [{ id: '0:har', fileName: 'har', bytes: new Uint8Array([1]) }] },
         unrecognizedFiles: [],
       },
       LinkChoiceSet.empty

@@ -1,42 +1,37 @@
+/**
+ * One file set's records the device's own: its rows in sections, each record
+ * with an id to be written under, beside the set's notes.
+ *
+ * @packageDocumentation
+ */
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 
-/** One reviewed resource: its review key, its title, and the resource, which has an id to be written under. */
-interface Resource {
-  readonly key: string
-  readonly title: string
+import type * as Reviewable from './reviewable.ts'
+import * as SectionedList from './sectioned-list.ts'
+
+/**
+ * A decoded file's row: a record's {@link Reviewable.Type}, and the record it
+ * will write, with an id to be written under.
+ */
+interface Row {
+  readonly reviewable: Reviewable.Type
   readonly resource: FhirResourceWithId
 }
 
-interface Section {
-  readonly title: string
-  readonly resources: readonly Resource[]
-}
-
+/** A file set's rows, each record with an id to be written under, in sections, beside its notes. */
 interface DecodedFile {
-  readonly sections: readonly Section[]
+  readonly sectionedList: SectionedList.Type<Row>
   readonly notes: readonly string[]
 }
 
-const resources = (decodedFile: { readonly sections: readonly Section[] }): readonly Resource[] =>
-  decodedFile.sections.flatMap((section) => section.resources)
+/** No rows and no notes: a format with no claimed files. */
+const empty: DecodedFile = { sectionedList: SectionedList.empty(), notes: [] }
 
-/**
- * `decodedFile` with `f` applied to every resource entry, sections and notes
- * kept. A section and the file come back as the same object when `f` returns
- * every entry in them as itself.
- */
-const mapResources = (decodedFile: DecodedFile, f: (entry: Resource) => Resource): DecodedFile => {
-  const sections = decodedFile.sections.map((section) => {
-    const entries = section.resources.map(f)
-    return entries.every((entry, at) => entry === section.resources[at])
-      ? section
-      : { ...section, resources: entries }
-  })
-  return sections.every((section, at) => section === decodedFile.sections[at])
-    ? decodedFile
-    : { ...decodedFile, sections }
-}
+/** Every file's sections, in order ({@link SectionedList.concatenateAll}), and every file's notes. */
+const concatenateAll = (files: readonly DecodedFile[]): DecodedFile => ({
+  sectionedList: SectionedList.concatenateAll(files.map((file) => file.sectionedList)),
+  notes: files.flatMap((file) => file.notes),
+})
 
-export { mapResources, resources }
-
-export type { Resource, Section, DecodedFile }
+export { concatenateAll, empty }
+export type { DecodedFile, Row }

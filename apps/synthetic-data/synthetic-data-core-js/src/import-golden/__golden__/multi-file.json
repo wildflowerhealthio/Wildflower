@@ -146,6 +146,13 @@
       "title": "MedicationDispense/wf-42402150c21db460736ca3b9469713db"
     },
     {
+      "disposition": "Superseded",
+      "group": "har",
+      "key": "0:rexall.har/har-entry-3:0#implied:Practitioner|https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner|257ba733-6479-4c16-ac63-40dab75b75c5",
+      "resource": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b",
+      "title": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b"
+    },
+    {
       "disposition": "Included",
       "group": "har",
       "key": "1:rexall-later.har/source-file/rexall-later.har",
@@ -204,6 +211,13 @@
     {
       "disposition": "Included",
       "group": "har",
+      "key": "1:rexall-later.har/har-entry-3:0#implied:Practitioner|https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner|257ba733-6479-4c16-ac63-40dab75b75c5",
+      "resource": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b",
+      "title": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b"
+    },
+    {
+      "disposition": "Included",
+      "group": "har",
       "key": "2:chrome-fhir-capture.har/source-file/chrome-fhir-capture.har",
       "resource": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
       "title": "chrome-fhir-capture.har"
@@ -235,20 +249,6 @@
       "key": "3:lifelabs-report.pdf/source-file/lifelabs-report.pdf",
       "resource": "DocumentReference/wf-ec282d1c84b38036e5abf9eb3e58296b",
       "title": "lifelabs-report.pdf"
-    },
-    {
-      "disposition": "Included",
-      "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Practitioner/ROY DR. ANNE",
-      "resource": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba",
-      "title": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba"
-    },
-    {
-      "disposition": "Included",
-      "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Practitioner/OSEI DR. KWAME",
-      "resource": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77",
-      "title": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77"
     },
     {
       "disposition": "Included",
@@ -291,6 +291,20 @@
       "key": "3:lifelabs-report.pdf/DiagnosticReport/2026-NN6198463",
       "resource": "DiagnosticReport/wf-6e6d2d373433481f7c09b7c537483184",
       "title": "DiagnosticReport/wf-6e6d2d373433481f7c09b7c537483184"
+    },
+    {
+      "disposition": "Included",
+      "group": "lifelabs-pdf",
+      "key": "3:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400#implied:Practitioner|https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name|ROY DR. ANNE",
+      "resource": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba",
+      "title": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba"
+    },
+    {
+      "disposition": "Included",
+      "group": "lifelabs-pdf",
+      "key": "3:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400#implied:Practitioner|https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name|OSEI DR. KWAME",
+      "resource": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77",
+      "title": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77"
     },
     {
       "disposition": "Included",
@@ -435,6 +449,7 @@
       ],
       "resultsInterpreter": [
         {
+          "display": "ROY DR. ANNE",
           "extension": [],
           "identifier": {
             "extension": [],
@@ -445,6 +460,7 @@
           "type": "Practitioner"
         },
         {
+          "display": "OSEI DR. KWAME",
           "extension": [],
           "identifier": {
             "extension": [],
@@ -539,6 +555,7 @@
       ],
       "resultsInterpreter": [
         {
+          "display": "ROY DR. ANNE",
           "extension": [],
           "identifier": {
             "extension": [],
@@ -549,6 +566,7 @@
           "type": "Practitioner"
         },
         {
+          "display": "OSEI DR. KWAME",
           "extension": [],
           "identifier": {
             "extension": [],
@@ -1617,6 +1635,7 @@
           "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
           "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
         },
+        "reference": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b",
         "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
@@ -1848,6 +1867,7 @@
           "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
           "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
         },
+        "reference": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b",
         "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
@@ -2079,6 +2099,7 @@
           "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
           "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
         },
+        "reference": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b",
         "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
@@ -2600,11 +2621,6 @@
           "extension": [],
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
           "value": "OSEI DR. KWAME"
-        },
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
-          "value": "OSEI DR. KWAME"
         }
       ],
       "meta": {
@@ -2639,11 +2655,6 @@
           "extension": [],
           "system": "https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name",
           "value": "ROY DR. ANNE"
-        },
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
-          "value": "ROY DR. ANNE"
         }
       ],
       "meta": {
@@ -2660,6 +2671,40 @@
           "prefix": [],
           "suffix": [],
           "text": "ROY DR. ANNE"
+        }
+      ],
+      "photo": [],
+      "qualification": [],
+      "resourceType": "Practitioner",
+      "telecom": []
+    },
+    {
+      "address": [],
+      "communication": [],
+      "contained": [],
+      "extension": [],
+      "id": "wf-bda3382b2ab055707707d45a06f3c42b",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
+          "value": "257ba733-6479-4c16-ac63-40dab75b75c5"
+        }
+      ],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-6f43dede19e181c370562894bdb79370",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "name": [
+        {
+          "extension": [],
+          "given": [],
+          "prefix": [],
+          "suffix": [],
+          "text": "Dr. Lee Nguyen"
         }
       ],
       "photo": [],

@@ -25,8 +25,11 @@ vocabulary) stays FHIR-free and below it.
   record detached: `keyIdentifierWire(key)` for its `identifier[0]`,
   `logicalReferenceWire(Type, key)` for a reference to another record, and
   `decodeUnknown(schema)` to decode that wire as a detached record, failing
-  one that carries an `id`. How a kind whose response is a FHIR server's
-  records detaches one: `fromServerRecord(baseUrl)` drops its `id`, prepends
+  one that carries an `id` (`decodeUnknownEither(schema)` the same as an
+  `Either`, for a record built synchronously, such as the import stage's
+  implied records). `keyIdentifier(system, value)` is the decoded
+  `Identifier` a record is keyed by, every other element empty. How a kind
+  whose response is a FHIR server's records detaches one: `fromServerRecord(baseUrl)` drops its `id`, prepends
   `{ system: <baseUrl>/<Type>, value: id }` as `identifier[0]` when it had one
   and the type has an `identifier` element, and turns each reference whose
   literal is a `Type/id` of an R4 resource type (`fhir-r4`'s `ResourceType`),
@@ -34,33 +37,43 @@ vocabulary) stays FHIR-free and below it.
   key, replacing any identifier the server had put on it; any other reference
   (a non-R4 token like carebook's `PrescriptionOrder` included) keeps its
   spelling and identifier. It keeps the resource's own type.
-- `src/reference-table.ts` — the per-type reference table (`mapReferences`,
-  the one place a resource's references are walked), which
-  `fromServerRecord` and `adopt` both rewrite through.
+  `fromServerRecord` walks a record's references with `fhir-r4`'s
+  `ResourceReferences.mapReferences`, and `adopt` with `ReferenceRewrite.apply`
+  over it; both reach every reference at any depth (an `Identifier.assigner`
+  included), and the import stage reads them with
+  `ResourceReferences.collect`.
 - `src/reference-plan.ts` — the **`ReferencePlan`** namespace, a plain data
-  structure: for each resource type and qualified identifier, the literal
-  reference a logical reference by them resolves to. **`of(entries)`** holds
-  each `{ resourceType, identifier, literalReference }` it is given and
-  decides nothing about which identifiers go in; its builder does.
-  **`literalReferenceFor(plan, Type, identifier)`** matches on the type and
-  the identifier's `system` and `value` alone (spelled as JSON, so no
-  separator inside either can make two collide), and is `None` for one the
-  plan does not hold or holds with two different literal references: as a
-  FHIR conditional reference matching several records, it is ambiguous, so
-  the reference stays logical (the same entry given twice is no clash).
+  structure: for each logical reference (`fhir-r4`'s **`LogicalReference`**,
+  a resource type and one qualified identifier), the literal reference it
+  resolves to. **`of(entries)`** holds each
+  `{ logicalReference, literalReference }` it is given and decides nothing
+  about which identifiers go in; its builder does.
+  **`literalReferenceFor(plan, logicalReference)`** matches on the type and
+  the identifier's `system` and `value` alone (`LogicalReference.key`), and
+  is `None` for one the plan does not hold or holds with two different
+  literal references: as a FHIR conditional reference matching several
+  records, it is ambiguous, so the reference stays logical (the same entry
+  given twice is no clash). **`holds(plan, logicalReference)`** is whether
+  the plan has any entry for it, one or several that disagree: a record the
+  set holds, which the import stage implies no record for.
   **`literalReferenceIfResolved(plan, reference)`** is what a reference
-  resolves to: `None` unless it is a logical reference (no literal, an R4
-  resource type, a qualified identifier) `literalReferenceFor` resolves.
-  `adopt` writes it, and the import stage reads it to ask whether a reference
-  names a record of the set.
+  resolves to: `None` unless it is a logical reference
+  (`LogicalReference.tryFromReference`) `literalReferenceFor` resolves; the
+  import stage reads it to ask whether a reference names a record of the
+  set. **`toRewrite(plan)`** is the plan as a `fhir-r4` `ReferenceRewrite`:
+  each logical reference it resolves pointed at its literal reference, every
+  other left; `adopt` rewrites by it. Its literal references are keyed by
+  `LogicalReference.Key`. **`InForce`** is the `Context.Tag` of the plan a
+  file set's records are adopted by: the import stage builds the plan once
+  and provides it, and every adoption step reads it from the environment.
 - `src/adopt-resource.ts` — `adopt(referencePlan)(record, id)` stores a
   record under the id it is given (the import stage's resource plan decides
   it: `localResourceId(key.system, Type, key.value)` for a keyed record, a
   minted one for a keyless record, `randomResourceId`, a UUID, outside
-  tests), and resolves a logical reference to the literal reference
-  `ReferencePlan.literalReferenceIfResolved` gives it, keeping `type` and
-  `identifier`; one the plan does not resolve
-  stays logical, for the importer's identity map.
+  tests), and rewrites its references by `ReferencePlan.toRewrite`: a
+  logical reference the plan resolves gets the literal reference it gives,
+  keeping `type` and `identifier`; one the plan does not resolve stays
+  logical, for the importer's identity map.
   `adoptedReferenceOf(system, Type, id)` is the literal reference the
   import stores the record with that key under, for a resource written
   outside that source; `originalIdOf(system, resource)` reads the value of a
@@ -75,7 +88,8 @@ decoder writes its records with it: the source packages' response kinds
 records, the rest writing them detached) and the file importers
 (`dicom-importer-core`, `lifelabs-pdf-importer-core`).
 `importer-fundamentals`' `ResourcePlan` keys a file set's records with it and
-`DecodedFileSet.adopt` builds the set's `ReferencePlan` and adopts with it, and
+`DecodedFileSet.adopt` builds the set's `ReferencePlan`, puts it in force
+(`ReferencePlan.InForce`) and adopts with it, and
 the synthetic-data generators spell references with it. It must never import
 from `slices/importer` or `http-extraction-fundamentals`, so `adopt` takes the
 import stage's decisions as plain inputs (an id, and a `ReferencePlan` of
@@ -91,12 +105,15 @@ everything is read off the records.
 - **A keyless record gets a fresh id on every import.** Nothing names it, so a
   re-import is a second record, and a reference to it stays logical.
 - **A logical reference only resolves against its batch.** One naming a record
-  the file set does not hold stays logical, by design: nothing is stored under
-  the id it would derive, and the identity map resolves it against what the
-  device holds.
-- **Each `mapReferences` row maps a variant to itself by construction, not by
-  the type system.** A row returning a different variant would compile, and
-  `fromServerRecord`'s one cast back to the resource's own type would lie.
+  the file set does not hold stays logical here, by design: nothing is stored
+  under the id it would derive. The import stage implies a Patient or
+  Practitioner such a reference names with a `display` before it builds the
+  plan, so the set then holds it; any other stays logical.
+- **The reference walk keeps a resource's shape by construction, not by the
+  type system.** `ResourceReferences.mapReferences` replaces a `Reference`
+  only with what the rewrite returns for it, so `fromServerRecord`'s one cast
+  back to the resource's own type holds only while each rewrite returns a
+  `Reference`.
 
 ## References
 

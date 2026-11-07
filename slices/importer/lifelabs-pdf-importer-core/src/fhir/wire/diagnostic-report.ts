@@ -1,4 +1,7 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
+import { Array as Arr, pipe } from 'effect'
 
 import type * as Report from '../../entities/report.ts'
 import { LifeLabsIdentifierSystem } from '../../source-system.ts'
@@ -23,12 +26,34 @@ const reportKeyOf = (report: Report.Type): DetachedResource.Key => ({
   value: report.labNo,
 })
 
+/**
+ * The `resultsInterpreter` wire of `report`: every provider it names, the
+ * ordering provider and each CC'd one, once per name, as a logical reference
+ * by the printed name in `LifeLabsIdentifierSystem.PractitionerName`
+ * (`fhir-r4`'s `Practitioner.tryReferenceWireFromName`), the name as keyed
+ * for its display.
+ *
+ * @remarks
+ * The report never numbers a provider, so the name is the key. The import
+ * stage implies one Practitioner per name across the whole document, named by
+ * this display.
+ */
+const resultsInterpreterWire = (
+  report: Report.Type
+): readonly (typeof IdentifierAndReference.ReferenceSchema.Encoded)[] =>
+  pipe(
+    [report.orderedBy, ...report.copyTo],
+    Arr.filterMap((name) =>
+      Practitioner.tryReferenceWireFromName(LifeLabsIdentifierSystem.PractitionerName, name)
+    ),
+    Arr.dedupeWith((left, right) => left.identifier?.value === right.identifier?.value)
+  )
+
 const diagnosticReportWire = (
   report: Report.Type,
   patientKey: DetachedResource.Key,
   observationKeys: readonly DetachedResource.Key[],
-  timeZone: string,
-  resultsInterpreterKeys: readonly DetachedResource.Key[]
+  timeZone: string
 ): Wire => {
   const sections = report.sections.map((section) => section.name).filter((name) => name !== '')
   const wire: Wire = {
@@ -46,11 +71,8 @@ const diagnosticReportWire = (
     ...timingWire(report, timeZone),
     result: observationKeys.map((key) => DetachedResource.logicalReferenceWire('Observation', key)),
   }
-  if (resultsInterpreterKeys.length > 0) {
-    wire['resultsInterpreter'] = resultsInterpreterKeys.map((key) =>
-      DetachedResource.logicalReferenceWire('Practitioner', key)
-    )
-  }
+  const resultsInterpreter = resultsInterpreterWire(report)
+  if (resultsInterpreter.length > 0) wire['resultsInterpreter'] = resultsInterpreter
   const licences = new Set(
     report.sections.flatMap((section) =>
       section.groups.flatMap((group) => group.rows.map((row) => row.labLicence))

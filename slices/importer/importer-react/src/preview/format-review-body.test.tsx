@@ -5,24 +5,25 @@ import {
   type FhirResourceWithId,
   Observation,
   Patient,
+  LogicalReference,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  DecodedFile,
+  type DecodedFile,
   FileResolution,
-  FormatDecode,
-  LinkChoice,
   type LinkableResource,
+  LinkChoice,
   LinkPlan,
   Mention,
   MentionLinkChoiceSet,
   type ReferentLinkChoiceSet,
+  SectionedList,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap, Option, Schema, TestContext } from 'effect'
 import { type JSX, useMemo, useState } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
+import { type ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
 import { DONT_LINK_LABEL } from '../identity/referent-text.ts'
@@ -33,6 +34,25 @@ import {
   NEEDS_A_PATIENT_HEADING,
 } from './preview-text.ts'
 import { formatExcludedByDefault } from './use-server-diff.ts'
+
+/** The key of the logical reference to the `resourceType` record named `value` in `system`. */
+const keyOf = (
+  resourceType: 'Patient' | 'Practitioner',
+  system: string,
+  value: string
+): LogicalReference.Key =>
+  LogicalReference.key(
+    LogicalReference.make(resourceType, {
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(system),
+      type: null,
+      use: null,
+      value,
+    })
+  )
 
 /**
  * One format's review body over a file resolved on the identity map: the Needs
@@ -46,7 +66,7 @@ const SOURCE = 'https://source.example/patient-id'
 const CUSTOMER = 'https://source.example/customer-id'
 const TYRA = 'Tyra Banks · 1990-01-02'
 const NAOMI = 'Naomi Campbell · 1970-05-22'
-const TYRA_KEY = `Patient|${SOURCE}|p-1`
+const TYRA_KEY = keyOf('Patient', SOURCE, 'p-1')
 
 const decodePatient = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))
 const decodeObservation = Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))
@@ -79,16 +99,19 @@ const weight = (id: string, subject?: object): FhirResourceWithId =>
 
 /** One section of `resources`, keyed `k-<index>`. */
 const fileOf = (resources: readonly FhirResourceWithId[]): DecodedFile.DecodedFile => ({
-  sections: [
+  sectionedList: SectionedList.make([
     {
       title: 'Resources',
-      resources: resources.map((resource, index) => ({
-        key: `k-${index}`,
-        title: `${resource.resourceType}/${resource.id}`,
+      rows: resources.map((resource, index) => ({
+        reviewable: {
+          key: `k-${index}`,
+          title: `${resource.resourceType}/${resource.id}`,
+          origin: 'Decoded',
+        },
         resource,
       })),
     },
-  ],
+  ]),
   notes: [],
 })
 
@@ -142,23 +165,15 @@ const batchOf = (
   file: DecodedFile.DecodedFile,
   resolved: DecodedFile.DecodedFile,
   plan: LinkPlan.Type
-): ResolvedBatch => {
-  const decodedBatch = {
-    formats: {
-      har: { ...FormatDecode.emptyResult('har'), decoded: file },
-      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-      dicom: FormatDecode.emptyResult('dicom'),
-    },
+): ResolvedBatch => ({
+  groups: { har: { ...ReviewGroup.empty, decodedFile: resolved } },
+  plan,
+  decoded: {
+    groups: { har: { ...ReviewGroup.empty, decodedFile: file } },
+    files: { har: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }] },
     unrecognizedFiles: [],
-  }
-  return {
-    formats: { ...decodedBatch.formats, har: { ...decodedBatch.formats.har, decoded: resolved } },
-    unrecognizedFiles: [],
-    linkedRecords: [],
-    plan,
-    decodedBatch,
-  }
-}
+  },
+})
 
 /**
  * The review body over `resources` resolved on `choices` and the mention
@@ -201,7 +216,7 @@ const Harness = ({
   onReport({ selection, excludedByDefault, byMention, plan, resolved })
   return (
     <FormatReviewBody
-      result={{ ...FormatDecode.emptyResult('har'), decoded: resolved }}
+      reviewGroup={{ ...ReviewGroup.empty, decodedFile: resolved }}
       selection={selection}
       excludedByDefault={excludedByDefault}
       comparisons={undefined}
@@ -223,7 +238,9 @@ const Harness = ({
 /** The literal reference the subject of the resource keyed `key` carries in `file`, or `None` for none. */
 const subjectLiteral = (file: DecodedFile.DecodedFile, key: string): Option.Option<string> =>
   Option.fromNullable(
-    file.sections.flatMap((section) => section.resources).find((entry) => entry.key === key)
+    file.sectionedList.sections
+      .flatMap((section) => section.rows)
+      .find((row) => row.reviewable.key === key)
   ).pipe(
     Option.flatMap(({ resource }) => Mention.at(resource, Mention.SUBJECT_PATH)),
     Option.flatMapNullable(({ reference }) => reference.reference)
@@ -252,9 +269,11 @@ const includedIn = (reported: Reported, key: string): boolean =>
 
 /** The resource the review writes for the row keyed `key`, as the harness last reported. */
 const writtenAt = (reported: Reported, key: string): FhirResourceWithId => {
-  const entry = DecodedFile.resources(reported.resolved).find((one) => one.key === key)
-  if (entry === undefined) throw new Error(`no row keyed ${key}`)
-  return StagedImport.resolvedResourceOf(reported.plan, reported.selection, entry)
+  const row = SectionedList.rows(reported.resolved.sectionedList).find(
+    (one) => one.reviewable.key === key
+  )
+  if (row === undefined) throw new Error(`no row keyed ${key}`)
+  return StagedImport.resolvedResourceOf(reported.plan, reported.selection, row)
 }
 
 /** The literal reference the subject of `resource` carries, or `None` for none. */
@@ -532,7 +551,7 @@ describe('FormatReviewBody', () => {
       weight('o-1', { type: 'Patient', identifier: { system: CUSTOMER, value: 'c-9' } }),
       weight('o-2'),
     ]
-    const { rerender } = render(<Harness resources={resources} onReport={reported.onReport} />)
+    render(<Harness resources={resources} onReport={reported.onReport} />)
     expect(includedIn(reported.latest(), 'k-1')).toBe(false)
     const [other] = screen.getAllByRole<HTMLInputElement>('checkbox', {
       name: 'Include Observation Weight o-2',
@@ -542,15 +561,11 @@ describe('FormatReviewBody', () => {
     expect(includedIn(reported.latest(), 'k-2')).toBe(true)
 
     // Act — link the account to Tyra
-    rerender(
-      <Harness
-        resources={resources}
-        choices={HashMap.make([
-          `Patient|${CUSTOMER}|c-9`,
-          LinkChoice.LinkToDecodedReferent({ referentKey: TYRA_KEY }),
-        ])}
-        onReport={reported.onReport}
-      />
+    await userEvent.selectOptions(
+      within(screen.getByRole('region', { name: NEEDS_A_PATIENT_HEADING })).getByRole('combobox', {
+        name: SUBJECT_OF_O1,
+      }),
+      TYRA
     )
 
     // Assert — the untouched row is in; the ticked one stays as ticked

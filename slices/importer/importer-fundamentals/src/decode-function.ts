@@ -27,6 +27,7 @@ import { Array as Arr, Effect, Either } from 'effect'
 import * as DecodedFileSet from './decoded-file-set.ts'
 import * as FormatDecode from './format-decode.ts'
 import type * as PickedFile from './picked-file.ts'
+import type * as SectionedList from './sectioned-list.ts'
 
 /**
  * The batch decode the shell runs: every file of one format, under that
@@ -54,8 +55,7 @@ type Type<in TSettings, TFormat extends string, out R = never> = (
  * themselves; DICOM pairs each file with its SOP Instance UID. Left out, as by
  * every other format, each picked file identifies as nothing.
  */
-interface FileSetDecode {
-  readonly sections: readonly DecodedFileSet.Section[]
+interface FileSetDecode extends SectionedList.Type<DecodedFileSet.Entry> {
   readonly notes: readonly string[]
   readonly pickedFiles?: Arr.NonEmptyReadonlyArray<DecodedFileSet.PickedFileIdentity> | undefined
 }
@@ -90,10 +90,8 @@ const decodeSet = <TSettings, R>(
 ): Effect.Effect<DecodedFileSet.Type, ParseResult.ParseError, R> =>
   Effect.map(config.decodeFileSet(pickedFiles, settings), (decoded) => ({
     pickedFiles: decoded.pickedFiles ?? Arr.map(pickedFiles, DecodedFileSet.unidentified),
-    sections: DecodedFileSet.namespaceKeys(
-      decoded.sections,
-      FormatDecode.keyPrefix(pickedFiles[0])
-    ),
+    sections: DecodedFileSet.namespaceKeys(decoded, FormatDecode.keyPrefix(pickedFiles[0]))
+      .sections,
     notes: decoded.notes,
   }))
 

@@ -6,10 +6,12 @@
  * @packageDocumentation
  */
 
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type LinkableLogicalReference,
   LinkableResource,
   Referent,
+  type ReferentLinkChoiceSet,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array, HashMap, Option } from 'effect'
 import { useMemo, useState } from 'react'
@@ -35,19 +37,23 @@ interface ReferentGroupLines {
  * it was built from has not changed, which `ReferentRow`'s memo compares.
  *
  * @param resourceType - The group's resource type
- * @param props - The referent block's batch, choices, link targets and search hits
+ * @param props - The referent block's referents, choices and search hits
  * @returns The group's lines and its stored list
  */
 const useReferentGroupLines = (
   resourceType: LinkableLogicalReference.ResourceType,
-  props: Pick<LinkChoiceOptions.Inputs, 'referents' | 'linkChoices' | 'plan'> & {
+  props: {
+    /** The batch's referents, once per identity. */
+    readonly referents: readonly Referent.Type[]
+    /** The choices the batch is resolved on, by `Referent.key`. */
+    readonly linkChoices: ReferentLinkChoiceSet.Type
     /** The stored resources the default search found. */
     readonly found: readonly StoredResource[]
   }
 ): ReferentGroupLines => {
-  const { referents, linkChoices, plan, found } = props
+  const { referents, linkChoices, found } = props
   const ofType = useMemo(
-    () => referents.filter((referent) => referent.logicalReference.type === resourceType),
+    () => referents.filter((referent) => referent.logicalReference.resourceType === resourceType),
     [referents, resourceType]
   )
   const stored = useStoredResourcesOfType(resourceType, ofType.length > 0)
@@ -67,28 +73,15 @@ const useReferentGroupLines = (
     (): readonly LinkChoiceOptions.Option[] => storedOfType.map(LinkChoiceOptions.storedOption),
     [storedOfType]
   )
-  const ownRecordWritersKey = useMemo(
-    () =>
-      referents
-        .filter((referent) => LinkChoiceOptions.writesOwnRecord(referent, linkChoices, plan))
-        .map(Referent.key)
-        .join('\n'),
-    [referents, linkChoices, plan]
-  )
   // The built lines are kept in state and adjusted during render (the
   // "derive from a changed prop" pattern), so a line survives the changes it
   // does not depend on.
-  const [builtLines, setBuiltLines] = useState<HashMap.HashMap<string, ReferentLine.Built>>(
-    HashMap.empty()
-  )
+  const [builtLines, setBuiltLines] = useState<
+    HashMap.HashMap<LogicalReference.Key, ReferentLine.Built>
+  >(HashMap.empty())
   const nextBuiltLines = useMemo(
-    () =>
-      ReferentLine.buildAll(
-        ofType,
-        { referents, linkChoices, plan, storedOfType, onServer, ownRecordWritersKey },
-        builtLines
-      ),
-    [ofType, referents, linkChoices, plan, storedOfType, onServer, ownRecordWritersKey, builtLines]
+    () => ReferentLine.buildAll(ofType, { linkChoices, storedOfType, onServer }, builtLines),
+    [ofType, linkChoices, storedOfType, onServer, builtLines]
   )
   if (nextBuiltLines !== builtLines) setBuiltLines(nextBuiltLines)
   const lines = Array.filterMap(ofType, (referent) =>

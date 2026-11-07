@@ -14,7 +14,7 @@
  *
  * @packageDocumentation
  */
-import type { DecodeFunction } from '@wildflowerhealthio/importer-fundamentals'
+import { type DecodeFunction, Section } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, type ParseResult } from 'effect'
 
 import type * as Report from './entities/report.ts'
@@ -55,10 +55,7 @@ const decodedReportsOf = (
   options: SynthesisOptions
 ): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
   Effect.map(toFhirResources(reports, options), (groups) => ({
-    sections: groups.map((group) => ({
-      title: reportSectionTitle(group.report),
-      entries: group.entries,
-    })),
+    sections: groups.map((group) => Section.make(reportSectionTitle(group.report), group.entries)),
     notes: [],
   }))
 

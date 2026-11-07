@@ -65,9 +65,9 @@ const importHar = async (har: string): Promise<readonly FhirResource[]> => {
       .decode([picked], null)
       .pipe(Effect.flatMap((decoded) => importDecoded(harImporter, decoded)))
   )
-  return result.decoded.sections
+  return result.decodedFile.sectionedList.sections
     .filter((section) => section.title !== 'Source file')
-    .flatMap((section) => section.resources.map((entry) => entry.resource))
+    .flatMap((section) => section.rows.map((row) => row.resource))
 }
 
 const patientsIn = (resources: readonly FhirResource[]): readonly Patient.Type[] =>

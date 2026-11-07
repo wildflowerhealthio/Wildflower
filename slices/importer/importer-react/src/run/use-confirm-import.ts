@@ -11,13 +11,13 @@ import {
 import {
   claimedFormats,
   type ExcludedByDefaultFor,
-  LINKED_GROUP,
   planWrite,
   type ResolvedBatch,
-  type ReviewGroup,
+  ReviewGroup,
   type SelectionFor,
   skipReasonFor,
 } from '@wildflowerhealthio/importer-core'
+import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 
 import { LINKED_RECORDS_HEADING } from '../preview/preview-text.ts'
 import { SOURCE_FILES_QUERY_KEY, STORED_RESOURCES_QUERY_KEY } from '../queries/keys.ts'
@@ -127,33 +127,35 @@ const importBatch = (
 ): Effect.Effect<BatchOutcome, never, FhirR4ResourcesHttpApiClient> => {
   const plan = planWrite(batch, selectionFor, excludedByDefaultFor, unchangedLinked)
   const included = plan.filter(({ disposition }) => disposition === 'Included')
-  return persistTransactionBundle(included.map(({ entry }) => entry.resource)).pipe(
+  return persistTransactionBundle(included.map(({ resource }) => resource)).pipe(
     Effect.map((outcomes): BatchOutcome => {
       const outcomesByGroup = Array.groupBy(
         Array.zip(included, outcomes),
         ([decision]) => decision.group
       )
-      const outcomesOf = (group: ReviewGroup): readonly BatchEntryOutcome[] =>
+      const outcomesOf = (group: ReviewGroup.Key): readonly BatchEntryOutcome[] =>
         (outcomesByGroup[group] ?? []).map(([, outcome]) => outcome)
       const [skippedFormats, importedFormats] = Array.partitionMap(
-        claimedFormats(batch.formats),
+        claimedFormats(batch.decoded),
         (kind) => {
-          const result = batch.formats[kind]
+          const files = batch.decoded.files[kind] ?? []
+          const id = FormatDecode.makeId(kind, files)
+          const title = FormatDecode.titleOf(files)
           const formatOutcomes = outcomesOf(kind)
           return formatOutcomes.length === 0
             ? Either.left<FileImportResult>({
                 _tag: 'skipped',
-                id: result.id,
-                title: result.title,
-                reason: skipReasonFor(result),
+                id,
+                title,
+                reason: skipReasonFor(ReviewGroup.get(batch.groups, kind)),
               })
             : Either.right<FileImportResult>({
                 _tag: 'imported',
-                id: result.id,
-                title: result.title,
+                id,
+                title,
                 outcome: importOutcome(
                   formatOutcomes.length,
-                  result.title,
+                  title,
                   formatOutcomes,
                   Array.countBy(
                     plan,
@@ -164,14 +166,14 @@ const importBatch = (
         }
       )
       return {
-        linked: outcomesOf(LINKED_GROUP).map((outcome): ResourceResult => ({
+        linked: outcomesOf(ReviewGroup.LINKED).map((outcome): ResourceResult => ({
           ...outcome,
           title: LINKED_RECORDS_HEADING,
         })),
         files: [
           ...importedFormats,
           ...skippedFormats,
-          ...batch.unrecognizedFiles.map((file): FileImportResult => ({
+          ...batch.decoded.unrecognizedFiles.map((file): FileImportResult => ({
             _tag: 'skipped',
             id: file.id,
             title: file.title,

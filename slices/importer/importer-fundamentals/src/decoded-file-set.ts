@@ -12,14 +12,19 @@ import {
   ReferencePlan,
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Array as Arr, Option, pipe } from 'effect'
+import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
+import { Array as Arr, Effect, Either, Option, type ParseResult, pipe } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
+import * as ImpliedRecord from './implied-record.ts'
 import type * as PickedFile from './picked-file.ts'
 import * as ResourcePlan from './resource-plan.ts'
+import type * as Reviewable from './reviewable.ts'
+import * as Section from './section.ts'
+import * as SectionedList from './sectioned-list.ts'
 
 /**
- * One record of a section: the record as its source gave it, detached
+ * One record of a decoded set: the record as its source gave it, detached
  * (`fhir-r4-adoption`'s `DetachedResource`: no id, keyed by its first
  * identifier, naming every other record it decoded by a logical reference),
  * beside its identity within the decoded set.
@@ -34,29 +39,6 @@ import * as ResourcePlan from './resource-plan.ts'
 interface Entry {
   readonly fullUrl: string
   readonly resource: DetachedResource.Type
-}
-
-/**
- * A titled group of records from one source batch, as the import stage
- * receives it: each record detached, beside its `fullUrl`.
- *
- * @remarks
- * A decoder builds one per batch it reads: LifeLabs one per report, DICOM one
- * per study, the HAR importer one per response URL. Each decoder writes or
- * detaches its records itself, so a section carries no source base URL or
- * system: everything the import stage needs to adopt a record is on the
- * record.
- *
- * A separate type from `DecodedFile.Section`, the same records adopted: the
- * two differ in what their records are, and every reader of a decoded file
- * reads `resources` off it.
- *
- * The section listing a set's source files is built by the import stage,
- * never decoded.
- */
-interface Section {
-  readonly title: string
-  readonly entries: readonly Entry[]
 }
 
 /**
@@ -93,13 +75,20 @@ interface PickedFileIdentity {
 
 /**
  * One file set's decode: its picked files, in the order they were picked, each
- * with what it identifies itself as, and its sections and notes, every review
- * key already namespaced by the set's first picked file
+ * with what it identifies itself as, and its rows in sections (each an {@link Entry}) and its notes,
+ * every review key already namespaced by the set's first picked file
  * (`FormatDecode.keyPrefix`).
+ *
+ * @remarks
+ * A decoder builds one section per batch it reads: LifeLabs one per report,
+ * DICOM one per study, the HAR importer one per response URL. Each decoder
+ * writes or detaches its records itself, so a section carries no source base
+ * URL or system: everything the import stage needs to adopt a record is on
+ * the record. The section listing a set's source files is built by the import
+ * stage, never decoded.
  */
-interface Type {
+interface Type extends SectionedList.Type<Entry> {
   readonly pickedFiles: Arr.NonEmptyReadonlyArray<PickedFileIdentity>
-  readonly sections: readonly Section[]
   readonly notes: readonly string[]
 }
 
@@ -110,16 +99,16 @@ const unidentified = (pickedFile: PickedFile.Type): PickedFileIdentity => ({
 })
 
 /**
- * Prefix every `fullUrl` in `sections`, so one file set's cannot collide with
+ * Prefix every `fullUrl` in `decoded`, so one file set's cannot collide with
  * another's once the batch merges their sections.
  *
  * @param prefix - The set's key namespace, from `FormatDecode.keyPrefix`
  */
-const namespaceKeys = (sections: readonly Section[], prefix: string): readonly Section[] =>
-  sections.map(({ title, entries }) => ({
-    title,
-    entries: entries.map((entry) => ({ ...entry, fullUrl: `${prefix}${entry.fullUrl}` })),
-  }))
+const namespaceKeys = (
+  decoded: SectionedList.Type<Entry>,
+  prefix: string
+): SectionedList.Type<Entry> =>
+  SectionedList.map(decoded, (row) => ({ ...row, fullUrl: `${prefix}${row.fullUrl}` }))
 
 /**
  * The entries a planned record gives its set's reference plan: one for each
@@ -146,8 +135,7 @@ const referencePlanEntriesOf = (
         ? resource.identifier
             .filter(IdentifierAndReference.isQualifiedIdentifier)
             .map((identifier) => ({
-              resourceType: derived.resourceType,
-              identifier,
+              logicalReference: LogicalReference.make(derived.resourceType, identifier),
               literalReference: ResourcePlan.literalReference(derived),
             }))
         : [],
@@ -155,18 +143,149 @@ const referencePlanEntriesOf = (
   })
 
 /**
+ * One entry of a set beside its plan, decided before any record of the set is
+ * adopted, and where it came from: a decoder's entry, or one the set's
+ * references imply.
+ */
+interface PlannedEntry {
+  readonly entry: Entry
+  readonly plan: ResourcePlan.Type
+  readonly origin: Reviewable.Origin
+}
+
+/** The reference plan of a set's planned entries ({@link referencePlanEntriesOf}). */
+const referencePlanOf = (plannedEntries: readonly PlannedEntry[]): ReferencePlan.Type =>
+  ReferencePlan.of(
+    plannedEntries.flatMap(({ entry, plan }) => referencePlanEntriesOf(plan, entry.resource))
+  )
+
+/** The title of the section a set's implied records are reviewed in, the last of its sections. */
+const IMPLIED_SECTION_TITLE = 'Implied records'
+
+/**
+ * Plan ids: each decoded entry beside its plan (`ResourcePlan.make`), a keyed
+ * record's id derived from its key and a keyless one's minted, in entry
+ * order, every one `Decoded`.
+ *
+ * @remarks
+ * As a FHIR server processing a transaction bundle first decides the id
+ * every entry is stored under, before it rewrites any reference between them.
+ */
+const planEntries = (
+  decoded: SectionedList.Type<Entry>,
+  mintId: () => string
+): SectionedList.Type<PlannedEntry> =>
+  SectionedList.map(decoded, (entry): PlannedEntry => ({
+    entry,
+    plan: ResourcePlan.make(entry.resource, mintId),
+    origin: 'Decoded',
+  }))
+
+/**
+ * A logical reference of a set to a record no record of the set is, beside
+ * what the reference says of it, its `display`, and the `fullUrl` of the
+ * entry holding it.
+ */
+interface ImpliedTarget {
+  readonly logicalReference: LogicalReference.Type
+  readonly display: string
+  readonly referencingFullUrl: string
+}
+
+/**
+ * Every reference of `plannedEntries`, at any depth, in entry order, that
+ * names a record the set does not hold: a logical reference
+ * (`LogicalReference.tryFromReference`) with a `display` that no record of the
+ * set holds by any identifier (`ReferencePlan.holds` of `heldPlan`).
+ */
+const impliedTargetsOf = (
+  plannedEntries: readonly PlannedEntry[],
+  heldPlan: ReferencePlan.Type
+): readonly ImpliedTarget[] =>
+  pipe(
+    plannedEntries,
+    Arr.flatMap(({ entry }) =>
+      Arr.filterMap(ResourceReferences.collect(entry.resource), ({ reference }) =>
+        Option.all({
+          logicalReference: LogicalReference.tryFromReference(reference),
+          display: Option.fromNullable(reference.display),
+          referencingFullUrl: Option.some(entry.fullUrl),
+        })
+      )
+    ),
+    Arr.filter(({ logicalReference }) => !ReferencePlan.holds(heldPlan, logicalReference))
+  )
+
+/**
+ * Imply: the section of the records the references of `plannedEntries`
+ * imply, `None` when they imply none. Each record is one a logical reference
+ * names and no record of the set holds ({@link impliedTargetsOf}), built for
+ * its type by `ImpliedRecord.tryFromLogicalReference`, keyed by the reference's identifier and
+ * named by its display, under a `fullUrl` read off the entry holding it
+ * (`ImpliedRecord.fullUrlOf`), planned and `Implied`. One record covers
+ * every reference to one target: the first to name it, in entry order, is
+ * the one it is built from.
+ *
+ * @remarks
+ * A reference names a record the import never saw: a Rexall prescriber
+ * carebook names as `Practitioner/<id>` and never serves, or a provider a
+ * source knows only by a printed name it keys in its own name system. Once
+ * the set holds the record, every reference to it resolves to it, and the
+ * review shows it as a row of its own. A reference with no `display`, a
+ * literal one, an untyped identifier, a type `fhir-r4` does not model, and a
+ * type whose record needs more than a reference says (`ImpliedRecord.tryFromLogicalReference`)
+ * imply nothing, so it is left as the source wrote it. An implied record is keyed, so planning it mints nothing.
+ *
+ * @returns The section, or the `ParseError` an implied record's schema
+ *   rejects it with
+ */
+const impliedSectionOf = (
+  plannedEntries: SectionedList.Type<PlannedEntry>,
+  mintId: () => string
+): Either.Either<Option.Option<Section.Type<PlannedEntry>>, ParseResult.ParseError> => {
+  const decodedEntries = SectionedList.rows(plannedEntries)
+  return pipe(
+    impliedTargetsOf(decodedEntries, referencePlanOf(decodedEntries)),
+    Arr.dedupeWith((left, right) =>
+      LogicalReference.equivalence(left.logicalReference, right.logicalReference)
+    ),
+    Arr.filterMap(({ logicalReference, display, referencingFullUrl }) =>
+      Option.map(
+        ImpliedRecord.tryFromLogicalReference(logicalReference, display),
+        Either.map((resource): PlannedEntry => ({
+          entry: {
+            fullUrl: ImpliedRecord.fullUrlOf(referencingFullUrl, logicalReference),
+            resource,
+          },
+          plan: ResourcePlan.make(resource, mintId),
+          origin: 'Implied',
+        }))
+      )
+    ),
+    Either.all,
+    Either.map((impliedEntries) =>
+      Option.map(
+        Option.liftPredicate(impliedEntries, Arr.isNonEmptyReadonlyArray),
+        (nonEmptyImpliedEntries) => Section.make(IMPLIED_SECTION_TITLE, nonEmptyImpliedEntries)
+      )
+    )
+  )
+}
+
+/**
  * The literal reference of the Patient of the set `reference` names, by the
- * set's reference plan: `None` for no reference, one to another type, or one
- * that does not resolve in the set.
+ * reference plan in force: `None` for no reference, one to another type, or
+ * one that does not resolve in the set.
  */
 const patientReferenceIfInSet = (
-  referencePlan: ReferencePlan.Type,
   reference: ReferenceType | null
-): Option.Option<string> =>
-  pipe(
-    Option.fromNullable(reference),
-    Option.filter(({ type }) => type === 'Patient'),
-    Option.flatMap((patient) => ReferencePlan.literalReferenceIfResolved(referencePlan, patient))
+): Effect.Effect<Option.Option<string>, never, ReferencePlan.InForce> =>
+  Effect.map(ReferencePlan.InForce, (referencePlan) =>
+    pipe(
+      Option.fromNullable(reference),
+      Option.filter(({ type }) => type === 'Patient'),
+      Option.flatMap((patient) => ReferencePlan.literalReferenceIfResolved(referencePlan, patient))
+    )
   )
 
 /** A prescription's `subject`, as it spells it, beside the literal reference of the Patient of the set it names. */
@@ -190,27 +309,23 @@ type PrescriptionSubjects = ReadonlyMap<string, readonly PrescriptionSubject[]>
 
 /** The {@link PrescriptionSubjects} of a set's planned records. */
 const prescriptionSubjectsOf = (
-  referencePlan: ReferencePlan.Type,
-  plannedEntries: readonly { readonly entry: Entry; readonly plan: ResourcePlan.Type }[]
-): PrescriptionSubjects =>
-  Arr.reduce(
+  plannedEntries: readonly PlannedEntry[]
+): Effect.Effect<PrescriptionSubjects, never, ReferencePlan.InForce> =>
+  Effect.reduce(
     plannedEntries,
     new Map<string, readonly PrescriptionSubject[]>(),
     (prescriptionSubjects, { entry: { resource }, plan }) => {
       if (resource.resourceType !== 'MedicationRequest' || plan._tag !== 'Derived') {
-        return prescriptionSubjects
+        return Effect.succeed(prescriptionSubjects)
       }
       const literalReference = ResourcePlan.literalReference(plan)
       const { subject } = resource
-      return prescriptionSubjects.set(literalReference, [
-        ...(prescriptionSubjects.get(literalReference) ?? []),
-        ...Option.toArray(
-          Option.map(patientReferenceIfInSet(referencePlan, subject), (patient) => ({
-            subject,
-            patient,
-          }))
-        ),
-      ])
+      return Effect.map(patientReferenceIfInSet(subject), (patient) =>
+        prescriptionSubjects.set(literalReference, [
+          ...(prescriptionSubjects.get(literalReference) ?? []),
+          ...Option.toArray(Option.map(patient, (literal) => ({ subject, patient: literal }))),
+        ])
+      )
     }
   )
 
@@ -223,28 +338,29 @@ const prescriptionSubjectsOf = (
  * @returns The first such `subject`, as its prescription spells it
  */
 const prescriptionSubjectIfAgreed = (
-  referencePlan: ReferencePlan.Type,
   prescriptionSubjects: PrescriptionSubjects,
   authorizingPrescriptions: readonly ReferenceType[]
-): Option.Option<ReferenceType> =>
-  pipe(
-    authorizingPrescriptions,
-    Arr.filterMap((prescription) =>
-      Option.flatMapNullable(
-        ReferencePlan.literalReferenceIfResolved(referencePlan, prescription),
-        (literalReference) => prescriptionSubjects.get(literalReference)
+): Effect.Effect<Option.Option<ReferenceType>, never, ReferencePlan.InForce> =>
+  Effect.map(ReferencePlan.InForce, (referencePlan) =>
+    pipe(
+      authorizingPrescriptions,
+      Arr.filterMap((prescription) =>
+        Option.flatMapNullable(
+          ReferencePlan.literalReferenceIfResolved(referencePlan, prescription),
+          (literalReference) => prescriptionSubjects.get(literalReference)
+        )
+      ),
+      Option.liftPredicate(Arr.every(Arr.isNonEmptyReadonlyArray)),
+      Option.map(Arr.flatten),
+      Option.flatMap(
+        Arr.match({
+          onEmpty: Option.none,
+          onNonEmpty: ([first, ...rest]) =>
+            Arr.every(rest, ({ patient }) => patient === first.patient)
+              ? Option.some(first.subject)
+              : Option.none(),
+        })
       )
-    ),
-    Option.liftPredicate(Arr.every(Arr.isNonEmptyReadonlyArray)),
-    Option.map(Arr.flatten),
-    Option.flatMap(
-      Arr.match({
-        onEmpty: Option.none,
-        onNonEmpty: ([first, ...rest]) =>
-          Arr.every(rest, ({ patient }) => patient === first.patient)
-            ? Option.some(first.subject)
-            : Option.none(),
-      })
     )
   )
 
@@ -260,73 +376,82 @@ const prescriptionSubjectIfAgreed = (
  * received the fill, so it is kept.
  */
 const takeSubjectFromPrescription =
-  (referencePlan: ReferencePlan.Type, prescriptionSubjects: PrescriptionSubjects) =>
-  (record: DetachedResource.Type): DetachedResource.Type =>
+  (prescriptionSubjects: PrescriptionSubjects) =>
+  (
+    record: DetachedResource.Type
+  ): Effect.Effect<DetachedResource.Type, never, ReferencePlan.InForce> =>
     record.resourceType === 'MedicationDispense' && record.subject === null
-      ? Option.match(
-          prescriptionSubjectIfAgreed(
-            referencePlan,
-            prescriptionSubjects,
-            record.authorizingPrescription
-          ),
-          { onNone: () => record, onSome: (subject) => ({ ...record, subject }) }
+      ? Effect.map(
+          prescriptionSubjectIfAgreed(prescriptionSubjects, record.authorizingPrescription),
+          Option.match({ onNone: () => record, onSome: (subject) => ({ ...record, subject }) })
         )
-      : record
+      : Effect.succeed(record)
+
+/**
+ * Adopt: each planned record of `plannedEntries` given its plan's id, its
+ * logical references the reference plan in force resolves made literal,
+ * after `takeSubject`, its reviewable keyed by its entry's `fullUrl`, titled
+ * by {@link writtenReferenceTitle} and keeping its origin.
+ */
+const adoptEntries = (
+  plannedEntries: SectionedList.Type<PlannedEntry>,
+  takeSubject: (
+    record: DetachedResource.Type
+  ) => Effect.Effect<DetachedResource.Type, never, ReferencePlan.InForce>
+): Effect.Effect<SectionedList.Type<DecodedFile.Row>, never, ReferencePlan.InForce> =>
+  Effect.flatMap(ReferencePlan.InForce, (referencePlan) => {
+    const adoptEntry = adoptRecord(referencePlan)
+    return SectionedList.forEach(plannedEntries, ({ entry, plan, origin }) =>
+      Effect.map(takeSubject(entry.resource), (record) => ({
+        reviewable: { key: entry.fullUrl, title: writtenReferenceTitle(plan, entry), origin },
+        resource: adoptEntry(record, plan.id),
+      }))
+    )
+  })
 
 /**
  * A decode's sections adopted beside its notes: how the import stage makes a
  * file set's records the device's own, before it mints source files, links
- * and stamps. Each adopted row is keyed by its entry's `fullUrl` and titled
- * by {@link writtenReferenceTitle}.
+ * and stamps.
  *
  * @param decoded - The set's sections and notes
  * @param mintId - Mints the id of a keyless record; random outside tests
+ * @returns The adopted file, or the `ParseError` an implied record's schema
+ *   rejects it with
  *
  * @remarks
- * As a FHIR server processes one transaction bundle: every record's plan
- * (`ResourcePlan.of`) is decided first, a keyed record's id derived from its
- * key and a keyless one's minted, in entry order; the set's reference plan is
- * built from the keyed records' plans and qualified identifiers; then each
- * record is adopted under its plan's id, a logical reference resolving when
- * the set holds a keyed record it names by any of that record's identifiers,
- * whichever section holds it. One that names a record the set does not hold,
- * a keyless one, or an identifier two records of the set share, stays
- * logical, for the identity map. Before it is adopted, a `MedicationDispense`
- * with no `subject` takes the `subject` of the prescriptions of the set it
- * names ({@link takeSubjectFromPrescription}).
+ * As a FHIR server processes one transaction bundle, in five steps: plan
+ * every record's id ({@link planEntries}); imply the records the set's
+ * references name and no record of the set is, in a section of their own,
+ * last ({@link impliedSectionOf}); build the reference plan over every
+ * record, the implied ones included ({@link referencePlanOf}), and put it in
+ * force (`ReferencePlan.InForce`); and adopt each record
+ * ({@link adoptEntries}), a `MedicationDispense` with no
+ * `subject` first taking the `subject` of the prescriptions of the set it
+ * names ({@link takeSubjectFromPrescription}). A logical reference resolves
+ * when the set holds a keyed record it names by any of that record's
+ * identifiers, whichever section holds it. One that names a record the set
+ * does not hold and implies none, a keyless one, or an identifier two
+ * records of the set share, stays logical, for the identity map.
  */
 const adopt = (
   decoded: Pick<Type, 'sections' | 'notes'>,
   mintId: () => string = randomResourceId
-): DecodedFile.DecodedFile => {
-  const plannedSections = decoded.sections.map(({ title, entries }) => ({
-    title,
-    plannedEntries: entries.map((entry) => ({
-      entry,
-      plan: ResourcePlan.of(entry.resource, mintId),
-    })),
-  }))
-  const setEntries = plannedSections.flatMap(({ plannedEntries }) => plannedEntries)
-  const referencePlan = ReferencePlan.of(
-    setEntries.flatMap(({ entry, plan }) => referencePlanEntriesOf(plan, entry.resource))
-  )
-  const takeSubject = takeSubjectFromPrescription(
-    referencePlan,
-    prescriptionSubjectsOf(referencePlan, setEntries)
-  )
-  const adoptEntry = adoptRecord(referencePlan)
-  return {
-    sections: plannedSections.map(({ title, plannedEntries }) => ({
-      title,
-      resources: plannedEntries.map(({ entry, plan }) => ({
-        key: entry.fullUrl,
-        title: writtenReferenceTitle(plan, entry),
-        resource: adoptEntry(takeSubject(entry.resource), plan.id),
-      })),
-    })),
-    notes: decoded.notes,
-  }
-}
+): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
+  Effect.gen(function* () {
+    const decodedEntries = planEntries(decoded, mintId)
+    const plannedEntries = Option.match(yield* impliedSectionOf(decodedEntries, mintId), {
+      onNone: () => decodedEntries,
+      onSome: (section) => SectionedList.append(decodedEntries, section),
+    })
+    const everyPlannedEntry = SectionedList.rows(plannedEntries)
+    const sectionedList = yield* Effect.flatMap(
+      prescriptionSubjectsOf(everyPlannedEntry),
+      (prescriptionSubjects) =>
+        adoptEntries(plannedEntries, takeSubjectFromPrescription(prescriptionSubjects))
+    ).pipe(Effect.provideService(ReferencePlan.InForce, referencePlanOf(everyPlannedEntry)))
+    return { sectionedList, notes: decoded.notes }
+  })
 
 export { adopt, namespaceKeys, unidentified, writtenReferenceTitle }
-export type { Entry, PickedFileIdentity, Section, Type }
+export type { Entry, PickedFileIdentity, Type }

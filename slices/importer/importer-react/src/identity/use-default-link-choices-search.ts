@@ -96,7 +96,11 @@ const useDefaultLinkChoicesSearch = (
   // of it reports nothing.
   useEffect(() => {
     for (const resourceType of LinkableLogicalReference.RESOURCE_TYPES) {
-      if (searchedReferents.some((referent) => referent.logicalReference.type === resourceType)) {
+      if (
+        searchedReferents.some(
+          (referent) => referent.logicalReference.resourceType === resourceType
+        )
+      ) {
         queryClient.query(storedResourcesQuery(resourceType, runAuthed)).catch(() => undefined)
       }
     }

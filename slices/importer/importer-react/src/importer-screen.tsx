@@ -1,10 +1,10 @@
 import type { FormatKind } from '@wildflowerhealthio/importer-core'
-import { claimedFormats, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
+import { claimedFormats, ReviewGroup } from '@wildflowerhealthio/importer-core'
 import {
-  DecodedFile,
-  type LinkChoice,
+  type DecodedFile,
   LinkableResource,
   Referent,
+  SectionedList,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Match, Option } from 'effect'
@@ -101,15 +101,15 @@ const NONE_BY_DEFAULT: ReadonlySet<string> = new Set()
 const revertCopiesOf = (
   selection: StagedImport.Selection,
   decodedFile: DecodedFile.DecodedFile,
-  referent: Referent.AsResource
+  referent: Referent.Type
 ): StagedImport.Selection =>
-  DecodedFile.resources(decodedFile)
+  SectionedList.rows(decodedFile.sectionedList)
     .filter(({ resource }) =>
       Option.exists(Option.liftPredicate(resource, LinkableResource.is), (linkable) =>
         LinkableResource.sameRecord(linkable, referent.resource)
       )
     )
-    .reduce((reverted, { key }) => StagedImport.revert(reverted, key), selection)
+    .reduce((reverted, { reviewable }) => StagedImport.revert(reverted, reviewable.key), selection)
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
@@ -150,7 +150,10 @@ const ImporterScreen = (): JSX.Element => {
     (): ReadonlySet<string> =>
       diff._tag === 'loading' || batch === undefined
         ? NONE_BY_DEFAULT
-        : unchangedKeysOf(batch.linkedRecords, diff.comparisons.get(LINKED_GROUP)),
+        : unchangedKeysOf(
+            ReviewGroup.rows(ReviewGroup.get(batch.groups, ReviewGroup.LINKED)),
+            diff.comparisons.get(ReviewGroup.LINKED)
+          ),
     [diff, batch]
   )
 
@@ -159,7 +162,7 @@ const ImporterScreen = (): JSX.Element => {
   const excludedByDefault = useMemo((): ReadonlyMap<FormatKind, ReadonlySet<string>> => {
     if (diff._tag === 'loading' || batch === undefined) return new Map()
     return new Map(
-      claimedFormats(batch.formats).map((kind) => [
+      claimedFormats(batch.decoded).map((kind) => [
         kind,
         formatExcludedByDefault(batch, kind, diff.comparisons.get(kind), selectionFor(kind)),
       ])
@@ -184,23 +187,22 @@ const ImporterScreen = (): JSX.Element => {
   // written in its place.
   const { choose } = identity
   const referents = shown?.referents
-  const decodedBatch = shown?.resolved.decodedBatch
-  const chooseLink = useCallback(
-    (referentKey: string, choice: LinkChoice.Type): void => {
+  const decodedBatch = shown?.resolved.decoded
+  const chooseLink = useCallback<typeof choose>(
+    (referentKey, choice) => {
       choose(referentKey, choice)
       const changed = referents?.find((referent) => Referent.key(referent) === referentKey)
-      if (
-        changed === undefined ||
-        decodedBatch === undefined ||
-        !Referent.is('AsResource')(changed)
-      )
-        return
+      if (changed === undefined || decodedBatch === undefined) return
       setSelections(
         (previous) =>
           new Map(
             [...previous].map(([kind, selection]) => [
               kind,
-              revertCopiesOf(selection, decodedBatch.formats[kind].decoded, changed),
+              revertCopiesOf(
+                selection,
+                ReviewGroup.get(decodedBatch.groups, kind).decodedFile,
+                changed
+              ),
             ])
           )
       )

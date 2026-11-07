@@ -4,10 +4,11 @@ import {
   FormatDetector,
   type PickedFile,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, Option, pipe } from 'effect'
+import { Array as Arr, Effect, Option, pipe, Record } from 'effect'
 
 import { importDecoded } from './import-decoded.ts'
 import { type FormatKind, formatKinds, type FormatSettings } from './registry.ts'
+import type * as ReviewGroup from './review-group.ts'
 
 /**
  * The read half of an import as pure functions over the registry: group a
@@ -27,13 +28,9 @@ import { type FormatKind, formatKinds, type FormatSettings } from './registry.ts
  * `settings[kind]` its `FormatSettings[K]`, with no per-format branch to keep
  * in step with the registry.
  *
- * The same correlation is why nothing here assembles a per-format record from
- * a `kind` variable: `{ [kind]: result }` and `{ ...formats, [kind]: result }`
- * type-check against nothing, because TypeScript widens a computed union key
- * to an index signature and drops the key's correlation with its value. The
- * one place a whole record is produced — {@link collectFormats} — names each
- * format literally, so the compiler checks every slot against its own
- * `Result<K>` and a format missing from it fails to compile.
+ * Past the decode the correlation is gone: every format's review group is
+ * one type, so the batch's groups are its claimed files' record mapped
+ * (`Record.fromEntries`), and a re-decode replaces one key of it.
  *
  * @packageDocumentation
  */
@@ -76,22 +73,20 @@ interface UnrecognizedFile {
   readonly files: readonly PickedFile.Type[]
 }
 
-/**
- * One decode result per registered format, each correlated with its own
- * format kind — empty when that format claimed no files.
- */
-type FormatResults = {
-  readonly [K in FormatKind]: FormatDecode.Result<K>
-}
+/** The picks each claimed format holds, in pick order, keyed by format. */
+type FormatFiles = { readonly [K in FormatKind]?: readonly PickedFile.Type[] }
 
 /**
- * A picked batch as decoded: one decode result per format and the files no
- * format recognised. A decoded batch holds no linked records and no link
- * targets: those are a resolved batch's (`resolveMentions`).
+ * A picked batch as decoded: each claimed format's review group, the files
+ * it read them from, and the files no format recognised. A decoded batch
+ * holds no linked records and no link targets: those are a resolved batch's
+ * (`resolveMentions`).
  */
 interface DecodedBatch {
-  /** One slot per format kind, empty when that format claimed nothing. */
-  readonly formats: FormatResults
+  /** Each claimed format's review group, keyed by format. */
+  readonly groups: ReviewGroup.Groups<FormatKind>
+  /** The picks each claimed format holds: what a re-decode reads again. */
+  readonly files: FormatFiles
   /** The picks no registered format claimed, in pick order. */
   readonly unrecognizedFiles: readonly UnrecognizedFile[]
 }
@@ -149,8 +144,7 @@ const groupByFormat = (
 
 /**
  * Run one format's batch `decode` on its files under the format's current
- * settings, and import what it decoded. Each result's id is deterministic,
- * minted by the import via `FormatDecode.makeId`.
+ * settings, and import what it decoded into the format's review group.
  *
  * @typeParam K - The one format being decoded; generic so `registry[kind]`
  *   and `settings[kind]` stay correlated (see the module remarks)
@@ -158,63 +152,64 @@ const groupByFormat = (
  * @param settings - Every format's current settings
  * @param kind - The format to decode with
  * @param files - The files that format claimed
- * @returns The format's decode result, requiring what the registry's decodes
+ * @returns The format's review group, requiring what the registry's decodes
  *   require
  */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- K correlates `registry[kind]` with `settings[kind]` (module remarks)
 const decodeFormat = <K extends FormatKind, R>(
   registry: ReadRegistry<R>,
   settings: FormatSettings,
   kind: K,
   files: readonly PickedFile.Type[]
-): Effect.Effect<FormatDecode.Result<K>, never, R> =>
+): Effect.Effect<ReviewGroup.Type, never, R> =>
   Effect.flatMap(registry[kind].decode(files, settings[kind]), (decoded) =>
     importDecoded(registry[kind], decoded)
   )
 
+/** Each claimed format with its picks, in registry order. */
+const claimedFiles = (
+  files: FormatFiles
+): readonly (readonly [FormatKind, readonly PickedFile.Type[]])[] =>
+  Arr.filterMap(formatKinds, (kind) =>
+    Option.map(Option.fromNullable(files[kind]), (claimed) => [kind, claimed] as const)
+  )
+
 /**
- * Build every format's slot of a batch by running one effect per registered
- * format, concurrently.
- *
- * @remarks
- * The one place this module enumerates the registry, and the only reason it
- * does is soundness: a record assembled from a `kind` variable is checked
- * against nothing (see the module remarks), so naming every format here
- * checks each slot against its own `Result<K>` and makes a format missing
- * from the registry a compile error. {@link readBatch} and
- * {@link redecodeFormat} both come through it, so the enumeration exists
- * once rather than per caller.
- *
- * @param slot - The effect for one format, generic in `K` so each slot stays
- *   correlated with its own format
- * @returns The assembled format slots, requiring what the slots require
+ * `files`' formats, each decoded into its review group: the groups keyed by
+ * format, decoded concurrently.
  */
-const collectFormats = <R>(
-  slot: <K extends FormatKind>(kind: K) => Effect.Effect<FormatDecode.Result<K>, never, R>
-): Effect.Effect<FormatResults, never, R> =>
-  Effect.all(
-    {
-      har: slot('har'),
-      'lifelabs-pdf': slot('lifelabs-pdf'),
-      dicom: slot('dicom'),
-    },
-    { concurrency: 'unbounded' }
+const decodeFormats = <R>(
+  registry: ReadRegistry<R>,
+  settings: FormatSettings,
+  files: FormatFiles
+): Effect.Effect<ReviewGroup.Groups<FormatKind>, never, R> =>
+  Effect.map(
+    Effect.forEach(
+      claimedFiles(files),
+      ([kind, claimed]) =>
+        Effect.map(
+          decodeFormat(registry, settings, kind, claimed),
+          (group) => [kind, group] as const
+        ),
+      { concurrency: 'unbounded' }
+    ),
+    Record.fromEntries
   )
 
 /**
  * Read a freshly picked batch: group it by format, decode every group
  * under its format's current settings, and yield a {@link DecodedBatch}
- * with one `FormatDecode.Result` per format kind plus any unrecognized
- * files.
+ * with one review group per claimed format plus any unrecognized files.
  *
  * @param registry - The registered formats' `detect`s and `decode`s
  * @param settings - Every format's current settings
  * @param picks - The batch, in pick order
- * @returns The batch's format slots and its unrecognized files, requiring
- *   what the registry's decodes require
+ * @returns The batch's review groups, their files and its unrecognized
+ *   files, requiring what the registry's decodes require
  *
  * @remarks
- * Formats decode concurrently. Each format's id is deterministic via
- * `FormatDecode.makeId`, so a settings re-decode produces the same ids
+ * Formats decode concurrently. Every id and review key is built on a pick's
+ * id ({@link groupByFormat}), so a settings re-decode produces the same ones
  * by construction.
  */
 const readBatch = <R>(
@@ -223,24 +218,16 @@ const readBatch = <R>(
   picks: readonly PickedFile.NamedBytes[]
 ): Effect.Effect<DecodedBatch, never, R> => {
   const { groups, unrecognized } = groupByFormat(registry, picks)
-  return Effect.map(
-    collectFormats((kind) =>
-      pipe(
-        groups.get(kind),
-        Option.fromNullable,
-        Option.map((files) => decodeFormat(registry, settings, kind, files)),
-        Option.getOrElse(() => Effect.succeed(FormatDecode.emptyResult(kind)))
-      )
-    ),
-    (formats): DecodedBatch => ({
-      formats,
-      unrecognizedFiles: unrecognized.map((pick): UnrecognizedFile => ({
-        id: FormatDecode.makeFileId('unrecognized', pick),
-        title: pick.fileName,
-        files: [pick],
-      })),
-    })
-  )
+  const files: FormatFiles = Object.fromEntries(groups)
+  return Effect.map(decodeFormats(registry, settings, files), (decoded): DecodedBatch => ({
+    groups: decoded,
+    files,
+    unrecognizedFiles: unrecognized.map((pick): UnrecognizedFile => ({
+      id: FormatDecode.makeFileId('unrecognized', pick),
+      title: pick.fileName,
+      files: [pick],
+    })),
+  }))
 }
 
 /**
@@ -251,15 +238,15 @@ const readBatch = <R>(
  * @param settings - Every format's settings, the changed one included
  * @param kind - The format whose settings changed
  * @param batch - The batch's current result
- * @returns The batch with that format's result replaced, requiring what the
- *   registry's decodes require
+ * @returns The batch with that format's group replaced, requiring what the
+ *   registry's decodes require; the batch itself when the format claimed
+ *   nothing
  *
  * @remarks
- * Rebuilds the format slots through {@link collectFormats} rather than replacing one
- * slot: every other format's slot is passed straight back, by reference, so
- * nothing else re-decodes. Each format's id is deterministic via
- * `FormatDecode.makeId`, so the same files produce the same ids under any
- * settings — the reviewer's selection survives by construction.
+ * Every other format's group is passed straight back, by reference, so
+ * nothing else re-decodes. Every id and review key is built on a pick's id,
+ * so the same files produce the same ones under any settings: the
+ * reviewer's selection survives by construction.
  */
 const redecodeFormat = <R>(
   registry: ReadRegistry<R>,
@@ -267,13 +254,16 @@ const redecodeFormat = <R>(
   kind: FormatKind,
   batch: DecodedBatch
 ): Effect.Effect<DecodedBatch, never, R> =>
-  Effect.map(
-    collectFormats((slotKind) =>
-      slotKind === kind
-        ? decodeFormat(registry, settings, slotKind, batch.formats[slotKind].files)
-        : Effect.succeed(batch.formats[slotKind])
-    ),
-    (formats): DecodedBatch => ({ formats, unrecognizedFiles: batch.unrecognizedFiles })
+  pipe(
+    Option.fromNullable(batch.files[kind]),
+    Option.match({
+      onNone: () => Effect.succeed(batch),
+      onSome: (files) =>
+        Effect.map(decodeFormat(registry, settings, kind, files), (group): DecodedBatch => ({
+          ...batch,
+          groups: { ...batch.groups, [kind]: group },
+        })),
+    })
   )
 
 /**
@@ -281,22 +271,19 @@ const redecodeFormat = <R>(
  *
  * @remarks
  * The one predicate for "did this format take part", so the preview's groups
- * and tallies and the confirm's write plans agree. A format that claimed
- * nothing has an `emptyResult` — no files, no sections, a blank `title` — so
- * treating it as a participant reports a titleless `skipped` row.
+ * and tallies and the confirm's write plans agree.
  *
- * @param formats - A batch's format slots
+ * @param batch - A decoded batch
  * @returns Every format with at least one claimed file, in {@link formatKinds} order
  */
-const claimedFormats = (formats: FormatResults): readonly FormatKind[] =>
-  formatKinds.filter((kind) => formats[kind].files.length > 0)
+const claimedFormats = (batch: DecodedBatch): readonly FormatKind[] =>
+  claimedFiles(batch.files).map(([kind]) => kind)
 
 export {
   type DecodedBatch,
   claimedFormats,
-  collectFormats,
   decodeFormat,
-  type FormatResults,
+  type FormatFiles,
   groupByFormat,
   type GroupedPicks,
   identifyPick,

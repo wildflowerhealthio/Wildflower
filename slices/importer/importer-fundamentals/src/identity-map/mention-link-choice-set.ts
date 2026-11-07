@@ -27,7 +27,7 @@ import type * as LinkChoice from './link-choice.ts'
 
 /**
  * Which mention a choice is for: the resource it is made in, by the review
- * key it is reviewed under (a `DecodedFile.Resource`'s `key`), and its
+ * key it is reviewed under (a `Reviewable`'s `key`), and its
  * `path` in it (`Mention.Type.path`). A review key is unique across a batch
  * (`FormatDecode.keyPrefix`), so a key names one mention of the batch.
  */

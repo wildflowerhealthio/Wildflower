@@ -7,7 +7,7 @@ import {
   Observation,
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { DecodedFile, DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFileSet, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { decodeLifeLabsPdfDocument, Report } from '@wildflowerhealthio/lifelabs-pdf-importer-core'
 import { layoutDocument } from '@wildflowerhealthio/lifelabs-pdf-importer-core/test-helpers'
@@ -285,9 +285,9 @@ describe('LifeLabs.reportsOf', () => {
           })
         )
         // Adopted as the import stage adopts them, without its source file.
-        const imported = DecodedFile.resources(DecodedFileSet.adopt(decoded)).map(
-          (entry) => entry.resource
-        )
+        const imported = SectionedList.rows(
+          Effect.runSync(DecodedFileSet.adopt(decoded)).sectionedList
+        ).map((row) => row.resource)
         const withoutSubject = (resource: FhirResource): FhirResource =>
           resource.resourceType === 'Observation' || resource.resourceType === 'DiagnosticReport'
             ? { ...resource, subject: null }
@@ -321,9 +321,9 @@ describe('LifeLabs.reportsOf', () => {
             healthCardProvince: LifeLabs.HEALTH_CARD_PROVINCE,
           })
         )
-        const patients = DecodedFile.resources(DecodedFileSet.adopt(decoded)).flatMap(
-          ({ resource }) => (resource.resourceType === 'Patient' ? [resource] : [])
-        )
+        const patients = SectionedList.rows(
+          Effect.runSync(DecodedFileSet.adopt(decoded)).sectionedList
+        ).flatMap(({ resource }) => (resource.resourceType === 'Patient' ? [resource] : []))
         expect(
           patients.map((patient) =>
             patient.identifier.map((identifier) => ({

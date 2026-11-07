@@ -16,7 +16,6 @@ import {
   DateTime,
   Duration,
   Effect,
-  flow,
   Option,
   pipe,
   RegExp as EffectRegExp,
@@ -239,16 +238,18 @@ const statusReasonWire = (rx: SourcePrescription): Record<string, unknown> | und
 
 /**
  * The `requester` wire for a prescriber the portal knows only by name:
- * `fhir-r4`'s `Practitioner.tryReferenceWireFromName`, a logical reference
- * that states its type and names the provider by the name identifier, so the
- * importer's identity map can resolve it. `undefined` for a blank name.
+ * `fhir-r4`'s `Practitioner.tryReferenceWireFromName` in
+ * `ShoppersIdentifierSystem.PractitionerName`, a logical reference that
+ * states its type, names the provider by the name identifier and shows the
+ * name as printed, so the import stage implies the Practitioner it names.
+ * `undefined` for a blank name.
  */
-const requesterWireOfName: (
+const requesterWireOfName = (
   prescriberName: string
-) => typeof IdentifierAndReference.ReferenceSchema.Encoded | undefined = flow(
-  Practitioner.tryReferenceWireFromName,
-  Option.getOrUndefined
-)
+): typeof IdentifierAndReference.ReferenceSchema.Encoded | undefined =>
+  Option.getOrUndefined(
+    Practitioner.tryReferenceWireFromName(ShoppersIdentifierSystem.PractitionerName, prescriberName)
+  )
 
 /** {@link requesterWireOfName}, or `undefined` when the payload names no prescriber. */
 const requesterWire = (

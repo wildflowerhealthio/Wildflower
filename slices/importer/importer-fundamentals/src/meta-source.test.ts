@@ -6,6 +6,8 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as MetaSource from './meta-source.ts'
+import type * as Reviewable from './reviewable.ts'
+import * as SectionedList from './sectioned-list.ts'
 
 const fakeResource = (id: string): FhirResourceWithId =>
   Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
@@ -63,10 +65,13 @@ describe('MetaSource.stampDecoded', () => {
         fc.array(
           fc.record({
             title: fc.string(),
-            resources: fc.array(
+            rows: fc.array(
               fc.record({
-                key: fc.string(),
-                title: fc.string(),
+                reviewable: fc.record({
+                  key: fc.string(),
+                  title: fc.string(),
+                  origin: fc.constant<Reviewable.Origin>('Decoded'),
+                }),
                 resource: fc.string().map(fakeResource),
               })
             ),
@@ -74,15 +79,18 @@ describe('MetaSource.stampDecoded', () => {
         ),
         fc.string({ minLength: 1 }).map(MetaSource.makeReference),
         (sections, source) => {
-          const stamped = MetaSource.stampDecoded({ sections, notes: [] }, source)
-          expect(stamped.sections.map((section) => section.title)).toEqual(
+          const stamped = MetaSource.stampDecoded(
+            { sectionedList: SectionedList.make(sections), notes: [] },
+            source
+          )
+          expect(stamped.sectionedList.sections.map((section) => section.title)).toEqual(
             sections.map((section) => section.title)
           )
-          for (const [index, section] of stamped.sections.entries()) {
-            expect(section.resources.map((entry) => entry.key)).toEqual(
-              sections[index]?.resources.map((entry) => entry.key)
+          for (const [index, section] of stamped.sectionedList.sections.entries()) {
+            expect(section.rows.map((row) => row.reviewable.key)).toEqual(
+              sections[index]?.rows.map((row) => row.reviewable.key)
             )
-            for (const entry of section.resources) expect(entry.resource.meta?.source).toBe(source)
+            for (const row of section.rows) expect(row.resource.meta?.source).toBe(source)
           }
         }
       ),

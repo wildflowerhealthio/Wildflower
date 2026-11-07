@@ -10,8 +10,9 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { isOfPatient, type LeftUnlinked } from '@wildflowerhealthio/importer-core'
 import {
-  DecodedFile,
+  type DecodedFile,
   Mention,
+  SectionedList,
   StagedImport,
   UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -42,8 +43,8 @@ const unlinkedInRows = (
   selection: StagedImport.Selection,
   leftUnlinked: LeftUnlinked
 ): readonly UnlinkedMention.Type[] =>
-  DecodedFile.resources(decodedFile).flatMap(({ key, resource }) =>
-    leftUnlinked(key, reviewedResource(selection, key, resource))
+  SectionedList.rows(decodedFile.sectionedList).flatMap(({ reviewable, resource }) =>
+    leftUnlinked(reviewable.key, reviewedResource(selection, reviewable.key, resource))
   )
 
 /** Whether `unlinked` is the mention at `mentionPath` of the resource reviewed under `reviewKey`. */
@@ -60,8 +61,8 @@ const keysNeedingPatient = (unlinked: readonly UnlinkedMention.Type[]): Readonly
 
 /** The resources listed under Needs a patient and under Needs a provider. */
 interface Groups {
-  readonly needingPatient: readonly DecodedFile.Resource[]
-  readonly needingProvider: readonly DecodedFile.Resource[]
+  readonly needingPatient: readonly DecodedFile.Row[]
+  readonly needingProvider: readonly DecodedFile.Row[]
 }
 
 /**
@@ -76,10 +77,12 @@ const groupsOf = (
   const providerKeys = new Set(
     unlinked.filter((one) => !isOfPatient(one)).map((one) => one.mentioningResourceKey)
   )
-  const resources = DecodedFile.resources(decodedFile)
+  const rows = SectionedList.rows(decodedFile.sectionedList)
   return {
-    needingPatient: resources.filter(({ key }) => patientKeys.has(key)),
-    needingProvider: resources.filter(({ key }) => providerKeys.has(key) && !patientKeys.has(key)),
+    needingPatient: rows.filter(({ reviewable }) => patientKeys.has(reviewable.key)),
+    needingProvider: rows.filter(
+      ({ reviewable }) => providerKeys.has(reviewable.key) && !patientKeys.has(reviewable.key)
+    ),
   }
 }
 

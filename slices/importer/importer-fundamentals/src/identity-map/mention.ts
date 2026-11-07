@@ -17,9 +17,10 @@ import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   type FhirResource,
   type FhirResourceWithId,
+  ReferenceRewrite,
   ResourceReferences,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Match, Option, pipe } from 'effect'
+import { Array, Option, pipe } from 'effect'
 
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 
@@ -101,19 +102,27 @@ const linkableTypeOf = ({
   )
 
 /**
+ * An empty `subject` slot as a mention: an empty reference a patient can be
+ * chosen for, a `subject` naming a `Patient` whatever it states.
+ */
+const emptySubject: Linkable = {
+  path: SUBJECT_PATH,
+  reference: IdentifierAndReference.emptyReference,
+  type: 'Patient',
+}
+
+/**
  * Every mention of `resource` a reviewer may choose a link for: each one it
  * makes that names a type the map links, and, when its `subject` slot is
  * empty, that slot as an empty reference, so a patient can be chosen for a
  * resource that names none.
  */
-const linkableIn = (resource: FhirResource): readonly Linkable[] => {
-  const emptySubject: readonly Type[] = hasEmptySubject(resource)
-    ? [{ path: SUBJECT_PATH, reference: IdentifierAndReference.emptyReference }]
-    : []
-  return Array.filterMap([...emptySubject, ...madeIn(resource)], (mention) =>
+const linkableIn = (resource: FhirResource): readonly Linkable[] => [
+  ...(hasEmptySubject(resource) ? [emptySubject] : []),
+  ...Array.filterMap(madeIn(resource), (mention) =>
     Option.map(linkableTypeOf(mention), (type): Linkable => ({ ...mention, type }))
-  )
-}
+  ),
+]
 
 /** The mention at `mentionPath` in `resource`, `None` when it makes none there. */
 const at = (resource: FhirResource, mentionPath: string): Option.Option<Type> =>
@@ -124,8 +133,25 @@ const namesNothing = (reference: IdentifierAndReference.ReferenceType): boolean 
   reference.reference === null && reference.identifier === null && reference.display === null
 
 /**
+ * The literal reference `reference` is written with when relinked to
+ * `literalReference`: that one, or, for `None`, `null`, its literal dropped.
+ * `None` when dropping it would leave a reference that names nothing at all,
+ * since an empty reference is not one: the mention is then left as it is.
+ */
+const relinkedLiteral = (
+  reference: IdentifierAndReference.ReferenceType,
+  literalReference: Option.Option<string>
+): Option.Option<string | null> =>
+  Option.match(literalReference, {
+    onSome: (literal) => Option.some(literal),
+    onNone: () =>
+      namesNothing({ ...reference, reference: null }) ? Option.none() : Option.some(null),
+  })
+
+/**
  * `resource` with the mention at `mentionPath` relinked: its literal
- * reference set to `literalReference`, or, for `None`, dropped.
+ * reference set to `literalReference`, or, for `None`, dropped
+ * ({@link relinkedLiteral}).
  *
  * @param resource - The resource whose mention moves
  * @param mentionPath - The mention's path (`Type.path`)
@@ -136,9 +162,8 @@ const namesNothing = (reference: IdentifierAndReference.ReferenceType): boolean 
  *
  * @remarks
  * The mention keeps its `identifier` and `display`, so an identifier-only
- * mention is relinked the way the resolution redirects one. Dropping the
- * literal of a mention that would then name nothing at all changes nothing,
- * since an empty reference is not one. An empty `subject` slot is filled by
+ * mention is relinked the way the resolution redirects one. An empty
+ * `subject` slot is no reference, so no rewrite reaches it: it is filled by
  * a literal reference and stays empty for `None`.
  */
 const relinked = (
@@ -146,55 +171,30 @@ const relinked = (
   mentionPath: string,
   literalReference: Option.Option<string>
 ): FhirResourceWithId =>
-  Match.value({ current: at(resource, mentionPath), literalReference }).pipe(
-    Match.withReturnType<FhirResourceWithId>(),
-    Match.when({ current: { _tag: 'Some' } }, ({ current }) =>
-      pipe(
-        Option.some({ ...current.value.reference, reference: Option.getOrNull(literalReference) }),
-        Option.filter(
-          (moved) => moved.reference !== current.value.reference.reference && !namesNothing(moved)
-        ),
-        Option.match({
-          onNone: () => resource,
-          onSome: (moved) =>
-            ResourceReferences.mapReferences(resource, (found, path) =>
-              path === mentionPath ? moved : found
-            ),
-        })
+  mentionPath === SUBJECT_PATH && hasEmptySubject(resource)
+    ? Option.match(literalReference, {
+        onNone: () => resource,
+        onSome: (subjectLiteral) => ({
+          ...resource,
+          subject: { ...IdentifierAndReference.emptyReference, reference: subjectLiteral },
+        }),
+      })
+    : ReferenceRewrite.apply(resource, (found) =>
+        found.path === mentionPath
+          ? relinkedLiteral(found.reference, literalReference)
+          : Option.none()
       )
-    ),
-    Match.when(
-      { current: { _tag: 'None' }, literalReference: { _tag: 'Some' } },
-      ({ literalReference: subjectLiteral }) =>
-        pipe(
-          Option.liftPredicate(
-            resource,
-            (withSubject) => mentionPath === SUBJECT_PATH && hasEmptySubject(withSubject)
-          ),
-          Option.match({
-            onNone: () => resource,
-            onSome: (withEmptySubject) => ({
-              ...withEmptySubject,
-              subject: {
-                ...IdentifierAndReference.emptyReference,
-                reference: subjectLiteral.value,
-              },
-            }),
-          })
-        )
-    ),
-    // No mention there and no literal to set: nothing to relink.
-    Match.orElse(() => resource)
-  )
 
 export {
   at,
+  emptySubject,
   hasEmptySubject,
   isRelativeLiteral,
   linkableIn,
   linkableTypeOf,
   madeIn,
   relinked,
+  relinkedLiteral,
   SUBJECT_PATH,
 }
 export type { Linkable, Type }

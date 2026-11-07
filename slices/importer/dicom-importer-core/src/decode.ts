@@ -9,10 +9,12 @@ import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext } from '@wildflowerhealthio/fhir-r4/resources'
 import {
+  type DecodedFile,
   type DecodedFileSet,
-  DecodedFile,
   type DecodeFunction,
   type PickedFile,
+  Section,
+  SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
@@ -40,7 +42,7 @@ const STUDY_FULL_URLS = {
   ImagingStudy: 'imaging-study',
 } as const satisfies Record<StudyResource['resourceType'], string>
 
-/** A study record as its section entry, under its type's fixed `fullUrl`. */
+/** A study record as a row of its section, under its type's fixed `fullUrl`. */
 const studyEntryOf = (resource: StudyResource): DecodedFileSet.Entry => ({
   fullUrl: STUDY_FULL_URLS[resource.resourceType],
   resource,
@@ -155,9 +157,9 @@ const referenceTo = (
   resourceType: 'Patient' | 'ImagingStudy'
 ): Option.Option<string> =>
   Arr.findFirst(
-    DecodedFile.resources(decoded),
-    (entry) => entry.resource.resourceType === resourceType
-  ).pipe(Option.map((entry) => `${resourceType}/${entry.resource.id}`))
+    SectionedList.rows(decoded.sectionedList),
+    (row) => row.resource.resourceType === resourceType
+  ).pipe(Option.map((row) => `${resourceType}/${row.resource.id}`))
 
 /** A `Reference` naming one resource, built through the resource schema's own value. */
 const referenceValue = (reference: string): typeof IdentifierAndReference.ReferenceSchema.Type => ({
@@ -274,7 +276,7 @@ const decodeStudy = (
     const resources = yield* toFhirResources(files, settings)
     const sections =
       resources.length > 0
-        ? [{ title: sectionTitle(head.header), entries: resources.map(studyEntryOf) }]
+        ? [Section.make(sectionTitle(head.header), resources.map(studyEntryOf))]
         : []
 
     return { sections, notes, pickedFiles: identifiedPickedFiles }

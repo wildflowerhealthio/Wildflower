@@ -36,7 +36,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   gives how one set of files decodes (`decodeFileSet`) and — only if its files
   are read together — the key they share (`groupBy`). Back comes one
   `FormatDecode.Decoded` per format: each file set apart, its records in
-  `DecodedFileSet.Section`s under review keys namespaced so one set's keys cannot
+  sections (`SectionedList`) under review keys namespaced so one set's keys cannot
   collide with another's, plus an `unreadableFiles` row per picked file that
   rejected. Also the `PickedFile` vocabulary and the codec that stores a
   pick as a source file and reads it back, the `FormatDetector` seam
@@ -85,12 +85,14 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   its own settings and imports it through `importDecoded` — the import stage,
   the one place a detached record is adopted, a source file is minted and
   `meta.source` is stamped — `readBatch` yields a `DecodedBatch` — one
-  `FormatDecode.Result` per registered format plus the `UnrecognizedFile`s —
+  `ReviewGroup` per claimed format, the picks each claimed, and the
+  `UnrecognizedFile`s —
   `claimedFormats` names the formats that actually took part, `redecodeFormat`
   re-runs one format's files from their retained picks under new settings,
   `discoverReferents` and `resolveMentions` lift the identity map over the
   whole batch (one referent per identity across formats, one plan, a
-  `ResolvedBatch` with the batch's linked records), and
+  `ResolvedBatch` whose groups are the resolved formats' and the batch's
+  linked records'), and
   `planWrite` turns the batch's reviewed selections into a `WriteDecision` per
   reviewed resource, the `Included` ones exactly the resources to write. No
   DOM, no React, no client.
@@ -161,8 +163,8 @@ sits above `http-extraction` and below every binding.
   **resolved** batch: each referent's mentions are redirected to its link
   target, a decoded Patient or Practitioner linked to a stored one is
   replaced by it under the same review key, the stored or decoded resource
-  assumes the identifiers of the referents linked to it, and the records the
-  batch only mentions are its linked records. The shell runs it as a memo
+  assumes the identifiers of the referents linked to it, and the stored
+  records the batch only links to are its linked records. The shell runs it as a memo
   (`importer-core`'s `resolveMentions`) and hands the resolved batch to the
   server diff, the preview and the confirm, so all three see the resources
   that get written. Identity never enters the `StagedImport` selection, which
@@ -171,8 +173,10 @@ sits above `http-extraction` and below every binding.
   anything itself: a format's job is to make each resource name its identity,
   by a literal to a resource the same decode emits or by a logical reference
   that states its `type` and carries an `identifier` with a `system` and a
-  `value` (`Practitioner.tryReferenceFromName` for a provider known only by a
-  printed name). See the
+  `value` (`Practitioner.tryReferenceFromName` in the source's own name
+  system for a provider known only by a printed name; with a `display`, the
+  import stage implies the record such a reference names when the set holds
+  none). See the
   [Source Identity Explanation](../http-extraction/fhir-r4-adoption/docs/Source%20Identity%20Explanation.md#the-identity-map)
   for the model.
 - **The picker takes bytes, and identifies against every registered

@@ -2,24 +2,25 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Observation, Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
+import { Observation, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   defaultFormatSettings,
   type FormatKind,
   type FormatSettings,
-  LINKED_GROUP,
   type ResolvedBatch,
+  ReviewGroup,
   type UnrecognizedFile,
 } from '@wildflowerhealthio/importer-core'
 import {
-  StagedImport,
-  FormatDecode,
   type DecodedFile,
   LinkableResource,
   LinkPlan,
   LinkTarget,
   type PickedFile,
   type Referent,
+  Section,
+  SectionedList,
+  StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Option, Schema, type ParseResult } from 'effect'
 import type { JSX } from 'react'
@@ -50,18 +51,17 @@ describe('PreviewPanel', () => {
   it('lists the linked records read-only with their diff, and counts one a written resource names into the confirm', () => {
     const batch = withLinkedPatient(
       makeBatch({
-        har: formatResult(
+        har: formatEntry(
           'session.har',
           decoded([
             section('s', [observationOf('obs-1', { subject: { reference: 'Patient/s-1' } })]),
-          ]),
-          'har'
+          ])
         ),
       })
     )
     const comparisons: PreviewPanelProps['comparisons'] = new Map([
       [
-        LINKED_GROUP,
+        ReviewGroup.LINKED,
         new Map([['linked:Patient/s-1', { status: 'changed', fields: [GENDER_DIFF], server: {} }]]),
       ],
     ])
@@ -76,38 +76,14 @@ describe('PreviewPanel', () => {
     expect(screen.getByRole('button', { name: 'Import 2 resources' })).toBeDefined()
   })
 
-  it('writes no provisional linked record once the only resource naming it is excluded', () => {
-    const batch = withLinkedPractitioner(
-      makeBatch({
-        har: formatResult(
-          'session.har',
-          decoded([
-            section('s', [
-              observationOf('obs-1', { performer: [{ reference: 'Practitioner/pr-1' }] }),
-            ]),
-          ]),
-          'har'
-        ),
-      })
-    )
-    const selectionFor = (): StagedImport.Selection =>
-      StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'obs-1')
-    render(<PreviewPanel {...panelProps(batch, { selectionFor })} />)
-
-    expect(screen.getByRole('region', { name: LINKED_RECORDS_HEADING })).toBeDefined()
-    expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
-    expect(screen.queryByRole('button', { name: /^Import/ })).toBeNull()
-  })
-
   it('offers the confirm for a changed stored copy alone once every resource naming it is excluded', () => {
     const batch = withLinkedPatient(
       makeBatch({
-        har: formatResult(
+        har: formatEntry(
           'session.har',
           decoded([
             section('s', [observationOf('obs-1', { subject: { reference: 'Patient/s-1' } })]),
-          ]),
-          'har'
+          ])
         ),
       })
     )
@@ -122,12 +98,11 @@ describe('PreviewPanel', () => {
   it('shows nothing to import on a re-import whose rows and linked record the server holds unchanged', () => {
     const batch = withLinkedPatient(
       makeBatch({
-        har: formatResult(
+        har: formatEntry(
           'session.har',
           decoded([
             section('s', [observationOf('obs-1', { subject: { reference: 'Patient/s-1' } })]),
-          ]),
-          'har'
+          ])
         ),
       })
     )
@@ -151,12 +126,11 @@ describe('PreviewPanel', () => {
   it('leaves an unchanged linked record out of the count while a resource naming it is written', () => {
     const batch = withLinkedPatient(
       makeBatch({
-        har: formatResult(
+        har: formatEntry(
           'session.har',
           decoded([
             section('s', [observationOf('obs-1', { subject: { reference: 'Patient/s-1' } })]),
-          ]),
-          'har'
+          ])
         ),
       })
     )
@@ -168,7 +142,7 @@ describe('PreviewPanel', () => {
   })
 
   it('renders nothing-to-import when no format decoded any resource', () => {
-    const batch = makeBatch({ har: formatResult('empty.har', decoded([]), 'har') })
+    const batch = makeBatch({ har: formatEntry('empty.har', decoded([])) })
     render(<PreviewPanel {...panelProps(batch)} />)
 
     expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
@@ -180,15 +154,14 @@ describe('PreviewPanel', () => {
   it('renders a preview heading and a confirm naming the included-resource total', async () => {
     const onConfirm = vi.fn()
     const batch = makeBatch({
-      har: formatResult(
+      har: formatEntry(
         'session.har',
         decoded([
           section('https://r4.example.org/Patient/pat-1', [
             labeledResource('pat-1', 'Patient/pat-1'),
             labeledResource('obs-1', 'Observation/obs-1'),
           ]),
-        ]),
-        'har'
+        ])
       ),
     })
     render(<PreviewPanel {...panelProps(batch, { onConfirm })} />)
@@ -200,20 +173,18 @@ describe('PreviewPanel', () => {
 
   it('counts two rows under one Type/id once, as the transaction writes them', () => {
     const batch = makeBatch({
-      har: formatResult(
+      har: formatEntry(
         'a.har',
-        decoded([section('s', [labeledResource('a/pat-1', 'Patient/pat-1')])]),
-        'har'
+        decoded([section('s', [labeledResource('a/pat-1', 'Patient/pat-1')])])
       ),
-      'lifelabs-pdf': formatResult(
+      'lifelabs-pdf': formatEntry(
         'b.pdf',
         decoded([
           section('s', [
             labeledResource('b/pat-1', 'Patient/pat-1'),
             labeledResource('b/obs-1', 'Observation/obs-1'),
           ]),
-        ]),
-        'lifelabs-pdf'
+        ])
       ),
     })
     render(<PreviewPanel {...panelProps(batch)} />)
@@ -223,13 +194,12 @@ describe('PreviewPanel', () => {
 
   it('renders each decoded section under its own title with per-resource include checkboxes', () => {
     const batch = makeBatch({
-      'lifelabs-pdf': formatResult(
+      'lifelabs-pdf': formatEntry(
         'reports.pdf',
         decoded([
           section('Lab No 2024-JJ1 — Aug 13 2026 13:02', [labeledResource('p1', 'Patient/p1')]),
           section('Lab No 2024-JJ2 — Aug 20 2026 09:15', [labeledResource('o1', 'Observation/o1')]),
-        ]),
-        'lifelabs-pdf'
+        ])
       ),
     })
     render(<PreviewPanel {...panelProps(batch)} />)
@@ -248,22 +218,21 @@ describe('PreviewPanel', () => {
     const batch = makeBatch(
       {
         har: {
-          id: 'har/a.har,broken.har,c.har',
-          title: 'a.har, broken.har, c.har',
           files: [pickedFile('a.har'), pickedFile('broken.har'), pickedFile('c.har')],
-          format: 'har',
-          decoded: decoded([
-            section('https://a', [labeledResource('pat-1', 'Patient/pat-1')]),
-            section('https://c', [labeledResource('obs-1', 'Observation/obs-1')]),
-          ]),
-          unreadableFiles: [
-            {
-              id: 'har/broken.har',
-              title: 'broken.har',
-              pickedFile: pickedFile('broken.har'),
-              error: anyParseError(),
-            },
-          ],
+          group: {
+            decodedFile: decoded([
+              section('https://a', [labeledResource('pat-1', 'Patient/pat-1')]),
+              section('https://c', [labeledResource('obs-1', 'Observation/obs-1')]),
+            ]),
+            unreadableFiles: [
+              {
+                id: 'har/broken.har',
+                title: 'broken.har',
+                pickedFile: pickedFile('broken.har'),
+                error: anyParseError(),
+              },
+            ],
+          },
         },
       },
       [
@@ -289,7 +258,7 @@ describe('PreviewPanel', () => {
 
   it("folds a format's notes into a collapsed details block", () => {
     const batch = makeBatch({
-      har: formatResult(
+      har: formatEntry(
         'session.har',
         decoded(
           [section('https://a', [labeledResource('pat-1', 'Patient/pat-1')])],
@@ -297,8 +266,7 @@ describe('PreviewPanel', () => {
             'Matched no importer: https://example.org/tracker.js',
             'The archive captured no response body: https://a/empty',
           ]
-        ),
-        'har'
+        )
       ),
     })
     render(<PreviewPanel {...panelProps(batch)} />)
@@ -310,15 +278,13 @@ describe('PreviewPanel', () => {
   it('renders no settings form for HAR, and reports a LifeLabs settings change against its format', async () => {
     const onSettingsChange = vi.fn()
     const batch = makeBatch({
-      har: formatResult(
+      har: formatEntry(
         'a.har',
-        decoded([section('https://a', [labeledResource('p', 'Patient/p')])]),
-        'har'
+        decoded([section('https://a', [labeledResource('p', 'Patient/p')])])
       ),
-      'lifelabs-pdf': formatResult(
+      'lifelabs-pdf': formatEntry(
         'r.pdf',
-        decoded([section('Lab No 1', [labeledResource('o', 'Observation/o')])]),
-        'lifelabs-pdf'
+        decoded([section('Lab No 1', [labeledResource('o', 'Observation/o')])])
       ),
     })
     render(<PreviewPanel {...panelProps(batch, { onSettingsChange })} />)
@@ -344,10 +310,9 @@ describe('PreviewPanel', () => {
   it("mounts each format's own settings picker, DICOM included", async () => {
     const onSettingsChange = vi.fn()
     const batch = makeBatch({
-      dicom: formatResult(
+      dicom: formatEntry(
         'scan.dcm',
-        decoded([section('CT Chest', [labeledResource('s', 'Patient/s')])]),
-        'dicom'
+        decoded([section('CT Chest', [labeledResource('s', 'Patient/s')])])
       ),
     })
     render(<PreviewPanel {...panelProps(batch, { onSettingsChange })} />)
@@ -361,10 +326,9 @@ describe('PreviewPanel', () => {
 
   it('disables the confirm while a confirmed import is running', () => {
     const batch = makeBatch({
-      har: formatResult(
+      har: formatEntry(
         'session.har',
-        decoded([section('https://a', [labeledResource('pat-1', 'Patient/pat-1')])]),
-        'har'
+        decoded([section('https://a', [labeledResource('pat-1', 'Patient/pat-1')])])
       ),
     })
     render(<PreviewPanel {...panelProps(batch, { confirming: true })} />)
@@ -376,15 +340,14 @@ describe('PreviewPanel', () => {
   it('reports a toggled-off resource through onSelectionChange keyed by format kind', async () => {
     const onSelectionChange = vi.fn()
     const batch = makeBatch({
-      har: formatResult(
+      har: formatEntry(
         'session.har',
         decoded([
           section('https://a', [
             labeledResource('pat-1', 'Patient/pat-1'),
             labeledResource('obs-1', 'Observation/obs-1'),
           ]),
-        ]),
-        'har'
+        ])
       ),
     })
     render(<PreviewPanel {...panelProps(batch, { onSelectionChange })} />)
@@ -400,15 +363,14 @@ describe('PreviewPanel', () => {
   it('opts a whole section out in one click when every resource was included', async () => {
     const onSelectionChange = vi.fn()
     const batch = makeBatch({
-      'lifelabs-pdf': formatResult(
+      'lifelabs-pdf': formatEntry(
         'reports.pdf',
         decoded([
           section('Lab No 2024-JJ1', [
             labeledResource('p1', 'Patient/p1'),
             labeledResource('o1', 'Observation/o1'),
           ]),
-        ]),
-        'lifelabs-pdf'
+        ])
       ),
     })
     render(<PreviewPanel {...panelProps(batch, { onSelectionChange })} />)
@@ -425,15 +387,14 @@ describe('PreviewPanel', () => {
     const onSelectionChange = vi.fn()
     const partial = StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'o1')
     const batch = makeBatch({
-      'lifelabs-pdf': formatResult(
+      'lifelabs-pdf': formatEntry(
         'reports.pdf',
         decoded([
           section('Lab No 2024-JJ1', [
             labeledResource('p1', 'Patient/p1'),
             labeledResource('o1', 'Observation/o1'),
           ]),
-        ]),
-        'lifelabs-pdf'
+        ])
       ),
     })
     render(
@@ -455,12 +416,11 @@ describe('PreviewPanel', () => {
   it('leaves out a row the default excludes, and records a tick on it as the reviewer’s inclusion', async () => {
     const onSelectionChange = vi.fn()
     const batch = makeBatch({
-      har: formatResult(
+      har: formatEntry(
         'a.har',
         decoded([
           section('s', [labeledResource('p1', 'Patient/p1'), labeledResource('p2', 'Patient/p2')]),
-        ]),
-        'har'
+        ])
       ),
     })
     render(
@@ -483,10 +443,9 @@ describe('PreviewPanel', () => {
 
   it('shows a static badge for a resource the server does not hold', () => {
     const batch = makeBatch({
-      har: formatResult(
+      har: formatEntry(
         'a.har',
-        decoded([section('s', [labeledResource('pat-1', 'Patient/pat-1')])]),
-        'har'
+        decoded([section('s', [labeledResource('pat-1', 'Patient/pat-1')])])
       ),
     })
     const comparisons = comparisonsFor('har', [['pat-1', { status: 'new', fields: [] }]])
@@ -498,7 +457,7 @@ describe('PreviewPanel', () => {
 
   it('reveals the field-level diffs when the changed badge is clicked', async () => {
     const batch = makeBatch({
-      har: formatResult('a.har', decoded([section('s', [FEMALE_PAT_1])]), 'har'),
+      har: formatEntry('a.har', decoded([section('s', [FEMALE_PAT_1])])),
     })
     const comparisons = comparisonsFor('har', [
       [
@@ -521,7 +480,7 @@ describe('PreviewPanel', () => {
 
   it('reveals the field-level diffs when the changed badge is hovered', async () => {
     const batch = makeBatch({
-      har: formatResult('a.har', decoded([section('s', [FEMALE_PAT_1])]), 'har'),
+      har: formatEntry('a.har', decoded([section('s', [FEMALE_PAT_1])])),
     })
     const comparisons = comparisonsFor('har', [
       [
@@ -547,13 +506,12 @@ describe('PreviewPanel', () => {
       ...onServer,
       gender: 'male',
     })
-    const labeled: DecodedFile.Resource = {
-      key: 'pat-1',
-      title: 'Patient/pat-1',
+    const labeled: DecodedFile.Row = {
+      reviewable: { key: 'pat-1', title: 'Patient/pat-1', origin: 'Decoded' },
       resource: patientResource,
     }
     const batch = makeBatch({
-      har: formatResult('a.har', decoded([section('s', [labeled])]), 'har'),
+      har: formatEntry('a.har', decoded([section('s', [labeled])])),
     })
     const comparisons = comparisonsFor('har', [
       ['pat-1', { status: 'unchanged', fields: [], server: patientWire(onServer) }],
@@ -572,13 +530,12 @@ describe('PreviewPanel', () => {
       resourceType: 'Patient',
       id: 'pat-1',
     })
-    const labeled: DecodedFile.Resource = {
-      key: 'pat-1',
-      title: 'Patient/pat-1',
+    const labeled: DecodedFile.Row = {
+      reviewable: { key: 'pat-1', title: 'Patient/pat-1', origin: 'Decoded' },
       resource: patientResource,
     }
     const batch = makeBatch({
-      har: formatResult('a.har', decoded([section('s', [labeled])]), 'har'),
+      har: formatEntry('a.har', decoded([section('s', [labeled])])),
     })
     const comparisons = comparisonsFor('har', [
       [
@@ -608,9 +565,8 @@ describe('PreviewPanel', () => {
 const valueSlot = (value: unknown): DiffSlot => ({ _tag: 'value', value })
 
 /** The Patient `pat-1` as the import has her: female, where the server has male. */
-const FEMALE_PAT_1: DecodedFile.Resource = {
-  key: 'pat-1',
-  title: 'Patient/pat-1',
+const FEMALE_PAT_1: DecodedFile.Row = {
+  reviewable: { key: 'pat-1', title: 'Patient/pat-1', origin: 'Decoded' },
   resource: Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
     resourceType: 'Patient',
     id: 'pat-1',
@@ -637,40 +593,34 @@ const pickedFile = (fileName: string): PickedFile.Type => ({
   bytes: new TextEncoder().encode('{}'),
 })
 
-/**
- * A `FormatDecodeResult` carrying the given decoded sections, titled by its file name.
- *
- * @typeParam K - The format this result belongs to; generic so the result
- *   stays correlated with the {@link makeBatch} slot it fills
- */
-const formatResult = <K extends FormatKind>(
-  fileName: string,
-  decodedFile: DecodedFile.DecodedFile,
-  format: K
-): FormatDecode.Result<K> => ({
-  id: `${format}/${fileName}`,
-  title: fileName,
+/** One format's part of a batch: its picked files and its review group. */
+interface FormatEntry {
+  readonly files: readonly PickedFile.Type[]
+  readonly group: ReviewGroup.Type
+}
+
+/** A format of one picked file, named `fileName`, whose group holds `decodedFile`. */
+const formatEntry = (fileName: string, decodedFile: DecodedFile.DecodedFile): FormatEntry => ({
   files: [pickedFile(fileName)],
-  format,
-  decoded: decodedFile,
-  unreadableFiles: [],
+  group: { decodedFile, unreadableFiles: [] },
 })
 
-/** Build a ResolvedBatch from partial format results. */
+/** Build a ResolvedBatch from the claimed formats' entries. */
 const makeBatch = (
-  results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>,
+  entries: { readonly [K in FormatKind]?: FormatEntry },
   unrecognizedFiles: readonly UnrecognizedFile[] = []
 ): ResolvedBatch => {
-  const decodedBatch = {
-    formats: {
-      har: FormatDecode.emptyResult('har'),
-      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-      dicom: FormatDecode.emptyResult('dicom'),
-      ...results,
+  const claimed = Object.entries(entries)
+  const groups = Object.fromEntries(claimed.map(([kind, { group }]) => [kind, group]))
+  return {
+    groups,
+    plan: LinkPlan.empty,
+    decoded: {
+      groups,
+      files: Object.fromEntries(claimed.map(([kind, { files }]) => [kind, files])),
+      unrecognizedFiles,
     },
-    unrecognizedFiles,
   }
-  return { ...decodedBatch, linkedRecords: [], plan: LinkPlan.empty, decodedBatch }
 }
 
 /** Verdicts for a format, keyed by format kind. */
@@ -681,34 +631,33 @@ const comparisonsFor = (
 
 /** A decoded file from sections and optional notes. */
 const decoded = (
-  sections: readonly DecodedFile.Section[],
+  sections: readonly Section.Type<DecodedFile.Row>[],
   notes: readonly string[] = []
-): DecodedFile.DecodedFile => ({ sections, notes })
+): DecodedFile.DecodedFile => ({ sectionedList: SectionedList.make(sections), notes })
 
 /** One titled section holding the given resources. */
 const section = (
   title: string,
-  resources: readonly DecodedFile.Resource[]
-): DecodedFile.Section => ({ title, resources })
+  resources: readonly DecodedFile.Row[]
+): Section.Type<DecodedFile.Row> => Section.make(title, resources)
 
 /**
  * A labeled resource for the panel to count and display: a bare Patient, or
  * an Observation about a patient with an empty code, each summarised by its
  * `Type/id`.
  */
-const labeledResource = (key: string, title: string): DecodedFile.Resource => {
+const labeledResource = (key: string, title: string): DecodedFile.Row => {
   const [resourceType = 'Patient', id = key] = title.split('/')
   const resource =
     resourceType === 'Observation'
       ? observationOf(key, { code: {}, subject: { reference: 'Patient/p' } }).resource
       : Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
-  return { key, title, resource: { ...resource, id } }
+  return { reviewable: { key, title, origin: 'Decoded' }, resource: { ...resource, id } }
 }
 
 /** An Observation carrying the given reference fields, labeled under `key`, for a linked record to be named by. */
-const observationOf = (key: string, references: object): DecodedFile.Resource => ({
-  key,
-  title: `Observation/${key}`,
+const observationOf = (key: string, references: object): DecodedFile.Row => ({
+  reviewable: { key, title: `Observation/${key}`, origin: 'Decoded' },
   resource: Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
     resourceType: 'Observation',
     id: key,
@@ -718,56 +667,45 @@ const observationOf = (key: string, references: object): DecodedFile.Resource =>
   }),
 })
 
-/** `batch` with `resource` as its one linked record, the link whose target it is made by `target`. */
-const withLinked = (
-  batch: ResolvedBatch,
-  resource: LinkableResource.WithId,
-  target: (resource: LinkableResource.WithId) => LinkTarget.StoredType | LinkTarget.ProvisionalType
-): ResolvedBatch => {
+/** `batch` with the stored `Patient/s-1` as its one linked record: a stored copy. */
+const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch => {
+  const resource = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+    resourceType: 'Patient',
+    id: 's-1',
+    identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
+  })
   const literalReference = LinkableResource.literalReferenceOf(resource)
-  const referent: Referent.ByMentionOnly = {
-    _tag: 'ByMentionOnly',
-    logicalReference: Option.getOrThrow(LinkableResource.tryIntoLogicalReference(resource)),
+  const logicalReference = Option.getOrThrow(LinkableResource.tryIntoLogicalReference(resource))
+  const referent: Referent.Type = {
+    logicalReference,
+    identifiers: logicalReference.identifier,
+    derivedIdentifier: Option.none(),
+    resource,
+    reviewable: { key: 'k-s-1', title: literalReference, origin: 'Decoded' },
     label: literalReference,
   }
-  const linkTarget = target(resource)
   return {
     ...batch,
-    linkedRecords: [
-      {
-        key: `linked:${literalReference}`,
-        title: literalReference,
-        resource,
-        origin: linkTarget._tag,
-      },
-    ],
-    plan: { ...LinkPlan.empty, links: [{ referent, target: linkTarget }] },
+    groups: {
+      ...batch.groups,
+      linked: ReviewGroup.linked([
+        {
+          reviewable: {
+            key: `linked:${literalReference}`,
+            title: literalReference,
+            origin: 'Decoded',
+          },
+          resource,
+        },
+      ]),
+    },
+    plan: LinkPlan.fromLists({
+      links: [{ referent, target: LinkTarget.Stored({ resource }) }],
+      mentionLinks: [],
+      resolvedResources: [],
+    }),
   }
 }
-
-/** `batch` with the stored `Patient/s-1` as its one linked record: a stored copy. */
-const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch =>
-  withLinked(
-    batch,
-    Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
-      resourceType: 'Patient',
-      id: 's-1',
-      identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
-    }),
-    (resource) => LinkTarget.Stored({ resource })
-  )
-
-/** `batch` with the provisional `Practitioner/pr-1` as its one linked record: a new one. */
-const withLinkedPractitioner = (batch: ResolvedBatch): ResolvedBatch =>
-  withLinked(
-    batch,
-    Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))({
-      resourceType: 'Practitioner',
-      id: 'pr-1',
-      identifier: [{ system: 'https://source.example/practitioner-name', value: 'Dr. One' }],
-    }),
-    (resource) => LinkTarget.Provisional({ resource })
-  )
 
 /**
  * A settings registry whose pickers are one-button stubs reporting the default

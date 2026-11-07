@@ -1,27 +1,22 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse, UrlParams } from '@effect/platform'
 import { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import {
-  Patient,
-  Practitioner,
-  type FhirResourceWithId,
-} from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, Exit, HashMap, Layer, Option, Schema, TestContext } from 'effect'
+import { Patient, type FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
+import { Effect, Exit, HashMap, Layer, Match, Option, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as Section from '../section.ts'
+import * as SectionedList from '../sectioned-list.ts'
 import {
-  CUSTOMER,
   SOURCE_PATIENT,
   SOURCE_PRACTITIONER,
-  customerSubject,
   discoverOnTestClock,
   fileOf,
-  namedRequester,
   patient,
   practitioner,
-  request,
+  keyOf,
 } from './identity-map.test-helpers.ts'
-import * as LinkChoice from './link-choice.ts'
+import type * as LinkChoice from './link-choice.ts'
 import * as ReferentSearch from './referent-search.ts'
 import * as Referent from './referent.ts'
 
@@ -103,14 +98,12 @@ const onlyReferent = (...resources: readonly FhirResourceWithId[]): Referent.Typ
 
 /** A choice as `<tag> <id>`, the id for one linked to a stored resource. */
 const describeChoice = (choice: LinkChoice.Type): string =>
-  LinkChoice.match(choice, {
+  Match.valueTags(choice, {
     CreateResource: () => 'CreateResource',
     UpdateStoredResource: ({ resource }) =>
       `UpdateStoredResource ${resource.resourceType}/${resource.id}`,
     LinkToStoredResource: ({ resource }) =>
       `LinkToStoredResource ${resource.resourceType}/${resource.id}`,
-    LinkToDecodedReferent: ({ referentKey }) => `LinkToDecodedReferent ${referentKey}`,
-    DontLink: () => 'DontLink',
   })
 
 /** The searches `urls` record, as `<path> <identifier value>`. */
@@ -132,24 +125,14 @@ describe('ReferentSearch.defaultChoice', () => {
     expect(urls.map((url) => url.searchParams.get('_count'))).toEqual(['2', '2'])
   })
 
-  it('should search a provider named only by a mention once, under Practitioner, by its one identity', async () => {
-    const prescriber = discoverOnTestClock(
-      fileOf(request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith')))
-    ).find(({ logicalReference }) => logicalReference.type === 'Practitioner')
-    if (prescriber === undefined) throw new Error('expected a prescriber referent')
+  it('should search a provider once, under Practitioner, by its own identifiers: a name derives none', async () => {
+    const { urls } = await search(onlyReferent(practitioner('pr-1', 'Dr. A Smith')))
 
-    const { urls } = await search(prescriber)
-
-    expect(searchesOf(urls)).toEqual([
-      `/Practitioner ${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`,
-    ])
+    expect(searchesOf(urls)).toEqual([`/Practitioner ${SOURCE_PRACTITIONER}|pr-1`])
   })
 
-  it('should give the referent kind’s default when nothing is found', async () => {
-    const account = onlyReferent(request('rx-1', customerSubject('c-9')))
-
+  it('should give New when nothing is found', async () => {
     expect(describeChoice((await search(TYRA)).choice)).toBe('CreateResource')
-    expect(describeChoice((await search(account)).choice)).toBe('DontLink')
   })
 
   it('should link to the one resource the own identifiers name, without searching the derived one', async () => {
@@ -193,6 +176,30 @@ describe('ReferentSearch.defaultChoice', () => {
     expect(
       describeChoice((await search(TYRA, serverFinding({ [TYRA_DERIVED]: [storedCopy] }))).choice)
     ).toBe('UpdateStoredResource Patient/p-1')
+  })
+
+  it('should keep the stored copy of a record the import implied, rather than write the name alone over it', async () => {
+    const implied = Referent.discover([
+      {
+        sectionedList: SectionedList.make([
+          Section.make('Resources', [
+            {
+              reviewable: { key: 'k-0', title: 'Patient/p-1', origin: 'Implied' },
+              resource: patient({ id: 'p-1' }),
+            },
+          ]),
+        ]),
+      },
+    ])
+    const [referent] = await Effect.runPromise(
+      implied.pipe(Effect.provide(TestContext.TestContext))
+    )
+    if (referent === undefined) throw new Error('expected one referent')
+    const storedCopy = { resourceType: 'Patient', id: 'p-1' }
+
+    expect(
+      describeChoice((await search(referent, serverFinding({ [TYRA_OWN]: [storedCopy] }))).choice)
+    ).toBe('LinkToStoredResource Patient/p-1')
   })
 
   it('should update the stored copy even when another record answers the same search', async () => {
@@ -283,9 +290,9 @@ describe('ReferentSearch.defaultChoice', () => {
 describe('ReferentSearch.defaultChoices', () => {
   it('should give every referent its default choice, keyed by referent', async () => {
     const referents = discoverOnTestClock(
-      fileOf(patient({ id: 'p-1' }), request('rx-1', customerSubject('c-9')))
+      fileOf(patient({ id: 'p-1' }), practitioner('pr-1', 'Dr. A Smith'))
     )
-    const server = serverFinding({ [TYRA_OWN]: [STORED_1], [`${CUSTOMER}|c-9`]: [STORED_1] })
+    const server = serverFinding({ [TYRA_OWN]: [STORED_1] })
 
     const choices = await Effect.runPromise(
       ReferentSearch.defaultChoices(referents).pipe(
@@ -299,19 +306,17 @@ describe('ReferentSearch.defaultChoices', () => {
         Option.map(HashMap.get(choices, Referent.key(referent)), describeChoice),
       ])
     ).toEqual([
-      [`Patient|${SOURCE_PATIENT}|p-1`, Option.some('LinkToStoredResource Patient/s-1')],
-      [`Patient|${CUSTOMER}|c-9`, Option.some('LinkToStoredResource Patient/s-1')],
+      [keyOf('Patient', SOURCE_PATIENT, 'p-1'), Option.some('LinkToStoredResource Patient/s-1')],
+      [keyOf('Practitioner', SOURCE_PRACTITIONER, 'pr-1'), Option.some('CreateResource')],
     ])
     expect(HashMap.size(choices)).toBe(2)
     expect(server.urls).toHaveLength(2)
   })
 
-  it('should update a re-imported person’s stored copy and link the account it assumed to that copy', async () => {
-    const referents = discoverOnTestClock(
-      fileOf(patient({ id: 'p-1' }), request('rx-1', customerSubject('c-9')))
-    )
+  it('should update a re-imported person’s stored copy', async () => {
+    const referents = discoverOnTestClock(fileOf(patient({ id: 'p-1' })))
     const storedCopy = { resourceType: 'Patient', id: 'p-1' }
-    const server = serverFinding({ [TYRA_OWN]: [storedCopy], [`${CUSTOMER}|c-9`]: [storedCopy] })
+    const server = serverFinding({ [TYRA_OWN]: [storedCopy] })
 
     const choices = await Effect.runPromise(
       ReferentSearch.defaultChoices(referents).pipe(
@@ -325,8 +330,7 @@ describe('ReferentSearch.defaultChoices', () => {
         Option.map(HashMap.get(choices, Referent.key(referent)), describeChoice),
       ])
     ).toEqual([
-      [`Patient|${SOURCE_PATIENT}|p-1`, Option.some('UpdateStoredResource Patient/p-1')],
-      [`Patient|${CUSTOMER}|c-9`, Option.some('LinkToStoredResource Patient/p-1')],
+      [keyOf('Patient', SOURCE_PATIENT, 'p-1'), Option.some('UpdateStoredResource Patient/p-1')],
     ])
   })
 })

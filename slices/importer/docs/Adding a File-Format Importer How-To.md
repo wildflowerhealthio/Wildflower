@@ -58,8 +58,8 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 You write **one file set at a time**. `decodeFileSet(pickedFiles, settings)` takes
 the picked files that are decoded together — each a `PickedFile.Type`
 (`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) —
-and yields a `DecodeFunction.FileSetDecode`: titled sections of labeled,
-**detached** resources, plus diagnostic notes.
+and yields a `DecodeFunction.FileSetDecode`: titled sections (`SectionedList`) of
+labeled, **detached** resources, plus diagnostic notes.
 
 ```ts
 const decodeMyFormat = (
@@ -67,10 +67,10 @@ const decodeMyFormat = (
   settings: MySettings
 ): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> => …
 // each section:
-//   {
+//   Section.make(
 //     title,
-//     entries: resources.map((resource) => ({ fullUrl, resource })),
-//   }
+//     resources.map((resource) => ({ fullUrl, resource }))
+//   )
 ```
 
 Write each resource detached (`fhir-r4-adoption`'s `DetachedResource`): no
@@ -160,16 +160,18 @@ identifies as nothing.
 
 Four obligations:
 
-- **Stable resource keys.** A section entry's `key` must be unique within
-  one decode of a set (HAR keys by `responseId:index`). For a format with
-  settings it must also be stable across settings changes where the
-  underlying resource is unchanged (DICOM keys by the resource's role),
-  because the reviewer's per-resource exclusions and inline edits are keyed
-  by it and must survive a settings re-decode. Key **within one set** and do not
-  try to make keys unique across the batch yourself — `DecodeFunction.make`
-  prefixes each set's keys with its first picked file
-  (`FormatDecode.keyPrefix`), which is what makes a fixed key like `patient`
-  safe when the reviewer picked eight images at once.
+- **Stable `fullUrl`s.** An entry's `fullUrl` becomes its review key at
+  adopt (`reviewable.key`), so it must be unique within one decode of a set
+  (HAR uses `responseId:index`). For a format with settings it must also be
+  stable across settings changes where the underlying resource is unchanged
+  (DICOM names it by the resource's role), because the reviewer's
+  per-resource exclusions and inline edits are keyed by it and must survive
+  a settings re-decode. Name entries **within one set** and do not try to
+  make them unique across the batch yourself — `DecodeFunction.make`
+  prefixes each set's `fullUrl`s with its first picked file
+  (`FormatDecode.keyPrefix`, via `DecodedFileSet.namespaceKeys`), which is
+  what makes a fixed `fullUrl` like `patient` safe when the reviewer picked
+  eight images at once.
 - **Sections are the display.** Pick a sectioning that means something to the
   reviewer: HAR sections by URL, LifeLabs by report. A section's `title` is the
   heading the shell renders.
@@ -182,11 +184,14 @@ Four obligations:
   carries a literal to a `Patient` or `Practitioner` the same decode emits, or
   is a logical reference: `type` stated, and an `identifier` with both
   `system` and `value`. A provider known only by a printed name is `fhir-r4`'s
-  `Practitioner.tryReferenceFromName(<name>)` (or its
-  `tryReferenceWireFromName`), the name identifier beside the `display`, as
-  the Shoppers and Rexall prescribers and DICOM's referring physician are. A
-  `display`-only reference, or an identifier-only one that states no type,
-  names nobody the map can link. See the
+  `Practitioner.tryReferenceFromName(<system>, <name>)` (or its
+  `tryReferenceWireFromName`), `<system>` the format's own practitioner-name
+  system, the name identifier beside
+  the `display`, as the Shoppers and Rexall prescribers, LifeLabs' providers
+  and DICOM's referring physician are. The format emits no Practitioner for
+  such a name: `DecodedFileSet.adopt` implies one per name across the set,
+  named by the display. A `display`-only reference, or an identifier-only one
+  that states no type, names nobody the map can link. See the
   [Source Identity Explanation](../../http-extraction/fhir-r4-adoption/docs/Source%20Identity%20Explanation.md#the-identity-map).
 
 ## 2. The settings
@@ -374,7 +379,7 @@ a file without naming your settings type.
 ## 6. Register
 
 **The importer half, in `importer-core`.** Add the binding package as a
-dependency of `importer-core`, run `vp install`, and extend four constructs —
+dependency of `importer-core`, run `vp install`, and extend three constructs —
 all mapped or exhaustive types over `FormatKind`, so a format missed in any of
 them **fails to compile**:
 
@@ -382,9 +387,6 @@ them **fails to compile**:
    settings type.
 2. **`formatRegistry`** (`registry.ts`) — the literal registry of importers.
 3. **`defaultFormatSettings`** (`registry.ts`) — the default settings record.
-4. **`collectFormats`** (`read-batch.ts`) — the one place that names every
-   format literally, because TypeScript drops the correlation between a
-   computed union key and its value (its remarks explain why).
 
 `formatKinds` does **not** need an entry — it is derived from `formatRegistry`.
 
@@ -432,7 +434,7 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 `/javascript-testing-expert` command). Cover each layer where it lives:
 
 - **Decode** — a fixture file decodes to the expected sections and notes; for
-  a format with settings, keys are stable across a settings change. Pin the
+  a format with settings, `fullUrl`s are stable across a settings change. Pin the
   source file contract too: a pick yields a "Source file" first section and
   `meta.source` on every extracted resource, the minted id is the same for the
   same bytes and name, and malformed bytes yield an `unreadableFiles` entry

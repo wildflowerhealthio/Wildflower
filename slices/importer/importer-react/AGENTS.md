@@ -34,8 +34,8 @@ walkthrough itself is the host's.
 [slices/AGENTS.md](../../../slices/AGENTS.md): it depends on its sources, never the reverse.
 It depends on `importer-core` (the importer registry, `readBatch` /
 `redecodeFormat` / `claimedFormats` / `planWrite`, and the
-`DecodedBatch` model), `importer-fundamentals` (the `PickedFile`
-vocabulary, the `FormatDecode.Result` and `DecodedFile` shapes, and the pure
+`DecodedBatch` and `ReviewGroup` model), `importer-fundamentals` (the `PickedFile`
+vocabulary, the `FormatDecode` and `DecodedFile` shapes, and the pure
 `StagedImport` model), each format's
 React package for its settings picker only (`lifelabs-pdf-importer-react`,
 `dicom-importer-react`; HAR has no settings and no React package), `fhir-r4`
@@ -121,12 +121,12 @@ The importer has no HTTP wire union to derive, so there is no separate
     disabled, so the reviewer can undo the setting; on a first decode it
     says why and offers the picker), and a
     choice that cannot be resolved after a re-decode (`InvalidLinkChoice`)
-    falls back, the reviewer's own to its searched default, a default to its
-    kind's default. The screen blocks its first paint on the default
+    falls back, the reviewer's own to its searched default, a default to
+    `New`. The screen blocks its first paint on the default
     search, as it does on the server diff, and hands the resolved batch to
     `useServerDiff`, `PreviewPanel` and the confirm, which take a
     `ResolvedBatch` and so see what gets written; a failed search shows an
-    alert and leaves every referent on its kind's default.
+    alert and leaves every referent on `New`.
   - `link-choice-review-state.ts` — the `LinkChoiceReviewState` types: the
     `Mapped` batch (referents, choices, search hits, the resolved batch with
     its plan, and the `mentionLinkOptions` the rows' mention selects offer), the
@@ -163,8 +163,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   - `referent-rows.tsx` — the block the panel renders above the format
     groups (its `referentRows` slot): a tally of the records the referents
     are linked to (`ReferentTally`: a stored record, or one this import
-    writes, is counted once however many referents share it) and the
-    referents that are unlinked, then one group per `LinkableLogicalReference.RESOURCE_TYPES`
+    writes, is counted once however many referents share it), then one
+    group per `LinkableLogicalReference.RESOURCE_TYPES`
     entry that has referents. A list that failed is said under its group,
     and only the search's hits are offered; a list the page limit cut off is
     said too. While the batch is `refused` the selects are disabled, since a
@@ -172,17 +172,15 @@ The importer has no HTTP wire union to derive, so there is no separate
   - `referent-row.tsx` — one referent's line, memoised: its label, a select
     of its options, and its warning.
   - `link-choice-options.ts` — the `LinkChoiceOptions` view model: the
-    options a referent's select offers, in four groups. `New`, or an update
-    of the stored copy under its own id when one is known
-    (`UpdateStoredResource`, a re-import's default), or a stored resource for
-    an `AsResource` referent; a stored resource, `New: <label>`
-    (`LinkToDecodedReferent`) for each other referent of its type that
-    creates a record, `New` when `LinkableResource.tryProvisionalFrom` stands
-    for its logical reference, and "Don't link" for a `ByMentionOnly` one.
+    options a referent's select offers, in two groups: `New`, or an update of
+    the stored copy under its own id when one is known
+    (`UpdateStoredResource`, a re-import's default), then the stored
+    resources of its type **On the server**. A prescriber or provider the
+    import implied is a referent like any other, so it offers the same.
   - `referent-line.ts` — the `ReferentLine` namespace: a group's lines (a
     referent, its choice, its options, its warning), each built once per
-    change of what it is built from (its own choice, the stored list, the
-    batch's referents and which of them write their own record) and kept
+    change of what it is built from (its own choice and the stored list) and
+    kept
     across every other change, so a select change rebuilds the lines it
     changed and the memoised rows of the others skip their render. The
     warning is `DifferingDemographics`: a Patient linked to a stored one
@@ -229,7 +227,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   formats can carry the same resource key, so
   a flat map would let one format's verdict overwrite another's. Within one
   format the keys are already distinct, because `DecodeFunction.make` namespaces each
-  claimed file's keys by its slot in the batch. The screen blocks the
+  file set's keys by its first picked file's slot in the batch. The screen blocks the
   first paint on it but **not** on the re-classification a settings change or
   a link choice triggers, since unmounting the panel mid-review would drop the
   focus of whatever control the reviewer is using; the verdicts the batch last
@@ -241,8 +239,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   `claimedFormats` entry, its settings form (the registry's own
   `SettingsPicker`, indexed by the format tag, in its box; neither for a
   format with no picker) over that format's sectioned,
-  per-resource review — then the batch's **linked records** (`batch.linkedRecords`,
-  the records it names but holds no copy of, as the referent rows link them)
+  per-resource review — then the batch's **linked records** (the linked
+  records' group, `ReviewGroup.LINKED`, the records it names but holds no
+  copy of, as the referent rows link them)
   read-only with their diff badge and no toggle or edit, under one shared
   confirm, gated on the batch writing at least one resource. The panel's
   counts come off `importer-core`'s `planWrite`, the plan the confirm
@@ -252,9 +251,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   screen hands the panel and the confirm the same `unchangedLinked`, the
   linked group's `unchangedKeysOf`); otherwise every stored copy,
   whatever the reviewer excluded, since the link choice is the consent to
-  it, and a new record only when an included resource names it, else
-  `Unreferenced`. The diff keys its verdicts by
-  `importer-core`'s `ReviewGroup`, a format or `LINKED_GROUP`, so the linked
+  it. The diff keys its verdicts by
+  `importer-core`'s `ReviewGroup.Key`, a format or `ReviewGroup.LINKED`, so the linked
   records' badges are their own. It is the
   panel, the actions and the editor dialog only; the review body it renders
   per format is
@@ -266,7 +264,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   referent links leave a mention unlinked in again
   (`UnlinkedMention.leftByReferentLinks` on the batch's plan, asked by
   `unlinked-mentions.ts` of each row as edited, else as decoded in the
-  batch's `decodedBatch`, a format's own source file never),
+  batch's `decoded`, a format's own source file never),
   under **Needs a patient** (an unlinked or empty `subject`) or else **Needs
   a provider**, each with why in one phrase ("names no patient", "names an
   account you chose not to link", "names a provider you chose not to link",

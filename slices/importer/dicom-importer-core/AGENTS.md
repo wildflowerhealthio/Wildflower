@@ -14,7 +14,10 @@ carrying the one `ImagingStudy` its files make up.
 ## Shape
 
 - `src/source-system.ts` — the `DICOM_SYSTEM` URI constant
-  (`https://wildflowerhealth.io/fhir/sid/dicom`).
+  (`https://wildflowerhealth.io/fhir/sid/dicom`) and
+  `DICOM_PRACTITIONER_NAME_SYSTEM` (`<DICOM_SYSTEM>/practitioner-name`), the
+  system a referring physician known only by name is keyed in; both
+  persisted wire format.
 - `src/detect.ts` — DICM magic bytes at offset 128 (PS3.10 preamble + magic)
   or a `.dcm` extension fallback.
 - `src/settings.ts` — `DicomSettings`: the one knob, `timeZone`, the IANA zone
@@ -39,11 +42,12 @@ carrying the one `ImagingStudy` its files make up.
   only when `AccessionNumber` is present: status completed, intent order,
   identifier = accession, code from RequestedProcedureDescription or
   StudyDescription, requester from ReferringPhysicianName:
-  `Practitioner.tryReferenceWireFromName` of the physician's given names, then family
-  name (`Smith^Jane` is `Jane Smith`, as a prescription prints it; middle
-  name, prefix and suffix left out), so the referring physician is a referent
-  the identity map can link to the same provider named elsewhere, and no
-  requester for a PN with neither; the Patient's `name` keeps the PN `text`,
+  `Practitioner.tryReferenceWireFromName` in `DICOM_PRACTITIONER_NAME_SYSTEM`
+  (`<DICOM_SYSTEM>/practitioner-name`) of the physician's given names, then
+  family name (`Smith^Jane` is `Jane Smith`, as a prescription prints it;
+  middle name, prefix and suffix left out), so the import stage implies one
+  Practitioner per name, a referent the reviewer can link to the same
+  provider named elsewhere, and no requester for a PN with neither; the Patient's `name` keeps the PN `text`,
   family first), and
   `ImagingStudy` (status available, identifier `urn:dicom:uid` /
   `urn:oid:<StudyInstanceUID>`, `started` from StudyDate+StudyTime resolved

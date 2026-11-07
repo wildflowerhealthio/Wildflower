@@ -5,12 +5,13 @@
  * changed.
  *
  * @remarks
- * A referent with a resource linked to a stored resource whose demographics
- * differ (`DifferingDemographics`) gets a warning line, and the link stands.
+ * A referent linked to a stored resource whose demographics differ
+ * (`DifferingDemographics`) gets a warning line, and the link stands.
  *
  * @packageDocumentation
  */
 
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DifferingDemographics,
   LinkChoice,
@@ -32,8 +33,8 @@ interface ReferentLine {
 
 /** Everything a group's lines are built from. */
 type ReferentLineInputs = LinkChoiceOptions.Inputs & {
-  /** The referents that write a record of their own, which every other line's "New:" options list. */
-  readonly ownRecordWritersKey: string
+  /** The choices the batch is resolved on, by `Referent.key`. */
+  readonly linkChoices: ReferentLinkChoiceSet.Type
 }
 
 /** A line with what it was built from, so the next build can keep it when that has not changed. */
@@ -44,19 +45,16 @@ interface BuiltReferentLine {
 }
 
 /**
- * The warning for a referent with a resource linked to a stored resource whose
- * demographics differ, or `None`.
+ * The warning for a referent linked to a stored resource whose demographics
+ * differ, or `None`.
  */
 const differingDemographicsWarningFor = (
   referent: Referent.Type,
   choice: LinkChoice.Type
 ): Effect.Effect<Option.Option<string>> =>
-  Option.all({
-    decoded: Option.liftPredicate(referent, Referent.is('AsResource')),
-    stored: Option.liftPredicate(choice, LinkChoice.is('LinkToStoredResource')),
-  }).pipe(
-    Effect.transposeMapOption(({ decoded, stored }) =>
-      DifferingDemographics.between(decoded.resource, stored.resource)
+  Option.liftPredicate(choice, LinkChoice.is('LinkToStoredResource')).pipe(
+    Effect.transposeMapOption((stored) =>
+      DifferingDemographics.between(referent.resource, stored.resource)
     ),
     Effect.map(
       Option.flatMap((differing) =>
@@ -70,10 +68,9 @@ const differingDemographicsWarningFor = (
 
 /**
  * Whether `before` was built from the same inputs a line with `choiceValue`
- * under `inputs` would be: its own choice, the stored list and its options,
- * the batch's referents and which of them write their own record. The
- * choices and link targets themselves change on every select, and a line
- * reads them only through those.
+ * under `inputs` would be: its own choice, and the stored list and its
+ * options. The choices themselves change on every select, and a line reads
+ * them only through its own.
  */
 const builtFromSame = (
   before: BuiltReferentLine,
@@ -81,10 +78,8 @@ const builtFromSame = (
   inputs: ReferentLineInputs
 ): boolean =>
   before.choiceValue === choiceValue &&
-  before.inputs.ownRecordWritersKey === inputs.ownRecordWritersKey &&
   before.inputs.storedOfType === inputs.storedOfType &&
-  before.inputs.onServer === inputs.onServer &&
-  before.inputs.referents === inputs.referents
+  before.inputs.onServer === inputs.onServer
 
 /**
  * The lines of `ofType` under `inputs`, each kept from `previous` when it was
@@ -97,8 +92,8 @@ const builtFromSame = (
 const buildAll = (
   ofType: readonly Referent.Type[],
   inputs: ReferentLineInputs,
-  previous: HashMap.HashMap<string, BuiltReferentLine>
-): HashMap.HashMap<string, BuiltReferentLine> => {
+  previous: HashMap.HashMap<LogicalReference.Key, BuiltReferentLine>
+): HashMap.HashMap<LogicalReference.Key, BuiltReferentLine> => {
   const entries = ofType.map((referent) => {
     const referentKey = Referent.key(referent)
     const choice = ReferentLinkChoiceSet.forReferent(inputs.linkChoices, referent)

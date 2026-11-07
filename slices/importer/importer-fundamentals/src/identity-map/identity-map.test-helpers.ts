@@ -9,6 +9,7 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   FhirResourceSchema,
+  LogicalReference,
   MedicationRequest,
   Observation,
   Patient,
@@ -16,23 +17,15 @@ import {
   type FhirResource,
   type FhirResourceWithId,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  Arbitrary,
-  Array,
-  Effect,
-  FastCheck as fc,
-  HashMap,
-  Option,
-  Schema,
-  TestContext,
-} from 'effect'
+import { Arbitrary, Array, Effect, FastCheck as fc, HashMap, Schema, TestContext } from 'effect'
 
-import * as DecodedFile from '../decoded-file.ts'
+import type * as DecodedFile from '../decoded-file.ts'
+import * as Section from '../section.ts'
+import * as SectionedList from '../sectioned-list.ts'
 import * as FileResolution from './file-resolution.ts'
 import * as LinkChoice from './link-choice.ts'
 import * as LinkPlan from './link-plan.ts'
-import * as LinkableLogicalReference from './linkable-logical-reference.ts'
-import * as LinkableResource from './linkable-resource.ts'
+import type * as LinkableResource from './linkable-resource.ts'
 import * as MentionLinkChoiceSet from './mention-link-choice-set.ts'
 import type * as ReferentLinkChoiceSet from './referent-link-choice-set.ts'
 import * as Referent from './referent.ts'
@@ -40,6 +33,7 @@ import * as UnlinkedMention from './unlinked-mention.ts'
 
 const SOURCE_PATIENT = 'https://source.example/patient-id'
 const SOURCE_PRACTITIONER = 'https://source.example/practitioner-id'
+const PRACTITIONER_NAME = 'https://source.example/practitioner-name'
 const CUSTOMER = 'https://source.example/customer-id'
 const DEVICE = 'https://device.example/id'
 const ABSOLUTE = 'https://elsewhere.example/fhir/Patient/1'
@@ -65,7 +59,7 @@ const resolveAcross = (
 ): Effect.Effect<
   {
     readonly resolvedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
-    readonly linkedRecords: readonly FileResolution.LinkedRecord[]
+    readonly linkedRecords: readonly DecodedFile.Row[]
   },
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
 > =>
@@ -95,13 +89,6 @@ const resolveOnTestClock = (
 ): DecodedFile.DecodedFile =>
   Array.headNonEmpty(resolveAcrossOnTestClock(Array.of(file), linkChoices, byMention).resolvedFiles)
 
-/** The linked records of a batch of one `file`, run on the test clock. */
-const linkedRecordsOnTestClock = (
-  file: DecodedFile.DecodedFile,
-  linkChoices: ReferentLinkChoiceSet.Type
-): readonly FileResolution.LinkedRecord[] =>
-  resolveAcrossOnTestClock(Array.of(file), linkChoices).linkedRecords
-
 /**
  * What the referent links leave unlinked in each resource of a batch of one
  * `file`, as decoded, in review order (`UnlinkedMention.leftByReferentLinks`
@@ -118,8 +105,8 @@ const leftByReferentLinksOnTestClock = (
       LinkPlan.withMentionLinkChoiceSet(onReferents, byMention)
     )
   )
-  return DecodedFile.resources(file).flatMap(({ key, resource }) =>
-    UnlinkedMention.leftByReferentLinks(plan, key, resource)
+  return SectionedList.rows(file.sectionedList).flatMap(({ reviewable, resource }) =>
+    UnlinkedMention.leftByReferentLinks(plan, reviewable.key, resource)
   )
 }
 
@@ -135,9 +122,13 @@ const wireOf = (resource: FhirResource): string => JSON.stringify(encodeResource
 /** A decoded file as wire JSON text, keys and titles included. */
 const fileWireOf = (file: DecodedFile.DecodedFile): string =>
   JSON.stringify(
-    file.sections.map((section) => ({
+    file.sectionedList.sections.map((section) => ({
       title: section.title,
-      resources: section.resources.map((entry) => [entry.key, entry.title, wireOf(entry.resource)]),
+      rows: section.rows.map((row) => [
+        row.reviewable.key,
+        row.reviewable.title,
+        wireOf(row.resource),
+      ]),
     }))
   )
 
@@ -224,7 +215,7 @@ const customerSubject = (customerId: string): object => ({
 /** A Shoppers-style `requester`: a logical reference to a prescriber known only by name. */
 const namedRequester = (name: string): object => ({
   type: 'Practitioner',
-  identifier: { system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: name },
+  identifier: { system: PRACTITIONER_NAME, value: name },
   display: name,
 })
 
@@ -262,16 +253,19 @@ const observation = (
 
 /** A decoded file of one section, keyed `k-<index>`. */
 const fileOf = (...resources: readonly FhirResourceWithId[]): DecodedFile.DecodedFile => ({
-  sections: [
-    {
-      title: 'Resources',
-      resources: resources.map((resource, index) => ({
-        key: `k-${index}`,
-        title: `${resource.resourceType}/${resource.id}`,
+  sectionedList: SectionedList.make([
+    Section.make(
+      'Resources',
+      resources.map((resource, index) => ({
+        reviewable: {
+          key: `k-${index}`,
+          title: `${resource.resourceType}/${resource.id}`,
+          origin: 'Decoded',
+        },
         resource,
-      })),
-    },
-  ],
+      }))
+    ),
+  ]),
   notes: [],
 })
 
@@ -282,6 +276,25 @@ const storedOf = (resource: FhirResourceWithId): LinkableResource.WithId => {
   }
   return resource
 }
+
+/** The key of the logical reference to the `resourceType` record named `value` in `system`. */
+const keyOf = (
+  resourceType: 'Patient' | 'Practitioner',
+  system: string,
+  value: string
+): LogicalReference.Key =>
+  LogicalReference.key(
+    LogicalReference.make(resourceType, {
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(system),
+      type: null,
+      use: null,
+      value,
+    })
+  )
 
 const POOL = ['a', 'b'] as const
 const NAMES = ['Dr. A Smith', 'Dr. B Jones'] as const
@@ -295,11 +308,9 @@ const STORED_SMITH = storedOf(practitioner('sp-1', 'Dr. A Smith', DEVICE))
 const STORED: readonly LinkableResource.WithId[] = [STORED_TYRA, STORED_JAN, STORED_SMITH]
 
 /** Every referent key a generated file can hold. */
-const POOL_KEYS: readonly string[] = [
-  ...POOL.map((value) => `Patient|${SOURCE_PATIENT}|${value}`),
-  ...POOL.map((value) => `Patient|${CUSTOMER}|c-${value}`),
-  ...POOL.map((value) => `Practitioner|${SOURCE_PRACTITIONER}|pr-${value}`),
-  ...NAMES.map((name) => `Practitioner|${Practitioner.NAME_IDENTIFIER_SYSTEM}|${name}`),
+const POOL_KEYS: readonly LogicalReference.Key[] = [
+  ...POOL.map((value) => keyOf('Patient', SOURCE_PATIENT, value)),
+  ...POOL.map((value) => keyOf('Practitioner', SOURCE_PRACTITIONER, `pr-${value}`)),
 ]
 
 const valueArbitrary = fc.constantFrom(...POOL)
@@ -354,25 +365,21 @@ const fileArbitrary: fc.Arbitrary<DecodedFile.DecodedFile> = fc
   .chain((resources) =>
     fc.integer({ min: 0, max: resources.length }).map((split) => {
       const file = fileOf(...resources)
-      const entries = file.sections.flatMap((section) => section.resources)
+      const rows = SectionedList.rows(file.sectionedList)
       return {
         ...file,
-        sections: [
-          { title: 'First', resources: entries.slice(0, split) },
-          { title: 'Second', resources: entries.slice(split) },
-        ],
+        sectionedList: SectionedList.make([
+          Section.make('First', rows.slice(0, split)),
+          Section.make('Second', rows.slice(split)),
+        ]),
       }
     })
   )
 
 const anyChoiceArbitrary: fc.Arbitrary<LinkChoice.Type> = fc.oneof(
   fc.constant(LinkChoice.CreateResource()),
-  fc.constant(LinkChoice.DontLink()),
   fc.constantFrom(...STORED).map((resource) => LinkChoice.LinkToStoredResource({ resource })),
-  fc.constantFrom(...STORED).map((resource) => LinkChoice.UpdateStoredResource({ resource })),
-  fc
-    .constantFrom(...POOL_KEYS)
-    .map((referentKey) => LinkChoice.LinkToDecodedReferent({ referentKey }))
+  fc.constantFrom(...STORED).map((resource) => LinkChoice.UpdateStoredResource({ resource }))
 )
 
 /** Generated choices over the pool's keys, any choice on any referent, impossible ones included. */
@@ -400,37 +407,17 @@ const storedCopyOf = (decoded: LinkableResource.WithId): LinkableResource.WithId
   ],
 })
 
-/** A choice `referent` can take, linking only to referents of `referents`. */
-const choiceForArbitrary = (
-  referent: Referent.Type,
-  referents: readonly Referent.Type[]
-): fc.Arbitrary<LinkChoice.Type> => {
-  const { type } = referent.logicalReference
-  const linkToStoredResource = fc
-    .constantFrom(...STORED.filter((stored) => stored.resourceType === type))
-    .map((resource) => LinkChoice.LinkToStoredResource({ resource }))
-  return Referent.match(referent, {
-    AsResource: ({ resource }) =>
-      fc.oneof(
-        fc.constant(LinkChoice.CreateResource()),
-        fc.constant(LinkChoice.UpdateStoredResource({ resource: storedCopyOf(resource) })),
-        linkToStoredResource
-      ),
-    ByMentionOnly: ({ logicalReference }) =>
-      fc.oneof(
-        fc.constant(LinkChoice.DontLink()),
-        linkToStoredResource,
-        fc
-          .constantFrom(
-            ...referents.filter((linked) => linked.logicalReference.type === type).map(Referent.key)
-          )
-          .map((referentKey) => LinkChoice.LinkToDecodedReferent({ referentKey })),
-        ...(Option.isSome(LinkableResource.tryProvisionalFrom(logicalReference))
-          ? [fc.constant(LinkChoice.CreateResource())]
-          : [])
-      ),
-  })
-}
+/** A choice `referent` can take. */
+const choiceForArbitrary = (referent: Referent.Type): fc.Arbitrary<LinkChoice.Type> =>
+  fc.oneof(
+    fc.constant(LinkChoice.CreateResource()),
+    fc.constant(LinkChoice.UpdateStoredResource({ resource: storedCopyOf(referent.resource) })),
+    fc
+      .constantFrom(
+        ...STORED.filter((stored) => stored.resourceType === referent.logicalReference.resourceType)
+      )
+      .map((resource) => LinkChoice.LinkToStoredResource({ resource }))
+  )
 
 /** Generated choices every referent of `file` can take, or none for some. */
 const choicesForArbitrary = (
@@ -441,7 +428,7 @@ const choicesForArbitrary = (
     .tuple(
       ...referents.map((referent) =>
         fc
-          .option(choiceForArbitrary(referent, referents), { nil: undefined })
+          .option(choiceForArbitrary(referent), { nil: undefined })
           .map((choice) => ({ referentKey: Referent.key(referent), choice }))
       )
     )
@@ -460,94 +447,12 @@ const fileWithChoicesArbitrary: fc.Arbitrary<{
   readonly choices: ReferentLinkChoiceSet.Type
 }> = fileArbitrary.chain((file) => choicesForArbitrary(file).map((choices) => ({ file, choices })))
 
-/**
- * Whether a mention of `file` is one several of its decoded resources answer
- * to and none is keyed by. On the decoded file it is a referent of its own;
- * once those resources resolve to one stored resource, that resource alone
- * answers to it, so the resolved file has a referent fewer.
- */
-const hasMentionSeveralResourcesAnswerTo = (file: DecodedFile.DecodedFile): boolean => {
-  const referents = discoverOnTestClock(file)
-  const answeredKeys = referents
-    .filter(Referent.is('AsResource'))
-    .flatMap((referent) => Referent.logicalReferencesOf(referent).map(LinkableLogicalReference.key))
-  return referents
-    .filter(Referent.is('ByMentionOnly'))
-    .some(
-      (referent) =>
-        answeredKeys.filter((answeredKey) => answeredKey === Referent.key(referent)).length > 1
-    )
-}
-
-/**
- * Whether following the `LinkToDecodedReferent` choices of `choices` from
- * some referent comes back to it. A cycle links its members to a provisional
- * resource, which the resolved file then holds as a resource keyed by one of
- * them, whose `LinkToDecodedReferent` no longer fits it.
- */
-const hasLinkCycle = (choices: ReferentLinkChoiceSet.Type): boolean =>
-  [...HashMap.keys(choices)].some((startKey) => {
-    const walked = new Set<string>()
-    let referentKey = startKey
-    for (;;) {
-      const choice = HashMap.get(choices, referentKey)
-      if (Option.isNone(choice) || !LinkChoice.is('LinkToDecodedReferent')(choice.value)) {
-        return false
-      }
-      if (walked.has(referentKey)) return true
-      walked.add(referentKey)
-      referentKey = choice.value.referentKey
-    }
-  })
-
-/**
- * Whether a mention of `file` names something a stored resource `choices`
- * link to answers to, by an identifier it carries or derives (a provider's
- * printed name). On the decoded file the mention is a referent of its own;
- * once the stored resource stands in the resolved file, it answers to it.
- */
-const hasMentionALinkedStoredResourceAnswersTo = (
-  file: DecodedFile.DecodedFile,
-  choices: ReferentLinkChoiceSet.Type
-): boolean => {
-  const storedAnswerKeys = [...HashMap.values(choices)]
-    .filter(LinkChoice.is('LinkToStoredResource'))
-    .flatMap(({ resource }) =>
-      [
-        ...resource.identifier,
-        ...Option.toArray(runOnTestClock(LinkableResource.maybeDerivedIdentifier(resource))),
-      ].flatMap((identifier) =>
-        Option.toArray(
-          LinkableLogicalReference.tryFromIdentifier(resource.resourceType, identifier)
-        )
-      )
-    )
-    .map(LinkableLogicalReference.key)
-  return discoverOnTestClock(file)
-    .filter(Referent.is('ByMentionOnly'))
-    .some((referent) => storedAnswerKeys.includes(Referent.key(referent)))
-}
-
-/**
- * A generated decoded file and choices whose resolved file has the decoded
- * file's referents, of the same kinds, so the choices apply to it as they did
- * to the decoded one. That rules out a link cycle ({@link hasLinkCycle}), a
- * mention several decoded resources answer to
- * ({@link hasMentionSeveralResourcesAnswerTo}), and a mention a linked stored
- * resource answers to ({@link hasMentionALinkedStoredResourceAnswersTo}).
- */
-const fileWithReapplicableChoicesArbitrary = fileWithChoicesArbitrary.filter(
-  ({ file, choices }) =>
-    !hasLinkCycle(choices) &&
-    !hasMentionSeveralResourcesAnswerTo(file) &&
-    !hasMentionALinkedStoredResourceAnswersTo(file, choices)
-)
-
 export {
   ABSOLUTE,
   CUSTOMER,
   DEVICE,
   SOURCE_PATIENT,
+  PRACTITIONER_NAME,
   SOURCE_PRACTITIONER,
   STORED,
   STORED_JAN,
@@ -562,9 +467,8 @@ export {
   fileOf,
   fileWireOf,
   fileWithChoicesArbitrary,
-  fileWithReapplicableChoicesArbitrary,
+  keyOf,
   leftByReferentLinksOnTestClock,
-  linkedRecordsOnTestClock,
   literalSubject,
   resolveAcross,
   namedRequester,

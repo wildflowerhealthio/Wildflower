@@ -4,13 +4,14 @@ import {
   type FormatKind,
   type LeftUnlinked,
   leftUnlinkedIn,
+  type ReviewGroup,
 } from '@wildflowerhealthio/importer-core'
 import {
-  type FormatDecode,
-  DecodedFile,
+  type DecodedFile,
   LinkChoice,
   type LinkPlan,
   Mention,
+  SectionedList,
   StagedImport,
   type UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -90,9 +91,13 @@ const perTypeTallies = (
 ): readonly TypeTally[] => {
   const order: string[] = []
   const totals = new Map<string, { total: number; excluded: number }>()
-  for (const resource of DecodedFile.resources(decodedFile)) {
-    const type = resourceTypeOf(resource.resource)
-    const excluded = StagedImport.isResourceIncluded(selection, excludedByDefault, resource.key)
+  for (const row of SectionedList.rows(decodedFile.sectionedList)) {
+    const type = resourceTypeOf(row.resource)
+    const excluded = StagedImport.isResourceIncluded(
+      selection,
+      excludedByDefault,
+      row.reviewable.key
+    )
       ? 0
       : 1
     const bucket = totals.get(type)
@@ -371,7 +376,7 @@ const ResourceRow = ({
  * the format's diagnostic notes folded into a collapsed details block.
  */
 const FormatReviewBody = ({
-  result,
+  reviewGroup,
   selection,
   excludedByDefault,
   comparisons,
@@ -383,7 +388,8 @@ const FormatReviewBody = ({
   onEditResource,
   onChooseMention = chooseNothing,
 }: {
-  readonly result: FormatDecode.Result<string>
+  /** The format's review group, its decoded file resolved. */
+  readonly reviewGroup: ReviewGroup.Type
   readonly selection: StagedImport.Selection
   /** The keys of the rows that are out unless the reviewer ticks them. */
   readonly excludedByDefault: ReadonlySet<string>
@@ -401,27 +407,30 @@ const FormatReviewBody = ({
   /** The identity map's action a pick drives. */
   readonly onChooseMention?: ChooseMention
 }): JSX.Element => {
-  const { sections, notes } = result.decoded
+  const { sectionedList, notes } = reviewGroup.decodedFile
   const tallies = useMemo(
-    () => perTypeTallies(result.decoded, selection, excludedByDefault),
-    [result.decoded, selection, excludedByDefault]
+    () => perTypeTallies(reviewGroup.decodedFile, selection, excludedByDefault),
+    [reviewGroup.decodedFile, selection, excludedByDefault]
   )
   const leftUnlinked = useMemo(() => leftUnlinkedIn(plan, kind), [plan, kind])
   const unlinked = useMemo(
     () => unlinkedInRows(decodedFile, selection, leftUnlinked),
     [decodedFile, selection, leftUnlinked]
   )
-  const groups = useMemo(() => groupsOf(result.decoded, unlinked), [result.decoded, unlinked])
+  const groups = useMemo(
+    () => groupsOf(reviewGroup.decodedFile, unlinked),
+    [reviewGroup.decodedFile, unlinked]
+  )
 
   // A pick is a mention link choice, which the resolved row, and its edit
   // override resolved on the plan, follow.
   const pick = (
-    { key }: DecodedFile.Resource,
+    { reviewable }: DecodedFile.Row,
     mention: Mention.Linkable,
     picked: Option.Option<MentionLinkOptions.Option>
   ): void =>
     onChooseMention(
-      key,
+      reviewable.key,
       mention.path,
       Option.match(picked, {
         onNone: (): LinkChoice.MentionLinkChoice => LinkChoice.DontLink(),
@@ -429,14 +438,14 @@ const FormatReviewBody = ({
       })
     )
 
-  const renderRow = (entry: DecodedFile.Resource, listsReason: boolean): JSX.Element => (
+  const renderRow = (row: DecodedFile.Row, listsReason: boolean): JSX.Element => (
     <ResourceRow
-      key={entry.key}
-      resourceKey={entry.key}
-      reviewed={StagedImport.resolvedResourceOf(plan, selection, entry)}
-      included={StagedImport.isResourceIncluded(selection, excludedByDefault, entry.key)}
-      isEdited={StagedImport.isResourceEdited(selection, entry.key)}
-      comparison={comparisons?.get(entry.key)}
+      key={row.reviewable.key}
+      resourceKey={row.reviewable.key}
+      reviewed={StagedImport.resolvedResourceOf(plan, selection, row)}
+      included={StagedImport.isResourceIncluded(selection, excludedByDefault, row.reviewable.key)}
+      isEdited={StagedImport.isResourceEdited(selection, row.reviewable.key)}
+      comparison={comparisons?.get(row.reviewable.key)}
       mentionLinkOptions={mentionLinkOptions}
       unlinked={unlinked}
       leftUnlinked={leftUnlinked}
@@ -447,18 +456,18 @@ const FormatReviewBody = ({
       onEdit={onEditResource}
       onRevert={(key) => onSelectionChange(StagedImport.revert(selection, key))}
       onKeepServerValue={(key, next) => onSelectionChange(StagedImport.edit(selection, key, next))}
-      onPick={(mention, picked) => pick(entry, mention, picked)}
+      onPick={(mention, picked) => pick(row, mention, picked)}
     />
   )
   const unlinkedGroup = (
     heading: string,
-    listed: readonly DecodedFile.Resource[]
+    listed: readonly DecodedFile.Row[]
   ): JSX.Element | null =>
     listed.length === 0 ? null : (
       <section aria-label={heading} className={styles['review-body__unlinked']}>
         <h4 className={styles['review-body__unlinked-heading']}>{heading}</h4>
         <ul className={styles['review-body__resource-list']}>
-          {listed.map((entry) => renderRow(entry, true))}
+          {listed.map((row) => renderRow(row, true))}
         </ul>
       </section>
     )
@@ -471,38 +480,38 @@ const FormatReviewBody = ({
       )}
       {unlinkedGroup(NEEDS_A_PATIENT_HEADING, groups.needingPatient)}
       {unlinkedGroup(NEEDS_A_PROVIDER_HEADING, groups.needingProvider)}
-      {sections.length === 0 && result.unreadableFiles.length === 0 && (
+      {sectionedList.sections.length === 0 && reviewGroup.unreadableFiles.length === 0 && (
         <p className={styles['review-body__empty']}>{NO_RESOURCES_MESSAGE}</p>
       )}
-      {result.unreadableFiles.length > 0 && (
+      {reviewGroup.unreadableFiles.length > 0 && (
         <ul className={styles['review-body__note-list']}>
-          {result.unreadableFiles.map((file) => (
+          {reviewGroup.unreadableFiles.map((file) => (
             <li key={file.id} className={styles['review-body__note']}>
               {file.title}: {UNREADABLE_FILE_MESSAGE}
             </li>
           ))}
         </ul>
       )}
-      {sections.map((section) => (
+      {sectionedList.sections.map((section) => (
         <section
           // A resource key is namespaced by the file it came from
           // (`FormatDecode.keyPrefix`), so it is unique across the format —
           // which lets a section's first resource identify it even when two
           // files contribute sections of the same title.
-          key={section.resources[0]?.key ?? section.title}
+          key={section.rows[0]?.reviewable.key ?? section.title}
           className={styles['review-body__section']}
           aria-label={section.title}
         >
           <SectionToggle
             title={section.title}
-            keys={section.resources.map((resource) => resource.key)}
+            keys={section.rows.map((row) => row.reviewable.key)}
             isIncluded={(key) => StagedImport.isResourceIncluded(selection, excludedByDefault, key)}
             onSetIncluded={(keys, included) => {
               onSelectionChange(StagedImport.setResourcesIncluded(selection, keys, included))
             }}
           />
           <ul className={styles['review-body__resource-list']}>
-            {section.resources.map((entry) => renderRow(entry, false))}
+            {section.rows.map((row) => renderRow(row, false))}
           </ul>
         </section>
       ))}

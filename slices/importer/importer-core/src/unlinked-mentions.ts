@@ -1,6 +1,5 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  DecodedFile,
   type LinkPlan,
   Mention,
   StagedImport,
@@ -10,6 +9,7 @@ import { Option, pipe } from 'effect'
 
 import type { FormatKind } from './registry.ts'
 import { isSourceFileOf, type ResolvedBatch } from './resolve-mentions.ts'
+import * as ReviewGroup from './review-group.ts'
 
 /**
  * What the referent links leave unlinked in a format's rows, and the rows
@@ -67,13 +67,14 @@ const keysWithoutPatientOf = (
 ): ReadonlySet<string> => {
   const leftUnlinked = leftUnlinkedIn(batch.plan, kind)
   return new Set(
-    DecodedFile.resources(batch.formats[kind].decoded)
-      .filter((entry) =>
-        leftUnlinked(entry.key, StagedImport.resolvedResourceOf(batch.plan, selection, entry)).some(
-          isOfPatient
-        )
+    ReviewGroup.rows(ReviewGroup.get(batch.groups, kind))
+      .filter((row) =>
+        leftUnlinked(
+          row.reviewable.key,
+          StagedImport.resolvedResourceOf(batch.plan, selection, row)
+        ).some(isOfPatient)
       )
-      .map(({ key }) => key)
+      .map(({ reviewable }) => reviewable.key)
   )
 }
 
