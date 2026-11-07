@@ -67,11 +67,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   describes a _component_, not the importer value.
 - `src/format-decode.ts` — the **`FormatDecode`** namespace: **`Decoded<K>`**
   (what a format's `decode` returns: its files, its **`DecodedFileSet`**s
-  apart, and its **`UnreadableFile`** rows), **`Result<K>`** (one format's
-  imported decode, as `importer-core`'s import stage makes it: its id, title,
-  files, merged `DecodedFile` and unreadable rows), **`makeUnreadableFile`** (the
-  row one pick is reported as), **`emptyResult`** for a format that claimed
-  nothing, and the identity derivations every id and review key is built from.
+  apart, and its **`UnreadableFile`** rows), **`makeUnreadableFile`** (the
+  row one pick is reported as), **`titleOf`** (the title a format's picks are
+  reported under), and the identity derivations every id and review key is
+  built from.
   All three read a picked file's **`id`** — minted once, over the whole batch in
   pick order, by `importer-core`'s `readBatch`, so two picks of the same name
   (two `report.pdf`s out of two folders) stay distinct and a settings re-decode
@@ -131,8 +130,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   **`namespaceKeys(decoded, prefix)`** prefixes every entry's `fullUrl`;
   **`unidentified(pickedFile)`** is a picked file identifying as nothing.
   **`adopt({ sections, notes }, mintId?)`** is how the import stage makes a
-  decode's records the device's own, as a `DecodedFile`, in five named
-  steps. It plans every entry (`planEntries`: `ResourcePlan.make`, each plan
+  decode's records the device's own, an Effect of a `DecodedFile` failing
+  with the `ParseError` an implied record's schema rejects it with, in five
+  named steps. It plans every entry (`planEntries`: `ResourcePlan.make`, each plan
   kept beside its entry, every one `Decoded`). It implies the records the
   set's references name and no record of the set is (`impliedSectionOf`, a
   pipeline over the set's references, `ResourceReferences.collect`: each
@@ -147,8 +147,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   entry for each qualified identifier of a keyed record, its key and every
   other, each resolving to its plan's literal reference: the one place that
   decides which identifiers resolve; a keyless record's identifiers stay
-  out), then runs `fhir-r4-adoption`'s `adopt` over each record with that
-  reference plan and its plan's `id` (`adoptEntries`), each a
+  out) and puts it in force (`Effect.provideService` of
+  `ReferencePlan.InForce`, so every adoption step reads it from the
+  environment and none takes it as a parameter), then runs
+  `fhir-r4-adoption`'s `adopt` over each record with that reference plan and
+  its plan's `id` (`adoptEntries`, over `SectionedList.forEach`), each a
   `DecodedFile.Row` whose reviewable keeps its entry's **`origin`**. So a keyed record lands on the id its
   key derives, a keyless one on an id `mintId` mints (a random UUID unless a
   test injects one), in entry order, and a logical reference resolves when
@@ -309,11 +312,13 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `subject` that states none, a `Patient` (FHIR's Patient
     CompartmentDefinition names `subject` for every type the importer
     handles), an empty `subject` slot included as an empty reference;
-    `linkableTypeOf` is that type. **`relinked`** is the resource with the
-    mention at a path redirected to a literal reference, or, for `None`, with its
-    literal dropped, keeping its `identifier` and `display` and changing
-    nothing when the mention would then name nothing; it fills an empty
-    `subject` slot.
+    `linkableTypeOf` is that type, and **`emptySubject`** an empty `subject`
+    slot as a linkable mention. **`relinkedLiteral`** is the literal a
+    relinked mention is written with: the one given, or, for `None`, `null`,
+    its literal dropped, unless the mention would then name nothing, when it
+    is left. **`relinked`** is the resource with the mention at a path
+    relinked so (`ReferenceRewrite.apply`), keeping its `identifier` and
+    `display`; it fills an empty `subject` slot, which no rewrite reaches.
   - **`Referent`** — a Patient or Practitioner the import holds a record
     of, which may already exist on the device, once per identity: its
     decoded `resource` (keyed by its `identifier[0]`), carrying every
@@ -332,7 +337,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     one referent, and a copy a file decoded is taken over an implied one by
     its reviewable's `origin`), and fails with **`DuplicateReferent`** when two resources
     under different ids, in one file or two, share a key; `byKey` indexes
-    into a `HashMap`.
+    into a `HashMap`. A referent's **`key`** is its `LogicalReference.Key`,
+    so every map by referent takes no other string.
   - **`LinkChoiceSet`** — the reviewer's whole answer (**`Type`**,
     `{ byReferent, byMention }`; `empty`): what the screen holds and a batch
     is resolved on.
@@ -402,7 +408,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     literal reference they redirect to and makes one per group, in the order
     the links first reach it.
   - **`MentionLink`** — a mention the reviewer chose a link for on its own
-    (`reviewKey`, `path`) with its link target. **`fromChoices(links,
+    (`reviewKey`, `path`) with its link target. **`fromChoices(linksByReferent,
     byMention)`** makes them from the link choice set by mention: a
     `LinkToStoredResource` that stored resource, a `LinkToDecodedReferent`
     its referent's link target (none when that referent is not in the
@@ -412,10 +418,17 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   - **`LinkPlan`** — the theory the identity map is coded to: the reviewer's
     choices become links, the links are the plan, the plan resolves the
     batch, and the screen offers what the plan will write. The plan
-    (**`Type`**) is three lists: **`links`**, **`mentionLinks`** and
-    **`resolvedResources`**; outside the module it is read only through its
-    questions, each a search over those lists. **`make(decodedFiles,
-    byReferent)`** makes the links once per batch over its referents
+    (**`Type`**) is built from three lists (**`Lists`**: **`links`**,
+    **`mentionLinks`** and **`resolvedResources`**) by **`fromLists`**,
+    keeping the links and the resolved resources in their walk order and
+    indexing each question by the key it asks with: links by referent key
+    (`Referent.key`), links by every logical reference a referent answers to
+    (`Referent.logicalReferencesOf`), the stored stand-in by the decoded
+    resource's literal reference, mention links by
+    `MentionLinkChoiceSet.key`, and resolved resources by the literal
+    reference each is written under, the first entry under a key kept.
+    Outside the module it is read only through its questions.
+    **`make(decodedFiles, byReferent)`** makes the links once per batch over its referents
     (`Referent.discover`), so a referent one file holds is the link target
     of a mention in another, and the resolved
     resources they redirect to (`ResolvedResource.fromLinks`);
@@ -438,15 +451,17 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     Practitioner) and **`resolvedResources`** (every resolved resource).
   - **`FileResolution`** — pure, every function taking the plan first, since
     it is fixed for a batch: **`resolveFile(plan)`** writes each decoded
-    resource of one file (`SectionedList.map`) as the resolved
+    resource of one file (`SectionedList.modify`) as the resolved
     resource `LinkPlan.resolvedResourceIfReferent` has for it, titled by its
     label when it replaces the decoded one under another id, else as decoded,
-    its mentions redirected to their referents' link targets either way
-    (`ResourceReferences.mapReferences`, keeping `display` and `identifier`),
-    then each the reviewer chose a link for under the row's review key
-    redirected where that choice says (`Mention.relinked`: on the chosen
+    its references rewritten either way by one `ReferenceRewrite` per row,
+    keeping `display` and `identifier`: each mention the reviewer chose a
+    link for under the row's review key where that choice says (on the chosen
     resource's literal reference, or, for `Unlinked`, with its literal
-    dropped; an empty `subject` slot chosen for is filled);
+    dropped, `Mention.relinkedLiteral`), over every other reference that
+    names a referent, redirected to its link target
+    (`LinkPlan.redirectionIfLinked`); an empty `subject` slot chosen for is
+    filled;
     **`resolveEdit(plan, reviewKey)`**: the reviewer's edit of the row
     reviewed under that key with its mentions redirected the same way, never
     replaced by a resolved resource, so an edit naming a decoded record a
@@ -637,8 +652,8 @@ but `fhir-r4-adoption`.
   label, the stored resource assuming the referent's identifiers and its own
   derived one and keeping its demographics byte for byte; every mention of
   the referent, a literal `Type/<decoded id>` or a logical reference, is
-  redirected through `ResourceReferences.mapReferences`, keeping its `display` and
-  `identifier`; a resolved resource no resolved file holds (a decoded record
+  redirected by the row's reference rewrite (`ReferenceRewrite.apply`),
+  keeping its `display` and `identifier`; a resolved resource no resolved file holds (a decoded record
   whose id a stored one stands in for under another key) is one of the
   batch's **linked records**, held once for the batch and in no file, so the
   review shows it and the identifiers it assumed; a decoded resource that is its referent's link target is

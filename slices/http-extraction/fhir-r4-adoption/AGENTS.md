@@ -36,11 +36,12 @@ vocabulary) stays FHIR-free and below it.
   relative or under `<baseUrl>/`, into the logical reference to its target by
   key, replacing any identifier the server had put on it; any other reference
   (a non-R4 token like carebook's `PrescriptionOrder` included) keeps its
-  spelling and identifier. It keeps the resource's own type. Both
-  `fromServerRecord` and `adopt` walk a record's references with `fhir-r4`'s
-  `ResourceReferences.mapReferences`, which reaches every reference at any
-  depth (an `Identifier.assigner` included); the import stage reads them
-  with `ResourceReferences.collect`.
+  spelling and identifier. It keeps the resource's own type.
+  `fromServerRecord` walks a record's references with `fhir-r4`'s
+  `ResourceReferences.mapReferences`, and `adopt` with `ReferenceRewrite.apply`
+  over it; both reach every reference at any depth (an `Identifier.assigner`
+  included), and the import stage reads them with
+  `ResourceReferences.collect`.
 - `src/reference-plan.ts` — the **`ReferencePlan`** namespace, a plain data
   structure: for each logical reference (`fhir-r4`'s **`LogicalReference`**,
   a resource type and one qualified identifier), the literal reference it
@@ -57,17 +58,22 @@ vocabulary) stays FHIR-free and below it.
   set holds, which the import stage implies no record for.
   **`literalReferenceIfResolved(plan, reference)`** is what a reference
   resolves to: `None` unless it is a logical reference
-  (`LogicalReference.tryFromReference`) `literalReferenceFor` resolves.
-  `adopt` writes it, and the import stage reads it to ask whether a
-  reference names a record of the set.
+  (`LogicalReference.tryFromReference`) `literalReferenceFor` resolves; the
+  import stage reads it to ask whether a reference names a record of the
+  set. **`toRewrite(plan)`** is the plan as a `fhir-r4` `ReferenceRewrite`:
+  each logical reference it resolves pointed at its literal reference, every
+  other left; `adopt` rewrites by it. Its literal references are keyed by
+  `LogicalReference.Key`. **`InForce`** is the `Context.Tag` of the plan a
+  file set's records are adopted by: the import stage builds the plan once
+  and provides it, and every adoption step reads it from the environment.
 - `src/adopt-resource.ts` — `adopt(referencePlan)(record, id)` stores a
   record under the id it is given (the import stage's resource plan decides
   it: `localResourceId(key.system, Type, key.value)` for a keyed record, a
   minted one for a keyless record, `randomResourceId`, a UUID, outside
-  tests), and resolves a logical reference to the literal reference
-  `ReferencePlan.literalReferenceIfResolved` gives it, keeping `type` and
-  `identifier`; one the plan does not resolve
-  stays logical, for the importer's identity map.
+  tests), and rewrites its references by `ReferencePlan.toRewrite`: a
+  logical reference the plan resolves gets the literal reference it gives,
+  keeping `type` and `identifier`; one the plan does not resolve stays
+  logical, for the importer's identity map.
   `adoptedReferenceOf(system, Type, id)` is the literal reference the
   import stores the record with that key under, for a resource written
   outside that source; `originalIdOf(system, resource)` reads the value of a
@@ -82,7 +88,8 @@ decoder writes its records with it: the source packages' response kinds
 records, the rest writing them detached) and the file importers
 (`dicom-importer-core`, `lifelabs-pdf-importer-core`).
 `importer-fundamentals`' `ResourcePlan` keys a file set's records with it and
-`DecodedFileSet.adopt` builds the set's `ReferencePlan` and adopts with it, and
+`DecodedFileSet.adopt` builds the set's `ReferencePlan`, puts it in force
+(`ReferencePlan.InForce`) and adopts with it, and
 the synthetic-data generators spell references with it. It must never import
 from `slices/importer` or `http-extraction-fundamentals`, so `adopt` takes the
 import stage's decisions as plain inputs (an id, and a `ReferencePlan` of

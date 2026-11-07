@@ -318,9 +318,11 @@ of its own, and the identity map treats it as any decoded record.
 
 ### The reference walk
 
-`fromServerRecord` and `adopt` rewrite a resource's references with
-`fhir-r4`'s `ResourceReferences.mapReferences`, and the import stage reads
-them with `ResourceReferences.collect`. It is a structural walk: it finds
+`fromServerRecord` rewrites a resource's references with `fhir-r4`'s
+`ResourceReferences.mapReferences`; `adopt` with a `ReferenceRewrite` (the
+reference plan's, `ReferencePlan.toRewrite`), which gives each reference only
+its new literal reference and walks with `mapReferences` too. The import
+stage reads them with `ResourceReferences.collect`. It is a structural walk: it finds
 every decoded `Reference` by `fhir-r4`'s own `Reference` schema, at any
 depth, so `note[].authorReference` (`Annotation.author[x]`, one level down
 inside an array), a nested `PlanDefinition.action[].subjectReference`, an

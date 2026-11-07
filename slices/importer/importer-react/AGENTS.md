@@ -34,8 +34,8 @@ walkthrough itself is the host's.
 [slices/AGENTS.md](../../../slices/AGENTS.md): it depends on its sources, never the reverse.
 It depends on `importer-core` (the importer registry, `readBatch` /
 `redecodeFormat` / `claimedFormats` / `planWrite`, and the
-`DecodedBatch` model), `importer-fundamentals` (the `PickedFile`
-vocabulary, the `FormatDecode.Result` and `DecodedFile` shapes, and the pure
+`DecodedBatch` and `ReviewGroup` model), `importer-fundamentals` (the `PickedFile`
+vocabulary, the `FormatDecode` and `DecodedFile` shapes, and the pure
 `StagedImport` model), each format's
 React package for its settings picker only (`lifelabs-pdf-importer-react`,
 `dicom-importer-react`; HAR has no settings and no React package), `fhir-r4`
@@ -239,8 +239,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   `claimedFormats` entry, its settings form (the registry's own
   `SettingsPicker`, indexed by the format tag, in its box; neither for a
   format with no picker) over that format's sectioned,
-  per-resource review — then the batch's **linked records** (`batch.linkedRecords`,
-  the records it names but holds no copy of, as the referent rows link them)
+  per-resource review — then the batch's **linked records** (the linked
+  records' group, `ReviewGroup.LINKED`, the records it names but holds no
+  copy of, as the referent rows link them)
   read-only with their diff badge and no toggle or edit, under one shared
   confirm, gated on the batch writing at least one resource. The panel's
   counts come off `importer-core`'s `planWrite`, the plan the confirm
@@ -251,7 +252,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   linked group's `unchangedKeysOf`); otherwise every stored copy,
   whatever the reviewer excluded, since the link choice is the consent to
   it. The diff keys its verdicts by
-  `importer-core`'s `ReviewGroup`, a format or `LINKED_GROUP`, so the linked
+  `importer-core`'s `ReviewGroup.Key`, a format or `ReviewGroup.LINKED`, so the linked
   records' badges are their own. It is the
   panel, the actions and the editor dialog only; the review body it renders
   per format is
@@ -263,7 +264,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   referent links leave a mention unlinked in again
   (`UnlinkedMention.leftByReferentLinks` on the batch's plan, asked by
   `unlinked-mentions.ts` of each row as edited, else as decoded in the
-  batch's `decodedBatch`, a format's own source file never),
+  batch's `decoded`, a format's own source file never),
   under **Needs a patient** (an unlinked or empty `subject`) or else **Needs
   a provider**, each with why in one phrase ("names no patient", "names an
   account you chose not to link", "names a provider you chose not to link",

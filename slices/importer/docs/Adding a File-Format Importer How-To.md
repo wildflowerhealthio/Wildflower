@@ -379,7 +379,7 @@ a file without naming your settings type.
 ## 6. Register
 
 **The importer half, in `importer-core`.** Add the binding package as a
-dependency of `importer-core`, run `vp install`, and extend four constructs —
+dependency of `importer-core`, run `vp install`, and extend three constructs —
 all mapped or exhaustive types over `FormatKind`, so a format missed in any of
 them **fails to compile**:
 
@@ -387,9 +387,6 @@ them **fails to compile**:
    settings type.
 2. **`formatRegistry`** (`registry.ts`) — the literal registry of importers.
 3. **`defaultFormatSettings`** (`registry.ts`) — the default settings record.
-4. **`collectFormats`** (`read-batch.ts`) — the one place that names every
-   format literally, because TypeScript drops the correlation between a
-   computed union key and its value (its remarks explain why).
 
 `formatKinds` does **not** need an entry — it is derived from `formatRegistry`.
 

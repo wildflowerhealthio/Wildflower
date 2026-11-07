@@ -85,12 +85,14 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   its own settings and imports it through `importDecoded` — the import stage,
   the one place a detached record is adopted, a source file is minted and
   `meta.source` is stamped — `readBatch` yields a `DecodedBatch` — one
-  `FormatDecode.Result` per registered format plus the `UnrecognizedFile`s —
+  `ReviewGroup` per claimed format, the picks each claimed, and the
+  `UnrecognizedFile`s —
   `claimedFormats` names the formats that actually took part, `redecodeFormat`
   re-runs one format's files from their retained picks under new settings,
   `discoverReferents` and `resolveMentions` lift the identity map over the
   whole batch (one referent per identity across formats, one plan, a
-  `ResolvedBatch` with the batch's linked records), and
+  `ResolvedBatch` whose groups are the resolved formats' and the batch's
+  linked records'), and
   `planWrite` turns the batch's reviewed selections into a `WriteDecision` per
   reviewed resource, the `Included` ones exactly the resources to write. No
   DOM, no React, no client.
