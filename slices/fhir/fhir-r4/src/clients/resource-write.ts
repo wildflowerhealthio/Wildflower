@@ -174,7 +174,8 @@ const create = ({
 /**
  * Update the record `resource` is (its type and id) to `resource`, only if
  * its stored version is still `versionId`: `PUT <resourceType>/<id>` with
- * `If-Match: W/"<versionId>"`. A record changed since that version fails as
+ * `If-Match: W/"<versionId>"`, the id percent-encoded so it stays one path
+ * segment. A record changed since that version fails as
  * `precondition-failed`.
  */
 const update = ({
@@ -186,7 +187,7 @@ const update = ({
   readonly versionId: string
 }): Effect.Effect<Written, Failed, HttpClient.HttpClient> =>
   send(
-    HttpClientRequest.put(`${resource.resourceType}/${resource.id}`).pipe(
+    HttpClientRequest.put(`${resource.resourceType}/${encodeURIComponent(resource.id)}`).pipe(
       HttpClientRequest.setHeader('if-match', weakETagOf(versionId))
     ),
     resource

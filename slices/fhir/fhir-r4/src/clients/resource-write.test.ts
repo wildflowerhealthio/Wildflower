@@ -222,6 +222,17 @@ describe('ResourceWrite.update', () => {
       { numRuns: numRunsFor({ base: 50 }) }
     ))
 
+  it('should keep an id that is not a FHIR id to one path segment', async () => {
+    const sent: SentRequest[] = []
+    await Effect.runPromise(
+      ResourceWrite.update({ resource: { ...stored, id: 'o1/_history/1?x' }, versionId: '1' }).pipe(
+        Effect.provide(serverAnswering(sent, answer(200, stored)))
+      )
+    )
+
+    expect(sent.map(({ url }) => url)).toEqual([`${FHIR_BASE}Observation/o1%2F_history%2F1%3Fx`])
+  })
+
   it('should fail a 412 as the record having changed since that version', async () => {
     const exit = await Effect.runPromiseExit(
       ResourceWrite.update({ resource: stored, versionId: '1' }).pipe(
