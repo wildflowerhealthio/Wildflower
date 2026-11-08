@@ -157,4 +157,14 @@ describe('ToolCall for the write tools', () => {
   ] as const)('should sum up a %s result as %s', (name, result, line) => {
     expect(ToolCall.resultSummaryOf(name, result)).toBe(line)
   })
+
+  it("should put a write's outcome on its line, and leave a read's line as it is", () => {
+    expect(ToolCall.lineOf(update, resultOf(Tools.DECLINED_TEXT, true))).toBe(
+      'Update Observation/o1: Declined'
+    )
+    expect(ToolCall.lineOf(create, Option.none())).toBe('Create Observation: No result')
+    expect(ToolCall.lineOf(search, Option.none())).toBe(
+      'Searched Observation: code=4548-4, up to 5'
+    )
+  })
 })

@@ -76,7 +76,8 @@ Every module is a namespace (`src/index.ts`):
 - `src/tool-call.ts` — `ToolCall`: a kept call in words for the
   transcript's card (`summaryOf`, `parametersOf`, `resultSummaryOf`: how
   many records came back, or "Created Observation/123", "Declined",
-  "Failed: …").
+  "Failed: …"; `lineOf`, the card's line, which for a write carries its
+  outcome).
 - `src/chat-patient.ts` — `ChatPatient`: one patient's FHIR `Patient`
   record (with its id) or every patient; `keyOf` (the id, or `*`),
   `patientIdIfOne`, and `paragraphOf`, whose record the chat is about in

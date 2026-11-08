@@ -15,7 +15,7 @@ import * as Tools from './tools.ts'
  *
  * @remarks
  * A namespace module: `ToolCall.Call`, `ToolCall.summaryOf`,
- * `ToolCall.parametersOf`, `ToolCall.resultSummaryOf`.
+ * `ToolCall.parametersOf`, `ToolCall.resultSummaryOf`, `ToolCall.lineOf`.
  *
  * @packageDocumentation
  */
@@ -190,5 +190,15 @@ const resultSummaryOf = (name: string, result: Option.Option<BetaToolResultBlock
     },
   })
 
-export { parametersOf, resultSummaryOf, summaryOf }
+/**
+ * The card's one line for `call`: what a read looked up ({@link summaryOf});
+ * for a write, what it asked for and how it came out, so the outcome shows
+ * without opening the card ("Update Observation/o1: Declined").
+ */
+const lineOf = (call: Call, result: Option.Option<BetaToolResultBlockParam>): string =>
+  Tools.isWriteCall(call)
+    ? `${summaryOf(call)}: ${resultSummaryOf(call.name, result)}`
+    : summaryOf(call)
+
+export { lineOf, parametersOf, resultSummaryOf, summaryOf }
 export type { Call, CallParameter }

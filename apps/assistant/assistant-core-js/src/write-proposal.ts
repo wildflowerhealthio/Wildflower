@@ -11,7 +11,8 @@ import { countOf } from './internal/count-of.ts'
  *
  * @remarks
  * A namespace module: `WriteProposal.Type`, `WriteProposal.Decision`,
- * `WriteProposal.summaryOf`. `Tools.propose` builds one from a write call;
+ * `WriteProposal.FieldChange`, `WriteProposal.summaryOf`,
+ * `WriteProposal.fieldChangeOf`. `Tools.propose` builds one from a write call;
  * `Tools.carryOut` runs it once decided. A proposal is never kept: the chat
  * keeps the call and its result.
  *
@@ -44,6 +45,16 @@ type Decision =
   | { readonly kind: 'approved' }
   | { readonly kind: 'declined'; readonly reason: Option.Option<string> }
 
+/** What an update does to one field: adds it, changes it, or removes it. */
+type FieldChange = 'added' | 'changed' | 'removed'
+
+/** What `field`, a leaf of an update's diff, does: added where the record has none, removed where the change has none. */
+const fieldChangeOf = ({ server, incoming }: FieldDiff): FieldChange => {
+  if (server._tag === 'absent') return 'added'
+  if (incoming._tag === 'absent') return 'removed'
+  return 'changed'
+}
+
 /** One line saying what `proposal` would do: "Create Observation", "Update MedicationRequest/123, 2 fields". */
 const summaryOf = (proposal: Type): string =>
   Match.value(proposal).pipe(
@@ -56,5 +67,5 @@ const summaryOf = (proposal: Type): string =>
     Match.exhaustive
   )
 
-export { summaryOf }
-export type { Decision, Type }
+export { fieldChangeOf, summaryOf }
+export type { Decision, FieldChange, Type }
