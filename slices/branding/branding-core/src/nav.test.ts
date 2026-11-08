@@ -85,7 +85,15 @@ describe('HEADER_NAV_GROUPS', () => {
     expect(
       HEADER_NAV_GROUPS.map((group) => [group.label, group.links.map((link) => link.label)])
     ).toStrictEqual([
-      ['Your health', ['Wildflower Medications', 'Wildflower Plots', 'Wildflower Imaging']],
+      [
+        'Your health',
+        [
+          'Wildflower Medications',
+          'Wildflower Plots',
+          'Wildflower Assistant',
+          'Wildflower Imaging',
+        ],
+      ],
       ['Your data', ['Wildflower Importer', 'Wildflower Launcher', 'Wildflower Authorization']],
       ['Fitness', ['FHIR Sync for Pebble', 'WatchLifts', 'Wildflower Strength']],
       [

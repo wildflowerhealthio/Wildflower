@@ -32,6 +32,7 @@ describe('SiteHeader', () => {
     expect(hrefs).toStrictEqual([
       sectionUrl('medications'),
       sectionUrl('plots'),
+      sectionUrl('assistant'),
       sectionUrl('ohifViewer'),
       sectionUrl('importer'),
       sectionUrl('launcher'),
@@ -95,7 +96,12 @@ describe('SiteHeader', () => {
       within(yourHealth)
         .getAllByRole('link')
         .map((link) => link.textContent)
-    ).toStrictEqual(['Wildflower Medications', 'Wildflower Plots', 'Wildflower Imaging'])
+    ).toStrictEqual([
+      'Wildflower Medications',
+      'Wildflower Plots',
+      'Wildflower Assistant',
+      'Wildflower Imaging',
+    ])
   })
 
   it('should toggle the collapsed nav dropdown open and closed', () => {

@@ -14,6 +14,7 @@ const APEX_REDIRECT_PATHS: Readonly<Record<HostedAppId, string>> = {
   ohifViewer: 'ohif-viewer',
   fhirSyncPebble: 'fhir-sync-pebble',
   plots: 'health-viewer',
+  assistant: 'assistant',
   syntheticData: 'synthetic-data',
   strength: 'lifting',
   watchLifts: 'watch-lifts',

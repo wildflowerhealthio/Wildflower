@@ -11,6 +11,7 @@ type AppSectionId = Extract<
   | 'fhirSyncPebble'
   | 'importer'
   | 'plots'
+  | 'assistant'
   | 'syntheticData'
   | 'strength'
   | 'launcher'
@@ -19,16 +20,17 @@ type AppSectionId = Extract<
 
 /**
  * The app sections the marketing homepage has a launcher row for: all but the
- * hosted launcher and Wildflower Authorization, which have no homepage row.
+ * hosted launcher, Wildflower Authorization and the Assistant, which have no
+ * homepage row.
  */
-type HomepageAppSectionId = Exclude<AppSectionId, 'launcher' | 'authorization'>
+type HomepageAppSectionId = Exclude<AppSectionId, 'launcher' | 'authorization' | 'assistant'>
 
 /**
  * The six SMART app sections with a homepage row, grouped by the homepage
  * section the row sits in: the patient-facing apps (`built`), then the Importer
- * (`try`), then the Synthetic Data Loader (`developers`). The launcher and
- * Wildflower Authorization have a landing page but no homepage row, so they
- * are not among them.
+ * (`try`), then the Synthetic Data Loader (`developers`). The launcher,
+ * Wildflower Authorization and the Assistant have a landing page but no
+ * homepage row, so they are not among them.
  */
 const APP_SECTION_IDS: readonly HomepageAppSectionId[] = [
   'medications',
@@ -219,6 +221,23 @@ const APP_DESCRIPTIONS: {
       label: 'Open Plots',
       note: 'Plot observations and doses for a patient on any FHIR server, including our demo',
     },
+    launchesFromUrl: true,
+  },
+  assistant: {
+    name: 'Wildflower Assistant',
+    tagline:
+      'A chat with Claude about the health records on any server that speaks SMART on FHIR, ' +
+      'using your own Anthropic API key.',
+    paragraphs: [
+      'I want to ask questions about my health record in plain words, and get answers ' +
+        'that come from the record itself.',
+      'The Assistant is a chat with Claude, which reads the record to answer you. It uses ' +
+        'your own Anthropic API key, and your browser sends the chat straight to Anthropic, ' +
+        'not through Wildflower.',
+      'It can only do what the access you grant it allows. When you sign in, you choose ' +
+        'what it may read and change.',
+    ],
+    anchor: 'built',
     launchesFromUrl: true,
   },
   syntheticData: {

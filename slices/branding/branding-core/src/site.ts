@@ -22,6 +22,7 @@ const APP_SLUGS = {
   ohifViewer: 'ohif-viewer',
   fhirSyncPebble: 'fhir-sync-pebble',
   plots: 'plots',
+  assistant: 'assistant',
   syntheticData: 'synthetic-data',
   strength: 'strength',
   // The WatchLifts watchapp's settings page: not a SMART app, so it has no app

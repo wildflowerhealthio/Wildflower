@@ -42,6 +42,7 @@ const HOSTED_APP_SLUGS = [
   'ohif-viewer',
   'fhir-sync-pebble',
   'plots',
+  'assistant',
   'synthetic-data',
   'strength',
   'watch-lifts',

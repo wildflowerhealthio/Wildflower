@@ -26,6 +26,7 @@ runs:
         paths<<PATHS
         node_modules/.vite/task-cache
         apps/*/dist
+        apps/assistant/*/dist
         apps/plots/*/dist
         apps/host/*/dist
         apps/host/servers/*/dist
