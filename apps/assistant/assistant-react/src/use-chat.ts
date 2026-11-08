@@ -40,6 +40,8 @@ interface ChatControls {
   readonly pendingWrites: Option.Option<PendingWrites>
   /** A turn is running: a reply is streaming in, or a round's writes wait or are being made. */
   readonly turnRunning: boolean
+  /** A proposed write waits on the person's decision; the round's other writes may be decided. */
+  readonly writesAwaitingDecision: boolean
   /** Why the last turn failed; `None` once another starts. */
   readonly turnFailure: Option.Option<Turn.Failure>
   readonly storageProblem: Option.Option<ChatStorageProblem>
@@ -156,6 +158,9 @@ const useChat = (
 
   const styleLocked = chat.entries.length > 0
   const turnRunning = Option.isSome(streamingReply) || Option.isSome(pendingWrites)
+  const writesAwaitingDecision = Option.exists(pendingWrites, ({ proposed, decisions }) =>
+    proposed.proposals.some(({ callId }) => !decisions.has(callId))
+  )
 
   const requestStyle = useCallback(
     (style: Style.Type): void => {
@@ -314,6 +319,7 @@ const useChat = (
     streamingReply,
     pendingWrites,
     turnRunning,
+    writesAwaitingDecision,
     turnFailure,
     storageProblem,
     announcement,

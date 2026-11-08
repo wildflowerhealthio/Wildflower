@@ -192,9 +192,8 @@ const WriteCard = ({
             {decisionTextOf(made)}
           </p>
         )),
-        Option.getOrNull
+        Option.getOrElse(() => <WriteCardActions key="actions" onDecide={onDecide} />)
       )}
-      {Option.isNone(decision) ? <WriteCardActions onDecide={onDecide} /> : null}
     </section>
   )
 }

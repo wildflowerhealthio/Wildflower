@@ -29,8 +29,9 @@ it under `PatientChoiceLine`; its props are in the
   (academic once confirmed; locked after the first message), each turn
   streamed into `streamingReply`, each tool round appended and kept as it
   finishes, a round's proposed writes held in `pendingWrites` until
-  `decideWrite` has decided each (the turn's `confirmWrites` resumes then),
-  stoppable, and New chat.
+  `decideWrite` has decided each (the turn's `confirmWrites` resumes then;
+  `writesAwaitingDecision` while any is undecided), stoppable, and New
+  chat.
 - `src/chat-view.tsx` — `ChatView`: the toolbar (`ModelPicker`,
   `StyleChoice`, Settings), the `Transcript`, the one `aria-live="polite"`
   line announcing a finished reply, `ChatNotices`, the `Composer`, and the
@@ -68,8 +69,9 @@ it under `PatientChoiceLine`; its props are in the
   academic banner, storage problems, that a proposed change waits on the
   person, and why the last turn failed (`failure-text.ts` words each
   failure kind).
-- `src/composer.tsx` — `Composer`: the message box (disabled while
-  proposed writes wait), Send (Stop while a turn runs), New chat.
+- `src/composer.tsx` — `Composer`: the message box (disabled while a
+  proposed write waits on a decision), Send (Stop while a turn runs), New
+  chat.
 - `src/settings-dialog.tsx` — `SettingsDialog`: where the key is kept, and
   Forget key.
 
@@ -85,8 +87,8 @@ it under `PatientChoiceLine`; its props are in the
   would make, because the person is deciding on exactly that, and only
   while the round waits; the kept round shows the write as a `ToolCallCard`.
 - **A write waits on the person, and Stop drops it.** While a round's
-  proposals wait, the composer's message box is disabled with a line above
-  it saying why; Stop (or New chat, or leaving) interrupts the turn, so
+  proposals wait on a decision, the composer's message box is disabled
+  with a line above it saying why; Stop (or New chat, or leaving) interrupts the turn, so
   nothing is written and the round is not kept. Once every proposal is
   decided, the approved writes are made and the round kept even if Stop is
   pressed meanwhile.

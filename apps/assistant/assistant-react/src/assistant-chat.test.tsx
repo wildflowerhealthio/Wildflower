@@ -15,7 +15,7 @@ import {
   toolUseBlock,
 } from '@wildflowerhealthio/assistant-core-js/test-helpers'
 import { answerJson, bundleOf } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
-import { Effect, Option } from 'effect'
+import { Deferred, Effect, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -382,6 +382,38 @@ describe('AssistantChat writes', () => {
     expect(screen.getByLabelText('Message')).toHaveProperty('disabled', false)
     const kept = Option.getOrThrow(Effect.runSync(Chat.read(page, PLACE)))
     expect(kept.entries.map(({ _tag }) => _tag)).toEqual(['question', 'tool-round', 'reply'])
+  })
+
+  it('should take the waiting line away and free the message box once every change is decided, while it saves', async () => {
+    const user = userEvent.setup()
+    const saved = Effect.runSync(Deferred.make<void>())
+    renderChat({
+      keptKey,
+      fhirAnswers: {
+        Observation: (request) =>
+          Deferred.await(saved).pipe(Effect.zipRight(answerJson(stored, 201)(request))),
+      },
+      replies: [
+        scriptedReply([], messageOf({ content: [createCall], stopReason: 'tool_use' })),
+        replyWith('Saved your weight.'),
+      ],
+    })
+    await screen.findByLabelText('Message')
+
+    await ask(user, 'Record my weight')
+    const card = await screen.findByRole('region', { name: 'Create Observation' })
+    await user.click(within(card).getByRole('button', { name: 'Approve' }))
+
+    expect(within(card).getByRole('status').textContent).toBe('Approved. Saving…')
+    expect(
+      screen.queryByText("Approve or decline Claude's proposed change above to go on.")
+    ).toBeNull()
+    expect(screen.getByLabelText('Message')).toHaveProperty('disabled', false)
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeDefined()
+
+    Effect.runSync(Deferred.succeed(saved, undefined))
+
+    expect(await screen.findByText('Saved your weight.')).toBeDefined()
   })
 
   it('should send a declined change back with its reason and write nothing', async () => {

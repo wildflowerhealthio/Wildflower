@@ -7,7 +7,7 @@ import styles from './composer.module.css'
 interface ComposerProps extends Omit<ComponentProps<'form'>, 'children' | 'onSubmit'> {
   /** A turn is running: Send waits, and Stop shows. */
   readonly replying: boolean
-  /** Nothing can be written: Claude's proposed changes wait on the person. Stop stays. */
+  /** Nothing can be written: a change Claude proposed waits on the person's decision. Stop stays. */
   readonly messageDisabled: boolean
   readonly onSend: (text: string) => void
   readonly onStop: () => void

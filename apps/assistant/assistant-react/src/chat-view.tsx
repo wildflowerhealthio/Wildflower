@@ -1,6 +1,5 @@
 import type { Chat } from '@wildflowerhealthio/assistant-core-js'
 import { ConfirmDialog, LinkButton } from '@wildflowerhealthio/react-tundraish'
-import { Option } from 'effect'
 import { type JSX, useState } from 'react'
 
 import type { AssistantEnvironment } from './assistant-environment.ts'
@@ -43,7 +42,6 @@ const ChatView = ({
 }: ChatViewProps): JSX.Element => {
   const chat = useChat(environment, place, records)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const writesWaiting = Option.isSome(chat.pendingWrites)
   return (
     <>
       <div className={styles['chat-view__toolbar']}>
@@ -80,11 +78,11 @@ const ChatView = ({
         storageProblem={chat.storageProblem}
         keyKept={ready.keyKept}
         turnFailure={chat.turnFailure}
-        writesWaiting={writesWaiting}
+        writesAwaitingDecision={chat.writesAwaitingDecision}
       />
       <Composer
         replying={chat.turnRunning}
-        messageDisabled={writesWaiting}
+        messageDisabled={chat.writesAwaitingDecision}
         onSend={(text) => {
           chat.send({ text, model: ready.model, apiKey: ready.apiKey })
         }}
