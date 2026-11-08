@@ -304,7 +304,7 @@ describe('decodeHar + runExtraction', () => {
     })
 
     it("should key each prescription's latest fill alike in its status XHR and in the history", () => {
-      // What `mergeSharedResources` relies on to make the two copies one.
+      // What the shared-copy merge after review (`tagSharedResources`) relies on to make the two copies one.
       const dispenseKeysFrom = (urls: readonly string[]): readonly DetachedResource.Key[] =>
         Arr.filterMap(
           extraction.batches
