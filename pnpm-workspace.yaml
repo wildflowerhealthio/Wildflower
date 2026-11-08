@@ -59,6 +59,9 @@ packages:
   - '!**/node_modules/**'
 
 catalog:
+  # Assistant's chat calls Claude from the browser
+  # (apps/assistant/assistant-core-js). Apache-2.0.
+  '@anthropic-ai/sdk': ^1.6.0
   '@effect/language-service': ^0.87.5
   '@effect/opentelemetry': 0.64.2
   '@effect/platform': 0.97.3
@@ -150,6 +153,10 @@ catalog:
   qrcode-generator: 2.0.4
   react: 19.3.1
   react-dom: 19.3.1
+  # Assistant's replies as Markdown, raw HTML off
+  # (apps/assistant/assistant-react).
+  react-markdown: ^10.1.0
+  remark-gfm: ^4.0.1
   # Reads the Cargo manifests for the package graph check, so it needs no Rust
   # toolchain.
   smol-toml: ^1.9.1
