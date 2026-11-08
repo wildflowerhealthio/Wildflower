@@ -1,41 +1,12 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
-import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
-import { Array as Arr, Context, Data, Effect, Either, Layer, Option, Schema } from 'effect'
+import {
+  operationOutcomeTextOf,
+  ResourceWrite,
+  trimTrailingSlashes,
+} from '@wildflowerhealthio/fhir-r4/clients'
+import { Context, Data, Effect, Either, Layer, Option } from 'effect'
 
 import type { FhirBaseUrl, SmartConnection } from './smart-connection.ts'
-
-/**
- * The parts of an OperationOutcome a person can read: each issue's
- * `diagnostics` and `details.text`.
- */
-const OperationOutcomeText = Schema.Struct({
-  resourceType: Schema.Literal('OperationOutcome'),
-  issue: Schema.Array(
-    Schema.Struct({
-      diagnostics: Schema.optional(Schema.String),
-      details: Schema.optional(Schema.Struct({ text: Schema.optional(Schema.String) })),
-    })
-  ),
-})
-
-const decodeOperationOutcomeText = Schema.decodeUnknownOption(OperationOutcomeText)
-
-/**
- * What the OperationOutcome `body` says, its issues' texts joined, or `None`
- * when `body` is not an OperationOutcome or says nothing.
- */
-const operationOutcomeTextOf = (body: unknown): Option.Option<string> =>
-  decodeOperationOutcomeText(body).pipe(
-    Option.map(({ issue }) =>
-      issue.flatMap((each) =>
-        [each.details?.text, each.diagnostics].filter(
-          (text): text is string => text !== undefined && text !== ''
-        )
-      )
-    ),
-    Option.filter(Arr.isNonEmptyReadonlyArray),
-    Option.map(Arr.join('; '))
-  )
 
 /** The FHIR server answered a request with an error status (4xx or 5xx). */
 class FhirHttpError extends Data.TaggedError('FhirHttpError')<{
@@ -185,8 +156,10 @@ const requestJson =
     )
 
 /**
- * The FHIR server a completed SMART sign-in connected the app to, and the one
- * read every SMART reader here makes against it.
+ * The FHIR server a completed SMART sign-in connected the app to: the one
+ * read every SMART reader here makes against it, and `fhir-r4`'s
+ * `ResourceWrite` create and update, each addressed and carrying the token
+ * the same way.
  *
  * @remarks
  * Built by {@link SmartClient.layer} over the page's `HttpClient`.
@@ -203,6 +176,18 @@ class SmartClient extends Context.Tag('fhir-r4-react/SmartClient')<
      * resolves under the FHIR base (see {@link addressedTo}).
      */
     readonly request: (url: string) => Effect.Effect<unknown, FhirRequestError>
+    /** `ResourceWrite.create`: POST `resource` to its type under the FHIR base. */
+    readonly create: (args: {
+      readonly resource: ResourceWrite.ResourceJson
+    }) => Effect.Effect<ResourceWrite.Written, ResourceWrite.Failed>
+    /**
+     * `ResourceWrite.update`: PUT `resource` to its type and id under the
+     * FHIR base, only if its stored version is still `versionId`.
+     */
+    readonly update: (args: {
+      readonly resource: ResourceWrite.ResourceJson & { readonly id: string }
+      readonly versionId: string
+    }) => Effect.Effect<ResourceWrite.Written, ResourceWrite.Failed>
   }
 >() {
   /**
@@ -215,9 +200,21 @@ class SmartClient extends Context.Tag('fhir-r4-react/SmartClient')<
   ): Layer.Layer<SmartClient, never, HttpClient.HttpClient> =>
     Layer.effect(
       SmartClient,
-      Effect.map(HttpClient.HttpClient, (client) =>
-        SmartClient.of({ connection, request: requestJson(addressedTo(connection)(client)) })
-      )
+      Effect.map(HttpClient.HttpClient, (client) => {
+        const addressed = addressedTo(connection)(client)
+        return SmartClient.of({
+          connection,
+          request: requestJson(addressed),
+          create: (args) =>
+            ResourceWrite.create(args).pipe(
+              Effect.provideService(HttpClient.HttpClient, addressed)
+            ),
+          update: (args) =>
+            ResourceWrite.update(args).pipe(
+              Effect.provideService(HttpClient.HttpClient, addressed)
+            ),
+        })
+      })
     )
 }
 

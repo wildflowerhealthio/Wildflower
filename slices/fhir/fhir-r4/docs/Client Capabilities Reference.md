@@ -182,6 +182,10 @@ Two shape narrowings on this client:
 
 The server (HFS) supports both batch and transaction bundles at `POST /` per its capability statement — the client-side narrowing is the only asymmetry.
 
+## Create and versioned update of any type (`ResourceWrite`, outside the `HttpApi`)
+
+The `HttpApi` declares a per-type `Create` (`POST`, only a `503` error declared) and `Update` (`PUT /:id`, `200 | 201`), with no headers and no `412`. `fhir-r4/clients`' `ResourceWrite` writes one resource of **any** R4 type as the JSON it is, over the `HttpClient` in the context, with base-relative URLs: `create` is `POST <type>`, `update` is `PUT <type>/<id>` with `If-Match: W/"<versionId>"` (FHIR R4 §3.1.0.5.1, version-aware updates), both with `Prefer: return=representation` and a `application/fhir+json` body. The answer's `id` and `meta.versionId` are read through `Resource.fields` narrowed to a record with an id; a `412` fails as `precondition-failed`, any other error status as `error-status` with its `OperationOutcome`'s text (`operationOutcomeTextOf`), no answer as `unreachable`, and a `2xx` whose body is not such a record as `accepted-unreadable`. A server that ignores `Prefer` and answers a write with no body is reported that way even though the write landed. `fhir-r4-react/smart`'s `SmartClient` exposes both as `create` and `update`.
+
 ## `$everything` declared for Patient only (matches the server)
 
 The `HttpApi` declares `GET /Patient/{id}/$everything` (with `_count`, returning a `Bundle`) on the Patient group only — added via `buildEverythingEndpoint` in `patient.ts`, not by `buildDomainResourceHttpApiGroup`. This matches the server, which implements the operation for Patient only. A resource that gains a server-side `$everything` later opts in with one `.add(buildEverythingEndpoint(...))` line.

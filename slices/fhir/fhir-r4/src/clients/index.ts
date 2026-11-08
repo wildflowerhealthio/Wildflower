@@ -5,6 +5,7 @@ export {
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
   type ServerComparison,
+  withoutServerManagedMeta,
 } from './classify-against-server.ts'
 export {
   diffJson,
@@ -15,6 +16,8 @@ export {
   type PathSegment,
 } from './field-diff.ts'
 export { trimTrailingSlashes } from './fhir-base-url.ts'
+export { operationOutcomeTextOf } from './operation-outcome-text.ts'
+export * as ResourceWrite from './resource-write.ts'
 export {
   matchesIn,
   MatchWithoutResource,

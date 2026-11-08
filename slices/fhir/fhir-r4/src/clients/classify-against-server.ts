@@ -79,18 +79,19 @@ interface ServerComparison {
  */
 const SERVER_MANAGED_META_FIELDS = ['versionId', 'lastUpdated', 'source'] as const
 
-/**
- * The wire projection compared for equality — the resource encoded through its
- * schema (so `URL` fields round-trip as strings, per the Consumer Gotchas), with
- * `meta` narrowed to non-server-managed fields.
- */
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object'
 
 const isServerManaged = (key: string): boolean =>
   (SERVER_MANAGED_META_FIELDS as readonly string[]).includes(key)
 
-const normalize = (encoded: unknown): unknown => {
+/**
+ * A wire-form resource with the {@link SERVER_MANAGED_META_FIELDS} dropped from
+ * its `meta`: what a content compare or a field diff reads, so a server copy
+ * and a would-be write differ only where their content does. Anything that is
+ * not an object, or has no `meta` object, is returned as it is.
+ */
+const withoutServerManagedMeta = (encoded: unknown): unknown => {
   if (!isRecord(encoded)) return encoded
   const meta = encoded['meta']
   if (!isRecord(meta)) return encoded
@@ -114,7 +115,7 @@ const decodeResource = Schema.decodeUnknownEither(FhirResourceSchema)
 const normalizedEncode = (resource: unknown): Option.Option<unknown> => {
   const encoded = encodeResource(resource)
   if (encoded._tag !== 'Right') return Option.none()
-  return Option.some(normalize(encoded.right))
+  return Option.some(withoutServerManagedMeta(encoded.right))
 }
 
 /**
@@ -296,6 +297,7 @@ export {
   normalizedEncode,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
+  withoutServerManagedMeta,
   type DiffStatus,
   type ServerComparison,
 }
