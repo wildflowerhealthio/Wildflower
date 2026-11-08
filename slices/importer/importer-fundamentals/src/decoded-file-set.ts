@@ -22,7 +22,9 @@ import * as ResourcePlan from './resource-plan.ts'
  * One record of a section: the record as its source gave it, detached
  * (`fhir-r4-adoption`'s `DetachedResource`: no id, keyed by its first
  * identifier, naming every other record it decoded by a logical reference),
- * beside its identity within the decoded set.
+ * beside its identity within the decoded set, and `shared` when it is one
+ * copy of several merged after review (`DecodedFile.Shared`), which adoption
+ * keeps on its row.
  *
  * @remarks
  * `fullUrl` plays the part of FHIR's `Bundle.entry.fullUrl` in a transaction:
@@ -34,6 +36,7 @@ import * as ResourcePlan from './resource-plan.ts'
 interface Entry {
   readonly fullUrl: string
   readonly resource: DetachedResource.Type
+  readonly shared?: DecodedFile.Shared
 }
 
 /**
@@ -249,8 +252,23 @@ const prescriptionSubjectIfAgreed = (
   )
 
 /**
- * A detached record, a `MedicationDispense` with no `subject` filed on the
- * person its prescriptions agree it is for
+ * The shared identities of `entries` with a `MedicationDispense` copy that
+ * names a `subject`.
+ */
+const identitiesWithSubjectOf = (entries: readonly Entry[]): ReadonlySet<string> =>
+  new Set(
+    entries.flatMap(({ resource, shared }) =>
+      shared !== undefined &&
+      resource.resourceType === 'MedicationDispense' &&
+      resource.subject !== null
+        ? [shared.identity]
+        : []
+    )
+  )
+
+/**
+ * A detached entry's record, a `MedicationDispense` with no `subject` filed
+ * on the person its prescriptions agree it is for
  * ({@link prescriptionSubjectIfAgreed}), and any other record as it is.
  *
  * @remarks
@@ -258,11 +276,22 @@ const prescriptionSubjectIfAgreed = (
  * was for (Shoppers' history feed names only the account, so its fills name
  * no one). Any `subject` a dispense has is the source's own statement of who
  * received the fill, so it is kept.
+ *
+ * A shared copy whose other copy names a `subject` is kept as it is too
+ * (`identitiesWithSubject`): the copies merge after review, and the source's
+ * merge tells them apart by which names no one, so the merge with a kept
+ * copy that names one, not the prescription, gives it its subject.
  */
 const takeSubjectFromPrescription =
-  (referencePlan: ReferencePlan.Type, prescriptionSubjects: PrescriptionSubjects) =>
-  (record: DetachedResource.Type): DetachedResource.Type =>
-    record.resourceType === 'MedicationDispense' && record.subject === null
+  (
+    referencePlan: ReferencePlan.Type,
+    prescriptionSubjects: PrescriptionSubjects,
+    identitiesWithSubject: ReadonlySet<string>
+  ) =>
+  ({ resource: record, shared }: Entry): DetachedResource.Type =>
+    record.resourceType === 'MedicationDispense' &&
+    record.subject === null &&
+    !(shared !== undefined && identitiesWithSubject.has(shared.identity))
       ? Option.match(
           prescriptionSubjectIfAgreed(
             referencePlan,
@@ -293,7 +322,8 @@ const takeSubjectFromPrescription =
  * a keyless one, or an identifier two records of the set share, stays
  * logical, for the identity map. Before it is adopted, a `MedicationDispense`
  * with no `subject` takes the `subject` of the prescriptions of the set it
- * names ({@link takeSubjectFromPrescription}).
+ * names ({@link takeSubjectFromPrescription}). A shared copy's row keeps its
+ * `shared`, so its copies merge after review.
  */
 const adopt = (
   decoded: Pick<Type, 'sections' | 'notes'>,
@@ -312,7 +342,8 @@ const adopt = (
   )
   const takeSubject = takeSubjectFromPrescription(
     referencePlan,
-    prescriptionSubjectsOf(referencePlan, setEntries)
+    prescriptionSubjectsOf(referencePlan, setEntries),
+    identitiesWithSubjectOf(setEntries.map(({ entry }) => entry))
   )
   const adoptEntry = adoptRecord(referencePlan)
   return {
@@ -321,7 +352,8 @@ const adopt = (
       resources: plannedEntries.map(({ entry, plan }) => ({
         key: entry.fullUrl,
         title: writtenReferenceTitle(plan, entry),
-        resource: adoptEntry(takeSubject(entry.resource), plan.id),
+        resource: adoptEntry(takeSubject(entry), plan.id),
+        shared: entry.shared,
       })),
     })),
     notes: decoded.notes,

@@ -1,7 +1,7 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { Option } from 'effect'
+import { Array as Arr, Option } from 'effect'
 
-import type * as DecodedFile from './decoded-file.ts'
+import * as DecodedFile from './decoded-file.ts'
 import * as FileResolution from './identity-map/file-resolution.ts'
 import type * as LinkPlan from './identity-map/link-plan.ts'
 
@@ -20,6 +20,12 @@ import type * as LinkPlan from './identity-map/link-plan.ts'
  * Both axes key by {@link LabeledResource.key} so the state stays serializable
  * and survives a settings re-decode: a key the new decode no longer produces
  * simply stops applying, rather than dangling.
+ *
+ * What a selection writes is its included rows with the edits substituted,
+ * then the copies of each shared resource among them merged into one
+ * (`DecodedFile.mergeSharedCopies`): one copy per response, so unticking a
+ * response leaves out its own copies only, and a resource another kept
+ * response holds is still merged from the copies kept and written.
  *
  * @packageDocumentation
  */
@@ -141,6 +147,27 @@ const resolvedResourceOf = (
     onSome: FileResolution.resolveEdit(plan, resolvedEntry.key),
   })
 
+/**
+ * `rows`, each as reviewed, with every shared copy the reviewer has kept
+ * holding the merge of its identity's kept copies
+ * (`DecodedFile.withSharedCopiesMerged`), a copy being kept unless the
+ * reviewer unticked it.
+ *
+ * @remarks
+ * What a row reads as when the review asks whether it has a patient, before
+ * the default exclusion that answer decides: a shared copy that names no one
+ * is written as the merge with a kept copy that does, and alone when the
+ * reviewer left every such copy out.
+ */
+const withKeptCopiesMerged = (
+  selection: Selection,
+  rows: readonly DecodedFile.Resource[]
+): readonly DecodedFile.Resource[] => {
+  const kept = rows.filter(({ key }) => selection.includedByReviewer.get(key) !== false)
+  const mergedRowByKeptRow = new Map(Arr.zip(kept, DecodedFile.withSharedCopiesMerged(kept)))
+  return rows.map((row) => mergedRowByKeptRow.get(row) ?? row)
+}
+
 export {
   edit,
   editedResource,
@@ -151,5 +178,6 @@ export {
   revert,
   setResourcesIncluded,
   toggleResource,
+  withKeptCopiesMerged,
 }
 export type { Selection }
