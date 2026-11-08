@@ -73,10 +73,11 @@ offers the same choices; this package re-exports its preset groups.
     the gate provides (`useRunSmart`).
 
 Consumers: `apps/medications/medications-web`, `apps/plots/plots-web`, `apps/strength/strength-web`,
+`apps/assistant/assistant-web`,
 `apps/importer-web` and `apps/synthetic-data/synthetic-data-web` mount
 `SmartAppRoot`, which an EHR launches at the app root; the first three speak
-the read-status lines, as does `synthetic-data-react`'s screen, and pick the
-patient with the patient choice; `apps/fhir-sync-pebble/fhir-sync-pebble-web` mounts
+the read-status lines, as does `synthetic-data-react`'s screen, and they and
+the Assistant pick the patient with the patient choice; `apps/fhir-sync-pebble/fhir-sync-pebble-web` mounts
 `SmartAppRoot` too, but is only ever opened standalone;
 `apps/launcher/launcher-web`'s landing uses only `ConnectMenu`, with
 `target: 'wildflower'`.
