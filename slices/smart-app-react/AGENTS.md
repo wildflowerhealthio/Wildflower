@@ -79,6 +79,11 @@ offers the same choices; this package re-exports its preset groups.
     read, which says so when the server has no such patient) or "All
     patients", and a "Change patient" link. Both read through the runtime
     the gate provides (`useRunSmart`).
+  - `patientQuery(runSmart, patientId)` and `patientNameOf(patient)` — the
+    query `PatientChoiceLine` reads (cache key `['patient', id]`) and the
+    name it shows, exported so an app that needs the patient's name or
+    birth date for its own page (the Assistant's system prompt) reads the
+    same cache entry rather than a second `fetchPatient`.
 
 Consumers: `apps/medications/medications-web`, `apps/plots/plots-web`, `apps/strength/strength-web`,
 `apps/assistant/assistant-web`,

@@ -164,7 +164,7 @@ describe('App', () => {
     expect(carried?._tag).toBe('Failed')
   })
 
-  it("should open on the launch's patient, named under the title over the empty page", async () => {
+  it("should open on the launch's patient, named under the title over the chat", async () => {
     // Arrange
     launchWith('p1', patientResponses)
 
@@ -173,7 +173,7 @@ describe('App', () => {
 
     // Assert
     expect(await screen.findByText('Ada Lovelace · born 1815-12-10')).toBeDefined()
-    expect(screen.getByText('Chat comes next.')).toBeDefined()
+    expect(await screen.findByLabelText('Claude API key')).toBeDefined()
     expect(screen.queryByRole('button', { name: /All patients/ })).toBeNull()
   })
 
@@ -194,7 +194,7 @@ describe('App', () => {
     // Arrange
     launchWith(null, patientResponses)
     renderApp()
-    expect(screen.queryByText('Chat comes next.')).toBeNull()
+    expect(screen.queryByLabelText('Claude API key')).toBeNull()
 
     // Act
     fireEvent.click(await screen.findByRole('button', { name: /Ada Lovelace/ }))
@@ -202,7 +202,7 @@ describe('App', () => {
     // Assert
     expect(patientInUrl()).toBe('p1')
     expect(await screen.findByText('Ada Lovelace · born 1815-12-10')).toBeDefined()
-    expect(screen.getByText('Chat comes next.')).toBeDefined()
+    expect(await screen.findByLabelText('Claude API key')).toBeDefined()
   })
 
   it('should offer All patients on the picker, and name it under the title once chosen', async () => {
@@ -216,7 +216,7 @@ describe('App', () => {
     // Assert
     expect(patientInUrl()).toBe('*')
     expect(await screen.findByText('All patients')).toBeDefined()
-    expect(screen.getByText('Chat comes next.')).toBeDefined()
+    expect(await screen.findByLabelText('Claude API key')).toBeDefined()
   })
 
   it("should change from the launch's patient to another from the picker", async () => {

@@ -24,9 +24,3 @@
 .patient-line {
   margin-bottom: var(--space-9);
 }
-
-/* The body under a chosen patient, until the chat is built. */
-.note {
-  font-size: var(--font-size-2);
-  color: var(--color-neutral-5);
-}

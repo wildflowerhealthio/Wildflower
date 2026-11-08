@@ -8,10 +8,15 @@ user gave it.
 
 ## Packages
 
+- **[`assistant-core-js`](./assistant-core-js/AGENTS.md)** — the chat
+  without a DOM: the API key, the model list, the two styles and their
+  system prompts, the chat codec and one streamed turn.
+- **[`assistant-react`](./assistant-react/AGENTS.md)** — the chat's screens:
+  `AssistantChat`, from key setup to the streamed transcript and composer.
 - **[`assistant-web`](./assistant-web/AGENTS.md)** — the app: the SMART
   shell (`SmartAppRoot`, `usePatientChoice`, `config.ts`) at
-  <https://assistant.wildflowerhealth.io/> (tile `assistant`). Under a
-  chosen patient the page is empty until the chat lands.
+  <https://assistant.wildflowerhealth.io/> (tile `assistant`), which mounts
+  `AssistantChat` under the chosen patient.
 
 ## Rules
 

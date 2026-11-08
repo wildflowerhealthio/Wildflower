@@ -7,7 +7,8 @@ EHR's `iss` and `launch`, or a lone `iss`), completes the handshake and renders
 the app when a callback is in the URL, and shows the standalone connect menu,
 where the user picks a FHIR server, on a bare visit.
 
-The page settles on a patient and, under it, says the chat comes next.
+The page settles on a patient and, under it, mounts the chat
+(`assistant-react`'s `AssistantChat`) about that patient's record.
 
 ## Boot structure
 
@@ -44,7 +45,10 @@ aggregator-shell composition.
   URL. Under the title, `PatientChoiceLine` names the choice —
   `Name · born YYYY-MM-DD` from one `fetchPatient` read, or "All patients" —
   with a "Change patient" link back to the picker.
-- **Body**, under the chosen patient: "Chat comes next.", keyed per choice.
+- **Body**, under the chosen patient: `AssistantChat`, keyed per choice. For
+  one patient it waits for the `Patient` read the choice line makes
+  (`patientQuery`, one cache entry for both) and passes the name and birth
+  date the system prompt states; for All patients it mounts at once.
 
 ## Where the bundle is served
 

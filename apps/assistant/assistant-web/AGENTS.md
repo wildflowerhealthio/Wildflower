@@ -16,8 +16,11 @@ choice.
   `PatientPicker`, `PatientChoiceLine`).
 - **The page is patient → body.** `App` settles on the patient — one patient,
   or All patients — and renders the body under it, keyed per choice, so a
-  change of patient starts the body afresh. Until the chat lands, the body
-  says "Chat comes next."
+  change of patient starts the body afresh. The body is `assistant-react`'s
+  `AssistantChat`, given the connection's FHIR base and the patient: for one
+  patient, once the `Patient` read `PatientChoiceLine` also makes has landed
+  (`smart-app-react`'s `patientQuery`, the same cache entry), so the chat can
+  state the name and birth date; for All patients, at once.
 - **`config.ts` is the registration's one TypeScript home.** `ASSISTANT_SCOPE`
   and both client ids are read by `authorization-server-rust`'s `seeding.rs`
   test, which holds the seeded clients to them. The scope asks for everything;

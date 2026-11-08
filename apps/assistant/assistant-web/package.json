@@ -20,6 +20,8 @@
     "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
     "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "@tanstack/react-query": "catalog:",
+    "@wildflowerhealthio/assistant-core-js": "workspace:*",
+    "@wildflowerhealthio/assistant-react": "workspace:*",
     "@wildflowerhealthio/authorization-core": "workspace:*",
     "@wildflowerhealthio/branding-core": "workspace:*",
     "@wildflowerhealthio/branding-react": "workspace:*",
