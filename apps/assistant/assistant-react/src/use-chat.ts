@@ -6,8 +6,9 @@ import {
   type RecordAccess,
   Style,
   Turn,
+  type WriteProposal,
 } from '@wildflowerhealthio/assistant-core-js'
-import { DateTime, Effect, Either, Fiber, Layer, Match, Option } from 'effect'
+import { Array, DateTime, Effect, Either, Fiber, Layer, Match, Option } from 'effect'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { AssistantEnvironment } from './assistant-environment.ts'
@@ -18,14 +19,27 @@ interface StreamingReply {
   readonly text: string
 }
 
+/**
+ * A round of tool calls waiting on the person: the writes it proposes, and
+ * the decisions made on them so far, by the id of the call each answers.
+ */
+interface PendingWrites {
+  readonly proposed: Turn.ProposedWrites
+  readonly decisions: ReadonlyMap<string, WriteProposal.Decision>
+}
+
 /** Why the chat could not be kept: what was kept could not be read, or the browser would not keep it. */
 type ChatStorageProblem = 'unreadable' | 'not-kept'
 
 /** {@link useChat}'s state and the actions that move it on. */
 interface ChatControls {
   readonly chat: Chat.Type
-  /** The reply streaming in; `None` between turns. */
+  /** The reply streaming in; `None` between turns, and while writes wait on the person. */
   readonly streamingReply: Option.Option<StreamingReply>
+  /** The round waiting on the person to decide its proposed writes, until the round is kept. */
+  readonly pendingWrites: Option.Option<PendingWrites>
+  /** A turn is running: a reply is streaming in, or a round's writes wait or are being made. */
+  readonly turnRunning: boolean
   /** Why the last turn failed; `None` once another starts. */
   readonly turnFailure: Option.Option<Turn.Failure>
   readonly storageProblem: Option.Option<ChatStorageProblem>
@@ -45,7 +59,12 @@ interface ChatControls {
     readonly model: ClaudeModel.Type
     readonly apiKey: ApiKey.Type
   }) => void
-  /** Abort the reply streaming in; the question stays, with no reply. */
+  /**
+   * Decide the proposal for the call `callId`; once every proposal of the
+   * round is decided, the turn goes on. Nothing once it is decided.
+   */
+  readonly decideWrite: (callId: string, decision: WriteProposal.Decision) => void
+  /** Abort the turn: the reply streaming in, or the wait for decisions. The question stays, with no reply. */
   readonly stop: () => void
   /** Drop this chat and start another in the default style. */
   readonly newChat: () => void
@@ -74,7 +93,8 @@ const announcementOf = (entry: Chat.Entry): string =>
  * `sessionStorage` on mount and written back after every entry; the style,
  * chosen before the first message (academic only once confirmed) and
  * locked after it; each turn streamed in, its tool rounds kept as they
- * finish, stoppable; and a new chat. The tools reach `records`.
+ * finish, its proposed writes held for the person to decide, stoppable;
+ * and a new chat. The tools reach `records`.
  *
  * @remarks
  * Mount one per place: `AssistantChat` keys it by the chat's storage key,
@@ -101,6 +121,7 @@ const useChat = (
     })
   )
   const [streamingReply, setStreamingReply] = useState<Option.Option<StreamingReply>>(Option.none())
+  const [pendingWrites, setPendingWrites] = useState<Option.Option<PendingWrites>>(Option.none())
   const [turnFailure, setTurnFailure] = useState<Option.Option<Turn.Failure>>(Option.none())
   const [announcement, setAnnouncement] = useState('')
   const [academicConfirmationOpen, setAcademicConfirmationOpen] = useState(false)
@@ -109,6 +130,11 @@ const useChat = (
   // when it settles. Neither is rendered.
   const turnFiber = useRef<Option.Option<Fiber.RuntimeFiber<unknown>>>(Option.none())
   const currentTurnNumber = useRef(0)
+  // How the running turn's wait for decisions resumes, once every proposal
+  // is decided. Not rendered.
+  const resumeWithDecisions = useRef<
+    Option.Option<(decisions: Array.NonEmptyReadonlyArray<WriteProposal.Decision>) => void>
+  >(Option.none())
 
   const interruptTurn = useCallback((): void => {
     Option.map(turnFiber.current, (fiber) => Effect.runFork(Fiber.interrupt(fiber)))
@@ -129,6 +155,7 @@ const useChat = (
   )
 
   const styleLocked = chat.entries.length > 0
+  const turnRunning = Option.isSome(streamingReply) || Option.isSome(pendingWrites)
 
   const requestStyle = useCallback(
     (style: Style.Type): void => {
@@ -150,7 +177,7 @@ const useChat = (
 
   const send = useCallback<ChatControls['send']>(
     ({ text, model, apiKey }) => {
-      if (Option.isSome(streamingReply)) return
+      if (turnRunning) return
       const asked = Chat.append(chat, Chat.questionOf(text))
       setChat(asked)
       keep(asked)
@@ -180,13 +207,31 @@ const useChat = (
         kept = Chat.append(kept, round)
         setChat(kept)
         keep(kept)
+        setPendingWrites(Option.none())
         setStreamingReply(Option.some({ thinking: '', text: '' }))
       })
+      const showProposedWrites = ifCurrent((proposed: Turn.ProposedWrites) => {
+        setStreamingReply(Option.none())
+        setPendingWrites(Option.some({ proposed, decisions: new Map() }))
+      })
+      // The turn waits here until every proposal is decided (decideWrite) or
+      // the turn is interrupted (Stop, New chat, unmount).
+      const confirmWrites: Turn.Report['confirmWrites'] = (proposed) =>
+        Effect.async<Array.NonEmptyReadonlyArray<WriteProposal.Decision>>((resume) => {
+          resumeWithDecisions.current = Option.some((decisions) => {
+            resumeWithDecisions.current = Option.none()
+            resume(Effect.succeed(decisions))
+          })
+          showProposedWrites(proposed)
+          return Effect.sync(() => {
+            resumeWithDecisions.current = Option.none()
+          })
+        })
       turnFiber.current = Option.some(
         Effect.runFork(
           Turn.run(
             { chat: asked, model, patient: place.patient, recordAccess },
-            { delta: appendDelta, toolRound: keepToolRound }
+            { delta: appendDelta, toolRound: keepToolRound, confirmWrites }
           ).pipe(
             Effect.provide(
               Layer.mergeAll(
@@ -210,6 +255,7 @@ const useChat = (
               Effect.sync(
                 ifCurrent(() => {
                   setStreamingReply(Option.none())
+                  setPendingWrites(Option.none())
                   turnFiber.current = Option.none()
                 })
               )
@@ -218,7 +264,30 @@ const useChat = (
         )
       )
     },
-    [chat, claudeLayerFor, fhirRecordsLayer, keep, place.patient, recordAccess, streamingReply]
+    [chat, claudeLayerFor, fhirRecordsLayer, keep, place.patient, recordAccess, turnRunning]
+  )
+
+  const decideWrite = useCallback<ChatControls['decideWrite']>(
+    (callId, decision) => {
+      Option.map(pendingWrites, ({ proposed, decisions }) => {
+        if (decisions.has(callId)) return
+        const decided = new Map(decisions).set(callId, decision)
+        setPendingWrites(Option.some({ proposed, decisions: decided }))
+        Option.all(
+          Array.map(proposed.proposals, (proposal) =>
+            Option.fromNullable(decided.get(proposal.callId))
+          )
+        ).pipe(
+          Option.filter(Array.isNonEmptyReadonlyArray),
+          Option.flatMap((allDecided) =>
+            Option.map(resumeWithDecisions.current, (resume) => {
+              resume(allDecided)
+            })
+          )
+        )
+      })
+    },
+    [pendingWrites]
   )
 
   const newChat = useCallback((): void => {
@@ -235,6 +304,7 @@ const useChat = (
     })
     setChat(Chat.start(Style.DEFAULT))
     setStreamingReply(Option.none())
+    setPendingWrites(Option.none())
     setTurnFailure(Option.none())
     setAnnouncement('')
   }, [interruptTurn, page, place])
@@ -242,6 +312,8 @@ const useChat = (
   return {
     chat,
     streamingReply,
+    pendingWrites,
+    turnRunning,
     turnFailure,
     storageProblem,
     announcement,
@@ -251,10 +323,11 @@ const useChat = (
     confirmAcademic,
     cancelAcademic,
     send,
+    decideWrite,
     stop: interruptTurn,
     newChat,
   }
 }
 
 export { useChat }
-export type { ChatControls, ChatRecords, ChatStorageProblem, StreamingReply }
+export type { ChatControls, ChatRecords, ChatStorageProblem, PendingWrites, StreamingReply }

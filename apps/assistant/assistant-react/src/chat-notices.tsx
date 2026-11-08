@@ -29,18 +29,22 @@ interface ChatNoticesProps {
   /** Whether the browser kept the API key. */
   readonly keyKept: boolean
   readonly turnFailure: Option.Option<Turn.Failure>
+  /** Claude's proposed writes wait on the person, so nothing else can be sent. */
+  readonly writesWaiting: boolean
 }
 
 /**
  * The lines about the chat that sit above the composer, full width: the
  * academic style's banner while it is on, then why the chat or the key is
- * not kept, then why the last turn failed. Nothing when none applies.
+ * not kept, then that a proposed change waits on the person, then why the
+ * last turn failed. Nothing when none applies.
  */
 const ChatNotices = ({
   style,
   storageProblem,
   keyKept,
   turnFailure,
+  writesWaiting,
 }: ChatNoticesProps): JSX.Element => (
   <div className={styles['chat-notices']}>
     {style === 'academic' ? (
@@ -61,6 +65,11 @@ const ChatNotices = ({
         This browser wouldn&apos;t keep your key, so you&apos;ll enter it again next time.
       </p>
     )}
+    {writesWaiting ? (
+      <p role="status" className={cn('text-body-3', styles['chat-notices__line'])}>
+        Approve or decline Claude&apos;s proposed change above to go on.
+      </p>
+    ) : null}
     {turnFailure.pipe(
       Option.map((failure) => <ErrorBanner key="turn" error={turnFailureText(failure)} />),
       Option.getOrNull

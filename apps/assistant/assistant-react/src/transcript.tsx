@@ -1,16 +1,18 @@
 import type {
   BetaAssistantMessageParam,
   BetaToolResultBlockParam,
+  BetaToolUseBlockParam,
   BetaUserMessageParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import { Chat } from '@wildflowerhealthio/assistant-core-js'
+import { Chat, type WriteProposal } from '@wildflowerhealthio/assistant-core-js'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { Array, Match, Option } from 'effect'
 import type { ComponentProps, JSX } from 'react'
 
 import { ReplyMarkdown } from './reply-markdown.tsx'
 import { ToolCallCard } from './tool-call-card.tsx'
-import type { StreamingReply } from './use-chat.ts'
+import type { PendingWrites, StreamingReply } from './use-chat.ts'
+import { WriteCard } from './write-card.tsx'
 import styles from './transcript.module.css'
 
 /** The text the person typed in `message`. */
@@ -35,16 +37,65 @@ type ToolResults = ReadonlyMap<string, BetaToolResultBlockParam>
 /** The results of a reply that ended the turn: it ran no calls. */
 const NO_TOOL_RESULTS: ToolResults = new Map()
 
+/** A round's writes waiting on the person, by call id, and how to decide one. */
+interface WritesAwaitingDecision {
+  readonly pendingWrites: PendingWrites
+  readonly onDecideWrite: (callId: string, decision: WriteProposal.Decision) => void
+}
+
+/** The proposal for the call `callId` in `writes`, if it proposes one. */
+const proposalFor = (
+  writes: Option.Option<WritesAwaitingDecision>,
+  callId: string
+): Option.Option<WriteProposal.Type> =>
+  Option.flatMap(writes, ({ pendingWrites }) =>
+    Array.findFirst(pendingWrites.proposed.proposals, (proposal) => proposal.callId === callId)
+  )
+
+/**
+ * One tool call in a reply: the write it proposes, while its round waits on
+ * the person, as a {@link WriteCard}; otherwise the call as a
+ * {@link ToolCallCard} with its result from `toolResults`.
+ */
+const ToolCallBlock = ({
+  call,
+  toolResults,
+  writes,
+}: {
+  readonly call: BetaToolUseBlockParam
+  readonly toolResults: ToolResults
+  readonly writes: Option.Option<WritesAwaitingDecision>
+}): JSX.Element =>
+  Option.all({ proposal: proposalFor(writes, call.id), awaiting: writes }).pipe(
+    Option.map(({ proposal, awaiting }) => (
+      <WriteCard
+        key="write"
+        proposal={proposal}
+        decision={Option.fromNullable(awaiting.pendingWrites.decisions.get(call.id))}
+        onDecide={(decision) => {
+          awaiting.onDecideWrite(call.id, decision)
+        }}
+      />
+    )),
+    Option.getOrElse(() => (
+      <ToolCallCard call={call} result={Option.fromNullable(toolResults.get(call.id))} />
+    ))
+  )
+
 /**
  * A reply's blocks in order: its thinking folded, its text as Markdown, each
- * tool call as a card with its result from `toolResults`, nothing else.
+ * tool call as a card with its result from `toolResults` (or, while its
+ * round waits on the person, the write it proposes as a {@link WriteCard}),
+ * nothing else.
  */
 const ReplyBlocks = ({
   message,
   toolResults,
+  writes = Option.none(),
 }: {
   readonly message: BetaAssistantMessageParam
   readonly toolResults: ToolResults
+  readonly writes?: Option.Option<WritesAwaitingDecision>
 }): JSX.Element =>
   typeof message.content === 'string' ? (
     <ReplyMarkdown markdown={message.content} />
@@ -61,10 +112,11 @@ const ReplyBlocks = ({
             )
           ),
           Match.when({ type: 'tool_use' }, (call) => (
-            <ToolCallCard
+            <ToolCallBlock
               key={`tool-${String(blockIndex)}`}
               call={call}
-              result={Option.fromNullable(toolResults.get(call.id))}
+              toolResults={toolResults}
+              writes={writes}
             />
           )),
           Match.orElse(() => null)
@@ -123,16 +175,20 @@ const TranscriptEntry = ({
 const isFollowedByClaudeAt = (entries: readonly Chat.Entry[], index: number): boolean =>
   Option.fromNullable(entries[index + 1]).pipe(Option.exists((next) => next._tag !== 'question'))
 
-/** Props for {@link Transcript}: the chat and the reply streaming in, and any other `<ol>` prop. */
+/** Props for {@link Transcript}: the chat, the reply streaming in, the round waiting on the person, and any other `<ol>` prop. */
 interface TranscriptProps extends Omit<ComponentProps<'ol'>, 'children'> {
   readonly entries: readonly Chat.Entry[]
   readonly streamingReply: Option.Option<StreamingReply>
+  /** The round whose proposed writes wait on the person; `None` when none does. */
+  readonly pendingWrites: Option.Option<PendingWrites>
+  readonly onDecideWrite: (callId: string, decision: WriteProposal.Decision) => void
 }
 
 /**
  * The chat so far: each question, each reply (thinking folded under
  * "Thinking", text as Markdown, tool calls as cards), each refusal, and the
- * reply streaming in. A question nothing answered says so.
+ * reply streaming in, or the round waiting on the person, its proposed
+ * writes as cards to approve or decline. A question nothing answered says so.
  *
  * @remarks
  * Entries are only ever appended, so an entry's position is its identity.
@@ -140,9 +196,12 @@ interface TranscriptProps extends Omit<ComponentProps<'ol'>, 'children'> {
 const Transcript = ({
   entries,
   streamingReply,
+  pendingWrites,
+  onDecideWrite,
   className,
   ...rootProps
 }: TranscriptProps): JSX.Element => {
+  const turnRunning = Option.isSome(streamingReply) || Option.isSome(pendingWrites)
   return (
     <ol {...rootProps} className={cn(styles['transcript'], className)}>
       {entries.map((entry, index) => (
@@ -152,7 +211,7 @@ const Transcript = ({
           answered={
             entry._tag !== 'question' ||
             isFollowedByClaudeAt(entries, index) ||
-            (index === entries.length - 1 && Option.isSome(streamingReply))
+            (index === entries.length - 1 && turnRunning)
           }
         />
       ))}
@@ -165,6 +224,18 @@ const Transcript = ({
             ) : (
               <ReplyMarkdown markdown={text} />
             )}
+          </li>
+        )),
+        Option.getOrNull
+      )}
+      {pendingWrites.pipe(
+        Option.map((pending) => (
+          <li key="pending-writes" className={styles['transcript__reply']}>
+            <ReplyBlocks
+              message={pending.proposed.message}
+              toolResults={pending.proposed.results}
+              writes={Option.some({ pendingWrites: pending, onDecideWrite })}
+            />
           </li>
         )),
         Option.getOrNull

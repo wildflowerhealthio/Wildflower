@@ -1,0 +1,88 @@
+/*
+ * A write Claude proposed: a raised card with what it would do, the fields
+ * it sets or changes, the JSON folded away, and the person's choice.
+ */
+.write-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+  background: var(--color-raised);
+}
+
+.write-card__summary {
+  margin: 0;
+}
+
+.write-card__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.write-card__field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.write-card__change--added {
+  color: var(--color-success-foreground);
+}
+
+.write-card__change--changed {
+  color: var(--color-warning-foreground);
+}
+
+.write-card__change--removed {
+  color: var(--color-red-3);
+}
+
+.write-card__path {
+  font-family: var(--font-mono);
+}
+
+.write-card__value {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.write-card__arrow {
+  color: var(--color-neutral-4);
+}
+
+.write-card__json summary {
+  color: var(--color-neutral-3);
+  cursor: pointer;
+}
+
+.write-card__json-text {
+  max-height: 20rem;
+  margin: var(--space-2) 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.write-card__reason {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.write-card__decision {
+  margin: 0;
+  color: var(--color-neutral-3);
+}
+
+.write-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}

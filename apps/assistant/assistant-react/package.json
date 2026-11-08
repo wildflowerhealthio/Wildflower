@@ -29,6 +29,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@wildflowerhealthio/assistant-core-js": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/fhir-r4-react": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
@@ -45,6 +46,7 @@
   },
   "peerDependencies": {
     "@wildflowerhealthio/assistant-core-js": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/fhir-r4-react": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",

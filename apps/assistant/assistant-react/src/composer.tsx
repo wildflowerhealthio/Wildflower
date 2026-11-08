@@ -5,20 +5,24 @@ import styles from './composer.module.css'
 
 /** Props for {@link Composer}: its own, and any other `<form>` prop. */
 interface ComposerProps extends Omit<ComponentProps<'form'>, 'children' | 'onSubmit'> {
-  /** A reply is streaming in: Send waits, and Stop shows. */
+  /** A turn is running: Send waits, and Stop shows. */
   readonly replying: boolean
+  /** Nothing can be written: Claude's proposed changes wait on the person. Stop stays. */
+  readonly messageDisabled: boolean
   readonly onSend: (text: string) => void
   readonly onStop: () => void
   readonly onNewChat: () => void
 }
 
 /**
- * Where the person writes: the message box, then Send (or Stop while a
- * reply streams in) and "New chat". Lines about the chat go above it,
- * never below its buttons.
+ * Where the person writes: the message box (disabled while Claude's
+ * proposed changes wait on the person), then Send (or Stop while a turn
+ * runs) and "New chat". Lines about the chat go above it, never below its
+ * buttons.
  */
 const Composer = ({
   replying,
+  messageDisabled,
   onSend,
   onStop,
   onNewChat,
@@ -47,6 +51,7 @@ const Composer = ({
         className={cn('input-3', styles['composer__message'])}
         rows={3}
         value={draft}
+        disabled={messageDisabled}
         placeholder="Ask Claude"
         onChange={(event) => {
           setDraft(event.currentTarget.value)

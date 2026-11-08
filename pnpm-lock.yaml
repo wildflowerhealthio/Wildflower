@@ -428,6 +428,9 @@ importers:
       '@wildflowerhealthio/assistant-core-js':
         specifier: workspace:*
         version: link:../assistant-core-js
+      '@wildflowerhealthio/fhir-r4':
+        specifier: workspace:*
+        version: link:../../../slices/fhir/fhir-r4
       '@wildflowerhealthio/fhir-r4-react':
         specifier: workspace:*
         version: link:../../../slices/fhir/fhir-r4-react

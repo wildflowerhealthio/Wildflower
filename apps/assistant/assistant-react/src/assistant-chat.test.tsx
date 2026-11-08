@@ -18,7 +18,13 @@ import { answerJson, bundleOf } from '@wildflowerhealthio/fhir-r4-react/smart/te
 import { Effect, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
-import { GOOD_KEY, PLACE, renderChat, stubDialogMethods } from './assistant-chat.test-helpers.ts'
+import {
+  GOOD_KEY,
+  PLACE,
+  type RenderedChat,
+  renderChat,
+  stubDialogMethods,
+} from './assistant-chat.test-helpers.ts'
 
 let restoreDialogMethods: () => void = () => undefined
 
@@ -325,5 +331,109 @@ describe('AssistantChat tools', () => {
 
     expect(claude.requests[0]?.tools).toEqual([])
     expect(claude.requests[0]?.system).toContain("You can't read any records")
+  })
+})
+
+describe('AssistantChat writes', () => {
+  const weight = {
+    resourceType: 'Observation',
+    status: 'final',
+    code: { text: 'Weight' },
+    subject: { reference: 'Patient/p1' },
+  }
+  const createCall = toolUseBlock('call-1', 'create_record', { resource: weight })
+  const stored = { ...weight, id: '123', meta: { versionId: '1' } }
+
+  /** The methods and URLs the FHIR server was sent, in order. */
+  const sentTo = (fhir: RenderedChat['fhir']): readonly string[] =>
+    fhir.requests.map(({ method, url }) => `${method} ${url}`)
+
+  it('should hold the turn on a card until the change is approved, with the composer disabled meanwhile', async () => {
+    const user = userEvent.setup()
+    const { fhir, page } = renderChat({
+      keptKey,
+      fhirAnswers: { Observation: answerJson(stored, 201) },
+      replies: [
+        scriptedReply([], messageOf({ content: [createCall], stopReason: 'tool_use' })),
+        replyWith('Saved your weight.'),
+      ],
+    })
+    await screen.findByLabelText('Message')
+
+    await ask(user, 'Record my weight')
+
+    const card = await screen.findByRole('region', { name: 'Create Observation' })
+    expect(within(card).getByText('status').nextElementSibling?.textContent).toBe('"final"')
+    const notice = screen.getByText("Approve or decline Claude's proposed change above to go on.")
+    expect(screen.getByLabelText('Message')).toHaveProperty('disabled', true)
+    expect(
+      notice.compareDocumentPosition(screen.getByLabelText('Message')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(sentTo(fhir)).toEqual([])
+
+    await user.click(within(card).getByRole('button', { name: 'Approve' }))
+
+    expect(await screen.findByText('Saved your weight.')).toBeDefined()
+    expect(sentTo(fhir)).toEqual(['POST https://fhir.example/Observation'])
+    expect(
+      screen.getByText('Create Observation: Created Observation/123', { selector: 'summary' })
+    ).toBeDefined()
+    expect(screen.getByLabelText('Message')).toHaveProperty('disabled', false)
+    const kept = Option.getOrThrow(Effect.runSync(Chat.read(page, PLACE)))
+    expect(kept.entries.map(({ _tag }) => _tag)).toEqual(['question', 'tool-round', 'reply'])
+  })
+
+  it('should send a declined change back with its reason and write nothing', async () => {
+    const user = userEvent.setup()
+    const { fhir, claude } = renderChat({
+      keptKey,
+      replies: [
+        scriptedReply([], messageOf({ content: [createCall], stopReason: 'tool_use' })),
+        replyWith('I left it.'),
+      ],
+    })
+    await screen.findByLabelText('Message')
+
+    await ask(user, 'Record my weight')
+    const card = await screen.findByRole('region', { name: 'Create Observation' })
+    await user.click(within(card).getByRole('button', { name: 'Decline' }))
+    await user.type(within(card).getByLabelText('Reason (optional)'), 'Old scale')
+    await user.click(within(card).getByRole('button', { name: 'Decline change' }))
+
+    expect(await screen.findByText('I left it.')).toBeDefined()
+    expect(sentTo(fhir)).toEqual([])
+    expect(claude.requests[1]?.messages.at(-1)).toEqual({
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: 'call-1',
+          is_error: true,
+          content: 'The user declined this change. Reason: Old scale',
+        },
+      ],
+    })
+  })
+
+  it('should drop the waiting change on Stop, writing nothing and keeping the question', async () => {
+    const user = userEvent.setup()
+    const { fhir, page } = renderChat({
+      keptKey,
+      replies: [scriptedReply([], messageOf({ content: [createCall], stopReason: 'tool_use' }))],
+    })
+    await screen.findByLabelText('Message')
+
+    await ask(user, 'Record my weight')
+    await screen.findByRole('region', { name: 'Create Observation' })
+    await user.click(screen.getByRole('button', { name: 'Stop' }))
+
+    expect(await screen.findByText('No reply to this message.')).toBeDefined()
+    expect(screen.queryByRole('region', { name: 'Create Observation' })).toBeNull()
+    expect(screen.getByLabelText('Message')).toHaveProperty('disabled', false)
+    expect(sentTo(fhir)).toEqual([])
+    expect(Effect.runSync(Chat.read(page, PLACE))).toEqual(
+      Option.some({ style: 'telehealth', entries: [Chat.questionOf('Record my weight')] })
+    )
   })
 })

@@ -18,9 +18,10 @@ interface ToolCallCardProps extends Omit<ComponentProps<'details'>, 'children'> 
 
 /**
  * One tool call in a reply: a line saying what Claude looked up, such as
- * "Searched Observation: code=4548-4, up to 20", which opens to the
- * parameters it gave and how many records came back. It never shows the
- * records themselves.
+ * "Searched Observation: code=4548-4, up to 20", or what it wrote and how
+ * that came out ("Create Observation: Created Observation/123"), which opens
+ * to the parameters it gave and how many records came back. It never shows
+ * the records themselves.
  */
 const ToolCallCard = ({
   call,
@@ -32,7 +33,7 @@ const ToolCallCard = ({
   return (
     <details {...rootProps} className={cn(styles['tool-call-card'], className)}>
       <summary className={cn('text-label-3', styles['tool-call-card__summary'])}>
-        {ToolCall.summaryOf(call)}
+        {ToolCall.lineOf(call, result)}
       </summary>
       <div className={cn('text-body-3', styles['tool-call-card__body'])}>
         {parameters.length === 0 ? null : (

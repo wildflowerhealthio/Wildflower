@@ -23,7 +23,7 @@ interface AssistantChatProps extends Omit<ComponentProps<'div'>, 'children'> {
   readonly patient: ChatPatient.Type
   /** The scopes the sign-in was granted (`SmartConnection.grantedScopes`); they decide the chat's tools. */
   readonly grantedScopes: readonly Scope.Any[]
-  /** Runs the tools' reads over the page's SMART connection (`useRunSmart()`). */
+  /** Runs the tools' reads and writes over the page's SMART connection (`useRunSmart()`). */
   readonly runSmart: RunSmart
   /** The storage and Claude API the chat runs against; the browser's own unless a test gives one. */
   readonly environment?: AssistantEnvironment
@@ -33,8 +33,8 @@ interface AssistantChatProps extends Omit<ComponentProps<'div'>, 'children'> {
  * Assistant's whole chat with Claude about `patient`'s record on the FHIR
  * server at `fhirBaseUrl`: asking for the person's API key until one works,
  * then the model picker, the style choice, the transcript and the
- * composer. Claude reads the record with the tools `grantedScopes` allow,
- * through `runSmart`.
+ * composer. Claude reads the record, and proposes writes for the person to
+ * approve, with the tools `grantedScopes` allow, through `runSmart`.
  *
  * @remarks
  * The key and the chosen model are kept in `localStorage`; the chat in

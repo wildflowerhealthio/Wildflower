@@ -43,6 +43,7 @@ const ChatView = ({
 }: ChatViewProps): JSX.Element => {
   const chat = useChat(environment, place, records)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const writesWaiting = Option.isSome(chat.pendingWrites)
   return (
     <>
       <div className={styles['chat-view__toolbar']}>
@@ -65,7 +66,12 @@ const ChatView = ({
           Settings
         </LinkButton>
       </div>
-      <Transcript entries={chat.chat.entries} streamingReply={chat.streamingReply} />
+      <Transcript
+        entries={chat.chat.entries}
+        streamingReply={chat.streamingReply}
+        pendingWrites={chat.pendingWrites}
+        onDecideWrite={chat.decideWrite}
+      />
       <p aria-live="polite" className="sr-only">
         {chat.announcement}
       </p>
@@ -74,9 +80,11 @@ const ChatView = ({
         storageProblem={chat.storageProblem}
         keyKept={ready.keyKept}
         turnFailure={chat.turnFailure}
+        writesWaiting={writesWaiting}
       />
       <Composer
-        replying={Option.isSome(chat.streamingReply)}
+        replying={chat.turnRunning}
+        messageDisabled={writesWaiting}
         onSend={(text) => {
           chat.send({ text, model: ready.model, apiKey: ready.apiKey })
         }}
