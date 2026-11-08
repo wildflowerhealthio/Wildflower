@@ -314,6 +314,7 @@ const runSmartFor = (transport: Layer.Layer<HttpClient.HttpClient>): RunSmart =>
       fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
       accessToken: Option.some(ACCESS_TOKEN),
       launchPatientId: Option.none(),
+      grantedScopes: [],
     }),
     transport
   ).runSmart

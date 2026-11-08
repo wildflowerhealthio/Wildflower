@@ -29,6 +29,7 @@
     "@wildflowerhealthio/fhir-r4-react": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",
     "@wildflowerhealthio/smart-app-core": "workspace:*",
     "@wildflowerhealthio/smart-app-react": "workspace:*",

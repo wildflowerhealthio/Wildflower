@@ -2,6 +2,7 @@ import type {
   RetainedRequestUnusable,
   RetainedSignInRequestStore,
 } from '@wildflowerhealthio/authorization-core/smart-client'
+import { Scope } from '@wildflowerhealthio/scopes-core'
 import { Data, Effect, Match, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -37,7 +38,7 @@ import {
   stubServer,
   stubStorageRefusing,
 } from './sign-in.test-helpers.ts'
-import { SmartConnection } from './smart-connection.ts'
+import { grantedScopesOf, SmartConnection } from './smart-connection.ts'
 import { redirectToSignIn } from './smart-support.ts'
 
 beforeEach(resetPage)
@@ -82,8 +83,9 @@ const discardHere = (): Effect.Effect<
   )
 
 describe('completeSignInAfterRedirectHere', () => {
-  it('should redeem a sign-in return into a connection to the server, with its token and patient', async () => {
-    // Arrange — a launch out, then the authorization server's return
+  it('should redeem a sign-in return into a connection to the server, with its token, patient and grant', async () => {
+    // Arrange — a launch out, then the authorization server's return, whose
+    // token response names no scope: the grant is the requested scope
     const state = await signInOut()
     returnToRedirectTarget(`?code=code-1&state=${state}&utm=kept`)
     const { requests } = stubServer()
@@ -97,6 +99,7 @@ describe('completeSignInAfterRedirectHere', () => {
         fhirBaseUrl: FHIR_BASE_URL,
         accessToken: Option.some('token-1'),
         launchPatientId: Option.some('pat-1'),
+        grantedScopes: grantedScopesOf(REGISTRATION.scope),
       })
     )
     const [tokenRequest] = requests
@@ -106,6 +109,42 @@ describe('completeSignInAfterRedirectHere', () => {
     expect(tokenRequestBody.get('client_id')).toBe('medication-app')
     expect(tokenRequestBody.get('redirect_uri')).toBe(APP_ROOT)
     expect(window.location.search).toBe('?utm=kept')
+  })
+
+  it('should keep the narrower scope the token response says was granted', async () => {
+    // Arrange — the Owner unticked `fhirUser` on the consent card
+    const state = await signInOut()
+    returnToRedirectTarget(`?code=code-1&state=${state}`)
+    stubServer({}, { access_token: 'token-1', token_type: 'Bearer', scope: 'launch openid' })
+
+    // Act
+    const connection = await completeHere()
+
+    // Assert
+    expect(connection.grantedScopes).toEqual([Scope.parse('launch'), Scope.parse('openid')])
+  })
+
+  it('should keep a granted scope it does not recognise as unknown, not fail the sign-in', async () => {
+    // Arrange
+    const state = await signInOut()
+    returnToRedirectTarget(`?code=code-1&state=${state}`)
+    stubServer(
+      {},
+      {
+        access_token: 'token-1',
+        token_type: 'Bearer',
+        scope: 'openid some-vendor:extension',
+      }
+    )
+
+    // Act
+    const connection = await completeHere()
+
+    // Assert
+    expect(connection.grantedScopes).toEqual([
+      Scope.parse('openid'),
+      new Scope.Unknown('some-vendor:extension'),
+    ])
   })
 
   it('should redeem as the redirect URI the landing names', async () => {
@@ -141,6 +180,7 @@ describe('completeSignInAfterRedirectHere', () => {
         fhirBaseUrl: SELF_ADDRESSED_CONFIG.fhirBaseUrl,
         accessToken: Option.none(),
         launchPatientId: Option.none(),
+        grantedScopes: grantedScopesOf(REGISTRATION.scope),
       })
     )
     expect(window.location.search).toBe('')

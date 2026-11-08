@@ -27,6 +27,7 @@ const CONNECTION = new SmartConnection({
   fhirBaseUrl: decodeFhirBaseUrl('https://fhir.example/r4/'),
   accessToken: Option.some('token-1'),
   launchPatientId: Option.some('pat-1'),
+  grantedScopes: [],
 })
 
 /** A stub server answering every request with `answer`. */
@@ -171,6 +172,7 @@ describe('SmartClient.request', () => {
           fhirBaseUrl: CONNECTION.fhirBaseUrl,
           accessToken: Option.none(),
           launchPatientId: CONNECTION.launchPatientId,
+          grantedScopes: CONNECTION.grantedScopes,
         })
       )
     )

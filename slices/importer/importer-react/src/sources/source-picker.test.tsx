@@ -529,6 +529,7 @@ const serveArchives = (config: {
       fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
       accessToken: Option.some(ACCESS_TOKEN),
       launchPatientId: Option.none(),
+      grantedScopes: [],
     }),
     httpLayer
   ).runSmart

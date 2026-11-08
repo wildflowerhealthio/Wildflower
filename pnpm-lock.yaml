@@ -478,6 +478,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../../slices/scopes/scopes-core
       '@wildflowerhealthio/smart-app-core':
         specifier: workspace:*
         version: link:../../../slices/smart-app-core
@@ -1168,6 +1171,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../global/react-tundraish
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../slices/scopes/scopes-core
       '@wildflowerhealthio/shared-structures-react':
         specifier: workspace:*
         version: link:../../slices/shared-structures/shared-structures-react
@@ -1517,6 +1523,9 @@ importers:
       '@wildflowerhealthio/request-log-react':
         specifier: workspace:*
         version: link:../request-log/request-log-react
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../../slices/scopes/scopes-core
       '@wildflowerhealthio/scopes-react':
         specifier: workspace:*
         version: link:../../../slices/scopes/scopes-react
@@ -1956,6 +1965,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../../slices/scopes/scopes-core
       '@wildflowerhealthio/smart-app-core':
         specifier: workspace:*
         version: link:../../../slices/smart-app-core
@@ -2297,6 +2309,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../../slices/scopes/scopes-core
       '@wildflowerhealthio/smart-app-core':
         specifier: workspace:*
         version: link:../../../slices/smart-app-core
@@ -2688,6 +2703,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../../slices/scopes/scopes-core
       '@wildflowerhealthio/smart-app-core':
         specifier: workspace:*
         version: link:../../../slices/smart-app-core
@@ -3055,6 +3073,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../../slices/scopes/scopes-core
       '@wildflowerhealthio/smart-app-core':
         specifier: workspace:*
         version: link:../../../slices/smart-app-core
@@ -3241,6 +3262,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../../slices/scopes/scopes-core
       '@wildflowerhealthio/shared-structures-react':
         specifier: workspace:*
         version: link:../../../slices/shared-structures/shared-structures-react
@@ -4579,6 +4603,9 @@ importers:
       '@wildflowerhealthio/react-kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/react-kitchen-sink
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../scopes/scopes-core
       '@wildflowerhealthio/shared-structures-react':
         specifier: workspace:*
         version: link:../../shared-structures/shared-structures-react
@@ -5325,6 +5352,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../scopes/scopes-core
       '@wildflowerhealthio/walkthrough-core':
         specifier: workspace:*
         version: link:../../walkthrough/walkthrough-core
@@ -5785,6 +5815,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../global/react-tundraish
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../scopes/scopes-core
       '@wildflowerhealthio/smart-app-core':
         specifier: workspace:*
         version: link:../smart-app-core

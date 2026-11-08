@@ -584,6 +584,7 @@ const servePages = (pages: readonly unknown[], resources?: readonly unknown[]): 
       fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
       accessToken: Option.some(ACCESS_TOKEN),
       launchPatientId: Option.none(),
+      grantedScopes: [],
     }),
     httpLayer
   ).runSmart

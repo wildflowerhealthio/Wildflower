@@ -43,6 +43,14 @@ offers the same choices; this package re-exports its preset groups.
   `appRootRedirect(startRoute)` — what a routed app's router runs over, the
   gate it is built under, and what its `/` redirects to; see
   [Routing a SMART app](#routing-a-smart-app).
+- `useGrantedScopes()` — the scopes the page's sign-in was granted, as
+  `scopes-core` `Scope` values: a connection carries its grant
+  (`SmartConnection.grantedScopes`), which may be less than the app's
+  `registration.scope` asked for when the Owner unticked scopes on the
+  consent card. It reads the runtime `SmartHandshakeGate` provides, as
+  `useRunSmart` does; a page handed the connection reads the field directly.
+  `scopes-core`'s `Grant.make` turns the list into a grant to check coverage
+  against.
 - `LoadingLine`, `LoadingMoreLine` and `ReadFailureLine` — the read-status
   vocabulary an app's page speaks: `Loading…` (or `Loading <subject>…`)
   before anything lands, `Loading more…` while later pages arrive, and

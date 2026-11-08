@@ -19,11 +19,12 @@ import {
   type SmartRegistration,
 } from './retained-sign-in-requests.ts'
 import type { RootArrival, SignInArrival } from './root-arrival.ts'
-import { decodeFhirBaseUrl, SmartConnection } from './smart-connection.ts'
+import { decodeFhirBaseUrl, grantedScopesOf, SmartConnection } from './smart-connection.ts'
 
 /**
- * The connection a redeemed sign-in `session` is: its server, its token, and
- * the patient its token response named, if it named one.
+ * The connection a redeemed sign-in `session` is: its server, its token, the
+ * patient its token response named, if it named one, and the scopes it was
+ * granted.
  */
 const connectionOf = (session: Session): SmartConnection =>
   new SmartConnection({
@@ -32,6 +33,7 @@ const connectionOf = (session: Session): SmartConnection =>
     launchPatientId: Option.fromNullable(session.patient).pipe(
       Option.filter((patientId) => patientId !== '')
     ),
+    grantedScopes: grantedScopesOf(session.scope),
   })
 
 /**
@@ -88,11 +90,13 @@ type SignInAfterRedirectError = SignInError | NoSignInInProgress | CallbackState
 /**
  * The open server the `retained` request names, once `selfAddressedReturn`
  * comes back with its expected `state`. Only an absent request means there is
- * no sign-in to complete.
+ * no sign-in to complete. An open server asks for no authorization, so the
+ * connection holds the scope `registration` requests as its grant.
  */
 const completeSelfAddressedSignIn = (
   selfAddressedReturn: Data.TaggedEnum.Value<RootArrival, 'SelfAddressedSignInReturn'>,
-  retained: Option.Option<string>
+  retained: Option.Option<string>,
+  registration: SmartRegistration
 ): Effect.Effect<
   SmartConnection,
   NoSignInInProgress | RetainedRequestUnrecognised | CallbackStateMismatch
@@ -112,6 +116,7 @@ const completeSelfAddressedSignIn = (
       fhirBaseUrl: request.value.fhirBaseUrl,
       accessToken: Option.none(),
       launchPatientId: Option.none(),
+      grantedScopes: grantedScopesOf(registration.scope),
     })
   })
 
@@ -192,7 +197,7 @@ const completeSignInAfterRedirectHere = (
       Match.tagsExhaustive({
         SignInReturn: (signInReturn) => redeemSignIn(signInReturn, landingRegistration(landing)),
         SelfAddressedSignInReturn: (selfAddressedReturn) =>
-          completeSelfAddressedSignIn(selfAddressedReturn, retained),
+          completeSelfAddressedSignIn(selfAddressedReturn, retained, landing.registration),
       })
     )
   })
