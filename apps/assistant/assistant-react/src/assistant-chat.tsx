@@ -1,13 +1,17 @@
-import { Chat, type ChatPatient } from '@wildflowerhealthio/assistant-core-js'
+import { Chat, type ChatPatient, RecordAccess } from '@wildflowerhealthio/assistant-core-js'
+import type { RunSmart } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { ErrorBanner, PageLoading } from '@wildflowerhealthio/react-tundraish'
+import type { Scope } from '@wildflowerhealthio/scopes-core'
 import { Match } from 'effect'
 import { type ComponentProps, type JSX, useMemo } from 'react'
 
 import { type AssistantEnvironment, BROWSER_ENVIRONMENT } from './assistant-environment.ts'
 import { ChatView } from './chat-view.tsx'
 import { claudeFailureText } from './failure-text.ts'
+import { fhirRecordsLayerFor } from './fhir-records-layer.ts'
 import { KeySetup } from './key-setup.tsx'
+import type { ChatRecords } from './use-chat.ts'
 import { useClaudeAccess } from './use-claude-access.ts'
 import styles from './assistant-chat.module.css'
 
@@ -17,6 +21,10 @@ interface AssistantChatProps extends Omit<ComponentProps<'div'>, 'children'> {
   readonly fhirBase: string
   /** Whose record the chat is about; chats are kept per patient. */
   readonly patient: ChatPatient.Type
+  /** The scopes the sign-in was granted (`SmartConnection.grantedScopes`); they decide the chat's tools. */
+  readonly grantedScopes: readonly Scope.Any[]
+  /** Runs the tools' reads over the page's SMART connection (`useRunSmart()`). */
+  readonly runSmart: RunSmart
   /** The storage and Claude API the chat runs against; the browser's own unless a test gives one. */
   readonly environment?: AssistantEnvironment
 }
@@ -25,7 +33,8 @@ interface AssistantChatProps extends Omit<ComponentProps<'div'>, 'children'> {
  * Assistant's whole chat with Claude about `patient`'s record on the FHIR
  * server at `fhirBase`: asking for the person's API key until one works,
  * then the model picker, the style choice, the transcript and the
- * composer.
+ * composer. Claude reads the record with the tools `grantedScopes` allow,
+ * through `runSmart`.
  *
  * @remarks
  * The key and the chosen model are kept in `localStorage`; the chat in
@@ -35,12 +44,21 @@ interface AssistantChatProps extends Omit<ComponentProps<'div'>, 'children'> {
 const AssistantChat = ({
   fhirBase,
   patient,
+  grantedScopes,
+  runSmart,
   environment = BROWSER_ENVIRONMENT,
   className,
   ...rootProps
 }: AssistantChatProps): JSX.Element => {
   const claudeAccess = useClaudeAccess(environment)
   const place = useMemo<Chat.ChatPlace>(() => ({ fhirBase, patient }), [fhirBase, patient])
+  const records = useMemo<ChatRecords>(
+    () => ({
+      recordAccess: RecordAccess.fromGrantedScopes(grantedScopes),
+      fhirRecordsLayer: fhirRecordsLayerFor(fhirBase, runSmart),
+    }),
+    [fhirBase, grantedScopes, runSmart]
+  )
   return (
     <div {...rootProps} className={cn(styles['assistant-chat'], className)}>
       {Match.value(claudeAccess.access).pipe(
@@ -65,6 +83,7 @@ const AssistantChat = ({
             key={Chat.storageKeyOf(place)}
             environment={environment}
             place={place}
+            records={records}
             claudeAccess={claudeAccess}
             ready={ready}
           />

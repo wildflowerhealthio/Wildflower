@@ -12,7 +12,9 @@ import {
   textDelta,
   thinkingBlock,
   thinkingDelta,
+  toolUseBlock,
 } from '@wildflowerhealthio/assistant-core-js/test-helpers'
+import { answerJson, bundleOf } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { Effect, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
@@ -270,5 +272,63 @@ describe('AssistantChat style', () => {
 
     expect(screen.getByRole('button', { name: 'Academic' })).toHaveProperty('disabled', false)
     expect(screen.queryByText('Hello')).toBeNull()
+  })
+})
+
+describe('AssistantChat tools', () => {
+  const searchCall = toolUseBlock('call-1', 'search_records', {
+    resourceType: 'Observation',
+    params: [{ name: 'code', value: '4548-4' }],
+  })
+  const a1c = {
+    resourceType: 'Observation',
+    id: 'o1',
+    status: 'final',
+    code: { text: 'Hemoglobin A1c' },
+    subject: { reference: 'Patient/p1' },
+  }
+
+  it("should run Claude's search pinned to the patient, show it as a card, and keep the round", async () => {
+    const user = userEvent.setup()
+    const { fhir, claude, page } = renderChat({
+      keptKey,
+      fhirAnswers: { 'Observation?': answerJson(bundleOf([a1c])) },
+      replies: [
+        scriptedReply([], messageOf({ content: [searchCall], stopReason: 'tool_use' })),
+        replyWith('Your A1c is on file.'),
+      ],
+    })
+    await screen.findByLabelText('Message')
+
+    await ask(user, 'What was my A1c?')
+
+    expect(await screen.findByText('Your A1c is on file.')).toBeDefined()
+    expect(screen.getByText('Searched Observation: code=4548-4, up to 20')).toBeDefined()
+    expect(document.body.textContent).not.toContain('Hemoglobin A1c')
+    expect(fhir.urls).toEqual(['https://fhir.example/Observation?code=4548-4&patient=p1&_count=20'])
+    expect(claude.requests[1]?.tools).toEqual(claude.requests[0]?.tools)
+    const kept = Option.getOrThrow(Effect.runSync(Chat.read(page, PLACE)))
+    expect(kept.entries.map(({ _tag }) => _tag)).toEqual([
+      'question',
+      'reply',
+      'tool-results',
+      'reply',
+    ])
+  })
+
+  it('should offer Claude no tools when the grant reaches no records', async () => {
+    const user = userEvent.setup()
+    const { claude } = renderChat({
+      keptKey,
+      grantedScopes: ['openid', 'launch'],
+      replies: [replyWith('I can’t see your record.')],
+    })
+    await screen.findByLabelText('Message')
+
+    await ask(user, 'What was my A1c?')
+    await screen.findByText('I can’t see your record.')
+
+    expect(claude.requests[0]?.tools).toEqual([])
+    expect(claude.requests[0]?.system).toContain("You can't read any records")
   })
 })

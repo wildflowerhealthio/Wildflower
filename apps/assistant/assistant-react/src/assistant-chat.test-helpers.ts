@@ -13,6 +13,13 @@ import {
   type StubClaude,
   stubClaude,
 } from '@wildflowerhealthio/assistant-core-js/test-helpers'
+import {
+  STUB_FHIR_BASE,
+  type StubAnswers,
+  type StubFhirServer,
+  stubSmartRuntime,
+} from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
+import { Scope } from '@wildflowerhealthio/scopes-core'
 import { Option, Redacted } from 'effect'
 import { createElement } from 'react'
 
@@ -43,28 +50,35 @@ const PATIENT: ChatPatient.Type = {
   birthDate: Option.some('1815-12-10'),
 }
 
-const PLACE: Chat.ChatPlace = { fhirBase: 'https://fhir.example/r4', patient: PATIENT }
+const PLACE: Chat.ChatPlace = { fhirBase: STUB_FHIR_BASE, patient: PATIENT }
 
-/** A rendered chat over in-memory storage, and the stub client its good key reaches. */
+/** A rendered chat over in-memory storage, the stub client its good key reaches, and its FHIR server. */
 interface RenderedChat {
   readonly rendered: RenderResult
   readonly page: ReturnType<typeof memoryStoragePage>
   readonly claude: StubClaude
+  readonly fhir: StubFhirServer
 }
 
 /**
  * Render `AssistantChat` at {@link PLACE} over `page`, with `keptKey` kept:
  * {@link GOOD_KEY} reaches a stub listing {@link LISTED_MODELS} and
- * answering with `replies` in turn; the API rejects any other key.
+ * answering with `replies` in turn; the API rejects any other key. The
+ * sign-in was granted `grantedScopes` (`system/*.cruds` unless given), and
+ * the FHIR server answers from `fhirAnswers`.
  */
 const renderChat = ({
   replies = [],
   keptKey = Option.none(),
   page = memoryStoragePage(),
+  grantedScopes = ['system/*.cruds'],
+  fhirAnswers = {},
 }: {
   readonly replies?: readonly HeldReply[]
   readonly keptKey?: Option.Option<string>
   readonly page?: ReturnType<typeof memoryStoragePage>
+  readonly grantedScopes?: readonly string[]
+  readonly fhirAnswers?: StubAnswers
 } = {}): RenderedChat => {
   Option.map(keptKey, (key) => page.localStorage.items.set(ApiKey.STORAGE_KEY, key))
   const claude = stubClaude({ models: LISTED_MODELS, replies })
@@ -76,10 +90,17 @@ const renderChat = ({
     claudeLayerFor: (apiKey) =>
       Redacted.value(apiKey) === GOOD_KEY ? claude.layer : rejecting.layer,
   }
+  const fhir = stubSmartRuntime(fhirAnswers)
   const rendered = render(
-    createElement(AssistantChat, { fhirBase: PLACE.fhirBase, patient: PLACE.patient, environment })
+    createElement(AssistantChat, {
+      fhirBase: PLACE.fhirBase,
+      patient: PLACE.patient,
+      grantedScopes: grantedScopes.map(Scope.parse),
+      runSmart: fhir.runtime.runSmart,
+      environment,
+    })
   )
-  return { rendered, page, claude }
+  return { rendered, page, claude, fhir }
 }
 
 /** `showModal` as a stand-in: the dialog is open. */

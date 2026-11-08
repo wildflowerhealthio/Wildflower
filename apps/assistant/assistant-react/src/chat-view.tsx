@@ -10,7 +10,7 @@ import { ModelPicker } from './model-picker.tsx'
 import { SettingsDialog } from './settings-dialog.tsx'
 import { StyleChoice } from './style-choice.tsx'
 import { Transcript } from './transcript.tsx'
-import { useChat } from './use-chat.ts'
+import { type ChatRecords, useChat } from './use-chat.ts'
 import type { ClaudeAccess, ClaudeAccessControls } from './use-claude-access.ts'
 import styles from './chat-view.module.css'
 
@@ -22,6 +22,8 @@ const ACADEMIC_CONFIRMATION =
 interface ChatViewProps {
   readonly environment: AssistantEnvironment
   readonly place: Chat.ChatPlace
+  /** What the chat's tools reach. */
+  readonly records: ChatRecords
   readonly claudeAccess: ClaudeAccessControls
   /** The access `claudeAccess` holds, known to be ready. */
   readonly ready: Extract<ClaudeAccess, { kind: 'ready' }>
@@ -32,8 +34,14 @@ interface ChatViewProps {
  * transcript with its live region, the lines about the chat, then the
  * composer; and the academic confirmation and the settings dialog.
  */
-const ChatView = ({ environment, place, claudeAccess, ready }: ChatViewProps): JSX.Element => {
-  const chat = useChat(environment, place)
+const ChatView = ({
+  environment,
+  place,
+  records,
+  claudeAccess,
+  ready,
+}: ChatViewProps): JSX.Element => {
+  const chat = useChat(environment, place, records)
   const [settingsOpen, setSettingsOpen] = useState(false)
   return (
     <>

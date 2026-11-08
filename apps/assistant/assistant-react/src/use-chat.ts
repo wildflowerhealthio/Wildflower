@@ -3,6 +3,8 @@ import {
   Chat,
   type ClaudeModel,
   type ClaudeRequestFailed,
+  type FhirRecords,
+  type RecordAccess,
   Style,
   Turn,
 } from '@wildflowerhealthio/assistant-core-js'
@@ -50,6 +52,12 @@ interface ChatControls {
   readonly newChat: () => void
 }
 
+/** What a chat's tools reach: what the grant allows, and the FHIR server they read. */
+interface ChatRecords {
+  readonly recordAccess: RecordAccess.Type
+  readonly fhirRecordsLayer: Layer.Layer<FhirRecords>
+}
+
 /** What the live region says once a turn has kept `entry`. */
 const announcementOf = (entry: Chat.Entry): string =>
   Match.value(entry).pipe(
@@ -58,6 +66,7 @@ const announcementOf = (entry: Chat.Entry): string =>
     ),
     Match.tag('refusal', () => 'Claude declined to answer this.'),
     Match.tag('question', () => ''),
+    Match.tag('tool-results', () => ''),
     Match.exhaustive
   )
 
@@ -65,7 +74,8 @@ const announcementOf = (entry: Chat.Entry): string =>
  * The chat at `place`, page-logic for `AssistantChat`: read from the tab's
  * `sessionStorage` on mount and written back after every entry; the style,
  * chosen before the first message (academic only once confirmed) and
- * locked after it; each turn streamed in, stoppable; and a new chat.
+ * locked after it; each turn streamed in, its tool rounds kept as they
+ * finish, stoppable; and a new chat. The tools reach `records`.
  *
  * @remarks
  * Mount one per place: `AssistantChat` keys it by the chat's storage key,
@@ -74,7 +84,8 @@ const announcementOf = (entry: Chat.Entry): string =>
  */
 const useChat = (
   { page, claudeLayerFor }: AssistantEnvironment,
-  place: Chat.ChatPlace
+  place: Chat.ChatPlace,
+  { recordAccess, fhirRecordsLayer }: ChatRecords
 ): ChatControls => {
   const [initial] = useState(() => Effect.runSync(Effect.either(Chat.read(page, place))))
   const [chat, setChat] = useState<Chat.Type>(() =>
@@ -165,13 +176,31 @@ const useChat = (
           )
         )
       })
+      // The chat as this turn has kept it so far: each tool round is appended
+      // as it finishes, and the answer after the last.
+      let kept = asked
+      const keepToolRound = ifCurrent(([reply, results]: readonly [Chat.Entry, Chat.Entry]) => {
+        kept = Chat.append(Chat.append(kept, reply), results)
+        setChat(kept)
+        keep(kept)
+        setStreamingReply(Option.some({ thinking: '', text: '' }))
+      })
       turnFiber.current = Option.some(
         Effect.runFork(
-          Turn.run({ chat: asked, model, patient: place.patient }, appendDelta).pipe(
-            Effect.provide(Layer.merge(claudeLayerFor(apiKey), DateTime.layerCurrentZoneLocal)),
+          Turn.run(
+            { chat: asked, model, patient: place.patient, recordAccess },
+            { delta: appendDelta, toolRound: keepToolRound }
+          ).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                claudeLayerFor(apiKey),
+                fhirRecordsLayer,
+                DateTime.layerCurrentZoneLocal
+              )
+            ),
             Effect.match({
               onSuccess: ifCurrent((entry: Chat.Entry) => {
-                const answered = Chat.append(asked, entry)
+                const answered = Chat.append(kept, entry)
                 setChat(answered)
                 keep(answered)
                 setAnnouncement(announcementOf(entry))
@@ -192,7 +221,7 @@ const useChat = (
         )
       )
     },
-    [chat, claudeLayerFor, keep, place.patient, streamingReply]
+    [chat, claudeLayerFor, fhirRecordsLayer, keep, place.patient, recordAccess, streamingReply]
   )
 
   const newChat = useCallback((): void => {
@@ -231,4 +260,4 @@ const useChat = (
 }
 
 export { useChat }
-export type { ChatControls, ChatStorageProblem, StreamingReply }
+export type { ChatControls, ChatRecords, ChatStorageProblem, StreamingReply }

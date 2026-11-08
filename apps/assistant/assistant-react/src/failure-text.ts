@@ -26,9 +26,10 @@ const claudeFailureText = (failure: ClaudeRequestFailed): string =>
 const turnFailureText = (failure: ClaudeRequestFailed | Turn.UnexpectedStop): string =>
   Match.value(failure).pipe(
     Match.tag('ClaudeRequestFailed', claudeFailureText),
-    Match.tag(
-      'UnexpectedStop',
-      ({ stopReason }) => `Claude stopped unexpectedly (${stopReason ?? 'no reason given'}).`
+    Match.tag('UnexpectedStop', ({ stopReason }) =>
+      stopReason === 'max_tokens'
+        ? 'Claude reached its output limit while asking to look something up, so the lookup didn’t run.'
+        : `Claude stopped unexpectedly (${stopReason ?? 'no reason given'}).`
     ),
     Match.exhaustive
   )

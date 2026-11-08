@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { AssistantChat } from '@wildflowerhealthio/assistant-react'
-import { type SmartConnection, useRunSmart } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  type RunSmart,
+  type SmartConnection,
+  useRunSmart,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { Scope } from '@wildflowerhealthio/scopes-core'
 import {
   LoadingLine,
   type PatientChoice,
@@ -11,6 +16,7 @@ import {
   patientQuery,
   ReadFailureLine,
   SmartHandshakeGate,
+  useGrantedScopes,
   usePatientChoice,
 } from '@wildflowerhealthio/smart-app-react'
 import { Match, Option } from 'effect'
@@ -86,6 +92,8 @@ const AssistantPage = ({ connection }: { readonly connection: SmartConnection })
  * The chat about `patientChoice`'s record on `fhirBase`: for one patient,
  * once the `Patient` read the choice line also makes has landed, so the chat
  * can state the patient's name and birth date; for "All patients", at once.
+ * Its tools are the ones the sign-in's granted scopes allow, reading over
+ * the page's SMART runtime.
  */
 const PatientChat = ({
   fhirBase,
@@ -93,26 +101,43 @@ const PatientChat = ({
 }: {
   readonly fhirBase: string
   readonly patientChoice: PatientChoice
-}): JSX.Element =>
-  Match.value(patientChoice).pipe(
+}): JSX.Element => {
+  const grantedScopes = useGrantedScopes()
+  const runSmart = useRunSmart()
+  return Match.value(patientChoice).pipe(
     Match.when({ kind: 'patient' }, ({ patientId }) => (
-      <OnePatientChat fhirBase={fhirBase} patientId={patientId} />
+      <OnePatientChat
+        fhirBase={fhirBase}
+        patientId={patientId}
+        grantedScopes={grantedScopes}
+        runSmart={runSmart}
+      />
     )),
     Match.when({ kind: 'all-patients' }, () => (
-      <AssistantChat fhirBase={fhirBase} patient={{ kind: 'all-patients' }} />
+      <AssistantChat
+        fhirBase={fhirBase}
+        patient={{ kind: 'all-patients' }}
+        grantedScopes={grantedScopes}
+        runSmart={runSmart}
+      />
     )),
     Match.exhaustive
   )
+}
 
 /** The chat about one patient, once that patient's record has been read. */
 const OnePatientChat = ({
   fhirBase,
   patientId,
+  grantedScopes,
+  runSmart,
 }: {
   readonly fhirBase: string
   readonly patientId: string
+  readonly grantedScopes: readonly Scope.Any[]
+  readonly runSmart: RunSmart
 }): JSX.Element => {
-  const patientRead = useQuery(patientQuery(useRunSmart(), patientId))
+  const patientRead = useQuery(patientQuery(runSmart, patientId))
   if (patientRead.isError) {
     return <ReadFailureLine subject="the patient" error={patientRead.error} />
   }
@@ -132,6 +157,8 @@ const OnePatientChat = ({
         name: patientNameOf(patient),
         birthDate: Option.fromNullable(patient.birthDate),
       }}
+      grantedScopes={grantedScopes}
+      runSmart={runSmart}
     />
   )
 }

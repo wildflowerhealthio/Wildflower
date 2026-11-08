@@ -1,13 +1,15 @@
 import type {
   BetaAssistantMessageParam,
+  BetaToolResultBlockParam,
   BetaUserMessageParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import type { Chat } from '@wildflowerhealthio/assistant-core-js'
+import { Chat } from '@wildflowerhealthio/assistant-core-js'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { Array, Match, Option } from 'effect'
 import type { ComponentProps, JSX } from 'react'
 
 import { ReplyMarkdown } from './reply-markdown.tsx'
+import { ToolCallCard } from './tool-call-card.tsx'
 import type { StreamingReply } from './use-chat.ts'
 import styles from './transcript.module.css'
 
@@ -27,8 +29,20 @@ const ThinkingDisclosure = ({ thinking }: { readonly thinking: string }): JSX.El
   </details>
 )
 
-/** A reply's blocks in order: its thinking folded, its text as Markdown, nothing else. */
-const ReplyBlocks = ({ message }: { readonly message: BetaAssistantMessageParam }): JSX.Element =>
+/** The chat's tool results, by the id of the call each answers. */
+type ToolResults = ReadonlyMap<string, BetaToolResultBlockParam>
+
+/**
+ * A reply's blocks in order: its thinking folded, its text as Markdown, each
+ * tool call as a card with its result from `toolResults`, nothing else.
+ */
+const ReplyBlocks = ({
+  message,
+  toolResults,
+}: {
+  readonly message: BetaAssistantMessageParam
+  readonly toolResults: ToolResults
+}): JSX.Element =>
   typeof message.content === 'string' ? (
     <ReplyMarkdown markdown={message.content} />
   ) : (
@@ -43,6 +57,13 @@ const ReplyBlocks = ({ message }: { readonly message: BetaAssistantMessageParam 
               <ThinkingDisclosure key={`thinking-${String(blockIndex)}`} thinking={thinking} />
             )
           ),
+          Match.when({ type: 'tool_use' }, (call) => (
+            <ToolCallCard
+              key={`tool-${String(blockIndex)}`}
+              call={call}
+              result={Option.fromNullable(toolResults.get(call.id))}
+            />
+          )),
           Match.orElse(() => null)
         )
       )}
@@ -54,14 +75,20 @@ const TranscriptNote = ({ children }: { readonly children: string }): JSX.Elemen
   <p className={cn('text-body-3', styles['transcript__note'])}>{children}</p>
 )
 
-/** One kept entry, given whether a reply follows it (or is streaming in after it). */
+/**
+ * One kept entry, given whether a reply follows it (or is streaming in after
+ * it) and the chat's tool results. Tool results show in their calls' cards,
+ * not on their own.
+ */
 const TranscriptEntry = ({
   entry,
   answered,
+  toolResults,
 }: {
   readonly entry: Chat.Entry
   readonly answered: boolean
-}): JSX.Element =>
+  readonly toolResults: ToolResults
+}): JSX.Element | null =>
   Match.value(entry).pipe(
     Match.tag('question', ({ message }) => (
       <li className={styles['transcript__question']}>
@@ -73,12 +100,13 @@ const TranscriptEntry = ({
     )),
     Match.tag('reply', ({ message, stopReason }) => (
       <li className={styles['transcript__reply']}>
-        <ReplyBlocks message={message} />
+        <ReplyBlocks message={message} toolResults={toolResults} />
         {stopReason === 'max_tokens' ? (
           <TranscriptNote>Claude reached its output limit and stopped partway.</TranscriptNote>
         ) : null}
       </li>
     )),
+    Match.tag('tool-results', () => null),
     Match.tag('refusal', () => (
       <li className={styles['transcript__reply']}>
         <TranscriptNote>Claude declined to answer this.</TranscriptNote>
@@ -95,8 +123,8 @@ interface TranscriptProps extends Omit<ComponentProps<'ol'>, 'children'> {
 
 /**
  * The chat so far: each question, each reply (thinking folded under
- * "Thinking", text as Markdown), each refusal, and the reply streaming in.
- * A question nothing answered says so.
+ * "Thinking", text as Markdown, tool calls as cards), each refusal, and the
+ * reply streaming in. A question nothing answered says so.
  *
  * @remarks
  * Entries are only ever appended, so an entry's position is its identity.
@@ -106,35 +134,39 @@ const Transcript = ({
   streamingReply,
   className,
   ...rootProps
-}: TranscriptProps): JSX.Element => (
-  <ol {...rootProps} className={cn(styles['transcript'], className)}>
-    {entries.map((entry, index) => (
-      <TranscriptEntry
-        key={`entry-${String(index)}`}
-        entry={entry}
-        answered={
-          entry._tag !== 'question' ||
-          entries[index + 1]?._tag === 'reply' ||
-          entries[index + 1]?._tag === 'refusal' ||
-          (index === entries.length - 1 && Option.isSome(streamingReply))
-        }
-      />
-    ))}
-    {streamingReply.pipe(
-      Option.map(({ thinking, text }) => (
-        <li key="streaming" className={styles['transcript__reply']} aria-busy="true">
-          {thinking === '' ? null : <ThinkingDisclosure thinking={thinking} />}
-          {text === '' ? (
-            <TranscriptNote>Claude is writing…</TranscriptNote>
-          ) : (
-            <ReplyMarkdown markdown={text} />
-          )}
-        </li>
-      )),
-      Option.getOrNull
-    )}
-  </ol>
-)
+}: TranscriptProps): JSX.Element => {
+  const toolResults = Chat.toolResultsByCallIdOf(entries)
+  return (
+    <ol {...rootProps} className={cn(styles['transcript'], className)}>
+      {entries.map((entry, index) => (
+        <TranscriptEntry
+          key={`entry-${String(index)}`}
+          entry={entry}
+          toolResults={toolResults}
+          answered={
+            entry._tag !== 'question' ||
+            entries[index + 1]?._tag === 'reply' ||
+            entries[index + 1]?._tag === 'refusal' ||
+            (index === entries.length - 1 && Option.isSome(streamingReply))
+          }
+        />
+      ))}
+      {streamingReply.pipe(
+        Option.map(({ thinking, text }) => (
+          <li key="streaming" className={styles['transcript__reply']} aria-busy="true">
+            {thinking === '' ? null : <ThinkingDisclosure thinking={thinking} />}
+            {text === '' ? (
+              <TranscriptNote>Claude is writing…</TranscriptNote>
+            ) : (
+              <ReplyMarkdown markdown={text} />
+            )}
+          </li>
+        )),
+        Option.getOrNull
+      )}
+    </ol>
+  )
+}
 
 export { Transcript }
 export type { TranscriptProps }
