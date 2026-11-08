@@ -1,7 +1,7 @@
 import type { BetaToolResultBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import { Scope } from '@wildflowerhealthio/scopes-core'
-import { Effect, Encoding, Option } from 'effect'
+import { Effect, Encoding } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type * as ChatPatient from './chat-patient.ts'
@@ -9,6 +9,7 @@ import { FhirReadFailed } from './fhir-records.ts'
 import * as RecordAccess from './record-access.ts'
 import {
   fhirFailure,
+  onePatientChat,
   searchBundleOf,
   STUB_FHIR_BASE,
   type StubFhirRecords,
@@ -16,12 +17,7 @@ import {
 } from './test-helpers.ts'
 import * as Tools from './tools.ts'
 
-const ada: ChatPatient.Type = {
-  kind: 'patient',
-  patientId: 'p1',
-  name: 'Ada Lovelace',
-  birthDate: Option.none(),
-}
+const ada = onePatientChat({ id: 'p1', given: 'Ada', family: 'Lovelace' })
 const everyone: ChatPatient.Type = { kind: 'all-patients' }
 
 const accessOf = (...scopes: readonly string[]): RecordAccess.Type =>

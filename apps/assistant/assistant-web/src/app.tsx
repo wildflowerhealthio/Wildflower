@@ -5,6 +5,7 @@ import {
   type SmartConnection,
   useRunSmart,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { hasId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Scope } from '@wildflowerhealthio/scopes-core'
 import {
   LoadingLine,
@@ -12,7 +13,6 @@ import {
   PatientChoiceLine,
   PatientPicker,
   patientChoiceKeyOf,
-  patientNameOf,
   patientQuery,
   ReadFailureLine,
   SmartHandshakeGate,
@@ -91,7 +91,7 @@ const AssistantPage = ({ connection }: { readonly connection: SmartConnection })
 /**
  * The chat about `patientChoice`'s record on `fhirBaseUrl`: for one patient,
  * once the `Patient` read the choice line also makes has landed, so the chat
- * can state the patient's name and birth date; for "All patients", at once.
+ * holds the patient's record; for "All patients", at once.
  * Its tools are the ones the sign-in's granted scopes allow, reading over
  * the page's SMART runtime.
  */
@@ -125,7 +125,11 @@ const PatientChat = ({
   )
 }
 
-/** The chat about one patient, once that patient's record has been read. */
+/**
+ * The chat about one patient, once that patient's `Patient` record has been
+ * read: the chat carries the record, and states the name and birth date it
+ * gives.
+ */
 const OnePatientChat = ({
   fhirBaseUrl,
   patientId,
@@ -148,15 +152,13 @@ const OnePatientChat = ({
     )
   }
   const patient = patientRead.data.value
+  if (!hasId(patient)) {
+    return <ReadFailureLine subject={`patient ${patientId}`} error="the record has no id" />
+  }
   return (
     <AssistantChat
       fhirBaseUrl={fhirBaseUrl}
-      patient={{
-        kind: 'patient',
-        patientId,
-        name: patientNameOf(patient),
-        birthDate: Option.fromNullable(patient.birthDate),
-      }}
+      patient={{ kind: 'patient', patient }}
       grantedScopes={grantedScopes}
       runSmart={runSmart}
     />

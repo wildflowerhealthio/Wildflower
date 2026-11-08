@@ -47,8 +47,9 @@ aggregator-shell composition.
   with a "Change patient" link back to the picker.
 - **Body**, under the chosen patient: `AssistantChat`, keyed per choice. For
   one patient it waits for the `Patient` read the choice line makes
-  (`patientQuery`, one cache entry for both) and passes the name and birth
-  date the system prompt states; for All patients it mounts at once.
+  (`patientQuery`, one cache entry for both) and passes the `Patient`
+  record, whose name and birth date the system prompt states; for All
+  patients it mounts at once.
 
 ## Where the bundle is served
 

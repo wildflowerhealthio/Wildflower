@@ -7,7 +7,7 @@ import {
 } from '@anthropic-ai/sdk'
 import type { BetaStopReason } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { Scope } from '@wildflowerhealthio/scopes-core'
-import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Option } from 'effect'
+import { DateTime, Deferred, Effect, Exit, Fiber, Layer } from 'effect'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import type * as ChatPatient from './chat-patient.ts'
@@ -20,6 +20,7 @@ import {
   failingReply,
   heldReply,
   messageOf,
+  onePatientChat,
   scriptedReply,
   searchBundleOf,
   type StubClaude,
@@ -229,12 +230,7 @@ describe('Turn.run', () => {
 })
 
 describe('Turn.run with tools', () => {
-  const ada: ChatPatient.Type = {
-    kind: 'patient',
-    patientId: 'p1',
-    name: 'Ada Lovelace',
-    birthDate: Option.none(),
-  }
+  const ada = onePatientChat({ id: 'p1', given: 'Ada', family: 'Lovelace' })
   const adaRequest: Turn.Request = { ...askedRequest, patient: ada }
   const searchCall = toolUseBlock('call-1', 'search_records', {
     resourceType: 'Observation',

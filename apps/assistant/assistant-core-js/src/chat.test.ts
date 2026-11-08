@@ -8,11 +8,11 @@ import { Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type * as ChatPatient from './chat-patient.ts'
 import * as Chat from './chat.ts'
 import {
   blockedStoragePage,
   memoryStoragePage,
+  onePatientChat,
   textBlock,
   thinkingBlock,
   toolUseBlock,
@@ -77,12 +77,7 @@ const chatArb: fc.Arbitrary<Chat.Type> = fc.record({
   entries: fc.array(entryArb, { maxLength: 8 }),
 })
 
-const patient: ChatPatient.Type = {
-  kind: 'patient',
-  patientId: 'p1',
-  name: 'Ada Lovelace',
-  birthDate: Option.none(),
-}
+const patient = onePatientChat({ id: 'p1', given: 'Ada', family: 'Lovelace' })
 const place: Chat.Place = { fhirBaseUrl: 'https://fhir.example/r4', patient }
 
 describe('Chat codec', () => {

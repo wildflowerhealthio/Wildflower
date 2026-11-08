@@ -29,9 +29,9 @@ Every module is a namespace (`src/index.ts`):
   in `localStorage` at `wildflower.assistant.model`.
 - `src/style.ts` — `Style`: `telehealth` (the default) or `academic`, and
   `systemPromptOf`, which joins the style's voice
-  (`src/telehealth-voice.ts`, `src/academic-voice.ts`), whose record the chat
-  is about, today's date and `RecordAccess.paragraphOf` the grant, one
-  paragraph each. The telehealth voice says who to contact and how to look
+  (`src/telehealth-voice.ts`, `src/academic-voice.ts`),
+  `ChatPatient.paragraphOf` the patient, today's date and
+  `RecordAccess.paragraphOf` the grant, one paragraph each. The telehealth voice says who to contact and how to look
   them up with the tools.
 - `src/record-access.ts` — `RecordAccess`: from `SmartConnection.grantedScopes`,
   the types the agent may read (`r`), search (`s`) and write (`c`/`u`), each
@@ -52,8 +52,11 @@ Every module is a namespace (`src/index.ts`):
   and succeeds with its `tool_result`.
 - `src/tool-call.ts` — `ToolCall`: a kept call in words for the
   transcript's card (`summaryOf`, `parametersOf`, `resultSummaryOf`).
-- `src/chat-patient.ts` — `ChatPatient`: one named patient (id, name, birth
-  date) or every patient, and `keyOf` (the id, or `*`).
+- `src/chat-patient.ts` — `ChatPatient`: one patient's FHIR `Patient`
+  record (with its id) or every patient; `keyOf` (the id, or `*`),
+  `patientIdIfOne`, and `paragraphOf`, whose record the chat is about in
+  words, the name and birth date read from the record (`fhir-r4`'s
+  `HumanName.displayName`).
 - `src/chat.ts` — `Chat`: a style and its entries (`question`, `reply` with
   its model and `end_turn` / `max_tokens` / `tool_use`, `tool-results`,
   `refusal` with its model), the codec, `requestMessagesOf` (what a turn

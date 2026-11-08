@@ -7,7 +7,7 @@ import { IdSchema } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Data, Effect, Encoding, Either, Match, Option, Schema } from 'effect'
 
-import type * as ChatPatient from './chat-patient.ts'
+import * as ChatPatient from './chat-patient.ts'
 import { type FhirReadFailed, FhirRecords } from './fhir-records.ts'
 import * as PatientPin from './patient-pin.ts'
 import * as RecordAccess from './record-access.ts'
@@ -296,16 +296,12 @@ const SearchBundle = Schema.Struct({
   ),
 })
 
-/** The patient a chat's reads are kept to, if it is about one. */
-const pinnedPatientIdOf = (patient: ChatPatient.Type): Option.Option<string> =>
-  patient.kind === 'patient' ? Option.some(patient.patientId) : Option.none()
-
 /** Refuse `records` if any is about a patient other than the chat's. */
 const refuseOtherPatientsRecords = (
   tools: Type,
   records: readonly unknown[]
 ): Effect.Effect<void, ToolCallRefused> =>
-  Option.match(pinnedPatientIdOf(tools.patient), {
+  Option.match(ChatPatient.patientIdIfOne(tools.patient), {
     onNone: () => Effect.void,
     onSome: (patientId) =>
       records.some((record) => PatientPin.isAboutAnotherPatient(record, patientId))
@@ -369,7 +365,7 @@ const searchRecords = (
       })
     )
     const page = yield* pageSizeOf(params)
-    const pinnedParams = yield* Option.match(pinnedPatientIdOf(tools.patient), {
+    const pinnedParams = yield* Option.match(ChatPatient.patientIdIfOne(tools.patient), {
       onNone: () => Effect.succeed(page.params),
       onSome: (patientId) =>
         PatientPin.of(searchedType).pipe(
@@ -426,7 +422,7 @@ const readRecord = (
     )
     const records = yield* FhirRecords
     const record = yield* records.read(`${readType}/${recordId}`)
-    yield* Option.match(pinnedPatientIdOf(tools.patient), {
+    yield* Option.match(ChatPatient.patientIdIfOne(tools.patient), {
       onNone: () => Effect.void,
       onSome: (patientId) =>
         PatientPin.isAboutAnotherPatient(record, patientId)

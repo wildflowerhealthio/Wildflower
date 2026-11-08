@@ -21,8 +21,8 @@ choice.
   granted scopes (`useGrantedScopes()`) and the SMART runtime's `runSmart`
   (`useRunSmart()`), which its tools read through: for one
   patient, once the `Patient` read `PatientChoiceLine` also makes has landed
-  (`smart-app-react`'s `patientQuery`, the same cache entry), so the chat can
-  state the name and birth date; for All patients, at once.
+  (`smart-app-react`'s `patientQuery`, the same cache entry), so the chat
+  holds the patient's `Patient` record; for All patients, at once.
 - **`config.ts` is the registration's one TypeScript home.** `ASSISTANT_SCOPE`
   and both client ids are read by `authorization-server-rust`'s `seeding.rs`
   test, which holds the seeded clients to them. The scope asks for everything;

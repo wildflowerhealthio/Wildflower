@@ -1,4 +1,4 @@
-import { DateTime, Option } from 'effect'
+import { DateTime } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { Scope } from '@wildflowerhealthio/scopes-core'
@@ -7,6 +7,7 @@ import { ACADEMIC_VOICE } from './academic-voice.ts'
 import * as RecordAccess from './record-access.ts'
 import * as Style from './style.ts'
 import { TELEHEALTH_VOICE } from './telehealth-voice.ts'
+import { onePatientChat } from './test-helpers.ts'
 
 const today = DateTime.unsafeMakeZoned('2026-11-08T22:30:00Z', { timeZone: 'America/Toronto' })
 const recordAccess = RecordAccess.fromGrantedScopes([Scope.parse('system/*.cruds')])
@@ -20,12 +21,12 @@ describe('Style.systemPromptOf', () => {
     (style, voice) => {
       const prompt = Style.systemPromptOf({
         style,
-        patient: {
-          kind: 'patient',
-          patientId: 'p1',
-          name: 'Ada Lovelace',
-          birthDate: Option.some('1815-12-10'),
-        },
+        patient: onePatientChat({
+          id: 'p1',
+          given: 'Ada',
+          family: 'Lovelace',
+          birthDate: '1815-12-10',
+        }),
         today,
         recordAccess,
       })
@@ -42,13 +43,26 @@ describe('Style.systemPromptOf', () => {
   it('should say when the record gives no birth date', () => {
     const prompt = Style.systemPromptOf({
       style: 'telehealth',
-      patient: { kind: 'patient', patientId: 'p1', name: 'Ada Lovelace', birthDate: Option.none() },
+      patient: onePatientChat({ id: 'p1', given: 'Ada', family: 'Lovelace' }),
       today,
       recordAccess,
     })
 
     expect(prompt).toContain(
       'This chat is about one patient, Ada Lovelace, whose record gives no birth date.'
+    )
+  })
+
+  it('should say when the record gives no name', () => {
+    const prompt = Style.systemPromptOf({
+      style: 'telehealth',
+      patient: onePatientChat({ id: 'p1', birthDate: '1815-12-10' }),
+      today,
+      recordAccess,
+    })
+
+    expect(prompt).toContain(
+      'This chat is about one patient, whose record gives no name, born 1815-12-10.'
     )
   })
 

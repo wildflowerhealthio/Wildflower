@@ -11,7 +11,7 @@ import { AssistantChat } from '@wildflowerhealthio/assistant-react'
 
 ;<AssistantChat
   fhirBaseUrl={connection.fhirBaseUrl}
-  patient={{ kind: 'patient', patientId, name, birthDate }}
+  patient={{ kind: 'patient', patient }}
   grantedScopes={useGrantedScopes()}
   runSmart={useRunSmart()}
 />
@@ -20,7 +20,7 @@ import { AssistantChat } from '@wildflowerhealthio/assistant-react'
 | Prop            | Type                                     | What it is                                                                                                                                                                                 |
 | --------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `fhirBaseUrl`   | `string`                                 | The connected FHIR server's base URL. Chats are kept per server.                                                                                                                           |
-| `patient`       | `ChatPatient.Type` (`assistant-core-js`) | `{ kind: 'patient', patientId, name, birthDate }` (birth date an `Option` of the record's `birthDate`) or `{ kind: 'all-patients' }`. Chats are kept per patient.                          |
+| `patient`       | `ChatPatient.Type` (`assistant-core-js`) | `{ kind: 'patient', patient }`, `patient` the FHIR `Patient` record (with its id), or `{ kind: 'all-patients' }`. Chats are kept per patient.                                              |
 | `grantedScopes` | `readonly Scope.Any[]` (`scopes-core`)   | The scopes the sign-in was granted: `SmartConnection.grantedScopes`, or `smart-app-react`'s `useGrantedScopes()`. They decide which tools Claude gets and which record types each reaches. |
 | `runSmart`      | `RunSmart` (`fhir-r4-react/smart`)       | Runs the tools' reads over the page's SMART connection: `useRunSmart()` under `SmartHandshakeGate`.                                                                                        |
 | `environment`   | `AssistantEnvironment`, optional         | The storage and Claude API the chat runs against. Defaults to `BROWSER_ENVIRONMENT` (`window`'s storage, the real API); tests pass in-memory storage and a stub.                           |
@@ -28,9 +28,10 @@ import { AssistantChat } from '@wildflowerhealthio/assistant-react'
 Any other `<div>` prop (`className`, `id`, `aria-*`, `data-*`) goes to the
 root `<div>`.
 
-`patient`'s kinds are `smart-app-react`'s `PatientChoice`'s, with the name
-and birth date the system prompt states added: the shell reads the patient
-(as `PatientChoiceLine` does) and passes them. A new `fhirBaseUrl` or patient
+`patient`'s kinds are `smart-app-react`'s `PatientChoice`'s, holding the
+chosen patient's `Patient` record, whose name and birth date the system
+prompt states: the shell reads the record (as `PatientChoiceLine` does) and
+passes it. A new `fhirBaseUrl` or patient
 is a new chat, with nothing carried over from the last; the key and model
 stay as they are.
 

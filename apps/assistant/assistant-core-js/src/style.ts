@@ -1,7 +1,7 @@
-import { DateTime, Match, Option, Schema } from 'effect'
+import { DateTime, Match, Schema } from 'effect'
 
 import { ACADEMIC_VOICE } from './academic-voice.ts'
-import type * as ChatPatient from './chat-patient.ts'
+import * as ChatPatient from './chat-patient.ts'
 import * as RecordAccess from './record-access.ts'
 import { TELEHEALTH_VOICE } from './telehealth-voice.ts'
 
@@ -35,29 +35,6 @@ const voiceOf = (style: Type): string =>
     Match.exhaustive
   )
 
-/** Whose record the chat is about, in words. */
-const patientParagraphOf = (patient: ChatPatient.Type): string =>
-  Match.value(patient).pipe(
-    Match.when(
-      { kind: 'patient' },
-      ({ name, birthDate }) =>
-        `This chat is about one patient, ${name}, ` +
-        birthDate.pipe(
-          Option.match({
-            onSome: (born) => `born ${born}.`,
-            onNone: () => 'whose record gives no birth date.',
-          })
-        ) +
-        " Your tools keep every search and read to this patient's records."
-    ),
-    Match.when(
-      { kind: 'all-patients' },
-      () =>
-        'This chat is not about one patient: the person chose "All patients", every patient on the server.'
-    ),
-    Match.exhaustive
-  )
-
 /** Today's date, as the person's calendar has it. */
 const dateParagraphOf = (today: DateTime.DateTime): string =>
   `Today's date is ${DateTime.formatIsoDate(today)}.`
@@ -80,7 +57,7 @@ interface SystemPromptParts {
 const systemPromptOf = ({ style, patient, today, recordAccess }: SystemPromptParts): string =>
   [
     voiceOf(style),
-    patientParagraphOf(patient),
+    ChatPatient.paragraphOf(patient),
     dateParagraphOf(today),
     RecordAccess.paragraphOf(recordAccess),
   ].join('\n\n')

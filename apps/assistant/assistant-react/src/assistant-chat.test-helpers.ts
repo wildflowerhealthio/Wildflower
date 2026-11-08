@@ -1,15 +1,11 @@
 import { AuthenticationError } from '@anthropic-ai/sdk'
 import { render, type RenderResult } from '@testing-library/react'
-import {
-  ApiKey,
-  type Chat,
-  type ChatPatient,
-  ClaudeModel,
-} from '@wildflowerhealthio/assistant-core-js'
+import { ApiKey, type Chat, ClaudeModel } from '@wildflowerhealthio/assistant-core-js'
 import {
   type HeldReply,
   memoryStoragePage,
   modelInfoOf,
+  onePatientChat,
   type StubClaude,
   stubClaude,
 } from '@wildflowerhealthio/assistant-core-js/test-helpers'
@@ -43,12 +39,12 @@ const LISTED_MODELS = [
   }),
 ]
 
-const PATIENT: ChatPatient.Type = {
-  kind: 'patient',
-  patientId: 'p1',
-  name: 'Ada Lovelace',
-  birthDate: Option.some('1815-12-10'),
-}
+const PATIENT = onePatientChat({
+  id: 'p1',
+  given: 'Ada',
+  family: 'Lovelace',
+  birthDate: '1815-12-10',
+})
 
 const PLACE: Chat.Place = { fhirBaseUrl: STUB_FHIR_BASE, patient: PATIENT }
 

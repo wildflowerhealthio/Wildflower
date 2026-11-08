@@ -14,7 +14,6 @@ export {
 } from './read-status-lines.tsx'
 export { type PatientChoice, patientChoiceKeyOf, patientScopeOf } from './patient-choice.ts'
 export { PatientChoiceLine, type PatientChoiceLineProps } from './patient-choice-line.tsx'
-export { patientNameOf } from './patient-line.ts'
 export { patientQuery } from './patient-query.ts'
 export { PatientPicker, type PatientPickerProps } from './patient-picker.tsx'
 export { launchStartRoute, requirePatient, usePathPatientChoice } from './patient-route.ts'

@@ -15,8 +15,10 @@ import type {
   BetaRawMessageStreamEvent,
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import { Effect, Layer, Option } from 'effect'
+import { hasId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { Effect, Layer, Option, Schema } from 'effect'
 
+import type * as ChatPatient from './chat-patient.ts'
 import { Claude, type ClaudeClient, type ClaudeMessageStream } from './claude.ts'
 import { FhirReadFailed, FhirRecords } from './fhir-records.ts'
 import type { KeptStorage, StoragePage } from './internal/page-storage.ts'
@@ -70,6 +72,40 @@ const blockedStoragePage = (): StoragePage => ({
     throw new DOMException('The operation is insecure.', 'SecurityError')
   },
 })
+
+/**
+ * A chat about the one patient `id`, whose `Patient` record carries the
+ * name `given family` and `birthDate` when given.
+ */
+const onePatientChat = ({
+  id,
+  given,
+  family,
+  birthDate,
+}: {
+  readonly id: string
+  readonly given?: string
+  readonly family?: string
+  readonly birthDate?: string
+}): ChatPatient.Type => {
+  const patient = Schema.decodeUnknownSync(Patient.Schema)({
+    resourceType: 'Patient',
+    id,
+    ...(given === undefined && family === undefined
+      ? {}
+      : {
+          name: [
+            {
+              ...(given === undefined ? {} : { given: [given] }),
+              ...(family === undefined ? {} : { family }),
+            },
+          ],
+        }),
+    ...(birthDate === undefined ? {} : { birthDate }),
+  })
+  if (!hasId(patient)) throw new Error('A decoded Patient with an id has one')
+  return { kind: 'patient', patient }
+}
 
 /** A listed model as `GET /v1/models` gives it, with the fields Assistant reads. */
 const modelInfoOf = ({
@@ -366,6 +402,7 @@ export {
   memoryStoragePage,
   messageOf,
   modelInfoOf,
+  onePatientChat,
   scriptedReply,
   searchBundleOf,
   stubClaude,
