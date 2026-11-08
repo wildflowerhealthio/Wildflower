@@ -1,4 +1,4 @@
-import type { ClaudeRequestFailed, Style, Turn } from '@wildflowerhealthio/assistant-core-js'
+import type { Style, Turn } from '@wildflowerhealthio/assistant-core-js'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { Match, Option } from 'effect'
@@ -28,7 +28,7 @@ interface ChatNoticesProps {
   readonly storageProblem: Option.Option<ChatStorageProblem>
   /** Whether the browser kept the API key. */
   readonly keyKept: boolean
-  readonly turnFailure: Option.Option<ClaudeRequestFailed | Turn.UnexpectedStop>
+  readonly turnFailure: Option.Option<Turn.Failure>
 }
 
 /**

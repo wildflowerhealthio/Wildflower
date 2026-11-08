@@ -21,7 +21,7 @@ import * as Tools from './tools.ts'
  * sent back, until Claude answers; and the entries the chat keeps for it.
  *
  * @remarks
- * A namespace module: `Turn.Delta`, `Turn.Request`, `Turn.Report`,
+ * A namespace module: `Turn.Delta`, `Turn.Request`, `Turn.Report`, `Turn.Failure`,
  * `Turn.run`, `Turn.paramsOf`, `Turn.UnexpectedStop`.
  *
  * @packageDocumentation
@@ -51,6 +51,9 @@ interface Delta {
 class UnexpectedStop extends Schema.TaggedError<UnexpectedStop>()('UnexpectedStop', {
   stopReason: Schema.NullOr(Schema.String),
 }) {}
+
+/** Why a turn failed: the API call failed, or a reply stopped where the chat can't keep it. */
+type TurnFailure = ClaudeRequestFailed | UnexpectedStop
 
 /** What a turn sends. */
 interface TurnRequest {
@@ -199,7 +202,7 @@ const replyUntilAnswered = (
   today: DateTime.DateTime,
   report: TurnReport,
   chat: Chat.Type
-): Effect.Effect<Chat.Entry, ClaudeRequestFailed | UnexpectedStop, Claude | FhirRecords> =>
+): Effect.Effect<Chat.Entry, TurnFailure, Claude | FhirRecords> =>
   streamReply(requestParamsOf({ ...request, chat }, tools, today), report.delta).pipe(
     Effect.flatMap((message) =>
       message.stop_reason === 'tool_use'
@@ -238,11 +241,7 @@ const replyUntilAnswered = (
 const run = (
   request: TurnRequest,
   report: TurnReport
-): Effect.Effect<
-  Chat.Entry,
-  ClaudeRequestFailed | UnexpectedStop,
-  Claude | DateTime.CurrentTimeZone | FhirRecords
-> =>
+): Effect.Effect<Chat.Entry, TurnFailure, Claude | DateTime.CurrentTimeZone | FhirRecords> =>
   Effect.flatMap(DateTime.nowInCurrentZone, (today) =>
     replyUntilAnswered(
       request,
@@ -254,4 +253,4 @@ const run = (
   )
 
 export { MAX_TOKENS, paramsOf, run, SERVER_SIDE_FALLBACK_BETA, UnexpectedStop }
-export type { Delta, TurnReport as Report, TurnRequest as Request }
+export type { Delta, TurnFailure as Failure, TurnReport as Report, TurnRequest as Request }

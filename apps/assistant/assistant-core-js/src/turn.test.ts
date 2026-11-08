@@ -52,7 +52,7 @@ const askedRequest: Turn.Request = { chat: asked, model: sonnet, patient, record
 interface TurnRun {
   readonly deltas: Turn.Delta[]
   readonly toolRounds: Chat.ToolRound[]
-  readonly outcome: Promise<Exit.Exit<Chat.Entry, ClaudeRequestFailed | Turn.UnexpectedStop>>
+  readonly outcome: Promise<Exit.Exit<Chat.Entry, Turn.Failure>>
 }
 
 /** Run a turn of `request` against `stub` and `fhir`, collecting what it reports. */

@@ -2,7 +2,6 @@ import {
   type ApiKey,
   Chat,
   type ClaudeModel,
-  type ClaudeRequestFailed,
   type FhirRecords,
   type RecordAccess,
   Style,
@@ -28,7 +27,7 @@ interface ChatControls {
   /** The reply streaming in; `None` between turns. */
   readonly streamingReply: Option.Option<StreamingReply>
   /** Why the last turn failed; `None` once another starts. */
-  readonly turnFailure: Option.Option<ClaudeRequestFailed | Turn.UnexpectedStop>
+  readonly turnFailure: Option.Option<Turn.Failure>
   readonly storageProblem: Option.Option<ChatStorageProblem>
   /** What the live region says of the last finished reply. */
   readonly announcement: string
@@ -102,9 +101,7 @@ const useChat = (
     })
   )
   const [streamingReply, setStreamingReply] = useState<Option.Option<StreamingReply>>(Option.none())
-  const [turnFailure, setTurnFailure] = useState<
-    Option.Option<ClaudeRequestFailed | Turn.UnexpectedStop>
-  >(Option.none())
+  const [turnFailure, setTurnFailure] = useState<Option.Option<Turn.Failure>>(Option.none())
   const [announcement, setAnnouncement] = useState('')
   const [academicConfirmationOpen, setAcademicConfirmationOpen] = useState(false)
   // The running turn, for Stop and unmount to interrupt, and which turn is
@@ -205,7 +202,7 @@ const useChat = (
                 keep(answered)
                 setAnnouncement(announcementOf(entry))
               }),
-              onFailure: ifCurrent((failure: ClaudeRequestFailed | Turn.UnexpectedStop) => {
+              onFailure: ifCurrent((failure: Turn.Failure) => {
                 setTurnFailure(Option.some(failure))
               }),
             }),

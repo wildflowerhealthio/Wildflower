@@ -25,7 +25,7 @@ const claudeFailureText = (failure: ClaudeRequestFailed): string =>
   )
 
 /** The line shown for a turn that failed. */
-const turnFailureText = (failure: ClaudeRequestFailed | Turn.UnexpectedStop): string =>
+const turnFailureText = (failure: Turn.Failure): string =>
   Match.value(failure).pipe(
     Match.tag('ClaudeRequestFailed', claudeFailureText),
     Match.tag('UnexpectedStop', ({ stopReason }) =>
