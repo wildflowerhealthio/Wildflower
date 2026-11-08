@@ -24,7 +24,7 @@
       "title": "MedicationRequest/wf-894a2cb76071d22b5a607debd3a504a2"
     },
     {
-      "disposition": "Included",
+      "disposition": "Superseded",
       "group": "har",
       "key": "0:shoppers.har/har-entry-3:1",
       "resource": "MedicationDispense/wf-c991be6fac6003d98aab57fb15739a2a",
@@ -38,7 +38,7 @@
       "title": "MedicationRequest/wf-895b547b10f50cd1127bf7eb44946980"
     },
     {
-      "disposition": "Included",
+      "disposition": "Superseded",
       "group": "har",
       "key": "0:shoppers.har/har-entry-4:1",
       "resource": "MedicationDispense/wf-76534491d6f470e9db6510108fb798da",
@@ -52,11 +52,25 @@
       "title": "MedicationRequest/wf-5dcc5db37af85538ca6feb3ae2f0bebd"
     },
     {
-      "disposition": "Included",
+      "disposition": "Superseded",
       "group": "har",
       "key": "0:shoppers.har/har-entry-5:1",
       "resource": "MedicationDispense/wf-7e3738209bd0038e115c6204114a9031",
       "title": "MedicationDispense/wf-7e3738209bd0038e115c6204114a9031"
+    },
+    {
+      "disposition": "Included",
+      "group": "har",
+      "key": "0:shoppers.har/har-entry-7:0",
+      "resource": "MedicationDispense/wf-7e3738209bd0038e115c6204114a9031",
+      "title": "MedicationDispense/wf-7e3738209bd0038e115c6204114a9031"
+    },
+    {
+      "disposition": "Included",
+      "group": "har",
+      "key": "0:shoppers.har/har-entry-7:1",
+      "resource": "MedicationDispense/wf-c991be6fac6003d98aab57fb15739a2a",
+      "title": "MedicationDispense/wf-c991be6fac6003d98aab57fb15739a2a"
     },
     {
       "disposition": "Included",
@@ -92,6 +106,13 @@
       "key": "0:shoppers.har/har-entry-7:6",
       "resource": "MedicationDispense/wf-0e417791d5d74cdeb30700b70c6f6421",
       "title": "MedicationDispense/wf-0e417791d5d74cdeb30700b70c6f6421"
+    },
+    {
+      "disposition": "Included",
+      "group": "har",
+      "key": "0:shoppers.har/har-entry-7:7",
+      "resource": "MedicationDispense/wf-76534491d6f470e9db6510108fb798da",
+      "title": "MedicationDispense/wf-76534491d6f470e9db6510108fb798da"
     },
     {
       "disposition": "Included",
