@@ -51,8 +51,9 @@ const isOfPatient = (unlinked: UnlinkedMention.Type): boolean =>
 /**
  * The keys of `kind`'s rows of `batch` left without a patient as they will
  * be written: each row's edit under `selection`, else its resolved resource
- * (`StagedImport.resolvedResourceOf`), asked what the referent links leave
- * unlinked ({@link leftUnlinkedIn}). The review leaves these out unless the
+ * (`StagedImport.resolvedResourceOf`), a shared copy merged with the copies
+ * the reviewer kept (`StagedImport.withKeptCopiesMerged`), asked what the
+ * referent links leave unlinked ({@link leftUnlinkedIn}). The review leaves these out unless the
  * reviewer ticks them, so a link or an edit that gives a row its patient
  * takes it back in.
  *
@@ -66,13 +67,13 @@ const keysWithoutPatientOf = (
   selection: StagedImport.Selection
 ): ReadonlySet<string> => {
   const leftUnlinked = leftUnlinkedIn(batch.plan, kind)
+  const reviewedRows = DecodedFile.resources(batch.formats[kind].decoded).map((entry) => ({
+    ...entry,
+    resource: StagedImport.resolvedResourceOf(batch.plan, selection, entry),
+  }))
   return new Set(
-    DecodedFile.resources(batch.formats[kind].decoded)
-      .filter((entry) =>
-        leftUnlinked(entry.key, StagedImport.resolvedResourceOf(batch.plan, selection, entry)).some(
-          isOfPatient
-        )
-      )
+    StagedImport.withKeptCopiesMerged(selection, reviewedRows)
+      .filter(({ key, resource }) => leftUnlinked(key, resource).some(isOfPatient))
       .map(({ key }) => key)
   )
 }

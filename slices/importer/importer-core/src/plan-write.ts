@@ -6,7 +6,7 @@ import {
   Mention,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Match } from 'effect'
+import { Array as Arr, Match } from 'effect'
 
 import { claimedFormats } from './read-batch.ts'
 import type { FormatKind } from './registry.ts'
@@ -20,8 +20,9 @@ import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
  * the rest; nothing here touches a client.
  *
  * @remarks
- * The write set is the reviewed objects themselves — the exclusions applied
- * and the inline edits substituted — with no re-parse and no rewriting: a
+ * The write set is the reviewed objects themselves — the exclusions applied,
+ * the inline edits substituted, and the copies of a shared resource the
+ * review kept merged — with no re-parse and no other rewriting: a
  * batch's import stage (`importDecoded`) already minted each source-file
  * `DocumentReference` and stamped every extracted resource's `meta.source`, so
  * the confirm has no provenance to add. A source-file row the reviewer excluded is simply not
@@ -115,6 +116,24 @@ const formatRowsOf = (
   })
 
 /**
+ * `formatRows` with each candidate shared copy holding the merge of its
+ * identity's candidate copies, in review order
+ * (`DecodedFile.withSharedCopiesMerged`): a copy the reviewer left out
+ * contributes nothing, and an edit is merged in. The copies share one
+ * `Type/id`, so whichever the last-wins rule includes writes the merge.
+ */
+const withCandidateCopiesMerged = (formatRows: readonly ReviewedRow[]): readonly ReviewedRow[] => {
+  const candidates = formatRows.filter(({ verdict }) => verdict === 'Candidate')
+  const mergedEntryByCandidate = new Map(
+    Arr.zip(candidates, DecodedFile.withSharedCopiesMerged(candidates.map(({ entry }) => entry)))
+  )
+  return formatRows.map((row) => {
+    const entry = mergedEntryByCandidate.get(row)
+    return entry === undefined || entry === row.entry ? row : { ...row, entry }
+  })
+}
+
+/**
  * A linked record's verdict: `Unchanged` when the server holds it as it is;
  * else a stored copy is a candidate, the link choice being the consent to
  * it, and a new record a candidate only when a candidate format row names it.
@@ -158,7 +177,9 @@ const linkedVerdictOf = (
  * - A format row is **`Excluded`** when it is not included: the reviewer
  *   unticked it, or never ticked one the default leaves out. Else it is a
  *   candidate. Its `entry.resource` is the edited resource, resolved on the
- *   batch's plan, where the reviewer made an edit.
+ *   batch's plan, where the reviewer made an edit, and a candidate that is a
+ *   shared copy holds the merge of its identity's candidate copies
+ *   ({@link withCandidateCopiesMerged}).
  * - A linked record is read-only in the review (a link choice is how to
  *   change one), so this is the one place its write is decided. It is
  *   **`Unchanged`** when the server holds it as it is (its key in
@@ -174,7 +195,9 @@ const linkedVerdictOf = (
  *   **`Included`** and every earlier one **`Superseded`**. That is the rule
  *   the transaction bundle applies to its entries (last occurrence wins), so
  *   the `Included` resources are exactly the bundle's entries and no row's
- *   edit is lost silently. A linked record is a record no resolved file
+ *   edit is lost silently. A shared resource's candidate copies share a
+ *   `Type/id` and each hold the merge, so one is `Included`, the merge, and
+ *   the rest `Superseded`. A linked record is a record no resolved file
  *   holds, so it never shares a `Type/id` with a format row.
  *
  * A claimed format with no `Included` decision writes nothing
@@ -188,7 +211,9 @@ const planWrite = (
   excludedByDefaultFor: ExcludedByDefaultFor,
   unchangedLinked: ReadonlySet<string>
 ): readonly WriteDecision[] => {
-  const formatRows = formatRowsOf(batch, selectionFor, excludedByDefaultFor)
+  const formatRows = withCandidateCopiesMerged(
+    formatRowsOf(batch, selectionFor, excludedByDefaultFor)
+  )
   const named = literalReferencesIn(
     formatRows.flatMap(({ entry, verdict }) => (verdict === 'Candidate' ? [entry.resource] : []))
   )
