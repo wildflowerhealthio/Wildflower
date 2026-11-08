@@ -114,6 +114,8 @@ The first-party apps' clients are written by SQL migrations, and every later cha
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/grant_store.rs tests::an_install_already_at_0044_starts_every_client_trusted_on_first_use}}
 
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grant_store.rs tests::an_install_already_at_0050_gains_the_assistant_client}}
+
 #### Reshaping tables
 
 A table whose shape changes is rebuilt, and every row an install could hold is carried across. The last three of these shape what the [Authorization Requests](<Authorization Requests Explanation.md>) and [Browser Sessions](<Browser Sessions Explanation.md>) pages describe: the session kinds' names, the limited page's own status, and the split of one request table into one per flow.

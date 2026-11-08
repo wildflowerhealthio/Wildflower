@@ -95,6 +95,45 @@
     ]
   },
   {
+    "id": "06819719-6fde-4021-a800-574041d5504f",
+    "name": "Wildflower Assistant",
+    "description": "I want to ask questions about my health record in plain words, and get answers that come from the record itself. The Assistant is a chat with Claude, which reads the record to answer you. It uses your own Anthropic API key, and your browser sends the chat straight to Anthropic, not through Wildflower. It can only do what the access you grant it allows. When you sign in, you choose what it may read and change.",
+    "descriptionShort": "A chat with Claude about the health records on any server that speaks SMART on FHIR, using your own Anthropic API key.",
+    "type": "smart-app",
+    "contentLanguage": "en-CA",
+    "tags": ["medications", "lab-results", "vitals"],
+    "helpUrl": "https://assistant.wildflowerhealth.io/",
+    "iconUrl": "https://wildflowerhealth.io/app-icon.png",
+    "privacyPolicyUrl": "https://wildflowerhealth.io/privacy-policy/",
+    "termsOfServiceUrl": "https://wildflowerhealth.io/terms/",
+    "launchUrl": "https://assistant.wildflowerhealth.io/",
+    "eligibilityCriteria": "Anyone with an Anthropic API key and a health record on a FHIR server to ask about.",
+    "contacts": [
+      {
+        "title": "Ruth Marks",
+        "email": "ruthmarks151@gmail.com"
+      },
+      {
+        "title": "Issues and questions",
+        "url": "https://github.com/wildflowerhealthio/Wildflower/issues"
+      }
+    ],
+    "publisher": {
+      "id": "5a3385ad-9a2b-4dc6-85a0-5b874da0b019",
+      "name": "Wildflower Health",
+      "url": "https://wildflowerhealth.io/"
+    },
+    "isEnrolling": true,
+    "registrationModes": ["preassigned"],
+    "preassignedCredentials": {
+      "clientId": "9883d102933b1561e343cae5fd9f26eb",
+      "redirectUris": ["https://assistant.wildflowerhealth.io/"],
+      "grantTypes": ["authorization_code", "refresh_token"],
+      "tokenEndpointAuthMethod": "none"
+    },
+    "scopes": ["launch", "openid", "fhirUser", "system/*.cruds"]
+  },
+  {
     "id": "c2fad43c-0455-4041-9be6-48d6ad5cbe7c",
     "name": "FHIR Sync for Pebble",
     "description": "My Pebble already tracks my steps, sleep and heart rate, but that data never leaves the watch and my phone. This watchapp sends it to a FHIR server I choose, as observations on my own record, so it sits beside my labs and medications. It works with a Wildflower server, and with any SMART on FHIR server that lets a signed-in user grant system-level access.",
