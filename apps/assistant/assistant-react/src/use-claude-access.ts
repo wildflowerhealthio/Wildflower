@@ -82,7 +82,7 @@ const accessAfterCheck = (
           : Effect.succeed(true),
       }).pipe(
         Effect.map(({ chosenId, keyKept }) =>
-          ClaudeModel.choose(models, chosenId).pipe(
+          ClaudeModel.startingModelOf(models, chosenId).pipe(
             Option.match({
               onNone: (): ClaudeAccess => ({ kind: 'no-models' }),
               onSome: (model): ClaudeAccess => ({ kind: 'ready', apiKey, models, model, keyKept }),

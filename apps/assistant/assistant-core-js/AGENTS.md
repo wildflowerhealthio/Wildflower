@@ -22,9 +22,10 @@ Every module is a namespace (`src/index.ts`):
   `OverloadedError` → `Overloaded`, `APIConnectionError` → `Unreachable`,
   any other `APIError` or throw → `Failed` with its status).
 - `src/claude-model.ts` — `ClaudeModel`: `list` decodes `GET /v1/models`
-  (every page) into id, display name, release instant and whether the
-  capabilities accept `thinking: { type: 'adaptive' }`, keeps the `claude-`
-  models, newest first; `choose` starts on the remembered id while it is
+  (every page) into id, display name, release instant and
+  `supportsAdaptiveThinking`, read one way from the SDK's `capabilities`
+  (`null` supports nothing), keeps the `claude-` models, newest first
+  (`choicesOf`); `startingModelOf` is the remembered id while it is
   listed, else `claude-sonnet-5`, else the first; the remembered id is kept
   in `localStorage` at `wildflower.assistant.model`.
 - `src/style.ts` — `Style`: `telehealth` (the default) or `academic`, and

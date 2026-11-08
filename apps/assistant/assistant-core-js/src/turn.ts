@@ -88,7 +88,9 @@ const requestParamsOf = (
   cache_control: { type: 'ephemeral' },
   betas: [SERVER_SIDE_FALLBACK_BETA],
   fallbacks: 'default',
-  ...(model.adaptiveThinking ? { thinking: { type: 'adaptive', display: 'summarized' } } : {}),
+  ...(model.supportsAdaptiveThinking
+    ? { thinking: { type: 'adaptive', display: 'summarized' } }
+    : {}),
 })
 
 /**

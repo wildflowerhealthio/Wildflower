@@ -3,7 +3,7 @@ import {
   setStorageItem,
   type StorageBlocked,
 } from '@wildflowerhealthio/kitchen-sink'
-import { Array, DateTime, Effect, Option, Order, Schema } from 'effect'
+import { Array, DateTime, Effect, Option, Order, ParseResult, Schema } from 'effect'
 
 import { Claude, ClaudeRequestFailed } from './claude.ts'
 import { type StoragePage, storageOf } from './internal/page-storage.ts'
@@ -14,7 +14,7 @@ import { type StoragePage, storageOf } from './internal/page-storage.ts'
  *
  * @remarks
  * A namespace module: `ClaudeModel.Type`, `ClaudeModel.list`,
- * `ClaudeModel.choose`, `ClaudeModel.readChosenId`, `ClaudeModel.writeChosenId`.
+ * `ClaudeModel.startingModelOf`, `ClaudeModel.readChosenId`, `ClaudeModel.writeChosenId`.
  *
  * @packageDocumentation
  */
@@ -25,36 +25,49 @@ const DEFAULT_ID = 'claude-sonnet-5'
 /** The `localStorage` key the last chosen model's id is kept under. */
 const CHOSEN_ID_STORAGE_KEY = 'wildflower.assistant.model'
 
-/** The one capability a turn reads: whether the model takes `thinking: { type: 'adaptive' }`. */
-const AdaptiveThinkingSupport = Schema.Struct({
+/**
+ * A `ModelInfo`'s `capabilities` (the SDK's `ModelCapabilities`), narrowed
+ * to the one a turn reads: whether the model takes `thinking: { type:
+ * 'adaptive' }`.
+ */
+const AdaptiveThinkingCapabilities = Schema.Struct({
   thinking: Schema.Struct({
     types: Schema.Struct({ adaptive: Schema.Struct({ supported: Schema.Boolean }) }),
   }),
 })
 
-/** Whether `capabilities` (a `ModelInfo`'s, `null` for a model listing none) say adaptive thinking is supported. */
-const supportsAdaptiveThinking = (capabilities: unknown): boolean =>
-  Schema.decodeUnknownOption(AdaptiveThinkingSupport)(capabilities).pipe(
-    Option.exists(({ thinking }) => thinking.types.adaptive.supported)
-  )
+/**
+ * Whether a model supports adaptive thinking, read from its `capabilities`:
+ * a model listing none (`null`) does not. Read only: a listed model is
+ * never written back.
+ */
+const SupportsAdaptiveThinking = Schema.transformOrFail(
+  Schema.NullOr(AdaptiveThinkingCapabilities),
+  Schema.Boolean,
+  {
+    strict: true,
+    decode: (capabilities) =>
+      ParseResult.succeed(capabilities?.thinking.types.adaptive.supported ?? false),
+    encode: (supported, _options, ast) =>
+      ParseResult.fail(
+        new ParseResult.Forbidden(ast, supported, "A model's capabilities are only read.")
+      ),
+  }
+)
 
 /** A model as the listing names it, with only what Assistant reads. */
 const ClaudeModelSchema = Schema.Struct({
   id: Schema.String,
   displayName: Schema.propertySignature(Schema.String).pipe(Schema.fromKey('display_name')),
   createdAt: Schema.propertySignature(Schema.DateTimeUtc).pipe(Schema.fromKey('created_at')),
-  adaptiveThinking: Schema.propertySignature(
-    Schema.transform(Schema.Unknown, Schema.Boolean, {
-      strict: true,
-      decode: supportsAdaptiveThinking,
-      encode: (supported) => ({ thinking: { types: { adaptive: { supported } } } }),
-    })
-  ).pipe(Schema.fromKey('capabilities')),
+  supportsAdaptiveThinking: Schema.propertySignature(SupportsAdaptiveThinking).pipe(
+    Schema.fromKey('capabilities')
+  ),
 })
 
 /**
  * A model the key can use: its id, the name to show, when it was released,
- * and whether it takes adaptive thinking.
+ * and whether it supports adaptive thinking.
  */
 type Type = typeof ClaudeModelSchema.Type
 
@@ -102,7 +115,10 @@ const list: Effect.Effect<readonly Type[], ClaudeRequestFailed, Claude> = Claude
  * listed, else {@link DEFAULT_ID}, else the first listed. `None` only when
  * `models` is empty.
  */
-const choose = (models: readonly Type[], chosenId: Option.Option<string>): Option.Option<Type> => {
+const startingModelOf = (
+  models: readonly Type[],
+  chosenId: Option.Option<string>
+): Option.Option<Type> => {
   const listed = (id: string): Option.Option<Type> =>
     Array.findFirst(models, (model) => model.id === id)
   return chosenId.pipe(
@@ -132,11 +148,11 @@ const writeChosenId = (page: StoragePage, modelId: string): Effect.Effect<void, 
 export {
   CHOSEN_ID_STORAGE_KEY,
   choicesOf,
-  choose,
   ClaudeModelSchema as Schema,
   DEFAULT_ID,
   list,
   readChosenId,
+  startingModelOf,
   writeChosenId,
 }
 export type { Type }

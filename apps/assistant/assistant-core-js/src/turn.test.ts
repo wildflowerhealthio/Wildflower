@@ -40,7 +40,7 @@ const sonnet: ClaudeModel.Type = {
   id: 'claude-sonnet-5',
   displayName: 'Claude Sonnet 5',
   createdAt: DateTime.unsafeMake('2026-05-01T00:00:00Z'),
-  adaptiveThinking: true,
+  supportsAdaptiveThinking: true,
 }
 const patient: ChatPatient.Type = { kind: 'all-patients' }
 const recordAccess = RecordAccess.fromGrantedScopes([Scope.parse('system/*.cruds')])
@@ -91,7 +91,7 @@ describe('Turn.paramsOf', () => {
 
   it('should leave thinking out for a model without adaptive thinking', () => {
     const params = Turn.paramsOf(
-      { ...askedRequest, model: { ...sonnet, adaptiveThinking: false } },
+      { ...askedRequest, model: { ...sonnet, supportsAdaptiveThinking: false } },
       today
     )
 

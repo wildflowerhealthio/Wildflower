@@ -112,22 +112,27 @@ const modelInfoOf = ({
   id,
   displayName = id,
   createdAt,
-  adaptiveThinking = true,
+  supportsAdaptiveThinking = true,
 }: {
   readonly id: string
   readonly displayName?: string
   readonly createdAt: string
   /** Whether the capabilities say adaptive thinking is supported; `null` for no capabilities. */
-  readonly adaptiveThinking?: boolean | null
+  readonly supportsAdaptiveThinking?: boolean | null
 }): unknown => ({
   type: 'model',
   id,
   display_name: displayName,
   created_at: createdAt,
   capabilities:
-    adaptiveThinking === null
+    supportsAdaptiveThinking === null
       ? null
-      : { thinking: { supported: true, types: { adaptive: { supported: adaptiveThinking } } } },
+      : {
+          thinking: {
+            supported: true,
+            types: { adaptive: { supported: supportsAdaptiveThinking } },
+          },
+        },
 })
 
 /**
