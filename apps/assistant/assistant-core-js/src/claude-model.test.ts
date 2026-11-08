@@ -132,7 +132,7 @@ describe('ClaudeModel.list', () => {
     ])
   })
 
-  it('should fail as KeyRejected when the API does not accept the key', async () => {
+  it('should fail as key-rejected when the API does not accept the key', async () => {
     const { layer } = stubClaude({
       modelsThrow: new AuthenticationError(401, undefined, 'invalid x-api-key', new Headers()),
     })
@@ -141,7 +141,7 @@ describe('ClaudeModel.list', () => {
       Effect.flip(ClaudeModel.list.pipe(Effect.provide(layer)))
     )
 
-    expect(failure).toEqual(ClaudeRequestFailed.make({ kind: 'KeyRejected', status: 401 }))
+    expect(failure).toEqual(ClaudeRequestFailed.make({ kind: 'key-rejected', status: 401 }))
   })
 
   it("should fail when a model's capabilities are not the SDK's", async () => {
@@ -160,7 +160,9 @@ describe('ClaudeModel.list', () => {
       Effect.flip(ClaudeModel.list.pipe(Effect.provide(layer)))
     )
 
-    expect(failure).toEqual(ClaudeRequestFailed.make({ kind: 'Failed', status: null }))
+    expect(failure).toEqual(
+      ClaudeRequestFailed.make({ kind: 'model-list-unreadable', status: null })
+    )
   })
 
   it('should fail with no status when the listing is not models', async () => {
@@ -170,7 +172,9 @@ describe('ClaudeModel.list', () => {
       Effect.flip(ClaudeModel.list.pipe(Effect.provide(layer)))
     )
 
-    expect(failure).toEqual(ClaudeRequestFailed.make({ kind: 'Failed', status: null }))
+    expect(failure).toEqual(
+      ClaudeRequestFailed.make({ kind: 'model-list-unreadable', status: null })
+    )
   })
 })
 

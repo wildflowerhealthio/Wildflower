@@ -18,9 +18,11 @@ Every module is a namespace (`src/index.ts`):
   an `Anthropic` client satisfies, built by `Claude.layerForApiKey` with
   `dangerouslyAllowBrowser`. `ClaudeRequestFailed` is how a call fails:
   `fromThrown` matches the SDK's error classes, most specific first
-  (`AuthenticationError` → `KeyRejected`, `RateLimitError` → `RateLimited`,
-  `OverloadedError` → `Overloaded`, `APIConnectionError` → `Unreachable`,
-  any other `APIError` or throw → `Failed` with its status).
+  (`AuthenticationError` → `key-rejected`, `RateLimitError` → `rate-limited`,
+  `OverloadedError` → `overloaded`, `APIConnectionError` → `unreachable`,
+  any other `APIError` → `api-error` with its status, anything else thrown →
+  `unexpected-error`); a model listing that does not decode is
+  `model-list-unreadable`.
 - `src/claude-model.ts` — `ClaudeModel`: `list` decodes `GET /v1/models`
   (every page) into id, display name, release instant and
   `supportsAdaptiveThinking`, read one way from the SDK's `capabilities`

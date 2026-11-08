@@ -74,18 +74,22 @@ class Claude extends Context.Tag('assistant-core-js/Claude')<Claude, ClaudeClien
 /**
  * Why a call to the Claude API failed, by the SDK error class it threw:
  *
- * - `KeyRejected` — the API did not accept the key (`AuthenticationError`, 401);
- * - `RateLimited` — the key is over its rate limit (`RateLimitError`, 429);
- * - `Overloaded` — the API is overloaded (`OverloadedError`, 529);
- * - `Unreachable` — no answer came back (`APIConnectionError`, timeouts included);
- * - `Failed` — any other API error, with its status, or anything else thrown.
+ * - `key-rejected` — the API did not accept the key (`AuthenticationError`, 401);
+ * - `rate-limited` — the key is over its rate limit (`RateLimitError`, 429);
+ * - `overloaded` — the API is overloaded (`OverloadedError`, 529);
+ * - `unreachable` — no answer came back (`APIConnectionError`, timeouts included);
+ * - `api-error` — the API answered with any other error, and its status;
+ * - `model-list-unreadable` — the API listed models, but not in the shape the SDK types;
+ * - `unexpected-error` — the SDK threw something that is not one of its API errors.
  */
 const ClaudeFailureKind = Schema.Literal(
-  'KeyRejected',
-  'RateLimited',
-  'Overloaded',
-  'Unreachable',
-  'Failed'
+  'key-rejected',
+  'rate-limited',
+  'overloaded',
+  'unreachable',
+  'api-error',
+  'model-list-unreadable',
+  'unexpected-error'
 )
 
 /**
@@ -105,21 +109,21 @@ class ClaudeRequestFailed extends Schema.TaggedError<ClaudeRequestFailed>()('Cla
   static readonly fromThrown = (thrown: unknown): ClaudeRequestFailed =>
     Match.value(thrown).pipe(
       Match.when(Match.instanceOf(AuthenticationError), ({ status }) =>
-        ClaudeRequestFailed.make({ kind: 'KeyRejected', status })
+        ClaudeRequestFailed.make({ kind: 'key-rejected', status })
       ),
       Match.when(Match.instanceOf(RateLimitError), ({ status }) =>
-        ClaudeRequestFailed.make({ kind: 'RateLimited', status })
+        ClaudeRequestFailed.make({ kind: 'rate-limited', status })
       ),
       Match.when(Match.instanceOf(OverloadedError), ({ status }) =>
-        ClaudeRequestFailed.make({ kind: 'Overloaded', status })
+        ClaudeRequestFailed.make({ kind: 'overloaded', status })
       ),
       Match.when(Match.instanceOf(APIConnectionError), () =>
-        ClaudeRequestFailed.make({ kind: 'Unreachable', status: null })
+        ClaudeRequestFailed.make({ kind: 'unreachable', status: null })
       ),
       Match.when(Match.instanceOf(APIError), ({ status }) =>
-        ClaudeRequestFailed.make({ kind: 'Failed', status: status ?? null })
+        ClaudeRequestFailed.make({ kind: 'api-error', status: status ?? null })
       ),
-      Match.orElse(() => ClaudeRequestFailed.make({ kind: 'Failed', status: null }))
+      Match.orElse(() => ClaudeRequestFailed.make({ kind: 'unexpected-error', status: null }))
     )
 }
 

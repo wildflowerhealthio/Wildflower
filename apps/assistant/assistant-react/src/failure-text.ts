@@ -4,21 +4,23 @@ import { Match } from 'effect'
 /** The line shown for a call to Claude that failed, by its kind. */
 const claudeFailureText = (failure: ClaudeRequestFailed): string =>
   Match.value(failure.kind).pipe(
-    Match.when('KeyRejected', () => "This key wasn't accepted."),
+    Match.when('key-rejected', () => "This key wasn't accepted."),
     Match.when(
-      'RateLimited',
+      'rate-limited',
       () => 'Your key is over its rate limit. Wait a moment, then try again.'
     ),
-    Match.when('Overloaded', () => 'Claude is overloaded right now. Try again in a moment.'),
+    Match.when('overloaded', () => 'Claude is overloaded right now. Try again in a moment.'),
     Match.when(
-      'Unreachable',
+      'unreachable',
       () => "Couldn't reach Anthropic. Check your connection and try again."
     ),
-    Match.when('Failed', () =>
+    Match.when('api-error', () =>
       failure.status === null
         ? "Claude couldn't answer."
         : `Claude couldn't answer (error ${failure.status}).`
     ),
+    Match.when('model-list-unreadable', () => "Anthropic's list of models couldn't be read."),
+    Match.when('unexpected-error', () => "Claude couldn't answer."),
     Match.exhaustive
   )
 

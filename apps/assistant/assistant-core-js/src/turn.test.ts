@@ -178,11 +178,11 @@ describe('Turn.run', () => {
   )
 
   it.each([
-    [new AuthenticationError(401, undefined, 'bad key', new Headers()), 'KeyRejected', 401],
-    [new RateLimitError(429, undefined, 'slow down', new Headers()), 'RateLimited', 429],
-    [new OverloadedError(529, undefined, 'overloaded', new Headers()), 'Overloaded', 529],
-    [new APIConnectionError({ message: 'offline' }), 'Unreachable', null],
-    [new BadRequestError(400, undefined, 'bad', new Headers()), 'Failed', 400],
+    [new AuthenticationError(401, undefined, 'bad key', new Headers()), 'key-rejected', 401],
+    [new RateLimitError(429, undefined, 'slow down', new Headers()), 'rate-limited', 429],
+    [new OverloadedError(529, undefined, 'overloaded', new Headers()), 'overloaded', 529],
+    [new APIConnectionError({ message: 'offline' }), 'unreachable', null],
+    [new BadRequestError(400, undefined, 'bad', new Headers()), 'api-error', 400],
   ] as const)('should fail a turn the SDK threw %s at as %s', async (thrown, kind, status) => {
     const stub = stubClaude({ replies: [failingReply(thrown)] })
 

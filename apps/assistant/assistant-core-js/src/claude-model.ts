@@ -88,7 +88,7 @@ const choicesOf = (models: readonly Type[]): readonly Type[] =>
  * listing, every page of it).
  *
  * @remarks
- * A listing that does not decode fails as `Failed` with no status: the API
+ * A listing that does not decode fails as `model-list-unreadable`: the API
  * answered, but not with models.
  */
 const list: Effect.Effect<readonly Type[], ClaudeRequestFailed, Claude> = Claude.pipe(
@@ -104,7 +104,9 @@ const list: Effect.Effect<readonly Type[], ClaudeRequestFailed, Claude> = Claude
   ),
   Effect.flatMap((listed) =>
     Schema.decodeUnknown(Schema.Array(ClaudeModelSchema))(listed).pipe(
-      Effect.mapError(() => ClaudeRequestFailed.make({ kind: 'Failed', status: null }))
+      Effect.mapError(() =>
+        ClaudeRequestFailed.make({ kind: 'model-list-unreadable', status: null })
+      )
     )
   ),
   Effect.map(choicesOf)

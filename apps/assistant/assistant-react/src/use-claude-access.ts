@@ -93,7 +93,7 @@ const accessAfterCheck = (
     ),
     Effect.catchAll((failure) =>
       Effect.succeed<ClaudeAccess>(
-        failure.kind === 'KeyRejected'
+        failure.kind === 'key-rejected'
           ? { kind: 'needs-key', keyWasRejected: true }
           : { kind: 'models-unavailable', apiKey, failure }
       )

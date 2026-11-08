@@ -20,39 +20,39 @@ describe('ClaudeRequestFailed.fromThrown', () => {
     [
       'AuthenticationError',
       new AuthenticationError(401, undefined, 'no', headers),
-      { kind: 'KeyRejected', status: 401 },
+      { kind: 'key-rejected', status: 401 },
     ],
     [
       'RateLimitError',
       new RateLimitError(429, undefined, 'slow', headers),
-      { kind: 'RateLimited', status: 429 },
+      { kind: 'rate-limited', status: 429 },
     ],
     [
       'OverloadedError',
       new OverloadedError(529, undefined, 'busy', headers),
-      { kind: 'Overloaded', status: 529 },
+      { kind: 'overloaded', status: 529 },
     ],
     [
       'APIConnectionError',
       new APIConnectionError({ message: 'offline' }),
-      { kind: 'Unreachable', status: null },
+      { kind: 'unreachable', status: null },
     ],
     [
       'APIConnectionTimeoutError',
       new APIConnectionTimeoutError(),
-      { kind: 'Unreachable', status: null },
+      { kind: 'unreachable', status: null },
     ],
     [
       'InternalServerError',
       new InternalServerError(500, undefined, 'oops', headers),
-      { kind: 'Failed', status: 500 },
+      { kind: 'api-error', status: 500 },
     ],
     [
       'BadRequestError',
       new BadRequestError(400, undefined, 'bad', headers),
-      { kind: 'Failed', status: 400 },
+      { kind: 'api-error', status: 400 },
     ],
-    ['a thrown non-SDK error', new TypeError('boom'), { kind: 'Failed', status: null }],
+    ['a thrown non-SDK error', new TypeError('boom'), { kind: 'unexpected-error', status: null }],
   ] as const)('should map %s by its class', (_name, thrown, expected) => {
     expect(ClaudeRequestFailed.fromThrown(thrown)).toEqual(ClaudeRequestFailed.make(expected))
   })
