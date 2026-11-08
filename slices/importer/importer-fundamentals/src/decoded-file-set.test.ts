@@ -408,6 +408,71 @@ describe("DecodedFileSet.adopt, a dispense's subject and its prescription's", ()
     expect(subjectOfDispense(dispense)).toEqual(subject)
   })
 
+  /** Marks a fill as one copy of several; this merge is never run here. */
+  const SHARED_FILL: DecodedFile.Shared = { identity: 'fill-1', merge: (earlier) => earlier }
+
+  /** The rows of a set of `records` and of the copies of one fill, `fillCopies`. */
+  const adoptedRows = (
+    records: readonly DetachedResource.Type[],
+    fillCopies: readonly DetachedResource.Type[]
+  ): readonly DecodedFile.Resource[] =>
+    DecodedFile.resources(
+      DecodedFileSet.adopt({
+        sections: [
+          sectionOf('records', records),
+          {
+            title: 'fills',
+            entries: fillCopies.map((resource, index) => ({
+              fullUrl: `fills:${index}`,
+              resource,
+              shared: SHARED_FILL,
+            })),
+          },
+        ],
+        notes: [],
+      })
+    )
+
+  // The copies merge after review, and a source's merge tells them apart by
+  // which names no one, so the subjectless copy is left as its source gave it.
+  it('leaves a shared copy with no subject as it is when another copy of it names one', () => {
+    const rows = adoptedRows(
+      [patient('pat-7'), prescriptionFor('rx-7', 'pat-7')],
+      [dispenseOf({ reference: 'Patient/pat-7' }, ['rx-7']), dispenseOf(null, ['rx-7'])]
+    )
+
+    expect(
+      rows.flatMap(({ key, resource, shared }) =>
+        resource.resourceType === 'MedicationDispense'
+          ? [[key, resource.subject?.reference ?? null, shared?.identity]]
+          : []
+      )
+    ).toEqual([
+      [
+        'fills:0',
+        `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7')}`,
+        'fill-1',
+      ],
+      ['fills:1', null, 'fill-1'],
+    ])
+  })
+
+  it("files a shared copy on its prescription's subject when no copy of it names one", () => {
+    const rows = adoptedRows(
+      [patient('pat-7'), prescriptionFor('rx-7', 'pat-7')],
+      [dispenseOf(null, ['rx-7']), dispenseOf(null, ['rx-7'])]
+    )
+
+    expect(
+      rows.flatMap(({ resource }) =>
+        resource.resourceType === 'MedicationDispense' ? [resource.subject?.reference] : []
+      )
+    ).toEqual([
+      `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7')}`,
+      `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7')}`,
+    ])
+  })
+
   it('leaves a dispense whose subject names a Patient of the set on that Patient', () => {
     const { dispense } = adoptedFill([
       patient('pat-7'),

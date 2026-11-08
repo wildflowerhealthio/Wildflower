@@ -2,7 +2,7 @@ import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { type FhirResource, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
 import { HarFromJson, HttpArchive, emitHar } from '@wildflowerhealthio/http-archive'
 import {
-  type DecodedFile,
+  DecodedFile,
   DecodedFileSet,
   PickedFile,
   Referent,
@@ -354,17 +354,35 @@ const shoppersExchanges = (historyOnlyFillIds: readonly string[] = []): readonly
     })
   )
 
-/** Every extracted resource of a Shoppers capture of `exchanges`. */
+/** A Shoppers capture of `exchanges`, read as the import stage adopts it: every copy in its own response's section. */
+const readShoppers = (exchanges: readonly TraceExchange[]): Promise<DecodedFile.DecodedFile> =>
+  readOne({ id: '0:shoppers.har', fileName: 'shoppers.har', bytes: harBytesOf(exchanges) })
+
+/**
+ * What an import of `rows` writes when the review keeps them all: the copies
+ * of each shared resource merged into one.
+ */
+const importedResourcesOf = (rows: readonly DecodedFile.Resource[]): readonly FhirResource[] =>
+  DecodedFile.mergeSharedCopies(rows).map(({ resource }) => resource)
+
+/** Every resource an import of a Shoppers capture of `exchanges` writes, when the review keeps them all. */
 const shoppersResourcesOf = async (
   exchanges: readonly TraceExchange[]
 ): Promise<readonly FhirResource[]> =>
-  (
-    await readOne({
-      id: '0:shoppers.har',
-      fileName: 'shoppers.har',
-      bytes: harBytesOf(exchanges),
-    })
-  ).sections.flatMap((section) => section.resources.map((entry) => entry.resource))
+  importedResourcesOf(DecodedFile.resources(await readShoppers(exchanges)))
+
+/** The dispenses among `resources`, each as its subject and store name. */
+const dispenseSummariesOf = (
+  resources: readonly FhirResource[]
+): readonly {
+  readonly subject: string | null | undefined
+  readonly store: string | null | undefined
+}[] =>
+  resources.flatMap((resource) =>
+    resource.resourceType === 'MedicationDispense'
+      ? [{ subject: resource.subject?.reference, store: resource.location?.display }]
+      : []
+  )
 
 describe('harImporter.decode over a Shoppers capture', () => {
   it.each([
@@ -375,18 +393,42 @@ describe('harImporter.decode over a Shoppers capture', () => {
     async ({ exchanges }) => {
       const resources = await shoppersResourcesOf(exchanges)
       const person = resources.find((resource) => resource.resourceType === 'Patient')
-      const dispenses = resources.flatMap((resource) =>
-        resource.resourceType === 'MedicationDispense' ? [resource] : []
-      )
 
-      expect(
-        dispenses.map((dispense) => ({
-          subject: dispense.subject?.reference,
-          store: dispense.location?.display,
-        }))
-      ).toEqual([{ subject: `Patient/${person?.id}`, store: SHOPPERS_STORE_NAME }])
+      expect(dispenseSummariesOf(resources)).toEqual([
+        { subject: `Patient/${person?.id}`, store: SHOPPERS_STORE_NAME },
+      ])
     }
   )
+
+  it('should review the fill as one copy in each feed, each saying where the other is', async () => {
+    const decoded = await readShoppers(shoppersExchanges())
+
+    expect(
+      decoded.sections.map(({ title, resources }) => [
+        title,
+        resources.flatMap(({ resource, shared }) =>
+          resource.resourceType === 'MedicationDispense' ? [shared?.identity] : []
+        ),
+      ])
+    ).toEqual([
+      [customerUrlOf(SHOPPERS_ACCOUNT_ID), []],
+      [prescriptionStatusUrlOf(SHOPPERS_PRESCRIPTION_ID), [expect.stringContaining('disp-1')]],
+      [prescriptionHistoryUrlOf(SHOPPERS_ACCOUNT_ID), [expect.stringContaining('disp-1')]],
+    ])
+  })
+
+  // The reviewer unticking the status feed's response leaves out its copy
+  // only: the history feed's copy is still imported, as that feed gave it.
+  it('should import the history copy alone when the status response is left out', async () => {
+    const decoded = await readShoppers(shoppersExchanges())
+    const keptRows = decoded.sections
+      .filter(({ title }) => title !== prescriptionStatusUrlOf(SHOPPERS_PRESCRIPTION_ID))
+      .flatMap(({ resources }) => resources)
+
+    expect(dispenseSummariesOf(importedResourcesOf(keptRows))).toEqual([
+      { subject: undefined, store: SHOPPERS_STORE_NAME },
+    ])
+  })
 
   // The history feed names only the account; the prescription names the person.
   it('should file a fill only the history feed holds on the person its prescription is for', async () => {

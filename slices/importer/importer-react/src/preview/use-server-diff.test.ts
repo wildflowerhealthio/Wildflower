@@ -6,7 +6,7 @@ import {
   LINKED_GROUP,
   type ResolvedBatch,
 } from '@wildflowerhealthio/importer-core'
-import { FormatDecode, LinkPlan } from '@wildflowerhealthio/importer-fundamentals'
+import { type DecodedFile, FormatDecode, LinkPlan } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
@@ -100,6 +100,52 @@ describe('diffRowsOf / byGroupAndKey', () => {
 
     expect(verdicts.get('har')?.get('patient')?.status).toBe('new')
     expect(verdicts.get('dicom')?.get('patient')?.status).toBe('unchanged')
+  })
+
+  it('should probe two copies of one shared resource as their one merge, and give both its verdict', () => {
+    const gendered = (gender: 'female' | null): FhirResourceWithId =>
+      Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+        resourceType: 'Patient',
+        id: 'p-shared',
+        gender,
+      })
+    /** Keeps the earlier copy's gender when the later has none, as a source's merge fills a gap. */
+    const fillGender: DecodedFile.Merge = (earlier, later) =>
+      earlier.resourceType === 'Patient' && later.resourceType === 'Patient'
+        ? { ...later, gender: later.gender ?? earlier.gender }
+        : later
+    const shared: DecodedFile.Shared = { identity: 'Patient p-shared', merge: fillGender }
+    const har: FormatDecode.Result<'har'> = {
+      ...formatResult('har', []),
+      decoded: {
+        sections: [
+          {
+            title: 'status',
+            resources: [
+              { key: 'status:0', title: 'Patient/p-shared', resource: gendered('female'), shared },
+            ],
+          },
+          {
+            title: 'history',
+            resources: [
+              { key: 'history:0', title: 'Patient/p-shared', resource: gendered(null), shared },
+            ],
+          },
+        ],
+        notes: [],
+      },
+    }
+    const rows = diffRowsOf(makeBatch({ har }))
+
+    expect(rows.map(({ key, resource }) => [key, resource])).toEqual([
+      ['status:0', gendered('female')],
+      ['history:0', gendered('female')],
+    ])
+    const verdicts = byGroupAndKey(rows, new Map([['Patient/p-shared', UNCHANGED]]))
+    expect([
+      verdicts.get('har')?.get('status:0')?.status,
+      verdicts.get('har')?.get('history:0')?.status,
+    ]).toEqual(['unchanged', 'unchanged'])
   })
 
   it('property: every resource of every format gets exactly its own verdict, or `new` when unclassified', () => {

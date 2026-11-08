@@ -459,6 +459,105 @@ describe('planWrite', () => {
   })
 })
 
+/** A Patient of id `p` whose one given name says which copy it is. */
+const patientCopy = (given: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+    resourceType: 'Patient',
+    id: 'p',
+    name: [{ given: [given] }],
+  })
+
+/** The given names of `resource`, a Patient, in order; none for another type. */
+const givenNamesOf = (resource: FhirResourceWithId): readonly string[] =>
+  resource.resourceType === 'Patient' ? resource.name.flatMap((name) => name.given) : []
+
+/** Joins two copies' names, earlier first, so a result shows which copies merged. */
+const joinNames: DecodedFile.Merge = (earlier, later) =>
+  earlier.resourceType === 'Patient' && later.resourceType === 'Patient'
+    ? { ...later, name: [...earlier.name, ...later.name] }
+    : later
+
+/** A row keyed `key` holding one copy, named `given`, of the shared Patient `p`. */
+const sharedCopyRow = (key: string, given: string): DecodedFile.Resource => ({
+  ...row(key, patientCopy(given)),
+  shared: { identity: 'har-0 Patient p', merge: joinNames },
+})
+
+/** A batch of two copies of one resource, as two feeds of one source give it. */
+const twoCopiesBatch = (): ResolvedBatch =>
+  batchOf({ har: [sharedCopyRow('status:0', 'status'), sharedCopyRow('history:0', 'history')] })
+
+/** Each decision as its key, disposition and the given names it writes. */
+const writtenNamesOf = (
+  plan: readonly WriteDecision[]
+): readonly (readonly [string, Disposition, readonly string[]])[] =>
+  plan.map(
+    ({ entry, disposition }) => [entry.key, disposition, givenNamesOf(entry.resource)] as const
+  )
+
+describe('planWrite over the copies of a shared resource', () => {
+  it('writes the merge of both copies when both are kept, superseding the earlier copy', () => {
+    expect(
+      writtenNamesOf(planWrite(twoCopiesBatch(), StagedImport.initial, noneByDefault, new Set()))
+    ).toEqual([
+      ['status:0', 'Superseded', ['status', 'history']],
+      ['history:0', 'Included', ['status', 'history']],
+    ])
+  })
+
+  // The reported bug: unticking the response that holds the first copy kept
+  // nothing, although the other response holds the resource too.
+  it('writes the other copy alone, unmerged, when the first copy is left out', () => {
+    expect(
+      writtenNamesOf(
+        planWrite(twoCopiesBatch(), () => excluding('status:0'), noneByDefault, new Set())
+      )
+    ).toEqual([
+      ['status:0', 'Excluded', ['status']],
+      ['history:0', 'Included', ['history']],
+    ])
+  })
+
+  it('writes the first copy alone when the other is left out', () => {
+    expect(
+      writtenNamesOf(
+        planWrite(twoCopiesBatch(), () => excluding('history:0'), noneByDefault, new Set())
+      )
+    ).toEqual([
+      ['status:0', 'Included', ['status']],
+      ['history:0', 'Excluded', ['history']],
+    ])
+  })
+
+  it('writes nothing of the resource when both copies are left out', () => {
+    expect(
+      dispositionsOf(
+        planWrite(
+          twoCopiesBatch(),
+          () => excluding('status:0', 'history:0'),
+          noneByDefault,
+          new Set()
+        )
+      )
+    ).toEqual([
+      ['har', 'status:0', 'Excluded'],
+      ['har', 'history:0', 'Excluded'],
+    ])
+  })
+
+  it("merges the reviewer's edit of a copy in place of that copy", () => {
+    const selection = (): StagedImport.Selection =>
+      StagedImport.edit(StagedImport.initial(), 'history:0', patientCopy('edited history'))
+
+    expect(
+      writtenNamesOf(planWrite(twoCopiesBatch(), selection, noneByDefault, new Set()))
+    ).toEqual([
+      ['status:0', 'Superseded', ['status', 'edited history']],
+      ['history:0', 'Included', ['status', 'edited history']],
+    ])
+  })
+})
+
 /** The literal reference of the provisional Practitioner a printed name makes. */
 const PRACTITIONER = 'Practitioner/provisional-1'
 

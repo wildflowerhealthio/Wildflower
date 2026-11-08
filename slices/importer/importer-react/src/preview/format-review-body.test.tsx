@@ -607,3 +607,73 @@ describe('FormatReviewBody', () => {
     ).toBe(`decoded:${TYRA_KEY}`)
   })
 })
+
+describe('FormatReviewBody over the copies of a shared resource', () => {
+  const shared: DecodedFile.Shared = { identity: 'Observation o-1', merge: (_, later) => later }
+
+  /** A section titled `title` of `rows`, each a row of `resource` keyed `<title>:<index>`, shared when `isShared`. */
+  const sectionOf = (
+    title: string,
+    rows: readonly { readonly resource: FhirResourceWithId; readonly isShared: boolean }[]
+  ): DecodedFile.Section => ({
+    title,
+    resources: rows.map(({ resource, isShared }, index) => ({
+      key: `${title}:${index}`,
+      title: `${resource.resourceType}/${resource.id}`,
+      resource,
+      ...(isShared ? { shared } : {}),
+    })),
+  })
+
+  /** The review body over `sections`, with nothing linked and nothing out by default. */
+  const renderSections = (sections: readonly DecodedFile.Section[]): void => {
+    const file: DecodedFile.DecodedFile = { sections, notes: [] }
+    render(
+      <FormatReviewBody
+        result={{ ...FormatDecode.emptyResult('har'), decoded: file }}
+        selection={StagedImport.initial()}
+        excludedByDefault={new Set()}
+        comparisons={undefined}
+        kind="har"
+        decodedFile={file}
+        plan={LinkPlan.empty}
+        onSelectionChange={() => undefined}
+        onEditResource={() => undefined}
+      />
+    )
+  }
+
+  /** The text of each row of the section titled `title`. */
+  const rowTextsIn = (title: string): readonly (string | null)[] =>
+    within(screen.getByRole('region', { name: title }))
+      .getAllByRole('listitem')
+      .map((row) => row.textContent)
+
+  const copy = weight('o-1', { reference: 'Patient/p-1' })
+
+  it('says which other section holds a copy, and nothing on a row that is no copy', () => {
+    renderSections([
+      sectionOf('status', [
+        { resource: copy, isShared: true },
+        { resource: weight('o-2', { reference: 'Patient/p-1' }), isShared: false },
+      ]),
+      sectionOf('history', [{ resource: copy, isShared: true }]),
+    ])
+
+    expect(rowTextsIn('status')).toEqual([
+      expect.stringContaining('Also in history'),
+      expect.not.stringContaining('Also in'),
+    ])
+    expect(rowTextsIn('history')).toEqual([expect.stringContaining('Also in status')])
+  })
+
+  it('counts the other sections when more than one holds a copy', () => {
+    renderSections(
+      ['status', 'history', 'refill'].map((title) =>
+        sectionOf(title, [{ resource: copy, isShared: true }])
+      )
+    )
+
+    expect(rowTextsIn('status')).toEqual([expect.stringContaining('Also in 2 other responses')])
+  })
+})

@@ -6,6 +6,7 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
+  type DecodedFile,
   FormatDecode,
   LinkChoiceSet,
   StagedImport,
@@ -49,23 +50,21 @@ const PATIENT = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
  * A HAR batch of `resources`, keyed `k-<index>`, resolved with every
  * referent on its default, on a `TestClock` standing at the epoch.
  */
-const resolvedHarBatchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => {
+const resolvedHarBatchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch =>
+  resolvedHarBatchOfRows(
+    resources.map((resource, index) => ({
+      key: `k-${index}`,
+      title: `${resource.resourceType}/${resource.id}`,
+      resource,
+    }))
+  )
+
+/** A HAR batch of `rows`, resolved as {@link resolvedHarBatchOf} resolves one. */
+const resolvedHarBatchOfRows = (rows: readonly DecodedFile.Resource[]): ResolvedBatch => {
   const har: FormatDecode.Result<'har'> = {
     ...FormatDecode.emptyResult('har'),
     files: [{ id: '0:har', fileName: 'har', bytes: new Uint8Array([1]) }],
-    decoded: {
-      sections: [
-        {
-          title: 'Resources',
-          resources: resources.map((resource, index) => ({
-            key: `k-${index}`,
-            title: `${resource.resourceType}/${resource.id}`,
-            resource,
-          })),
-        },
-      ],
-      notes: [],
-    },
+    decoded: { sections: [{ title: 'Resources', resources: rows }], notes: [] },
   }
   return Effect.runSync(
     resolveMentions(
@@ -103,5 +102,36 @@ describe('keysWithoutPatientOf', () => {
     )
 
     expect([...keysWithoutPatientOf(batch, 'har', selection)]).toEqual(['k-4'])
+  })
+})
+
+describe('keysWithoutPatientOf over the copies of a shared resource', () => {
+  /** Keeps the earlier copy, so the merge names whom the first copy names. */
+  const keepEarlier: DecodedFile.Merge = (earlier) => earlier
+  const shared: DecodedFile.Shared = { identity: 'har-0 MedicationRequest rx', merge: keepEarlier }
+  const batch = resolvedHarBatchOfRows([
+    { key: 'k-0', title: 'Patient/p-1', resource: PATIENT },
+    {
+      key: 'k-1',
+      title: 'MedicationRequest/rx',
+      resource: request('rx', { reference: 'Patient/p-1' }),
+      shared,
+    },
+    {
+      key: 'k-2',
+      title: 'MedicationRequest/rx',
+      resource: request('rx', { display: 'Someone' }),
+      shared,
+    },
+  ])
+
+  it('asks a copy that names no patient as merged with the copy that does', () => {
+    expect([...keysWithoutPatientOf(batch, 'har', StagedImport.initial())]).toEqual([])
+  })
+
+  it('asks it alone once the reviewer unticks the copy that names the patient', () => {
+    const selection = StagedImport.setResourcesIncluded(StagedImport.initial(), ['k-1'], false)
+
+    expect([...keysWithoutPatientOf(batch, 'har', selection)]).toEqual(['k-2'])
   })
 })

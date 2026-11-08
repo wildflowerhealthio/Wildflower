@@ -5,6 +5,7 @@ import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
+import type * as DecodedFile from './decoded-file.ts'
 import * as StagedImport from './staged-import.ts'
 
 /**
@@ -279,5 +280,45 @@ describe('StagedImport.editedResource', () => {
     expect(Option.getOrThrow(StagedImport.editedResource(edited, 'a'))).toEqual(
       resource('override')
     )
+  })
+})
+
+describe('StagedImport.withKeptCopiesMerged', () => {
+  /** A Patient of id `p` whose one given name says which copy it is. */
+  const copyNamed = (given: string): FhirResourceWithId =>
+    Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+      resourceType: 'Patient',
+      id: 'p',
+      name: [{ given: [given] }],
+    })
+  const joinNames: DecodedFile.Merge = (earlier, later) =>
+    earlier.resourceType === 'Patient' && later.resourceType === 'Patient'
+      ? { ...later, name: [...earlier.name, ...later.name] }
+      : later
+  const rows: readonly DecodedFile.Resource[] = ['status', 'history'].map((given) => ({
+    key: `${given}:0`,
+    title: 'Patient/p',
+    resource: copyNamed(given),
+    shared: { identity: 'Patient p', merge: joinNames },
+  }))
+  const namesOf = (merged: readonly DecodedFile.Resource[]): readonly (readonly string[])[] =>
+    merged.map(({ resource: patient }) =>
+      patient.resourceType === 'Patient' ? patient.name.flatMap((name) => name.given) : []
+    )
+
+  it('should merge the copies the reviewer has not unticked into each of them', () => {
+    expect(namesOf(StagedImport.withKeptCopiesMerged(StagedImport.initial(), rows))).toEqual([
+      ['status', 'history'],
+      ['status', 'history'],
+    ])
+  })
+
+  it('should leave an unticked copy out of the merge, and as it is', () => {
+    const selection = StagedImport.setResourcesIncluded(StagedImport.initial(), ['status:0'], false)
+
+    expect(namesOf(StagedImport.withKeptCopiesMerged(selection, rows))).toEqual([
+      ['status'],
+      ['history'],
+    ])
   })
 })

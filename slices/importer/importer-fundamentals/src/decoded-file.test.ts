@@ -87,3 +87,102 @@ describe('mapResources', () => {
     })
   })
 })
+
+/** A Patient of id `id` whose one given name says which copy it is. */
+const namedCopy = (id: string, given: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+    resourceType: 'Patient',
+    id,
+    name: [{ given: [given] }],
+  })
+
+/** The given names of `resource`, a Patient, in order. */
+const givenNamesOf = (patient: FhirResourceWithId): readonly string[] =>
+  patient.resourceType === 'Patient' ? patient.name.flatMap((name) => name.given) : []
+
+/** Joins two copies' names, earlier first, so a result shows which copies merged and in what order. */
+const joinNames: DecodedFile.Merge = (earlier, later) =>
+  earlier.resourceType === 'Patient' && later.resourceType === 'Patient'
+    ? { ...later, name: [...earlier.name, ...later.name] }
+    : later
+
+/** A row keyed `key`, one copy named `given` of the shared Patient `id`. */
+const sharedCopy = (key: string, id: string, given: string): DecodedFile.Resource => ({
+  key,
+  title: `Patient/${id}`,
+  resource: namedCopy(id, given),
+  shared: { identity: `Patient ${id}`, merge: joinNames },
+})
+
+/** Each row as its key and the given names it holds. */
+const namesByKey = (
+  rows: readonly DecodedFile.Resource[]
+): readonly (readonly [string, readonly string[]])[] =>
+  rows.map((row) => [row.key, givenNamesOf(row.resource)] as const)
+
+describe('mergeSharedCopies', () => {
+  it("should merge an identity's copies in order, in the first copy's place, the rest left out", () => {
+    const rows = [
+      sharedCopy('status:0', 'p', 'status'),
+      { key: 'other:0', title: 'Patient/q', resource: namedCopy('q', 'other') },
+      sharedCopy('history:0', 'p', 'history'),
+    ]
+
+    expect(namesByKey(DecodedFile.mergeSharedCopies(rows))).toEqual([
+      ['status:0', ['status', 'history']],
+      ['other:0', ['other']],
+    ])
+  })
+
+  it("should keep a copy whose identity's other copies are not among the rows as it is", () => {
+    const history = sharedCopy('history:0', 'p', 'history')
+
+    expect(DecodedFile.mergeSharedCopies([history])).toEqual([history])
+  })
+
+  it('should merge each identity apart from the others', () => {
+    const rows = [
+      sharedCopy('a:0', 'p', 'p-first'),
+      sharedCopy('a:1', 'q', 'q-first'),
+      sharedCopy('b:0', 'q', 'q-second'),
+      sharedCopy('b:1', 'p', 'p-second'),
+    ]
+
+    expect(namesByKey(DecodedFile.mergeSharedCopies(rows))).toEqual([
+      ['a:0', ['p-first', 'p-second']],
+      ['a:1', ['q-first', 'q-second']],
+    ])
+  })
+
+  it('property: rows that are no shared copies come back exactly as they were', () => {
+    const rowArbitrary = fc.record({
+      key: fc.string(),
+      title: fc.string(),
+      resource: fc.string().map(resource),
+    })
+    fc.assert(
+      fc.property(fc.array(rowArbitrary), (rows) => {
+        expect(DecodedFile.mergeSharedCopies(rows)).toEqual(rows)
+        expect(DecodedFile.withSharedCopiesMerged(rows)).toEqual(rows)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('withSharedCopiesMerged', () => {
+  it('should give every copy of an identity the merge of its copies, keeping a row per copy', () => {
+    const rows = [sharedCopy('status:0', 'p', 'status'), sharedCopy('history:0', 'p', 'history')]
+
+    expect(namesByKey(DecodedFile.withSharedCopiesMerged(rows))).toEqual([
+      ['status:0', ['status', 'history']],
+      ['history:0', ['status', 'history']],
+    ])
+  })
+
+  it('should keep the one copy of an identity among the rows as the same object', () => {
+    const history = sharedCopy('history:0', 'p', 'history')
+
+    expect(DecodedFile.withSharedCopiesMerged([history])[0]).toBe(history)
+  })
+})
