@@ -1,0 +1,39 @@
+/*
+ * A reply's Markdown. Block elements keep tundra's type scale; spacing sits
+ * between blocks, not around the whole reply, and wide tables scroll.
+ */
+.reply-markdown {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reply-markdown > :first-child {
+  margin-top: 0;
+}
+
+.reply-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.reply-markdown :where(p, ul, ol, pre, table, blockquote) {
+  margin-block: var(--space-4);
+}
+
+.reply-markdown :where(table) {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.reply-markdown :where(th, td) {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-divider);
+  text-align: left;
+}
+
+.reply-markdown :where(pre) {
+  overflow-x: auto;
+  padding: var(--space-4);
+  border-radius: var(--radius-3);
+  background: var(--color-raised);
+}

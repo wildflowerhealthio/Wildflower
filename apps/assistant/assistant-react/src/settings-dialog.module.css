@@ -1,0 +1,6 @@
+.settings-dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-5);
+}

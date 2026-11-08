@@ -1,0 +1,17 @@
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.composer__message {
+  width: 100%;
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.composer__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}

@@ -1,0 +1,52 @@
+/*
+ * The chat: the person's questions set off to the right in a raised bubble,
+ * Claude's replies full width beneath them.
+ */
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.transcript__question {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.transcript__question-text {
+  max-width: min(36rem, 85%);
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-3);
+  background: var(--color-raised);
+  white-space: pre-wrap;
+}
+
+.transcript__reply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.transcript__thinking summary {
+  color: var(--color-neutral-3);
+  cursor: pointer;
+}
+
+.transcript__thinking-text {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--color-divider);
+  color: var(--color-neutral-3);
+  white-space: pre-wrap;
+}
+
+.transcript__note {
+  margin: 0;
+  color: var(--color-neutral-3);
+}

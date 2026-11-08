@@ -1,0 +1,11 @@
+.key-setup {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-5);
+  max-width: 32rem;
+}
+
+.key-setup > button {
+  align-self: flex-start;
+}

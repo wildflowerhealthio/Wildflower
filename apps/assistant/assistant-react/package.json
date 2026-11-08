@@ -1,0 +1,51 @@
+{
+  "name": "@wildflowerhealthio/assistant-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser UI for Assistant: the key setup, the model picker, the style choice with its academic confirmation and banner, the streamed transcript with Markdown replies, a Thinking disclosure and refusals, and the composer, as one AssistantChat component over assistant-core-js.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "catalog:",
+    "react-markdown": "catalog:",
+    "remark-gfm": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/assistant-core-js": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@wildflowerhealthio/assistant-core-js": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "effect": "catalog:",
+    "react": "catalog:"
+  }
+}
