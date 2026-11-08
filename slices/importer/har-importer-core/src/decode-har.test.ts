@@ -1,3 +1,4 @@
+// oxlint-disable import/max-dependencies -- a committed fixture per source the FHIR pool registers, and that source's constants
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { HarFromJson, emitHar } from '@wildflowerhealthio/http-archive'
 import { type Extraction, SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
@@ -7,6 +8,7 @@ import {
 } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { REXALL_STU3_PATIENT_SYSTEM } from '@wildflowerhealthio/rexall-be-well-source'
+import { ShoppersIdentifierSystem } from '@wildflowerhealthio/shoppers-drugmart-source'
 import { type TraceBody, type TraceExchange } from '@wildflowerhealthio/web-trace-core'
 import {
   CAPTURE_FLOOR,
@@ -14,18 +16,23 @@ import {
   jsonBody,
   traceExchange,
 } from '@wildflowerhealthio/web-trace-core/test-helpers'
-import { Array as Arr, Effect, type ParseResult, Schema } from 'effect'
+import { Array as Arr, Effect, type ParseResult, Record as Rec, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import { decodeHar } from './decode-har.ts'
 import { fhirSources } from './fhir-pool.ts'
 import chromeHar from './fixtures/chrome-fhir-capture.har.json' with { type: 'json' }
+import rexallHar from './fixtures/rexall-be-well.generated.har.json' with { type: 'json' }
+import shoppersHar from './fixtures/shoppers-drugmart.generated.har.json' with { type: 'json' }
 
 /**
  * Covers the HAR binding's read half: `decodeHar` in, the FHIR pool run over it
  * (`runExtraction`), each resource keyed as the importer detaches it. Two fixture routes reach the same assertions — an `emitHar`
- * archive shaped like ours and a committed foreign Chrome DevTools export. Also
+ * archive shaped like ours and a committed foreign Chrome DevTools export. The
+ * portal sources run over whole sessions their synthetic-data generators
+ * wrote (`fixtures/*.generated.har.json`, kept current by each generator's
+ * `importer-fixture.test.ts`). Also
  * asserts the structural property that `decodeHar` requires no services (the
  * FHIR write client is unreachable from a decode), at the type level and at runtime.
  */
@@ -107,6 +114,44 @@ const keysOfType = (
   resourceType: string
 ): readonly DetachedResource.Key[] =>
   Arr.filterMap(ofType(extraction, resourceType), DetachedResource.keyOf)
+
+/** How many decoded resources of each `resourceType` the extraction holds. */
+const countsByType = (
+  extraction: ExtractionResult<DetachedResource.Type>
+): Readonly<Record<string, number>> =>
+  Rec.map(
+    Arr.groupBy(
+      extraction.batches.flatMap(({ resources }) => resources),
+      ({ resourceType }) => resourceType
+    ),
+    Arr.length
+  )
+
+/** Which response each batch came from, and the kind that claimed it, in order. */
+const claimsOf = (
+  extraction: ExtractionResult<DetachedResource.Type>
+): readonly { readonly url: string; readonly responseKindName: string }[] =>
+  extraction.batches.map(({ url, responseKindName }) => ({ url, responseKindName }))
+
+/** The shape of a Chrome DevTools export this file reads: each entry's request URL and DevTools resource type. */
+interface ChromeExport {
+  readonly log: {
+    readonly entries: readonly {
+      readonly _resourceType: string
+      readonly request: { readonly url: string }
+    }[]
+  }
+}
+
+/**
+ * The request URLs of a Chrome export's entries of one DevTools
+ * `_resourceType` (`document` for a page navigation, `xhr` for a call a page
+ * made), in archive order.
+ */
+const urlsOfResourceType = (har: ChromeExport, resourceType: string): readonly string[] =>
+  har.log.entries
+    .filter(({ _resourceType }) => _resourceType === resourceType)
+    .map(({ request }) => request.url)
 
 describe('decodeHar + runExtraction', () => {
   describe('a Patient read + Observation searchset', () => {
@@ -204,77 +249,122 @@ describe('decodeHar + runExtraction', () => {
     })
   })
 
-  describe('a Shoppers Drug Mart prescription-history archive', () => {
-    // A hand-built history payload, not a real capture. Replace this synthetic
-    // exchange with an anonymized `.har` fixture — see #562.
-    it("should decode MedicationDispense resources from a portal capture, keyed in the portal's dispense-id system", () => {
-      const extraction = extract(
-        harBytesOf([
-          traceExchange({
-            requestId: 'req-0',
-            url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescription-history?customerId=acct-1',
-            headers: [['content-type', 'application/json']],
-            body: storedJson({
-              dispenses: [
-                {
-                  prescriptionId: 'rx-1',
-                  dispenseId: 'disp-1',
-                  prescriptionNumber: 9534360,
-                  dispenseDate: '2033-05-13',
-                  chemicalName: 'Amoxicillin 500mg',
-                  brandName: 'Amoxil',
-                  quantityDispensed: 30,
-                  din: '51480840',
-                  isArchive: false,
-                  store: { id: 9000, storeName: 'SDM #9000' },
-                },
-              ],
-            }),
-            startedAtMillis: CAPTURE_FLOOR,
-          }),
-        ])
-      )
+  describe('a generated Shoppers Drug Mart session', () => {
+    // The household account `synthetic-data-shoppers-drugmart`'s
+    // `importer-fixture.test.ts` writes this archive from: a holder and one
+    // dependant, two prescriptions each, filled 2 + 1 and 1 + 2 times.
+    const extraction = extract(bytesOf(JSON.stringify(shoppersHar)))
+    const xhrUrls = urlsOfResourceType(shoppersHar, 'xhr')
 
-      expect(extraction.unmatched).toHaveLength(0)
-      expect(extraction.bodyAbsent).toHaveLength(0)
+    it('should leave only the four page navigations unmatched', () => {
+      expect(extraction.unmatched.map(({ url }) => url)).toEqual(
+        urlsOfResourceType(shoppersHar, 'document')
+      )
+      expect(extraction.unmatched).toHaveLength(4)
+      expect(extraction.bodyAbsent).toEqual([])
       expect(extraction.parseFailures).toEqual([])
-      expect(keysOfType(extraction, 'MedicationDispense')).toEqual([
+    })
+
+    it('should claim each prescription-status XHR, then the history, then the customers', () => {
+      expect(claimsOf(extraction)).toEqual(
+        Arr.zipWith(
+          xhrUrls,
+          [
+            ...Arr.replicate('PrescriptionResponseKind', 4),
+            'PrescriptionHistoryResponseKind',
+            'CustomerResponseKind',
+          ],
+          (url, responseKindName) => ({ url, responseKindName })
+        )
+      )
+    })
+
+    it('should decode a Patient per person, a request per prescription, and its fills from both feeds', () => {
+      // Patient: 2 people. MedicationRequest: 2 + 2 prescriptions, one per
+      // status XHR. MedicationDispense: each status XHR's latest fill (4), and
+      // every fill on the account in the history (2 + 1 + 1 + 2 = 6).
+      expect(countsByType(extraction)).toEqual({
+        Patient: 2,
+        MedicationRequest: 4,
+        MedicationDispense: 10,
+      })
+    })
+
+    it("should key each person's Patient by their patientId", () => {
+      expect(keysOfType(extraction, 'Patient')).toEqual([
         {
-          system: 'https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/dispense-id',
-          value: 'disp-1',
+          system: ShoppersIdentifierSystem.PatientId,
+          value: '00000000-0000-4000-8000-000000000011',
+        },
+        {
+          system: ShoppersIdentifierSystem.PatientId,
+          value: '00000000-0000-4000-8000-000000000012',
         },
       ])
     })
-  })
 
-  describe('a Rexall Be Well profile archive', () => {
-    // A hand-built carebook profile payload, not a real capture. Replace this
-    // synthetic exchange with an anonymized `.har` fixture — see #562.
-    it('should synthesize a keyed Patient from a carebook profile capture', () => {
-      const extraction = extract(
-        harBytesOf([
-          traceExchange({
-            requestId: 'req-0',
-            url: 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me',
-            headers: [['content-type', 'application/json']],
-            body: storedJson({
-              data: {
-                identifiers: { uid: 'uid-abc-123', email: 'jordan.rivera@example.com' },
-                names: { firstName: 'Jordan', lastName: 'Rivera' },
-                birthDate: '1985-07-14',
-                zipPostalCode: 'M5V 2T6',
-              },
-            }),
-            startedAtMillis: CAPTURE_FLOOR,
-          }),
-        ])
+    it("should key each prescription's latest fill alike in its status XHR and in the history", () => {
+      // What `mergeSharedResources` relies on to make the two copies one.
+      const dispenseKeysFrom = (urls: readonly string[]): readonly DetachedResource.Key[] =>
+        Arr.filterMap(
+          extraction.batches
+            .filter(({ url }) => urls.includes(url))
+            .flatMap(({ resources }) => resources)
+            .filter(({ resourceType }) => resourceType === 'MedicationDispense'),
+          DetachedResource.keyOf
+        )
+      const statusKeys = dispenseKeysFrom(
+        xhrUrls.filter((url) => url.endsWith('/prescription-status'))
+      )
+      const historyKeys = dispenseKeysFrom(
+        xhrUrls.filter((url) => url.includes('/prescription-history?'))
       )
 
-      expect(extraction.unmatched).toHaveLength(0)
-      expect(extraction.bodyAbsent).toHaveLength(0)
+      expect(statusKeys).toHaveLength(4)
+      expect(new Set(statusKeys.map(({ value }) => value)).size).toBe(4)
+      expect(historyKeys).toHaveLength(6)
+      expect(historyKeys).toEqual(expect.arrayContaining([...statusKeys]))
+    })
+  })
+
+  describe('a generated Rexall Be Well session', () => {
+    // The story and account `synthetic-data-rexall-be-well`'s
+    // `importer-fixture.test.ts` writes this archive from: one person, two
+    // prescriptions, the first filled twice.
+    const extraction = extract(bytesOf(JSON.stringify(rexallHar)))
+
+    it('should leave only the two page navigations unmatched', () => {
+      expect(extraction.unmatched.map(({ url }) => url)).toEqual(
+        urlsOfResourceType(rexallHar, 'document')
+      )
+      expect(extraction.unmatched).toHaveLength(2)
+      expect(extraction.bodyAbsent).toEqual([])
       expect(extraction.parseFailures).toEqual([])
+    })
+
+    it('should claim the profile XHR and the prescriptions searchset XHR', () => {
+      expect(claimsOf(extraction)).toEqual(
+        Arr.zipWith(
+          urlsOfResourceType(rexallHar, 'xhr'),
+          ['ProfileResponseKind', 'MedicationListResponseKind'],
+          (url, responseKindName) => ({ url, responseKindName })
+        )
+      )
+    })
+
+    it('should decode the Patient, a request per prescription and its latest fill', () => {
+      // Patient: the profile. MedicationRequest: 2 prescriptions.
+      // MedicationDispense: the searchset carries each one's latest fill only.
+      expect(countsByType(extraction)).toEqual({
+        Patient: 1,
+        MedicationRequest: 2,
+        MedicationDispense: 2,
+      })
+    })
+
+    it("should key the Patient by the profile's uid", () => {
       expect(keysOfType(extraction, 'Patient')).toEqual([
-        { system: REXALL_STU3_PATIENT_SYSTEM, value: 'uid-abc-123' },
+        { system: REXALL_STU3_PATIENT_SYSTEM, value: '00000000-0000-4000-8000-000000000001' },
       ])
     })
   })

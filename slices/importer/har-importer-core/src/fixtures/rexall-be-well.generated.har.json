@@ -1,0 +1,308 @@
+{
+  "log": {
+    "version": "1.2",
+    "creator": {
+      "name": "WebInspector",
+      "version": "537.36"
+    },
+    "pages": [
+      {
+        "startedDateTime": "2026-11-01T15:00:00.000Z",
+        "id": "page_1",
+        "title": "https://letsbewell.ca/sign-in",
+        "pageTimings": {
+          "onContentLoad": 412.7,
+          "onLoad": 988.3
+        }
+      },
+      {
+        "startedDateTime": "2026-11-01T15:00:18.400Z",
+        "id": "page_2",
+        "title": "https://app.letsbewell.ca/health/prescriptions",
+        "pageTimings": {
+          "onContentLoad": 356.1,
+          "onLoad": 1210.9
+        }
+      }
+    ],
+    "entries": [
+      {
+        "pageref": "page_1",
+        "startedDateTime": "2026-11-01T15:00:00.000Z",
+        "time": 92.9,
+        "request": {
+          "method": "GET",
+          "url": "https://letsbewell.ca/sign-in",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "text/html; charset=utf-8"
+            }
+          ],
+          "content": {
+            "size": 139,
+            "mimeType": "text/html; charset=utf-8",
+            "text": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Sign in | Be Well</title></head><body><div id=\"root\"></div></body></html>"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 139
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 88.4,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "203.0.113.10",
+        "connection": "0",
+        "_initiator": {
+          "type": "other"
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "document"
+      },
+      {
+        "pageref": "page_2",
+        "startedDateTime": "2026-11-01T15:00:18.400Z",
+        "time": 69.4,
+        "request": {
+          "method": "GET",
+          "url": "https://app.letsbewell.ca/health/prescriptions",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "text/html; charset=utf-8"
+            }
+          ],
+          "content": {
+            "size": 145,
+            "mimeType": "text/html; charset=utf-8",
+            "text": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Prescriptions | Be Well</title></head><body><div id=\"root\"></div></body></html>"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 145
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 64.9,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "203.0.113.11",
+        "connection": "0",
+        "_initiator": {
+          "type": "other"
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "document"
+      },
+      {
+        "pageref": "page_2",
+        "startedDateTime": "2026-11-01T15:00:19.650Z",
+        "time": 147.1,
+        "request": {
+          "method": "GET",
+          "url": "https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "origin",
+              "value": "https://app.letsbewell.ca"
+            },
+            {
+              "name": "referer",
+              "value": "https://app.letsbewell.ca/"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json; charset=utf-8"
+            }
+          ],
+          "content": {
+            "size": 392,
+            "mimeType": "application/json; charset=utf-8",
+            "text": "{\"data\":{\"identifiers\":{\"email\":\"person-1@example.com\",\"uid\":\"00000000-0000-4000-8000-000000000001\",\"reportingGuid\":\"00000000-0000-4000-8000-000000000002\"},\"names\":{\"firstName\":\"First\",\"lastName\":\"Example\"},\"birthDate\":\"1986-07-24\",\"zipPostalCode\":\"A1A 1A1\",\"accountState\":\"Validated\",\"createdOn\":\"2024-02-05T01:46:17+00:00\",\"updatedOn\":\"2026-07-24T18:00:41+00:00\"},\"related\":{\"profiles\":[]}}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 392
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 142.6,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "203.0.113.12",
+        "connection": "0",
+        "_initiator": {
+          "type": "script"
+        },
+        "_priority": "High",
+        "_resourceType": "xhr"
+      },
+      {
+        "pageref": "page_2",
+        "startedDateTime": "2026-11-01T15:00:19.910Z",
+        "time": 615.8,
+        "request": {
+          "method": "GET",
+          "url": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/00000000-0000-4000-8000-000000000001&_id=pharmacy-1234&_query=lastActiveOnly&_revinclude=MedicationRequest:extension.medicationrecord-processor&_revinclude=MedicationDispense:extension.medicationrecord-processor&_revinclude=DocumentReference:extension.medicationrecord-processor&_revinclude=Immunization:extension.medicationrecord-processor&_count=2147483646",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "origin",
+              "value": "https://app.letsbewell.ca"
+            },
+            {
+              "name": "referer",
+              "value": "https://app.letsbewell.ca/"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "subject",
+              "value": "Patient/00000000-0000-4000-8000-000000000001"
+            },
+            {
+              "name": "_id",
+              "value": "pharmacy-1234"
+            },
+            {
+              "name": "_query",
+              "value": "lastActiveOnly"
+            },
+            {
+              "name": "_revinclude",
+              "value": "MedicationRequest:extension.medicationrecord-processor"
+            },
+            {
+              "name": "_revinclude",
+              "value": "MedicationDispense:extension.medicationrecord-processor"
+            },
+            {
+              "name": "_revinclude",
+              "value": "DocumentReference:extension.medicationrecord-processor"
+            },
+            {
+              "name": "_revinclude",
+              "value": "Immunization:extension.medicationrecord-processor"
+            },
+            {
+              "name": "_count",
+              "value": "2147483646"
+            }
+          ],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json; charset=utf-8"
+            }
+          ],
+          "content": {
+            "size": 13542,
+            "mimeType": "application/json; charset=utf-8",
+            "text": "{\"resourceType\":\"Bundle\",\"type\":\"searchset\",\"total\":4,\"link\":[{\"relation\":\"self\",\"url\":\"https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/00000000-0000-4000-8000-000000000001&_id=pharmacy-1234&_query=lastActiveOnly&_revinclude=MedicationRequest:extension.medicationrecord-processor&_revinclude=MedicationDispense:extension.medicationrecord-processor&_revinclude=DocumentReference:extension.medicationrecord-processor&_revinclude=Immunization:extension.medicationrecord-processor&_count=2147483646\"}],\"entry\":[{\"fullUrl\":\"https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest/3c25b391-f261-4cf3-a5d9-ab9fd7537f73\",\"search\":{\"mode\":\"include\"},\"resource\":{\"resourceType\":\"MedicationRequest\",\"id\":\"3c25b391-f261-4cf3-a5d9-ab9fd7537f73\",\"meta\":{\"versionId\":\"3\",\"lastUpdated\":\"2026-10-02T18:24:19+00:00\"},\"contained\":[{\"resourceType\":\"Medication\",\"id\":\"63bf631f-a48e-4327-b851-318e7fd642b4\",\"meta\":{\"versionId\":\"3\",\"lastUpdated\":\"2026-10-02T18:24:19+00:00\"},\"text\":{\"status\":\"generated\",\"div\":\"Amoxicillin 500 mg tablet\"},\"extension\":[{\"url\":\"http://schemas.carebook.com/v1/fhir/medication/extension/strength\",\"valueString\":\"500 mg\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medication/extension/description\",\"valueString\":\"500 mg - Amoxil\"}],\"code\":{\"coding\":[{\"system\":\"http://schema.carebook.com/v1/fhir/coding/medication-din-code\",\"code\":\"51480840\"}],\"text\":\"Amoxicillin 500 mg tablet\"},\"status\":\"active\",\"manufacturer\":{\"display\":\"Example Pharma Inc\"},\"form\":{\"coding\":[{\"system\":\"http://schema.carebook.com/v1/fhir/coding/medication-form-code\",\"code\":\"tablet\"}]}}],\"extension\":[{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/estimated-pick-up\",\"valueDateTime\":\"2026-10-02T18:24:19+00:00\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/request-type\",\"valueCodeableConcept\":{\"coding\":[{\"system\":\"http://schemas.carebook.com/v1/fhir/coding/medicationrequest-request-type-code\",\"code\":\"refill\"}]}},{\"url\":\"http://schemas.carebook.com/v1/fhir/common/extension/external-system-source\",\"valueString\":\"RexallPharmacy\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/common/extension/input-source\",\"valueString\":\"Sync\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/medication-processor\",\"valueReference\":{\"reference\":\"rexall-pharmacy-location/pharmacy-1234\",\"identifier\":{\"value\":\"pharmacy-1234\"}}},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/medicationrecord-processor\",\"valueReference\":{\"reference\":\"rexall-pharmacy-location/pharmacy-1234\",\"identifier\":{\"value\":\"pharmacy-1234\"}}},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/do-not-perform\",\"valueBoolean\":false},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/renewable\",\"valueBoolean\":true},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/external-store-id\",\"valueString\":\"1234\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/sort-order\",\"valuePositiveInt\":1},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/prescription-order\",\"valueReference\":{\"reference\":\"PrescriptionOrder/null\",\"identifier\":{\"value\":\"null\"},\"display\":\"todo\"}}],\"identifier\":[{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id\",\"value\":\"6884832\"},{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id\",\"value\":\"902169259\"}],\"status\":\"completed\",\"intent\":\"order\",\"medicationCodeableConcept\":{\"coding\":[{\"system\":\"http://schema.carebook.com/v1/fhir/coding/medication-din-code\",\"code\":\"51480840\"}],\"text\":\"Amoxicillin 500 mg tablet\"},\"subject\":{\"reference\":\"Patient/00000000-0000-4000-8000-000000000001\",\"display\":\"\"},\"authoredOn\":\"2026-09-22T13:42:46+00:00\",\"requester\":{\"agent\":{\"reference\":\"Practitioner/257ba733-6479-4c16-ac63-40dab75b75c5\",\"display\":\"DR A EXAMPLE\"}},\"note\":[{\"text\":\"TAKE 1 TABLET (=500MG) BY MOUTH TWICE DAILY\"}],\"dispenseRequest\":{\"modifierExtension\":[{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/number-of-repeats-available\",\"valuePositiveInt\":0},{\"url\":\"http://schemas.carebook.com/v2/fhir/medicationrequest/extension/number-of-repeats-available\",\"valueDecimal\":0}],\"numberOfRepeatsAllowed\":1,\"quantity\":{\"value\":20},\"expectedSupplyDuration\":{\"value\":10}}}},{\"fullUrl\":\"https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest/33af7744-b52f-4f12-89ce-30053fc0f33e\",\"search\":{\"mode\":\"include\"},\"resource\":{\"resourceType\":\"MedicationRequest\",\"id\":\"33af7744-b52f-4f12-89ce-30053fc0f33e\",\"meta\":{\"versionId\":\"2\",\"lastUpdated\":\"2026-10-12T17:15:18+00:00\"},\"contained\":[{\"resourceType\":\"Medication\",\"id\":\"33d07796-4c64-4082-80d0-390e12a16322\",\"meta\":{\"versionId\":\"2\",\"lastUpdated\":\"2026-10-12T17:15:18+00:00\"},\"text\":{\"status\":\"generated\",\"div\":\"Examplazole 5 mg tablet\"},\"extension\":[{\"url\":\"http://schemas.carebook.com/v1/fhir/medication/extension/strength\",\"valueString\":\"5 mg\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medication/extension/description\",\"valueString\":\"5 mg - Apo-Examplazole\"}],\"code\":{\"coding\":[{\"system\":\"http://schema.carebook.com/v1/fhir/coding/medication-din-code\",\"code\":\"02000017\"}],\"text\":\"Examplazole 5 mg tablet\"},\"status\":\"active\",\"manufacturer\":{\"display\":\"Example Pharma Inc\"},\"form\":{\"coding\":[{\"system\":\"http://schema.carebook.com/v1/fhir/coding/medication-form-code\",\"code\":\"tablet\"}]}}],\"extension\":[{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/estimated-pick-up\",\"valueDateTime\":\"2026-10-12T17:15:18+00:00\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/request-type\",\"valueCodeableConcept\":{\"coding\":[{\"system\":\"http://schemas.carebook.com/v1/fhir/coding/medicationrequest-request-type-code\",\"code\":\"fill\"}]}},{\"url\":\"http://schemas.carebook.com/v1/fhir/common/extension/external-system-source\",\"valueString\":\"RexallPharmacy\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/common/extension/input-source\",\"valueString\":\"Sync\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/medication-processor\",\"valueReference\":{\"reference\":\"rexall-pharmacy-location/pharmacy-1234\",\"identifier\":{\"value\":\"pharmacy-1234\"}}},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/medicationrecord-processor\",\"valueReference\":{\"reference\":\"rexall-pharmacy-location/pharmacy-1234\",\"identifier\":{\"value\":\"pharmacy-1234\"}}},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/do-not-perform\",\"valueBoolean\":false},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/renewable\",\"valueBoolean\":true},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/external-store-id\",\"valueString\":\"1234\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/sort-order\",\"valuePositiveInt\":2},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/prescription-order\",\"valueReference\":{\"reference\":\"PrescriptionOrder/null\",\"identifier\":{\"value\":\"null\"},\"display\":\"todo\"}}],\"identifier\":[{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id\",\"value\":\"3581381\"},{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id\",\"value\":\"736563608\"}],\"status\":\"active\",\"intent\":\"order\",\"medicationCodeableConcept\":{\"coding\":[{\"system\":\"http://schema.carebook.com/v1/fhir/coding/medication-din-code\",\"code\":\"02000017\"}],\"text\":\"Examplazole 5 mg tablet\"},\"subject\":{\"reference\":\"Patient/00000000-0000-4000-8000-000000000001\",\"display\":\"\"},\"authoredOn\":\"2026-10-12T13:11:50+00:00\",\"requester\":{\"agent\":{\"reference\":\"Practitioner/257ba733-6479-4c16-ac63-40dab75b75c5\",\"display\":\"DR A EXAMPLE\"}},\"note\":[{\"text\":\"TAKE 1 TABLET (=5MG) BY MOUTH ONCE DAILY\"}],\"dispenseRequest\":{\"modifierExtension\":[{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationrequest/extension/number-of-repeats-available\",\"valuePositiveInt\":5},{\"url\":\"http://schemas.carebook.com/v2/fhir/medicationrequest/extension/number-of-repeats-available\",\"valueDecimal\":5}],\"numberOfRepeatsAllowed\":5,\"quantity\":{\"value\":30},\"expectedSupplyDuration\":{\"value\":30}}}},{\"fullUrl\":\"https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationDispense/3c25b391-f261-4cf3-a5d9-ab9fd7537f73\",\"search\":{\"mode\":\"include\"},\"resource\":{\"resourceType\":\"MedicationDispense\",\"id\":\"3c25b391-f261-4cf3-a5d9-ab9fd7537f73\",\"meta\":{\"versionId\":\"3\",\"lastUpdated\":\"2026-10-02T18:24:19+00:00\"},\"extension\":[{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/when-requested\",\"valueDateTime\":\"2026-10-02T16:14:11+00:00\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/estimated-pick-up\",\"valueDateTime\":\"2026-10-02T18:24:19+00:00\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/dispensed-in-app\",\"valueBoolean\":true},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/medication-processor-timezone\",\"valueString\":\"America/Toronto\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/common/extension/external-system-source\",\"valueString\":\"RexallPharmacy\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/medication-processor\",\"valueReference\":{\"reference\":\"rexall-pharmacy-location/pharmacy-1234\",\"identifier\":{\"value\":\"pharmacy-1234\"}}},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/medicationrecord-processor\",\"valueReference\":{\"reference\":\"rexall-pharmacy-location/pharmacy-1234\",\"identifier\":{\"value\":\"pharmacy-1234\"}}},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/external-store-id\",\"valueString\":\"1234\"}],\"identifier\":[{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id\",\"value\":\"6884832\"},{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id\",\"value\":\"902169259\"}],\"status\":\"completed\",\"medicationCodeableConcept\":{\"coding\":[{\"system\":\"http://schema.carebook.com/v1/fhir/coding/medication-din-code\",\"code\":\"51480840\"}],\"text\":\"Amoxicillin 500 mg tablet\"},\"subject\":{\"reference\":\"Patient/00000000-0000-4000-8000-000000000001\",\"display\":\"\"},\"authorizingPrescription\":[{\"reference\":\"PrescriptionOrder/4c61c84d-dd00-439f-9b79-11bed41ea2e5\",\"identifier\":{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medication-request-type-order\",\"value\":\"3c25b391-f261-4cf3-a5d9-ab9fd7537f73\"}},{\"reference\":\"PrescriptionOrder/4c61c84d-dd00-439f-9b79-11bed41ea2e5\",\"identifier\":{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medication-request-type-refill\",\"value\":\"3c25b391-f261-4cf3-a5d9-ab9fd7537f73\"}}],\"quantity\":{\"value\":20},\"daysSupply\":{\"value\":10},\"whenPrepared\":\"2026-10-02T16:14:11+00:00\",\"whenHandedOver\":\"2026-10-02T18:24:19+00:00\"}},{\"fullUrl\":\"https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationDispense/33af7744-b52f-4f12-89ce-30053fc0f33e\",\"search\":{\"mode\":\"include\"},\"resource\":{\"resourceType\":\"MedicationDispense\",\"id\":\"33af7744-b52f-4f12-89ce-30053fc0f33e\",\"meta\":{\"versionId\":\"2\",\"lastUpdated\":\"2026-10-12T17:15:18+00:00\"},\"extension\":[{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/when-requested\",\"valueDateTime\":\"2026-10-12T15:02:51+00:00\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/estimated-pick-up\",\"valueDateTime\":\"2026-10-12T17:15:18+00:00\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/dispensed-in-app\",\"valueBoolean\":false},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/medication-processor-timezone\",\"valueString\":\"America/Toronto\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/common/extension/external-system-source\",\"valueString\":\"RexallPharmacy\"},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/medication-processor\",\"valueReference\":{\"reference\":\"rexall-pharmacy-location/pharmacy-1234\",\"identifier\":{\"value\":\"pharmacy-1234\"}}},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/medicationrecord-processor\",\"valueReference\":{\"reference\":\"rexall-pharmacy-location/pharmacy-1234\",\"identifier\":{\"value\":\"pharmacy-1234\"}}},{\"url\":\"http://schemas.carebook.com/v1/fhir/medicationdispense/extension/external-store-id\",\"valueString\":\"1234\"}],\"identifier\":[{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id\",\"value\":\"3581381\"},{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id\",\"value\":\"736563608\"}],\"status\":\"completed\",\"medicationCodeableConcept\":{\"coding\":[{\"system\":\"http://schema.carebook.com/v1/fhir/coding/medication-din-code\",\"code\":\"02000017\"}],\"text\":\"Examplazole 5 mg tablet\"},\"subject\":{\"reference\":\"Patient/00000000-0000-4000-8000-000000000001\",\"display\":\"\"},\"authorizingPrescription\":[{\"reference\":\"PrescriptionOrder/c4f4dcf0-dd0e-4cc5-a1f9-e442fd7b61f1\",\"identifier\":{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medication-request-type-order\",\"value\":\"33af7744-b52f-4f12-89ce-30053fc0f33e\"}},{\"reference\":\"PrescriptionOrder/c4f4dcf0-dd0e-4cc5-a1f9-e442fd7b61f1\",\"identifier\":{\"system\":\"http://schema.carebook.com/v1/fhir/identifier/medication-request-type-refill\",\"value\":\"33af7744-b52f-4f12-89ce-30053fc0f33e\"}}],\"quantity\":{\"value\":30},\"daysSupply\":{\"value\":30},\"whenPrepared\":\"2026-10-12T15:02:51+00:00\",\"whenHandedOver\":\"2026-10-12T17:15:18+00:00\"}}]}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 13542
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 611.3,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "203.0.113.12",
+        "connection": "0",
+        "_initiator": {
+          "type": "script"
+        },
+        "_priority": "High",
+        "_resourceType": "xhr"
+      }
+    ]
+  }
+}

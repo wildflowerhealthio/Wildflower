@@ -136,6 +136,9 @@ export default defineConfig({
       // `vp test -u` as `JSON.stringify` indents them and compared byte for
       // byte, so oxfmt must not collapse their short arrays either.
       '**/__golden__/*.json',
+      // HARs the synthetic-data generators write into `har-importer-core`
+      // (`fixtures:importer`), compared byte for byte by their own tests.
+      'slices/importer/har-importer-core/src/fixtures/*.generated.har.json',
       // The SMART discovery document `fhir-r4-rust` serves, committed the same
       // way by its `smart_configuration_snapshot_is_up_to_date` test.
       'apps/host/wildflower-server/fhir-r4-rust/snapshots/*.json',
