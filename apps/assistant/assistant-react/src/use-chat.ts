@@ -66,7 +66,7 @@ const announcementOf = (entry: Chat.Entry): string =>
     ),
     Match.tag('refusal', () => 'Claude declined to answer this.'),
     Match.tag('question', () => ''),
-    Match.tag('tool-results', () => ''),
+    Match.tag('tool-round', () => ''),
     Match.exhaustive
   )
 
@@ -179,8 +179,8 @@ const useChat = (
       // The chat as this turn has kept it so far: each tool round is appended
       // as it finishes, and the answer after the last.
       let kept = asked
-      const keepToolRound = ifCurrent(([reply, results]: readonly [Chat.Entry, Chat.Entry]) => {
-        kept = Chat.append(Chat.append(kept, reply), results)
+      const keepToolRound = ifCurrent((round: Chat.ToolRound) => {
+        kept = Chat.append(kept, round)
         setChat(kept)
         keep(kept)
         setStreamingReply(Option.some({ thinking: '', text: '' }))

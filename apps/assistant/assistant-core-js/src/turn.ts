@@ -1,9 +1,10 @@
 import type {
+  BetaAssistantMessageParam,
   BetaMessage,
   BetaMessageStreamParams,
   BetaRawMessageStreamEvent,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import { DateTime, Effect, Match, Option, Schema } from 'effect'
+import { Array, DateTime, Effect, Match, Option, Schema } from 'effect'
 
 import type * as ChatPatient from './chat-patient.ts'
 import * as Chat from './chat.ts'
@@ -67,11 +68,10 @@ interface TurnReport {
   /** A piece of the reply streaming in. */
   readonly delta: (delta: Delta) => void
   /**
-   * A finished round of tool calls: the reply that made them and the one
-   * message of their results, to append to the chat in that order. The next
-   * reply streams in after it.
+   * A finished round of tool calls, every call with its result, to append
+   * to the chat. The next reply streams in after it.
    */
-  readonly toolRound: (round: readonly [Chat.Entry, Chat.Entry]) => void
+  readonly toolRound: (round: Chat.ToolRound) => void
 }
 
 /** The request for `chat` with `tools`, on `today`. */
@@ -143,53 +143,47 @@ const streamReply = (
 const finalEntryOf = (
   model: ClaudeModel.Type,
   message: BetaMessage
-): Effect.Effect<Chat.Entry, UnexpectedStop> =>
-  Match.value(message.stop_reason).pipe(
+): Effect.Effect<Chat.Entry, UnexpectedStop> => {
+  const replyStoppedFor = (stopReason: 'end_turn' | 'max_tokens'): Chat.Entry => ({
+    _tag: 'reply',
+    modelId: model.id,
+    stopReason,
+    message: { role: 'assistant', content: message.content },
+  })
+  return Match.value(message.stop_reason).pipe(
     Match.when('max_tokens', (stopReason) =>
       message.content.some((block) => block.type === 'tool_use')
         ? Effect.fail(UnexpectedStop.make({ stopReason }))
-        : Effect.succeed<Chat.Entry>({
-            _tag: 'reply',
-            model: model.id,
-            stopReason,
-            message: { role: 'assistant', content: message.content },
-          })
+        : Effect.succeed(replyStoppedFor(stopReason))
     ),
-    Match.when('end_turn', (stopReason) =>
-      Effect.succeed<Chat.Entry>({
-        _tag: 'reply',
-        model: model.id,
-        stopReason,
-        message: { role: 'assistant', content: message.content },
-      })
-    ),
-    Match.when('refusal', () => Effect.succeed<Chat.Entry>({ _tag: 'refusal', model: model.id })),
+    Match.when('end_turn', (stopReason) => Effect.succeed(replyStoppedFor(stopReason))),
+    Match.when('refusal', () => Effect.succeed<Chat.Entry>({ _tag: 'refusal', modelId: model.id })),
     Match.orElse((stopReason) => Effect.fail(UnexpectedStop.make({ stopReason })))
   )
+}
 
 /**
  * Run the tool calls in `message` (stopped for `tool_use`) side by side, and
  * succeed with the round to keep: the reply as returned, and every result in
- * one user message, in the order of the calls.
+ * the order of the calls.
  */
 const toolRoundOf = (
   model: ClaudeModel.Type,
   tools: Tools.Type,
   message: BetaMessage
-): Effect.Effect<readonly [Chat.Entry, Chat.Entry], UnexpectedStop, FhirRecords> => {
-  const reply = {
-    _tag: 'reply',
-    model: model.id,
-    stopReason: 'tool_use',
-    message: { role: 'assistant', content: message.content },
-  } as const satisfies Chat.Entry
-  const calls = Chat.toolCallsOf(reply.message)
-  if (calls.length === 0) return Effect.fail(UnexpectedStop.make({ stopReason: 'tool_use' }))
+): Effect.Effect<Chat.ToolRound, UnexpectedStop, FhirRecords> => {
+  const reply: BetaAssistantMessageParam = { role: 'assistant', content: message.content }
+  const calls = Chat.toolCallsOf(reply)
+  if (!Array.isNonEmptyReadonlyArray(calls)) {
+    return Effect.fail(UnexpectedStop.make({ stopReason: 'tool_use' }))
+  }
   return Effect.forEach(calls, (call) => Tools.run(tools, call), { concurrency: 'unbounded' }).pipe(
-    Effect.map((results) => [
-      reply,
-      { _tag: 'tool-results', message: { role: 'user', content: results } },
-    ])
+    Effect.map((results): Chat.ToolRound => ({
+      _tag: 'tool-round',
+      modelId: model.id,
+      message: reply,
+      results,
+    }))
   )
 }
 
@@ -213,14 +207,8 @@ const replyUntilAnswered = (
                 report.toolRound(round)
               })
             ),
-            Effect.flatMap(([reply, results]) =>
-              replyUntilAnswered(
-                request,
-                tools,
-                today,
-                report,
-                Chat.append(Chat.append(chat, reply), results)
-              )
+            Effect.flatMap((round) =>
+              replyUntilAnswered(request, tools, today, report, Chat.append(chat, round))
             )
           )
         : finalEntryOf(request.model, message)

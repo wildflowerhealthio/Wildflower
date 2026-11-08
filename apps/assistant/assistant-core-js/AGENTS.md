@@ -57,15 +57,16 @@ Every module is a namespace (`src/index.ts`):
   `patientIdIfOne`, and `paragraphOf`, whose record the chat is about in
   words, the name and birth date read from the record (`fhir-r4`'s
   `HumanName.displayName`).
-- `src/chat.ts` — `Chat`: a style and its entries (`question`, `reply` with
-  its model and `end_turn` / `max_tokens` / `tool_use`, `tool-results`,
-  `refusal` with its model), the codec, `requestMessagesOf` (what a turn
-  sends), `toolCallsOf` and `toolResultsByCallIdOf`, and the chat's place in
+- `src/chat.ts` — `Chat`: a style and its entries (`question`; `reply` with
+  its `modelId` and `end_turn` / `max_tokens`; `tool-round`, a reply that
+  stopped for `tool_use` with its `modelId` and the results of the calls it
+  ran; `refusal` with its `modelId`), the codec, `requestMessagesOf` (what a
+  turn sends), `toolCallsOf` and `toolResultsByCallIdOf`, and the chat's place in
   `sessionStorage` at `wildflower.assistant-chat:<fhirBaseUrl>:<patient>`.
 - `src/turn.ts` — `Turn`: `paramsOf`, the streamed request, and `run`, the
   loop: stream a reply, reporting each text and thinking delta; on
-  `tool_use`, run its calls side by side, report the round (the reply and one
-  `tool-results` message) and stream again; on any other stop, map
+  `tool_use`, run its calls side by side, report the `tool-round` and stream
+  again; on any other stop, map
   `stop_reason` to the entry the chat keeps.
 - `src/test-helpers.ts` — the `./test-helpers` subpath: in-memory and
   blocked storage pages, `stubClaude` with scripted or held replies,
@@ -112,9 +113,10 @@ Every module is a namespace (`src/index.ts`):
   a `refusal` entry and drops whatever was written; anything else fails as
   `UnexpectedStop`, naming only the reason.
 - **Append-only, stored as returned.** `Chat.append` is the only way a chat
-  grows; a tool round is appended whole (reply, then results) once its calls
-  finish, so no call is ever kept without its result. What goes back to the
-  API is derived: a declined question is left out with everything up to its
+  grows; a tool round is one entry, kept once its calls finish, so no call
+  is ever kept without its result. What goes back to the API is derived: a
+  tool round is its reply then one user message of its results, a declined
+  question is left out with everything up to its
   refusal, and a reply a fallback switched models in is sent without the
   thinking and tool calls before its last `fallback` block.
 - **The message codec checks an outline.** `Chat`'s message schemas are

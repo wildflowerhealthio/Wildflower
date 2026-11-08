@@ -1,7 +1,7 @@
 import type {
   BetaAssistantMessageParam,
   BetaContentBlock,
-  BetaUserMessageParam,
+  BetaToolResultBlockParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Option, Schema } from 'effect'
@@ -45,31 +45,34 @@ const contentBlockArb: fc.Arbitrary<BetaContentBlock> = fc.oneof(
 
 const modelIdArb = fc.constantFrom('claude-sonnet-5', 'claude-opus-5')
 
+const assistantMessageArb = fc
+  .array(contentBlockArb, { maxLength: 5 })
+  .map((content) => ({ role: 'assistant' as const, content }))
+
+const toolResultArb = fc.record({
+  type: fc.constant('tool_result' as const),
+  tool_use_id: fc.string({ minLength: 1 }),
+  content: fc.string(),
+  is_error: fc.boolean(),
+})
+
 const entryArb: fc.Arbitrary<Chat.Entry> = fc.oneof(
   fc.string().map(Chat.questionOf),
   fc.record({
     _tag: fc.constant('reply' as const),
-    model: modelIdArb,
-    stopReason: fc.constantFrom('end_turn' as const, 'max_tokens' as const, 'tool_use' as const),
-    message: fc
-      .array(contentBlockArb, { maxLength: 5 })
-      .map((content) => ({ role: 'assistant' as const, content })),
+    modelId: modelIdArb,
+    stopReason: fc.constantFrom('end_turn' as const, 'max_tokens' as const),
+    message: assistantMessageArb,
   }),
   fc.record({
-    _tag: fc.constant('tool-results' as const),
-    message: fc
-      .array(
-        fc.record({
-          type: fc.constant('tool_result' as const),
-          tool_use_id: fc.string({ minLength: 1 }),
-          content: fc.string(),
-          is_error: fc.boolean(),
-        }),
-        { minLength: 1, maxLength: 3 }
-      )
-      .map((content) => ({ role: 'user' as const, content })),
+    _tag: fc.constant('tool-round' as const),
+    modelId: modelIdArb,
+    message: assistantMessageArb,
+    results: fc
+      .tuple(toolResultArb, fc.array(toolResultArb, { maxLength: 2 }))
+      .map(([first, rest]): Chat.ToolRound['results'] => [first, ...rest]),
   }),
-  fc.record({ _tag: fc.constant('refusal' as const), model: modelIdArb })
+  fc.record({ _tag: fc.constant('refusal' as const), modelId: modelIdArb })
 )
 
 const chatArb: fc.Arbitrary<Chat.Type> = fc.record({
@@ -121,9 +124,9 @@ describe('Chat.requestMessagesOf', () => {
       style: 'telehealth',
       entries: [
         Chat.questionOf('hi'),
-        { _tag: 'reply', model: 'claude-sonnet-5', stopReason: 'end_turn', message: answer },
+        { _tag: 'reply', modelId: 'claude-sonnet-5', stopReason: 'end_turn', message: answer },
         Chat.questionOf('declined question'),
-        { _tag: 'refusal', model: 'claude-sonnet-5' },
+        { _tag: 'refusal', modelId: 'claude-sonnet-5' },
         Chat.questionOf('stopped question'),
         Chat.questionOf('next question'),
       ],
@@ -146,7 +149,7 @@ describe('Chat.requestMessagesOf', () => {
     }
     const reply: Chat.Entry = {
       _tag: 'reply',
-      model: 'claude-opus-5',
+      modelId: 'claude-opus-5',
       stopReason: 'end_turn',
       message: {
         role: 'assistant',
@@ -186,7 +189,7 @@ describe('Chat.requestMessagesOf', () => {
             style: 'academic',
             entries: [
               Chat.questionOf('q'),
-              { _tag: 'reply', model: 'claude-opus-5', stopReason: 'end_turn', message },
+              { _tag: 'reply', modelId: 'claude-opus-5', stopReason: 'end_turn', message },
             ],
           }
 
@@ -204,31 +207,34 @@ describe('Chat tool rounds', () => {
     role: 'assistant',
     content: [textBlock('Looking'), call],
   }
-  const resultsMessage: BetaUserMessageParam = {
-    role: 'user',
-    content: [{ type: 'tool_result', tool_use_id: 'call-1', content: '{"resources":[]}' }],
+  const result: BetaToolResultBlockParam = {
+    type: 'tool_result',
+    tool_use_id: 'call-1',
+    content: '{"resources":[]}',
   }
-  const toolRound: readonly Chat.Entry[] = [
-    { _tag: 'reply', model: 'claude-sonnet-5', stopReason: 'tool_use', message: callingMessage },
-    { _tag: 'tool-results', message: resultsMessage },
-  ]
+  const toolRound: Chat.ToolRound = {
+    _tag: 'tool-round',
+    modelId: 'claude-sonnet-5',
+    message: callingMessage,
+    results: [result],
+  }
 
   it('should send a tool round as its reply then its results, in order', () => {
     const answer: Chat.Entry = {
       _tag: 'reply',
-      model: 'claude-sonnet-5',
+      modelId: 'claude-sonnet-5',
       stopReason: 'end_turn',
       message: { role: 'assistant', content: [textBlock('Nothing found.')] },
     }
     const chat: Chat.Type = {
       style: 'telehealth',
-      entries: [Chat.questionOf('labs?'), ...toolRound, answer],
+      entries: [Chat.questionOf('labs?'), toolRound, answer],
     }
 
     expect(Chat.requestMessagesOf(chat)).toEqual([
       { role: 'user', content: 'labs?' },
       callingMessage,
-      resultsMessage,
+      { role: 'user', content: [result] },
       answer.message,
     ])
   })
@@ -239,8 +245,8 @@ describe('Chat tool rounds', () => {
       entries: [
         Chat.questionOf('first'),
         Chat.questionOf('declined'),
-        ...toolRound,
-        { _tag: 'refusal', model: 'claude-sonnet-5' },
+        toolRound,
+        { _tag: 'refusal', modelId: 'claude-sonnet-5' },
         Chat.questionOf('next'),
       ],
     }
@@ -273,11 +279,18 @@ describe('Chat tool rounds', () => {
   })
 
   it('should find each tool result by the id of the call it answers', () => {
-    const results = Chat.toolResultsByCallIdOf([Chat.questionOf('labs?'), ...toolRound])
+    const results = Chat.toolResultsByCallIdOf(toolRound)
 
-    expect([...results.entries()]).toEqual([
-      ['call-1', { type: 'tool_result', tool_use_id: 'call-1', content: '{"resources":[]}' }],
-    ])
+    expect([...results.entries()]).toEqual([['call-1', result]])
+  })
+
+  it('should refuse a stored tool round with no results', () => {
+    const decoded = Schema.decodeUnknownEither(Chat.Schema)({
+      style: 'telehealth',
+      entries: [{ ...toolRound, results: [] }],
+    })
+
+    expect(decoded._tag).toBe('Left')
   })
 })
 

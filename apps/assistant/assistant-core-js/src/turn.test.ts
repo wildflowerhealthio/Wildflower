@@ -51,7 +51,7 @@ const askedRequest: Turn.Request = { chat: asked, model: sonnet, patient, record
 /** A turn's run, and what it reported. */
 interface TurnRun {
   readonly deltas: Turn.Delta[]
-  readonly toolRounds: (readonly [Chat.Entry, Chat.Entry])[]
+  readonly toolRounds: Chat.ToolRound[]
   readonly outcome: Promise<Exit.Exit<Chat.Entry, ClaudeRequestFailed | Turn.UnexpectedStop>>
 }
 
@@ -62,7 +62,7 @@ const runTurn = (
   fhir: StubFhirRecords = stubFhirRecords({})
 ): TurnRun => {
   const deltas: Turn.Delta[] = []
-  const toolRounds: (readonly [Chat.Entry, Chat.Entry])[] = []
+  const toolRounds: Chat.ToolRound[] = []
   const outcome = Effect.runPromiseExit(
     Turn.run(request, {
       delta: (delta) => deltas.push(delta),
@@ -117,7 +117,7 @@ describe('Turn.run', () => {
     expect(await outcome).toEqual(
       Exit.succeed({
         _tag: 'reply',
-        model: 'claude-sonnet-5',
+        modelId: 'claude-sonnet-5',
         stopReason: 'end_turn',
         message: { role: 'assistant', content },
       })
@@ -153,7 +153,7 @@ describe('Turn.run', () => {
     })
 
     expect(await runTurn(stub).outcome).toEqual(
-      Exit.succeed({ _tag: 'refusal', model: 'claude-sonnet-5' })
+      Exit.succeed({ _tag: 'refusal', modelId: 'claude-sonnet-5' })
     )
   })
 
@@ -272,43 +272,34 @@ describe('Turn.run with tools', () => {
 
     const { toolRounds, deltas, outcome } = runTurn(stub, adaRequest, fhir)
 
-    const callingReply: Chat.Entry = {
-      _tag: 'reply',
-      model: 'claude-sonnet-5',
-      stopReason: 'tool_use',
+    const round: Chat.ToolRound = {
+      _tag: 'tool-round',
+      modelId: 'claude-sonnet-5',
       message: { role: 'assistant', content: callingContent },
-    }
-    const results: Chat.Entry = {
-      _tag: 'tool-results',
-      message: {
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: 'call-1',
-            content: JSON.stringify({ resources: [a1c], more: false }),
-          },
-          { type: 'tool_result', tool_use_id: 'call-2', content: JSON.stringify(doctor) },
-        ],
-      },
+      results: [
+        {
+          type: 'tool_result',
+          tool_use_id: 'call-1',
+          content: JSON.stringify({ resources: [a1c], more: false }),
+        },
+        { type: 'tool_result', tool_use_id: 'call-2', content: JSON.stringify(doctor) },
+      ],
     }
     expect(await outcome).toEqual(
       Exit.succeed({
         _tag: 'reply',
-        model: 'claude-sonnet-5',
+        modelId: 'claude-sonnet-5',
         stopReason: 'end_turn',
         message: { role: 'assistant', content: answerContent },
       })
     )
-    expect(toolRounds).toEqual([[callingReply, results]])
+    expect(toolRounds).toEqual([round])
     expect(fhir.readPaths.toSorted()).toEqual([
       'Observation?code=4548-4&patient=p1&_count=20',
       'Practitioner/dr1',
     ])
     expect(deltas.map(({ text }) => text)).toEqual(['Let me look.', 'Your A1c was read by Dr Who.'])
-    expect(stub.requests[1]?.messages).toEqual(
-      Chat.requestMessagesOf(Chat.append(Chat.append(asked, callingReply), results))
-    )
+    expect(stub.requests[1]?.messages).toEqual(Chat.requestMessagesOf(Chat.append(asked, round)))
     expect(stub.requests[1]?.tools).toEqual(stub.requests[0]?.tools)
     expect(stub.requests[1]?.system).toEqual(stub.requests[0]?.system)
   })
@@ -324,20 +315,14 @@ describe('Turn.run with tools', () => {
     const { toolRounds, outcome } = runTurn(stub, adaRequest)
 
     expect(Exit.isSuccess(await outcome)).toBe(true)
-    expect(toolRounds[0]?.[1]).toEqual({
-      _tag: 'tool-results',
-      message: {
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: 'call-1',
-            is_error: true,
-            content: 'The FHIR server answered 404.',
-          },
-        ],
+    expect(toolRounds[0]?.results).toEqual([
+      {
+        type: 'tool_result',
+        tool_use_id: 'call-1',
+        is_error: true,
+        content: 'The FHIR server answered 404.',
       },
-    })
+    ])
   })
 
   it('should not run a tool call cut off at max_tokens, failing instead', async () => {

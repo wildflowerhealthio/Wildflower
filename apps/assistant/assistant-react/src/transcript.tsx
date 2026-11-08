@@ -29,8 +29,11 @@ const ThinkingDisclosure = ({ thinking }: { readonly thinking: string }): JSX.El
   </details>
 )
 
-/** The chat's tool results, by the id of the call each answers. */
+/** A reply's tool results, by the id of the call each answers. */
 type ToolResults = ReadonlyMap<string, BetaToolResultBlockParam>
+
+/** The results of a reply that ended the turn: it ran no calls. */
+const NO_TOOL_RESULTS: ToolResults = new Map()
 
 /**
  * A reply's blocks in order: its thinking folded, its text as Markdown, each
@@ -77,17 +80,14 @@ const TranscriptNote = ({ children }: { readonly children: string }): JSX.Elemen
 
 /**
  * One kept entry, given whether a reply follows it (or is streaming in after
- * it) and the chat's tool results. Tool results show in their calls' cards,
- * not on their own.
+ * it). A tool round's results show in its calls' cards, not on their own.
  */
 const TranscriptEntry = ({
   entry,
   answered,
-  toolResults,
 }: {
   readonly entry: Chat.Entry
   readonly answered: boolean
-  readonly toolResults: ToolResults
 }): JSX.Element | null =>
   Match.value(entry).pipe(
     Match.tag('question', ({ message }) => (
@@ -100,13 +100,17 @@ const TranscriptEntry = ({
     )),
     Match.tag('reply', ({ message, stopReason }) => (
       <li className={styles['transcript__reply']}>
-        <ReplyBlocks message={message} toolResults={toolResults} />
+        <ReplyBlocks message={message} toolResults={NO_TOOL_RESULTS} />
         {stopReason === 'max_tokens' ? (
           <TranscriptNote>Claude reached its output limit and stopped partway.</TranscriptNote>
         ) : null}
       </li>
     )),
-    Match.tag('tool-results', () => null),
+    Match.tag('tool-round', (round) => (
+      <li className={styles['transcript__reply']}>
+        <ReplyBlocks message={round.message} toolResults={Chat.toolResultsByCallIdOf(round)} />
+      </li>
+    )),
     Match.tag('refusal', () => (
       <li className={styles['transcript__reply']}>
         <TranscriptNote>Claude declined to answer this.</TranscriptNote>
@@ -114,6 +118,10 @@ const TranscriptEntry = ({
     )),
     Match.exhaustive
   )
+
+/** Whether the entry after `index` is Claude's (a reply, a tool round or a refusal) rather than another question or nothing. */
+const isFollowedByClaudeAt = (entries: readonly Chat.Entry[], index: number): boolean =>
+  Option.fromNullable(entries[index + 1]).pipe(Option.exists((next) => next._tag !== 'question'))
 
 /** Props for {@link Transcript}: the chat and the reply streaming in, and any other `<ol>` prop. */
 interface TranscriptProps extends Omit<ComponentProps<'ol'>, 'children'> {
@@ -135,18 +143,15 @@ const Transcript = ({
   className,
   ...rootProps
 }: TranscriptProps): JSX.Element => {
-  const toolResults = Chat.toolResultsByCallIdOf(entries)
   return (
     <ol {...rootProps} className={cn(styles['transcript'], className)}>
       {entries.map((entry, index) => (
         <TranscriptEntry
           key={`entry-${String(index)}`}
           entry={entry}
-          toolResults={toolResults}
           answered={
             entry._tag !== 'question' ||
-            entries[index + 1]?._tag === 'reply' ||
-            entries[index + 1]?._tag === 'refusal' ||
+            isFollowedByClaudeAt(entries, index) ||
             (index === entries.length - 1 && Option.isSome(streamingReply))
           }
         />

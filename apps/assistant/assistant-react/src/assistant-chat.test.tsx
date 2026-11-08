@@ -308,12 +308,7 @@ describe('AssistantChat tools', () => {
     expect(fhir.urls).toEqual(['https://fhir.example/Observation?code=4548-4&patient=p1&_count=20'])
     expect(claude.requests[1]?.tools).toEqual(claude.requests[0]?.tools)
     const kept = Option.getOrThrow(Effect.runSync(Chat.read(page, PLACE)))
-    expect(kept.entries.map(({ _tag }) => _tag)).toEqual([
-      'question',
-      'reply',
-      'tool-results',
-      'reply',
-    ])
+    expect(kept.entries.map(({ _tag }) => _tag)).toEqual(['question', 'tool-round', 'reply'])
   })
 
   it('should offer Claude no tools when the grant reaches no records', async () => {

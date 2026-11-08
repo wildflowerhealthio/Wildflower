@@ -41,8 +41,8 @@ it under `PatientChoiceLine`; its props are in the
   thinking folded under "Thinking", text as `ReplyMarkdown`, tool calls as
   `ToolCallCard`s with their results), "Claude declined to answer this.",
   "No reply to this message." under a question nothing answered, and the
-  reply streaming in. `tool-results` entries show only in their calls'
-  cards.
+  reply streaming in. A tool round shows as its reply, each call's card
+  holding the round's result for it.
 - `src/tool-call-card.tsx` — `ToolCallCard`: a closed `<details>` whose
   line says what Claude looked up ("Searched Observation: code=4548-4, up
   to 20"), opening to the parameters and how many records came back
