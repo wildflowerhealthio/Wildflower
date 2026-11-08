@@ -542,17 +542,21 @@ const storedWeight = {
 }
 
 describe('Tools.propose create_record', () => {
-  it("should propose the record with its subject pointed at the chat's patient", () => {
+  it("should propose the record with its subject replaced by a reference to the chat's patient", () => {
     const proposal = proposeCall(toolsFor(ada), stubFhirRecords({}), 'create_record', {
       ...weight,
-      subject: { reference: 'Patient/p1', display: 'Ada' },
+      subject: {
+        reference: 'Patient/p1',
+        display: 'Bob',
+        identifier: { system: 'urn:mrn', value: 'bob-1' },
+      },
     })
 
     expect(proposal).toEqual(
       Either.right({
         kind: 'create',
         callId: 'call-1',
-        resource: { ...weight, subject: { reference: 'Patient/p1', display: 'Ada' } },
+        resource: { ...weight, subject: { reference: 'Patient/p1' } },
       })
     )
   })
@@ -589,6 +593,15 @@ describe('Tools.propose create_record', () => {
       'a record with an id',
       { ...weight, id: 'mine', subject: { reference: 'Patient/p1' } },
       'Leave out the id: the server assigns one to a new record.',
+    ],
+    [
+      'a record containing a record about another patient',
+      {
+        ...weight,
+        subject: { reference: 'Patient/p1' },
+        contained: [{ ...weight, id: 'c1', subject: { reference: 'Patient/p2' } }],
+      },
+      "This record is about another patient, so it can't be created: this chat is about one patient.",
     ],
   ])('should refuse %s in a chat about one patient', (_case, resource, reason) => {
     expect(proposeCall(toolsFor(ada), stubFhirRecords({}), 'create_record', resource)).toEqual(
@@ -748,6 +761,31 @@ describe('Tools.propose update_record', () => {
     expect(
       proposeCall(toolsFor(ada), server, 'update_record', { ...ada1, gender: 'female' }, chat)
     ).toMatchObject(Either.right({ kind: 'update', versionId: '1' }))
+  })
+
+  it('should not read a change given without meta as removing it', () => {
+    const server = stubFhirRecords({ 'Observation/o1': Effect.succeed(storedWeight) })
+    const { meta: _meta, ...withoutMeta } = storedWeight
+
+    expect(
+      proposeCall(
+        toolsFor(ada),
+        server,
+        'update_record',
+        { ...withoutMeta, status: 'amended' },
+        chatHavingRead(storedWeight)
+      )
+    ).toMatchObject(
+      Either.right({
+        fields: [
+          {
+            path: ['status'],
+            server: { _tag: 'value', value: 'final' },
+            incoming: { _tag: 'value', value: 'amended' },
+          },
+        ],
+      })
+    )
   })
 
   it('should refuse a change that changes nothing', () => {

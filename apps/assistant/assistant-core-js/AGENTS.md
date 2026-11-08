@@ -140,7 +140,7 @@ Every module is a namespace (`src/index.ts`):
   the proposal is built, and refused as changed ("The record changed since
   you read it; re-read it first.") unless it is still that version. The
   proposal's diff is `fhir-r4`'s `diffJson` of the two with server-managed
-  `meta` dropped; a change that changes nothing is refused. A 412 when it
+  `meta` dropped (and a `meta` left empty by that); a change that changes nothing is refused. A 412 when it
   is saved gives the agent the same text.
 - **A write's result.** Saved: `Tools.WriteRecordResult`, the stored
   record with its type, id and `versionId`. Declined: "The user declined
@@ -152,11 +152,13 @@ Every module is a namespace (`src/index.ts`):
   is refused, and every record read back (a page, includes, `read_record`) is
   checked to be about that patient or no patient; a type with no pin is not
   offered. A record created in a chat about one patient is refused when its
-  `subject` or `patient` names another patient, has those elements pointed
-  at the patient, and is refused when its type is about a patient and it
-  has neither, so the agent adds one; a record about no one patient is
-  created as given. An update is refused when the record, now or as
-  proposed, is about another patient. With "All patients", writes are sent
+  `subject` or `patient`, or a resource it contains, names another patient;
+  those elements are replaced with `{ reference: "Patient/<id>" }` (an
+  `identifier` or `display` beside it could name someone else), and it is
+  refused when its type is about a patient and it has neither, so the agent
+  adds one; a record about no one patient is created as given. An update is
+  refused when the record, now or as proposed, or a resource it contains, is
+  about another patient. With "All patients", writes are sent
   as given. A `next` cursor is the next link's path under the FHIR base,
   base64url-encoded; one that leaves the base or names a type not offered is
   refused.

@@ -19,6 +19,7 @@ import {
   Match,
   Option,
   Predicate,
+  Record as EffectRecord,
   Schema,
   String as Str,
 } from 'effect'
@@ -273,7 +274,7 @@ const resourceInputSchemaOf = (
   required: ['resourceType'],
 })
 
-/** What every write tool's description says of the person's decision and of mistaken records. */
+/** What every write tool's description says of the person's decision. */
 const WRITE_DECISION_NOTE =
   ' Nothing is saved until the person approves it: the result is the stored record, or why it was not saved. "The user declined this change." means they said no, followed by their reason when they gave one.'
 
@@ -766,7 +767,25 @@ const versionsReadIn = (chat: Chat.Type): ReadonlyMap<string, string> =>
     })
   )
 
-/** Refuse `record` if the chat is about one patient and it is about another. */
+/** A record as far as its contained resources are read. */
+const RecordWithContained = Schema.Struct({ contained: Schema.Array(Schema.Unknown) })
+
+const decodeRecordWithContained = Schema.decodeUnknownOption(RecordWithContained)
+
+/** `record` and the resources it contains, each of which a write stores with it. */
+const recordAndContainedOf = (record: unknown): readonly unknown[] => [
+  record,
+  ...decodeRecordWithContained(record).pipe(
+    Option.map(({ contained }) => contained),
+    Option.getOrElse((): readonly unknown[] => [])
+  ),
+]
+
+/**
+ * Refuse `record`, a record to write or the record a write changes, if the
+ * chat is about one patient and it, or a resource it contains, is about
+ * another.
+ */
 const refuseIfAboutAnotherPatient = (
   tools: Type,
   record: unknown,
@@ -775,23 +794,28 @@ const refuseIfAboutAnotherPatient = (
   Option.match(ChatPatient.patientIdIfOne(tools.patient), {
     onNone: () => Effect.void,
     onSome: (patientId) =>
-      PatientPin.isAboutAnotherPatient(record, patientId) ? refuse(reason) : Effect.void,
+      recordAndContainedOf(record).some((each) => PatientPin.isAboutAnotherPatient(each, patientId))
+        ? refuse(reason)
+        : Effect.void,
   })
 
 /** The elements a record about a patient names them by. */
 const PATIENT_REFERENCE_ELEMENTS = ['subject', 'patient'] as const
 
-/** `element` (a `Reference`, or anything the agent put there) pointed at `Patient/<patientId>`. */
-const pointedAtPatient = (element: unknown, patientId: string): unknown =>
-  Predicate.isRecord(element)
-    ? { ...element, reference: `Patient/${patientId}` }
-    : { reference: `Patient/${patientId}` }
+/**
+ * The reference to `Patient/<patientId>` a pinned element is replaced with,
+ * whatever the agent put there: an `identifier`, `display` or `type` beside
+ * it could name someone else.
+ */
+const referenceToPatient = (patientId: string): { readonly reference: string } => ({
+  reference: `Patient/${patientId}`,
+})
 
 /**
  * `resource`, of `resourceType`, as a chat about `patient` creates it: in a
  * chat about one patient, a record about a patient has its `subject` and
- * `patient` elements pointed at them, and is refused when it has neither;
- * any other record is created as given.
+ * `patient` elements replaced with a reference to them, and is refused when
+ * it has neither; any other record is created as given.
  */
 const pinnedForCreate = (
   patient: ChatPatient.Type,
@@ -813,7 +837,7 @@ const pinnedForCreate = (
               ? Effect.succeed({
                   ...resource,
                   ...Object.fromEntries(
-                    elements.map((name) => [name, pointedAtPatient(resource[name], patientId)])
+                    elements.map((name) => [name, referenceToPatient(patientId)])
                   ),
                 })
               : refuse(
@@ -851,6 +875,20 @@ const proposeCreate = (
     })
     return { kind: 'create', callId: call.id, resource: pinned }
   })
+
+/**
+ * `record` as an update's diff reads it: its server-managed `meta` fields
+ * dropped, and `meta` itself when nothing else is in it, so a change given
+ * without `meta` doesn't read as removing one.
+ */
+const contentOf = (record: unknown): unknown => {
+  const content = withoutServerManagedMeta(record)
+  return Predicate.isRecord(content) &&
+    Predicate.isRecord(content['meta']) &&
+    EffectRecord.isEmptyRecord(content['meta'])
+    ? EffectRecord.remove(content, 'meta')
+    : content
+}
 
 /** The version `record` (a record read back) is at, if it says. */
 const versionIdOf = (record: unknown): Option.Option<string> =>
@@ -901,7 +939,7 @@ const proposeUpdate = (
     if (!Option.contains(versionIdOf(current), versionRead)) {
       return yield* refuse(STALE_RECORD_TEXT)
     }
-    const fields = diffJson(withoutServerManagedMeta(current), withoutServerManagedMeta(proposed))
+    const fields = diffJson(contentOf(current), contentOf(proposed))
     if (fields.length === 0) {
       return yield* refuse('The record already says this, so there is nothing to change.')
     }
