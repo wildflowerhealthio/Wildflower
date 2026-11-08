@@ -8,8 +8,13 @@ it under `PatientChoiceLine`; its props are in the
 ## Shape
 
 - `src/assistant-chat.tsx` — `AssistantChat` (`fhirBase`, `patient`,
-  `environment`): the key setup until a key works, then `ChatView`, keyed by
-  the chat's storage key so a new patient is a new chat.
+  `grantedScopes`, `runSmart`, `environment`): the key setup until a key
+  works, then `ChatView`, keyed by the chat's storage key so a new patient is
+  a new chat. It reads the grant into a `RecordAccess` and builds the
+  `FhirRecords` layer the tools read through.
+- `src/fhir-records-layer.ts` — `fhirRecordsLayerFor`: `FhirRecords` over
+  the page's `RunSmart`, each read a `SmartClient` request (so it carries the
+  connection's token), its `FhirRequestError` mapped to a `FhirReadFailed`.
 - `src/assistant-environment.ts` — `AssistantEnvironment` (the storage page
   and the Claude layer for a key) and `BROWSER_ENVIRONMENT` (`window`,
   `Claude.layerForApiKey`); a test passes in-memory storage and a stub.
@@ -20,7 +25,8 @@ it under `PatientChoiceLine`; its props are in the
 - `src/use-chat.ts` — `useChat`, the page logic for one chat: read from
   `sessionStorage` on mount and written after every entry, the style
   (academic once confirmed; locked after the first message), each turn
-  streamed into `streamingReply` and stoppable, and New chat.
+  streamed into `streamingReply`, each tool round appended and kept as it
+  finishes, stoppable, and New chat.
 - `src/chat-view.tsx` — `ChatView`: the toolbar (`ModelPicker`,
   `StyleChoice`, Settings), the `Transcript`, the one `aria-live="polite"`
   line announcing a finished reply, `ChatNotices`, the `Composer`, and the
@@ -32,9 +38,15 @@ it under `PatientChoiceLine`; its props are in the
   key's models; `SegmentedToggle` Telehealth · Academic, disabled once
   locked.
 - `src/transcript.tsx` — `Transcript`: questions, replies (summarized
-  thinking folded under "Thinking", text as `ReplyMarkdown`), "Claude
-  declined to answer this.", "No reply to this message." under a question
-  nothing answered, and the reply streaming in.
+  thinking folded under "Thinking", text as `ReplyMarkdown`, tool calls as
+  `ToolCallCard`s with their results), "Claude declined to answer this.",
+  "No reply to this message." under a question nothing answered, and the
+  reply streaming in. `tool-results` entries show only in their calls'
+  cards.
+- `src/tool-call-card.tsx` — `ToolCallCard`: a closed `<details>` whose
+  line says what Claude looked up ("Searched Observation: code=4548-4, up
+  to 20"), opening to the parameters and how many records came back
+  (`assistant-core-js`'s `ToolCall`).
 - `src/reply-markdown.tsx` — `ReplyMarkdown`: `react-markdown` with
   `remark-gfm`.
 - `src/chat-notices.tsx` — `ChatNotices`, the lines above the composer: the
@@ -50,6 +62,9 @@ it under `PatientChoiceLine`; its props are in the
 - **Logic lives in the hooks or in core.** Components render a hook's state
   and call its actions; anything that decides without React belongs in
   `assistant-core-js`.
+- **Tool cards show no record.** A card says what was asked and how many
+  records came back; the records themselves, which are the patient's, are
+  never rendered.
 - **Replies render no HTML and reach out only by click.** `skipHtml`, no
   `rehype-raw`; `urlTransform` keeps only absolute `https:` URLs (anything
   else leaves the link's text); links open in a new tab with
@@ -61,9 +76,11 @@ it under `PatientChoiceLine`; its props are in the
 - **The style is fixed for the chat.** It can change only while the chat is
   empty; academic needs the confirmation each chat, and an empty chat is not
   kept, so a reload asks again.
-- **Stop keeps the question.** An aborted turn adds no entry: its partial
-  reply is dropped, and the question shows "No reply to this message." The
-  API reads it together with the next question.
+- **Stop keeps the question.** An aborted turn adds no entry for the reply
+  streaming in: its partial reply is dropped. Tool rounds that finished
+  before it stay, so no call is kept without its result. A question with
+  nothing after it shows "No reply to this message."; the API reads it
+  together with the next question.
 - **A settled turn from an earlier chat changes nothing.** `useChat` numbers
   its turns; New chat moves the number on, so an interrupted turn that
   settles late cannot write into the new chat.

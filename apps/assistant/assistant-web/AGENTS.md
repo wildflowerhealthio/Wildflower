@@ -17,7 +17,9 @@ choice.
 - **The page is patient → body.** `App` settles on the patient — one patient,
   or All patients — and renders the body under it, keyed per choice, so a
   change of patient starts the body afresh. The body is `assistant-react`'s
-  `AssistantChat`, given the connection's FHIR base and the patient: for one
+  `AssistantChat`, given the connection's FHIR base, the patient, the
+  granted scopes (`useGrantedScopes()`) and the SMART runtime's `runSmart`
+  (`useRunSmart()`), which its tools read through: for one
   patient, once the `Patient` read `PatientChoiceLine` also makes has landed
   (`smart-app-react`'s `patientQuery`, the same cache entry), so the chat can
   state the name and birth date; for All patients, at once.
