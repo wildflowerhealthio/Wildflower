@@ -1,0 +1,92 @@
+import { DateTime, Match, Option, Schema } from 'effect'
+
+import { ACADEMIC_VOICE } from './academic-voice.ts'
+import type * as ChatPatient from './chat-patient.ts'
+import { TELEHEALTH_VOICE } from './telehealth-voice.ts'
+
+/**
+ * How the assistant talks in a chat, chosen when the chat starts and fixed
+ * for it, and the system prompt each style builds.
+ *
+ * @remarks
+ * A namespace module: `Style.Schema`, `Style.Type`, `Style.DEFAULT`,
+ * `Style.systemPromptOf`. `telehealth` states facts from the record, gives
+ * no medical judgement and is quick to say who to contact; `academic`, for
+ * sample data, suggests diagnoses and next steps as a professor would.
+ *
+ * @packageDocumentation
+ */
+
+/** The two styles. Persisted in a chat — append, don't rename. */
+const StyleSchema = Schema.Literal('telehealth', 'academic')
+
+/** A chat's style. */
+type Type = typeof StyleSchema.Type
+
+/** The style a chat starts with until the person picks another. */
+const DEFAULT: Type = 'telehealth'
+
+/** The style's voice and rules. */
+const voiceOf = (style: Type): string =>
+  Match.value(style).pipe(
+    Match.when('telehealth', () => TELEHEALTH_VOICE),
+    Match.when('academic', () => ACADEMIC_VOICE),
+    Match.exhaustive
+  )
+
+/** Whose record the chat is about, in words. */
+const patientParagraphOf = (patient: ChatPatient.Type): string =>
+  Match.value(patient).pipe(
+    Match.when(
+      { kind: 'patient' },
+      ({ name, birthDate }) =>
+        `This chat is about one patient, ${name}, ` +
+        birthDate.pipe(
+          Option.match({
+            onSome: (born) => `born ${born}.`,
+            onNone: () => 'whose record gives no birth date.',
+          })
+        )
+    ),
+    Match.when(
+      { kind: 'all-patients' },
+      () =>
+        'This chat is not about one patient: the person chose "All patients", every patient on the server.'
+    ),
+    Match.exhaustive
+  )
+
+/** Today's date, as the person's calendar has it. */
+const dateParagraphOf = (today: DateTime.DateTime): string =>
+  `Today's date is ${DateTime.formatIsoDate(today)}.`
+
+/**
+ * What the assistant can do with the record. Without tools it can read none
+ * of it.
+ */
+const RECORD_ACCESS_PARAGRAPH =
+  'In this version you cannot read the record: you have no tools, and nothing from the record is in this conversation beyond the patient named above. If the person asks about their record, tell them you cannot see it yet, and help with what they tell you.'
+
+/** What a system prompt is built from, besides the style. */
+interface SystemPromptParts {
+  readonly style: Type
+  readonly patient: ChatPatient.Type
+  /** Today, in the zone whose calendar date the prompt states. */
+  readonly today: DateTime.DateTime
+}
+
+/**
+ * The system prompt for a turn: the style's voice and rules, then whose
+ * record the chat is about, today's date, and what the assistant can do
+ * with the record, one paragraph each.
+ */
+const systemPromptOf = ({ style, patient, today }: SystemPromptParts): string =>
+  [
+    voiceOf(style),
+    patientParagraphOf(patient),
+    dateParagraphOf(today),
+    RECORD_ACCESS_PARAGRAPH,
+  ].join('\n\n')
+
+export { DEFAULT, RECORD_ACCESS_PARAGRAPH, StyleSchema as Schema, systemPromptOf, voiceOf }
+export type { SystemPromptParts, Type }
