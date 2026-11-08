@@ -368,7 +368,7 @@ mod tests {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let inserted = store.insert_app(&registration("app-x")).expect("inserted");
         assert_eq!(store.find_app("app-x").unwrap(), Some(inserted.clone()));
-        assert_eq!(inserted.position, 10, "the store assigns the tail position");
+        assert_eq!(inserted.position, 11, "the store assigns the tail position");
         assert!(inserted.on_homescreen);
         assert!(!inserted.is_smart(), "inserted app has no client_id");
         assert_eq!(inserted.url, launch_url("https://example.com/launch"));
@@ -394,7 +394,7 @@ mod tests {
         );
         let stored = store.find_app("app-x").unwrap().unwrap();
         assert_eq!(stored.name, "app-x", "the existing row is untouched");
-        assert_eq!(stored.position, 10);
+        assert_eq!(stored.position, 11);
     }
 
     #[test]
@@ -584,7 +584,7 @@ mod migration_tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 10, "exactly the ten seeded default apps");
+        assert_eq!(row_count, 11, "exactly the eleven seeded default apps");
     }
 
     /// The port hands back the seeded registry, in display order.
@@ -659,12 +659,22 @@ mod migration_tests {
             .expect("configuration insert must succeed");
     }
 
-    /// [`SEEDED_IDS`] as an install migrated before `0019` holds them, in display
-    /// order (under the ids `0019` re-keys them to): every seeded app but the
-    /// Synthetic Data Loader, which `0019` appends after any app the user created
-    /// before upgrading.
-    fn seeded_before_0019() -> Vec<&'static str> {
+    /// [`SEEDED_IDS`] as an install migrated before `0026` holds them, in display
+    /// order: every seeded app but the Assistant, which `0026` appends after
+    /// any app the user created before upgrading.
+    fn seeded_before_0026() -> Vec<&'static str> {
         SEEDED_IDS
+            .into_iter()
+            .filter(|id| *id != "assistant")
+            .collect()
+    }
+
+    /// [`SEEDED_IDS`] as an install migrated before `0019` holds them, in display
+    /// order (under the ids `0019` re-keys them to): as [`seeded_before_0026`]
+    /// does, and without the Synthetic Data Loader, which `0019` appends after
+    /// any app the user created before upgrading.
+    fn seeded_before_0019() -> Vec<&'static str> {
+        seeded_before_0026()
             .into_iter()
             .filter(|id| *id != "synthetic-data")
             .collect()
@@ -990,9 +1000,13 @@ mod migration_tests {
             .map(|registration| registration.id)
             .collect();
         assert_eq!(
-            ids[ids.len() - 2..],
-            ["my-app".to_owned(), "synthetic-data".to_owned()],
-            "the Synthetic Data Loader takes the tail, after the user's app",
+            ids[ids.len() - 3..],
+            [
+                "my-app".to_owned(),
+                "synthetic-data".to_owned(),
+                "assistant".to_owned()
+            ],
+            "the Synthetic Data Loader, then the Assistant, take the tail, after the user's app",
         );
 
         embedded_migration("0024")
@@ -1208,6 +1222,75 @@ mod migration_tests {
             store.list_registrations().unwrap().len(),
             SEEDED_IDS.len() - 2,
             "every other app stays",
+        );
+    }
+
+    /// The Assistant is seeded as a SMART app (`0026`) launching at its own
+    /// origin's root — a SMART EHR launch — under its random client id.
+    #[test]
+    fn the_assistant_launches_at_its_root() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+
+        let registration = store
+            .find_app("assistant")
+            .unwrap()
+            .expect("the assistant must exist");
+        assert_eq!(
+            registration.client_id.as_deref(),
+            Some("9883d102933b1561e343cae5fd9f26eb")
+        );
+        assert_eq!(registration.name, "Wildflower Assistant");
+        assert_eq!(
+            registration.subtitle.as_deref(),
+            Some("Ask Claude about your record, with your own API key"),
+        );
+        assert!(registration.on_homescreen);
+        assert_eq!(
+            registration.url.to_string(),
+            "https://assistant.wildflowerhealth.io/?launch={launch}&iss={origin}",
+        );
+    }
+
+    /// An install already at `0025` gains the Assistant when it upgrades — at
+    /// the tail, after an app the user created before upgrading, since
+    /// `position` is UNIQUE and `0026` appends rather than naming a literal
+    /// slot. Reverting `0026` removes it and leaves every other app.
+    #[test]
+    fn an_install_already_at_0025_gains_the_assistant_at_the_tail() {
+        let pool = pool_migrated_through("0025");
+        sql_query(
+            "INSERT INTO app_registrations (id, position, on_homescreen, name, url) \
+             VALUES ('my-app', (SELECT MAX(position) + 1 FROM app_registrations), 1, 'My App', \
+                     'https://example.com/launch')",
+        )
+        .execute(&mut pool.get().unwrap())
+        .expect("a 0025 registration insert must succeed");
+
+        let store = SqliteAppsStore::new(pool).expect("0026 must apply over the user's app");
+        let user_app = store
+            .find_app("my-app")
+            .unwrap()
+            .expect("the user's app survives");
+        let assistant = store
+            .find_app("assistant")
+            .unwrap()
+            .expect("0026 must seed the Assistant on an upgraded install");
+        assert_eq!(
+            assistant.position,
+            user_app.position + 1,
+            "the Assistant takes the tail, after the user's app",
+        );
+
+        let mut conn = store.pool().get().unwrap();
+        embedded_migration("0026")
+            .revert(&mut conn)
+            .expect("revert 0026");
+        drop(conn);
+        assert!(store.find_app("assistant").unwrap().is_none());
+        assert_eq!(
+            store.list_registrations().unwrap().len(),
+            SEEDED_IDS.len(),
+            "every other app stays, the user's included",
         );
     }
 
@@ -1477,7 +1560,7 @@ mod migration_tests {
         let registrations = store.list_registrations().unwrap();
         let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
         let mut expected = seeded_before_0015();
-        expected.extend(["my-cloud-app", "plots", "synthetic-data"]);
+        expected.extend(["my-cloud-app", "plots", "synthetic-data", "assistant"]);
         assert_eq!(
             ids, expected,
             "the system apps are gone and the rest keep their order"
@@ -1700,7 +1783,13 @@ mod migration_tests {
         let registrations = store.list_registrations().unwrap();
         let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
         let mut expected = seeded_before_0015();
-        expected.extend(["kept-https", "kept-http", "plots", "synthetic-data"]);
+        expected.extend([
+            "kept-https",
+            "kept-http",
+            "plots",
+            "synthetic-data",
+            "assistant",
+        ]);
         assert_eq!(
             ids, expected,
             "the origin-relative apps are gone and the rest keep their order"
@@ -1739,7 +1828,7 @@ mod migration_tests {
         let registrations = store.list_registrations().unwrap();
         let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
         let mut expected = seeded_before_0019();
-        expected.extend(["my-app", "synthetic-data"]);
+        expected.extend(["my-app", "synthetic-data", "assistant"]);
         assert_eq!(ids, expected, "both Web Trace rows are gone");
         let positions: Vec<i64> = registrations.iter().map(|r| r.position).collect();
         let dense: Vec<i64> = (0..).take(positions.len()).collect();
@@ -1779,7 +1868,10 @@ mod migration_tests {
             .find_app("my-app")
             .unwrap()
             .expect("the user's app survives");
-        assert_eq!(user_app.position, i64::try_from(SEEDED_IDS.len()).unwrap());
+        assert_eq!(
+            user_app.position,
+            i64::try_from(seeded_before_0026().len()).unwrap()
+        );
         assert!(!user_app.on_homescreen);
         assert_eq!(user_app.url.to_string(), "https://example.com/launch");
         assert_eq!(

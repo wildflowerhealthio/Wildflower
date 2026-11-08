@@ -122,6 +122,7 @@ async fn fresh_install_lists_the_default_set() {
             "strength",
             "plots",
             "synthetic-data",
+            "assistant",
         ],
     );
 }
@@ -265,6 +266,7 @@ async fn home_screen_reorders_and_disables_an_app() {
         { "id": "ohif-viewer", "onHomescreen": true },
         { "id": "plots", "onHomescreen": true },
         { "id": "synthetic-data", "onHomescreen": true },
+        { "id": "assistant", "onHomescreen": true },
     ]);
     let res = router
         .clone()
@@ -291,6 +293,7 @@ async fn home_screen_reorders_and_disables_an_app() {
             "ohif-viewer",
             "plots",
             "synthetic-data",
+            "assistant",
         ],
     );
     let strength = arr.iter().find(|v| v["id"] == "strength").unwrap();
