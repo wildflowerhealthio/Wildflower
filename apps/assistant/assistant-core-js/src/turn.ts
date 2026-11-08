@@ -20,7 +20,7 @@ import * as Tools from './tools.ts'
  * sent back, until Claude answers; and the entries the chat keeps for it.
  *
  * @remarks
- * A namespace module: `Turn.Delta`, `Turn.TurnRequest`, `Turn.TurnReport`,
+ * A namespace module: `Turn.Delta`, `Turn.Request`, `Turn.Report`,
  * `Turn.run`, `Turn.paramsOf`, `Turn.UnexpectedStop`.
  *
  * @packageDocumentation
@@ -264,4 +264,4 @@ const run = (
   )
 
 export { MAX_TOKENS, paramsOf, run, SERVER_SIDE_FALLBACK_BETA, UnexpectedStop }
-export type { Delta, TurnReport, TurnRequest }
+export type { Delta, TurnReport as Report, TurnRequest as Request }

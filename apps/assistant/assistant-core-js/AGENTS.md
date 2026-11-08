@@ -58,7 +58,7 @@ Every module is a namespace (`src/index.ts`):
   its model and `end_turn` / `max_tokens` / `tool_use`, `tool-results`,
   `refusal` with its model), the codec, `requestMessagesOf` (what a turn
   sends), `toolCallsOf` and `toolResultsByCallIdOf`, and the chat's place in
-  `sessionStorage` at `wildflower.assistant-chat:<fhirBase>:<patient>`.
+  `sessionStorage` at `wildflower.assistant-chat:<fhirBaseUrl>:<patient>`.
 - `src/turn.ts` — `Turn`: `paramsOf`, the streamed request, and `run`, the
   loop: stream a reply, reporting each text and thinking delta; on
   `tool_use`, run its calls side by side, report the round (the reply and one

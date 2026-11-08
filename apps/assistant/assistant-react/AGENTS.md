@@ -7,7 +7,7 @@ it under `PatientChoiceLine`; its props are in the
 
 ## Shape
 
-- `src/assistant-chat.tsx` — `AssistantChat` (`fhirBase`, `patient`,
+- `src/assistant-chat.tsx` — `AssistantChat` (`fhirBaseUrl`, `patient`,
   `grantedScopes`, `runSmart`, `environment`): the key setup until a key
   works, then `ChatView`, keyed by the chat's storage key so a new patient is
   a new chat. It reads the grant into a `RecordAccess` and builds the

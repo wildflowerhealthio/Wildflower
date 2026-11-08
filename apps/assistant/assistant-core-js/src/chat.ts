@@ -238,16 +238,16 @@ const StoredChat = Schema.parseJson(ChatSchema)
 /** Where a chat is kept: the FHIR server it reads and whose record it is about. */
 interface ChatPlace {
   /** The FHIR server's base URL. */
-  readonly fhirBase: string
+  readonly fhirBaseUrl: string
   readonly patient: ChatPatient.Type
 }
 
 /**
  * The `sessionStorage` key of the chat at `place`:
- * `wildflower.assistant-chat:<fhirBase>:<patient id, or * for every patient>`.
+ * `wildflower.assistant-chat:<fhirBaseUrl>:<patient id, or * for every patient>`.
  */
-const storageKeyOf = ({ fhirBase, patient }: ChatPlace): string =>
-  `wildflower.assistant-chat:${fhirBase}:${ChatPatient.keyOf(patient)}`
+const storageKeyOf = ({ fhirBaseUrl, patient }: ChatPlace): string =>
+  `wildflower.assistant-chat:${fhirBaseUrl}:${ChatPatient.keyOf(patient)}`
 
 /**
  * The chat kept at `place` in `page`'s `sessionStorage`; `None` when there is
@@ -308,4 +308,4 @@ export {
   toolResultsByCallIdOf,
   write,
 }
-export type { ChatPlace, Entry, Type }
+export type { ChatPlace as Place, Entry, Type }

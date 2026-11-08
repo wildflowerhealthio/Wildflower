@@ -45,7 +45,7 @@ const patient: ChatPatient.Type = { kind: 'all-patients' }
 const recordAccess = RecordAccess.fromGrantedScopes([Scope.parse('system/*.cruds')])
 const asked = Chat.append(Chat.start('telehealth'), Chat.questionOf('How are my labs?'))
 const utc = DateTime.layerCurrentZone(DateTime.zoneUnsafeMakeNamed('UTC'))
-const askedRequest: Turn.TurnRequest = { chat: asked, model: sonnet, patient, recordAccess }
+const askedRequest: Turn.Request = { chat: asked, model: sonnet, patient, recordAccess }
 
 /** A turn's run, and what it reported. */
 interface TurnRun {
@@ -57,7 +57,7 @@ interface TurnRun {
 /** Run a turn of `request` against `stub` and `fhir`, collecting what it reports. */
 const runTurn = (
   stub: StubClaude,
-  request: Turn.TurnRequest = askedRequest,
+  request: Turn.Request = askedRequest,
   fhir: StubFhirRecords = stubFhirRecords({})
 ): TurnRun => {
   const deltas: Turn.Delta[] = []
@@ -235,7 +235,7 @@ describe('Turn.run with tools', () => {
     name: 'Ada Lovelace',
     birthDate: Option.none(),
   }
-  const adaRequest: Turn.TurnRequest = { ...askedRequest, patient: ada }
+  const adaRequest: Turn.Request = { ...askedRequest, patient: ada }
   const searchCall = toolUseBlock('call-1', 'search_records', {
     resourceType: 'Observation',
     params: [{ name: 'code', value: '4548-4' }],

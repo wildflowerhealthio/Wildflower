@@ -268,9 +268,15 @@ const pageSizeOf = (
   )
 }
 
-/** `url` as a path under `fhirBase` (relative, no leading slash), if it is one. */
-const pathUnderBaseOf = (url: string, fhirBase: string): Option.Option<string> => {
-  const base = URL.parse(`${fhirBase}/`)
+/** `url` as a path under `fhirBaseUrl` (relative, no leading slash), if it is one. */
+const pathUnderBaseOf = ({
+  url,
+  fhirBaseUrl,
+}: {
+  readonly url: string
+  readonly fhirBaseUrl: string
+}): Option.Option<string> => {
+  const base = URL.parse(`${fhirBaseUrl}/`)
   const target = base === null ? null : URL.parse(url, base)
   if (base === null || target === null) return Option.none()
   return target.origin === base.origin && target.pathname.startsWith(base.pathname)
@@ -335,7 +341,9 @@ const readPage = (
     const nextUrl = Array.findFirst(page.link ?? [], ({ relation }) => relation === 'next').pipe(
       Option.map(({ url }) => url)
     )
-    const nextPath = Option.flatMap(nextUrl, (url) => pathUnderBaseOf(url, records.fhirBase))
+    const nextPath = Option.flatMap(nextUrl, (url) =>
+      pathUnderBaseOf({ url, fhirBaseUrl: records.fhirBaseUrl })
+    )
     return JSON.stringify({
       resources,
       ...(page.total === undefined ? {} : { total: page.total }),
@@ -391,13 +399,13 @@ const nextPage = (
 ): Effect.Effect<string, ToolCallRefused | FhirReadFailed, FhirRecords> =>
   Effect.gen(function* () {
     const { cursor } = yield* decodeInput(NextPageInput, input)
-    const { fhirBase } = yield* FhirRecords
+    const { fhirBaseUrl } = yield* FhirRecords
     const notACursor = new ToolCallRefused({
       reason: "That isn't a cursor a search gave. Search again with search_records.",
     })
     const path = yield* Encoding.decodeBase64UrlString(cursor).pipe(
       Either.flatMap((decoded) =>
-        Either.fromOption(pathUnderBaseOf(decoded, fhirBase), () => notACursor)
+        Either.fromOption(pathUnderBaseOf({ url: decoded, fhirBaseUrl }), () => notACursor)
       ),
       Either.mapLeft(() => notACursor)
     )

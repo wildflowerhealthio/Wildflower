@@ -22,7 +22,7 @@ const fhirReadFailedOf = (failure: FhirRequestError): FhirReadFailed =>
   })
 
 /**
- * The FHIR server at `fhirBase` as the chat's tools read it: each read a
+ * The FHIR server at `fhirBaseUrl` as the chat's tools read it: each read a
  * `SmartClient` request run with `runSmart`, the runtime the page's SMART
  * handshake built, so it carries the connection's token.
  *
@@ -30,9 +30,9 @@ const fhirReadFailedOf = (failure: FhirRequestError): FhirReadFailed =>
  * Interrupting a read aborts its request. A request failure comes back as a
  * {@link FhirReadFailed}; a defect in the runtime stays one.
  */
-const fhirRecordsLayerFor = (fhirBase: string, runSmart: RunSmart): Layer.Layer<FhirRecords> =>
+const fhirRecordsLayerFor = (fhirBaseUrl: string, runSmart: RunSmart): Layer.Layer<FhirRecords> =>
   Layer.succeed(FhirRecords, {
-    fhirBase,
+    fhirBaseUrl,
     read: (path) =>
       Effect.promise((signal) =>
         runSmart(Effect.either(Effect.flatMap(SmartClient, (client) => client.request(path))), {

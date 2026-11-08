@@ -84,7 +84,7 @@ const announcementOf = (entry: Chat.Entry): string =>
  */
 const useChat = (
   { page, claudeLayerFor }: AssistantEnvironment,
-  place: Chat.ChatPlace,
+  place: Chat.Place,
   { recordAccess, fhirRecordsLayer }: ChatRecords
 ): ChatControls => {
   const [initial] = useState(() => Effect.runSync(Effect.either(Chat.read(page, place))))

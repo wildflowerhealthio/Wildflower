@@ -278,7 +278,7 @@ interface StubFhirRecords {
  */
 const stubFhirRecords = (
   answers: Readonly<Record<string, Effect.Effect<unknown, FhirReadFailed>>>,
-  fhirBase: string = STUB_FHIR_BASE
+  fhirBaseUrl: string = STUB_FHIR_BASE
 ): StubFhirRecords => {
   const readPaths: string[] = []
   const keys = Object.keys(answers).toSorted((left, right) => right.length - left.length)
@@ -296,7 +296,7 @@ const stubFhirRecords = (
         )
       )
     })
-  return { layer: Layer.succeed(FhirRecords, { fhirBase, read }), readPaths }
+  return { layer: Layer.succeed(FhirRecords, { fhirBaseUrl, read }), readPaths }
 }
 
 /** The server failing a read with `status`, its `OperationOutcome` saying `outcomeText` when given. */

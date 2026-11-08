@@ -50,7 +50,7 @@ const PATIENT: ChatPatient.Type = {
   birthDate: Option.some('1815-12-10'),
 }
 
-const PLACE: Chat.ChatPlace = { fhirBase: STUB_FHIR_BASE, patient: PATIENT }
+const PLACE: Chat.Place = { fhirBaseUrl: STUB_FHIR_BASE, patient: PATIENT }
 
 /** A rendered chat over in-memory storage, the stub client its good key reaches, and its FHIR server. */
 interface RenderedChat {
@@ -93,7 +93,7 @@ const renderChat = ({
   const fhir = stubSmartRuntime(fhirAnswers)
   const rendered = render(
     createElement(AssistantChat, {
-      fhirBase: PLACE.fhirBase,
+      fhirBaseUrl: PLACE.fhirBaseUrl,
       patient: PLACE.patient,
       grantedScopes: grantedScopes.map(Scope.parse),
       runSmart: fhir.runtime.runSmart,

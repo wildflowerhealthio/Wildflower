@@ -29,16 +29,16 @@ class FhirReadFailed extends Data.TaggedClass('FhirReadFailed')<{
  * provides a stand-in with `Layer.succeed`.
  *
  * @remarks
- * Every path the tools read is relative to `fhirBase`, with no leading slash
+ * Every path the tools read is relative to `fhirBaseUrl`, with no leading slash
  * (`Observation?patient=p1&_count=20`, `Patient/p1`, `metadata`); a search's
- * `next` link is turned back into one only when it points under `fhirBase`.
+ * `next` link is turned back into one only when it points under `fhirBaseUrl`.
  */
 class FhirRecords extends Context.Tag('assistant-core-js/FhirRecords')<
   FhirRecords,
   {
     /** The FHIR server's base URL, no trailing slash. */
-    readonly fhirBase: string
-    /** GET `path` under {@link fhirBase} and read the answer as JSON. */
+    readonly fhirBaseUrl: string
+    /** GET `path` under {@link fhirBaseUrl} and read the answer as JSON. */
     readonly read: (path: string) => Effect.Effect<unknown, FhirReadFailed>
   }
 >() {}

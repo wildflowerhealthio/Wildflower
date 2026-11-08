@@ -21,7 +21,7 @@ const ACADEMIC_CONFIRMATION =
 /** Props for {@link ChatView}. */
 interface ChatViewProps {
   readonly environment: AssistantEnvironment
-  readonly place: Chat.ChatPlace
+  readonly place: Chat.Place
   /** What the chat's tools reach. */
   readonly records: ChatRecords
   readonly claudeAccess: ClaudeAccessControls

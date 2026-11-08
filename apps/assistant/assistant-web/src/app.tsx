@@ -76,7 +76,7 @@ const AssistantPage = ({ connection }: { readonly connection: SmartConnection })
           // Keyed per choice, so a change of patient starts the chat afresh.
           <PatientChat
             key={patientChoiceKeyOf(chosen)}
-            fhirBase={connection.fhirBaseUrl}
+            fhirBaseUrl={connection.fhirBaseUrl}
             patientChoice={chosen}
           />
         )),
@@ -89,17 +89,17 @@ const AssistantPage = ({ connection }: { readonly connection: SmartConnection })
 }
 
 /**
- * The chat about `patientChoice`'s record on `fhirBase`: for one patient,
+ * The chat about `patientChoice`'s record on `fhirBaseUrl`: for one patient,
  * once the `Patient` read the choice line also makes has landed, so the chat
  * can state the patient's name and birth date; for "All patients", at once.
  * Its tools are the ones the sign-in's granted scopes allow, reading over
  * the page's SMART runtime.
  */
 const PatientChat = ({
-  fhirBase,
+  fhirBaseUrl,
   patientChoice,
 }: {
-  readonly fhirBase: string
+  readonly fhirBaseUrl: string
   readonly patientChoice: PatientChoice
 }): JSX.Element => {
   const grantedScopes = useGrantedScopes()
@@ -107,7 +107,7 @@ const PatientChat = ({
   return Match.value(patientChoice).pipe(
     Match.when({ kind: 'patient' }, ({ patientId }) => (
       <OnePatientChat
-        fhirBase={fhirBase}
+        fhirBaseUrl={fhirBaseUrl}
         patientId={patientId}
         grantedScopes={grantedScopes}
         runSmart={runSmart}
@@ -115,7 +115,7 @@ const PatientChat = ({
     )),
     Match.when({ kind: 'all-patients' }, () => (
       <AssistantChat
-        fhirBase={fhirBase}
+        fhirBaseUrl={fhirBaseUrl}
         patient={{ kind: 'all-patients' }}
         grantedScopes={grantedScopes}
         runSmart={runSmart}
@@ -127,12 +127,12 @@ const PatientChat = ({
 
 /** The chat about one patient, once that patient's record has been read. */
 const OnePatientChat = ({
-  fhirBase,
+  fhirBaseUrl,
   patientId,
   grantedScopes,
   runSmart,
 }: {
-  readonly fhirBase: string
+  readonly fhirBaseUrl: string
   readonly patientId: string
   readonly grantedScopes: readonly Scope.Any[]
   readonly runSmart: RunSmart
@@ -150,7 +150,7 @@ const OnePatientChat = ({
   const patient = patientRead.data.value
   return (
     <AssistantChat
-      fhirBase={fhirBase}
+      fhirBaseUrl={fhirBaseUrl}
       patient={{
         kind: 'patient',
         patientId,

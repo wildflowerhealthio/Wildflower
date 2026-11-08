@@ -83,7 +83,7 @@ const patient: ChatPatient.Type = {
   name: 'Ada Lovelace',
   birthDate: Option.none(),
 }
-const place: Chat.ChatPlace = { fhirBase: 'https://fhir.example/r4', patient }
+const place: Chat.Place = { fhirBaseUrl: 'https://fhir.example/r4', patient }
 
 describe('Chat codec', () => {
   it('should round-trip every chat through its JSON exactly, thinking blocks and signatures included', () => {

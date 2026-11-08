@@ -18,7 +18,7 @@ import styles from './assistant-chat.module.css'
 /** Props for {@link AssistantChat}: where the chat is, and any other `<div>` prop. */
 interface AssistantChatProps extends Omit<ComponentProps<'div'>, 'children'> {
   /** The connected FHIR server's base URL; chats are kept per server. */
-  readonly fhirBase: string
+  readonly fhirBaseUrl: string
   /** Whose record the chat is about; chats are kept per patient. */
   readonly patient: ChatPatient.Type
   /** The scopes the sign-in was granted (`SmartConnection.grantedScopes`); they decide the chat's tools. */
@@ -31,7 +31,7 @@ interface AssistantChatProps extends Omit<ComponentProps<'div'>, 'children'> {
 
 /**
  * Assistant's whole chat with Claude about `patient`'s record on the FHIR
- * server at `fhirBase`: asking for the person's API key until one works,
+ * server at `fhirBaseUrl`: asking for the person's API key until one works,
  * then the model picker, the style choice, the transcript and the
  * composer. Claude reads the record with the tools `grantedScopes` allow,
  * through `runSmart`.
@@ -42,7 +42,7 @@ interface AssistantChatProps extends Omit<ComponentProps<'div'>, 'children'> {
  * starts a new chat. The page logic is `useClaudeAccess` and `useChat`.
  */
 const AssistantChat = ({
-  fhirBase,
+  fhirBaseUrl,
   patient,
   grantedScopes,
   runSmart,
@@ -51,13 +51,13 @@ const AssistantChat = ({
   ...rootProps
 }: AssistantChatProps): JSX.Element => {
   const claudeAccess = useClaudeAccess(environment)
-  const place = useMemo<Chat.ChatPlace>(() => ({ fhirBase, patient }), [fhirBase, patient])
+  const place = useMemo<Chat.Place>(() => ({ fhirBaseUrl, patient }), [fhirBaseUrl, patient])
   const records = useMemo<ChatRecords>(
     () => ({
       recordAccess: RecordAccess.fromGrantedScopes(grantedScopes),
-      fhirRecordsLayer: fhirRecordsLayerFor(fhirBase, runSmart),
+      fhirRecordsLayer: fhirRecordsLayerFor(fhirBaseUrl, runSmart),
     }),
-    [fhirBase, grantedScopes, runSmart]
+    [fhirBaseUrl, grantedScopes, runSmart]
   )
   return (
     <div {...rootProps} className={cn(styles['assistant-chat'], className)}>
