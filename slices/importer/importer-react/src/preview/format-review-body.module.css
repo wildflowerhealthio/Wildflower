@@ -52,6 +52,11 @@
   color: var(--color-neutral-4);
 }
 
+.review-body__shared-hint {
+  color: var(--color-neutral-4);
+  font-size: var(--font-size-1);
+}
+
 .review-body__resource-excluded {
   text-decoration: line-through;
   color: var(--color-neutral-4);

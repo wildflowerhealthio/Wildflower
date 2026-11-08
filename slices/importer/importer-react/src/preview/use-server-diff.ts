@@ -128,15 +128,20 @@ const byGroupAndKey = (
 /**
  * Every previewed resource across a batch's formats and its linked records,
  * paired with its group and labeled key — the flat list one classifier round
- * trip probes.
+ * trip probes. A shared copy is probed as the merge of every copy of its
+ * identity, in review order (`DecodedFile.withSharedCopiesMerged`): the
+ * server holds the merge after an import, so a re-import finds every copy
+ * `unchanged`, where neither copy alone would be.
  */
 const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] => [
   ...formatKinds.flatMap((kind) =>
-    DecodedFile.resources(batch.formats[kind].decoded).map((entry): DiffRow => ({
-      group: kind,
-      key: entry.key,
-      resource: entry.resource,
-    }))
+    DecodedFile.withSharedCopiesMerged(DecodedFile.resources(batch.formats[kind].decoded)).map(
+      (entry): DiffRow => ({
+        group: kind,
+        key: entry.key,
+        resource: entry.resource,
+      })
+    )
   ),
   ...batch.linkedRecords.map((entry): DiffRow => ({
     group: LINKED_GROUP,

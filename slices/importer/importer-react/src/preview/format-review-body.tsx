@@ -23,6 +23,7 @@ import { DONT_LINK_LABEL } from '../identity/referent-text.ts'
 import { describeResource, type ResourceDescription, resourceTypeOf } from './describe-resource.ts'
 import { DiffBadge } from './diff-badge.tsx'
 import {
+  alsoInHint,
   mentionLead,
   mentionRole,
   NEEDS_A_PATIENT_HEADING,
@@ -114,6 +115,30 @@ const perTypeTallies = (
 const tallyLabel = (tally: TypeTally): string => {
   const base = `${tally.total} ${tally.type}`
   return tally.excluded === 0 ? base : `${base}, ${tally.excluded} excluded`
+}
+
+/**
+ * For each shared copy's key, the titles of the other sections that hold a
+ * copy of its identity (`DecodedFile.Shared`), each once, in section order.
+ */
+const otherSectionTitlesByKey = (
+  sections: readonly DecodedFile.Section[]
+): ReadonlyMap<string, readonly string[]> => {
+  const copies = sections.flatMap(({ title, resources }, sectionIndex) =>
+    resources.flatMap(({ key, shared }) =>
+      shared === undefined ? [] : [{ key, identity: shared.identity, sectionIndex, title }]
+    )
+  )
+  const copiesByIdentity = Array.groupBy(copies, ({ identity }) => identity)
+  return new Map(
+    copies.map(({ key, identity, sectionIndex }) => [
+      key,
+      Array.dedupeWith(
+        (copiesByIdentity[identity] ?? []).filter((copy) => copy.sectionIndex !== sectionIndex),
+        (copy, other) => copy.sectionIndex === other.sectionIndex
+      ).map(({ title }) => title),
+    ])
+  )
 }
 
 /** The value of a mention select's Don't link option. */
@@ -226,6 +251,7 @@ const selectNames = (
  * of each mention it makes that the map can link, include toggle, Edit/Revert
  * affordance, and the "edited" chip when a per-resource override is in
  * place. Listed under Needs a patient or Needs a provider, it also says why.
+ * A shared copy says which other sections hold a copy, after its summary.
  */
 const ResourceRow = ({
   resourceKey,
@@ -237,6 +263,7 @@ const ResourceRow = ({
   unlinked,
   leftUnlinked,
   listsReason,
+  sharedHint,
   onToggle,
   onEdit,
   onRevert,
@@ -256,6 +283,8 @@ const ResourceRow = ({
   readonly leftUnlinked: LeftUnlinked
   /** Whether the row is listed under Needs a patient or Needs a provider, and so says why. */
   readonly listsReason: boolean
+  /** Where else the row's resource has a copy (`alsoInHint`); `None` when nowhere. */
+  readonly sharedHint: Option.Option<string>
   readonly onToggle: (key: string) => void
   readonly onEdit: (key: string, resource: unknown) => void
   readonly onRevert: (key: string) => void
@@ -313,6 +342,14 @@ const ResourceRow = ({
         >
           {description.summary}
         </span>
+        {sharedHint.pipe(
+          Option.map((hint) => (
+            <span key="shared-hint" className={styles['review-body__shared-hint']}>
+              {hint}
+            </span>
+          )),
+          Option.getOrNull
+        )}
       </label>
       {reason !== '' && <span className={styles['review-body__unlinked-reason']}>{reason}</span>}
       {hasSubjectSelect
@@ -412,6 +449,7 @@ const FormatReviewBody = ({
     [decodedFile, selection, leftUnlinked]
   )
   const groups = useMemo(() => groupsOf(result.decoded, unlinked), [result.decoded, unlinked])
+  const otherSectionTitles = useMemo(() => otherSectionTitlesByKey(sections), [sections])
 
   // A pick is a mention link choice, which the resolved row, and its edit
   // override resolved on the plan, follow.
@@ -441,6 +479,7 @@ const FormatReviewBody = ({
       unlinked={unlinked}
       leftUnlinked={leftUnlinked}
       listsReason={listsReason}
+      sharedHint={alsoInHint(otherSectionTitles.get(entry.key) ?? [])}
       onToggle={(key) =>
         onSelectionChange(StagedImport.toggleResource(selection, excludedByDefault, key))
       }

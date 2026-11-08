@@ -34,17 +34,22 @@ const reviewedResource = (
 
 /**
  * What the referent links leave unlinked in every row of `decodedFile` (the
- * format's file as decoded), each as reviewed under `selection`, in review
- * order.
+ * format's file as decoded), each as reviewed under `selection`, a shared
+ * copy merged with the copies the reviewer kept
+ * (`StagedImport.withKeptCopiesMerged`), in review order.
  */
 const unlinkedInRows = (
   decodedFile: DecodedFile.DecodedFile,
   selection: StagedImport.Selection,
   leftUnlinked: LeftUnlinked
 ): readonly UnlinkedMention.Type[] =>
-  DecodedFile.resources(decodedFile).flatMap(({ key, resource }) =>
-    leftUnlinked(key, reviewedResource(selection, key, resource))
-  )
+  StagedImport.withKeptCopiesMerged(
+    selection,
+    DecodedFile.resources(decodedFile).map((row) => ({
+      ...row,
+      resource: reviewedResource(selection, row.key, row.resource),
+    }))
+  ).flatMap(({ key, resource }) => leftUnlinked(key, resource))
 
 /** Whether `unlinked` is the mention at `mentionPath` of the resource reviewed under `reviewKey`. */
 const isAt = (unlinked: UnlinkedMention.Type, reviewKey: string, mentionPath: string): boolean =>

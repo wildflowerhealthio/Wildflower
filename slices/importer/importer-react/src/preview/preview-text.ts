@@ -6,6 +6,8 @@
  * @packageDocumentation
  */
 
+import { Array as Arr, Option } from 'effect'
+
 /** Heading for a batch with nothing chosen — no resource is included. */
 const NOTHING_TO_IMPORT_HEADING = 'Nothing to import'
 
@@ -76,6 +78,24 @@ const mentionRole = (mentionPath: string): string => {
 /** `noun` singular when `count === 1`, else its `-s` plural. */
 const plural = (count: number, noun: string): string => (count === 1 ? noun : `${noun}s`)
 
+/**
+ * The hint on a row whose resource other sections also hold a copy of:
+ * "Also in" the one other section's title, else how many others; `None` when
+ * no other section holds one.
+ *
+ * @param otherSectionTitles - The titles of the other sections holding a copy
+ */
+const alsoInHint = (otherSectionTitles: readonly string[]): Option.Option<string> =>
+  Arr.match(otherSectionTitles, {
+    onEmpty: Option.none,
+    onNonEmpty: ([onlyTitle, ...moreTitles]) =>
+      Option.some(
+        moreTitles.length === 0
+          ? `Also in ${onlyTitle}`
+          : `Also in ${otherSectionTitles.length} other responses`
+      ),
+  })
+
 /** The confirm button's label, factored out so the render stays a single expression. */
 const confirmLabel = (writable: number, excluded: number, confirming: boolean): string => {
   if (confirming) return 'Importing…'
@@ -84,6 +104,7 @@ const confirmLabel = (writable: number, excluded: number, confirming: boolean): 
 }
 
 export {
+  alsoInHint,
   confirmLabel,
   fieldOfPath,
   LINKED_RECORDS_HEADING,
