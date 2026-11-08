@@ -82,6 +82,14 @@ dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
   result the way the medication views do; every expectation is
   `storyCaseArbitrary`'s reckoning, or the portal's rules applied to it in the
   test, not the functions the generator calls.
+- **Importer fixture.** `importer-fixture.test.ts` renders one hand-written
+  household account (the holder and one dependant) at a fixed as-of and
+  checks the result, byte for byte, against `har-importer-core`'s committed
+  `src/fixtures/shoppers-drugmart.generated.har.json`, which that package's
+  decode test reads (a slice cannot depend on this app). After a change to
+  what the generator writes, rewrite the file with
+  `vp run -F @wildflowerhealthio/synthetic-data-shoppers-drugmart fixtures:importer`
+  (the test, under `UPDATE_FIXTURES=1`) and commit it.
 
 ## Traps
 

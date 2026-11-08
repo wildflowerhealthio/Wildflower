@@ -73,6 +73,14 @@ dev dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
   result the way the medication views do; every expectation is
   `storyCaseArbitrary`'s own reckoning, not the model functions the generator
   calls.
+- **Importer fixture.** `importer-fixture.test.ts` renders one hand-written
+  story and account at a fixed as-of and checks the result, byte for byte,
+  against `har-importer-core`'s committed
+  `src/fixtures/rexall-be-well.generated.har.json`, which that package's
+  decode test reads (a slice cannot depend on this app). After a change to
+  what the generator writes, rewrite the file with
+  `vp run -F @wildflowerhealthio/synthetic-data-rexall-be-well fixtures:importer`
+  (the test, under `UPDATE_FIXTURES=1`) and commit it.
 
 ## Traps
 

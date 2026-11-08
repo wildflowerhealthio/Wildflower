@@ -28,6 +28,7 @@
     "build": "vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
+    "fixtures:importer": "UPDATE_FIXTURES=1 vp test run importer-fixture",
     "test": "vp test"
   },
   "devDependencies": {

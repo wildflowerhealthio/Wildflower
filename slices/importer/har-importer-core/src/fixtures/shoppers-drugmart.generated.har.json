@@ -1,0 +1,658 @@
+{
+  "log": {
+    "version": "1.2",
+    "creator": {
+      "name": "WebInspector",
+      "version": "537.36"
+    },
+    "pages": [
+      {
+        "startedDateTime": "2026-11-01T16:00:00.000Z",
+        "id": "page_1",
+        "title": "https://mypharmacy.shoppersdrugmart.ca/en/login",
+        "pageTimings": {
+          "onContentLoad": 488.2,
+          "onLoad": 1104.6
+        }
+      },
+      {
+        "startedDateTime": "2026-11-01T16:01:34.300Z",
+        "id": "page_2",
+        "title": "https://mypharmacy.shoppersdrugmart.ca/en/healthdashboard/",
+        "pageTimings": {
+          "onContentLoad": 402.9,
+          "onLoad": 1687.3
+        }
+      },
+      {
+        "startedDateTime": "2026-11-01T16:02:11.800Z",
+        "id": "page_3",
+        "title": "https://mypharmacy.shoppersdrugmart.ca/en/prescription-dashboard/?nav=featured-services/prescription-icon",
+        "pageTimings": {
+          "onContentLoad": 377.5,
+          "onLoad": 1512.8
+        }
+      },
+      {
+        "startedDateTime": "2026-11-01T16:02:38.600Z",
+        "id": "page_4",
+        "title": "https://mypharmacy.shoppersdrugmart.ca/en/prescription-history",
+        "pageTimings": {
+          "onContentLoad": 351.4,
+          "onLoad": 1398.1
+        }
+      }
+    ],
+    "entries": [
+      {
+        "pageref": "page_1",
+        "startedDateTime": "2026-11-01T16:00:00.000Z",
+        "time": 100.6,
+        "request": {
+          "method": "GET",
+          "url": "https://mypharmacy.shoppersdrugmart.ca/en/login",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "text/html; charset=utf-8"
+            }
+          ],
+          "content": {
+            "size": 150,
+            "mimeType": "text/html; charset=utf-8",
+            "text": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Sign in | Shoppers Drug Mart</title></head><body><div id=\"root\"></div></body></html>"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 150
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 96.1,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "198.51.100.24",
+        "connection": "0",
+        "_initiator": {
+          "type": "other"
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "document"
+      },
+      {
+        "pageref": "page_2",
+        "startedDateTime": "2026-11-01T16:01:34.300Z",
+        "time": 75.9,
+        "request": {
+          "method": "GET",
+          "url": "https://mypharmacy.shoppersdrugmart.ca/en/healthdashboard/",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "text/html; charset=utf-8"
+            }
+          ],
+          "content": {
+            "size": 159,
+            "mimeType": "text/html; charset=utf-8",
+            "text": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Health Dashboard | Shoppers Drug Mart</title></head><body><div id=\"root\"></div></body></html>"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 159
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 71.4,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "198.51.100.24",
+        "connection": "0",
+        "_initiator": {
+          "type": "other"
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "document"
+      },
+      {
+        "pageref": "page_3",
+        "startedDateTime": "2026-11-01T16:02:11.800Z",
+        "time": 73.3,
+        "request": {
+          "method": "GET",
+          "url": "https://mypharmacy.shoppersdrugmart.ca/en/prescription-dashboard/?nav=featured-services/prescription-icon",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "nav",
+              "value": "featured-services/prescription-icon"
+            }
+          ],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "text/html; charset=utf-8"
+            }
+          ],
+          "content": {
+            "size": 156,
+            "mimeType": "text/html; charset=utf-8",
+            "text": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Prescriptions | Shoppers Drug Mart</title></head><body><div id=\"root\"></div></body></html>"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 156
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 68.8,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "198.51.100.24",
+        "connection": "0",
+        "_initiator": {
+          "type": "other"
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "document"
+      },
+      {
+        "pageref": "page_3",
+        "startedDateTime": "2026-11-01T16:02:13.150Z",
+        "time": 217,
+        "request": {
+          "method": "GET",
+          "url": "https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/b3bf4491-7fbb-4a1d-a6eb-09ea417ad86d/prescription-status",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "referer",
+              "value": "https://mypharmacy.shoppersdrugmart.ca/"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "content": {
+            "size": 783,
+            "mimeType": "application/json",
+            "text": "{\"id\":\"b3bf4491-7fbb-4a1d-a6eb-09ea417ad86d\",\"storeId\":1234,\"patientId\":\"00000000-0000-4000-8000-000000000011\",\"prescriptionNumber\":6886518,\"brandName\":\"Amoxil\",\"chemicalName\":\"Amoxicillin 500mg\",\"numFillsLeft\":0,\"prescriberName\":\"DR A EXAMPLE\",\"status\":{\"label\":\"Ready for renewal\",\"portalLabel\":\"Ready to renew\",\"labelDescription\":\"Request a renewal and we will contact your prescriber\",\"type\":\"READY_FOR_RENEW\"},\"din\":\"51480840\",\"direction\":\"TAKE 1 TABLET (=500MG) BY MOUTH TWICE DAILY\",\"refillQuantity\":20,\"expiryDate\":\"2027-09-22T00:00:00Z\",\"lastFillDate\":\"2026-10-02T00:00:00Z\",\"expired\":false,\"archived\":false,\"renewable\":true,\"dispenses\":[{\"dispenseId\":\"a4c932ab-19bd-453f-8ddd-428180e1f64d\",\"quantityDispensed\":20,\"status\":\"COMPLETE\",\"dispenseDate\":\"2026-10-02T00:00:00Z\"}]}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 783
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 212.5,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "198.51.100.24",
+        "connection": "0",
+        "_initiator": {
+          "type": "script"
+        },
+        "_priority": "High",
+        "_resourceType": "xhr"
+      },
+      {
+        "pageref": "page_3",
+        "startedDateTime": "2026-11-01T16:02:13.235Z",
+        "time": 217,
+        "request": {
+          "method": "GET",
+          "url": "https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/2d4bae32-d769-4638-8a29-6f2116e9426b/prescription-status",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "referer",
+              "value": "https://mypharmacy.shoppersdrugmart.ca/"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "content": {
+            "size": 832,
+            "mimeType": "application/json",
+            "text": "{\"id\":\"2d4bae32-d769-4638-8a29-6f2116e9426b\",\"storeId\":1234,\"patientId\":\"00000000-0000-4000-8000-000000000011\",\"prescriptionNumber\":3917320,\"brandName\":\"Apo-Examplazole\",\"chemicalName\":\"Examplazole 5mg\",\"numFillsLeft\":5,\"prescriberName\":\"DR A EXAMPLE\",\"status\":{\"label\":\"Ready for refill\",\"portalLabel\":\"Ready for refill\",\"labelDescription\":\"Request a refill and we will let you know when it is ready\",\"type\":\"READY_FOR_REFILL\"},\"din\":\"02000017\",\"direction\":\"TAKE 1 TABLET (=5MG) BY MOUTH ONCE DAILY\",\"refillQuantity\":30,\"expiryDate\":\"2027-10-12T00:00:00Z\",\"lastFillDate\":\"2026-10-12T00:00:00Z\",\"nextFillDate\":\"2026-11-11T00:00:00Z\",\"expired\":false,\"archived\":false,\"renewable\":true,\"dispenses\":[{\"dispenseId\":\"e34580f8-7917-40bb-ad69-73d0be4dc091\",\"quantityDispensed\":30,\"status\":\"COMPLETE\",\"dispenseDate\":\"2026-10-12T00:00:00Z\"}]}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 832
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 212.5,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "198.51.100.24",
+        "connection": "0",
+        "_initiator": {
+          "type": "script"
+        },
+        "_priority": "High",
+        "_resourceType": "xhr"
+      },
+      {
+        "pageref": "page_3",
+        "startedDateTime": "2026-11-01T16:02:13.320Z",
+        "time": 217,
+        "request": {
+          "method": "GET",
+          "url": "https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/2f2e08dc-e41d-43b5-aac5-9f1a0b1dadf5/prescription-status",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "referer",
+              "value": "https://mypharmacy.shoppersdrugmart.ca/"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "content": {
+            "size": 783,
+            "mimeType": "application/json",
+            "text": "{\"id\":\"2f2e08dc-e41d-43b5-aac5-9f1a0b1dadf5\",\"storeId\":1234,\"patientId\":\"00000000-0000-4000-8000-000000000012\",\"prescriptionNumber\":4072249,\"brandName\":\"Amoxil\",\"chemicalName\":\"Amoxicillin 500mg\",\"numFillsLeft\":0,\"prescriberName\":\"DR A EXAMPLE\",\"status\":{\"label\":\"Ready for renewal\",\"portalLabel\":\"Ready to renew\",\"labelDescription\":\"Request a renewal and we will contact your prescriber\",\"type\":\"READY_FOR_RENEW\"},\"din\":\"51480840\",\"direction\":\"TAKE 1 TABLET (=500MG) BY MOUTH TWICE DAILY\",\"refillQuantity\":20,\"expiryDate\":\"2027-08-03T00:00:00Z\",\"lastFillDate\":\"2026-08-03T00:00:00Z\",\"expired\":false,\"archived\":false,\"renewable\":true,\"dispenses\":[{\"dispenseId\":\"0b5d9652-ec5d-4aac-846b-f8294b57eee8\",\"quantityDispensed\":20,\"status\":\"COMPLETE\",\"dispenseDate\":\"2026-08-03T00:00:00Z\"}]}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 783
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 212.5,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "198.51.100.24",
+        "connection": "0",
+        "_initiator": {
+          "type": "script"
+        },
+        "_priority": "High",
+        "_resourceType": "xhr"
+      },
+      {
+        "pageref": "page_3",
+        "startedDateTime": "2026-11-01T16:02:13.405Z",
+        "time": 217,
+        "request": {
+          "method": "GET",
+          "url": "https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/dfa2bd44-6cdd-4d03-8c0e-f1187156d9a9/prescription-status",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "referer",
+              "value": "https://mypharmacy.shoppersdrugmart.ca/"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "content": {
+            "size": 832,
+            "mimeType": "application/json",
+            "text": "{\"id\":\"dfa2bd44-6cdd-4d03-8c0e-f1187156d9a9\",\"storeId\":1234,\"patientId\":\"00000000-0000-4000-8000-000000000012\",\"prescriptionNumber\":3892618,\"brandName\":\"Apo-Examplazole\",\"chemicalName\":\"Examplazole 5mg\",\"numFillsLeft\":4,\"prescriberName\":\"DR A EXAMPLE\",\"status\":{\"label\":\"Ready for refill\",\"portalLabel\":\"Ready for refill\",\"labelDescription\":\"Request a refill and we will let you know when it is ready\",\"type\":\"READY_FOR_REFILL\"},\"din\":\"02000017\",\"direction\":\"TAKE 1 TABLET (=5MG) BY MOUTH ONCE DAILY\",\"refillQuantity\":30,\"expiryDate\":\"2027-09-02T00:00:00Z\",\"lastFillDate\":\"2026-10-03T00:00:00Z\",\"nextFillDate\":\"2026-11-02T00:00:00Z\",\"expired\":false,\"archived\":false,\"renewable\":true,\"dispenses\":[{\"dispenseId\":\"6d6730b6-4213-40d2-ba30-0c860f32db6e\",\"quantityDispensed\":30,\"status\":\"COMPLETE\",\"dispenseDate\":\"2026-10-03T00:00:00Z\"}]}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 832
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 212.5,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "198.51.100.24",
+        "connection": "0",
+        "_initiator": {
+          "type": "script"
+        },
+        "_priority": "High",
+        "_resourceType": "xhr"
+      },
+      {
+        "pageref": "page_4",
+        "startedDateTime": "2026-11-01T16:02:38.600Z",
+        "time": 70.7,
+        "request": {
+          "method": "GET",
+          "url": "https://mypharmacy.shoppersdrugmart.ca/en/prescription-history",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "text/html; charset=utf-8"
+            }
+          ],
+          "content": {
+            "size": 163,
+            "mimeType": "text/html; charset=utf-8",
+            "text": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Prescription History | Shoppers Drug Mart</title></head><body><div id=\"root\"></div></body></html>"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 163
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 66.2,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "198.51.100.24",
+        "connection": "0",
+        "_initiator": {
+          "type": "other"
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "document"
+      },
+      {
+        "pageref": "page_4",
+        "startedDateTime": "2026-11-01T16:02:39.920Z",
+        "time": 543.2,
+        "request": {
+          "method": "GET",
+          "url": "https://mypharmacy.shoppersdrugmart.ca/api/v1/prescription-history?customerId=00000000-0000-4000-8000-000000000010",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "referer",
+              "value": "https://mypharmacy.shoppersdrugmart.ca/"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "customerId",
+              "value": "00000000-0000-4000-8000-000000000010"
+            }
+          ],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "content": {
+            "size": 3114,
+            "mimeType": "application/json",
+            "text": "{\"dispenses\":[{\"prescriptionId\":\"2d4bae32-d769-4638-8a29-6f2116e9426b\",\"dispenseId\":\"e34580f8-7917-40bb-ad69-73d0be4dc091\",\"prescriptionNumber\":3917320,\"dispenseDate\":\"2026-10-12\",\"chemicalName\":\"Examplazole 5mg\",\"brandName\":\"Apo-Examplazole\",\"quantityDispensed\":30,\"prescriberName\":\"DR A EXAMPLE\",\"din\":\"02000017\",\"isArchive\":false,\"store\":{\"id\":1234,\"storeName\":\"Shoppers Drug Mart #1234\",\"phoneNumber\":\"5555550101\",\"address\":{\"line1\":\"2 Example St\",\"city\":\"Example\",\"province\":\"ON\",\"postalCode\":\"A1A 1A1\"},\"storeType\":\"Pharmacy\"}},{\"prescriptionId\":\"dfa2bd44-6cdd-4d03-8c0e-f1187156d9a9\",\"dispenseId\":\"6d6730b6-4213-40d2-ba30-0c860f32db6e\",\"prescriptionNumber\":3892618,\"dispenseDate\":\"2026-10-03\",\"chemicalName\":\"Examplazole 5mg\",\"brandName\":\"Apo-Examplazole\",\"quantityDispensed\":30,\"prescriberName\":\"DR A EXAMPLE\",\"din\":\"02000017\",\"isArchive\":false,\"store\":{\"id\":1234,\"storeName\":\"Shoppers Drug Mart #1234\",\"phoneNumber\":\"5555550101\",\"address\":{\"line1\":\"2 Example St\",\"city\":\"Example\",\"province\":\"ON\",\"postalCode\":\"A1A 1A1\"},\"storeType\":\"Pharmacy\"}},{\"prescriptionId\":\"b3bf4491-7fbb-4a1d-a6eb-09ea417ad86d\",\"dispenseId\":\"a4c932ab-19bd-453f-8ddd-428180e1f64d\",\"prescriptionNumber\":6886518,\"dispenseDate\":\"2026-10-02\",\"chemicalName\":\"Amoxicillin 500mg\",\"brandName\":\"Amoxil\",\"quantityDispensed\":20,\"prescriberName\":\"DR A EXAMPLE\",\"din\":\"51480840\",\"isArchive\":false,\"store\":{\"id\":1234,\"storeName\":\"Shoppers Drug Mart #1234\",\"phoneNumber\":\"5555550101\",\"address\":{\"line1\":\"2 Example St\",\"city\":\"Example\",\"province\":\"ON\",\"postalCode\":\"A1A 1A1\"},\"storeType\":\"Pharmacy\"}},{\"prescriptionId\":\"b3bf4491-7fbb-4a1d-a6eb-09ea417ad86d\",\"dispenseId\":\"447cfd64-5c31-4c56-a103-b66985967219\",\"prescriptionNumber\":6886518,\"dispenseDate\":\"2026-09-22\",\"chemicalName\":\"Amoxicillin 500mg\",\"brandName\":\"Amoxil\",\"quantityDispensed\":20,\"prescriberName\":\"DR A EXAMPLE\",\"din\":\"51480840\",\"isArchive\":false,\"store\":{\"id\":1234,\"storeName\":\"Shoppers Drug Mart #1234\",\"phoneNumber\":\"5555550101\",\"address\":{\"line1\":\"2 Example St\",\"city\":\"Example\",\"province\":\"ON\",\"postalCode\":\"A1A 1A1\"},\"storeType\":\"Pharmacy\"}},{\"prescriptionId\":\"dfa2bd44-6cdd-4d03-8c0e-f1187156d9a9\",\"dispenseId\":\"98b78419-a802-4561-8113-84580a4c857c\",\"prescriptionNumber\":3892618,\"dispenseDate\":\"2026-09-02\",\"chemicalName\":\"Examplazole 5mg\",\"brandName\":\"Apo-Examplazole\",\"quantityDispensed\":30,\"prescriberName\":\"DR A EXAMPLE\",\"din\":\"02000017\",\"isArchive\":false,\"store\":{\"id\":1234,\"storeName\":\"Shoppers Drug Mart #1234\",\"phoneNumber\":\"5555550101\",\"address\":{\"line1\":\"2 Example St\",\"city\":\"Example\",\"province\":\"ON\",\"postalCode\":\"A1A 1A1\"},\"storeType\":\"Pharmacy\"}},{\"prescriptionId\":\"2f2e08dc-e41d-43b5-aac5-9f1a0b1dadf5\",\"dispenseId\":\"0b5d9652-ec5d-4aac-846b-f8294b57eee8\",\"prescriptionNumber\":4072249,\"dispenseDate\":\"2026-08-03\",\"chemicalName\":\"Amoxicillin 500mg\",\"brandName\":\"Amoxil\",\"quantityDispensed\":20,\"prescriberName\":\"DR A EXAMPLE\",\"din\":\"51480840\",\"isArchive\":false,\"store\":{\"id\":1234,\"storeName\":\"Shoppers Drug Mart #1234\",\"phoneNumber\":\"5555550101\",\"address\":{\"line1\":\"2 Example St\",\"city\":\"Example\",\"province\":\"ON\",\"postalCode\":\"A1A 1A1\"},\"storeType\":\"Pharmacy\"}}]}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 3114
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 538.7,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "198.51.100.24",
+        "connection": "0",
+        "_initiator": {
+          "type": "script"
+        },
+        "_priority": "High",
+        "_resourceType": "xhr"
+      },
+      {
+        "pageref": "page_4",
+        "startedDateTime": "2026-11-01T16:02:40.040Z",
+        "time": 192.4,
+        "request": {
+          "method": "GET",
+          "url": "https://mypharmacy.shoppersdrugmart.ca/api/v1/customers/pcid/00000000-0000-4000-8000-000000000010?expand=patients%2Cstores",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "referer",
+              "value": "https://mypharmacy.shoppersdrugmart.ca/"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "expand",
+              "value": "patients,stores"
+            }
+          ],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "content": {
+            "size": 967,
+            "mimeType": "application/json",
+            "text": "{\"customer\":{\"id\":\"00000000-0000-4000-8000-000000000010\",\"pcid\":\"00000000-0000-4000-8000-000000000010\",\"firstName\":\"First\",\"lastName\":\"Example\",\"email\":\"person-1@example.com\",\"phoneNumber\":\"5555550100\",\"address\":{\"line1\":\"1 Example St\",\"city\":\"Example\",\"province\":\"ON\",\"postalCode\":\"A1A 1A1\"},\"patients\":[{\"id\":\"00000000-0000-4000-8000-000000000011\",\"firstName\":\"First\",\"lastName\":\"Example\",\"displayName\":\"First Example\",\"userId\":\"00000000-0000-4000-8000-000000000010\",\"storeId\":1234,\"phoneNumber\":\"5555550102\",\"address\":{\"line1\":\"1 Example St\",\"city\":\"Example\",\"province\":\"ON\",\"postalCode\":\"A1A 1A1\"}},{\"id\":\"00000000-0000-4000-8000-000000000012\",\"firstName\":\"Second\",\"lastName\":\"Example\",\"displayName\":\"Second Example\",\"userId\":\"00000000-0000-4000-8000-000000000010\",\"storeId\":1234,\"phoneNumber\":\"5555550103\",\"address\":{\"line1\":\"1 Example St\",\"city\":\"Example\",\"province\":\"ON\",\"postalCode\":\"A1A 1A1\"}}]},\"stores\":[{\"id\":1234,\"storeName\":\"Shoppers Drug Mart #1234\"}]}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 967
+        },
+        "cache": {},
+        "timings": {
+          "blocked": 1.2,
+          "dns": -1,
+          "connect": -1,
+          "send": 0.2,
+          "wait": 187.9,
+          "receive": 3.1,
+          "ssl": -1
+        },
+        "serverIPAddress": "198.51.100.24",
+        "connection": "0",
+        "_initiator": {
+          "type": "script"
+        },
+        "_priority": "High",
+        "_resourceType": "xhr"
+      }
+    ]
+  }
+}
