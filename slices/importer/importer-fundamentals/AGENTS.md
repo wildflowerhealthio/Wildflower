@@ -80,6 +80,21 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   out of one file set carries — which is what keeps a fixed key like DICOM's
   `patient`, or HAR's per-archive `har-entry-<index>`, from colliding across the
   files one format claimed.
+- `src/decoded-file.ts` — the **`DecodedFile`** namespace: a decode's
+  records adopted, as the review reads them. A **`Resource`** is one row,
+  `{ key, title, resource }`, and `shared` when it is one copy of several:
+  a **`Shared`** `{ identity, merge }` names the identity the copies share
+  (unique to one decoded file set) and the **`Merge`** that folds them, over
+  adopted resources. A format whose source describes one record in several
+  responses keeps every copy in its own section (the HAR binding tags them),
+  so the reviewer can leave one copy out with its response; the copies the
+  review keeps are merged after it. **`mergeSharedCopies(rows)`** is that
+  fold: each identity's copies among `rows`, folded in order with `merge`,
+  in the first copy's place, the later copies left out, every other row as
+  it is. **`withSharedCopiesMerged(rows)`** keeps a row per copy, each
+  holding its identity's merge, for a reader that answers per row (the
+  server diff, the confirm's plan). **`resources`** flattens a file's
+  sections and **`mapResources`** maps its rows.
 - `src/decoded-file-set.ts` — the **`DecodedFileSet`** namespace: one file
   set as its format decoded it. **`Type`** is its `pickedFiles` (read
   together, in the order they were picked), its `sections` and its `notes`.
@@ -88,7 +103,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   SOP Instance UID as `urn:oid:`), or `None` for a format whose files do not
   name themselves; the import stage writes it onto the file's source file as
   `masterIdentifier`. A **`Section`** is a titled group of records from one
-  source batch, `{ title, entries }`, each **`Entry`** `{ fullUrl, resource }`:
+  source batch, `{ title, entries }`, each **`Entry`** `{ fullUrl, resource }`
+  (and `shared` for one copy of several, which `adopt` keeps on its row):
   its identity within the set before it is stored (FHIR's `Bundle.entry.fullUrl`
   in a transaction, what the review tracks a choice by) and its record **detached** (`fhir-r4-adoption`'s `DetachedResource`: no
   id, keyed by its first identifier, naming every other decoded record by a
@@ -131,7 +147,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   A dispense that has a `subject` keeps it, whatever it names: it is the
   source's own statement of who received the fill. It is how a source that
   knows who a prescription is for, but not who a fill was for, files the
-  fill. The format decode tests adopt through it too.
+  fill. A shared copy whose identity has another copy naming a `subject` is
+  left with none: the copies merge after review, the merge supplies the
+  subject, and a source's merge (Shoppers') tells its copies apart by which
+  names no one. The format decode tests adopt through it too.
 - `src/resource-plan.ts` — the **`ResourcePlan`** namespace: where one
   decoded record is written, decided before any record of its set is
   adopted, as a FHIR server decides each transaction entry's id before
@@ -186,7 +205,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   the reads,
   which `importer-core`'s `planWrite` folds, row by row, into the confirm's
   write set — no re-parse at confirm, the reviewed (or edited) objects are
-  what gets written. Orphaned selection entries
+  what gets written, the copies of a shared resource among the included rows
+  merged into one (`DecodedFile.Shared`), so unticking a response leaves out
+  its own copies only. **`withKeptCopiesMerged(selection, rows)`** gives each
+  shared copy the reviewer has not unticked the merge of its identity's such
+  copies: what the review asks whether a row has a patient of, before the
+  default exclusion that answer decides. Orphaned selection entries
   (keys a re-decode no longer produces) are inert — sets and maps of keys,
   nothing dangling.
 - `src/identity-map/` — the **identity map**: for every referent an import

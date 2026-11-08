@@ -229,7 +229,10 @@ The importer has no HTTP wire union to derive, so there is no separate
   formats can carry the same resource key, so
   a flat map would let one format's verdict overwrite another's. Within one
   format the keys are already distinct, because `DecodeFunction.make` namespaces each
-  claimed file's keys by its slot in the batch. The screen blocks the
+  claimed file's keys by its slot in the batch. A shared copy
+  (`DecodedFile.Shared`) is probed as the merge of every copy of its
+  identity (`diffRowsOf`), so each copy gets the one verdict and a re-import
+  of a merged resource finds every copy `unchanged`. The screen blocks the
   first paint on it but **not** on the re-classification a settings change or
   a link choice triggers, since unmounting the panel mid-review would drop the
   focus of whatever control the reviewer is using; the verdicts the batch last
@@ -266,7 +269,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   referent links leave a mention unlinked in again
   (`UnlinkedMention.leftByReferentLinks` on the batch's plan, asked by
   `unlinked-mentions.ts` of each row as edited, else as decoded in the
-  batch's `decodedBatch`, a format's own source file never),
+  batch's `decodedBatch`, a shared copy merged with the copies the reviewer
+  has not unticked, a format's own source file never),
   under **Needs a patient** (an unlinked or empty `subject`) or else **Needs
   a provider**, each with why in one phrase ("names no patient", "names an
   account you chose not to link", "names a provider you chose not to link",
@@ -288,7 +292,10 @@ The importer has no HTTP wire union to derive, so there is no separate
   reviewer's tick, else the screen's default, so a patient picked for a
   resource without one takes it in, Don't link leaves it out again, and
   Revert leaves one out again when the resolved resource has no patient
-  either, unless the reviewer ticked or unticked it themselves.
+  either, unless the reviewer ticked or unticked it themselves. A shared
+  copy's row says, muted after its summary, which other section holds a copy
+  of its resource (`Also in <title>`, or `Also in <n> other responses`),
+  since each response's copy is reviewed, and unticked, on its own.
   `describe-resource.ts` reads a decoded resource in its wire form and names
   its subject by the label of the resource it is redirected to, else its `display`,
   never by its `Patient/<id>`. A section's tri-state heading toggle is

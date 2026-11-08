@@ -163,7 +163,8 @@ package alone and a layer that provides those.
   the resource's patient (outside every compartment, or a dangling
   `subject`). **`keysWithoutPatientOf(batch, kind, selection)`** names the
   rows left without a patient as they will be written (each row's edit,
-  else its resolved resource): the half of the review's default exclusion
+  else its resolved resource, a shared copy merged with the copies the
+  reviewer has not unticked, `StagedImport.withKeptCopiesMerged`): the half of the review's default exclusion
   that is not the server diff. `importer-react`'s screen and the import
   golden pin in `synthetic-data-core-js` both read it, so a headless import
   with every default accepted excludes what the screen does.
@@ -199,6 +200,14 @@ package alone and a layer that provides those.
     bundle keeps one entry per `Type/id`, the last occurrence, so the
     `Included` resources are exactly the bundle's entries and no row's edit
     is lost silently.
+
+  The copies of a shared resource (`DecodedFile.Shared`, one per response
+  the HAR binding read it from) are merged among the candidates only: each
+  candidate copy holds the merge of its identity's candidate copies, in
+  review order, edits merged in (`DecodedFile.withSharedCopiesMerged`). They
+  share one `Type/id`, so the last is `Included`, the merge, and the rest
+  `Superseded`; an unticked copy is `Excluded` and adds nothing, so a
+  resource another kept response holds is still written.
 
   It is the one place the rule for the linked records lives, since the review
   shows them read-only; the preview's counts and the confirm both read it.

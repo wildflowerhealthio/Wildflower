@@ -50,10 +50,11 @@ shell's shared `persistTransactionBundle`.
   archive:
   `decodeHar`, then `review.ts`'s `preview` over the pool (each kind yields
   detached records), then
-  `mergeSharedResources`, folded into `DecodedFileSet` sections —
+  `tagSharedResources`, folded into `DecodedFileSet` sections —
   one section per URL, a plain insertion-ordered map (first-seen order, only
   responses that parsed to at least one resource), each entry's `fullUrl` its
-  preview key, `<response id>:<index>` —
+  preview key, `<response id>:<index>`, a shared copy keeping its `shared`
+  tag —
   plus one diagnostic note per response that yielded nothing (no kind
   matched, parse failure, body absent, duplicate). The import stage adopts the
   records and puts them under the source-file section described above. Never
@@ -70,14 +71,20 @@ shell's shared `persistTransactionBundle`.
   non-resource outcome is folded to data so one bad response cannot abort the
   batch. Consumed by the importer's `decodeFileSet`; the per-resource selection
   (exclude/edit) lives in `importer-fundamentals`' `StagedImport`.
-- `src/merge-shared-resources.ts` — **`mergeSharedResources`**, where a
-  source's `mergeResources` runs. Over the whole preview, for each source that
-  gives one, the detached records sharing a key,
-  `(identifier[0].system, resourceType, identifier[0].value)`, become one: the
-  merged record under the first copy's review key and in its place, the later
-  copies dropped. A keyless record never merges. A response's pick is matched
-  to its source by kind name. A source without a merge keeps every copy, and
-  the batch write's later PUT wins.
+- `src/tag-shared-resources.ts` — **`tagSharedResources`**, where a source's
+  `mergeResources` is attached to the copies it merges. Over the whole
+  preview, for each source that gives one, every detached record whose
+  identity — the archive's picked-file id, the source, and
+  `(identifier[0].system, resourceType, identifier[0].value)` — occurs more
+  than once is tagged `shared` (`DecodedFile.Shared`): the identity, and the
+  source's merge lifted onto adopted rows (each copy handed over with its `id`
+  cleared, the merge keeping the earlier copy's `id`). Every copy stays in its
+  own response's section under its own key, so unticking a response leaves
+  out only its own copies. The merge runs after review, over the copies the
+  review keeps (`DecodedFile.mergeSharedCopies`; the confirm's `planWrite`).
+  A keyless record never merges. A response's pick is matched to its source
+  by kind name. A source without a merge leaves every copy untagged, and the
+  batch write's later PUT wins.
 - `src/decode-har.ts` — **`decodeHar`** (the byte-level parse step) and
   `toInput`. `HttpArchive.LogFromHarJson` (`http-archive`) decodes the
   archive into an `HttpArchive.Log`; each `HttpArchive.Entry` is restated
@@ -91,7 +98,7 @@ shell's shared `persistTransactionBundle`.
   `fhir-r4-source`'s `fhirR4Source`, `rexall-be-well-source`'s
   `rexallBeWellSource`, and `shoppers-drugmart-source`'s `shoppersDrugMartSource`.
   The flat pool responses are recognized and decoded through is
-  `SourceDescriptor.poolOf(fhirSources)`, and `mergeSharedResources` matches
+  `SourceDescriptor.poolOf(fhirSources)`, and `tagSharedResources` matches
   a response's kind to its source through the same list. Every kind yields
   detached records (`SourceDescriptor<DetachedResource.Type>`). Registering
   another source is one static append to `fhirSources`.

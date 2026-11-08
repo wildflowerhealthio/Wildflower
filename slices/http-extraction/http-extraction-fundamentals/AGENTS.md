@@ -58,8 +58,10 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   `resourceType` and key), for a source whose feeds each know part of one
   record. It spans
   kinds, which is why it sits on the source and not on a kind. Only a consumer
-  that holds a whole extraction before writing applies it: `har-importer-core`
-  does, over the whole preview. A source without one keeps every copy.
+  that holds a whole extraction before writing applies it: the HAR import
+  does, `har-importer-core` tagging the copies across the whole preview and
+  the review merging the copies it keeps. A source without one keeps every
+  copy.
 - **`Specificity`** (`src/specificity.ts`) — the exported cross-source tier
   constants a kind's `tryRecognize` draws its `specificity` from and routing
   ranks by, **highest wins**: `PORTAL` (100, a named patient portal) > `PROTOCOL`

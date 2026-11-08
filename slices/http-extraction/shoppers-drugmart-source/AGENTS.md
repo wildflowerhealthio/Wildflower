@@ -151,7 +151,10 @@ and `rexall-be-well-source` alike:
   history copy's store name as `location.display`, and its DIN coding when the
   status copy has none. It tells the copies apart by the history copy having
   no `subject`, so the result is the same in either arrival order. Only a consumer that
-  holds both copies applies it (the HAR import).
+  holds both copies applies it: the HAR import, after review, over the copies
+  the reviewer kept. Its import stage leaves a history copy with no `subject`
+  while a copy of the same fill names one, so the merge can still tell them
+  apart.
 - **A history fill's link to its prescription is by the prescription's key.**
   `authorizingPrescription` is the logical reference to the
   `MedicationRequest` keyed by `prescriptionId`. The slot holds one
