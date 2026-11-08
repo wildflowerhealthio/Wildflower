@@ -37,7 +37,8 @@ Every module is a namespace (`src/index.ts`):
   `RecordAccess.paragraphOf` the grant, one paragraph each. The telehealth voice says who to contact and how to look
   them up with the tools.
 - `src/record-access.ts` — `RecordAccess`: from `SmartConnection.grantedScopes`,
-  the types the agent may read (`r`), search (`s`) and write (`c`/`u`), each
+  the types the agent may read (`r`), search (`s`), create (`c`) and update
+  (`u`), each
   every type (a `*` scope) or the named R4 types; coverage is `scopes-core`'s
   (`Grant`, `MultiScope.within`), asked in every FHIR context, as both the v2
   letter and the v1 word. `paragraphOf` says it in words for the prompt.

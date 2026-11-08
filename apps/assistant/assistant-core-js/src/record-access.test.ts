@@ -21,16 +21,37 @@ const everyType: RecordAccess.ResourceTypes = { kind: 'every-type' }
 
 describe('RecordAccess.fromGrantedScopes', () => {
   it.each([
-    [['system/*.cruds'], { readable: everyType, searchable: everyType, writable: everyType }],
-    [['patient/*.rs'], { readable: everyType, searchable: everyType, writable: none }],
-    [['user/*.read'], { readable: everyType, searchable: everyType, writable: none }],
-    [['patient/*.write'], { readable: none, searchable: none, writable: everyType }],
     [
-      ['launch', 'openid', 'patient/Observation.rs', 'patient/Condition.r', 'user/Goal.cu'],
+      ['system/*.cruds'],
+      { readable: everyType, searchable: everyType, creatable: everyType, updatable: everyType },
+    ],
+    [
+      ['patient/*.rs'],
+      { readable: everyType, searchable: everyType, creatable: none, updatable: none },
+    ],
+    [
+      ['user/*.read'],
+      { readable: everyType, searchable: everyType, creatable: none, updatable: none },
+    ],
+    [
+      ['patient/*.write'],
+      { readable: none, searchable: none, creatable: everyType, updatable: everyType },
+    ],
+    [
+      [
+        'launch',
+        'openid',
+        'patient/Observation.rs',
+        'patient/Condition.r',
+        'user/Goal.cu',
+        'user/CarePlan.c',
+        'user/Condition.u',
+      ],
       {
         readable: named('Condition', 'Observation'),
         searchable: named('Observation'),
-        writable: named('Goal'),
+        creatable: named('CarePlan', 'Goal'),
+        updatable: named('Condition', 'Goal'),
       },
     ],
     [
@@ -38,14 +59,15 @@ describe('RecordAccess.fromGrantedScopes', () => {
       {
         readable: named('Observation'),
         searchable: named('Observation'),
-        writable: none,
+        creatable: none,
+        updatable: none,
       },
     ],
     [
       ['patient/PrescriptionOrder.rs', 'openid'],
-      { readable: none, searchable: none, writable: none },
+      { readable: none, searchable: none, creatable: none, updatable: none },
     ],
-    [[], { readable: none, searchable: none, writable: none }],
+    [[], { readable: none, searchable: none, creatable: none, updatable: none }],
   ] as const)('should read %j as what each type allows', (scopes, access) => {
     expect(accessOf(...scopes)).toEqual(access)
   })

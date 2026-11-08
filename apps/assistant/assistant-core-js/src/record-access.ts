@@ -4,8 +4,8 @@ import { Array, Match } from 'effect'
 
 /**
  * What the sign-in's grant lets the assistant do with the record: which
- * resource types it may read, search and write. The grant decides, not the
- * scope the app asked for.
+ * resource types it may read, search, create and update. The grant decides,
+ * not the scope the app asked for.
  *
  * @remarks
  * A namespace module: `RecordAccess.Type`, `RecordAccess.ResourceTypes`,
@@ -22,14 +22,16 @@ type ResourceTypes =
   | { readonly kind: 'every-type' }
   | { readonly kind: 'named-types'; readonly types: readonly ResourceType.Type[] }
 
-/** The resource types the grant covers for each kind of access. */
+/** The resource types the grant covers for each SMART interaction the assistant has a use for. */
 interface Type {
   /** Read one record by id (`r`). */
   readonly readable: ResourceTypes
   /** Search for records (`s`). */
   readonly searchable: ResourceTypes
-  /** Create or update records (`c` or `u`). */
-  readonly writable: ResourceTypes
+  /** Create a record (`c`). */
+  readonly creatable: ResourceTypes
+  /** Update a record (`u`). */
+  readonly updatable: ResourceTypes
 }
 
 /** A SMART v2 interaction letter, and the SMART v1 word that grants it. */
@@ -55,19 +57,17 @@ const grantCovers = (
     )
   )
 
-/** The resource types `granted` covers for any of `interactions`. */
+/** The resource types `granted` covers for `interaction`, among `namedTypes` unless it covers every type. */
 const resourceTypesCovering = (
   granted: Grant.Grant,
   namedTypes: readonly ResourceType.Type[],
-  interactions: readonly Interaction[]
+  interaction: Interaction
 ): ResourceTypes =>
-  interactions.some((interaction) => grantCovers(granted, '*', interaction))
+  grantCovers(granted, '*', interaction)
     ? { kind: 'every-type' }
     : {
         kind: 'named-types',
-        types: namedTypes.filter((resourceType) =>
-          interactions.some((interaction) => grantCovers(granted, resourceType, interaction))
-        ),
+        types: namedTypes.filter((resourceType) => grantCovers(granted, resourceType, interaction)),
       }
 
 /**
@@ -84,9 +84,10 @@ const fromGrantedScopes = (grantedScopes: readonly Scope.Any[]): Type => {
     )
   ).toSorted()
   return {
-    readable: resourceTypesCovering(granted, namedTypes, ['r']),
-    searchable: resourceTypesCovering(granted, namedTypes, ['s']),
-    writable: resourceTypesCovering(granted, namedTypes, ['c', 'u']),
+    readable: resourceTypesCovering(granted, namedTypes, 'r'),
+    searchable: resourceTypesCovering(granted, namedTypes, 's'),
+    creatable: resourceTypesCovering(granted, namedTypes, 'c'),
+    updatable: resourceTypesCovering(granted, namedTypes, 'u'),
   }
 }
 
