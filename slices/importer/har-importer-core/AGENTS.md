@@ -106,6 +106,15 @@ shell's shared `persistTransactionBundle`.
   `freeText`, and extend the example table in `shapes.test.ts` when you touch a
   pattern. `redact.ts` is the policy and the derivation loop; `leaves.ts` the
   traversal. See [Anonymization Explanation](../../../slices/anonymizer/docs/Anonymization%20Explanation.md).
+- `src/fixtures/` — the archives `decode-har.test.ts` decodes:
+  `chrome-fhir-capture.har.json`, a Chrome DevTools export of FHIR traffic,
+  and the two portal sessions `*.generated.har.json`
+  (`rexall-be-well`, `shoppers-drugmart`). Those two are written by the
+  synthetic-data generators (`apps/synthetic-data/synthetic-data-rexall-be-well`
+  and `-shoppers-drugmart`) from fixed inputs, and each generator's
+  `importer-fixture.test.ts` fails when its file is stale. Never hand-edit
+  them: regenerate with that package's `fixtures:importer` script. `vp fmt`
+  skips them (root `vite.config.ts`), since the check is byte for byte.
 
 ## Layering
 
