@@ -5,7 +5,7 @@ import type {
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { harImporter } from '@wildflowerhealthio/har-importer-core'
 import { importDecoded } from '@wildflowerhealthio/importer-core'
-import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFile, type PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   dinOf,
@@ -82,10 +82,17 @@ const importHar = async (har: string): Promise<Imported> => {
       .decode([picked], null)
       .pipe(Effect.flatMap((decoded) => importDecoded(harImporter, decoded)))
   )
-  const sections = result.decoded.sections
-    .filter((section) => section.title !== 'Source file')
-    .map((section) => section.resources.map((entry) => entry.resource))
-  const resources = sections.flat()
+  const extractedSections = result.decoded.sections.filter(
+    (section) => section.title !== 'Source file'
+  )
+  const sections = extractedSections.map((section) =>
+    section.resources.map((entry) => entry.resource)
+  )
+  // As the review writes them when it keeps every row: the copies of a fill
+  // both feeds hold merged into one.
+  const resources = DecodedFile.mergeSharedCopies(
+    DecodedFile.resources({ sections: extractedSections })
+  ).map((entry) => entry.resource)
   return {
     notes: result.decoded.notes,
     unreadableFiles: result.unreadableFiles,

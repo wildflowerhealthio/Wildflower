@@ -2,7 +2,7 @@
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { harImporter } from '@wildflowerhealthio/har-importer-core'
 import { importDecoded } from '@wildflowerhealthio/importer-core'
-import { sha256Base64 } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFile, sha256Base64 } from '@wildflowerhealthio/importer-fundamentals'
 import type { DateTime } from 'effect'
 import { Effect, Either } from 'effect'
 import * as fc from 'fast-check'
@@ -35,14 +35,20 @@ import * as Reader from './snapshot-reader.ts'
  * snapshot's files served to a reader from memory.
  */
 
-/** Every resource `bytes` imports to through the HAR importer and the import stage, picked as `fileName`. */
+/**
+ * Every resource `bytes` imports to through the HAR importer and the import
+ * stage, picked as `fileName`, when the review keeps every row: the copies of
+ * a shared resource merged into one (`DecodedFile.mergeSharedCopies`).
+ */
 const importHar = (bytes: Uint8Array, fileName: string): Promise<readonly FhirResource[]> =>
   Effect.runPromise(
     harImporter
       .decode([{ id: `0:${fileName}`, fileName, bytes }], null)
       .pipe(Effect.flatMap((decoded) => importDecoded(harImporter, decoded)))
   ).then((result) =>
-    result.decoded.sections.flatMap((section) => section.resources.map((entry) => entry.resource))
+    DecodedFile.mergeSharedCopies(DecodedFile.resources(result.decoded)).map(
+      (entry) => entry.resource
+    )
   )
 
 /** A generated person's Rexall records, and a chest image re-identified as them. */

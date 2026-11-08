@@ -10,7 +10,7 @@ import type {
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { harImporter } from '@wildflowerhealthio/har-importer-core'
 import { importDecoded } from '@wildflowerhealthio/importer-core'
-import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFile, type PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   dinOf,
@@ -79,9 +79,11 @@ const importHar = async (har: string): Promise<Imported> => {
       .decode([picked], null)
       .pipe(Effect.flatMap((decoded) => importDecoded(harImporter, decoded)))
   )
-  const resources = result.decoded.sections
-    .filter((section) => section.title !== 'Source file')
-    .flatMap((section) => section.resources.map((entry) => entry.resource))
+  const resources = DecodedFile.mergeSharedCopies(
+    DecodedFile.resources({
+      sections: result.decoded.sections.filter((section) => section.title !== 'Source file'),
+    })
+  ).map((entry) => entry.resource)
   return {
     notes: result.decoded.notes,
     unreadableFiles: result.unreadableFiles,
