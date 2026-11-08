@@ -1,7 +1,7 @@
 import type { BetaToolResultBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import { Scope } from '@wildflowerhealthio/scopes-core'
-import { Effect, Encoding } from 'effect'
+import { Effect, Encoding, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type * as ChatPatient from './chat-patient.ts'
@@ -205,6 +205,36 @@ describe('Tools.run search_records', () => {
     })
 
     expect(server.readPaths).toEqual(['Observation?_count=50'])
+  })
+
+  it.each([
+    [[{ name: '_count', value: 'ten' }], '_count must be a whole number of at least 1.'],
+    [[{ name: '_count', value: '0' }], '_count must be a whole number of at least 1.'],
+    [[{ name: 'code&patient', value: 'x' }], '"code&patient" isn\'t a search parameter name.'],
+  ])('should refuse the parameters %j, reading nothing', (params, reason) => {
+    const server = stubFhirRecords({ '': Effect.succeed(searchBundleOf([])) })
+
+    expect(
+      runCall(toolsFor(everyone), server, 'search_records', { resourceType: 'Observation', params })
+    ).toEqual(failed(reason))
+    expect(server.readPaths).toEqual([])
+  })
+
+  it('should answer with JSON its result schema reads back', () => {
+    const server = stubFhirRecords({
+      'Observation?': Effect.succeed(searchBundleOf([observation('o1', 'p1')], { total: 7 })),
+    })
+
+    const { content } = runCall(toolsFor(ada), server, 'search_records', {
+      resourceType: 'Observation',
+      params: [],
+    })
+
+    expect(Schema.decodeUnknownSync(Tools.PageResult)(content)).toEqual({
+      resources: [observation('o1', 'p1')],
+      total: 7,
+      more: false,
+    })
   })
 
   it('should refuse a parameter that would reach other patients, reading nothing', () => {

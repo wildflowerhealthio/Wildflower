@@ -85,14 +85,8 @@ const summaryOf = (call: Call): string =>
     Match.orElse((name) => `Called ${name}`)
   )
 
-/** A tool result's JSON, as far as its count is read. */
-const ResultCounts = Schema.parseJson(
-  Schema.Struct({
-    resources: Schema.optional(Schema.Array(Schema.Unknown)),
-    more: Schema.optional(Schema.Boolean),
-    resourceTypes: Schema.optional(Schema.Array(Schema.Unknown)),
-  })
-)
+const decodePage = Schema.decodeUnknownOption(Tools.PageResult)
+const decodeCapabilities = Schema.decodeUnknownOption(Tools.CapabilitiesResult)
 
 /** `count` of `noun`, pluralised by adding `s`. */
 const countOf = (count: number, noun: string): string =>
@@ -108,25 +102,21 @@ const resultSummaryOf = (name: string, result: Option.Option<BetaToolResultBlock
     onNone: () => 'No result',
     onSome: ({ is_error, content }) => {
       if (is_error === true) return 'Failed'
-      const counts = Schema.decodeUnknownOption(ResultCounts)(content)
       return Match.value(name).pipe(
         Match.whenOr(Tools.SEARCH_RECORDS, Tools.NEXT_PAGE, () =>
-          counts.pipe(
-            Option.flatMap(({ resources, more }) =>
-              Option.map(Option.fromNullable(resources), (found) =>
-                more === true
-                  ? `${countOf(found.length, 'record')}, more available`
-                  : countOf(found.length, 'record')
-              )
+          decodePage(content).pipe(
+            Option.map(({ resources, more }) =>
+              more
+                ? `${countOf(resources.length, 'record')}, more available`
+                : countOf(resources.length, 'record')
             ),
             Option.getOrElse(() => 'Done')
           )
         ),
         Match.when(Tools.READ_RECORD, () => '1 record'),
         Match.when(Tools.CAPABILITIES, () =>
-          counts.pipe(
-            Option.flatMap(({ resourceTypes }) => Option.fromNullable(resourceTypes)),
-            Option.map((types) => countOf(types.length, 'record type')),
+          decodeCapabilities(content).pipe(
+            Option.map(({ resourceTypes }) => countOf(resourceTypes.length, 'record type')),
             Option.getOrElse(() => 'Done')
           )
         ),

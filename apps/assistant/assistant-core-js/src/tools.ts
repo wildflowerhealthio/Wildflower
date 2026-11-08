@@ -4,13 +4,14 @@ import type {
   BetaToolUseBlockParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { IdSchema } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Data, Effect, Encoding, Either, Match, Option, Schema } from 'effect'
+import { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
+import { Array, Data, Effect, Encoding, Either, Match, Option, Schema, String as Str } from 'effect'
 
 import * as ChatPatient from './chat-patient.ts'
 import { type FhirReadFailed, FhirRecords } from './fhir-records.ts'
 import * as PatientPin from './patient-pin.ts'
 import * as RecordAccess from './record-access.ts'
+import * as SearchParam from './search-param.ts'
 
 /**
  * The tools a chat offers the agent, built from the grant and the patient
@@ -49,13 +50,10 @@ const DEFAULT_COUNT = 20
 /** The most a search may ask for in one page. */
 const MAX_COUNT = 50
 
-/** One search parameter, as the agent gives it. */
-const SearchParamSchema = Schema.Struct({ name: Schema.String, value: Schema.String })
-
 /** `search_records`' input. */
 const SearchRecordsInput = Schema.Struct({
   resourceType: Schema.String,
-  params: Schema.Array(SearchParamSchema),
+  params: Schema.Array(SearchParam.Schema),
 })
 
 /** `next_page`'s input. */
@@ -66,6 +64,37 @@ const ReadRecordInput = Schema.Struct({ resourceType: Schema.String, id: Schema.
 
 /** `capabilities`' input: nothing. */
 const CapabilitiesInput = Schema.Struct({})
+
+/**
+ * `search_records`' and `next_page`'s result, as the JSON the agent reads:
+ * one page of `resources`; `total` when the server counted the matches;
+ * `more` when the server has another page, and the `next` cursor to it when
+ * that page is under the FHIR base.
+ */
+const PageResult = Schema.parseJson(
+  Schema.Struct({
+    resources: Schema.Array(Schema.Unknown),
+    total: Schema.optionalWith(Schema.NonNegativeInt, { exact: true }),
+    more: Schema.Boolean,
+    next: Schema.optionalWith(Schema.String, { exact: true }),
+  })
+)
+
+/** `read_record`'s result, as the JSON the agent reads: the record as the server sent it. */
+const ReadRecordResult = Schema.parseJson()
+
+/**
+ * `capabilities`' result, as the JSON the agent reads: for each type the
+ * chat can search that the server's `CapabilityStatement` lists, the search
+ * parameters it lists for it.
+ */
+const CapabilitiesResult = Schema.parseJson(
+  Schema.Struct({
+    resourceTypes: Schema.Array(
+      Schema.Struct({ type: ResourceType.Schema, searchParams: Schema.Array(Schema.String) })
+    ),
+  })
+)
 
 /** The tools of one chat, and what they were built from. */
 interface Type {
@@ -244,29 +273,29 @@ const offeredTypeOf = (
     })
   )
 
-/** A search parameter name: letters, digits, `_`, `-`, and `:` or `.` for modifiers and chains. */
-const SEARCH_PARAM_NAME = /^[A-Za-z_][A-Za-z0-9_\-:.]*$/u
+/** A `_count` the agent may set: a whole number of at least 1. */
+const AskedPageSize = Schema.NumberFromString.pipe(Schema.int(), Schema.positive())
 
-/** The page size `params` asks for, and the parameters without `_count`. */
-const pageSizeOf = (
-  params: readonly PatientPin.SearchParam[]
-): Effect.Effect<
-  { readonly count: number; readonly params: readonly PatientPin.SearchParam[] },
-  ToolCallRefused
-> => {
-  const [otherParams, countParams] = Array.partition(params, ({ name }) => name === '_count')
-  return Array.head(countParams).pipe(
+/**
+ * The page size `params` ask for with their first `_count`, held to
+ * {@link MAX_COUNT}; {@link DEFAULT_COUNT} when they set none.
+ */
+const pageSizeOf = (params: readonly SearchParam.Type[]): Effect.Effect<number, ToolCallRefused> =>
+  Array.findFirst(params, ({ name }) => name === '_count').pipe(
     Option.match({
-      onNone: () => Effect.succeed({ count: DEFAULT_COUNT, params: otherParams }),
-      onSome: ({ value }) => {
-        const asked = Number(value)
-        return Number.isInteger(asked) && asked > 0
-          ? Effect.succeed({ count: Math.min(asked, MAX_COUNT), params: otherParams })
-          : refuse('_count must be a whole number of at least 1.')
-      },
+      onNone: () => Effect.succeed(DEFAULT_COUNT),
+      onSome: ({ value }) =>
+        Schema.decode(AskedPageSize)(value).pipe(
+          Effect.mapBoth({
+            onFailure: () =>
+              new ToolCallRefused({ reason: '_count must be a whole number of at least 1.' }),
+            onSuccess: (asked) => Math.min(asked, MAX_COUNT),
+          })
+        ),
     })
   )
-}
+
+const isSearchParamName = Schema.is(SearchParam.Name)
 
 /** `url` as a path under `fhirBaseUrl` (relative, no leading slash), if it is one. */
 const pathUnderBaseOf = ({
@@ -287,7 +316,7 @@ const pathUnderBaseOf = ({
 /** A search result page, as far as the tools read it. */
 const SearchBundle = Schema.Struct({
   resourceType: Schema.Literal('Bundle'),
-  total: Schema.optional(Schema.Number),
+  total: Schema.optional(Schema.NonNegativeInt),
   entry: Schema.optional(
     Schema.Array(Schema.Struct({ resource: Schema.optional(Schema.Unknown) }))
   ),
@@ -311,8 +340,9 @@ const refuseOtherPatientsRecords = (
         : Effect.void,
   })
 
-/** The type a page path (`Observation?…`, or `?…` for a server's paging handle) searches, `''` for none. */
-const searchedTypeOf = (path: string): string => path.split(/[?/]/u)[0] ?? ''
+/** The type a page path (`Observation?…`) searches; `None` for a server's paging handle (`?…`). */
+const searchedTypeIfNamed = (path: string): Option.Option<string> =>
+  Option.fromNullable(path.split(/[?/]/u)[0]).pipe(Option.filter(Str.isNonEmpty))
 
 /** The opaque cursor for the page at `path`. */
 const cursorOf = (path: string): string => Encoding.encodeBase64Url(path)
@@ -340,7 +370,7 @@ const readPage = (
     const nextPath = Option.flatMap(nextUrl, (url) =>
       pathUnderBaseOf({ url, fhirBaseUrl: records.fhirBaseUrl })
     )
-    return JSON.stringify({
+    return Schema.encodeSync(PageResult)({
       resources,
       ...(page.total === undefined ? {} : { total: page.total }),
       more: Option.isSome(nextUrl),
@@ -358,22 +388,23 @@ const searchRecords = (
   Effect.gen(function* () {
     const { resourceType, params } = yield* decodeInput(SearchRecordsInput, input)
     const searchedType = yield* offeredTypeOf(tools.searchableTypes, resourceType)
-    yield* Array.findFirst(params, ({ name }) => !SEARCH_PARAM_NAME.test(name)).pipe(
+    yield* Array.findFirst(params, ({ name }) => !isSearchParamName(name)).pipe(
       Option.match({
         onNone: () => Effect.void,
         onSome: ({ name }) => refuse(`"${name}" isn't a search parameter name.`),
       })
     )
-    const page = yield* pageSizeOf(params)
+    const pageSize = yield* pageSizeOf(params)
+    const paramsWithoutCount = params.filter(({ name }) => name !== '_count')
     const pinnedParams = yield* Option.match(ChatPatient.patientIdIfOne(tools.patient), {
-      onNone: () => Effect.succeed(page.params),
+      onNone: () => Effect.succeed(paramsWithoutCount),
       onSome: (patientId) =>
         PatientPin.of(searchedType).pipe(
           Option.match({
             onNone: () => refuse(`${searchedType} can't be kept to one patient.`),
             onSome: (pin) =>
-              Either.match(PatientPin.pinnedParamsOf(pin, patientId, page.params), {
-                onLeft: (name) =>
+              Either.match(PatientPin.pinnedParamsOf(pin, patientId, paramsWithoutCount), {
+                onLeft: ({ name }) =>
                   refuse(
                     `The ${name} parameter isn't allowed: this chat is about one patient, and the tool sets whose records to search itself.`
                   ),
@@ -384,7 +415,7 @@ const searchRecords = (
     })
     const query = new URLSearchParams([
       ...pinnedParams.map(({ name, value }): [string, string] => [name, value]),
-      ['_count', String(page.count)],
+      ['_count', String(pageSize)],
     ])
     return yield* readPage(tools, `${searchedType}?${query.toString()}`)
   })
@@ -405,8 +436,10 @@ const nextPage = (
       ),
       Either.mapLeft(() => notACursor)
     )
-    const searchedType = searchedTypeOf(path)
-    if (searchedType !== '') yield* offeredTypeOf(tools.searchableTypes, searchedType)
+    yield* Option.match(searchedTypeIfNamed(path), {
+      onNone: () => Effect.void,
+      onSome: (searchedType) => offeredTypeOf(tools.searchableTypes, searchedType),
+    })
     return yield* readPage(tools, path)
   })
 
@@ -431,7 +464,7 @@ const readRecord = (
             )
           : Effect.void,
     })
-    return JSON.stringify(record)
+    return Schema.encodeSync(ReadRecordResult)(record)
   })
 
 /** A `CapabilityStatement`, as far as `capabilities` reads it. */
@@ -466,15 +499,18 @@ const capabilities = (
         refuse("The server's answer wasn't a CapabilityStatement.")
       )
     )
-    const searchable: ReadonlySet<string> = new Set(tools.searchableTypes)
     const resourceTypes = (statement.rest ?? [])
       .flatMap(({ resource }) => resource ?? [])
-      .filter(({ type }) => searchable.has(type))
-      .map(({ type, searchParam }) => ({
-        type,
-        searchParams: (searchParam ?? []).map(({ name }) => name),
-      }))
-    return JSON.stringify({ resourceTypes })
+      .flatMap(({ type, searchParam }) =>
+        Array.findFirst(tools.searchableTypes, (searchableType) => searchableType === type).pipe(
+          Option.map((searchableType) => ({
+            type: searchableType,
+            searchParams: (searchParam ?? []).map(({ name }) => name),
+          })),
+          Option.toArray
+        )
+      )
+    return Schema.encodeSync(CapabilitiesResult)({ resourceTypes })
   })
 
 /** What the agent is told of a read the server failed. */
@@ -536,13 +572,16 @@ const run = (
 export {
   CAPABILITIES,
   CapabilitiesInput,
+  CapabilitiesResult,
   DEFAULT_COUNT,
   make,
   MAX_COUNT,
   NEXT_PAGE,
   NextPageInput,
+  PageResult,
   READ_RECORD,
   ReadRecordInput,
+  ReadRecordResult,
   run,
   SEARCH_RECORDS,
   SearchRecordsInput,

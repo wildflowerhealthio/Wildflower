@@ -10,6 +10,7 @@
  * - {@link Chat} — a chat's entries, its codec and its `sessionStorage` place.
  * - {@link RecordAccess} — what the grant lets the assistant do with the record.
  * - {@link PatientPin} — how a chat about one patient keeps its reads to them.
+ * - {@link SearchParam} — one FHIR search parameter, as the agent gives it.
  * - {@link Tools} — the read tools a chat offers, and how a call to one runs.
  * - {@link ToolCall} — a kept tool call, in words for the transcript.
  * - {@link Turn} — one turn of a chat: replies streamed, tools run, until answered.
@@ -32,6 +33,7 @@ export type { FhirReadFailure } from './fhir-records.ts'
 export type { StoragePage } from './internal/page-storage.ts'
 export * as PatientPin from './patient-pin.ts'
 export * as RecordAccess from './record-access.ts'
+export * as SearchParam from './search-param.ts'
 export * as Style from './style.ts'
 export * as ToolCall from './tool-call.ts'
 export * as Tools from './tools.ts'

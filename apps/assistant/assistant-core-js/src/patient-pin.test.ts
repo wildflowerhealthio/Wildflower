@@ -44,7 +44,7 @@ describe('PatientPin.pinnedParamsOf', () => {
       const pin = Option.getOrThrow(PatientPin.of(type))
 
       expect(PatientPin.pinnedParamsOf(pin, 'p1', [code, { name, value: 'p2' }])).toEqual(
-        Either.left(name)
+        Either.left({ name, value: 'p2' })
       )
     }
   )

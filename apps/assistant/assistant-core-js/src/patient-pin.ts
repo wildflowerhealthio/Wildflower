@@ -1,6 +1,8 @@
 import type { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Either, Match, Option, Schema } from 'effect'
 
+import * as SearchParam from './search-param.ts'
+
 /**
  * How a chat about one patient keeps its reads to that patient: the search
  * parameter that pins each resource type to them, the parameters a search
@@ -137,12 +139,6 @@ const of = (resourceType: ResourceType.Type): Option.Option<Type> => {
   return Option.none()
 }
 
-/** One search parameter, as the agent gives it: a name (with any modifier or chain) and a value. */
-interface SearchParam {
-  readonly name: string
-  readonly value: string
-}
-
 /** The parameters a pinned search may not set, since they name whose records to read. */
 const patientNamingParametersOf = (pin: Type): readonly string[] =>
   Match.value(pin).pipe(
@@ -152,23 +148,22 @@ const patientNamingParametersOf = (pin: Type): readonly string[] =>
     Match.exhaustive
   )
 
-/** The parameter `name` is a modifier or chain of: `subject` for `subject:Patient` or `subject.name`. */
-const baseNameOf = (name: string): string => name.split(/[:.]/u)[0] ?? name
-
 /**
  * `params` with the parameter that keeps `pin`'s type to `patientId` added,
- * or, on the left, the name of a parameter the agent set that would choose
- * whose records to read.
+ * or, on the left, the first parameter the agent set that would choose whose
+ * records to read.
  */
 const pinnedParamsOf = (
   pin: Type,
   patientId: string,
-  params: readonly SearchParam[]
-): Either.Either<readonly SearchParam[], string> => {
+  params: readonly SearchParam.Type[]
+): Either.Either<readonly SearchParam.Type[], SearchParam.Type> => {
   const forbidden = patientNamingParametersOf(pin)
-  return Array.findFirst(params, ({ name }) => forbidden.includes(baseNameOf(name))).pipe(
+  return Array.findFirst(params, ({ name }) =>
+    forbidden.includes(SearchParam.baseNameOf(name))
+  ).pipe(
     Option.match({
-      onSome: ({ name }) => Either.left(name),
+      onSome: Either.left,
       onNone: () =>
         Either.right(
           Match.value(pin).pipe(
@@ -228,4 +223,4 @@ const isAboutAnotherPatient = (record: unknown, patientId: string): boolean =>
   )
 
 export { isAboutAnotherPatient, of, pinnedParamsOf }
-export type { SearchParam, Type }
+export type { Type }

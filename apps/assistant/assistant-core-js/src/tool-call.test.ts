@@ -1,8 +1,9 @@
 import type { BetaToolResultBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import { Option } from 'effect'
+import { Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ToolCall from './tool-call.ts'
+import * as Tools from './tools.ts'
 
 const search: ToolCall.Call = {
   name: 'search_records',
@@ -62,7 +63,19 @@ describe('ToolCall.resultSummaryOf', () => {
     ],
     ['next_page', resultOf('{"resources":[{}],"more":false}'), '1 record'],
     ['read_record', resultOf('{"resourceType":"Patient","name":[{"text":"Ada"}]}'), '1 record'],
-    ['capabilities', resultOf('{"resourceTypes":[{},{},{}]}'), '3 record types'],
+    [
+      'capabilities',
+      resultOf(
+        Schema.encodeSync(Tools.CapabilitiesResult)({
+          resourceTypes: [
+            { type: 'Observation', searchParams: ['code'] },
+            { type: 'Condition', searchParams: [] },
+            { type: 'Patient', searchParams: ['_id'] },
+          ],
+        })
+      ),
+      '3 record types',
+    ],
     ['search_records', resultOf('The FHIR server answered 500.', true), 'Failed'],
     ['search_records', Option.none(), 'No result'],
   ] as const)('should sum up a %s result without repeating its records', (name, result, line) => {

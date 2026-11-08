@@ -44,6 +44,9 @@ Every module is a namespace (`src/index.ts`):
   organizations, medications and the like as they are), the parameters a
   pinned search may not set, and `isAboutAnotherPatient`, the check every
   record read back passes.
+- `src/search-param.ts` — `SearchParam`: one search parameter as the agent
+  gives it (`name`, `value`), the `Name` grammar a search's names are held
+  to, and `baseNameOf` (the parameter a modifier or chain is of).
 - `src/fhir-records.ts` — `FhirRecords`, the Effect service the tools read
   the FHIR server through (its base, and one GET of a path under it as JSON),
   and `FhirReadFailed`, a value saying why a read failed.
@@ -99,8 +102,12 @@ Every module is a namespace (`src/index.ts`):
   offered. A `next` cursor is the next link's path under the FHIR base,
   base64url-encoded; one that leaves the base or names a type not offered is
   refused.
-- **Tool results.** One page per search: `_count` 20 unless the agent sets
-  it, 50 at most; compact JSON `{ resources, total?, more, next? }`. A failed
+- **Tool results.** Each tool's result is defined once as a `Schema.parseJson`
+  schema the tool encodes with and the transcript's card decodes with:
+  `Tools.PageResult` (`search_records`, `next_page`), `Tools.ReadRecordResult`
+  and `Tools.CapabilitiesResult`. One page per search: `_count` 20 unless
+  the agent sets it (`AskedPageSize`, a whole number of at least 1), 50 at
+  most; compact JSON `{ resources, total?, more, next? }`. A failed
   call is a result with `is_error: true` and why, the server's
   `OperationOutcome` text included; it is not a turn failure. All of a
   reply's calls run at once (`Effect.forEach` unbounded) and their results go
