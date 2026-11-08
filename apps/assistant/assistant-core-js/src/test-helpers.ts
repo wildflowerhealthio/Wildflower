@@ -15,12 +15,13 @@ import type {
   BetaRawMessageStreamEvent,
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import type { ResourceWrite } from '@wildflowerhealthio/fhir-r4/clients'
 import { hasId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, Layer, Option, Schema } from 'effect'
 
 import type * as ChatPatient from './chat-patient.ts'
 import { Claude, type ClaudeClient, type ClaudeMessageStream } from './claude.ts'
-import { FhirReadFailed, FhirRecords } from './fhir-records.ts'
+import { FhirReadFailed, FhirRecords, type FhirWriteFailed } from './fhir-records.ts'
 import type { KeptStorage, StoragePage } from './internal/page-storage.ts'
 
 /** A storage call a blocked browser refuses. */
@@ -305,23 +306,57 @@ const toolUseBlock = (id: string, name: string, input: unknown): BetaContentBloc
 /** The FHIR base a {@link stubFhirRecords} server is at. */
 const STUB_FHIR_BASE = 'https://fhir.example/r4'
 
-/** A stub FHIR server, and every path it was asked to read, in order. */
+/** A write a {@link stubFhirRecords} server was asked to make. */
+type StubWrite =
+  | { readonly kind: 'create'; readonly resource: ResourceWrite.ResourceJson }
+  | {
+      readonly kind: 'update'
+      readonly resource: ResourceWrite.ResourceJson & { readonly id: string }
+      readonly versionId: string
+    }
+
+/** How a {@link stubFhirRecords} server answers a write. */
+type StubWriteAnswer = (write: StubWrite) => Effect.Effect<ResourceWrite.Written, FhirWriteFailed>
+
+/**
+ * The record `written` as a server that keeps versions stores it: a create
+ * under the id `created-1` at version 1, an update at the version after the
+ * one it named.
+ */
+const storeWrite: StubWriteAnswer = (write) => {
+  const id = write.kind === 'create' ? 'created-1' : write.resource.id
+  const versionId = write.kind === 'create' ? '1' : String(Number(write.versionId) + 1)
+  return Effect.succeed({
+    record: { ...write.resource, id, meta: { versionId } },
+    id,
+    versionId: Option.some(versionId),
+  })
+}
+
+/** A stub FHIR server, every path it was asked to read and every write it was asked to make, in order. */
 interface StubFhirRecords {
   /** The {@link FhirRecords} layer reading from it. */
   readonly layer: Layer.Layer<FhirRecords>
   readonly readPaths: string[]
+  readonly writes: StubWrite[]
 }
 
 /**
- * A FHIR server at {@link STUB_FHIR_BASE} answering each read with the
- * answer whose key is the longest prefix of its path; a path no key matches
- * fails as a 404. Answers are Effects, so a test can hold one back.
+ * A FHIR server at `fhirBaseUrl` ({@link STUB_FHIR_BASE} unless given)
+ * answering each read with the answer whose key is the longest prefix of
+ * its path; a path no key matches fails as a 404. Writes are answered by
+ * `answerWrite`, which stores them ({@link storeWrite}) unless given. Answers
+ * are Effects, so a test can hold one back.
  */
 const stubFhirRecords = (
   answers: Readonly<Record<string, Effect.Effect<unknown, FhirReadFailed>>>,
-  fhirBaseUrl: string = STUB_FHIR_BASE
+  {
+    fhirBaseUrl = STUB_FHIR_BASE,
+    answerWrite = storeWrite,
+  }: { readonly fhirBaseUrl?: string; readonly answerWrite?: StubWriteAnswer } = {}
 ): StubFhirRecords => {
   const readPaths: string[] = []
+  const writes: StubWrite[] = []
   const keys = Object.keys(answers).toSorted((left, right) => right.length - left.length)
   const read = (path: string): Effect.Effect<unknown, FhirReadFailed> =>
     Effect.suspend(() => {
@@ -337,7 +372,21 @@ const stubFhirRecords = (
         )
       )
     })
-  return { layer: Layer.succeed(FhirRecords, { fhirBaseUrl, read }), readPaths }
+  const write = (asked: StubWrite): Effect.Effect<ResourceWrite.Written, FhirWriteFailed> =>
+    Effect.suspend(() => {
+      writes.push(asked)
+      return answerWrite(asked)
+    })
+  return {
+    layer: Layer.succeed(FhirRecords, {
+      fhirBaseUrl,
+      read,
+      create: ({ resource }) => write({ kind: 'create', resource }),
+      update: ({ resource, versionId }) => write({ kind: 'update', resource, versionId }),
+    }),
+    readPaths,
+    writes,
+  }
 }
 
 /** The server failing a read with `status`, its `OperationOutcome` saying `outcomeText` when given. */
@@ -411,6 +460,7 @@ export {
   scriptedReply,
   searchBundleOf,
   stubClaude,
+  storeWrite,
   stubFhirRecords,
   textBlock,
   textDelta,
@@ -418,4 +468,4 @@ export {
   thinkingDelta,
   toolUseBlock,
 }
-export type { HeldReply, StorageCall, StubClaude, StubFhirRecords }
+export type { HeldReply, StorageCall, StubClaude, StubFhirRecords, StubWrite, StubWriteAnswer }

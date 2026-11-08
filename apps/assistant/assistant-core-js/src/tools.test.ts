@@ -1,11 +1,12 @@
 import type { BetaToolResultBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import { Scope } from '@wildflowerhealthio/scopes-core'
-import { Effect, Encoding, Schema } from 'effect'
+import { Effect, Either, Encoding, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type * as ChatPatient from './chat-patient.ts'
-import { FhirReadFailed } from './fhir-records.ts'
+import * as Chat from './chat.ts'
+import { FhirReadFailed, FhirWriteFailed } from './fhir-records.ts'
 import * as RecordAccess from './record-access.ts'
 import {
   fhirFailure,
@@ -14,8 +15,10 @@ import {
   STUB_FHIR_BASE,
   type StubFhirRecords,
   stubFhirRecords,
+  toolUseBlock,
 } from './test-helpers.ts'
 import * as Tools from './tools.ts'
+import type * as WriteProposal from './write-proposal.ts'
 
 const ada = onePatientChat({ id: 'p1', given: 'Ada', family: 'Lovelace' })
 const everyone: ChatPatient.Type = { kind: 'all-patients' }
@@ -58,12 +61,52 @@ const observation = (id: string, patientId: string): unknown => ({
 })
 
 describe('Tools.make', () => {
-  it('should offer every tool over every R4 type for every patient under system/*.cruds', () => {
+  it('should offer every tool over every R4 type for every patient under system/*.cruds, and none that deletes', () => {
     const tools = toolsFor(everyone)
 
-    expect(namesOf(tools)).toEqual(['search_records', 'next_page', 'capabilities', 'read_record'])
+    expect(namesOf(tools)).toEqual([
+      'search_records',
+      'next_page',
+      'capabilities',
+      'read_record',
+      'create_record',
+      'update_record',
+    ])
     expect(tools.searchableTypes).toEqual(ResourceType.VALUES)
     expect(tools.readableTypes).toEqual(ResourceType.VALUES)
+    expect(tools.creatableTypes).toEqual(ResourceType.VALUES)
+    expect(tools.updatableTypes).toEqual(ResourceType.VALUES)
+  })
+
+  it('should offer no delete tool under any grant', () => {
+    for (const scope of ['system/*.cruds', 'system/*.d', 'user/Observation.cruds', 'patient/*.*']) {
+      expect(
+        namesOf(toolsFor(everyone, accessOf(scope))).filter((name) => /delete/u.test(name))
+      ).toEqual([])
+    }
+    expect(namesOf(toolsFor(everyone, accessOf('system/*.d')))).toEqual([])
+  })
+
+  it('should offer the write tools only for the types the grant can create or update', () => {
+    const tools = toolsFor(everyone, accessOf('patient/Observation.c', 'patient/Condition.u'))
+
+    expect(namesOf(tools)).toEqual(['create_record', 'update_record'])
+    expect(tools.creatableTypes).toEqual(['Observation'])
+    expect(tools.updatableTypes).toEqual(['Condition'])
+    expect(tools.definitions[0]).toMatchObject({
+      input_schema: {
+        properties: {
+          resource: { properties: { resourceType: { enum: ['Observation'] } } },
+        },
+      },
+    })
+  })
+
+  it('should not offer to create a Patient in a chat about one, but should to update theirs', () => {
+    expect(toolsFor(ada).creatableTypes).not.toContain('Patient')
+    expect(toolsFor(ada).creatableTypes).toContain('Observation')
+    expect(toolsFor(ada).updatableTypes).toContain('Patient')
+    expect(toolsFor(everyone).creatableTypes).toContain('Patient')
   })
 
   it('should offer fewer tools and types under a narrower grant', () => {
@@ -76,7 +119,7 @@ describe('Tools.make', () => {
       'next_page',
       'capabilities',
     ])
-    expect(namesOf(toolsFor(everyone, accessOf('openid', 'patient/*.cu')))).toEqual([])
+    expect(namesOf(toolsFor(everyone, accessOf('openid', 'patient/*.d')))).toEqual([])
   })
 
   it('should offer only the types it can keep to one patient in a chat about one', () => {
@@ -435,5 +478,432 @@ describe('Tools.run for a tool the chat lacks', () => {
     expect(
       runCall(toolsFor(everyone, accessOf('openid')), stubFhirRecords({}), 'search_records', {})
     ).toEqual(failed('There is no tool called search_records.'))
+  })
+})
+
+/** A chat in which `read_record` read each of `records`, one round each. */
+const chatHavingRead = (...records: readonly unknown[]): Chat.Type =>
+  records.reduce<Chat.Type>(
+    (chat, record, index) =>
+      Chat.append(chat, {
+        _tag: 'tool-round',
+        modelId: 'claude-sonnet-5',
+        message: {
+          role: 'assistant',
+          content: [toolUseBlock(`read-${String(index)}`, 'read_record', {})],
+        },
+        results: [
+          {
+            type: 'tool_result',
+            tool_use_id: `read-${String(index)}`,
+            content: JSON.stringify(record),
+          },
+        ],
+      }),
+    Chat.append(Chat.start('telehealth'), Chat.questionOf('Fix my record'))
+  )
+
+/** Propose the write `name` with `resource` against `server`, as call `call-1`, after `chat`. */
+const proposeCall = (
+  tools: Tools.Type,
+  server: StubFhirRecords,
+  name: string,
+  resource: unknown,
+  chat: Chat.Type = chatHavingRead()
+): Either.Either<WriteProposal.Type, BetaToolResultBlockParam> =>
+  Effect.runSync(
+    Tools.propose(
+      tools,
+      { id: 'call-1', name, input: { resource } },
+      Tools.versionsReadIn(chat)
+    ).pipe(Effect.provide(server.layer))
+  )
+
+/** Carry out `proposal` as `decision` against `server`. */
+const carryOutAgainst = (
+  server: StubFhirRecords,
+  proposal: WriteProposal.Type,
+  decision: WriteProposal.Decision
+): Promise<BetaToolResultBlockParam> =>
+  Effect.runPromise(Tools.carryOut(proposal, decision).pipe(Effect.provide(server.layer)))
+
+const weight = {
+  resourceType: 'Observation',
+  status: 'final',
+  code: { text: 'Weight' },
+  valueQuantity: { value: 70, unit: 'kg' },
+}
+
+const storedWeight = {
+  ...weight,
+  id: 'o1',
+  subject: { reference: 'Patient/p1' },
+  meta: { versionId: '3', lastUpdated: '2026-11-01T00:00:00Z' },
+}
+
+describe('Tools.propose create_record', () => {
+  it("should propose the record with its subject pointed at the chat's patient", () => {
+    const proposal = proposeCall(toolsFor(ada), stubFhirRecords({}), 'create_record', {
+      ...weight,
+      subject: { reference: 'Patient/p1', display: 'Ada' },
+    })
+
+    expect(proposal).toEqual(
+      Either.right({
+        kind: 'create',
+        callId: 'call-1',
+        resource: { ...weight, subject: { reference: 'Patient/p1', display: 'Ada' } },
+      })
+    )
+  })
+
+  it("should point a relative or unset subject at the chat's patient", () => {
+    expect(
+      proposeCall(toolsFor(ada), stubFhirRecords({}), 'create_record', { ...weight, subject: {} })
+    ).toEqual(
+      Either.right({
+        kind: 'create',
+        callId: 'call-1',
+        resource: { ...weight, subject: { reference: 'Patient/p1' } },
+      })
+    )
+  })
+
+  it.each([
+    [
+      'a record about another patient',
+      { ...weight, subject: { reference: 'Patient/p2' } },
+      "This record is about another patient, so it can't be created: this chat is about one patient.",
+    ],
+    [
+      'a record about a patient with no reference to them',
+      weight,
+      'A Observation is about a patient: add its subject or patient reference (whichever the type has), and the tool points it at Patient/p1, the patient this chat is about.',
+    ],
+    [
+      'a new Patient',
+      { resourceType: 'Patient', name: [{ family: 'Byron' }] },
+      "This chat is about one patient, so it can't create a Patient: a new patient isn't this one.",
+    ],
+    [
+      'a record with an id',
+      { ...weight, id: 'mine', subject: { reference: 'Patient/p1' } },
+      'Leave out the id: the server assigns one to a new record.',
+    ],
+  ])('should refuse %s in a chat about one patient', (_case, resource, reason) => {
+    expect(proposeCall(toolsFor(ada), stubFhirRecords({}), 'create_record', resource)).toEqual(
+      Either.left(failed(reason))
+    )
+  })
+
+  it('should propose a record about no one patient as given', () => {
+    const practitioner = { resourceType: 'Practitioner', name: [{ family: 'Who' }] }
+
+    expect(proposeCall(toolsFor(ada), stubFhirRecords({}), 'create_record', practitioner)).toEqual(
+      Either.right({ kind: 'create', callId: 'call-1', resource: practitioner })
+    )
+  })
+
+  it('should propose any record as given in a chat about every patient', () => {
+    const forBob = { ...weight, subject: { reference: 'Patient/p2' } }
+
+    expect(proposeCall(toolsFor(everyone), stubFhirRecords({}), 'create_record', forBob)).toEqual(
+      Either.right({ kind: 'create', callId: 'call-1', resource: forBob })
+    )
+  })
+
+  it('should refuse a type the grant cannot create', () => {
+    const tools = toolsFor(everyone, accessOf('patient/Condition.c'))
+
+    expect(proposeCall(tools, stubFhirRecords({}), 'create_record', weight)).toEqual(
+      Either.left(failed("Observation isn't one of the record types this tool can reach."))
+    )
+  })
+})
+
+describe('Tools.propose update_record', () => {
+  const amended = {
+    ...storedWeight,
+    status: 'amended',
+    valueQuantity: { value: 71 },
+    note: [{ text: 'Rechecked' }],
+  }
+
+  it('should refuse an update of a record not read in this chat', () => {
+    const server = stubFhirRecords({ 'Observation/o1': Effect.succeed(storedWeight) })
+
+    expect(proposeCall(toolsFor(ada), server, 'update_record', amended)).toEqual(
+      Either.left(
+        failed(
+          "Observation/o1 hasn't been read in this chat, so the version to change isn't known. Read it with read_record first."
+        )
+      )
+    )
+    expect(server.readPaths).toEqual([])
+  })
+
+  it('should read the record again and propose the change field by field: added, changed and removed', () => {
+    const server = stubFhirRecords({ 'Observation/o1': Effect.succeed(storedWeight) })
+
+    const proposal = proposeCall(
+      toolsFor(ada),
+      server,
+      'update_record',
+      amended,
+      chatHavingRead(storedWeight)
+    )
+
+    expect(proposal).toEqual(
+      Either.right({
+        kind: 'update',
+        callId: 'call-1',
+        resource: amended,
+        versionId: '3',
+        fields: [
+          {
+            path: ['status'],
+            server: { _tag: 'value', value: 'final' },
+            incoming: { _tag: 'value', value: 'amended' },
+          },
+          {
+            path: ['valueQuantity', 'value'],
+            server: { _tag: 'value', value: 70 },
+            incoming: { _tag: 'value', value: 71 },
+          },
+          {
+            path: ['valueQuantity', 'unit'],
+            server: { _tag: 'value', value: 'kg' },
+            incoming: { _tag: 'absent' },
+          },
+          {
+            path: ['note'],
+            server: { _tag: 'absent' },
+            incoming: { _tag: 'value', value: [{ text: 'Rechecked' }] },
+          },
+        ],
+      })
+    )
+    expect(server.readPaths).toEqual(['Observation/o1'])
+  })
+
+  it('should refuse an update when the record changed since it was read', () => {
+    const server = stubFhirRecords({
+      'Observation/o1': Effect.succeed({ ...storedWeight, meta: { versionId: '4' } }),
+    })
+
+    expect(
+      proposeCall(toolsFor(ada), server, 'update_record', amended, chatHavingRead(storedWeight))
+    ).toEqual(Either.left(failed(Tools.STALE_RECORD_TEXT)))
+  })
+
+  it('should propose against the latest version the chat read', () => {
+    const server = stubFhirRecords({
+      'Observation/o1': Effect.succeed({ ...storedWeight, meta: { versionId: '4' } }),
+    })
+    const chat = chatHavingRead(storedWeight, { ...storedWeight, meta: { versionId: '4' } })
+
+    expect(proposeCall(toolsFor(ada), server, 'update_record', amended, chat)).toMatchObject(
+      Either.right({ versionId: '4' })
+    )
+  })
+
+  it('should refuse a change that would move the record to another patient', () => {
+    const server = stubFhirRecords({ 'Observation/o1': Effect.succeed(storedWeight) })
+
+    expect(
+      proposeCall(
+        toolsFor(ada),
+        server,
+        'update_record',
+        { ...amended, subject: { reference: 'Patient/p2' } },
+        chatHavingRead(storedWeight)
+      )
+    ).toEqual(
+      Either.left(
+        failed(
+          "This change would make the record about another patient, so it isn't proposed: this chat is about one patient."
+        )
+      )
+    )
+  })
+
+  it("should change only the chat's own Patient in a chat about one", () => {
+    const bob = { resourceType: 'Patient', id: 'p2', meta: { versionId: '1' } }
+    const ada1 = { resourceType: 'Patient', id: 'p1', meta: { versionId: '1' } }
+    const server = stubFhirRecords({
+      'Patient/p1': Effect.succeed(ada1),
+      'Patient/p2': Effect.succeed(bob),
+    })
+    const chat = chatHavingRead(ada1, bob)
+
+    expect(
+      proposeCall(toolsFor(ada), server, 'update_record', { ...bob, gender: 'male' }, chat)
+    ).toEqual(
+      Either.left(
+        failed(
+          "This change would make the record about another patient, so it isn't proposed: this chat is about one patient."
+        )
+      )
+    )
+    expect(
+      proposeCall(toolsFor(ada), server, 'update_record', { ...ada1, gender: 'female' }, chat)
+    ).toMatchObject(Either.right({ kind: 'update', versionId: '1' }))
+  })
+
+  it('should refuse a change that changes nothing', () => {
+    const server = stubFhirRecords({ 'Observation/o1': Effect.succeed(storedWeight) })
+
+    expect(
+      proposeCall(
+        toolsFor(ada),
+        server,
+        'update_record',
+        storedWeight,
+        chatHavingRead(storedWeight)
+      )
+    ).toEqual(Either.left(failed('The record already says this, so there is nothing to change.')))
+  })
+})
+
+describe('Tools.versionsReadIn', () => {
+  it('should hold the latest version of each record read, searched or written, and none from failed calls', () => {
+    const searched = { ...storedWeight, id: 'o2', meta: { versionId: '7' } }
+    const chat = Chat.append(chatHavingRead(storedWeight, { resourceType: 'Patient', id: 'p1' }), {
+      _tag: 'tool-round',
+      modelId: 'claude-sonnet-5',
+      message: {
+        role: 'assistant',
+        content: [
+          toolUseBlock('search', 'search_records', {}),
+          toolUseBlock('update', 'update_record', {}),
+          toolUseBlock('failed', 'read_record', {}),
+        ],
+      },
+      results: [
+        {
+          type: 'tool_result',
+          tool_use_id: 'search',
+          content: JSON.stringify({ resources: [searched], more: false }),
+        },
+        {
+          type: 'tool_result',
+          tool_use_id: 'update',
+          content: Schema.encodeSync(Tools.WriteRecordResult)({
+            resourceType: 'Observation',
+            id: 'o1',
+            versionId: '4',
+            record: { ...storedWeight, meta: { versionId: '4' } },
+          }),
+        },
+        {
+          type: 'tool_result',
+          tool_use_id: 'failed',
+          is_error: true,
+          content: JSON.stringify({ ...storedWeight, id: 'o3' }),
+        },
+      ],
+    })
+
+    expect(Tools.versionsReadIn(chat)).toEqual(
+      new Map([
+        ['Observation/o1', '4'],
+        ['Observation/o2', '7'],
+      ])
+    )
+  })
+})
+
+describe('Tools.carryOut', () => {
+  const createProposal: WriteProposal.Type = {
+    kind: 'create',
+    callId: 'call-1',
+    resource: { ...weight, resourceType: 'Observation', subject: { reference: 'Patient/p1' } },
+  }
+  const updateProposal: WriteProposal.Type = {
+    kind: 'update',
+    callId: 'call-1',
+    resource: { ...storedWeight, resourceType: 'Observation', status: 'amended' },
+    versionId: '3',
+    fields: [],
+  }
+
+  it('should create an approved record and answer with the stored record', async () => {
+    const server = stubFhirRecords({})
+
+    const result = await carryOutAgainst(server, createProposal, { kind: 'approved' })
+
+    expect(server.writes).toEqual([{ kind: 'create', resource: createProposal.resource }])
+    expect(result).toEqual({
+      type: 'tool_result',
+      tool_use_id: 'call-1',
+      content: Schema.encodeSync(Tools.WriteRecordResult)({
+        resourceType: 'Observation',
+        id: 'created-1',
+        versionId: '1',
+        record: { ...createProposal.resource, id: 'created-1', meta: { versionId: '1' } },
+      }),
+    })
+  })
+
+  it('should update an approved record against the version it was proposed at', async () => {
+    const server = stubFhirRecords({})
+
+    const result = await carryOutAgainst(server, updateProposal, { kind: 'approved' })
+
+    expect(server.writes).toEqual([
+      { kind: 'update', resource: updateProposal.resource, versionId: '3' },
+    ])
+    expect(Schema.decodeUnknownSync(Tools.WriteRecordResult)(result.content)).toMatchObject({
+      id: 'o1',
+      versionId: '4',
+    })
+  })
+
+  it('should tell the agent to re-read a record that changed before the update landed', async () => {
+    const server = stubFhirRecords(
+      {},
+      {
+        answerWrite: () =>
+          Effect.fail(new FhirWriteFailed({ failure: { kind: 'precondition-failed' } })),
+      }
+    )
+
+    expect(await carryOutAgainst(server, updateProposal, { kind: 'approved' })).toEqual(
+      failed('The record changed since you read it; re-read it first.')
+    )
+  })
+
+  it("should pass on what the server's OperationOutcome said of a refused write", async () => {
+    const server = stubFhirRecords(
+      {},
+      {
+        answerWrite: () =>
+          Effect.fail(
+            new FhirWriteFailed({
+              failure: {
+                kind: 'error-status',
+                status: 422,
+                outcomeText: Option.some('code is required'),
+              },
+            })
+          ),
+      }
+    )
+
+    expect(await carryOutAgainst(server, createProposal, { kind: 'approved' })).toEqual(
+      failed('The FHIR server answered 422, so nothing was saved. It said: code is required')
+    )
+  })
+
+  it.each([
+    [Option.none(), 'The user declined this change.'],
+    [Option.some('Wrong date'), 'The user declined this change. Reason: Wrong date'],
+  ])('should write nothing for a declined change and say so', async (reason, content) => {
+    const server = stubFhirRecords({})
+
+    expect(await carryOutAgainst(server, createProposal, { kind: 'declined', reason })).toEqual(
+      failed(content)
+    )
+    expect(server.writes).toEqual([])
   })
 })

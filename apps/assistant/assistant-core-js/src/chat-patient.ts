@@ -63,7 +63,7 @@ const paragraphOf = (chatPatient: Type): string =>
     Match.when(
       { kind: 'patient' },
       ({ patient }) =>
-        `This chat is about one patient, ${nameAndBirthOf(patient)}. Your tools keep every search and read to this patient's records.`
+        `This chat is about one patient, ${nameAndBirthOf(patient)}. Your tools keep every search, read and write to this patient's records.`
     ),
     Match.when(
       { kind: 'all-patients' },

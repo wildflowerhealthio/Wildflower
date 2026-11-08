@@ -3,15 +3,33 @@ import type {
   BetaToolResultBlockParam,
   BetaToolUseBlockParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import {
+  diffJson,
+  type ResourceWrite,
+  withoutServerManagedMeta,
+} from '@wildflowerhealthio/fhir-r4/clients'
 import { IdSchema } from '@wildflowerhealthio/fhir-r4/data-types'
 import { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Data, Effect, Encoding, Either, Match, Option, Schema, String as Str } from 'effect'
+import {
+  Array,
+  Data,
+  Effect,
+  Encoding,
+  Either,
+  Match,
+  Option,
+  Predicate,
+  Schema,
+  String as Str,
+} from 'effect'
 
 import * as ChatPatient from './chat-patient.ts'
-import { type FhirReadFailed, FhirRecords } from './fhir-records.ts'
+import * as Chat from './chat.ts'
+import { type FhirReadFailed, FhirRecords, type FhirWriteFailed } from './fhir-records.ts'
 import * as PatientPin from './patient-pin.ts'
 import * as RecordAccess from './record-access.ts'
 import * as SearchParam from './search-param.ts'
+import type * as WriteProposal from './write-proposal.ts'
 
 /**
  * The tools a chat offers the agent, built from the grant and the patient
@@ -30,11 +48,22 @@ import * as SearchParam from './search-param.ts'
  * - `read_record` — one record by type and id.
  * - `capabilities` — what the server says it can search on, for the types
  *   the chat offers.
+ * - `create_record` — propose a new record, which the person approves or
+ *   declines before it is created.
+ * - `update_record` — propose a change to a record read in this chat, shown
+ *   field by field, which the person approves or declines before it is
+ *   saved against the version that was read.
+ *
+ * There is no delete tool under any grant: a record entered by mistake is
+ * marked `entered-in-error` through an update. A read runs with {@link run};
+ * a write is first a {@link WriteProposal} ({@link propose}), run once the
+ * person decides ({@link carryOut}).
  *
  * In a chat about one patient, each search is pinned to them
- * ({@link PatientPin}) and every record read back is checked to be theirs;
- * a type nothing pins is not offered. A failed call is a tool result with
- * `is_error: true` saying why, the server's `OperationOutcome` text included.
+ * ({@link PatientPin}), every record read back is checked to be theirs, and
+ * every record written is about them or no one patient; a type nothing pins
+ * is not offered. A failed call is a tool result with `is_error: true`
+ * saying why, the server's `OperationOutcome` text included.
  *
  * @packageDocumentation
  */
@@ -43,6 +72,8 @@ const SEARCH_RECORDS = 'search_records'
 const NEXT_PAGE = 'next_page'
 const READ_RECORD = 'read_record'
 const CAPABILITIES = 'capabilities'
+const CREATE_RECORD = 'create_record'
+const UPDATE_RECORD = 'update_record'
 
 /** The page size a search asks for unless the agent sets `_count`. */
 const DEFAULT_COUNT = 20
@@ -64,6 +95,15 @@ const ReadRecordInput = Schema.Struct({ resourceType: Schema.String, id: Schema.
 
 /** `capabilities`' input: nothing. */
 const CapabilitiesInput = Schema.Struct({})
+
+/** A resource as the agent writes it: FHIR JSON naming its `resourceType`. */
+const ResourceInput = Schema.Struct(
+  { resourceType: Schema.String },
+  Schema.Record({ key: Schema.String, value: Schema.Unknown })
+)
+
+/** `create_record`'s and `update_record`'s input: the whole resource to write. */
+const WriteRecordInput = Schema.Struct({ resource: ResourceInput })
 
 /**
  * `search_records`' and `next_page`'s result, as the JSON the agent reads:
@@ -96,6 +136,20 @@ const CapabilitiesResult = Schema.parseJson(
   })
 )
 
+/**
+ * `create_record`'s and `update_record`'s result, as the JSON the agent
+ * reads: the record as the server stored it, its type, the id it is stored
+ * under, and its `versionId` when the server keeps versions.
+ */
+const WriteRecordResult = Schema.parseJson(
+  Schema.Struct({
+    resourceType: ResourceType.Schema,
+    id: Schema.String,
+    versionId: Schema.optionalWith(Schema.String, { exact: true }),
+    record: Schema.Unknown,
+  })
+)
+
 /** The tools of one chat, and what they were built from. */
 interface Type {
   readonly patient: ChatPatient.Type
@@ -103,6 +157,10 @@ interface Type {
   readonly searchableTypes: readonly ResourceType.Type[]
   /** The types `read_record` offers, in R4's order; empty when it is not offered. */
   readonly readableTypes: readonly ResourceType.Type[]
+  /** The types `create_record` offers, in R4's order; empty when it is not offered. */
+  readonly creatableTypes: readonly ResourceType.Type[]
+  /** The types `update_record` offers, in R4's order; empty when it is not offered. */
+  readonly updatableTypes: readonly ResourceType.Type[]
   /** The tool definitions every request of the chat sends. */
   readonly definitions: readonly BetaTool[]
 }
@@ -204,6 +262,73 @@ const CAPABILITIES_DEFINITION: BetaTool = {
   input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
 }
 
+/** The JSON Schema of a write tool's `resource`: an object whose `resourceType` is one of `types`. */
+const resourceInputSchemaOf = (
+  types: readonly ResourceType.Type[],
+  description: string
+): Record<string, unknown> => ({
+  type: 'object',
+  description,
+  properties: { resourceType: enumOf(types, "The record's FHIR resource type.") },
+  required: ['resourceType'],
+})
+
+/** What every write tool's description says of the person's decision and of mistaken records. */
+const WRITE_DECISION_NOTE =
+  ' Nothing is saved until the person approves it: the result is the stored record, or why it was not saved. "The user declined this change." means they said no, followed by their reason when they gave one.'
+
+/**
+ * `create_record`'s definition. Not `strict`: a resource is an open object,
+ * which strict tool schemas can't express (every object there must forbid
+ * properties it doesn't list); the input is decoded before it runs.
+ */
+const createRecordDefinition = (
+  patient: ChatPatient.Type,
+  creatableTypes: readonly ResourceType.Type[]
+): BetaTool => ({
+  name: CREATE_RECORD,
+  description:
+    'Propose a new record for the FHIR server, as a whole FHIR R4 resource in JSON, without an id: the server assigns one.' +
+    WRITE_DECISION_NOTE +
+    (patient.kind === 'patient'
+      ? " This chat is about one patient: the tool sets the record's subject or patient reference to them, so a record about a patient needs one of those elements, and a record about another patient is refused."
+      : ''),
+  input_schema: {
+    type: 'object',
+    properties: {
+      resource: resourceInputSchemaOf(creatableTypes, 'The new record, as FHIR R4 JSON.'),
+    },
+    required: ['resource'],
+    additionalProperties: false,
+  },
+})
+
+/** `update_record`'s definition; not `strict`, as `create_record`'s isn't. */
+const updateRecordDefinition = (
+  patient: ChatPatient.Type,
+  updatableTypes: readonly ResourceType.Type[]
+): BetaTool => ({
+  name: UPDATE_RECORD,
+  description:
+    'Propose a change to a record you have read in this chat (with read_record, search_records or next_page): give the whole record as it should be, as FHIR R4 JSON with its id, not only the fields that change. The person sees each field that changes.' +
+    WRITE_DECISION_NOTE +
+    " It is saved only if the record is still the version you read; if it changed, read it again and propose the change afresh. Records are never deleted: to retract one entered by mistake, set its status to entered-in-error (or the type's equivalent)." +
+    (patient.kind === 'patient'
+      ? ' This chat is about one patient: only their records can be changed.'
+      : ''),
+  input_schema: {
+    type: 'object',
+    properties: {
+      resource: resourceInputSchemaOf(
+        updatableTypes,
+        'The whole record as it should be, with its id.'
+      ),
+    },
+    required: ['resource'],
+    additionalProperties: false,
+  },
+})
+
 /** The types `resourceTypes` covers that a chat about `patient` can keep to them. */
 const offeredTypesOf = (
   resourceTypes: RecordAccess.ResourceTypes,
@@ -214,9 +339,24 @@ const offeredTypesOf = (
   )
 
 /**
+ * The types `create_record` offers a chat about `patient`: those
+ * `creatable` covers that the chat can keep to them, but not `Patient` in a
+ * chat about one patient, since a new patient is not that patient.
+ */
+const creatableTypesOf = (
+  creatable: RecordAccess.ResourceTypes,
+  patient: ChatPatient.Type
+): readonly ResourceType.Type[] =>
+  offeredTypesOf(creatable, patient).filter(
+    (resourceType) => patient.kind === 'all-patients' || resourceType !== 'Patient'
+  )
+
+/**
  * The tools for a chat about `patient` under `access`: searching (with
  * `next_page` and `capabilities`) when some type can be searched, reading
- * by id when some type can be read, each offering only those types.
+ * by id when some type can be read, proposing new records and changes when
+ * some type can be created or updated, each offering only those types.
+ * Nothing deletes, whatever the grant.
  */
 const make = ({
   access,
@@ -227,10 +367,14 @@ const make = ({
 }): Type => {
   const searchableTypes = offeredTypesOf(access.searchable, patient)
   const readableTypes = offeredTypesOf(access.readable, patient)
+  const creatableTypes = creatableTypesOf(access.creatable, patient)
+  const updatableTypes = offeredTypesOf(access.updatable, patient)
   return {
     patient,
     searchableTypes,
     readableTypes,
+    creatableTypes,
+    updatableTypes,
     definitions: [
       ...(searchableTypes.length > 0
         ? [
@@ -240,6 +384,8 @@ const make = ({
           ]
         : []),
       ...(readableTypes.length > 0 ? [readRecordDefinition(patient, readableTypes)] : []),
+      ...(creatableTypes.length > 0 ? [createRecordDefinition(patient, creatableTypes)] : []),
+      ...(updatableTypes.length > 0 ? [updateRecordDefinition(patient, updatableTypes)] : []),
     ],
   }
 }
@@ -528,15 +674,377 @@ const fhirFailureTextOf = ({ failure }: FhirReadFailed): string =>
     Match.exhaustive
   )
 
+/** The tool result text for a change the person declined. */
+const DECLINED_TEXT = 'The user declined this change.'
+
+/** The tool result text for an update whose record changed since it was read. */
+const STALE_RECORD_TEXT = 'The record changed since you read it; re-read it first.'
+
+/** The opening of the tool result text for a write the server accepted but answered unreadably. */
+const ACCEPTED_UNREADABLE_OPENING = 'The FHIR server accepted the change'
+
+/** What the agent is told of a write the server failed. */
+const writeFailureTextOf = ({ failure }: FhirWriteFailed): string =>
+  Match.value(failure).pipe(
+    Match.when({ kind: 'precondition-failed' }, () => STALE_RECORD_TEXT),
+    Match.when({ kind: 'error-status' }, ({ status, outcomeText }) => {
+      const answered = `The FHIR server answered ${String(status)}, so nothing was saved.`
+      return Option.match(outcomeText, {
+        onNone: () => answered,
+        onSome: (text) => `${answered} It said: ${text}`,
+      })
+    }),
+    Match.when(
+      { kind: 'unreachable' },
+      () => "The FHIR server couldn't be reached, so nothing was saved."
+    ),
+    Match.when(
+      { kind: 'accepted-unreadable' },
+      ({ status }) =>
+        `${ACCEPTED_UNREADABLE_OPENING} (${String(status)}) but its answer couldn't be read, so it was probably saved. Search for the record before trying again.`
+    ),
+    Match.exhaustive
+  )
+
+/** A record as far as its version is read: its type, its id and its `meta.versionId`. */
+const VersionedRecord = Schema.Struct({
+  resourceType: Schema.String,
+  id: Schema.String,
+  meta: Schema.Struct({ versionId: Schema.String }),
+})
+
+const decodeVersionedRecord = Schema.decodeUnknownOption(VersionedRecord)
+const decodeReadRecordResult = Schema.decodeUnknownOption(ReadRecordResult)
+const decodePageResult = Schema.decodeUnknownOption(PageResult)
+const decodeWriteRecordResult = Schema.decodeUnknownOption(WriteRecordResult)
+
+/** The records the result `content` of a call to `toolName` holds; none for a tool that holds none. */
+const recordsInResultOf = (toolName: string, content: unknown): readonly unknown[] =>
+  Match.value(toolName).pipe(
+    Match.when(READ_RECORD, () => Option.toArray(decodeReadRecordResult(content))),
+    Match.whenOr(SEARCH_RECORDS, NEXT_PAGE, () =>
+      decodePageResult(content).pipe(
+        Option.map(({ resources }) => resources),
+        Option.getOrElse((): readonly unknown[] => [])
+      )
+    ),
+    Match.whenOr(CREATE_RECORD, UPDATE_RECORD, () =>
+      decodeWriteRecordResult(content).pipe(
+        Option.map(({ record }) => [record]),
+        Option.getOrElse((): readonly unknown[] => [])
+      )
+    ),
+    Match.orElse(() => [])
+  )
+
 /**
- * Run `call` with `tools`, against the FHIR server in the context, and
- * succeed with its tool result: the JSON the tool read, or `is_error: true`
- * and why it failed. A call to a tool the chat doesn't have is a failed
- * result too.
+ * The version of each record the chat has read or written so far, by its
+ * `Type/id`: every record a successful `read_record`, `search_records`,
+ * `next_page`, `create_record` or `update_record` result in `chat` holds,
+ * the latest seen of each. A record the server keeps no version of is not
+ * in it, since it can't be updated against one.
+ */
+const versionsReadIn = (chat: Chat.Type): ReadonlyMap<string, string> =>
+  new Map(
+    chat.entries.flatMap((entry) => {
+      if (entry._tag !== 'tool-round') return []
+      const toolNameById = new Map(
+        Chat.toolCallsOf(entry.message).map(({ id, name }) => [id, name] as const)
+      )
+      return entry.results.flatMap(({ tool_use_id, is_error, content }) =>
+        is_error === true
+          ? []
+          : recordsInResultOf(toolNameById.get(tool_use_id) ?? '', content).flatMap((record) =>
+              decodeVersionedRecord(record).pipe(
+                Option.map(
+                  ({ resourceType, id, meta }) => [`${resourceType}/${id}`, meta.versionId] as const
+                ),
+                Option.toArray
+              )
+            )
+      )
+    })
+  )
+
+/** Refuse `record` if the chat is about one patient and it is about another. */
+const refuseIfAboutAnotherPatient = (
+  tools: Type,
+  record: unknown,
+  reason: string
+): Effect.Effect<void, ToolCallRefused> =>
+  Option.match(ChatPatient.patientIdIfOne(tools.patient), {
+    onNone: () => Effect.void,
+    onSome: (patientId) =>
+      PatientPin.isAboutAnotherPatient(record, patientId) ? refuse(reason) : Effect.void,
+  })
+
+/** The elements a record about a patient names them by. */
+const PATIENT_REFERENCE_ELEMENTS = ['subject', 'patient'] as const
+
+/** `element` (a `Reference`, or anything the agent put there) pointed at `Patient/<patientId>`. */
+const pointedAtPatient = (element: unknown, patientId: string): unknown =>
+  Predicate.isRecord(element)
+    ? { ...element, reference: `Patient/${patientId}` }
+    : { reference: `Patient/${patientId}` }
+
+/**
+ * `resource`, of `resourceType`, as a chat about `patient` creates it: in a
+ * chat about one patient, a record about a patient has its `subject` and
+ * `patient` elements pointed at them, and is refused when it has neither;
+ * any other record is created as given.
+ */
+const pinnedForCreate = (
+  patient: ChatPatient.Type,
+  resourceType: ResourceType.Type,
+  resource: ResourceWrite.ResourceJson
+): Effect.Effect<ResourceWrite.ResourceJson, ToolCallRefused> =>
+  Option.match(ChatPatient.patientIdIfOne(patient), {
+    onNone: () => Effect.succeed(resource),
+    onSome: (patientId) =>
+      PatientPin.of(resourceType).pipe(
+        Option.filter((pin) => pin.kind === 'by-reference'),
+        Option.match({
+          onNone: () => Effect.succeed(resource),
+          onSome: () => {
+            const elements = PATIENT_REFERENCE_ELEMENTS.filter((name) =>
+              Object.hasOwn(resource, name)
+            )
+            return Array.isNonEmptyReadonlyArray(elements)
+              ? Effect.succeed({
+                  ...resource,
+                  ...Object.fromEntries(
+                    elements.map((name) => [name, pointedAtPatient(resource[name], patientId)])
+                  ),
+                })
+              : refuse(
+                  `A ${resourceType} is about a patient: add its subject or patient reference (whichever the type has), and the tool points it at Patient/${patientId}, the patient this chat is about.`
+                )
+          },
+        })
+      ),
+  })
+
+/** The proposal for the `create_record` call `call`, or why it is refused. */
+const proposeCreate = (
+  tools: Type,
+  call: Call
+): Effect.Effect<WriteProposal.Type, ToolCallRefused> =>
+  Effect.gen(function* () {
+    const { resource } = yield* decodeInput(WriteRecordInput, call.input)
+    if (tools.patient.kind === 'patient' && resource.resourceType === 'Patient') {
+      return yield* refuse(
+        "This chat is about one patient, so it can't create a Patient: a new patient isn't this one."
+      )
+    }
+    const createdType = yield* offeredTypeOf(tools.creatableTypes, resource.resourceType)
+    if (Object.hasOwn(resource, 'id')) {
+      return yield* refuse('Leave out the id: the server assigns one to a new record.')
+    }
+    yield* refuseIfAboutAnotherPatient(
+      tools,
+      resource,
+      "This record is about another patient, so it can't be created: this chat is about one patient."
+    )
+    const pinned = yield* pinnedForCreate(tools.patient, createdType, {
+      ...resource,
+      resourceType: createdType,
+    })
+    return { kind: 'create', callId: call.id, resource: pinned }
+  })
+
+/** The version `record` (a record read back) is at, if it says. */
+const versionIdOf = (record: unknown): Option.Option<string> =>
+  decodeVersionedRecord(record).pipe(Option.map(({ meta }) => meta.versionId))
+
+/**
+ * The proposal for the `update_record` call `call`, or why it is refused:
+ * the record must have been read in this chat (`versionsRead`), and is read
+ * again now, so the change is shown against the record as it is and
+ * proposed only while that is still the version the agent read.
+ */
+const proposeUpdate = (
+  tools: Type,
+  call: Call,
+  versionsRead: ReadonlyMap<string, string>
+): Effect.Effect<WriteProposal.Type, ToolCallRefused | FhirReadFailed, FhirRecords> =>
+  Effect.gen(function* () {
+    const { resource } = yield* decodeInput(WriteRecordInput, call.input)
+    const updatedType = yield* offeredTypeOf(tools.updatableTypes, resource.resourceType)
+    const recordId = yield* Schema.decodeUnknown(IdSchema)(resource['id']).pipe(
+      Effect.mapError(
+        () => new ToolCallRefused({ reason: 'Give the id of the record to change, a FHIR id.' })
+      )
+    )
+    const reference = `${updatedType}/${recordId}`
+    const versionRead = yield* Option.fromNullable(versionsRead.get(reference)).pipe(
+      Option.match({
+        onNone: () =>
+          refuse(
+            `${reference} hasn't been read in this chat, so the version to change isn't known. Read it with read_record first.`
+          ),
+        onSome: Effect.succeed,
+      })
+    )
+    const proposed = { ...resource, resourceType: updatedType, id: recordId }
+    yield* refuseIfAboutAnotherPatient(
+      tools,
+      proposed,
+      "This change would make the record about another patient, so it isn't proposed: this chat is about one patient."
+    )
+    const records = yield* FhirRecords
+    const current = yield* records.read(reference)
+    yield* refuseIfAboutAnotherPatient(
+      tools,
+      current,
+      "This record is about another patient, so it can't be changed: this chat is about one patient."
+    )
+    if (!Option.contains(versionIdOf(current), versionRead)) {
+      return yield* refuse(STALE_RECORD_TEXT)
+    }
+    const fields = diffJson(withoutServerManagedMeta(current), withoutServerManagedMeta(proposed))
+    if (fields.length === 0) {
+      return yield* refuse('The record already says this, so there is nothing to change.')
+    }
+    return { kind: 'update', callId: call.id, resource: proposed, versionId: versionRead, fields }
+  })
+
+/**
+ * The write `call` asks for, as a proposal for the person to decide on
+ * (`Right`); or, on the left, the tool result refusing it: a tool the chat
+ * doesn't have, an input that doesn't decode, a type the tool doesn't
+ * offer, a record about another patient in a chat about one, or an update
+ * of a record not read in this chat or changed since. An update reads the
+ * record again, so its proposal is against the record as it is now.
+ */
+const propose = (
+  tools: Type,
+  call: Call,
+  versionsRead: ReadonlyMap<string, string>
+): Effect.Effect<
+  Either.Either<WriteProposal.Type, BetaToolResultBlockParam>,
+  never,
+  FhirRecords
+> => {
+  const offered = tools.definitions.some(({ name }) => name === call.name)
+  const proposal: Effect.Effect<WriteProposal.Type, ToolCallRefused | FhirReadFailed, FhirRecords> =
+    offered
+      ? Match.value(call.name).pipe(
+          Match.when(CREATE_RECORD, () => proposeCreate(tools, call)),
+          Match.when(UPDATE_RECORD, () => proposeUpdate(tools, call, versionsRead)),
+          Match.orElse(() => refuseUnknownTool(call))
+        )
+      : refuseUnknownTool(call)
+  return Effect.either(proposal).pipe(
+    Effect.map(Either.mapLeft((failure) => resultOf(call.id, Either.left(failure))))
+  )
+}
+
+/** The result JSON for `written`, the record a write of `resourceType` stored. */
+const writeRecordResultOf = (
+  resourceType: ResourceType.Type,
+  written: ResourceWrite.Written
+): string =>
+  Schema.encodeSync(WriteRecordResult)({
+    resourceType,
+    id: written.id,
+    ...Option.match(written.versionId, {
+      onNone: () => ({}),
+      onSome: (versionId) => ({ versionId }),
+    }),
+    record: written.record,
+  })
+
+/** The tool result for a proposal the person declined, with their reason when they gave one. */
+const declinedResultOf = (
+  proposal: WriteProposal.Type,
+  reason: Option.Option<string>
+): BetaToolResultBlockParam => ({
+  type: 'tool_result',
+  tool_use_id: proposal.callId,
+  is_error: true,
+  content: Option.match(reason, {
+    onNone: () => DECLINED_TEXT,
+    onSome: (given) => `${DECLINED_TEXT} Reason: ${given}`,
+  }),
+})
+
+/**
+ * The tool result for `proposal` once the person decided: approved, the
+ * write is made (an update with `If-Match` naming the version it was
+ * proposed against) and the result is the stored record, or why it wasn't
+ * saved; declined, nothing is written and the result says so, with the
+ * person's reason. Either way not saved is `is_error: true`.
+ */
+const carryOut = (
+  proposal: WriteProposal.Type,
+  decision: WriteProposal.Decision
+): Effect.Effect<BetaToolResultBlockParam, never, FhirRecords> =>
+  Match.value(decision).pipe(
+    Match.when({ kind: 'declined' }, ({ reason }) =>
+      Effect.succeed(declinedResultOf(proposal, reason))
+    ),
+    Match.when({ kind: 'approved' }, () =>
+      Effect.flatMap(FhirRecords, (records) =>
+        Match.value(proposal).pipe(
+          Match.when({ kind: 'create' }, ({ resource }) => records.create({ resource })),
+          Match.when({ kind: 'update' }, ({ resource, versionId }) =>
+            records.update({ resource, versionId })
+          ),
+          Match.exhaustive
+        )
+      ).pipe(
+        Effect.map((written) => writeRecordResultOf(proposal.resource.resourceType, written)),
+        Effect.either,
+        Effect.map((outcome) => resultOf(proposal.callId, outcome))
+      )
+    ),
+    Match.exhaustive
+  )
+
+/** A tool call as a reply makes it. */
+type Call = Pick<BetaToolUseBlockParam, 'id' | 'name' | 'input'>
+
+/** The tool result for the call `callId` names: the tool's JSON, or `is_error: true` and why it failed. */
+const resultOf = (
+  callId: string,
+  outcome: Either.Either<string, ToolCallRefused | FhirReadFailed | FhirWriteFailed>
+): BetaToolResultBlockParam =>
+  Either.match(outcome, {
+    onRight: (content): BetaToolResultBlockParam => ({
+      type: 'tool_result',
+      tool_use_id: callId,
+      content,
+    }),
+    onLeft: (failure): BetaToolResultBlockParam => ({
+      type: 'tool_result',
+      tool_use_id: callId,
+      is_error: true,
+      content: Match.value(failure).pipe(
+        Match.tag('ToolCallRefused', ({ reason }) => reason),
+        Match.tag('FhirReadFailed', fhirFailureTextOf),
+        Match.tag('FhirWriteFailed', writeFailureTextOf),
+        Match.exhaustive
+      ),
+    }),
+  })
+
+/** Whether `call` is to one of the tools that write: it is proposed, not run. */
+const isWriteCall = (call: Pick<Call, 'name'>): boolean =>
+  call.name === CREATE_RECORD || call.name === UPDATE_RECORD
+
+/** Refuse `call` as naming no tool the chat has. */
+const refuseUnknownTool = (call: Call): Effect.Effect<never, ToolCallRefused> =>
+  refuse(`There is no tool called ${call.name}.`)
+
+/**
+ * Run the read `call` with `tools`, against the FHIR server in the context,
+ * and succeed with its tool result: the JSON the tool read, or `is_error:
+ * true` and why it failed. A call to a tool the chat doesn't have, or to a
+ * write tool (which {@link propose} takes), is a failed result too.
  */
 const run = (
   tools: Type,
-  call: Pick<BetaToolUseBlockParam, 'id' | 'name' | 'input'>
+  call: Call
 ): Effect.Effect<BetaToolResultBlockParam, never, FhirRecords> => {
   const offered = tools.definitions.some(({ name }) => name === call.name)
   const result: Effect.Effect<string, ToolCallRefused | FhirReadFailed, FhirRecords> = offered
@@ -545,45 +1053,38 @@ const run = (
         Match.when(NEXT_PAGE, () => nextPage(tools, call.input)),
         Match.when(READ_RECORD, () => readRecord(tools, call.input)),
         Match.when(CAPABILITIES, () => capabilities(tools, call.input)),
-        Match.orElse(() => refuse(`There is no tool called ${call.name}.`))
+        Match.orElse(() => refuseUnknownTool(call))
       )
-    : refuse(`There is no tool called ${call.name}.`)
-  return result.pipe(
-    Effect.match({
-      onSuccess: (content): BetaToolResultBlockParam => ({
-        type: 'tool_result',
-        tool_use_id: call.id,
-        content,
-      }),
-      onFailure: (failure): BetaToolResultBlockParam => ({
-        type: 'tool_result',
-        tool_use_id: call.id,
-        is_error: true,
-        content: Match.value(failure).pipe(
-          Match.tag('ToolCallRefused', ({ reason }) => reason),
-          Match.tag('FhirReadFailed', fhirFailureTextOf),
-          Match.exhaustive
-        ),
-      }),
-    })
-  )
+    : refuseUnknownTool(call)
+  return Effect.map(Effect.either(result), (outcome) => resultOf(call.id, outcome))
 }
 
 export {
+  ACCEPTED_UNREADABLE_OPENING,
   CAPABILITIES,
   CapabilitiesInput,
   CapabilitiesResult,
+  carryOut,
+  CREATE_RECORD,
+  DECLINED_TEXT,
   DEFAULT_COUNT,
+  isWriteCall,
   make,
   MAX_COUNT,
   NEXT_PAGE,
   NextPageInput,
   PageResult,
+  propose,
   READ_RECORD,
   ReadRecordInput,
   ReadRecordResult,
   run,
   SEARCH_RECORDS,
   SearchRecordsInput,
+  STALE_RECORD_TEXT,
+  UPDATE_RECORD,
+  versionsReadIn,
+  WriteRecordInput,
+  WriteRecordResult,
 }
-export type { Type }
+export type { Call, Type }

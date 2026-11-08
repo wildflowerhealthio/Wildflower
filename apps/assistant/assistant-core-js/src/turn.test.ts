@@ -7,7 +7,8 @@ import {
 } from '@anthropic-ai/sdk'
 import type { BetaStopReason } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { Scope } from '@wildflowerhealthio/scopes-core'
-import { DateTime, Deferred, Effect, Exit, Fiber, Layer } from 'effect'
+import type { Array } from 'effect'
+import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Option } from 'effect'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import type * as ChatPatient from './chat-patient.ts'
@@ -18,6 +19,7 @@ import * as RecordAccess from './record-access.ts'
 import * as Style from './style.ts'
 import {
   failingReply,
+  type HeldReply,
   heldReply,
   messageOf,
   onePatientChat,
@@ -35,6 +37,7 @@ import {
 } from './test-helpers.ts'
 import * as Tools from './tools.ts'
 import * as Turn from './turn.ts'
+import type * as WriteProposal from './write-proposal.ts'
 
 const sonnet: ClaudeModel.Type = {
   id: 'claude-sonnet-5',
@@ -52,24 +55,39 @@ const askedRequest: Turn.Request = { chat: asked, model: sonnet, patient, record
 interface TurnRun {
   readonly deltas: Turn.Delta[]
   readonly toolRounds: Chat.ToolRound[]
+  /** Each round's writes, as the turn asked for decisions on them. */
+  readonly proposedWrites: Turn.ProposedWrites[]
   readonly outcome: Promise<Exit.Exit<Chat.Entry, Turn.Failure>>
 }
 
-/** Run a turn of `request` against `stub` and `fhir`, collecting what it reports. */
+/** A `confirmWrites` for a turn that should propose none. */
+const proposesNoWrites: Turn.Report['confirmWrites'] = () =>
+  Effect.dieMessage('This turn proposes no writes')
+
+/**
+ * Run a turn of `request` against `stub` and `fhir`, collecting what it
+ * reports, deciding on proposed writes with `decide`.
+ */
 const runTurn = (
   stub: StubClaude,
   request: Turn.Request = askedRequest,
-  fhir: StubFhirRecords = stubFhirRecords({})
+  fhir: StubFhirRecords = stubFhirRecords({}),
+  decide: Turn.Report['confirmWrites'] = proposesNoWrites
 ): TurnRun => {
   const deltas: Turn.Delta[] = []
   const toolRounds: Chat.ToolRound[] = []
+  const proposedWrites: Turn.ProposedWrites[] = []
   const outcome = Effect.runPromiseExit(
     Turn.run(request, {
       delta: (delta) => deltas.push(delta),
       toolRound: (round) => toolRounds.push(round),
+      confirmWrites: (proposed) => {
+        proposedWrites.push(proposed)
+        return decide(proposed)
+      },
     }).pipe(Effect.provide(Layer.mergeAll(stub.layer, fhir.layer, utc)))
   )
-  return { deltas, toolRounds, outcome }
+  return { deltas, toolRounds, proposedWrites, outcome }
 }
 
 describe('Turn.paramsOf', () => {
@@ -200,6 +218,7 @@ describe('Turn.run', () => {
       Turn.run(askedRequest, {
         delta: (delta) => deltas.push(delta),
         toolRound: () => undefined,
+        confirmWrites: proposesNoWrites,
       }).pipe(Effect.provide(Layer.mergeAll(stub.layer, stubFhirRecords({}).layer, utc)))
     )
     reply.send(textDelta('Half'))
@@ -336,5 +355,139 @@ describe('Turn.run with tools', () => {
     expect(await outcome).toEqual(Exit.fail(Turn.UnexpectedStop.make({ stopReason: 'max_tokens' })))
     expect(fhir.readPaths).toEqual([])
     expect(toolRounds).toEqual([])
+  })
+})
+
+describe('Turn.run with writes', () => {
+  const ada = onePatientChat({ id: 'p1', given: 'Ada', family: 'Lovelace' })
+  const adaRequest: Turn.Request = { ...askedRequest, patient: ada }
+  const weight = {
+    resourceType: 'Observation',
+    status: 'final',
+    code: { text: 'Weight' },
+    subject: { reference: 'Patient/p1' },
+  }
+  const createCall = (id: string): ReturnType<typeof toolUseBlock> =>
+    toolUseBlock(id, 'create_record', { resource: weight })
+  const readCall = toolUseBlock('read', 'read_record', { resourceType: 'Practitioner', id: 'dr1' })
+  const doctor = { resourceType: 'Practitioner', id: 'dr1' }
+  /** The reply that ends the turn once the round's results are in. */
+  const answered = (): HeldReply =>
+    scriptedReply([], messageOf({ content: [textBlock('Saved.')], stopReason: 'end_turn' }))
+
+  it('should pause on two writes and a read until both are decided, then send every result in one message, once', async () => {
+    const decided = Effect.runSync(
+      Deferred.make<Array.NonEmptyReadonlyArray<WriteProposal.Decision>>()
+    )
+    const fhir = stubFhirRecords({ 'Practitioner/dr1': Effect.succeed(doctor) })
+    const content = [createCall('first'), readCall, createCall('second')]
+    const stub = stubClaude({
+      replies: [scriptedReply([], messageOf({ content, stopReason: 'tool_use' })), answered()],
+    })
+
+    const { proposedWrites, toolRounds, outcome } = runTurn(stub, adaRequest, fhir, () =>
+      Deferred.await(decided)
+    )
+
+    await vi.waitFor(() => {
+      expect(proposedWrites).toHaveLength(1)
+    })
+    expect(proposedWrites[0]).toEqual({
+      message: { role: 'assistant', content },
+      results: new Map([
+        ['read', { type: 'tool_result', tool_use_id: 'read', content: JSON.stringify(doctor) }],
+      ]),
+      proposals: [
+        { kind: 'create', callId: 'first', resource: weight },
+        { kind: 'create', callId: 'second', resource: weight },
+      ],
+    })
+    expect(stub.requests).toHaveLength(1)
+    expect(fhir.writes).toEqual([])
+
+    Effect.runSync(
+      Deferred.succeed(decided, [
+        { kind: 'approved' },
+        { kind: 'declined', reason: Option.some('Already weighed today') },
+      ])
+    )
+
+    expect(Exit.isSuccess(await outcome)).toBe(true)
+    expect(fhir.writes).toEqual([{ kind: 'create', resource: weight }])
+    expect(toolRounds).toHaveLength(1)
+    expect(toolRounds[0]?.results.map(({ tool_use_id }) => tool_use_id)).toEqual([
+      'first',
+      'read',
+      'second',
+    ])
+    expect(toolRounds[0]?.results[2]).toEqual({
+      type: 'tool_result',
+      tool_use_id: 'second',
+      is_error: true,
+      content: 'The user declined this change. Reason: Already weighed today',
+    })
+    expect(stub.requests).toHaveLength(2)
+    expect(stub.requests[1]?.messages.at(-1)).toEqual({
+      role: 'user',
+      content: toolRounds[0]?.results,
+    })
+  })
+
+  it('should send a write refused before it was proposed straight back, asking nothing', async () => {
+    const stub = stubClaude({
+      replies: [
+        scriptedReply(
+          [],
+          messageOf({
+            content: [
+              toolUseBlock('update', 'update_record', {
+                resource: { ...weight, id: 'o1' },
+              }),
+            ],
+            stopReason: 'tool_use',
+          })
+        ),
+        answered(),
+      ],
+    })
+
+    const { proposedWrites, toolRounds, outcome } = runTurn(stub, adaRequest)
+
+    expect(Exit.isSuccess(await outcome)).toBe(true)
+    expect(proposedWrites).toEqual([])
+    expect(toolRounds[0]?.results[0]).toEqual({
+      type: 'tool_result',
+      tool_use_id: 'update',
+      is_error: true,
+      content:
+        "Observation/o1 hasn't been read in this chat, so the version to change isn't known. Read it with read_record first.",
+    })
+  })
+
+  it('should keep nothing and write nothing when the turn is stopped while a write waits', async () => {
+    const fhir = stubFhirRecords({})
+    const stub = stubClaude({
+      replies: [
+        scriptedReply([], messageOf({ content: [createCall('first')], stopReason: 'tool_use' })),
+      ],
+    })
+    const toolRounds: Chat.ToolRound[] = []
+    const asking = Effect.runSync(Deferred.make<void>())
+
+    const fiber = Effect.runFork(
+      Turn.run(adaRequest, {
+        delta: () => undefined,
+        toolRound: (round) => toolRounds.push(round),
+        confirmWrites: () =>
+          Deferred.succeed(asking, undefined).pipe(Effect.zipRight(Effect.never)),
+      }).pipe(Effect.provide(Layer.mergeAll(stub.layer, fhir.layer, utc)))
+    )
+    await Effect.runPromise(Deferred.await(asking))
+    const exit = await Effect.runPromise(Fiber.interrupt(fiber))
+
+    expect(Exit.isInterrupted(exit)).toBe(true)
+    expect(toolRounds).toEqual([])
+    expect(fhir.writes).toEqual([])
+    expect(stub.requests).toHaveLength(1)
   })
 })

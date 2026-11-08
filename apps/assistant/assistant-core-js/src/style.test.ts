@@ -33,9 +33,9 @@ describe('Style.systemPromptOf', () => {
 
       expect(prompt.split('\n\n')).toEqual([
         ...voice.split('\n\n'),
-        "This chat is about one patient, Ada Lovelace, born 1815-12-10. Your tools keep every search and read to this patient's records.",
+        "This chat is about one patient, Ada Lovelace, born 1815-12-10. Your tools keep every search, read and write to this patient's records.",
         "Today's date is 2026-11-08.",
-        "You can read every record type. You can't create or change records.",
+        RecordAccess.paragraphOf(recordAccess),
       ])
     }
   )

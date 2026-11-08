@@ -1,3 +1,4 @@
+import type { ResourceWrite } from '@wildflowerhealthio/fhir-r4/clients'
 import { Context, Data, type Effect, type Option } from 'effect'
 
 /** Why a read of the FHIR server failed. */
@@ -23,8 +24,19 @@ class FhirReadFailed extends Data.TaggedClass('FhirReadFailed')<{
 }> {}
 
 /**
- * The FHIR server the chat reads, as the app reaches it: its base URL, and
- * one GET of a path under it read as JSON. The app provides it over its
+ * A write to the FHIR server that failed, and why (`fhir-r4`'s
+ * `ResourceWrite.Failure`: a stale version, an error status, no answer, or
+ * an answer that couldn't be read), for the agent's tool result. A value,
+ * never thrown, logged or reported, as {@link FhirReadFailed} is.
+ */
+class FhirWriteFailed extends Data.TaggedClass('FhirWriteFailed')<{
+  readonly failure: ResourceWrite.Failure
+}> {}
+
+/**
+ * The FHIR server the chat reads and writes, as the app reaches it: its base
+ * URL, one GET of a path under it read as JSON, and `fhir-r4`'s
+ * `ResourceWrite` create and version-checked update. The app provides it over its
  * SMART connection (`assistant-react`'s `fhirRecordsLayerFor`); a test
  * provides a stand-in with `Layer.succeed`.
  *
@@ -40,8 +52,20 @@ class FhirRecords extends Context.Tag('assistant-core-js/FhirRecords')<
     readonly fhirBaseUrl: string
     /** GET `path` under {@link fhirBaseUrl} and read the answer as JSON. */
     readonly read: (path: string) => Effect.Effect<unknown, FhirReadFailed>
+    /** POST `resource` to its type, the server choosing its id; succeed with the stored record. */
+    readonly create: (args: {
+      readonly resource: ResourceWrite.ResourceJson
+    }) => Effect.Effect<ResourceWrite.Written, FhirWriteFailed>
+    /**
+     * PUT `resource` to its type and id with `If-Match: W/"<versionId>"`;
+     * succeed with the stored record.
+     */
+    readonly update: (args: {
+      readonly resource: ResourceWrite.ResourceJson & { readonly id: string }
+      readonly versionId: string
+    }) => Effect.Effect<ResourceWrite.Written, FhirWriteFailed>
   }
 >() {}
 
-export { FhirReadFailed, FhirRecords }
+export { FhirReadFailed, FhirRecords, FhirWriteFailed }
 export type { FhirReadFailure }

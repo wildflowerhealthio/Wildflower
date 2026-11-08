@@ -3,8 +3,9 @@ import type {
   BetaMessage,
   BetaMessageStreamParams,
   BetaRawMessageStreamEvent,
+  BetaToolResultBlockParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import { Array, DateTime, Effect, Match, Option, Schema } from 'effect'
+import { Array, DateTime, Effect, Either, Match, Option, Schema } from 'effect'
 
 import type * as ChatPatient from './chat-patient.ts'
 import * as Chat from './chat.ts'
@@ -14,6 +15,7 @@ import type { FhirRecords } from './fhir-records.ts'
 import type * as RecordAccess from './record-access.ts'
 import * as Style from './style.ts'
 import * as Tools from './tools.ts'
+import type * as WriteProposal from './write-proposal.ts'
 
 /**
  * One turn of a chat: the chat's messages sent to Claude, each reply
@@ -22,7 +24,7 @@ import * as Tools from './tools.ts'
  *
  * @remarks
  * A namespace module: `Turn.Delta`, `Turn.Request`, `Turn.Report`, `Turn.Failure`,
- * `Turn.run`, `Turn.paramsOf`, `Turn.UnexpectedStop`.
+ * `Turn.ProposedWrites`, `Turn.run`, `Turn.paramsOf`, `Turn.UnexpectedStop`.
  *
  * @packageDocumentation
  */
@@ -66,6 +68,19 @@ interface TurnRequest {
   readonly recordAccess: RecordAccess.Type
 }
 
+/**
+ * A round of tool calls paused on the writes it proposes, for the person to
+ * decide on: the reply that called them, the results already in for the
+ * round's other calls (its reads, and any write refused before it was
+ * proposed), and the proposals, in call order.
+ */
+interface ProposedWrites {
+  readonly message: BetaAssistantMessageParam
+  /** The results already in, by the id of the call each answers. */
+  readonly results: ReadonlyMap<string, BetaToolResultBlockParam>
+  readonly proposals: Array.NonEmptyReadonlyArray<WriteProposal.Type>
+}
+
 /** What a turn reports while it runs. */
 interface TurnReport {
   /** A piece of the reply streaming in. */
@@ -75,6 +90,14 @@ interface TurnReport {
    * to the chat. The next reply streams in after it.
    */
   readonly toolRound: (round: Chat.ToolRound) => void
+  /**
+   * Ask the person to decide on a round's proposed writes, and succeed with
+   * a decision for each proposal, in the same order, once every one is
+   * decided. The turn waits on it; interrupting the turn interrupts it.
+   */
+  readonly confirmWrites: (
+    proposed: ProposedWrites
+  ) => Effect.Effect<Array.NonEmptyReadonlyArray<WriteProposal.Decision>>
 }
 
 /** The request for `chat` with `tools`, on `today`. */
@@ -167,14 +190,98 @@ const finalEntryOf = (
   )
 }
 
+/** Where a call of a round stands before its writes are decided: answered, or a write awaiting the person. */
+type CallStep =
+  | { readonly kind: 'answered'; readonly result: BetaToolResultBlockParam }
+  | { readonly kind: 'awaiting-decision'; readonly proposal: WriteProposal.Type }
+
+/** `call` run if it reads, or proposed if it writes. */
+const stepOf = (
+  tools: Tools.Type,
+  versionsRead: ReadonlyMap<string, string>,
+  call: Tools.Call
+): Effect.Effect<CallStep, never, FhirRecords> =>
+  Tools.isWriteCall(call)
+    ? Effect.map(
+        Tools.propose(tools, call, versionsRead),
+        Either.match({
+          onLeft: (result): CallStep => ({ kind: 'answered', result }),
+          onRight: (proposal): CallStep => ({ kind: 'awaiting-decision', proposal }),
+        })
+      )
+    : Effect.map(Tools.run(tools, call), (result): CallStep => ({ kind: 'answered', result }))
+
 /**
- * Run the tool calls in `message` (stopped for `tool_use`) side by side, and
- * succeed with the round to keep: the reply as returned, and every result in
- * the order of the calls.
+ * The person's decision on each of `proposals`, by the id of the call it
+ * answers, asked through `confirmWrites` with the round's `reply` and the
+ * results already in; none to ask when there are no proposals.
+ */
+const decisionsOn = (
+  reply: BetaAssistantMessageParam,
+  steps: readonly CallStep[],
+  confirmWrites: TurnReport['confirmWrites']
+): Effect.Effect<ReadonlyMap<string, WriteProposal.Decision>> => {
+  const proposals = Array.filterMap(steps, (step) =>
+    step.kind === 'awaiting-decision' ? Option.some(step.proposal) : Option.none()
+  )
+  if (!Array.isNonEmptyReadonlyArray(proposals)) return Effect.succeed(new Map())
+  const results = new Map(
+    Array.filterMap(steps, (step) =>
+      step.kind === 'answered'
+        ? Option.some([step.result.tool_use_id, step.result] as const)
+        : Option.none()
+    )
+  )
+  return confirmWrites({ message: reply, results, proposals }).pipe(
+    Effect.flatMap((decisions) =>
+      decisions.length === proposals.length
+        ? Effect.succeed(
+            new Map(
+              Array.zip(proposals, decisions).map(([{ callId }, decision]) => [callId, decision])
+            )
+          )
+        : Effect.dieMessage('confirmWrites must decide every proposal it is given, in order')
+    )
+  )
+}
+
+/**
+ * The result of each of `steps`, in their order: an answered call's as it
+ * is, a proposal's once `decisionByCallId` decides it, each approved write
+ * made one after another.
+ */
+const resultsOf = (
+  steps: Array.NonEmptyReadonlyArray<CallStep>,
+  decisionByCallId: ReadonlyMap<string, WriteProposal.Decision>
+): Effect.Effect<Array.NonEmptyArray<BetaToolResultBlockParam>, never, FhirRecords> =>
+  Effect.forEach(steps, (step) =>
+    Match.value(step).pipe(
+      Match.when({ kind: 'answered' }, ({ result }) => Effect.succeed(result)),
+      Match.when({ kind: 'awaiting-decision' }, ({ proposal }) =>
+        Option.fromNullable(decisionByCallId.get(proposal.callId)).pipe(
+          Option.match({
+            onNone: () => Effect.dieMessage('A proposal reached its result undecided'),
+            onSome: (decision) => Tools.carryOut(proposal, decision),
+          })
+        )
+      ),
+      Match.exhaustive
+    )
+  )
+
+/**
+ * Run the tool calls in `message` (stopped for `tool_use`) side by side:
+ * reads at once, writes proposed (an update reading its record again). When
+ * the round proposes writes, it pauses for the person's decisions through
+ * `report.confirmWrites`, then makes the approved writes. Succeed with the
+ * round to keep: the reply as returned, and every result in the order of
+ * the calls, sent back together.
  */
 const toolRoundOf = (
   model: ClaudeModel.Type,
   tools: Tools.Type,
+  chat: Chat.Type,
+  report: TurnReport,
   message: BetaMessage
 ): Effect.Effect<Chat.ToolRound, UnexpectedStop, FhirRecords> => {
   const reply: BetaAssistantMessageParam = { role: 'assistant', content: message.content }
@@ -182,13 +289,33 @@ const toolRoundOf = (
   if (!Array.isNonEmptyReadonlyArray(calls)) {
     return Effect.fail(UnexpectedStop.make({ stopReason: 'tool_use' }))
   }
-  return Effect.forEach(calls, (call) => Tools.run(tools, call), { concurrency: 'unbounded' }).pipe(
-    Effect.map((results): Chat.ToolRound => ({
-      _tag: 'tool-round',
-      modelId: model.id,
-      message: reply,
-      results,
-    }))
+  const versionsRead = Tools.versionsReadIn(chat)
+  return Effect.forEach(calls, (call) => stepOf(tools, versionsRead, call), {
+    concurrency: 'unbounded',
+  }).pipe(
+    Effect.flatMap((steps) =>
+      decisionsOn(reply, steps, report.confirmWrites).pipe(
+        Effect.flatMap((decisionByCallId) =>
+          // Once decided, the writes are made and the round reported whole,
+          // even if the turn is stopped meanwhile: a write the server made is
+          // never left out of the chat.
+          resultsOf(steps, decisionByCallId).pipe(
+            Effect.map((results): Chat.ToolRound => ({
+              _tag: 'tool-round',
+              modelId: model.id,
+              message: reply,
+              results,
+            })),
+            Effect.tap((round) =>
+              Effect.sync(() => {
+                report.toolRound(round)
+              })
+            ),
+            Effect.uninterruptible
+          )
+        )
+      )
+    )
   )
 }
 
@@ -206,12 +333,7 @@ const replyUntilAnswered = (
   streamReply(requestParamsOf({ ...request, chat }, tools, today), report.delta).pipe(
     Effect.flatMap((message) =>
       message.stop_reason === 'tool_use'
-        ? toolRoundOf(request.model, tools, message).pipe(
-            Effect.tap((round) =>
-              Effect.sync(() => {
-                report.toolRound(round)
-              })
-            ),
+        ? toolRoundOf(request.model, tools, chat, report, message).pipe(
             Effect.flatMap((round) =>
               replyUntilAnswered(request, tools, today, report, Chat.append(chat, round))
             )
@@ -223,15 +345,19 @@ const replyUntilAnswered = (
 /**
  * Run one turn: stream `request`'s chat to Claude, reporting each piece of
  * each reply as it arrives; while Claude stops to call tools, run them
- * against the FHIR server and report each round; and succeed with the entry
- * the chat keeps for the reply that ends the turn.
+ * against the FHIR server (pausing for the person to decide on any write
+ * they propose) and report each round; and succeed with the entry the chat
+ * keeps for the reply that ends the turn.
  *
  * @remarks
  * The tools are built once from the grant and the patient
  * ({@link Tools.make}) and sent unchanged with every request. The system
  * prompt states today's date in the `CurrentTimeZone`, the person's own in
  * an app (`DateTime.layerCurrentZoneLocal`). Interrupting the Effect aborts
- * the stream or the reads in flight; rounds already reported stay. API
+ * the stream, the reads in flight or the wait for decisions; rounds already
+ * reported stay, and a round interrupted before its decisions keeps nothing.
+ * Once the person has decided, the approved writes are made and the round
+ * reported even if the turn is interrupted meanwhile. API
  * failures are mapped by error class ({@link ClaudeRequestFailed.fromThrown});
  * a reply that stopped for any other reason than `end_turn`, `max_tokens`,
  * `refusal` or a `tool_use` with calls, or at `max_tokens` part way through
@@ -253,4 +379,10 @@ const run = (
   )
 
 export { MAX_TOKENS, paramsOf, run, SERVER_SIDE_FALLBACK_BETA, UnexpectedStop }
-export type { Delta, TurnFailure as Failure, TurnReport as Report, TurnRequest as Request }
+export type {
+  Delta,
+  ProposedWrites,
+  TurnFailure as Failure,
+  TurnReport as Report,
+  TurnRequest as Request,
+}

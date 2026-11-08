@@ -82,3 +82,79 @@ describe('ToolCall.resultSummaryOf', () => {
     expect(ToolCall.resultSummaryOf(name, result)).toBe(line)
   })
 })
+
+describe('ToolCall for the write tools', () => {
+  const resource = {
+    resourceType: 'Observation',
+    id: 'o1',
+    status: 'entered-in-error',
+    note: [{ text: 'Ada Lovelace private note' }],
+  }
+  const create: ToolCall.Call = {
+    name: 'create_record',
+    input: { resource: { resourceType: 'Observation', status: 'final' } },
+  }
+  const update: ToolCall.Call = { name: 'update_record', input: { resource } }
+
+  const resultOf = (content: string, isError = false): Option.Option<BetaToolResultBlockParam> =>
+    Option.some({
+      type: 'tool_result',
+      tool_use_id: 'call-1',
+      ...(isError ? { is_error: true } : {}),
+      content,
+    })
+
+  it('should say what each write asks for, with its type and id but none of its contents', () => {
+    expect(ToolCall.summaryOf(create)).toBe('Create Observation')
+    expect(ToolCall.summaryOf(update)).toBe('Update Observation/o1')
+    expect(ToolCall.parametersOf(update)).toEqual([
+      { name: 'resourceType', value: 'Observation' },
+      { name: 'id', value: 'o1' },
+    ])
+    expect(JSON.stringify(ToolCall.parametersOf(update))).not.toContain('private note')
+  })
+
+  it.each([
+    [
+      'create_record',
+      resultOf(
+        Schema.encodeSync(Tools.WriteRecordResult)({
+          resourceType: 'Observation',
+          id: '123',
+          versionId: '1',
+          record: resource,
+        })
+      ),
+      'Created Observation/123',
+    ],
+    [
+      'update_record',
+      resultOf(
+        Schema.encodeSync(Tools.WriteRecordResult)({
+          resourceType: 'Observation',
+          id: 'o1',
+          record: resource,
+        })
+      ),
+      'Updated Observation/o1',
+    ],
+    ['update_record', resultOf('The user declined this change. Reason: no', true), 'Declined'],
+    [
+      'update_record',
+      resultOf(Tools.STALE_RECORD_TEXT, true),
+      'Failed: the record changed since it was read',
+    ],
+    [
+      'create_record',
+      resultOf('The FHIR server answered 422, so nothing was saved. It said: x', true),
+      'Failed: not saved',
+    ],
+    [
+      'create_record',
+      resultOf(`${Tools.ACCEPTED_UNREADABLE_OPENING} (201) but…`, true),
+      "Failed: probably saved, but the server's answer couldn't be read",
+    ],
+  ] as const)('should sum up a %s result as %s', (name, result, line) => {
+    expect(ToolCall.resultSummaryOf(name, result)).toBe(line)
+  })
+})
