@@ -315,7 +315,7 @@ const tokenRequestBody = (input: {
 const BearerTokenResponse = Schema.Struct({
   access_token: Schema.NonEmptyString,
   token_type: Schema.String.pipe(Schema.filter((type) => type.toLowerCase() === 'bearer')),
-  scope: Schema.optionalWith(Schema.String, { nullable: true, default: () => '' }),
+  scope: Schema.optionalWith(Schema.String, { nullable: true }),
   expires_in: Schema.optionalWith(Schema.Finite, { nullable: true }),
   patient: Schema.optionalWith(Schema.String, { nullable: true }),
 })
@@ -325,8 +325,12 @@ const decodeBearerTokenResponse = Schema.decodeUnknownEither(BearerTokenResponse
 /** A usable token response, reduced to what the client keeps. */
 interface AccessGrant {
   readonly accessToken: string
-  /** The scopes actually granted — the Owner's narrowing, not what was asked. */
-  readonly scope: string
+  /**
+   * The scopes actually granted — the Owner's narrowing, not what was asked —
+   * or `undefined` when the response left `scope` out, which RFC 6749 §5.1
+   * allows only when the grant is the requested scope.
+   */
+  readonly scope: string | undefined
   /** Seconds the token is good for, when the server said. */
   readonly expiresInSeconds: number | undefined
   /**

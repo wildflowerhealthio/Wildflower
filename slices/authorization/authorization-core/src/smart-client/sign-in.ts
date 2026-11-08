@@ -214,7 +214,11 @@ const beginSignInAt = (
 /** A signed-in session: an in-memory token and what it is good for. */
 interface Session {
   readonly accessToken: string
-  /** The scopes the Owner actually granted. */
+  /**
+   * The scopes the Owner actually granted, space-delimited: the token
+   * response's `scope`, or the requested scope when the response left it
+   * out (RFC 6749 §5.1).
+   */
   readonly scope: string
   /**
    * Which kind of server the token was issued by, and its FHIR base: the
@@ -289,7 +293,7 @@ const completeSignIn = (
       )
     )
     const grant = yield* parseTokenResponse(body)
-    return Option.some(sessionFrom(grant, retained))
+    return Option.some(sessionFrom(grant, retained, registration))
   })
 
 /**
@@ -363,10 +367,17 @@ const forgetRetainedSignInRequest: Effect.Effect<
   RetainedSignInRequestStore
 > = Effect.flatMap(RetainedSignInRequestStore, (store) => store.forget)
 
-/** The session a `grant` redeemed for the `retained` request becomes. */
-const sessionFrom = (grant: AccessGrant, retained: RetainedSignInRequest): Session => ({
+/**
+ * The session a `grant` redeemed for the `retained` request becomes: a grant
+ * that names no scope granted the scope `registration` requested.
+ */
+const sessionFrom = (
+  grant: AccessGrant,
+  retained: RetainedSignInRequest,
+  registration: ClientRegistration
+): Session => ({
   accessToken: grant.accessToken,
-  scope: grant.scope,
+  scope: grant.scope ?? registration.scope,
   smartServer: retained.smartServer,
   expiresInSeconds: grant.expiresInSeconds,
   patient: grant.patient,

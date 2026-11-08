@@ -442,6 +442,27 @@ describe('completeSignIn', () => {
     expect(sent.get('redirect_uri')).toBe(REDIRECT_URI)
   })
 
+  it('reads a token response that names no scope as granting the requested scope', async () => {
+    // RFC 6749 §5.1: a server may leave `scope` out only when it granted what
+    // was asked.
+    // Arrange
+    const store = memoryStore()
+    const pending = stashedRequest()
+    store.setItem(PENDING_KEY, serializeRetainedSignInRequest(pending))
+    const fetchStub: StubAnswer = () =>
+      Promise.resolve(jsonResponse({ access_token: 'a-token', token_type: 'Bearer' }))
+
+    // Act
+    const result = await runToEither(
+      completeSignIn(`?code=the-code&state=${pending.state}`, REGISTRATION),
+      testEnvironment({ store, fetch: fetchStub })
+    )
+
+    // Assert
+    if (Either.isLeft(result)) throw new Error(result.left.reason)
+    expect(Option.map(result.right, (session) => session.scope)).toEqual(Option.some(SCOPE))
+  })
+
   it('hands back the returnTo the sign-in was started with', async () => {
     // The redirect URI carries no query, so the return path survives the round
     // trip only through the retained sign-in request `beginSignIn` writes.
