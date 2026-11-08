@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/assistant-core-js",
   "version": "0.0.0",
   "private": true,
-  "description": "Assistant's core: the Claude API key and model choice kept in the browser, the two chat styles and their system prompts, the chat codec kept in sessionStorage, and one streamed turn of the chat through @anthropic-ai/sdk. No DOM, no React.",
+  "description": "Assistant's core: the Claude API key and model choice kept in the browser, the two chat styles and their system prompts, the read tools the grant allows with a chosen patient pinned, the chat codec kept in sessionStorage, and the turn loop through @anthropic-ai/sdk. No DOM, no React.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -27,7 +27,9 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "typescript": "catalog:",
@@ -36,7 +38,9 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "effect": "catalog:"
   }
 }

@@ -2,6 +2,7 @@ import { DateTime, Match, Option, Schema } from 'effect'
 
 import { ACADEMIC_VOICE } from './academic-voice.ts'
 import type * as ChatPatient from './chat-patient.ts'
+import * as RecordAccess from './record-access.ts'
 import { TELEHEALTH_VOICE } from './telehealth-voice.ts'
 
 /**
@@ -46,7 +47,8 @@ const patientParagraphOf = (patient: ChatPatient.Type): string =>
             onSome: (born) => `born ${born}.`,
             onNone: () => 'whose record gives no birth date.',
           })
-        )
+        ) +
+        " Your tools keep every search and read to this patient's records."
     ),
     Match.when(
       { kind: 'all-patients' },
@@ -60,33 +62,28 @@ const patientParagraphOf = (patient: ChatPatient.Type): string =>
 const dateParagraphOf = (today: DateTime.DateTime): string =>
   `Today's date is ${DateTime.formatIsoDate(today)}.`
 
-/**
- * What the assistant can do with the record. Without tools it can read none
- * of it.
- */
-const RECORD_ACCESS_PARAGRAPH =
-  'In this version you cannot read the record: you have no tools, and nothing from the record is in this conversation beyond the patient named above. If the person asks about their record, tell them you cannot see it yet, and help with what they tell you.'
-
 /** What a system prompt is built from, besides the style. */
 interface SystemPromptParts {
   readonly style: Type
   readonly patient: ChatPatient.Type
   /** Today, in the zone whose calendar date the prompt states. */
   readonly today: DateTime.DateTime
+  /** What the grant lets the assistant do with the record. */
+  readonly recordAccess: RecordAccess.Type
 }
 
 /**
  * The system prompt for a turn: the style's voice and rules, then whose
  * record the chat is about, today's date, and what the assistant can do
- * with the record, one paragraph each.
+ * with the record under its grant, one paragraph each.
  */
-const systemPromptOf = ({ style, patient, today }: SystemPromptParts): string =>
+const systemPromptOf = ({ style, patient, today, recordAccess }: SystemPromptParts): string =>
   [
     voiceOf(style),
     patientParagraphOf(patient),
     dateParagraphOf(today),
-    RECORD_ACCESS_PARAGRAPH,
+    RecordAccess.paragraphOf(recordAccess),
   ].join('\n\n')
 
-export { DEFAULT, RECORD_ACCESS_PARAGRAPH, StyleSchema as Schema, systemPromptOf, voiceOf }
+export { DEFAULT, StyleSchema as Schema, systemPromptOf, voiceOf }
 export type { SystemPromptParts, Type }

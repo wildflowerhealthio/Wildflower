@@ -2,6 +2,8 @@ import type {
   BetaAssistantMessageParam,
   BetaContentBlockParam,
   BetaMessageParam,
+  BetaToolResultBlockParam,
+  BetaToolUseBlockParam,
   BetaUserMessageParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import {
@@ -23,7 +25,8 @@ import * as Style from './style.ts'
  *
  * @remarks
  * A namespace module: `Chat.Schema`, `Chat.Type`, `Chat.Entry`, `Chat.questionOf`,
- * `Chat.start`, `Chat.append`, `Chat.requestMessagesOf`, and the storage
+ * `Chat.start`, `Chat.append`, `Chat.requestMessagesOf`, `Chat.toolCallsOf`,
+ * `Chat.toolResultsByCallIdOf`, and the storage
  * calls `Chat.storageKeyOf`, `Chat.read`, `Chat.write`, `Chat.forget`.
  *
  * Append-only: {@link append} adds an entry after the last, and nothing
@@ -72,10 +75,11 @@ const AssistantMessageSchema = Schema.declare(
 )
 
 /**
- * The stop reasons a reply is kept with: `end_turn`, finished, and
- * `max_tokens`, cut off at the output limit with what came before kept.
+ * The stop reasons a reply is kept with: `end_turn`, finished;
+ * `max_tokens`, cut off at the output limit with what came before kept;
+ * and `tool_use`, calling tools, whose results the entry after it holds.
  */
-const ReplyStopReason = Schema.Literal('end_turn', 'max_tokens')
+const ReplyStopReason = Schema.Literal('end_turn', 'max_tokens', 'tool_use')
 
 /** Something the person asked. */
 const QuestionEntry = Schema.TaggedStruct('question', { message: UserMessageSchema })
@@ -88,13 +92,19 @@ const ReplyEntry = Schema.TaggedStruct('reply', {
 })
 
 /**
+ * The results of the tool calls in the reply before it, all in one user
+ * message, as they were sent back.
+ */
+const ToolResultsEntry = Schema.TaggedStruct('tool-results', { message: UserMessageSchema })
+
+/**
  * `model` declined to answer the question before it (`stop_reason:
  * "refusal"`). Whatever it had written is not kept.
  */
 const RefusalEntry = Schema.TaggedStruct('refusal', { model: Schema.String })
 
 /** One entry in a chat, in the order they happened. */
-const EntrySchema = Schema.Union(QuestionEntry, ReplyEntry, RefusalEntry)
+const EntrySchema = Schema.Union(QuestionEntry, ReplyEntry, ToolResultsEntry, RefusalEntry)
 
 /** One entry in a chat. */
 type Entry = typeof EntrySchema.Type
@@ -155,21 +165,62 @@ const withoutDeclinedParts = (message: BetaAssistantMessageParam): BetaAssistant
 }
 
 /**
- * The messages a turn sends for `chat`: each question and each reply's
- * message, in order. A question Claude declined is left out with its
- * refusal, so the chat can go on from there; a question with no reply (the
- * person stopped it) stays, and the API reads it together with the next.
+ * The tool calls in `message` that run: every `tool_use` block, except those
+ * a server-side fallback left before its last switch point, which are not
+ * sent back ({@link withoutDeclinedParts}).
+ */
+const toolCallsOf = (message: BetaAssistantMessageParam): readonly BetaToolUseBlockParam[] => {
+  const { content } = withoutDeclinedParts(message)
+  return Predicate.isString(content)
+    ? []
+    : Array.filter(content, (block): block is BetaToolUseBlockParam => block.type === 'tool_use')
+}
+
+/** Every tool result in `entries`, by the id of the call it answers. */
+const toolResultsByCallIdOf = (
+  entries: readonly Entry[]
+): ReadonlyMap<string, BetaToolResultBlockParam> =>
+  new Map(
+    entries.flatMap((entry) =>
+      entry._tag === 'tool-results' && !Predicate.isString(entry.message.content)
+        ? Array.filter(
+            entry.message.content,
+            (block): block is BetaToolResultBlockParam => block.type === 'tool_result'
+          ).map((result) => [result.tool_use_id, result] as const)
+        : []
+    )
+  )
+
+/**
+ * Whether the entry at `index` belongs to a question Claude declined: the
+ * refusal itself, or anything after that question and before the refusal
+ * (its tool calls and their results), the question included.
+ */
+const isDeclinedAt = (entries: readonly Entry[], index: number): boolean =>
+  entries[index]?._tag === 'refusal' ||
+  Array.findFirst(
+    entries.slice(index + 1),
+    (later) => later._tag === 'question' || later._tag === 'refusal'
+  ).pipe(Option.exists((later) => later._tag === 'refusal'))
+
+/**
+ * The messages a turn sends for `chat`: each question, each reply's message
+ * and each set of tool results, in order. A question Claude declined is left
+ * out with everything up to its refusal, so the chat can go on from there; a
+ * question with no reply (the person stopped it) stays, and the API reads it
+ * together with the next.
  */
 const requestMessagesOf = (chat: Type): BetaMessageParam[] =>
   Array.filterMap(chat.entries, (entry, index) =>
-    Match.value(entry).pipe(
-      Match.tag('question', ({ message }) =>
-        chat.entries[index + 1]?._tag === 'refusal' ? Option.none() : Option.some(message)
-      ),
-      Match.tag('reply', ({ message }) => Option.some(withoutDeclinedParts(message))),
-      Match.tag('refusal', () => Option.none()),
-      Match.exhaustive
-    )
+    isDeclinedAt(chat.entries, index)
+      ? Option.none()
+      : Match.value(entry).pipe(
+          Match.tag('question', ({ message }) => Option.some<BetaMessageParam>(message)),
+          Match.tag('reply', ({ message }) => Option.some(withoutDeclinedParts(message))),
+          Match.tag('tool-results', ({ message }) => Option.some<BetaMessageParam>(message)),
+          Match.tag('refusal', () => Option.none()),
+          Match.exhaustive
+        )
   )
 
 /**
@@ -253,6 +304,8 @@ export {
   start,
   storageKeyOf,
   StoredChatUnreadable,
+  toolCallsOf,
+  toolResultsByCallIdOf,
   write,
 }
 export type { ChatPlace, Entry, Type }

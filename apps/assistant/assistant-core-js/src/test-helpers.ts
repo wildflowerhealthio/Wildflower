@@ -2,7 +2,8 @@
  * Stand-ins for this package's tests and, through the
  * `assistant-core-js/test-helpers` subpath, its consumers': a page whose
  * storage is in memory, a Claude client that answers without the network,
- * and the SDK shapes a reply streams.
+ * a FHIR server that answers from a table, and the SDK shapes a reply
+ * streams.
  *
  * @packageDocumentation
  */
@@ -14,9 +15,10 @@ import type {
   BetaRawMessageStreamEvent,
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import { Layer } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 
 import { Claude, type ClaudeClient, type ClaudeMessageStream } from './claude.ts'
+import { FhirReadFailed, FhirRecords } from './fhir-records.ts'
 import type { KeptStorage, StoragePage } from './internal/page-storage.ts'
 
 /** A storage call a blocked browser refuses. */
@@ -251,6 +253,72 @@ const thinkingBlock = (thinking: string, signature = 'sig'): BetaContentBlock =>
   signature,
 })
 
+/** A tool call block: `name` called with `input`, as call `id`. */
+const toolUseBlock = (id: string, name: string, input: unknown): BetaContentBlock => ({
+  type: 'tool_use',
+  id,
+  name,
+  input,
+})
+
+/** The FHIR base a {@link stubFhirRecords} server is at. */
+const STUB_FHIR_BASE = 'https://fhir.example/r4'
+
+/** A stub FHIR server, and every path it was asked to read, in order. */
+interface StubFhirRecords {
+  /** The {@link FhirRecords} layer reading from it. */
+  readonly layer: Layer.Layer<FhirRecords>
+  readonly readPaths: string[]
+}
+
+/**
+ * A FHIR server at {@link STUB_FHIR_BASE} answering each read with the
+ * answer whose key is the longest prefix of its path; a path no key matches
+ * fails as a 404. Answers are Effects, so a test can hold one back.
+ */
+const stubFhirRecords = (
+  answers: Readonly<Record<string, Effect.Effect<unknown, FhirReadFailed>>>,
+  fhirBase: string = STUB_FHIR_BASE
+): StubFhirRecords => {
+  const readPaths: string[] = []
+  const keys = Object.keys(answers).toSorted((left, right) => right.length - left.length)
+  const read = (path: string): Effect.Effect<unknown, FhirReadFailed> =>
+    Effect.suspend(() => {
+      readPaths.push(path)
+      const key = keys.find((each) => path.startsWith(each))
+      const answer = key === undefined ? undefined : answers[key]
+      return (
+        answer ??
+        Effect.fail(
+          new FhirReadFailed({
+            failure: { kind: 'error-status', status: 404, outcomeText: Option.none() },
+          })
+        )
+      )
+    })
+  return { layer: Layer.succeed(FhirRecords, { fhirBase, read }), readPaths }
+}
+
+/** The server failing a read with `status`, its `OperationOutcome` saying `outcomeText` when given. */
+const fhirFailure = (status: number, outcomeText?: string): Effect.Effect<never, FhirReadFailed> =>
+  Effect.fail(
+    new FhirReadFailed({
+      failure: { kind: 'error-status', status, outcomeText: Option.fromNullable(outcomeText) },
+    })
+  )
+
+/** A search-result bundle of `resources`, with `total` and a `next` link when given. */
+const searchBundleOf = (
+  resources: readonly unknown[],
+  { total, nextUrl }: { readonly total?: number; readonly nextUrl?: string } = {}
+): unknown => ({
+  resourceType: 'Bundle',
+  type: 'searchset',
+  ...(total === undefined ? {} : { total }),
+  entry: resources.map((resource) => ({ resource })),
+  link: nextUrl === undefined ? [] : [{ relation: 'next', url: nextUrl }],
+})
+
 /** A whole message from `model` with `content`, stopped for `stopReason`. */
 const messageOf = ({
   model = 'claude-sonnet-5',
@@ -289,18 +357,23 @@ const messageOf = ({
 })
 
 export {
+  STUB_FHIR_BASE,
   blockedStoragePage,
   failingReply,
+  fhirFailure,
   heldReply,
   memoryStorage,
   memoryStoragePage,
   messageOf,
   modelInfoOf,
   scriptedReply,
+  searchBundleOf,
   stubClaude,
+  stubFhirRecords,
   textBlock,
   textDelta,
   thinkingBlock,
   thinkingDelta,
+  toolUseBlock,
 }
-export type { HeldReply, StorageCall, StubClaude }
+export type { HeldReply, StorageCall, StubClaude, StubFhirRecords }

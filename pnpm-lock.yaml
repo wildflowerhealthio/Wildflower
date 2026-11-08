@@ -370,9 +370,15 @@ importers:
       '@types/node':
         specifier: ^26
         version: 26.1.0
+      '@wildflowerhealthio/fhir-r4':
+        specifier: workspace:*
+        version: link:../../../slices/fhir/fhir-r4
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../../slices/scopes/scopes-core
       effect:
         specifier: 'catalog:'
         version: 3.22.4
@@ -422,6 +428,9 @@ importers:
       '@wildflowerhealthio/assistant-core-js':
         specifier: workspace:*
         version: link:../assistant-core-js
+      '@wildflowerhealthio/fhir-r4-react':
+        specifier: workspace:*
+        version: link:../../../slices/fhir/fhir-r4-react
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -431,6 +440,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../../slices/scopes/scopes-core
       effect:
         specifier: 'catalog:'
         version: 3.22.4

@@ -15,6 +15,7 @@ export * as DomainResource from './base/domain-resource.ts'
 export * as Element from './base/element.ts'
 export * as FhirString from './base/fhir-string.ts'
 export * as Meta from './base/meta.ts'
+export { IdSchema } from './base/primitives.ts'
 export * as Resource from './base/resource.ts'
 export {
   filterForExclusiveChoiceElementSet,

@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/assistant-react",
   "version": "0.0.0",
   "private": true,
-  "description": "Browser UI for Assistant: the key setup, the model picker, the style choice with its academic confirmation and banner, the streamed transcript with Markdown replies, a Thinking disclosure and refusals, and the composer, as one AssistantChat component over assistant-core-js.",
+  "description": "Browser UI for Assistant: the key setup, the model picker, the style choice with its academic confirmation and banner, the streamed transcript with Markdown replies, a Thinking disclosure, tool-call cards and refusals, and the composer, as one AssistantChat component over assistant-core-js.",
   "type": "module",
   "exports": {
     ".": {
@@ -29,9 +29,11 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@wildflowerhealthio/assistant-core-js": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-react": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
@@ -43,8 +45,10 @@
   },
   "peerDependencies": {
     "@wildflowerhealthio/assistant-core-js": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-react": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:"
   }

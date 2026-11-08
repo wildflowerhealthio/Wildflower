@@ -1,4 +1,8 @@
-import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import type {
+  BetaAssistantMessageParam,
+  BetaContentBlock,
+  BetaUserMessageParam,
+} from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
@@ -6,13 +10,25 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import type * as ChatPatient from './chat-patient.ts'
 import * as Chat from './chat.ts'
-import { blockedStoragePage, memoryStoragePage, textBlock, thinkingBlock } from './test-helpers.ts'
+import {
+  blockedStoragePage,
+  memoryStoragePage,
+  textBlock,
+  thinkingBlock,
+  toolUseBlock,
+} from './test-helpers.ts'
 
 const RUNS = numRunsFor({ base: 100 })
 
-/** A reply's content as the API returns it: text, summarized or redacted thinking, and fallback switch points. */
+/** A reply's content as the API returns it: text, summarized or redacted thinking, tool calls and fallback switch points. */
 const contentBlockArb: fc.Arbitrary<BetaContentBlock> = fc.oneof(
   fc.string().map(textBlock),
+  fc.tuple(fc.string({ minLength: 1 }), fc.string()).map(([id, code]) =>
+    toolUseBlock(id, 'search_records', {
+      resourceType: 'Observation',
+      params: [{ name: 'code', value: code }],
+    })
+  ),
   fc
     .tuple(fc.string(), fc.string({ minLength: 1 }))
     .map(([thinking, signature]) => thinkingBlock(thinking, signature)),
@@ -34,10 +50,24 @@ const entryArb: fc.Arbitrary<Chat.Entry> = fc.oneof(
   fc.record({
     _tag: fc.constant('reply' as const),
     model: modelIdArb,
-    stopReason: fc.constantFrom('end_turn' as const, 'max_tokens' as const),
+    stopReason: fc.constantFrom('end_turn' as const, 'max_tokens' as const, 'tool_use' as const),
     message: fc
       .array(contentBlockArb, { maxLength: 5 })
       .map((content) => ({ role: 'assistant' as const, content })),
+  }),
+  fc.record({
+    _tag: fc.constant('tool-results' as const),
+    message: fc
+      .array(
+        fc.record({
+          type: fc.constant('tool_result' as const),
+          tool_use_id: fc.string({ minLength: 1 }),
+          content: fc.string(),
+          is_error: fc.boolean(),
+        }),
+        { minLength: 1, maxLength: 3 }
+      )
+      .map((content) => ({ role: 'user' as const, content })),
   }),
   fc.record({ _tag: fc.constant('refusal' as const), model: modelIdArb })
 )
@@ -170,6 +200,89 @@ describe('Chat.requestMessagesOf', () => {
       ),
       { numRuns: RUNS }
     )
+  })
+})
+
+describe('Chat tool rounds', () => {
+  const call = toolUseBlock('call-1', 'search_records', { resourceType: 'Observation', params: [] })
+  const callingMessage: BetaAssistantMessageParam = {
+    role: 'assistant',
+    content: [textBlock('Looking'), call],
+  }
+  const resultsMessage: BetaUserMessageParam = {
+    role: 'user',
+    content: [{ type: 'tool_result', tool_use_id: 'call-1', content: '{"resources":[]}' }],
+  }
+  const toolRound: readonly Chat.Entry[] = [
+    { _tag: 'reply', model: 'claude-sonnet-5', stopReason: 'tool_use', message: callingMessage },
+    { _tag: 'tool-results', message: resultsMessage },
+  ]
+
+  it('should send a tool round as its reply then its results, in order', () => {
+    const answer: Chat.Entry = {
+      _tag: 'reply',
+      model: 'claude-sonnet-5',
+      stopReason: 'end_turn',
+      message: { role: 'assistant', content: [textBlock('Nothing found.')] },
+    }
+    const chat: Chat.Type = {
+      style: 'telehealth',
+      entries: [Chat.questionOf('labs?'), ...toolRound, answer],
+    }
+
+    expect(Chat.requestMessagesOf(chat)).toEqual([
+      { role: 'user', content: 'labs?' },
+      callingMessage,
+      resultsMessage,
+      answer.message,
+    ])
+  })
+
+  it('should leave out a declined question with its tool rounds, keeping what came before', () => {
+    const chat: Chat.Type = {
+      style: 'telehealth',
+      entries: [
+        Chat.questionOf('first'),
+        Chat.questionOf('declined'),
+        ...toolRound,
+        { _tag: 'refusal', model: 'claude-sonnet-5' },
+        Chat.questionOf('next'),
+      ],
+    }
+
+    expect(Chat.requestMessagesOf(chat)).toEqual([
+      { role: 'user', content: 'first' },
+      { role: 'user', content: 'next' },
+    ])
+  })
+
+  it('should run the tool calls after the last fallback switch point only', () => {
+    const declinedCall = toolUseBlock('call-0', 'read_record', {
+      resourceType: 'Patient',
+      id: 'p1',
+    })
+    const fallback: BetaContentBlock = {
+      type: 'fallback',
+      from: { model: 'claude-opus-5' },
+      to: { model: 'claude-opus-4-8' },
+      trigger: { type: 'refusal', category: 'cyber' },
+    }
+
+    expect(
+      Chat.toolCallsOf({
+        role: 'assistant',
+        content: [declinedCall, fallback, textBlock('ok'), call],
+      })
+    ).toEqual([call])
+    expect(Chat.toolCallsOf({ role: 'assistant', content: 'no calls' })).toEqual([])
+  })
+
+  it('should find each tool result by the id of the call it answers', () => {
+    const results = Chat.toolResultsByCallIdOf([Chat.questionOf('labs?'), ...toolRound])
+
+    expect([...results.entries()]).toEqual([
+      ['call-1', { type: 'tool_result', tool_use_id: 'call-1', content: '{"resources":[]}' }],
+    ])
   })
 })
 
