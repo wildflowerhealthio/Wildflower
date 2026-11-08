@@ -2,6 +2,8 @@ packages:
   - apps/*
   # The App Catalog: the HALO catalog's schema and the app that serves it.
   - apps/app-catalog/*
+  # The Assistant: a Claude chat over the patient's record.
+  - apps/assistant/*
   # Wildflower Authorization: the hosted app where the Owner manages what a
   # server has authorized.
   - apps/authorization/*
