@@ -18,8 +18,8 @@ import {
 import { decodeHar } from './decode-har.ts'
 import { detectHar } from './detect-har.ts'
 import { fhirSources } from './fhir-pool.ts'
-import { mergeSharedResources } from './merge-shared-resources.ts'
 import { preview, type PreviewedResponse } from './review.ts'
+import { tagSharedResources } from './tag-shared-resources.ts'
 
 type FhirPreview = PreviewedResponse<DetachedResource.Type>
 
@@ -28,16 +28,19 @@ const fhirPool = SourceDescriptor.poolOf(fhirSources)
 /**
  * The previews' records as one section per response URL, in the order each
  * URL first appears in the archive, each record's `fullUrl` its preview key
- * (`<response id>:<index>`).
+ * (`<response id>:<index>`), a shared copy keeping its `shared` tag.
  */
 const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFileSet.Section[] => {
   const byUrl = new Map<string, DecodedFileSet.Entry[]>()
   for (const entry of previews) {
     if (entry.outcome._tag !== 'resources' || entry.outcome.resources.length === 0) continue
-    const labeled = entry.outcome.resources.map(({ key, resource }): DecodedFileSet.Entry => ({
-      fullUrl: key,
-      resource,
-    }))
+    const labeled = entry.outcome.resources.map(
+      ({ key, resource, shared }): DecodedFileSet.Entry => ({
+        fullUrl: key,
+        resource,
+        shared,
+      })
+    )
     const existing = byUrl.get(entry.ref.url)
     if (existing === undefined) byUrl.set(entry.ref.url, labeled)
     else existing.push(...labeled)
@@ -80,6 +83,11 @@ const sourceFileFormat = {
  * a captured browsing session is an engineering artifact, so its source file is
  * stored exactly as minted rather than filed under a patient, where it would
  * land in `Patient/$everything`.
+ *
+ * A source's `mergeResources` does not run here: the decode tags the copies
+ * one identity has across responses (`tagSharedResources`) and keeps each in
+ * its own response's section, and the review merges the copies it keeps
+ * (`DecodedFile.mergeSharedCopies`).
  */
 const harImporter: FileImporter.Type<null, typeof format> = {
   format,
@@ -92,7 +100,7 @@ const harImporter: FileImporter.Type<null, typeof format> = {
     decodeFileSet: (pickedFiles) =>
       decodeHar(pickedFiles[0].bytes).pipe(
         Effect.flatMap((responses) => preview(fhirPool, responses)),
-        Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
+        Effect.map((previews) => tagSharedResources(fhirSources, pickedFiles[0].id, previews)),
         Effect.map((previews) => ({
           sections: sectionsByUrl(previews),
           notes: notesFor(previews),

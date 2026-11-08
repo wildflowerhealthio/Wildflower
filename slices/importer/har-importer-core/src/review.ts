@@ -1,6 +1,7 @@
 import { Effect, Match, Option, type ParseResult } from 'effect'
 
 import { Extraction, type HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
+import type { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 
 /**
  * The HAR-specific preview pipeline: given decoded responses, route each
@@ -19,10 +20,14 @@ import { Extraction, type HttpResponseKind } from '@wildflowerhealthio/http-extr
  */
 const resourceKey = (responseId: string, index: number): string => `${responseId}:${index}`
 
-/** One previewed record: the record plus its stable key. */
+/**
+ * One previewed record: the record plus its stable key, and `shared` once
+ * `tagSharedResources` finds it one copy of several.
+ */
 interface PreviewedResource<TParsed> {
   readonly key: string
   readonly resource: TParsed
+  readonly shared?: DecodedFile.Shared
 }
 
 /**
