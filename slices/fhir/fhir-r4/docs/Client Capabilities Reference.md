@@ -216,6 +216,16 @@ These are now serialized as "absent or non-empty array" matching every other `0.
 
 Each later page is the same `POST` with the `_pageToken` the previous page's `next` link carries (see "Page tokens are opaque server state" below).
 
+## Record matching (`$match`, client side)
+
+HFS has no `$match` operation, so `fhir-r4/clients`' `ResourceMatch.matchAll(queries, options)` implements one behind the same shape, for every searchable type rather than Patient alone: queries in (`MatchQuery`, from a decoded resource or a logical reference), and for each query, in the order given, its candidates, each a stored resource with a grade from the `match-grade` extension's value set. It takes the operation's `onlyCertainMatches` and `count` (the most candidates per query, best grade first).
+
+- **`certain`**: the stored record carries one of the query's qualified identifiers (`system` and `value` equal). One `searchByIdentifiers` per resource type carries every identifier of every query of that type; a hit goes to every query whose identifiers it carries, and to no query when it carries none of them. A query with no qualified identifier, and a type with no identifier search (`Binary`), has no certain candidate and sends nothing.
+- **`probable` / `possible`**: only for a Patient or Practitioner query with no certain candidate, and never under `onlyCertainMatches`. A Patient is searched by `family` and `birthdate` (a full date; no search without one), a Practitioner by `family`, one batch Bundle per type with each distinct search once. A name with only `text` is read as given names then a family name (its last word). The search casts the net and the client grades what it returns: a Patient is `probable` when family, every given name of the query and birth date are equal, and `possible` when only family and birth date are; a Practitioner is `probable` when family and every given name of the query are equal, and `possible` when the family is equal and the first given names share an initial (`J` and `Jonathan`). A match that grades as neither (a `Browning` the starts-with search returned for `Brown`) is dropped.
+- **`certainly-not`** is in the grade type for fidelity to the value set; nothing gives it.
+
+Names compare after decomposing to NFD and dropping combining marks, lower-casing and collapsing whitespace, with a leading `Dr`, `Dr.` or `Doctor` dropped (`prefix` is not compared at all); any name of the query may match any name of the stored record. There is no fuzzy or phonetic matching. The family name is searched for in that normalised form, so finding an accented name by its unaccented spelling is the server's string search's to do. A stored name with only `text` is not found by a `family` search, though it grades if another search returns it. Only a name search's first page is read (`_count` of 1000): one whose searchset continues past it fails the match with `DemographicSearchPageFull` rather than lose candidates. Any failed search, an identifier search or a rejected batch entry, fails the match: it is never "no match".
+
 ## Page tokens are opaque server state
 
 `_pageToken` is declared as a plain string in every resource's `SearchParams`; the server (HFS) mints and interprets it. The client treats it as opaque and never constructs one.
