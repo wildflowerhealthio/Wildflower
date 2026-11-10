@@ -9,6 +9,7 @@ import {
   type SearchableResourceType,
   searchByIdentifiers,
 } from './index.ts'
+import { IDENTIFIER_CHUNK_SIZE } from './search-by-type.ts'
 
 describe('searchByIdentifiers', () => {
   it('should send one POST <Type>/_search with the identifiers as one escaped token value and a full page', async () => {
@@ -34,6 +35,30 @@ describe('searchByIdentifiers', () => {
         },
       },
     ])
+  })
+
+  it('should search the identifiers a chunk at a time, giving a resource two chunks match once', async () => {
+    // Arrange: one identifier more than a chunk holds
+    const identifiers = Array.makeBy(IDENTIFIER_CHUNK_SIZE + 1, (index) =>
+      qualified('https://shoppers.example/customer', `${index}`)
+    )
+    const lastIdentifier = `https://shoppers.example/customer|${IDENTIFIER_CHUNK_SIZE}`
+
+    // Act
+    const { requests, result } = await runWith(
+      searchByIdentifiers('Patient', identifiers),
+      (form) =>
+        form['identifier'] === lastIdentifier
+          ? searchset([storedPatient('p-both'), storedPatient('p-2')], null)
+          : searchset([storedPatient('p-1'), storedPatient('p-both')], null)
+    )
+
+    // Assert
+    expect(requests.map(({ form }) => form['identifier']?.split(',').length)).toEqual([
+      IDENTIFIER_CHUNK_SIZE,
+      1,
+    ])
+    expect(result.map(({ id }) => id)).toEqual(['p-1', 'p-both', 'p-2'])
   })
 
   it('should follow next links to the last page, asking for each with the same identifiers', async () => {

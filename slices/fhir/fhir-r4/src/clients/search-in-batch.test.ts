@@ -50,10 +50,69 @@ describe('searchInBatch', () => {
     )
 
     // Assert
-    expect(result.map(Either.map((matches) => matches.map(literalReferenceOf)))).toEqual([
+    expect(result.map(Either.map(({ matches }) => matches.map(literalReferenceOf)))).toEqual([
       Either.right(['Patient/s-1', 'Patient/s-2']),
       Either.right([]),
       Either.right(['Practitioner/l-1']),
+    ])
+  })
+
+  it('should say a search was cut off when its searchset carries a next link, whatever the link names its cursor', async () => {
+    // Arrange
+    const searches: readonly BatchSearch[] = [
+      { resourceType: 'Patient', urlParams: { family: 'Smith' } },
+      { resourceType: 'Patient', urlParams: { family: 'Jones' } },
+    ]
+
+    // Act
+    const { result } = await runWith(searches, () =>
+      batchResponse([
+        {
+          response: { status: '200 OK' },
+          resource: {
+            ...searchset([{ resource: stored('Patient', 's-1'), search: { mode: 'match' } }]),
+            link: [{ relation: 'next', url: `${TEST_ORIGIN}/Patient?family=Smith&_cursor=abc` }],
+          },
+        },
+        searchsetEntry([stored('Patient', 'j-1')]),
+      ])
+    )
+
+    // Assert
+    expect(result.map(Either.map(({ truncated }) => truncated))).toEqual([
+      Either.right(true),
+      Either.right(false),
+    ])
+  })
+
+  it('should leave out an outcome entry and give the matches beside it', async () => {
+    // Arrange
+    const searches: readonly BatchSearch[] = [
+      { resourceType: 'Patient', urlParams: { family: 'Smith' } },
+    ]
+
+    // Act
+    const { result } = await runWith(searches, () =>
+      batchResponse([
+        {
+          response: { status: '200 OK' },
+          resource: searchset([
+            { resource: stored('Patient', 's-1'), search: { mode: 'match' } },
+            {
+              resource: {
+                resourceType: 'OperationOutcome',
+                issue: [{ severity: 'warning', code: 'not-supported', diagnostics: 'ignored' }],
+              },
+              search: { mode: 'outcome' },
+            },
+          ]),
+        },
+      ])
+    )
+
+    // Assert
+    expect(result.map(Either.map(({ matches }) => matches.map(literalReferenceOf)))).toEqual([
+      Either.right(['Patient/s-1']),
     ])
   })
 
@@ -77,7 +136,10 @@ describe('searchInBatch', () => {
     )
 
     // Assert
-    expect(result[0]).toMatchObject({ _tag: 'Right', right: [{ id: 's-1' }] })
+    expect(result[0]).toMatchObject({
+      _tag: 'Right',
+      right: { matches: [{ id: 's-1' }], truncated: false },
+    })
     expect(result[1]).toMatchObject({
       _tag: 'Left',
       left: {
