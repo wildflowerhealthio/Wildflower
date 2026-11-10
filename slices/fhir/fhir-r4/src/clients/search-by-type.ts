@@ -161,6 +161,10 @@ const searchesByType: {
   },
 }
 
+/** Whether `resourceType` is a {@link SearchableResourceType}: one with a row in the table. */
+const isSearchableResourceType = (resourceType: string): resourceType is SearchableResourceType =>
+  Object.hasOwn(searchesByType, resourceType)
+
 /**
  * The page size an identifier search asks for: the most the server gives in
  * one page, so a search for many identifiers takes as few round trips as it
@@ -272,5 +276,11 @@ const searchAllOfType = <ResourceType extends SearchableResourceType>(
     )
   )
 
-export { IDENTIFIER_CHUNK_SIZE, searchAllOfType, searchByIdentifiers, searchesByType }
+export {
+  IDENTIFIER_CHUNK_SIZE,
+  isSearchableResourceType,
+  searchAllOfType,
+  searchByIdentifiers,
+  searchesByType,
+}
 export type { SearchableResource, SearchableResourceType, SearchFailure, SearchParamsByType }
