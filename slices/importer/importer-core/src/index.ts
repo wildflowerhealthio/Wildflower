@@ -21,7 +21,7 @@
  */
 export { defaultFormatSettings, formatKinds, formatRegistry } from './registry.ts'
 export type { BoundFormat, DecodeRequirements, FormatKind, FormatSettings } from './registry.ts'
-// `groupByFormat`, `decodeFormat` and `identifyPick` are steps of `readBatch`,
+// `identifyPick`, `claimPicks` and `decodeFormat` are steps of `readBatch`,
 // not a surface: the shell drives the whole read, never a leg of it. They stay
 // module-level exports for `read-batch.test.ts` and are not re-exported here.
 export { importDecoded, type ImportingFormat } from './import-decoded.ts'

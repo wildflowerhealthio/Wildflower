@@ -10,7 +10,7 @@ import { importDecoded } from './import-decoded.ts'
 import { type FormatKind, formatKinds, type FormatSettings } from './registry.ts'
 
 /**
- * The read half of an import as pure functions over the registry: group a
+ * The read half of an import as pure functions over the registry: split a
  * picked batch by the format that claims each file, run every format's
  * batch `decode` under its current settings and import what it decoded
  * (`importDecoded`), and re-decode one format when its settings change. No
@@ -55,10 +55,13 @@ type ReadRegistry<R = unknown> = {
   >
 }
 
+/** The picks each format claimed, in pick order, keyed by format: a format that claimed none has no key. */
+type ClaimedByFormat = { readonly [K in FormatKind]?: readonly PickedFile.Type[] }
+
 /** A picked batch split by the format that claimed each file. */
-interface GroupedPicks {
+interface ClaimedPicks {
   /** The picks each registered format claimed, in pick order, keyed by format. */
-  readonly groups: ReadonlyMap<FormatKind, readonly PickedFile.Type[]>
+  readonly claimed: ClaimedByFormat
   /** The picks no registered format claimed, in pick order. */
   readonly unrecognized: readonly PickedFile.Type[]
 }
@@ -117,8 +120,8 @@ const identifyPick = (
  *
  * @param registry - The registered formats' `detect`s
  * @param picks - The batch, in pick order
- * @returns The per-format groups (pick order kept within each) and the
- *   unclaimed picks
+ * @returns The picks each format claimed (pick order kept within each) and
+ *   the unclaimed picks
  *
  * @remarks
  * **The one place a pick's id is minted.** It is the pick's position in the
@@ -127,11 +130,11 @@ const identifyPick = (
  * which hands the same files back — yields the same ids, so every review key,
  * result id and unreadable row derived from one survives.
  */
-const groupByFormat = (
+const claimPicks = (
   registry: ReadRegistry,
   picks: readonly PickedFile.NamedBytes[]
-): GroupedPicks => {
-  const groups = new Map<FormatKind, PickedFile.Type[]>()
+): ClaimedPicks => {
+  const claimed: { [K in FormatKind]?: PickedFile.Type[] } = {}
   const unrecognized: PickedFile.Type[] = []
   picks.forEach((pick, index) => {
     const file: PickedFile.Type = { ...pick, id: `${index}:${pick.fileName}` }
@@ -140,11 +143,11 @@ const groupByFormat = (
       unrecognized.push(file)
       return
     }
-    const group = groups.get(kind)
-    if (group === undefined) groups.set(kind, [file])
-    else group.push(file)
+    const claimedByKind = claimed[kind]
+    if (claimedByKind === undefined) claimed[kind] = [file]
+    else claimedByKind.push(file)
   })
-  return { groups, unrecognized }
+  return { claimed, unrecognized }
 }
 
 /**
@@ -292,13 +295,13 @@ const claimedFormats = (formats: FormatResults): readonly FormatKind[] =>
   formatKinds.filter((kind) => formats[kind].files.length > 0)
 
 export {
+  claimPicks,
+  type ClaimedPicks,
   type DecodedBatch,
   claimedFormats,
   collectFormats,
   decodeFormat,
   type FormatResults,
-  groupByFormat,
-  type GroupedPicks,
   identifyPick,
   readBatch,
   type ReadRegistry,
