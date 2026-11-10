@@ -33,6 +33,14 @@ export {
   type SearchsetPage,
 } from './search-pages.ts'
 export {
+  searchAllOfType,
+  type SearchableResource,
+  type SearchableResourceType,
+  searchByIdentifiers,
+  type SearchFailure,
+  type SearchParamsByType,
+} from './search-by-type.ts'
+export {
   FhirR4ResourcesHttpApiClient,
   type FhirR4ResourcesHttpApiClientShape,
 } from './fhir-r4-resources-http-api-client.ts'
