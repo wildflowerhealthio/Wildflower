@@ -33,18 +33,18 @@ import type { DicomSettings } from './settings.ts'
 type StudyResource = Effect.Effect.Success<ReturnType<typeof toFhirResources>>[number]
 
 /**
- * Each study record's `fullUrl`, fixed and unique within one study: a study
+ * Each study record's local key, fixed and unique within one study: a study
  * synthesizes at most one record of each type.
  */
-const STUDY_FULL_URLS = {
+const STUDY_LOCAL_KEYS = {
   Patient: 'patient',
   ServiceRequest: 'service-request',
   ImagingStudy: 'imaging-study',
 } as const satisfies Record<StudyResource['resourceType'], string>
 
-/** A study record as a row of its section, under its type's fixed `fullUrl`. */
-const studyEntryOf = (resource: StudyResource): DecodedFileSet.Entry => ({
-  fullUrl: STUDY_FULL_URLS[resource.resourceType],
+/** A study record as a row of its section, under its type's fixed local key. */
+const studyRecordOf = (resource: StudyResource): FileSetRecord.Type => ({
+  localKey: STUDY_LOCAL_KEYS[resource.resourceType],
   resource,
 })
 

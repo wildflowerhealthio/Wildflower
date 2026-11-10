@@ -33,7 +33,7 @@ const reportSectionTitle = (report: Report.Type): string => {
 /**
  * The reports as the LifeLabs decode yields them: one section per report, its
  * records detached and keyed by the identifiers the report prints, each
- * entry's `fullUrl` `<Type>/<key value>`, no notes.
+ * record's local key `<Type>/<key value>`, no notes.
  *
  * @param reports - The parsed reports, in print order, one per `Lab No`
  * @param options - The zone the reports' printed clock is in, and the province

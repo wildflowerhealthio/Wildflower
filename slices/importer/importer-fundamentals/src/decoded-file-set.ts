@@ -16,6 +16,7 @@ import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r
 import { Array as Arr, Either, Option, type ParseResult, pipe } from 'effect'
 
 import type * as AdoptedFileSet from './adopted-file-set.ts'
+import type * as FileSetRecord from './file-set-record.ts'
 import * as ImpliedRecord from './implied-record.ts'
 import type * as PickedFile from './picked-file.ts'
 import * as ResourcePlan from './resource-plan.ts'
@@ -24,25 +25,7 @@ import * as Section from './section.ts'
 import * as SectionedList from './sectioned-list.ts'
 
 /**
- * One record of a decoded set: the record as its source gave it, detached
- * (`fhir-r4-adoption`'s `DetachedResource`: no id, keyed by its first
- * identifier, naming every other record it decoded by a logical reference),
- * beside its identity within the decoded set.
- *
- * @remarks
- * `fullUrl` plays the part of FHIR's `Bundle.entry.fullUrl` in a transaction:
- * the record's identity within the set before it is stored, which the
- * review tracks an exclusion or an edit by. It is stable across a settings
- * re-decode, and unique within the set once `namespaceKeys` prefixes it. It is
- * not the record's `id`: `id: null` is what marks a record detached.
- */
-interface Entry {
-  readonly fullUrl: string
-  readonly resource: DetachedResource.Type
-}
-
-/**
- * A record's review title, the one title every decoded record is reviewed
+ * A record's review title, the one title every record of a set is reviewed
  * under, read off its plan: for a keyed record, the literal reference the
  * import stage writes it under, `<Type>/<id>`, its derived id; for a keyless
  * record, whose minted id changes on every re-decode, its type and its
@@ -183,13 +166,13 @@ const planEntries = (
 
 /**
  * A logical reference of a set to a record no record of the set is, beside
- * what the reference says of it, its `display`, and the `fullUrl` of the
- * entry holding it.
+ * what the reference says of it, its `display`, and the local key of the
+ * record holding it.
  */
 interface ImpliedTarget {
   readonly logicalReference: LogicalReference.Type
   readonly display: string
-  readonly referencingFullUrl: string
+  readonly referencingLocalKey: string
 }
 
 /**
@@ -249,7 +232,7 @@ const impliedSectionOf = (
     Arr.dedupeWith((left, right) =>
       LogicalReference.equivalence(left.logicalReference, right.logicalReference)
     ),
-    Arr.filterMap(({ logicalReference, display, referencingFullUrl }) =>
+    Arr.filterMap(({ logicalReference, display, referencingLocalKey }) =>
       Option.map(
         ImpliedRecord.tryFromLogicalReference(logicalReference, display),
         Either.map((resource): PlannedEntry => ({

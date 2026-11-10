@@ -111,20 +111,21 @@ const tryFromLogicalReference = (
   )
 
 /**
- * The `fullUrl` of the record `logicalReference` implies, first named by the
- * entry under `referencingFullUrl`:
- * `<referencingFullUrl>#implied:<Type>|<system>|<value>`.
+ * The local key of the record `logicalReference` implies, first named by the
+ * record under `referencingLocalKey`:
+ * `<referencingLocalKey>#implied:<Type>|<system>|<value>`.
  *
  * @remarks
- * Only a key, stable and unique, which the review tracks the row by: stable
- * across a settings re-decode, since it is read off the entry and the
- * reference, and unique across the batch, since the referencing entry's
- * `fullUrl` is (`FormatDecode.keyPrefix`). Nothing reads it back: a row says
- * it is implied by its `origin` (`Reviewable.Origin`).
+ * Only a key, stable and unique within the set, which the review tracks the
+ * row by once the import stage makes it a review key: stable across a
+ * settings re-decode, since it is read off the referencing record and the
+ * reference, and unique within the set, since the referencing record's local
+ * key is. Nothing reads it back: a row says it is implied by its
+ * `isImplied` (`ReviewRow.Type`).
  */
-const fullUrlOf = (
-  referencingFullUrl: string,
+const localKeyOf = (
+  referencingLocalKey: string,
   { resourceType, identifier: [{ system, value }] }: LogicalReference.Type
-): string => `${referencingFullUrl}#implied:${resourceType}|${system.href}|${value}`
+): string => `${referencingLocalKey}#implied:${resourceType}|${system.href}|${value}`
 
-export { fullUrlOf, tryFromLogicalReference }
+export { localKeyOf, tryFromLogicalReference }

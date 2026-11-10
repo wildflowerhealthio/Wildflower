@@ -6,6 +6,7 @@ import {
   type DecodedFileSet,
   DecodeFunction,
   type FileImporter,
+  type FileSetRecord,
   SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 
@@ -28,25 +29,23 @@ const fhirPool = SourceDescriptor.poolOf(fhirSources)
 
 /**
  * The previews' records as one section per response URL, in the order each
- * URL first appears in the archive, each record's `fullUrl` its preview key
+ * URL first appears in the archive, each record's local key its preview key
  * (`<response id>:<index>`).
  */
-const sectionsByUrl = (
-  previews: readonly FhirPreview[]
-): SectionedList.Type<DecodedFileSet.Entry> =>
+const sectionsByUrl = (previews: readonly FhirPreview[]): SectionedList.Type<FileSetRecord.Type> =>
   SectionedList.map(
     SectionedList.groupBy(
       previews.flatMap(({ ref, outcome }) =>
         outcome._tag === 'resources'
           ? outcome.resources.map(({ key, resource }) => ({
               url: ref.url,
-              entry: { fullUrl: key, resource },
+              record: { localKey: key, resource },
             }))
           : []
       ),
       ({ url }) => url
     ),
-    ({ entry }) => entry
+    ({ record }) => record
   )
 
 const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>

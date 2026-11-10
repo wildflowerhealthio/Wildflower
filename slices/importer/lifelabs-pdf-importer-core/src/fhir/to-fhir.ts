@@ -1,7 +1,7 @@
 import type { HealthCardProvince } from '@wildflowerhealthio/fhir-ca-infoway'
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { DiagnosticReport, Observation, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import type { DecodedFileSet } from '@wildflowerhealthio/importer-fundamentals'
+import type { FileSetRecord } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, DateTime, Effect, Option, Order, type ParseResult } from 'effect'
 
 import type * as Report from '../entities/report.ts'
@@ -25,16 +25,16 @@ interface SynthesisOptions {
  * built from.
  *
  * @remarks
- * Each resource is an entry whose `fullUrl` is its type and its key's value,
+ * Each resource is a record whose local key is its type and its key's value,
  * `<Type>/<value>`, which a settings re-decode keeps. A `Patient` several
  * reports share appears once, in the group of the first report that names it
- * (deduplicated by key across the whole document). A provider is no entry:
+ * (deduplicated by key across the whole document). A provider is no record:
  * each report names its providers by printed name, and the import stage
  * implies their Practitioners.
  */
 interface ReportResources {
   readonly report: Report.Type
-  readonly entries: readonly DecodedFileSet.Entry[]
+  readonly records: readonly FileSetRecord.Type[]
 }
 
 const decodePatient = DetachedResource.decodeUnknown(Patient.Schema)
@@ -44,12 +44,12 @@ const decodeObservation = DetachedResource.decodeUnknown(Observation.Schema)
 /** A key as one string, for telling keys apart: its system and value. */
 const keyText = ({ system, value }: DetachedResource.Key): string => `${system}|${value}`
 
-/** `resource`, minted keyed by `key`, as its entry: `fullUrl` `<Type>/<key value>`. */
-const entryOf = (
+/** `resource`, minted keyed by `key`, as its record: local key `<Type>/<key value>`. */
+const recordOf = (
   key: DetachedResource.Key,
   resource: DetachedResource.Type
-): DecodedFileSet.Entry => ({
-  fullUrl: `${resource.resourceType}/${key.value}`,
+): FileSetRecord.Type => ({
+  localKey: `${resource.resourceType}/${key.value}`,
   resource,
 })
 
@@ -93,7 +93,7 @@ const latestReportByPatientKey = (
  * Every report is its own `DiagnosticReport`, keyed by the `Lab No` it
  * prints, and each of its rows an `Observation` keyed under that `Lab No`.
  * The reports handed in print distinct `Lab No`s — the parse reads one report
- * per `Lab No` — so every record has its own key and `fullUrl`.
+ * per `Lab No` — so every record has its own key, and so its own local key.
  */
 const toFhirResources = (
   reports: readonly Report.Type[],
@@ -109,12 +109,12 @@ const toFhirResources = (
     const seenPatients = new Set<string>()
     const groups: ReportResources[] = []
     for (const [report, patientKey] of reportsWithPatientKeys) {
-      const entries: DecodedFileSet.Entry[] = []
+      const records: FileSetRecord.Type[] = []
       if (!seenPatients.has(keyText(patientKey))) {
         seenPatients.add(keyText(patientKey))
         const latest = latestReportNaming[keyText(patientKey)] ?? report
-        entries.push(
-          entryOf(patientKey, yield* decodePatient(yield* patientWire(latest, healthCardProvince)))
+        records.push(
+          recordOf(patientKey, yield* decodePatient(yield* patientWire(latest, healthCardProvince)))
         )
       }
 
@@ -142,17 +142,17 @@ const toFhirResources = (
         }
       }
       for (const [key, wire] of Arr.zip(observationKeys, observations)) {
-        entries.push(entryOf(key, yield* decodeObservation(wire)))
+        records.push(recordOf(key, yield* decodeObservation(wire)))
       }
-      entries.push(
-        entryOf(
+      records.push(
+        recordOf(
           reportKeyOf(report),
           yield* decodeDiagnosticReport(
             diagnosticReportWire(report, patientKey, observationKeys, timeZone)
           )
         )
       )
-      groups.push({ report, entries })
+      groups.push({ report, records })
     }
     return groups
   })
