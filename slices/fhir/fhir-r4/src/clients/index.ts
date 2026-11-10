@@ -71,3 +71,6 @@ export {
   WRITE_CONCURRENCY,
 } from './persist-resources.ts'
 export { upsertResource, UnsupportedFhirResourceTypeError } from './upsert-resource.ts'
+export * as MatchGrade from './match-grade.ts'
+export * as MatchQuery from './match-query.ts'
+export * as ResourceMatch from './resource-match.ts'
