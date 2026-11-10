@@ -14,7 +14,12 @@ import {
   type SearchParamsByType,
   searchesByType,
 } from './search-by-type.ts'
-import { matchesIn, type MatchWithoutResource } from './search-pages.ts'
+import {
+  matchesIn,
+  type MatchWithoutResource,
+  NEXT_RELATION,
+  type SearchPages,
+} from './search-pages.ts'
 
 /**
  * Several searches in one round trip: a FHIR `POST /` `batch` Bundle whose
@@ -91,12 +96,13 @@ type ResponseEntry = Bundle.BundleValue<unknown>['entry'][number]
 /**
  * The stored resources of `resourceType` a search's answer matched: its
  * entry's searchset, when the entry's status is a 2xx, its matches read by
- * `matchesIn` and each decoded as a stored resource.
+ * `matchesIn` and each decoded as a stored resource, and whether the
+ * searchset carries a `next` link, so continues past this first page.
  */
 const matchesOfEntry = (
   resourceType: SearchableResourceType,
   entry: ResponseEntry | undefined
-): Effect.Effect<readonly FhirResourceWithId[], BatchSearchFailure> => {
+): Effect.Effect<SearchPages<FhirResourceWithId>, BatchSearchFailure> => {
   if (entry === undefined || entry.response === null) {
     return Effect.fail(
       new BatchSearchRejected({ resourceType, status: NO_RESPONSE_STATUS, outcome: null })
@@ -106,10 +112,15 @@ const matchesOfEntry = (
   if (!statusOk(status)) {
     return Effect.fail(new BatchSearchRejected({ resourceType, status, outcome: outcome ?? null }))
   }
-  return Schema.decodeUnknown(SearchsetSchema)(entry.resource).pipe(
-    Effect.flatMap((searchset) => matchesIn(resourceType, searchset)),
-    Effect.flatMap(Effect.forEach((match) => Schema.decodeUnknown(StoredResourceSchema)(match)))
-  )
+  return Effect.gen(function* () {
+    const searchset = yield* Schema.decodeUnknown(SearchsetSchema)(entry.resource)
+    const matches = yield* Effect.flatMap(
+      matchesIn(resourceType, searchset),
+      Effect.forEach((match) => Schema.decodeUnknown(StoredResourceSchema)(match))
+    )
+    const truncated = searchset.link.some(({ relation }) => relation === NEXT_RELATION)
+    return { matches, truncated }
+  })
 }
 
 /**
@@ -118,20 +129,21 @@ const matchesOfEntry = (
  *
  * @remarks
  * Each search answers with its first page, sized by its own `_count`: the
- * `next` link of a searchset is not followed. A search the server rejects
+ * `next` link of a searchset is not followed, but says the answer is cut off
+ * (`truncated`), so a caller can tell a first page from a complete answer. A search the server rejects
  * fails as {@link BatchSearchRejected} at its position while the others keep
  * their matches; a search whose parameters do not encode, or a failure to
  * submit the batch at all, fails the whole call.
  * Nothing is submitted for no searches.
  *
  * @param searches - The searches, in the order their answers are given
- * @returns Each search's matches, or its {@link BatchSearchFailure}, in the
- *   order of `searches`
+ * @returns Each search's matches and whether its searchset continued past
+ *   them, or its {@link BatchSearchFailure}, in the order of `searches`
  */
 const searchInBatch = (
   searches: readonly BatchSearch[]
 ): Effect.Effect<
-  readonly Either.Either<readonly FhirResourceWithId[], BatchSearchFailure>[],
+  readonly Either.Either<SearchPages<FhirResourceWithId>, BatchSearchFailure>[],
   BatchSubmitFailure | ParseResult.ParseError,
   FhirR4ResourcesHttpApiClient
 > =>

@@ -90,7 +90,7 @@ const matchesIn = <TResource>(
 interface SearchPages<TResource> {
   /** The matches of every page read, in page order. */
   readonly matches: readonly TResource[]
-  /** Whether the last page read continued to one the page limit left unread. */
+  /** Whether the last page read continued to one left unread: by the page limit, or by a read of the first page only. */
   readonly truncated: boolean
 }
 
