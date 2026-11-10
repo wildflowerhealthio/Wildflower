@@ -110,7 +110,13 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
   previews.flatMap((entry) => {
     const url = entry.ref.url
     const tag = entry.outcome._tag
-    if (tag === 'resources') return []
+    if (tag === 'resources') {
+      // A Binary read that parsed to nothing was served as its raw content.
+      return entry.outcome.resources.length === 0 &&
+        Option.isSome(DetachedResource.serverBinaryUrlIfRead(url))
+        ? [`A Binary served as its raw content, not as FHIR JSON — not imported: ${url}`]
+        : []
+    }
     if (tag === 'duplicate') return [`Duplicate of an earlier response — not imported: ${url}`]
     if (tag === 'parseError') return [`Could not be parsed and will not import: ${url}`]
     if (tag === 'bodyAbsent') return [`The archive captured no response body: ${url}`]
