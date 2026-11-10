@@ -51,7 +51,6 @@ import { issuedIdentifierOf, issuedIdentifierWire, type IssuedIdentifier } from 
 type Wire = Record<string, unknown>
 
 const DCM_CODING_SYSTEM = 'http://dicom.nema.org/resources/ontology/DCM'
-const DICOM_UID_SYSTEM = 'urn:dicom:uid'
 
 const genderOf = (sex: string | undefined): string | undefined => {
   if (sex === undefined) return undefined
@@ -170,6 +169,7 @@ const patientIdentifierOf = (header: DicomHeader.Type): Option.Option<IssuedIden
       }),
     },
     assignerDisplay: Option.none(),
+    unresolvedIssuer: Option.none(),
   }))
 }
 
@@ -303,7 +303,7 @@ interface StudySeries<T extends StudyInstance = StudyInstance> {
  * `ImagingStudy` (accepted); `studyKey` still decodes them as two sets.
  */
 const imagingStudyKeyOf = (header: DicomHeader.Type): DetachedResource.Key => ({
-  system: DicomIdentifierSystem.StudyInstanceUid,
+  system: DicomIdentifierSystem.Uid,
   value: `urn:oid:${header.studyInstanceUid}`,
 })
 
@@ -423,23 +423,40 @@ const earliestStarted = (instances: readonly StudyInstance[]): Option.Option<Dic
     ? Option.some(Arr.min(instances, startedOrder).header)
     : Option.none()
 
-/** The distinct `AccessionNumber`s a study's files state, in study order. */
-const accessionNumbers = (instances: readonly StudyInstance[]): readonly string[] =>
-  Arr.dedupe(
-    Arr.filterMap(orderedInstances(instances), (instance) =>
-      Option.filter(
-        Option.fromNullable(instance.header.accessionNumber),
-        (accession) => accession !== ''
+/**
+ * The identifiers a study's records are keyed by, read off its files in study
+ * order — the one place the synthesis and the decode's notes choose them.
+ */
+interface StudyIdentifiers {
+  /** The `Patient`'s, off the representative header; `None` when it names no patient. */
+  readonly patient: Option.Option<IssuedIdentifier>
+  /**
+   * Each distinct Accession Number under its issuer, in study order: the
+   * first is the `ServiceRequest`'s, and more than one is a disagreement —
+   * the same number under two issuers included.
+   */
+  readonly accessions: readonly IssuedIdentifier[]
+}
+
+/** The {@link StudyIdentifiers} of a study's files, given in study order ({@link orderedInstances}). */
+const studyIdentifiersOf = (ordered: readonly StudyInstance[]): StudyIdentifiers => ({
+  patient: Option.flatMap(Arr.head(ordered), ({ header }) => patientIdentifierOf(header)),
+  accessions: Arr.dedupeWith(
+    Arr.filterMap(ordered, ({ header }) =>
+      Option.map(Option.fromNullable(header.accessionNumber), (accessionNumber) =>
+        accessionIdentifierOf(accessionNumber, header)
       )
-    )
-  )
+    ),
+    (one, other) => one.key.system === other.key.system && one.key.value === other.key.value
+  ),
+})
 
 /** One instance of a series, as `ImagingStudy.series.instance` carries it. */
 const instanceWire = ({ header }: StudyInstance): Wire => {
   const wire: Wire = {
     uid: header.sopInstanceUid,
     sopClass: {
-      system: DICOM_UID_SYSTEM,
+      system: DicomIdentifierSystem.Uid,
       code: header.sopClassUid,
     },
   }
@@ -544,9 +561,9 @@ type DicomFhirResources = DetachedResource.Detached<
  * the same study picked in any order, or re-picked file by file, synthesizes
  * identical resources under identical keys.
  *
- * Files that disagree on `AccessionNumber` are *not* merged into one request:
- * the first is used and {@link accessionNumbers} is what a caller reports the
- * disagreement from. Files that disagree on the patient never reach here — a
+ * Files that disagree on `AccessionNumber` or its issuer are *not* merged
+ * into one request: the first is used, and {@link studyIdentifiersOf} is what
+ * a caller reports the disagreement from. Files that disagree on the patient never reach here — a
  * differing patient key splits the file set upstream (`studyKey`).
  */
 const toFhirResources = (
@@ -559,7 +576,8 @@ const toFhirResources = (
     const head = ordered[0]
     if (head === undefined) return resources
 
-    const patientIdentifier = patientIdentifierOf(head.header)
+    const identifiers = studyIdentifiersOf(ordered)
+    const patientIdentifier = identifiers.patient
     if (Option.isNone(patientIdentifier)) return resources
     const patientKey = patientIdentifier.value.key
     resources.push(yield* decodePatient(patientWire(head.header, patientIdentifier.value)))
@@ -567,11 +585,7 @@ const toFhirResources = (
     // The accession the request is built from: the first stated in study
     // order, under the issuer the file stating it gives, which is the same one
     // for any pick order of the same files.
-    const accession = Arr.findFirst(ordered, ({ header }) =>
-      Option.map(Option.fromNullable(header.accessionNumber), (accessionNumber) =>
-        accessionIdentifierOf(accessionNumber, header)
-      )
-    )
+    const accession = Arr.head(identifiers.accessions)
     if (Option.isSome(accession)) {
       resources.push(
         yield* decodeServiceRequest(serviceRequestWire(head.header, accession.value, patientKey))
@@ -593,13 +607,13 @@ const toFhirResources = (
   })
 
 export {
-  accessionNumbers,
   fhirDate,
   fhirDateTime,
   imagingStudyKeyOf,
   orderedInstances,
   patientKeyOf,
+  studyIdentifiersOf,
   studySeries,
   toFhirResources,
 }
-export type { StudyInstance, StudySeries }
+export type { StudyIdentifiers, StudyInstance, StudySeries }

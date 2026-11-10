@@ -4,7 +4,9 @@
  * system of every DICOM source file's `type` and `category` coding, which the
  * server-side source-file search matches, so changing it hides every DICOM
  * source file already stored, and the stem of
- * {@link DICOM_PRACTITIONER_NAME_SYSTEM}. Its own leaf module so the importer,
+ * {@link DICOM_PRACTITIONER_NAME_SYSTEM} and of the systems
+ * {@link DicomIdentifierSystem} mints, so changing it re-keys those records
+ * too. Its own leaf module so the importer,
  * the source file codec, and the FHIR synthesis import it without a cycle.
  */
 const DICOM_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/dicom'
@@ -38,23 +40,24 @@ const DicomIdentifierSystem = {
    * Wildflower-minted. A local Issuer of Patient ID (0010,0021) is the
    * identifier's `assigner.display`, not part of its system.
    */
-  PatientId: 'https://wildflowerhealth.io/fhir/sid/dicom/patient-id',
+  PatientId: `${DICOM_SYSTEM}/patient-id`,
   /**
    * A patient the file names only by Patient Name and birth date,
    * `<name>, <YYYY-MM-DD>` (the name alone when the file states no valid
    * birth date): Wildflower-minted.
    */
-  PatientNameBirthDate: 'https://wildflowerhealth.io/fhir/sid/dicom/patient-name-birth-date',
+  PatientNameBirthDate: `${DICOM_SYSTEM}/patient-name-birth-date`,
   /**
    * An Accession Number (0008,0050) whose file states no universal issuer for
    * it: Wildflower-minted.
    */
-  AccessionNumber: 'https://wildflowerhealth.io/fhir/sid/dicom/accession-number',
+  AccessionNumber: `${DICOM_SYSTEM}/accession-number`,
   /**
-   * A Study Instance UID (0020,000D), written `urn:oid:<uid>`: FHIR R4's
+   * A DICOM UID — the Study Instance UID (0020,000D) a study is keyed by, and
+   * the SOP Class UIDs its instances name — written `urn:oid:<uid>`: FHIR R4's
    * system for a DICOM UID (Identifier, R4 datatypes).
    */
-  StudyInstanceUid: 'urn:dicom:uid',
+  Uid: 'urn:dicom:uid',
 } as const
 
 const DICOM_SOURCE_FILE_CODE = 'dicom-source-file'

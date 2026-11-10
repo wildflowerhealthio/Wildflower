@@ -86,15 +86,18 @@ const Tag = {
  *
  * Every field is optional except the three instance UIDs, the SOP Class UID
  * and the Modality — which a file must carry for the synthesis above to name
- * what it is — and the two that describe the parse rather than a tag:
- * `hasRequestAttributesSequence` and `parserWarnings`.
+ * what it is — and the three that describe the parse rather than a tag:
+ * `hasRequestAttributesSequence`, `undecodableIssuers` and `parserWarnings`.
  */
 interface Type {
   // Patient module
   readonly patientName: PersonName.Type | undefined
   readonly patientId: string | undefined
   readonly issuerOfPatientId: string | undefined
-  /** The first item of Issuer of Patient ID Qualifiers Sequence (0010,0024). */
+  /**
+   * The first item of Issuer of Patient ID Qualifiers Sequence (0010,0024);
+   * `undefined` too when its text cannot be decoded (see `undecodableIssuers`).
+   */
   readonly issuerOfPatientIdQualifiers: HierarchicDesignator.Type | undefined
   readonly patientBirthDate: string | undefined
   readonly patientSex: string | undefined
@@ -105,7 +108,10 @@ interface Type {
   readonly studyTime: string | undefined
   readonly studyDescription: string | undefined
   readonly accessionNumber: string | undefined
-  /** The first item of Issuer of Accession Number Sequence (0008,0051). */
+  /**
+   * The first item of Issuer of Accession Number Sequence (0008,0051);
+   * `undefined` too when its text cannot be decoded (see `undecodableIssuers`).
+   */
   readonly issuerOfAccessionNumber: HierarchicDesignator.Type | undefined
   readonly referringPhysicianName: PersonName.Type | undefined
   readonly requestedProcedureDescription: string | undefined
@@ -160,6 +166,14 @@ interface Type {
    * Empty for a well-formed file.
    */
   readonly parserWarnings: readonly string[]
+
+  /**
+   * Why each issuer sequence read as absent could not be decoded: an item
+   * declaring a character set this cannot read, or text that set does not
+   * define. An issuer is optional, so its failure is scoped to it rather than
+   * failing the header. Empty when every issuer stated decodes.
+   */
+  readonly undecodableIssuers: readonly string[]
 }
 
 /** A reason {@link tryFromDicomFile} could not read the bytes. */
@@ -347,7 +361,7 @@ const readPn =
     )
 
 /**
- * Read the first item of an issuer sequence as a {@link HierarchicDesignator.Type},
+ * Decode the first item of an issuer sequence as a {@link HierarchicDesignator.Type},
  * or `undefined` for an absent or empty sequence and for an item stating none
  * of the three attributes.
  *
@@ -357,40 +371,82 @@ const readPn =
  * Character Set (0008,0005) when it declares one, else under the file's, which
  * an item inherits (PS3.5 7.5.3).
  *
- * @param label - How the sequence is named in a decode failure, e.g.
- *   `'IssuerOfAccessionNumberSequence (0008,0051)'`
+ * A `Left` is this sequence's failure alone: {@link readHierarchicDesignator}
+ * reads it as absent and {@link readUndecodableIssuers} reports it.
  */
-const readHierarchicDesignator =
-  (tag: string, label: string): Reader<HierarchicDesignator.Type | undefined> =>
-  (dataSet, fileCharacterSet) => {
-    const item = dataSet.elements[tag]?.items?.[0]?.dataSet
-    if (item === undefined) return Either.right(undefined)
-    const itemCharacterSet =
-      item.elements[Tag.SpecificCharacterSet] === undefined
-        ? Either.right(fileCharacterSet)
-        : SpecificCharacterSet.fromValue(item.string(Tag.SpecificCharacterSet))
-    return Either.flatMap(itemCharacterSet, (characterSet) =>
-      Either.map(
-        Either.all({
-          localNamespaceEntityId: decodedText({
-            dataSet: item,
-            characterSet,
-            tag: Tag.LocalNamespaceEntityID,
-            label: `${label} › LocalNamespaceEntityID (0040,0031)`,
-          }),
-          universalEntityId: decodedText({
-            dataSet: item,
-            characterSet,
-            tag: Tag.UniversalEntityID,
-            label: `${label} › UniversalEntityID (0040,0032)`,
-          }),
-          universalEntityIdType: Either.right(trimmedString(item, Tag.UniversalEntityIDType)),
+const decodeHierarchicDesignator = (
+  dataSet: DataSet,
+  fileCharacterSet: SpecificCharacterSet.Type,
+  { tag, label }: IssuerSequence
+): Either.Either<HierarchicDesignator.Type | undefined, SpecificCharacterSet.UndecodableText> => {
+  const item = dataSet.elements[tag]?.items?.[0]?.dataSet
+  if (item === undefined) return Either.right(undefined)
+  const itemCharacterSet =
+    item.elements[Tag.SpecificCharacterSet] === undefined
+      ? Either.right(fileCharacterSet)
+      : Either.mapLeft(
+          SpecificCharacterSet.fromValue(item.string(Tag.SpecificCharacterSet)),
+          ({ reason }) =>
+            new SpecificCharacterSet.UndecodableText({ reason: `${label} › ${reason}` })
+        )
+  return Either.flatMap(itemCharacterSet, (characterSet) =>
+    Either.map(
+      Either.all({
+        localNamespaceEntityId: decodedText({
+          dataSet: item,
+          characterSet,
+          tag: Tag.LocalNamespaceEntityID,
+          label: `${label} › LocalNamespaceEntityID (0040,0031)`,
         }),
-        (designator): HierarchicDesignator.Type | undefined =>
-          Object.values(designator).every((value) => value === undefined) ? undefined : designator
-      )
+        universalEntityId: decodedText({
+          dataSet: item,
+          characterSet,
+          tag: Tag.UniversalEntityID,
+          label: `${label} › UniversalEntityID (0040,0032)`,
+        }),
+        universalEntityIdType: Either.right(trimmedString(item, Tag.UniversalEntityIDType)),
+      }),
+      (designator): HierarchicDesignator.Type | undefined =>
+        Object.values(designator).every((value) => value === undefined) ? undefined : designator
     )
-  }
+  )
+}
+
+/** An issuer sequence: its tag, and how a decode failure names it. */
+interface IssuerSequence {
+  readonly tag: string
+  readonly label: string
+}
+
+const IssuerSequences = {
+  patientId: {
+    tag: Tag.IssuerOfPatientIDQualifiersSequence,
+    label: 'IssuerOfPatientIDQualifiersSequence (0010,0024)',
+  },
+  accessionNumber: {
+    tag: Tag.IssuerOfAccessionNumberSequence,
+    label: 'IssuerOfAccessionNumberSequence (0008,0051)',
+  },
+} as const satisfies Record<string, IssuerSequence>
+
+/** An issuer sequence's designator, `undefined` when it cannot be decoded. */
+const readHierarchicDesignator =
+  (sequence: IssuerSequence): Reader<HierarchicDesignator.Type | undefined> =>
+  (dataSet, fileCharacterSet) =>
+    Either.right(
+      Either.getOrUndefined(decodeHierarchicDesignator(dataSet, fileCharacterSet, sequence))
+    )
+
+/** Why each issuer sequence {@link readHierarchicDesignator} read as absent failed to decode. */
+const readUndecodableIssuers: Reader<readonly string[]> = (dataSet, fileCharacterSet) =>
+  Either.right(
+    Object.values(IssuerSequences).flatMap((sequence) =>
+      Either.match(decodeHierarchicDesignator(dataSet, fileCharacterSet, sequence), {
+        onLeft: ({ reason }) => [reason],
+        onRight: () => [],
+      })
+    )
+  )
 
 /** Report whether a tag is present at all, without reading its value. */
 const readPresence =
@@ -413,10 +469,7 @@ const READERS = {
   patientName: readPn(Tag.PatientName, 'PatientName (0010,0010)'),
   patientId: readText(Tag.PatientID, 'PatientID (0010,0020)'),
   issuerOfPatientId: readText(Tag.IssuerOfPatientID, 'IssuerOfPatientID (0010,0021)'),
-  issuerOfPatientIdQualifiers: readHierarchicDesignator(
-    Tag.IssuerOfPatientIDQualifiersSequence,
-    'IssuerOfPatientIDQualifiersSequence (0010,0024)'
-  ),
+  issuerOfPatientIdQualifiers: readHierarchicDesignator(IssuerSequences.patientId),
   patientBirthDate: readDa(Tag.PatientBirthDate),
   patientSex: readDefaultRepertoire(Tag.PatientSex),
 
@@ -426,10 +479,7 @@ const READERS = {
   studyTime: readTm(Tag.StudyTime),
   studyDescription: readText(Tag.StudyDescription, 'StudyDescription (0008,1030)'),
   accessionNumber: readText(Tag.AccessionNumber, 'AccessionNumber (0008,0050)'),
-  issuerOfAccessionNumber: readHierarchicDesignator(
-    Tag.IssuerOfAccessionNumberSequence,
-    'IssuerOfAccessionNumberSequence (0008,0051)'
-  ),
+  issuerOfAccessionNumber: readHierarchicDesignator(IssuerSequences.accessionNumber),
   referringPhysicianName: readPn(Tag.ReferringPhysicianName, 'ReferringPhysicianName (0008,0090)'),
   requestedProcedureDescription: readText(
     Tag.RequestedProcedureDescription,
@@ -473,6 +523,7 @@ const READERS = {
   institutionName: readText(Tag.InstitutionName, 'InstitutionName (0008,0080)'),
 
   parserWarnings: (dataSet) => Either.right([...dataSet.warnings]),
+  undecodableIssuers: readUndecodableIssuers,
 } satisfies { readonly [K in keyof Type]: Reader<Type[K]> }
 
 /**

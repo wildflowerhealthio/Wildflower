@@ -22,15 +22,16 @@ import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 
 import { dicomCalendarDate } from './fhir/dates.ts'
-import { unresolvedUniversalIssuerOf } from './fhir/issuer.ts'
+import type { IssuedIdentifier } from './fhir/issuer.ts'
 import {
-  accessionNumbers,
   orderedInstances,
   patientKeyOf,
+  studyIdentifiersOf,
   toFhirResources,
 } from './fhir/to-fhir.ts'
-import type { StudyInstance } from './fhir/to-fhir.ts'
+import type { StudyIdentifiers, StudyInstance } from './fhir/to-fhir.ts'
 import type { DicomSettings } from './settings.ts'
+import { DicomIdentifierSystem } from './source-system.ts'
 
 /** One record a study synthesizes. */
 type StudyResource = Effect.Effect.Success<ReturnType<typeof toFhirResources>>[number]
@@ -141,52 +142,56 @@ const contributionNote = ({ fileName, header }: StudyFile): string =>
   `${fileName}: series ${header.seriesNumber ?? header.seriesInstanceUid}, instance ${header.instanceNumber ?? header.sopInstanceUid}.`
 
 /**
- * The notes for a stated issuer that names no URI — its number is then keyed
- * as one whose issuer the file does not state, beside every other such number:
- * the Patient ID's, read off the study's representative header, and the
- * Accession Number's, off the first file in study order stating one, as the
- * synthesis reads them.
+ * The notes for an issuer the study's keys could not use: one whose text
+ * cannot be decoded, read as absent, and a stated universal issuer that names
+ * no URI — its number is then keyed as one whose issuer the file does not
+ * state, beside every other such number.
  */
-const unresolvedIssuerNotes = (files: readonly StudyFile[]): readonly string[] => {
-  const ordered = orderedInstances(files)
-  const patientIssuer = Option.flatMap(Arr.head(ordered), ({ header }) =>
-    header.patientId === undefined
-      ? Option.none()
-      : unresolvedUniversalIssuerOf(header.issuerOfPatientIdQualifiers)
-  )
-  const accessionIssuer = Option.flatMap(
-    Arr.findFirst(ordered, ({ header }) => header.accessionNumber !== undefined),
-    ({ header }) => unresolvedUniversalIssuerOf(header.issuerOfAccessionNumber)
-  )
-  return Arr.getSomes([
+const issuerNotes = (
+  ordered: readonly StudyFile[],
+  { patient, accessions }: StudyIdentifiers
+): readonly string[] => [
+  ...Arr.dedupe(ordered.flatMap(({ header }) => header.undecodableIssuers)).map(
+    (reason) => `${reason} The issuer is read as not stated.`
+  ),
+  ...Arr.getSomes([
     Option.map(
-      patientIssuer,
+      Option.flatMap(patient, ({ unresolvedIssuer }) => unresolvedIssuer),
       (issuer) =>
-        `IssuerOfPatientIDQualifiersSequence names ${issuer}, which is no URI — the PatientID is keyed as one whose issuer is not stated.`
+        `IssuerOfPatientIDQualifiersSequence states ${issuer} — the PatientID is keyed as one whose issuer is not stated.`
     ),
     Option.map(
-      accessionIssuer,
+      Option.flatMap(Arr.head(accessions), ({ unresolvedIssuer }) => unresolvedIssuer),
       (issuer) =>
-        `IssuerOfAccessionNumberSequence names ${issuer}, which is no URI — the AccessionNumber is keyed as one whose issuer is not stated.`
+        `IssuerOfAccessionNumberSequence states ${issuer} — the AccessionNumber is keyed as one whose issuer is not stated.`
     ),
-  ])
-}
+  ]),
+]
 
-/** The notes a study's headers earn, beyond the resources they synthesize. */
-const studyNotes = (files: readonly StudyFile[]): readonly string[] => {
-  const notes: string[] = [...unresolvedIssuerNotes(files)]
-  const accessions = accessionNumbers(files)
+/** An accession as a note names it: the number, and the issuer's system when the file states one. */
+const accessionDisplay = ({ key }: IssuedIdentifier): string =>
+  key.system === DicomIdentifierSystem.AccessionNumber ? key.value : `${key.value} (${key.system})`
+
+/**
+ * The notes a study's headers earn, beyond the resources they synthesize.
+ *
+ * @param ordered - The study's files in study order ({@link orderedInstances})
+ */
+const studyNotes = (ordered: readonly StudyFile[]): readonly string[] => {
+  const identifiers = studyIdentifiersOf(ordered)
+  const notes: string[] = [...issuerNotes(ordered, identifiers)]
+  const { accessions } = identifiers
   if (accessions.length === 0) {
     notes.push('No AccessionNumber — no ServiceRequest will be created.')
   } else if (accessions.length > 1) {
     notes.push(
-      `Files disagree on AccessionNumber (${accessions.join(', ')}) — the ServiceRequest uses ${accessions[0]}.`
+      `Files disagree on AccessionNumber (${accessions.map(accessionDisplay).join(', ')}) — the ServiceRequest uses ${accessionDisplay(accessions[0])}.`
     )
   }
   // A one-file study's contribution is its whole section; only a study spread
   // across files needs each file's place in it spelled out.
-  if (files.length > 1) {
-    for (const instance of orderedInstances(files)) notes.push(contributionNote(instance))
+  if (ordered.length > 1) {
+    for (const instance of ordered) notes.push(contributionNote(instance))
   }
   return notes
 }
@@ -319,8 +324,9 @@ const decodeStudy = (
       }
     }
 
-    const notes = studyNotes(files)
-    const resources = yield* toFhirResources(files, settings)
+    const notes = studyNotes(ordered)
+    // Already in study order, so the synthesis's own sort is one linear pass.
+    const resources = yield* toFhirResources(ordered, settings)
     const sectionedList = SectionedList.make(
       resources.length > 0
         ? [Section.make(sectionTitle(head.header), resources.map(studyRecordOf))]
@@ -336,7 +342,7 @@ const decodeStudy = (
  * the same Patient ID under an issuer spelled differently.
  */
 const SHARED_STUDY_NOTE =
-  'Other files in this pick state the same StudyInstanceUID under a different PatientID or issuer — they are read apart, and both are filed as one ImagingStudy.'
+  "Other files in this pick state the same StudyInstanceUID under a different PatientID or issuer — they are read apart but key one ImagingStudy, so whichever is imported last replaces the other's series and patient. Import only one of them."
 
 /** The `ImagingStudy` keys a set's records carry: one per study, so at most one. */
 const imagingStudyKeysOf = (fileSet: DecodedFileSet.Type): readonly string[] =>

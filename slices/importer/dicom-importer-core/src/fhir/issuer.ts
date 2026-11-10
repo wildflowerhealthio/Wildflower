@@ -29,8 +29,9 @@ const IsoOid = Schema.String.pipe(Schema.pattern(/^[0-2](\.(0|[1-9]\d*))+$/))
 
 /**
  * The `Identifier.system` a Universal Entity ID names: `urn:oid:<id>` for an
- * `ISO` OID, `urn:uuid:<id>` for a `UUID`, the URI itself for a `URI` that
- * parses as one. `None` for any other type (`DNS`, `X500`, …) and for a value
+ * `ISO` OID, `urn:uuid:<id>` for a `UUID`, the URI as `URL.href` spells it
+ * for a `URI` that parses as one — the spelling a record's key is read back
+ * in, so two spellings of one URI key one record. `None` for any other type (`DNS`, `X500`, …) and for a value
  * malformed for its type, which name no URI this can spell.
  */
 const universalSystemOf = (
@@ -48,7 +49,7 @@ const universalSystemOf = (
       )
     ),
     Match.when('URI', () =>
-      Option.as(Schema.decodeUnknownOption(Schema.URL)(universalEntityId), universalEntityId)
+      Option.map(Schema.decodeUnknownOption(Schema.URL)(universalEntityId), (url) => url.href)
     ),
     Match.orElse(() => Option.none())
   )
@@ -64,27 +65,33 @@ const universalSystemOfIssuer = (
   )
 
 /**
- * The issuer's Universal Entity ID when it states one that names no URI, as
- * `<id> (<type>)`: what the decode notes, since the number is then keyed as
- * one whose issuer the file does not state.
+ * What is wrong with the issuer's Universal Entity ID when it states one that
+ * names no URI: `<id> with no Universal Entity ID Type (0040,0033)` when the
+ * type is missing, else `<id> (<type>), which names no URI`. What the decode
+ * notes, since the number is then keyed as one whose issuer the file does not
+ * state.
  */
 const unresolvedUniversalIssuerOf = (
   issuer: HierarchicDesignator.Type | undefined
 ): Option.Option<string> =>
   Option.isSome(universalSystemOfIssuer(issuer))
     ? Option.none()
-    : Option.map(
-        Option.fromNullable(issuer?.universalEntityId),
-        (id) => `${id} (${issuer?.universalEntityIdType ?? 'no type'})`
+    : Option.map(Option.fromNullable(issuer?.universalEntityId), (id) =>
+        issuer?.universalEntityIdType === undefined
+          ? `${id} with no Universal Entity ID Type (0040,0033)`
+          : `${id} (${issuer.universalEntityIdType}), which names no URI`
       )
 
 /**
- * A number under its issuer: the record key it is, and the name its issuer is
- * displayed by when the issuer is not that key's system.
+ * A number under its issuer: the record key it is, the name its issuer is
+ * displayed by when the issuer is not that key's system, and what kept a
+ * stated universal issuer from being that system
+ * ({@link unresolvedUniversalIssuerOf}).
  */
 interface IssuedIdentifier {
   readonly key: DetachedResource.Key
   readonly assignerDisplay: Option.Option<string>
+  readonly unresolvedIssuer: Option.Option<string>
 }
 
 /**
@@ -117,6 +124,7 @@ const issuedIdentifierOf = (
     assignerDisplay: Option.orElse(Option.fromNullable(issuer?.localNamespaceEntityId), () =>
       Option.isSome(universalSystem) ? Option.none() : universalEntityId
     ),
+    unresolvedIssuer: unresolvedUniversalIssuerOf(issuer),
   }
 }
 

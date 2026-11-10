@@ -18,12 +18,13 @@ export {
 export { detectDicom } from './detect.ts'
 export { dicomImporter } from './dicom-importer.ts'
 export {
-  accessionNumbers,
   imagingStudyKeyOf,
   orderedInstances,
   patientKeyOf,
+  studyIdentifiersOf,
   studySeries,
   toFhirResources,
+  type StudyIdentifiers,
   type StudyInstance,
   type StudySeries,
 } from './fhir/to-fhir.ts'
