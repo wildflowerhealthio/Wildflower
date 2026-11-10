@@ -188,11 +188,7 @@ type ResourceJson = Schema.Schema.Encoded<typeof FhirResourceSchema>
 
 type DocumentReferenceJson = Extract<ResourceJson, { readonly resourceType: 'DocumentReference' }>
 
-/**
- * A resource file's JSON, checked for shape but not read into `fhir-r4`'s
- * decoded values, so a linked source file's relative `url` decodes
- * (`FhirResourceSchema` reads a `url` as an absolute `URL`).
- */
+/** A resource file's JSON, checked for shape but not read into `fhir-r4`'s decoded values. */
 const ResourceJsonSchema: Schema.Schema<ResourceJson> = Schema.encodedSchema(FhirResourceSchema)
 
 const isAttachmentPath = Schema.is(AttachmentPathSchema)
@@ -212,13 +208,8 @@ const attachmentPathLinkedBy = (json: ResourceJson): string | undefined => {
 
 /**
  * A source file's JSON with its attachment linking to `attachmentPath`: `url`
- * is the path, where `fhir-r4` encodes an attachment's `url`, and there is no
- * `data`.
- *
- * @remarks
- * Rewritten on the JSON rather than the decoded resource because `fhir-r4`'s
- * `Attachment.url` decodes to an absolute `URL`, and the link is relative to
- * the snapshot's root.
+ * is the path, relative to the snapshot's root, where `fhir-r4` encodes an
+ * attachment's `url`, and there is no `data`.
  */
 const withAttachmentUrl = (
   json: DocumentReferenceJson,
