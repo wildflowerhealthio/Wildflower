@@ -5,8 +5,6 @@ import { Patient, type FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/re
 import { Effect, Exit, HashMap, Layer, Match, Option, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import * as Section from '../section.ts'
-import * as SectionedList from '../sectioned-list.ts'
 import {
   SOURCE_PATIENT,
   SOURCE_PRACTITIONER,
@@ -14,6 +12,7 @@ import {
   fileOf,
   patient,
   practitioner,
+  keyOf,
 } from './identity-map.test-helpers.ts'
 import type * as LinkChoice from './link-choice.ts'
 import * as ReferentSearch from './referent-search.ts'
@@ -180,14 +179,10 @@ describe('ReferentSearch.defaultChoice', () => {
   it('should keep the stored copy of a record the import implied, rather than write the name alone over it', async () => {
     const implied = Referent.discover([
       {
-        rows: SectionedList.make([
-          Section.make('Resources', [
-            {
-              reviewable: { key: 'k-0', title: 'Patient/p-1', origin: 'Implied' },
-              resource: patient({ id: 'p-1' }),
-            },
-          ]),
-        ]),
+        reviewKey: 'k-0',
+        title: 'Patient/p-1',
+        isImplied: true,
+        resource: patient({ id: 'p-1' }),
       },
     ])
     const [referent] = await Effect.runPromise(
@@ -305,14 +300,8 @@ describe('ReferentSearch.defaultChoices', () => {
         Option.map(HashMap.get(choices, Referent.key(referent)), describeChoice),
       ])
     ).toEqual([
-      [
-        JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1']),
-        Option.some('LinkToStoredResource Patient/s-1'),
-      ],
-      [
-        JSON.stringify(['Practitioner', SOURCE_PRACTITIONER, 'pr-1']),
-        Option.some('CreateResource'),
-      ],
+      [keyOf('Patient', SOURCE_PATIENT, 'p-1'), Option.some('LinkToStoredResource Patient/s-1')],
+      [keyOf('Practitioner', SOURCE_PRACTITIONER, 'pr-1'), Option.some('CreateResource')],
     ])
     expect(HashMap.size(choices)).toBe(2)
     expect(server.urls).toHaveLength(2)
@@ -335,10 +324,7 @@ describe('ReferentSearch.defaultChoices', () => {
         Option.map(HashMap.get(choices, Referent.key(referent)), describeChoice),
       ])
     ).toEqual([
-      [
-        JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1']),
-        Option.some('UpdateStoredResource Patient/p-1'),
-      ],
+      [keyOf('Patient', SOURCE_PATIENT, 'p-1'), Option.some('UpdateStoredResource Patient/p-1')],
     ])
   })
 })

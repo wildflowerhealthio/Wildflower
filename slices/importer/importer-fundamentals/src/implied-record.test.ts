@@ -1,13 +1,16 @@
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
+import { LogicalReference, ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import { Either, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ImpliedRecord from './implied-record.ts'
+import * as ResourcePlan from './resource-plan.ts'
 
 /**
  * Covers the implied record: what a logical reference and its display imply
- * for each type, and the key its row is reviewed under.
+ * for each type, that each is keyed by the reference's identifier, and the
+ * local key its row is reviewed under.
  */
 
 const SYSTEM = 'https://pharmacy.example/practitioner-name'
@@ -70,12 +73,48 @@ describe('ImpliedRecord.tryFromLogicalReference', () => {
   })
 })
 
-describe('ImpliedRecord.fullUrlOf', () => {
-  it('keys the record by the referencing fullUrl and the logical reference, one per target', () => {
+describe('ImpliedRecord.tryFromLogicalReference, over every type a reference implies a record of', () => {
+  // Every R4 type, so every type the registry gives a maker is among them.
+  const implied = ResourceType.VALUES.flatMap((resourceType) =>
+    Option.toArray(
+      Option.map(
+        ImpliedRecord.tryFromLogicalReference(
+          LogicalReference.make(resourceType, SMITH),
+          'DR A SMITH'
+        ),
+        (record) => ({ resourceType, record: Either.getOrThrow(record) })
+      )
+    )
+  )
+
+  it('finds some type a reference implies a record of', () => {
+    expect(implied.length).toBeGreaterThan(0)
+  })
+
+  // The import stage plans an implied record from the reference that implies
+  // it (`ResourcePlan.derived`), so the record has to be keyed by exactly
+  // that reference's identifier.
+  it.each(implied.map(({ resourceType, record }) => [resourceType, record] as const))(
+    'keys the %s it implies by the identifier of the reference that implies it',
+    (resourceType, record) => {
+      const key = DetachedResource.keyIdentifierOf(record)
+      expect(record.resourceType).toBe(resourceType)
+      expect(Option.map(key, ({ system, value }) => [system.href, value])).toEqual(
+        Option.some([SMITH.system.href, SMITH.value])
+      )
+      expect(ResourcePlan.make(record, () => 'unused')).toEqual(
+        ResourcePlan.derived(record.resourceType, SMITH)
+      )
+    }
+  )
+})
+
+describe('ImpliedRecord.localKeyOf', () => {
+  it('keys the record by the referencing local key and the logical reference, one per target', () => {
     expect([
-      ImpliedRecord.fullUrlOf('rx:0', LogicalReference.make('Practitioner', SMITH)),
-      ImpliedRecord.fullUrlOf('rx:0', LogicalReference.make('Patient', SMITH)),
-      ImpliedRecord.fullUrlOf('rx:1', LogicalReference.make('Practitioner', SMITH)),
+      ImpliedRecord.localKeyOf('rx:0', LogicalReference.make('Practitioner', SMITH)),
+      ImpliedRecord.localKeyOf('rx:0', LogicalReference.make('Patient', SMITH)),
+      ImpliedRecord.localKeyOf('rx:1', LogicalReference.make('Practitioner', SMITH)),
     ]).toEqual([
       `rx:0#implied:Practitioner|${SYSTEM}|Dr. A Smith`,
       `rx:0#implied:Patient|${SYSTEM}|Dr. A Smith`,

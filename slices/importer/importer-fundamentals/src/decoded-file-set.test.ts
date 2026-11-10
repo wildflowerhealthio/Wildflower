@@ -10,12 +10,15 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Schema, Either } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as DecodedFileSet from './decoded-file-set.ts'
-import type * as DecodedFile from './decoded-file.ts'
+import type * as FileSetRecord from './file-set-record.ts'
+import * as FormatDecode from './format-decode.ts'
+import type * as PickedFile from './picked-file.ts'
+import type * as ReviewRow from './review-row.ts'
 import * as Section from './section.ts'
 import * as SectionedList from './sectioned-list.ts'
 
@@ -60,15 +63,28 @@ const observationOn = (subject: Record<string, unknown>): DetachedResource.Type 
     })
   )
 
-/** A section of `resources`, each identified by its position. */
+/** A section of `resources`, each under a local key that is its position. */
 const sectionOf = (
   title: string,
   resources: readonly DetachedResource.Type[]
-): Section.Type<DecodedFileSet.Entry> =>
+): Section.Type<FileSetRecord.Type> =>
   Section.make(
     title,
-    resources.map((resource, index) => ({ fullUrl: `${title}:${index}`, resource }))
+    resources.map((resource, index) => ({ localKey: `${title}:${index}`, resource }))
   )
+
+/** The one picked file every set here was read from. */
+const PICKED_FILE: PickedFile.Type = { id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array() }
+
+/** The prefix of every review key of a set read from {@link PICKED_FILE}. */
+const KEY_PREFIX = FormatDecode.keyPrefix(PICKED_FILE)
+
+/** The file set of `sections`, read from {@link PICKED_FILE}, with no notes. */
+const fileSetOf = (sections: readonly Section.Type<FileSetRecord.Type>[]): DecodedFileSet.Type => ({
+  pickedFiles: [DecodedFileSet.unidentified(PICKED_FILE)],
+  sectionedList: SectionedList.make(sections),
+  notes: [],
+})
 
 /** A minter that counts: `minted-1`, `minted-2`, …. */
 const countingMinter = (): (() => string) => {
@@ -80,10 +96,11 @@ const countingMinter = (): (() => string) => {
 }
 
 const adoptedIn = (
-  sections: readonly Section.Type<DecodedFileSet.Entry>[]
+  sections: readonly Section.Type<FileSetRecord.Type>[]
 ): readonly FhirResourceWithId[] =>
   SectionedList.rows(
-    Either.getOrThrow(DecodedFileSet.adopt({ sections, notes: [] }, countingMinter())).rows
+    Effect.runSync(DecodedFileSet.adopt(fileSetOf(sections), KEY_PREFIX, countingMinter()))
+      .sectionedList
   ).map(({ resource }) => resource)
 
 const subjectOf = (resource: FhirResourceWithId | undefined): string | null | undefined =>
@@ -457,17 +474,19 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
 
   /** Every adopted row of `sections`, with its section's title. */
   const rowsIn = (
-    sections: readonly Section.Type<DecodedFileSet.Entry>[]
-  ): readonly (DecodedFile.Row & { readonly section: string })[] =>
-    Either.getOrThrow(
-      DecodedFileSet.adopt({ sections, notes: [] }, countingMinter())
-    ).rows.sections.flatMap(({ title, rows }) => rows.map((row) => ({ ...row, section: title })))
+    sections: readonly Section.Type<FileSetRecord.Type>[]
+  ): readonly (ReviewRow.Type & { readonly section: string })[] =>
+    Effect.runSync(
+      DecodedFileSet.adopt(fileSetOf(sections), KEY_PREFIX, countingMinter())
+    ).sectionedList.sections.flatMap(({ title, rows }) =>
+      rows.map((row) => ({ ...row, section: title }))
+    )
 
   const requesterOf = (resource: FhirResourceWithId | undefined): unknown =>
     resource?.resourceType === 'MedicationRequest' ? resource.requester : undefined
 
   const practitionersIn = (
-    rows: readonly DecodedFile.Row[]
+    rows: readonly ReviewRow.Type[]
   ): readonly Extract<FhirResourceWithId, { readonly resourceType: 'Practitioner' }>[] =>
     rows.flatMap(({ resource }) => (resource.resourceType === 'Practitioner' ? [resource] : []))
 
@@ -494,8 +513,8 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
       name: ['Dr. A Smith'],
     })
     const impliedRow = rows.find(({ resource }) => resource.resourceType === 'Practitioner')
-    expect([impliedRow?.reviewable.key, impliedRow?.reviewable.title]).toEqual([
-      `prescriptions:1#implied:Practitioner|${NAME_SYSTEM}|Dr. A Smith`,
+    expect([impliedRow?.reviewKey, impliedRow?.title]).toEqual([
+      `${KEY_PREFIX}prescriptions:1#implied:Practitioner|${NAME_SYSTEM}|Dr. A Smith`,
       `Practitioner/${practitionerId}`,
     ])
     expect(
@@ -654,40 +673,39 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
       ]),
     ])
 
-    const impliedRow = rows.find(({ reviewable }) => reviewable.origin === 'Implied')
-    expect([
-      impliedRow?.reviewable.key,
-      practitionersIn(rows).map(({ name }) => name[0]?.text),
-    ]).toEqual([`prescriptions:1#implied:Practitioner|${NAME_SYSTEM}|Dr. A Smith`, ['DR A SMITH']])
+    const impliedRow = rows.find(({ isImplied }) => isImplied)
+    expect([impliedRow?.reviewKey, practitionersIn(rows).map(({ name }) => name[0]?.text)]).toEqual(
+      [
+        `${KEY_PREFIX}prescriptions:1#implied:Practitioner|${NAME_SYSTEM}|Dr. A Smith`,
+        ['DR A SMITH'],
+      ]
+    )
   })
 
-  it('marks each implied row Implied and every decoded row Decoded', () => {
+  it('marks each implied row implied and no decoded row', () => {
     const rows = rowsIn([
       sectionOf('prescriptions', [patient('pat-7'), prescriptionBy('rx-1', byName('Dr. A Smith'))]),
     ])
 
     expect(
-      rows.map(({ section, reviewable, resource }) => [
-        section,
-        reviewable.origin,
-        resource.resourceType,
-      ])
+      rows.map(({ section, isImplied, resource }) => [section, isImplied, resource.resourceType])
     ).toEqual([
-      ['prescriptions', 'Decoded', 'Patient'],
-      ['prescriptions', 'Decoded', 'MedicationRequest'],
-      ['Implied records', 'Implied', 'Practitioner'],
+      ['prescriptions', false, 'Patient'],
+      ['prescriptions', false, 'MedicationRequest'],
+      ['Implied records', true, 'Practitioner'],
     ])
   })
 
   it('adds no section when the references imply nothing', () => {
-    const adopted = Either.getOrThrow(
+    const adopted = Effect.runSync(
       DecodedFileSet.adopt(
-        { sections: [sectionOf('people', [patient('pat-7')])], notes: [] },
+        fileSetOf([sectionOf('people', [patient('pat-7')])]),
+        KEY_PREFIX,
         countingMinter()
       )
     )
 
-    expect(adopted.rows.sections.map(({ title }) => title)).toEqual(['people'])
+    expect(adopted.sectionedList.sections.map(({ title }) => title)).toEqual(['people'])
   })
 
   it('property: implies one record per distinct provider named, and resolves every reference to one', () => {
@@ -722,53 +740,39 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
 
 describe('DecodedFileSet.writtenReferenceTitle', () => {
   it('names a keyed record by the reference the import stage writes it under', () => {
-    const [section] = Either.getOrThrow(
-      DecodedFileSet.adopt({
-        sections: [sectionOf('people', [patient('pat-7')])],
-        notes: [],
-      })
-    ).rows.sections
-    expect(section?.rows.map(({ reviewable }) => reviewable.title)).toEqual([
+    const [section] = Effect.runSync(
+      DecodedFileSet.adopt(fileSetOf([sectionOf('people', [patient('pat-7')])]), KEY_PREFIX)
+    ).sectionedList.sections
+    expect(section?.rows.map(({ title }) => title)).toEqual([
       `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7')}`,
     ])
   })
 
-  it('names a keyless record by its type and its fullUrl, which a re-decode keeps', () => {
-    const [section] = Either.getOrThrow(
+  it('names a keyless record by its type and its review key, which a re-decode keeps', () => {
+    const [section] = Effect.runSync(
       DecodedFileSet.adopt(
-        { sections: [sectionOf('people', [patient(null)])], notes: [] },
+        fileSetOf([sectionOf('people', [patient(null)])]),
+        KEY_PREFIX,
         countingMinter()
       )
-    ).rows.sections
-    expect(
-      section?.rows.map(({ reviewable, resource }) => [reviewable.title, resource.id])
-    ).toEqual([['Patient (people:0)', 'minted-1']])
-  })
-
-  it('keys each adopted row by its entry fullUrl', () => {
-    const [section] = Either.getOrThrow(
-      DecodedFileSet.adopt({
-        sections: [sectionOf('people', [patient('pat-7'), patient(null)])],
-        notes: [],
-      })
-    ).rows.sections
-    expect(section?.rows.map(({ reviewable }) => reviewable.key)).toEqual(['people:0', 'people:1'])
+    ).sectionedList.sections
+    expect(section?.rows.map(({ title, resource }) => [title, resource.id])).toEqual([
+      [`Patient (${KEY_PREFIX}people:0)`, 'minted-1'],
+    ])
   })
 })
 
-describe('DecodedFileSet.namespaceKeys', () => {
-  it('prefixes every fullUrl and keeps everything else', () => {
-    const section = sectionOf('people', [patient('pat-7')])
-    expect(DecodedFileSet.namespaceKeys({ sections: [section] }, '0:a.har/')).toEqual({
-      sections: [
-        {
-          ...section,
-          rows: section.rows.map((row) => ({
-            ...row,
-            fullUrl: `0:a.har/${row.fullUrl}`,
-          })),
-        },
-      ],
-    })
+describe('DecodedFileSet.adopt, review keys', () => {
+  it('keys each row by the key prefix before its local key', () => {
+    const [section] = Effect.runSync(
+      DecodedFileSet.adopt(
+        fileSetOf([sectionOf('people', [patient('pat-7'), patient(null)])]),
+        KEY_PREFIX
+      )
+    ).sectionedList.sections
+    expect(section?.rows.map(({ reviewKey }) => reviewKey)).toEqual([
+      '0:a.har/people:0',
+      '0:a.har/people:1',
+    ])
   })
 })

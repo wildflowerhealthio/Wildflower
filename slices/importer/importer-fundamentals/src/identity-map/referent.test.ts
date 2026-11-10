@@ -2,7 +2,7 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, FastCheck as fc } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
-import type * as DecodedFile from '../decoded-file.ts'
+import type * as AdoptedFileSet from '../adopted-file-set.ts'
 import * as Section from '../section.ts'
 import * as SectionedList from '../sectioned-list.ts'
 import {
@@ -20,6 +20,8 @@ import {
   request,
   untypedSubject,
   wireFieldsOf,
+  keyOf,
+  rowsOf,
 } from './identity-map.test-helpers.ts'
 import * as Referent from './referent.ts'
 
@@ -46,9 +48,9 @@ const wireKeyOf = (
  * The referent keys a file's wire form names: each Patient's and
  * Practitioner's own `identifier[0]`, of two copies under one key, the first.
  */
-const wireKeysOf = (file: DecodedFile.DecodedFile): readonly string[] => [
+const wireKeysOf = (file: AdoptedFileSet.Type): readonly string[] => [
   ...new Set(
-    SectionedList.rows(file.rows)
+    SectionedList.rows(file.sectionedList)
       .map(({ resource }) => wireFieldsOf(resource))
       .filter((wire) => wire.resourceType === 'Patient' || wire.resourceType === 'Practitioner')
       .flatMap((wire) => wireKeyOf(wire.resourceType, wire.identifier?.[0]))
@@ -67,8 +69,8 @@ describe('Referent.discover', () => {
     expect(
       discoverOnTestClock(file).map((referent) => [Referent.key(referent), referent.label])
     ).toEqual([
-      [JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1']), 'Tyra Banks · 1990-01-02'],
-      [JSON.stringify(['Practitioner', SOURCE_PRACTITIONER, 'pr-1']), 'Dr. A Smith'],
+      [keyOf('Patient', SOURCE_PATIENT, 'p-1'), 'Tyra Banks · 1990-01-02'],
+      [keyOf('Practitioner', SOURCE_PRACTITIONER, 'pr-1'), 'Dr. A Smith'],
     ])
   })
 
@@ -117,11 +119,13 @@ describe('Referent.discover', () => {
   it('takes a record a file decoded over the copy another file set implied under its id', () => {
     const implied = practitioner('pr-1', 'Dr. A Smith')
     const served = { ...practitioner('pr-1', 'Dr. A Smith'), gender: 'female' as const }
-    const impliedFile: DecodedFile.DecodedFile = {
-      rows: SectionedList.make([
+    const impliedFile: AdoptedFileSet.Type = {
+      sectionedList: SectionedList.make([
         Section.make('Resources', [
           {
-            reviewable: { key: 'k-0', title: 'implied', origin: 'Implied' },
+            reviewKey: 'k-0',
+            title: 'implied',
+            isImplied: true,
             resource: implied,
           },
         ]),
@@ -129,9 +133,9 @@ describe('Referent.discover', () => {
       notes: [],
     }
 
-    const referents = Effect.runSync(Referent.discover([impliedFile, fileOf(served)]))
+    const referents = Effect.runSync(Referent.discover(rowsOf([impliedFile, fileOf(served)])))
 
-    expect(referents.map(({ reviewable, resource }) => [reviewable.key, resource])).toEqual([
+    expect(referents.map(({ reviewKey, resource }) => [reviewKey, resource])).toEqual([
       ['k-0', served],
     ])
   })

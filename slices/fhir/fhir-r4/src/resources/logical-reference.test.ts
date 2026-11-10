@@ -94,6 +94,14 @@ describe('LogicalReference.key', () => {
   })
 })
 
+describe('LogicalReference.Key', () => {
+  it('is a string, and no string is one', () => {
+    expectTypeOf<LogicalReference.Key>().toExtend<string>()
+    expectTypeOf<string>().not.toExtend<LogicalReference.Key>()
+    expectTypeOf(LogicalReference.key).returns.toEqualTypeOf<LogicalReference.Key>()
+  })
+})
+
 describe('LogicalReference.tryFromIdentifier', () => {
   it('makes the logical reference a qualified identifier makes, and none from an unqualified one', () => {
     expect([

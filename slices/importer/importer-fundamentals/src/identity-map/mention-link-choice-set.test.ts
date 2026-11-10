@@ -3,7 +3,7 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Array, Equivalence, FastCheck as fc, HashMap, Option } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
-import type { DecodedFile } from '../index.ts'
+import type { AdoptedFileSet } from '../index.ts'
 import {
   LinkableResource,
   LinkChoice,
@@ -31,6 +31,7 @@ import {
   resolveOnTestClock,
   STORED,
   leftByReferentLinksOnTestClock,
+  keyOf,
 } from './identity-map.test-helpers.ts'
 
 /**
@@ -53,15 +54,17 @@ afterAll(() => {
 
 const RUNS = numRunsFor({ base: 30 })
 
-const PERSON = JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1'])
-const ACCOUNT = JSON.stringify(['Patient', CUSTOMER, 'c-9'])
+const PERSON = keyOf('Patient', SOURCE_PATIENT, 'p-1')
+const ACCOUNT = keyOf('Patient', CUSTOMER, 'c-9')
 
 /** The `subject` of the resource keyed `key` in `file`: `null` for an empty slot, `undefined` for none. */
 const subjectAt = (
-  file: DecodedFile.DecodedFile,
+  file: AdoptedFileSet.Type,
   key: string
 ): IdentifierAndReference.ReferenceType | null | undefined => {
-  const resource = SectionedList.rows(file.rows).find((row) => row.reviewable.key === key)?.resource
+  const resource = SectionedList.rows(file.sectionedList).find(
+    (row) => row.reviewKey === key
+  )?.resource
   return resource !== undefined && 'subject' in resource ? resource.subject : undefined
 }
 
@@ -114,9 +117,9 @@ describe('a mention link choice on a resolved file', () => {
 
     expect(subjectAt(resolved, 'k-1')?.reference).toBe('Patient/s-2')
     expect(subjectAt(resolved, 'k-2')?.reference).toBe(null)
-    expect(resolved.rows.sections.map((section) => section.title)).toEqual(['Resources'])
+    expect(resolved.sectionedList.sections.map((section) => section.title)).toEqual(['Resources'])
     expect(
-      SectionedList.rows(resolved.rows).filter(({ resource }) => resource.id === 's-2')
+      SectionedList.rows(resolved.sectionedList).filter(({ resource }) => resource.id === 's-2')
     ).toEqual([])
   })
 
@@ -171,7 +174,7 @@ describe('a mention link choice on a resolved file', () => {
         [
           'k-3',
           LinkChoice.LinkToDecodedReferent({
-            referentKey: JSON.stringify(['Patient', 'https://nowhere.example/', 'x']),
+            referentKey: keyOf('Patient', 'https://nowhere.example/', 'x'),
           }),
         ],
       ])
@@ -221,7 +224,7 @@ describe('Mention.relinked', () => {
     )
     fc.assert(
       fc.property(fileWithChoicesArbitrary, fc.nat(), literals, ({ file }, pick, literal) => {
-        const rows = SectionedList.rows(file.rows)
+        const rows = SectionedList.rows(file.sectionedList)
         const row = rows[pick % Math.max(rows.length, 1)]
         if (row === undefined) return
         const mentions = Mention.linkableIn(row.resource)
@@ -253,11 +256,11 @@ describe('Mention.relinked', () => {
 describe('mention link choices and the referents', () => {
   /** Mention link choices each linkable mention of `file` can take, or none for some. */
   const mentionChoicesForArbitrary = (
-    file: DecodedFile.DecodedFile
+    file: AdoptedFileSet.Type
   ): fc.Arbitrary<MentionLinkChoiceSet.Type> => {
     const referents = discoverOnTestClock(file)
-    const slots = SectionedList.rows(file.rows).flatMap(({ reviewable, resource }) =>
-      Mention.linkableIn(resource).map((mention) => ({ key: reviewable.key, mention }))
+    const slots = SectionedList.rows(file.sectionedList).flatMap(({ reviewKey, resource }) =>
+      Mention.linkableIn(resource).map((mention) => ({ key: reviewKey, mention }))
     )
     return fc
       .tuple(
@@ -299,7 +302,7 @@ describe('mention link choices and the referents', () => {
       )
   }
 
-  it('property: resolving again on the same choices changes nothing, when the resolved file keeps the decoded file’s referents', () => {
+  it('property: resolving again on the same choices changes nothing, when the resolved rows keep the decoded rows’ referents', () => {
     fc.assert(
       fc.property(
         fileWithChoicesArbitrary.chain(({ file, choices }) =>
@@ -313,7 +316,7 @@ describe('mention link choices and the referents', () => {
           const once = resolveOnTestClock(file, choices, mentionChoices)
           // A mention choice can redirect a referent's every mention away, so
           // the resolved file no longer holds the referent a choice links to.
-          const referentKeysOf = (of: DecodedFile.DecodedFile): readonly string[] =>
+          const referentKeysOf = (of: AdoptedFileSet.Type): readonly string[] =>
             discoverOnTestClock(of).map(Referent.key).toSorted()
           fc.pre(
             Array.getEquivalence(Equivalence.string)(referentKeysOf(once), referentKeysOf(file))
@@ -341,19 +344,17 @@ describe('mention link choices and the referents', () => {
           const onReferents = resolveOnTestClock(file, choices)
           const withChosen = resolveOnTestClock(file, choices, mentionChoices)
 
-          const unchosenMentionsOf = (resolved: DecodedFile.DecodedFile): readonly unknown[] =>
-            SectionedList.rows(resolved.rows).flatMap(({ reviewable, resource }) =>
+          const unchosenMentionsOf = (resolved: AdoptedFileSet.Type): readonly unknown[] =>
+            SectionedList.rows(resolved.sectionedList).flatMap(({ reviewKey, resource }) =>
               Mention.madeIn(resource)
                 .filter(({ path }) =>
-                  Option.isNone(
-                    MentionLinkChoiceSet.forMention(mentionChoices, reviewable.key, path)
-                  )
+                  Option.isNone(MentionLinkChoiceSet.forMention(mentionChoices, reviewKey, path))
                 )
-                .map((mention) => [reviewable.key, mention])
+                .map((mention) => [reviewKey, mention])
             )
           expect(unchosenMentionsOf(withChosen)).toEqual(unchosenMentionsOf(onReferents))
-          expect(Array.map(withChosen.rows.sections, (section) => section.title)).toEqual(
-            Array.map(onReferents.rows.sections, (section) => section.title)
+          expect(Array.map(withChosen.sectionedList.sections, (section) => section.title)).toEqual(
+            Array.map(onReferents.sectionedList.sections, (section) => section.title)
           )
         }
       ),

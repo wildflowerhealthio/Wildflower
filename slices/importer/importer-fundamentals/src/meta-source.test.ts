@@ -6,7 +6,6 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as MetaSource from './meta-source.ts'
-import type * as Reviewable from './reviewable.ts'
 import * as SectionedList from './sectioned-list.ts'
 
 const fakeResource = (id: string): FhirResourceWithId =>
@@ -58,7 +57,7 @@ describe('MetaSource.stamp', () => {
   })
 })
 
-describe('MetaSource.stampDecoded', () => {
+describe('MetaSource.stampAdopted', () => {
   it('property: stamping links every resource in every section and changes nothing else', () => {
     fc.assert(
       fc.property(
@@ -67,11 +66,9 @@ describe('MetaSource.stampDecoded', () => {
             title: fc.string(),
             rows: fc.array(
               fc.record({
-                reviewable: fc.record({
-                  key: fc.string(),
-                  title: fc.string(),
-                  origin: fc.constant<Reviewable.Origin>('Decoded'),
-                }),
+                reviewKey: fc.string(),
+                title: fc.string(),
+                isImplied: fc.constant(false),
                 resource: fc.string().map(fakeResource),
               })
             ),
@@ -79,16 +76,16 @@ describe('MetaSource.stampDecoded', () => {
         ),
         fc.string({ minLength: 1 }).map(MetaSource.makeReference),
         (sections, source) => {
-          const stamped = MetaSource.stampDecoded(
-            { rows: SectionedList.make(sections), notes: [] },
+          const stamped = MetaSource.stampAdopted(
+            { sectionedList: SectionedList.make(sections), notes: [] },
             source
           )
-          expect(stamped.rows.sections.map((section) => section.title)).toEqual(
+          expect(stamped.sectionedList.sections.map((section) => section.title)).toEqual(
             sections.map((section) => section.title)
           )
-          for (const [index, section] of stamped.rows.sections.entries()) {
-            expect(section.rows.map((row) => row.reviewable.key)).toEqual(
-              sections[index]?.rows.map((row) => row.reviewable.key)
+          for (const [index, section] of stamped.sectionedList.sections.entries()) {
+            expect(section.rows.map((row) => row.reviewKey)).toEqual(
+              sections[index]?.rows.map((row) => row.reviewKey)
             )
             for (const row of section.rows) expect(row.resource.meta?.source).toBe(source)
           }

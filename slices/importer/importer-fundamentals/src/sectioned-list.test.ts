@@ -1,5 +1,5 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Option } from 'effect'
+import { Effect } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -49,23 +49,11 @@ describe('SectionedList.rows', () => {
 })
 
 describe('SectionedList.map', () => {
-  it('should give back the list itself when every row comes back as itself', () => {
-    expect(SectionedList.map(list, (row) => row)).toBe(list)
-  })
-
-  it('should replace only the rows that changed, keeping every untouched row and section as itself', () => {
-    const retitled = SectionedList.map(list, (row) =>
-      row.key === 'k-2' ? { ...row, title: 'Patient C' } : row
-    )
-
-    expect(retitled).not.toBe(list)
-    expect(retitled.sections[0]).toBe(list.sections[0])
-    expect(retitled.sections[1]?.rows[0]).toBe(list.sections[1]?.rows[0])
-    expect(retitled.sections[1]).toEqual({
-      title: 'Second',
-      rows: [
-        { key: 'k-1', title: 'Patient/b' },
-        { key: 'k-2', title: 'Patient C' },
+  it('should apply the function to every row, keeping sections and titles', () => {
+    expect(SectionedList.map(list, (row) => row.key)).toEqual({
+      sections: [
+        { title: 'First', rows: ['k-0'] },
+        { title: 'Second', rows: ['k-1', 'k-2'] },
       ],
     })
   })
@@ -85,20 +73,25 @@ describe('SectionedList.map', () => {
   })
 })
 
-describe('SectionedList.filterMap', () => {
-  it('should keep the values of the rows kept and drop a section left empty', () => {
-    const kept = SectionedList.filterMap(list, (row) =>
-      row.key === 'k-0' ? Option.none() : Option.some(row.key)
+describe('SectionedList.modify', () => {
+  it('should give back the list itself when every row comes back as itself', () => {
+    expect(SectionedList.modify(list, (row) => row)).toBe(list)
+  })
+
+  it('should replace only the rows that changed, keeping every untouched row and section as itself', () => {
+    const retitled = SectionedList.modify(list, (row) =>
+      row.key === 'k-2' ? { ...row, title: 'Patient C' } : row
     )
 
-    expect(kept).toEqual({ sections: [{ title: 'Second', rows: ['k-1', 'k-2'] }] })
-  })
-})
-
-describe('SectionedList.filter', () => {
-  it('should keep the rows the predicate holds for and drop a section left empty', () => {
-    expect(SectionedList.filter(list, (row) => row.key === 'k-2')).toEqual({
-      sections: [{ title: 'Second', rows: [{ key: 'k-2', title: 'Patient/c' }] }],
+    expect(retitled).not.toBe(list)
+    expect(retitled.sections[0]).toBe(list.sections[0])
+    expect(retitled.sections[1]?.rows[0]).toBe(list.sections[1]?.rows[0])
+    expect(retitled.sections[1]).toEqual({
+      title: 'Second',
+      rows: [
+        { key: 'k-1', title: 'Patient/b' },
+        { key: 'k-2', title: 'Patient C' },
+      ],
     })
   })
 })
@@ -136,20 +129,17 @@ describe('SectionedList.groupBy', () => {
   })
 })
 
-describe('SectionedList.concatenate', () => {
-  it('should keep both lists’ sections in order, never merging two that share a title', () => {
+describe('SectionedList.concatenateAll', () => {
+  it('should keep every list’s sections in order, never merging two that share a title', () => {
     const first = SectionedList.make([Section.make('Same', ['a'])])
     const second = SectionedList.make([Section.make('Same', ['b'])])
 
-    expect(SectionedList.concatenate(first, second)).toEqual({
+    expect(SectionedList.concatenateAll([first, SectionedList.empty(), second])).toEqual({
       sections: [
         { title: 'Same', rows: ['a'] },
         { title: 'Same', rows: ['b'] },
       ],
     })
-    expect(SectionedList.concatenateAll([first, SectionedList.empty(), second])).toEqual(
-      SectionedList.concatenate(first, second)
-    )
   })
 
   it('should put a prepended section first and an appended one last', () => {

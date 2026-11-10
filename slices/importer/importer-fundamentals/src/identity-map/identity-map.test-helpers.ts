@@ -1,6 +1,6 @@
 /**
  * What the identity-map tests share: wire builders for the shapes the Shoppers
- * and LifeLabs decodes emit, generated decoded files over a small pool of
+ * and LifeLabs decodes emit, generated adopted file sets over a small pool of
  * identities, and the wire-side oracles the properties compare by.
  *
  * @packageDocumentation
@@ -9,6 +9,7 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   FhirResourceSchema,
+  LogicalReference,
   MedicationRequest,
   Observation,
   Patient,
@@ -18,7 +19,8 @@ import {
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { Arbitrary, Array, Effect, FastCheck as fc, HashMap, Schema, TestContext } from 'effect'
 
-import type * as DecodedFile from '../decoded-file.ts'
+import type * as AdoptedFileSet from '../adopted-file-set.ts'
+import type * as ReviewRow from '../review-row.ts'
 import * as Section from '../section.ts'
 import * as SectionedList from '../sectioned-list.ts'
 import * as FileResolution from './file-resolution.ts'
@@ -44,37 +46,49 @@ const ABSOLUTE = 'https://elsewhere.example/fhir/Patient/1'
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
+/** Every row of `files`, file by file, each in review order. */
+const rowsOf = (files: readonly AdoptedFileSet.Type[]): readonly ReviewRow.Type[] =>
+  files.flatMap((file) => SectionedList.rows(file.sectionedList))
+
+/** `file` with its rows resolved on `plan` (`FileResolution.resolveRows`); `file` itself when nothing moved. */
+const resolveSetOn =
+  (plan: LinkPlan.Type) =>
+  (file: AdoptedFileSet.Type): AdoptedFileSet.Type => {
+    const sectionedList = FileResolution.resolveRows(plan, file.sectionedList)
+    return sectionedList === file.sectionedList ? file : { ...file, sectionedList }
+  }
+
 /**
- * A batch's `files` resolved on `linkChoices`, and on `byMention`
+ * The adopted file sets `files` resolved on `linkChoices`, and on `byMention`
  * when given, as `importer-core`'s `resolveMentions` resolves a batch's
- * formats: one link plan over the whole batch, the mention link choices laid
- * on it, every file resolved on it in the order given, and the batch's linked
- * records off the plan.
+ * formats: one link plan over every set's rows, the mention link choices laid
+ * on it, every set's rows resolved on it in the order given, and the batch's
+ * linked records off the plan.
  */
 const resolveAcross = (
-  files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
+  files: Array.NonEmptyReadonlyArray<AdoptedFileSet.Type>,
   linkChoices: ReferentLinkChoiceSet.Type,
   byMention: MentionLinkChoiceSet.Type = MentionLinkChoiceSet.empty
 ): Effect.Effect<
   {
-    readonly resolvedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
-    readonly linkedRecords: readonly DecodedFile.Row[]
+    readonly resolvedFiles: Array.NonEmptyReadonlyArray<AdoptedFileSet.Type>
+    readonly linkedRecords: readonly ReviewRow.Type[]
   },
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
 > =>
   Effect.map(
-    Effect.map(LinkPlan.make(files, linkChoices), (plan) =>
+    Effect.map(LinkPlan.make(rowsOf(files), linkChoices), (plan) =>
       LinkPlan.withMentionLinkChoiceSet(plan, byMention)
     ),
     (plan) => ({
-      resolvedFiles: Array.map(files, FileResolution.resolveFile(plan)),
+      resolvedFiles: Array.map(files, resolveSetOn(plan)),
       linkedRecords: FileResolution.linkedRecords(plan),
     })
   )
 
 /** {@link resolveAcross} over `files`, run on the test clock. */
 const resolveAcrossOnTestClock = (
-  files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
+  files: Array.NonEmptyReadonlyArray<AdoptedFileSet.Type>,
   linkChoices: ReferentLinkChoiceSet.Type,
   byMention: MentionLinkChoiceSet.Type = MentionLinkChoiceSet.empty
 ): Effect.Effect.Success<ReturnType<typeof resolveAcross>> =>
@@ -82,10 +96,10 @@ const resolveAcrossOnTestClock = (
 
 /** The one resolved file of a batch of one `file`, run on the test clock. */
 const resolveOnTestClock = (
-  file: DecodedFile.DecodedFile,
+  file: AdoptedFileSet.Type,
   linkChoices: ReferentLinkChoiceSet.Type,
   byMention: MentionLinkChoiceSet.Type = MentionLinkChoiceSet.empty
-): DecodedFile.DecodedFile =>
+): AdoptedFileSet.Type =>
   Array.headNonEmpty(resolveAcrossOnTestClock(Array.of(file), linkChoices, byMention).resolvedFiles)
 
 /**
@@ -95,39 +109,35 @@ const resolveOnTestClock = (
  * clock.
  */
 const leftByReferentLinksOnTestClock = (
-  file: DecodedFile.DecodedFile,
+  file: AdoptedFileSet.Type,
   linkChoices: ReferentLinkChoiceSet.Type,
   byMention: MentionLinkChoiceSet.Type = MentionLinkChoiceSet.empty
 ): readonly UnlinkedMention.Type[] => {
   const plan = runOnTestClock(
-    Effect.map(LinkPlan.make([file], linkChoices), (onReferents) =>
+    Effect.map(LinkPlan.make(SectionedList.rows(file.sectionedList), linkChoices), (onReferents) =>
       LinkPlan.withMentionLinkChoiceSet(onReferents, byMention)
     )
   )
-  return SectionedList.rows(file.rows).flatMap(({ reviewable, resource }) =>
-    UnlinkedMention.leftByReferentLinks(plan, reviewable.key, resource)
+  return SectionedList.rows(file.sectionedList).flatMap(({ reviewKey, resource }) =>
+    UnlinkedMention.leftByReferentLinks(plan, reviewKey, resource)
   )
 }
 
 /** `Referent.discover` over a batch of one `file`, run on the test clock. */
-const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
-  runOnTestClock(Referent.discover([file]))
+const discoverOnTestClock = (file: AdoptedFileSet.Type): readonly Referent.Type[] =>
+  runOnTestClock(Referent.discover(SectionedList.rows(file.sectionedList)))
 
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
 
 /** A resource as its wire JSON text: what "byte-identical" compares. */
 const wireOf = (resource: FhirResource): string => JSON.stringify(encodeResource(resource))
 
-/** A decoded file as wire JSON text, keys and titles included. */
-const fileWireOf = (file: DecodedFile.DecodedFile): string =>
+/** An adopted file set as wire JSON text, keys and titles included. */
+const fileWireOf = (file: AdoptedFileSet.Type): string =>
   JSON.stringify(
-    file.rows.sections.map((section) => ({
+    file.sectionedList.sections.map((section) => ({
       title: section.title,
-      rows: section.rows.map((row) => [
-        row.reviewable.key,
-        row.reviewable.title,
-        wireOf(row.resource),
-      ]),
+      rows: section.rows.map((row) => [row.reviewKey, row.title, wireOf(row.resource)]),
     }))
   )
 
@@ -250,17 +260,15 @@ const observation = (
     performer,
   })
 
-/** A decoded file of one section, keyed `k-<index>`. */
-const fileOf = (...resources: readonly FhirResourceWithId[]): DecodedFile.DecodedFile => ({
-  rows: SectionedList.make([
+/** An adopted file set of one section, keyed `k-<index>`. */
+const fileOf = (...resources: readonly FhirResourceWithId[]): AdoptedFileSet.Type => ({
+  sectionedList: SectionedList.make([
     Section.make(
       'Resources',
       resources.map((resource, index) => ({
-        reviewable: {
-          key: `k-${index}`,
-          title: `${resource.resourceType}/${resource.id}`,
-          origin: 'Decoded',
-        },
+        reviewKey: `k-${index}`,
+        title: `${resource.resourceType}/${resource.id}`,
+        isImplied: false,
         resource,
       }))
     ),
@@ -276,6 +284,25 @@ const storedOf = (resource: FhirResourceWithId): LinkableResource.WithId => {
   return resource
 }
 
+/** The key of the logical reference to the `resourceType` record named `value` in `system`. */
+const keyOf = (
+  resourceType: 'Patient' | 'Practitioner',
+  system: string,
+  value: string
+): LogicalReference.Key =>
+  LogicalReference.key(
+    LogicalReference.make(resourceType, {
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(system),
+      type: null,
+      use: null,
+      value,
+    })
+  )
+
 const POOL = ['a', 'b'] as const
 const NAMES = ['Dr. A Smith', 'Dr. B Jones'] as const
 
@@ -288,9 +315,9 @@ const STORED_SMITH = storedOf(practitioner('sp-1', 'Dr. A Smith', DEVICE))
 const STORED: readonly LinkableResource.WithId[] = [STORED_TYRA, STORED_JAN, STORED_SMITH]
 
 /** Every referent key a generated file can hold. */
-const POOL_KEYS: readonly string[] = [
-  ...POOL.map((value) => JSON.stringify(['Patient', SOURCE_PATIENT, value])),
-  ...POOL.map((value) => JSON.stringify(['Practitioner', SOURCE_PRACTITIONER, `pr-${value}`])),
+const POOL_KEYS: readonly LogicalReference.Key[] = [
+  ...POOL.map((value) => keyOf('Patient', SOURCE_PATIENT, value)),
+  ...POOL.map((value) => keyOf('Practitioner', SOURCE_PRACTITIONER, `pr-${value}`)),
 ]
 
 const valueArbitrary = fc.constantFrom(...POOL)
@@ -339,16 +366,16 @@ const resourceArbitrary: fc.Arbitrary<FhirResourceWithId> = fc.oneof(
   unrelatedArbitrary
 )
 
-/** A generated decoded file over the pool, in one or two sections. */
-const fileArbitrary: fc.Arbitrary<DecodedFile.DecodedFile> = fc
+/** A generated adopted file set over the pool, in one or two sections. */
+const fileArbitrary: fc.Arbitrary<AdoptedFileSet.Type> = fc
   .array(resourceArbitrary, { maxLength: 8 })
   .chain((resources) =>
     fc.integer({ min: 0, max: resources.length }).map((split) => {
       const file = fileOf(...resources)
-      const rows = SectionedList.rows(file.rows)
+      const rows = SectionedList.rows(file.sectionedList)
       return {
         ...file,
-        rows: SectionedList.make([
+        sectionedList: SectionedList.make([
           Section.make('First', rows.slice(0, split)),
           Section.make('Second', rows.slice(split)),
         ]),
@@ -401,7 +428,7 @@ const choiceForArbitrary = (referent: Referent.Type): fc.Arbitrary<LinkChoice.Ty
 
 /** Generated choices every referent of `file` can take, or none for some. */
 const choicesForArbitrary = (
-  file: DecodedFile.DecodedFile
+  file: AdoptedFileSet.Type
 ): fc.Arbitrary<ReferentLinkChoiceSet.Type> => {
   const referents = discoverOnTestClock(file)
   return fc
@@ -421,9 +448,9 @@ const choicesForArbitrary = (
     )
 }
 
-/** A generated decoded file and choices its referents can take. */
+/** A generated adopted file set and choices its referents can take. */
 const fileWithChoicesArbitrary: fc.Arbitrary<{
-  readonly file: DecodedFile.DecodedFile
+  readonly file: AdoptedFileSet.Type
   readonly choices: ReferentLinkChoiceSet.Type
 }> = fileArbitrary.chain((file) => choicesForArbitrary(file).map((choices) => ({ file, choices })))
 
@@ -441,12 +468,14 @@ export {
   anyChoicesArbitrary,
   resolveAcrossOnTestClock,
   resolveOnTestClock,
+  rowsOf,
   customerSubject,
   discoverOnTestClock,
   fileArbitrary,
   fileOf,
   fileWireOf,
   fileWithChoicesArbitrary,
+  keyOf,
   leftByReferentLinksOnTestClock,
   literalSubject,
   resolveAcross,

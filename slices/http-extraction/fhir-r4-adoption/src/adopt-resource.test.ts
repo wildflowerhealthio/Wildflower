@@ -69,34 +69,35 @@ const detachFhir = DetachedResource.fromServerRecord(BASE)
 const KEYLESS_ID = 'keyless-1'
 
 /**
- * An adoption over `batch`, as the import stage runs one over a file set with
+ * An adoption over `fileSet`, as the import stage runs one over a file set with
  * its resource plans: a keyed record is stored under the id its key derives
  * and a keyless one under {@link KEYLESS_ID}, and a logical reference
- * resolves when `batch` holds the record of its type keyed by its identifier.
+ * resolves when `fileSet` holds the record of its type keyed by its identifier.
  */
 const adoptionOver = (
-  batch: readonly DetachedResource.Type[]
+  fileSet: readonly DetachedResource.Type[]
 ): ((record: DetachedResource.Type) => FhirResourceWithId) => {
   const idOf = (record: DetachedResource.Type): string =>
     Option.match(DetachedResource.keyOf(record), {
       onSome: ({ system, value }) => localResourceId(system, record.resourceType, value),
       onNone: () => KEYLESS_ID,
     })
-  const adoptRecord = adopt(
-    ReferencePlan.of(
-      Arr.filterMap(batch, (record) =>
-        Option.map(DetachedResource.keyIdentifierOf(record), (identifier) => ({
-          logicalReference: LogicalReference.make(record.resourceType, identifier),
-          literalReference: `${record.resourceType}/${idOf(record)}`,
-        }))
-      )
+  const referencePlan = ReferencePlan.of(
+    Arr.filterMap(fileSet, (record) =>
+      Option.map(DetachedResource.keyIdentifierOf(record), (identifier) => ({
+        logicalReference: LogicalReference.make(record.resourceType, identifier),
+        literalReference: `${record.resourceType}/${idOf(record)}`,
+      }))
     )
   )
-  return (record) => adoptRecord(record, idOf(record))
+  return (record) =>
+    Effect.runSync(
+      adopt(record, idOf(record)).pipe(Effect.provideService(ReferencePlan.InForce, referencePlan))
+    )
 }
 
 /**
- * `resource` detached from {@link BASE} and adopted in a batch of it and
+ * `resource` detached from {@link BASE} and adopted in a file set of it and
  * `others`, all detached from {@link BASE}.
  */
 const detachThenAdopt = (
@@ -946,7 +947,10 @@ describe('adopt', () => {
   }
 
   test('stores a record under the id it is given, keyed or not', () => {
-    const adoptRecord = adopt(ReferencePlan.of([]))
+    const adoptRecord = (record: DetachedResource.Type, id: string): FhirResourceWithId =>
+      Effect.runSync(
+        adopt(record, id).pipe(Effect.provideService(ReferencePlan.InForce, ReferencePlan.of([])))
+      )
     const keyed = detachFhir({ ...sample(Patient.Schema, 12), id: 'pat-7' })
     const keyless = detachFhir({ ...sample(Binary.Schema, 11), id: 'src-1' })
     expect(adoptRecord(keyed, 'planned-1').id).toBe('planned-1')
@@ -955,7 +959,7 @@ describe('adopt', () => {
 
   // The cornerstone: a reference has to land on exactly the id its target gets,
   // or `$everything` (`?subject=Patient/{id}`) stops resolving.
-  test('a subject reference lands on the id its Patient, in the batch, is stored under', () => {
+  test('a subject reference lands on the id its Patient, in the file set, is stored under', () => {
     const patientSource = { ...sample(Patient.Schema, 12), id: 'pat-7' }
     const patient = detachThenAdopt(patientSource)
     const observation = asObservation(
@@ -1000,7 +1004,7 @@ describe('adopt', () => {
   // As a FHIR server leaves a conditional reference that matches nothing in
   // the transaction: the target was never served, so nothing is stored under
   // the id its key would derive, and the identity map gets the reference.
-  test('leaves a reference to a record the batch does not hold logical', () => {
+  test('leaves a reference to a record the file set does not hold logical', () => {
     const observation = asObservation(
       detachThenAdopt({
         ...sample(Observation.Schema, 13),
@@ -1016,7 +1020,7 @@ describe('adopt', () => {
     )
   })
 
-  test('leaves a logical reference by an identifier no record of the batch is keyed by as it is', () => {
+  test('leaves a logical reference by an identifier no record of the file set is keyed by as it is', () => {
     const account = reference({
       type: 'Patient',
       identifier: identifier({
@@ -1080,8 +1084,8 @@ describe('adopt', () => {
   }
 
   // A Binary has no identifier element, so nothing can name it by a key: a
-  // reference to one never matches a record of the batch, and stays logical.
-  test('leaves a reference to a keyless record of the batch logical', () => {
+  // reference to one never matches a record of the file set, and stays logical.
+  test('leaves a reference to a keyless record of the file set logical', () => {
     const binarySource = { ...sample(Binary.Schema, 11), id: 'bin-1' }
     const document = detachThenAdopt(
       {
@@ -1105,7 +1109,7 @@ describe('adopt', () => {
     expect(document.relatesTo[0]?.target.reference).toBeNull()
   })
 
-  test('resolves a logical reference the source wrote by key, when the batch holds its target', () => {
+  test('resolves a logical reference the source wrote by key, when the file set holds its target', () => {
     const byKey = reference({
       type: 'Patient',
       identifier: identifier({ value: 'pat-7', system: new URL(fhirSystem('Patient')) }),
@@ -1143,7 +1147,7 @@ describe('adopt', () => {
   // A workout `Procedure` carries out `ServiceRequest`s; its `basedOn` must
   // land on the ids those requests are stored under. Its performer's
   // organization and its device were never served, so they stay logical.
-  test('resolves the references nested in a Procedure to records of the batch, and only those', () => {
+  test('resolves the references nested in a Procedure to records of the file set, and only those', () => {
     const requestSource = { ...sample(ServiceRequest.Schema, 19), id: 'sr-1' }
     const practitionerSource = { ...sample(Practitioner.Schema, 18), id: 'prac-1' }
     const adopted = detachThenAdopt(
@@ -1354,7 +1358,7 @@ describe('writing a record detached', () => {
     })
   })
 
-  test('a logical reference to a record of the batch adopts to its stored reference', () => {
+  test('a logical reference to a record of the file set adopts to its stored reference', () => {
     const decodePatient = DetachedResource.decodeUnknown(Patient.Schema)
     const key = { system: SYSTEM, value: 'pat-7' }
     const patient = Effect.runSync(
@@ -1383,7 +1387,7 @@ describe('adoptedReferenceOf', () => {
       ? { ...sample(Patient.Schema, 12), id }
       : { ...sample(Practitioner.Schema, 18), id }
 
-  test('property: spells a reference as adopt resolves one to a record of the batch', () => {
+  test('property: spells a reference as adopt resolves one to a record of the file set', () => {
     fc.assert(
       fc.property(
         fc.constantFrom(BASE, 'https://other.example/fhir'),
