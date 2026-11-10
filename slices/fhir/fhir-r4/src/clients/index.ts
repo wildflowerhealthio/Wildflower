@@ -41,6 +41,13 @@ export {
   type SearchParamsByType,
 } from './search-by-type.ts'
 export {
+  type BatchSearch,
+  type BatchSearchFailure,
+  BatchSearchRejected,
+  type BatchSubmitFailure,
+  searchInBatch,
+} from './search-in-batch.ts'
+export {
   FhirR4ResourcesHttpApiClient,
   type FhirR4ResourcesHttpApiClientShape,
 } from './fhir-r4-resources-http-api-client.ts'
