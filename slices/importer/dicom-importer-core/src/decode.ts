@@ -9,7 +9,7 @@ import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type DecodedFile,
+  type AdoptedFileSet,
   type DecodedFileSet,
   type DecodeFunction,
   type PickedFile,
@@ -151,13 +151,13 @@ const studyNotes = (files: readonly StudyFile[]): readonly string[] => {
   return notes
 }
 
-/** The reference to a decoded resource of the given type, when the decode produced one. */
+/** The reference to an adopted resource of the given type, when the decode produced one. */
 const referenceTo = (
-  decoded: DecodedFile.DecodedFile,
+  adopted: AdoptedFileSet.Type,
   resourceType: 'Patient' | 'ImagingStudy'
 ): Option.Option<string> =>
   Arr.findFirst(
-    SectionedList.rows(decoded.rows),
+    SectionedList.rows(adopted.sectionedList),
     (row) => row.resource.resourceType === resourceType
   ).pipe(Option.map((row) => `${resourceType}/${row.resource.id}`))
 
@@ -175,7 +175,7 @@ const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
  * read into.
  *
  * @param sourceFile - The source file as `PickedFile.FromDocumentReference` minted it
- * @param decoded - The whole study's records, adopted
+ * @param adopted - The whole study's records, adopted
  * @returns The source file to store and list, with the same id it was minted under
  *
  * @remarks
@@ -192,10 +192,10 @@ const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
  */
 const linkToPatientAndStudy = (
   sourceFile: PickedFile.SourceFile,
-  decoded: DecodedFile.DecodedFile
+  adopted: AdoptedFileSet.Type
 ): PickedFile.SourceFile => {
-  const subject = referenceTo(decoded, 'Patient')
-  const study = referenceTo(decoded, 'ImagingStudy')
+  const subject = referenceTo(adopted, 'Patient')
+  const study = referenceTo(adopted, 'ImagingStudy')
   return {
     ...sourceFile,
     subject: Option.match(subject, {

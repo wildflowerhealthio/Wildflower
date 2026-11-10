@@ -1,5 +1,5 @@
 import {
-  DecodedFile,
+  AdoptedFileSet,
   DecodedFileSet,
   type FileImporter,
   FormatDecode,
@@ -72,7 +72,7 @@ const importFileSet = (
   importer: ImportingFormat,
   fileSet: DecodedFileSet.Type
 ): Effect.Effect<
-  DecodedFile.DecodedFile,
+  AdoptedFileSet.Type,
   ParseResult.ParseError | FileImporter.SourceFileNotFound,
   PickedFile.Format
 > =>
@@ -95,11 +95,11 @@ const importFileSet = (
     }))
 
     const linkToSourceFiles = importer.linkToSourceFiles ?? Effect.succeed
-    const linkedToSourceFiles = yield* SectionedList.forEach(adopted.rows, (row) =>
+    const linkedToSourceFiles = yield* SectionedList.forEach(adopted.sectionedList, (row) =>
       Effect.map(linkToSourceFiles(row.resource, linked), (resource) => ({ ...row, resource }))
     )
-    const stamped = MetaSource.stampDecoded(
-      { rows: linkedToSourceFiles, notes: adopted.notes },
+    const stamped = MetaSource.stampAdopted(
+      { sectionedList: linkedToSourceFiles, notes: adopted.notes },
       MetaSource.makeReference(
         Arr.min(
           Arr.map(linked, ({ sourceFile }) => sourceFile.id),
@@ -120,7 +120,10 @@ const importFileSet = (
       sourceFileRows.length === 1 ? SOURCE_FILE_SECTION_TITLE : SOURCE_FILES_SECTION_TITLE
     return {
       ...stamped,
-      rows: SectionedList.prepend(stamped.rows, Section.make(title, sourceFileRows)),
+      sectionedList: SectionedList.prepend(
+        stamped.sectionedList,
+        Section.make(title, sourceFileRows)
+      ),
     }
   })
 

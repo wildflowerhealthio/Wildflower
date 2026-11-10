@@ -1,7 +1,6 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option } from 'effect'
 
-import type * as DecodedFile from './decoded-file.ts'
 import * as FileResolution from './identity-map/file-resolution.ts'
 import type * as LinkPlan from './identity-map/link-plan.ts'
 import type * as ReviewRow from './review-row.ts'

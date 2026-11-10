@@ -1,7 +1,7 @@
 /**
  * Stamping `meta.source` onto FHIR resources: the typed {@link Reference} a
- * stamp names, the single-resource {@link stamp}, and the batch
- * {@link stampDecoded} that walks every resource in a decoded file's sections.
+ * stamp names, the single-resource {@link stamp}, and
+ * {@link stampAdopted} that walks every resource in an adopted file set's sections.
  *
  * @remarks
  * Both stamps take a {@link Reference} rather than a bare `string` — the
@@ -15,7 +15,7 @@
 
 import type { Meta } from '@wildflowerhealthio/fhir-r4/data-types'
 
-import type * as DecodedFile from './decoded-file.ts'
+import type * as AdoptedFileSet from './adopted-file-set.ts'
 import * as SectionedList from './sectioned-list.ts'
 
 const REFERENCE_PREFIX = 'DocumentReference/'
@@ -49,16 +49,13 @@ const stamp = <TResource extends Sourceable>(
   },
 })
 
-const stampDecoded = (
-  decoded: DecodedFile.DecodedFile,
-  source: Reference
-): DecodedFile.DecodedFile => ({
-  ...decoded,
-  rows: SectionedList.map(decoded.rows, (row) => ({
+const stampAdopted = (adopted: AdoptedFileSet.Type, source: Reference): AdoptedFileSet.Type => ({
+  ...adopted,
+  sectionedList: SectionedList.map(adopted.sectionedList, (row) => ({
     ...row,
     resource: stamp(row.resource, source),
   })),
 })
 
-export { makeReference, stamp, stampDecoded }
+export { makeReference, stamp, stampAdopted }
 export type { Reference, Sourceable }

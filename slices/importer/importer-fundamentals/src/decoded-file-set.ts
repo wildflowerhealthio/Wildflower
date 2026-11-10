@@ -15,7 +15,7 @@ import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/
 import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Either, Option, type ParseResult, pipe } from 'effect'
 
-import type * as DecodedFile from './decoded-file.ts'
+import type * as AdoptedFileSet from './adopted-file-set.ts'
 import * as ImpliedRecord from './implied-record.ts'
 import type * as PickedFile from './picked-file.ts'
 import * as ResourcePlan from './resource-plan.ts'
@@ -410,13 +410,13 @@ const adoptEntries = (
 }
 
 /**
- * A decode's sections adopted beside its notes: how the import stage makes a
+ * A file set's records adopted beside its notes: how the import stage makes a
  * file set's records the device's own, before it mints source files, links
  * and stamps.
  *
  * @param decoded - The set's sections and notes
  * @param mintId - Mints the id of a keyless record; random outside tests
- * @returns The adopted file, or the `ParseError` an implied record's schema
+ * @returns The adopted file set, or the `ParseError` an implied record's schema
  *   rejects it with
  *
  * @remarks
