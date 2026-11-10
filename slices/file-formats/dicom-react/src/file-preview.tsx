@@ -158,6 +158,7 @@ const ImagePane = ({
     // frame stretched until the next resize.
     const stopObservingResize = observeDicomViewportResize(element)
     return (): void => {
+      // oxlint-disable-next-line react/immutability -- `cancelled` is local to this effect, not render state; Oxlint 1.91 flags it anyway
       cancelled = true
       stopObservingResize()
     }

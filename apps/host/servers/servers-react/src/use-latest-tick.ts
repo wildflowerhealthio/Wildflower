@@ -33,6 +33,7 @@ const useLatestTick = (ticksAt: (nowMillis: number) => Ticks): number => {
         const now = DateTime.unsafeNow().epochMillis
         const { next } = ticksAt(now)
         if (next === undefined) return
+        // oxlint-disable-next-line react/immutability -- `timer` is local to this subscription, not render state; Oxlint 1.91 flags it anyway
         timer = setTimeout(
           () => {
             onTick()
