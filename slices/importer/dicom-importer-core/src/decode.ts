@@ -50,6 +50,7 @@ const STUDY_LOCAL_KEYS = {
 const studyRecordOf = (resource: StudyResource): FileSetRecord.Type => ({
   localKey: STUDY_LOCAL_KEYS[resource.resourceType],
   resource,
+  sourceUrl: Option.none(),
 })
 
 /** One file of a study, as the synthesis sees it: its header and its name. */

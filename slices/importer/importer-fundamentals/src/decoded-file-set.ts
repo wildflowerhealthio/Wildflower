@@ -85,7 +85,7 @@ const unidentified = (pickedFile: PickedFile.Type): PickedFileIdentity => ({
  * The entries a planned record gives its set's reference plan: one for each
  * qualified identifier of a keyed record, its key and every other, each
  * resolving to the literal reference the record is written under; none for a
- * keyless record, which nothing names.
+ * keyless record, which no identifier names.
  *
  * @remarks
  * A FHIR conditional reference matches a record by any of its identifiers,
@@ -123,10 +123,34 @@ interface PlannedRecord {
   readonly isImplied: boolean
 }
 
-/** The reference plan of a set's planned records ({@link referencePlanEntriesOf}). */
+/**
+ * The source URL entry a planned record gives its set's reference plan: one
+ * for a keyless record a source served at a URL (`FileSetRecord.sourceUrl`),
+ * resolving to the literal reference it is written under; none for a keyed
+ * record, which its identifiers name, or one with no source URL.
+ */
+const sourceUrlEntryOf = ({
+  record,
+  plan,
+}: PlannedRecord): Option.Option<ReferencePlan.SourceUrlEntry> =>
+  ResourcePlan.match(plan, {
+    Derived: () => Option.none(),
+    Minted: (minted) =>
+      Option.map(record.sourceUrl, (sourceUrl) => ({
+        sourceUrl,
+        literalReference: ResourcePlan.literalReference(minted),
+      })),
+  })
+
+/**
+ * The reference plan of a set's planned records: each record's entries by
+ * identifier ({@link referencePlanEntriesOf}) and by source URL
+ * ({@link sourceUrlEntryOf}).
+ */
 const referencePlanOf = (plannedRecords: readonly PlannedRecord[]): ReferencePlan.Type =>
   ReferencePlan.of(
-    plannedRecords.flatMap(({ record, plan }) => referencePlanEntriesOf(plan, record.resource))
+    plannedRecords.flatMap(({ record, plan }) => referencePlanEntriesOf(plan, record.resource)),
+    Arr.filterMap(plannedRecords, sourceUrlEntryOf)
   )
 
 /** The title of the section a set's implied records are reviewed in, the last of its sections. */
@@ -227,6 +251,7 @@ const impliedSectionOf = (
           record: {
             localKey: ImpliedRecord.localKeyOf(referencingLocalKey, logicalReference),
             resource,
+            sourceUrl: Option.none(),
           },
           plan: ResourcePlan.derived(resource.resourceType, logicalReference.identifier[0]),
           isImplied: true,
@@ -406,7 +431,10 @@ const adoptRecords = (
  * when the set holds a keyed record it names by any of that record's
  * identifiers, whichever section holds it. One that names a record the set
  * does not hold and implies none, a keyless one, or an identifier two
- * records of the set share, stays logical, for the identity map.
+ * records of the set share, stays logical, for the identity map. A literal
+ * reference or an `Attachment.url` resolves when it spells the source URL of
+ * a keyless record of the set ({@link sourceUrlEntryOf}): a `Binary` a
+ * FHIR server served, by the server's URL for it.
  *
  * Each row's review key is `keyPrefix` before the record's local key. The
  * import stage passes the prefix of the set's first picked file

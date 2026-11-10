@@ -51,6 +51,7 @@ const recordOf = (
 ): FileSetRecord.Type => ({
   localKey: `${resource.resourceType}/${key.value}`,
   resource,
+  sourceUrl: Option.none(),
 })
 
 /**
