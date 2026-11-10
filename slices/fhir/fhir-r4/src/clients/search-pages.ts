@@ -143,26 +143,16 @@ interface PageRead<TResource> {
 }
 
 /**
- * Every match a search answers with, page after page: `searchPage` is asked
- * for the first page with no token, then for each page the previous one's
- * `next` link continues, up to `pageLimit` pages. The first page to fail
- * fails the read, as does a match without its resource
- * ({@link matchesIn}) and a `next` link back to a page already read
- * ({@link PageTokenRepeated}).
- *
- * @param resourceType - The resource type the search is for, named by a failure
- * @param searchPage - One page of the search, given the `_pageToken` that
- *   continues it (`None` for the first page)
- * @param options - `pageLimit`: how many pages are read before the list is
- *   given as it is, `truncated`
- * @returns The matches of every page read, in page order, and whether the
- *   page limit left pages unread
+ * The pages of a search, read one after another: `searchPage` is asked for
+ * the first page with no token, then for each page the previous one's `next`
+ * link continues. The first page to fail fails the stream, as does a match
+ * without its resource ({@link matchesIn}) and a `next` link back to a page
+ * already read ({@link PageTokenRepeated}).
  */
-const searchAllPages = <TResource, E, R>(
+const pagesOf = <TResource, E, R>(
   resourceType: string,
-  searchPage: (pageToken: Option.Option<string>) => Effect.Effect<SearchsetPage<TResource>, E, R>,
-  options: { readonly pageLimit: number }
-): Effect.Effect<SearchPages<TResource>, E | MatchWithoutResource | PageTokenRepeated, R> => {
+  searchPage: (pageToken: Option.Option<string>) => Effect.Effect<SearchsetPage<TResource>, E, R>
+): Stream.Stream<PageRead<TResource>, E | MatchWithoutResource | PageTokenRepeated, R> => {
   const readPage = (
     position: PagerPosition
   ): Effect.Effect<
@@ -183,7 +173,27 @@ const searchAllPages = <TResource, E, R>(
         Option.some({ pageToken: next, tokensRead: HashSet.add(position.tokensRead, next) }),
       ] as const
     })
-  return Stream.paginateEffect({ pageToken: null, tokensRead: HashSet.empty() }, readPage).pipe(
+  return Stream.paginateEffect({ pageToken: null, tokensRead: HashSet.empty() }, readPage)
+}
+
+/**
+ * Every match a search answers with, page after page ({@link pagesOf}), up to
+ * `pageLimit` pages.
+ *
+ * @param resourceType - The resource type the search is for, named by a failure
+ * @param searchPage - One page of the search, given the `_pageToken` that
+ *   continues it (`None` for the first page)
+ * @param options - `pageLimit`: how many pages are read before the list is
+ *   given as it is, `truncated`
+ * @returns The matches of every page read, in page order, and whether the
+ *   page limit left pages unread
+ */
+const searchAllPages = <TResource, E, R>(
+  resourceType: string,
+  searchPage: (pageToken: Option.Option<string>) => Effect.Effect<SearchsetPage<TResource>, E, R>,
+  options: { readonly pageLimit: number }
+): Effect.Effect<SearchPages<TResource>, E | MatchWithoutResource | PageTokenRepeated, R> =>
+  pagesOf(resourceType, searchPage).pipe(
     Stream.take(options.pageLimit),
     Stream.runCollect,
     Effect.map((pagesRead) => ({
@@ -193,7 +203,24 @@ const searchAllPages = <TResource, E, R>(
         Chunk.last(pagesRead).pipe(Option.exists(({ continues }) => continues)),
     }))
   )
-}
+
+/**
+ * Every match a search answers with, to its last page ({@link pagesOf}): for
+ * a search whose every match counts, so no page is left unread.
+ *
+ * @param resourceType - The resource type the search is for, named by a failure
+ * @param searchPage - One page of the search, given the `_pageToken` that
+ *   continues it (`None` for the first page)
+ * @returns The matches of every page, in page order
+ */
+const searchEveryPage = <TResource, E, R>(
+  resourceType: string,
+  searchPage: (pageToken: Option.Option<string>) => Effect.Effect<SearchsetPage<TResource>, E, R>
+): Effect.Effect<readonly TResource[], E | MatchWithoutResource | PageTokenRepeated, R> =>
+  pagesOf(resourceType, searchPage).pipe(
+    Stream.runCollect,
+    Effect.map((pagesRead) => Chunk.toReadonlyArray(pagesRead).flatMap(({ matches }) => matches))
+  )
 
 export {
   matchesIn,
@@ -203,5 +230,6 @@ export {
   PAGE_TOKEN_PARAM,
   PageTokenRepeated,
   searchAllPages,
+  searchEveryPage,
 }
 export type { PageLink, SearchPages, SearchsetEntry, SearchsetPage }

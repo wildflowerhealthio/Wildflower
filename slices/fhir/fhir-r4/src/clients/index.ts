@@ -27,6 +27,7 @@ export {
   type PageLink,
   PageTokenRepeated,
   searchAllPages,
+  searchEveryPage,
   type SearchPages,
   type SearchsetEntry,
   type SearchsetPage,
