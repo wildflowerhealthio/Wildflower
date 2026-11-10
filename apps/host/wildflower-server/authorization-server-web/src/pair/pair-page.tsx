@@ -217,6 +217,7 @@ const AwaitingApproval = ({
     }
     pollAfter(started.interval)
     return () => {
+      // oxlint-disable-next-line react/immutability -- `cancelled` is local to this effect, not render state; Oxlint 1.91 flags it anyway
       cancelled = true
       clearTimeout(timer)
     }

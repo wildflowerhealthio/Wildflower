@@ -344,11 +344,7 @@ const groupOf = (
  * `group` as `parts` `--shard` parts, each with an even share of its time, when
  * it outweighs `wallTimeFloor`; else `group` alone.
  */
-const splitIfHeavy = (
-  group: TestUnit,
-  parts: number,
-  wallTimeFloor: number
-): readonly TestUnit[] =>
+const splitIfHeavy = (group: TestUnit, parts: number, wallTimeFloor: number): readonly TestUnit[] =>
   parts > 1 && group.seconds > wallTimeFloor
     ? Array.from({ length: parts }, (_, i) => ({
         label: `${group.label} ${i + 1}/${parts}`,

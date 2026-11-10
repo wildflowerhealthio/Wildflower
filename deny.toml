@@ -43,6 +43,17 @@ ignore = [
   # exercised with our keys. Reviewed, temporary — drop once jsonwebtoken moves
   # to `p256`/`p384` 0.14.
   "RUSTSEC-2026-0387",
+  # libsqlite3-sys < 0.39 — bundled SQLite before 3.54.0 can return
+  # uninitialized page-cache memory when it opens a database together with a
+  # crafted `-wal` file of a different page size. The fix is libsqlite3-sys
+  # 0.39 (rusqlite 0.41), but `helios-persistence`/`-rest`/`-sof` ask for
+  # `rusqlite ^0.33` (still so in helios 0.2.8), which holds libsqlite3-sys at
+  # 0.31, and diesel 2.3 accepts only `< 0.39`. Exposure needs a database and
+  # `-wal` pair that a less trusted party wrote; every SQLite file we open is
+  # one the server created in its own data directory, and nothing imports a
+  # database file from outside. Reviewed, temporary — drop once helios moves
+  # to rusqlite 0.41.
+  "RUSTSEC-2026-0459",
 ]
 # Only fail on "unmaintained" advisories for crates we depend on directly; deep
 # transitive ones (e.g. the gtk3/atk chain pulled in by Tauri, or unic-* and
