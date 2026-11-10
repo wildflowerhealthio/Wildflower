@@ -3,6 +3,7 @@ import {
   type DocumentReference,
   type FhirResource,
   FhirResourceSchema,
+  ResourceType,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { harImporter } from '@wildflowerhealthio/har-importer-core'
 import { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
@@ -140,6 +141,26 @@ const isUnlinkedSourceFile = (resource: FhirResource): boolean => {
   )
 }
 
+/**
+ * Whether an attachment `url` would be read as a file in the snapshot: a
+ * relative URL whose first segment is no FHIR resource type. `har/a.har`,
+ * `./har/a.har` and `har/../index.json` are; an absolute `https://…` and
+ * `Binary/<id>` (the imported Binary a DocumentReference points at) are not.
+ */
+const isSnapshotPath = (url: string): boolean =>
+  !URL.canParse(url) && !ResourceType.is(url.split('/')[0])
+
+/**
+ * Whether one of a resource's own attachment `url`s points at a file in the
+ * snapshot ({@link isSnapshotPath}). Only a resource's `attachmentPath` may
+ * do that: its file writes the path as the link to an {@link Attachment}, so
+ * a path the resource held itself would be written as a link it does not
+ * make.
+ */
+const namesSnapshotPath = (resource: FhirResource): boolean =>
+  resource.resourceType === 'DocumentReference' &&
+  resource.content.some(({ attachment: { url } }) => url !== null && isSnapshotPath(url))
+
 /** A resource in the store, as its import wrote it. */
 const ResourceSchema = Schema.TaggedStruct('Resource', {
   resource: StoredResourceSchema,
@@ -156,6 +177,13 @@ const ResourceSchema = Schema.TaggedStruct('Resource', {
         attachmentPath === undefined ||
         isUnlinkedSourceFile(resource) ||
         'A resource linking an attachment is a DocumentReference whose one attachment carries neither data nor url.'
+    ),
+    // A path in the resource itself would be written into its file as a link
+    // it does not make: `har/a.har` beside `data`, or `har/../index.json`.
+    Schema.filter(
+      ({ resource }) =>
+        !namesSnapshotPath(resource) ||
+        'A resource names a path into the snapshot only through its attachmentPath.'
     )
   )
   .annotations({ identifier: 'SnapshotResourceEntry' })
