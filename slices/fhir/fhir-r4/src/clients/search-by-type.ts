@@ -7,7 +7,7 @@ import { SearchParams as DiagnosticReportSearchParams } from '../resources/diagn
 import { SearchParams as DocumentReferenceSearchParams } from '../resources/document-reference/search-params.ts'
 import { SearchParams as GoalSearchParams } from '../resources/goal/search-params.ts'
 import { SearchParams as ImagingStudySearchParams } from '../resources/imaging-study/search-params.ts'
-import type { FhirResourceWithId } from '../resources/index.ts'
+import { type FhirResourceWithId, literalReferenceOf } from '../resources/index.ts'
 import { SearchParams as MedicationDispenseSearchParams } from '../resources/medication-dispense/search-params.ts'
 import { SearchParams as MedicationRequestSearchParams } from '../resources/medication-request/search-params.ts'
 import { SearchParams as ObservationSearchParams } from '../resources/observation/search-params.ts'
@@ -169,6 +169,17 @@ const searchesByType: {
 const IDENTIFIER_SEARCH_PAGE_SIZE = 1000
 
 /**
+ * How many identifiers one identifier search carries: well under the 1000
+ * a single `identifier` value fails at on HFS's SQLite backend.
+ *
+ * @remarks
+ * HFS ORs a token parameter's values by nesting one expression level per
+ * value, and SQLite refuses to prepare an expression deeper than 1000, so a
+ * search for that many identifiers in one value answers with a 500.
+ */
+const IDENTIFIER_CHUNK_SIZE = 500
+
+/**
  * `_pageToken` as a search parameter: the token that continues a search, or
  * none for its first page.
  */
@@ -176,19 +187,37 @@ const pageTokenParam = (pageToken: Option.Option<string>): { readonly _pageToken
   Option.match(pageToken, { onNone: () => ({}), onSome: (_pageToken) => ({ _pageToken }) })
 
 /**
+ * `resources` with each stored resource once, by its `Type/id`, at its first
+ * position.
+ */
+const distinctByReference = <TResource extends FhirResourceWithId>(
+  resources: readonly TResource[]
+): readonly TResource[] => {
+  const seen = new Set<string>()
+  return resources.filter((resource) => {
+    const reference = literalReferenceOf(resource)
+    if (seen.has(reference)) return false
+    seen.add(reference)
+    return true
+  })
+}
+
+/**
  * Every stored resource of `resourceType` carrying any of `identifiers`: one
- * `POST <Type>/_search` with `identifier` the identifiers as one token value
- * (`TokenSearchParam.anyOf`), page after page to the last.
+ * search per chunk of {@link IDENTIFIER_CHUNK_SIZE} identifiers, each a
+ * `POST <Type>/_search` with `identifier` the chunk's identifiers as one token
+ * value (`TokenSearchParam.anyOf`), read page after page to the last.
  *
  * @remarks
- * A `POST` rather than a `GET`, since a search for thousands of identifiers
- * is too long for a URL. A match without its resource fails the search
- * (`MatchWithoutResource`), as does any failed page: a failed search is not
- * "no match".
+ * A `POST` rather than a `GET`, since a search for hundreds of identifiers is
+ * too long for a URL. The chunks are searched one after another, and a
+ * resource carrying identifiers of two chunks is given once. A match without
+ * its resource fails the search (`MatchWithoutResource`), as does any failed
+ * page: a failed search is not "no match".
  *
  * @param resourceType - The type of the resources searched
  * @param identifiers - The identifiers any of which a match carries
- * @returns Every match, in the order the server gave them
+ * @returns Every match, each once, in the order the server gave them
  */
 const searchByIdentifiers = <ResourceType extends SearchableResourceType>(
   resourceType: ResourceType,
@@ -198,18 +227,20 @@ const searchByIdentifiers = <ResourceType extends SearchableResourceType>(
   SearchFailure | MatchWithoutResource | PageTokenRepeated,
   FhirR4ResourcesHttpApiClient
 > =>
-  Effect.flatMap(FhirR4ResourcesHttpApiClient, (client) => {
-    const identifier = TokenSearchParam.anyOf(
-      Array.map(identifiers, TokenSearchParam.fromQualifiedIdentifier)
-    )
-    return searchEveryPage(resourceType, (pageToken) =>
-      searchesByType[resourceType].search(client, {
-        identifier,
-        _count: IDENTIFIER_SEARCH_PAGE_SIZE,
-        ...pageTokenParam(pageToken),
-      })
-    )
-  })
+  Effect.flatMap(FhirR4ResourcesHttpApiClient, (client) =>
+    Effect.forEach(Array.chunksOf(identifiers, IDENTIFIER_CHUNK_SIZE), (chunk) => {
+      const identifier = TokenSearchParam.anyOf(
+        Array.map(chunk, TokenSearchParam.fromQualifiedIdentifier)
+      )
+      return searchEveryPage(resourceType, (pageToken) =>
+        searchesByType[resourceType].search(client, {
+          identifier,
+          _count: IDENTIFIER_SEARCH_PAGE_SIZE,
+          ...pageTokenParam(pageToken),
+        })
+      )
+    })
+  ).pipe(Effect.map((chunkMatches) => distinctByReference(chunkMatches.flat())))
 
 /**
  * Every stored resource of `resourceType`, `pageSize` to a page, up to
@@ -241,5 +272,5 @@ const searchAllOfType = <ResourceType extends SearchableResourceType>(
     )
   )
 
-export { searchAllOfType, searchByIdentifiers, searchesByType }
+export { IDENTIFIER_CHUNK_SIZE, searchAllOfType, searchByIdentifiers, searchesByType }
 export type { SearchableResource, SearchableResourceType, SearchFailure, SearchParamsByType }
