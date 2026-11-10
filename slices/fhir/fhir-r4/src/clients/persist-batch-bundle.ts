@@ -203,9 +203,7 @@ const unanswered = (cause: unknown): BundleFailure => ({
  * answer to the whole bundle, a refusal included, under its status and its
  * body.
  */
-const responseErrorFailure = (
-  error: HttpClientError.ResponseError
-): Effect.Effect<BundleFailure> =>
+const responseErrorFailure = (error: HttpClientError.ResponseError): Effect.Effect<BundleFailure> =>
   // A `2xx` here is an answer the client could not decode: the server took
   // the bundle, but which entries it wrote is unknown. Its own status would
   // read as a success to `statusOk` and mark every entry written, so it is
