@@ -29,13 +29,14 @@ carrying the one `ImagingStudy` its files make up.
   the fallback for an issuer naming no URI is Wildflower's own, standing in
   for the identifier-domain registry IHE assumes. **`universalSystemOf`** spells a Universal Entity ID as a system: `ISO`
   as `urn:oid:<id>` (a well-formed OID), `UUID` as `urn:uuid:<id>` (lower
-  case), `URI` as itself when `Schema.URL` accepts it; `None` for any other
+  case), `URI` as `URL.href` spells it when `Schema.URL` accepts it, the
+  spelling a record key is read back in; `None` for any other
   type or a malformed value. **`issuedIdentifierOf`** keys a number under that
   system, else under the caller's fallback, with the local namespace (else an
   unresolved Universal Entity ID, as written) as `assigner.display` — so the
-  decode is total whatever the issuer states. **`unresolvedUniversalIssuerOf`**
-  names a stated Universal Entity ID that resolves to no URI, for the decode's
-  note.
+  decode is total whatever the issuer states, and with what kept a stated
+  Universal Entity ID from being its system (**`unresolvedUniversalIssuerOf`**:
+  a missing type, or a value naming no URI), for the decode's note.
 - `src/detect.ts` — DICM magic bytes at offset 128 (PS3.10 preamble + magic)
   or a `.dcm` extension fallback.
 - `src/settings.ts` — `DicomSettings`: the one knob, `timeZone`, the IANA zone
@@ -101,15 +102,18 @@ carrying the one `ImagingStudy` its files make up.
   headers** (`compareInstances`: `InstanceNumber`, `SOPInstanceUID`, then
   `SOPClassUID`; two instances it leaves tied are alike in every field), so
   the same study picked in any order imports to identical resources. Files that disagree on `AccessionNumber` are not
-  merged: the first in study order builds the one `ServiceRequest` and
-  `accessionNumbers` is what the decode reports the disagreement from.
+  merged: the first in study order builds the one `ServiceRequest`.
+  **`studyIdentifiersOf`** is the one place the patient's identifier and the
+  study's distinct accessions (by number and issuer) are chosen, for the
+  synthesis and the decode's notes alike.
 - `src/decode.ts` — what makes a set of picked files one import, and how that set
   decodes. **`studyKey(header)`** is `StudyInstanceUID` **plus** the
   `patientKeyOf` key: a patient the files disagree on splits the set rather
   than filing one patient's images in another's record. Both sets still key
   one `ImagingStudy`, the UID, and **`withSharedStudyNotes`**, run over the
   format's whole decode, adds **`SHARED_STUDY_NOTE`** to each set whose
-  `ImagingStudy` key another set of the batch carries too.
+  `ImagingStudy` key another set of the batch carries too: whichever is
+  imported last replaces the other's series and patient.
   **`studyGroupKey`** is the `groupBy` the importer states: it parses the picked file's
   header (headers only, cheap) and returns `studyKey(header)`, or a `Left` —
   a file `dicom-parser` rejects states no study to belong to, and folding it
@@ -130,9 +134,10 @@ carrying the one `ImagingStudy` its files make up.
   `<Modality> <StudyDescription> · <StudyDate>` off the study's representative
   header, with stable local keys `patient`, `service-request`, `imaging-study`,
   fixed _within one study_ and namespaced by the import stage outside it. Notes for missing patient
-  identity, a stated issuer of the Patient ID or the Accession Number that
-  names no URI (its number keyed under the fallback), an absent
-  `AccessionNumber`, one the files disagree on, and — for a
+  identity, an issuer sequence whose text cannot be decoded (read as absent), a
+  stated issuer of the Patient ID or the Accession Number that names no URI
+  (its number keyed under the fallback), an absent `AccessionNumber`, one the
+  files disagree on (number or issuer), and — for a
   study of more than one file — what each file contributed.
   It rejects a `settings.timeZone` the runtime cannot resolve
   (`checkTimeZone` from `kitchen-sink`, a `ParseError`) rather than

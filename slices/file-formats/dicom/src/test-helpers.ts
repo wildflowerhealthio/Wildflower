@@ -714,6 +714,7 @@ const dicomHeaderArb = (): fc.Arbitrary<DicomHeader.Type> =>
     // `dicom-parser` to warn about. A file that does warn is malformed in a
     // way this writer cannot express.
     parserWarnings: fc.constant([]),
+    undecodableIssuers: fc.constant([]),
   })
 
 /**

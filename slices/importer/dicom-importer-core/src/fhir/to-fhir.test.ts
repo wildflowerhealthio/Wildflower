@@ -15,12 +15,12 @@ import { describe, expect, it } from 'vite-plus/test'
 import type { DicomSettings } from '../settings.ts'
 import { DICOM_PRACTITIONER_NAME_SYSTEM, DicomIdentifierSystem } from '../source-system.ts'
 import {
-  accessionNumbers,
   fhirDate,
   fhirDateTime,
   imagingStudyKeyOf,
   orderedInstances,
   patientKeyOf,
+  studyIdentifiersOf,
   studySeries,
   toFhirResources,
   type StudyInstance,
@@ -81,6 +81,7 @@ const minimalHeader = (overrides: Partial<DicomHeader.Type> = {}): DicomHeader.T
   manufacturerModelName: 'Discovery',
   institutionName: 'Test Hospital',
   parserWarnings: [],
+  undecodableIssuers: [],
   ...overrides,
 })
 
@@ -695,11 +696,28 @@ describe('toFhirResources over a study of several files', () => {
       instanceOf({ sopInstanceUid: 'I1', instanceNumber: 1, accessionNumber: 'ACC-A' }),
       instanceOf({ sopInstanceUid: 'I2', instanceNumber: 2, accessionNumber: 'ACC-B' }),
     ]
-    expect(accessionNumbers(instances)).toEqual(['ACC-A', 'ACC-B'])
+    expect(
+      studyIdentifiersOf(orderedInstances(instances)).accessions.map(({ key }) => key.value)
+    ).toEqual(['ACC-A', 'ACC-B'])
     const resources = await Effect.runPromise(toFhirResources(instances, SETTINGS))
     const requests = resources.filter((r) => r.resourceType === 'ServiceRequest')
     expect(requests).toHaveLength(1)
     expect(requests[0].identifier.map((one) => one.value)).toEqual(['ACC-A'])
+  })
+
+  it('counts one accession number under two issuers as a disagreement', () => {
+    const instances = [
+      instanceOf({ sopInstanceUid: 'I1', instanceNumber: 1, accessionNumber: 'ACC-A' }),
+      instanceOf({
+        sopInstanceUid: 'I2',
+        instanceNumber: 2,
+        accessionNumber: 'ACC-A',
+        issuerOfAccessionNumber: ISO_ISSUER,
+      }),
+    ]
+    expect(
+      studyIdentifiersOf(orderedInstances(instances)).accessions.map(({ key }) => key.system)
+    ).toEqual([DicomIdentifierSystem.AccessionNumber, 'urn:oid:2.16.840.1.113883.3.42'])
   })
 
   it('emits a ServiceRequest when only a later file states the accession', async () => {

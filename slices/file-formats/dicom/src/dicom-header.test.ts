@@ -286,6 +286,20 @@ describe('DicomHeader.tryFromDicomFile issuer sequences', () => {
     )
     expect(headerOf(bytes).issuerOfAccessionNumber?.localNamespaceEntityId).toBe('München')
   })
+
+  it('reads an item declaring a character set it cannot decode as no issuer, and says why', () => {
+    const bytes = fileWithAccessionIssuers([
+      itemOf([
+        elementBytesOf({ tag: 0x0008_0005, vr: 'CS', value: '\\ISO 2022 IR 87' }),
+        elementBytesOf({ tag: LOCAL_NAMESPACE_ENTITY_ID, vr: 'UT', value: 'RADIOLOGY' }),
+      ]),
+    ])
+    const header = headerOf(bytes)
+    expect(header.issuerOfAccessionNumber).toBeUndefined()
+    expect(header.undecodableIssuers).toHaveLength(1)
+    expect(header.undecodableIssuers[0]).toContain('IssuerOfAccessionNumberSequence (0008,0051)')
+    expect(header.undecodableIssuers[0]).toContain('ISO 2022 code extensions are not supported')
+  })
 })
 
 /** A file declaring `characterSet`, with one text element's bytes spliced in as that set encodes them. */

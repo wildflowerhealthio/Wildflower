@@ -188,8 +188,8 @@ describe('decodeStudy', () => {
       )
     )
     expect(result.notes).toEqual([
-      'IssuerOfPatientIDQualifiersSequence names pacs.example.org (DNS), which is no URI — the PatientID is keyed as one whose issuer is not stated.',
-      'IssuerOfAccessionNumberSequence names 1.02.3 (ISO), which is no URI — the AccessionNumber is keyed as one whose issuer is not stated.',
+      'IssuerOfPatientIDQualifiersSequence states pacs.example.org (DNS), which names no URI — the PatientID is keyed as one whose issuer is not stated.',
+      'IssuerOfAccessionNumberSequence states 1.02.3 (ISO), which names no URI — the AccessionNumber is keyed as one whose issuer is not stated.',
     ])
     expect(
       result.sectionedList.sections[0]?.rows.map(({ resource }) =>

@@ -22,9 +22,12 @@ describe('universalSystemOf', () => {
     )
   })
 
-  it('keeps a URI as itself', () => {
+  it('spells a URI as URL.href does, so two spellings of one URI name one system', () => {
     expect(universalSystemOf('https://pacs.example.org/ids', 'URI')).toEqual(
       Option.some('https://pacs.example.org/ids')
+    )
+    expect(universalSystemOf('HTTPS://pacs.example.org', 'URI')).toEqual(
+      Option.some('https://pacs.example.org/')
     )
   })
 
@@ -48,9 +51,11 @@ describe('unresolvedUniversalIssuerOf', () => {
       universalEntityIdType,
     })
     expect(unresolvedUniversalIssuerOf(issuer('pacs.example.org', 'DNS'))).toEqual(
-      Option.some('pacs.example.org (DNS)')
+      Option.some('pacs.example.org (DNS), which names no URI')
     )
-    expect(unresolvedUniversalIssuerOf(issuer('1.2.3'))).toEqual(Option.some('1.2.3 (no type)'))
+    expect(unresolvedUniversalIssuerOf(issuer('1.2.3'))).toEqual(
+      Option.some('1.2.3 with no Universal Entity ID Type (0040,0033)')
+    )
     expect(unresolvedUniversalIssuerOf(issuer('1.2.3', 'ISO'))).toEqual(Option.none())
     expect(unresolvedUniversalIssuerOf(issuer())).toEqual(Option.none())
     expect(unresolvedUniversalIssuerOf(undefined)).toEqual(Option.none())
@@ -62,6 +67,7 @@ describe('issuedIdentifierOf', () => {
     expect(issuedIdentifierOf('A1', undefined, FALLBACK)).toEqual({
       key: { system: FALLBACK, value: 'A1' },
       assignerDisplay: Option.none(),
+      unresolvedIssuer: Option.none(),
     })
   })
 
@@ -79,6 +85,7 @@ describe('issuedIdentifierOf', () => {
     ).toEqual({
       key: { system: FALLBACK, value: 'A1' },
       assignerDisplay: Option.some('pacs.example.org'),
+      unresolvedIssuer: Option.some('pacs.example.org (DNS), which names no URI'),
     })
   })
 
