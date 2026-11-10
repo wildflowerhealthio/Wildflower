@@ -60,13 +60,17 @@ type BatchSubmitFailure = Effect.Effect.Error<
 >
 
 /**
- * A searchset of stored resources: what a search entry's `resource` holds.
+ * A searchset, its entries' resources not yet decoded: what a search entry's
+ * `resource` holds.
  *
  * @remarks
  * Decoded here rather than by the endpoint, whose entry `resource` is
- * `Schema.Any` (see `http-api-definition/bundle.ts`).
+ * `Schema.Any` (see `http-api-definition/bundle.ts`). The entries' resources
+ * stay unknown until `matchesIn` has dropped the `outcome` entries, whose
+ * OperationOutcome is no stored resource; each match is then decoded by
+ * {@link StoredResourceSchema}.
  */
-const SearchsetSchema = Bundle.Schema(StoredResourceSchema)
+const SearchsetSchema = Bundle.Schema(Schema.Unknown)
 
 /**
  * `search` as a batch entry's `request.url`: `<Type>?<query>`, the query its
@@ -87,7 +91,7 @@ type ResponseEntry = Bundle.BundleValue<unknown>['entry'][number]
 /**
  * The stored resources of `resourceType` a search's answer matched: its
  * entry's searchset, when the entry's status is a 2xx, its matches read by
- * `matchesIn`.
+ * `matchesIn` and each decoded as a stored resource.
  */
 const matchesOfEntry = (
   resourceType: SearchableResourceType,
@@ -102,8 +106,9 @@ const matchesOfEntry = (
   if (!statusOk(status)) {
     return Effect.fail(new BatchSearchRejected({ resourceType, status, outcome: outcome ?? null }))
   }
-  return Effect.flatMap(Schema.decodeUnknown(SearchsetSchema)(entry.resource), (searchset) =>
-    matchesIn(resourceType, searchset)
+  return Schema.decodeUnknown(SearchsetSchema)(entry.resource).pipe(
+    Effect.flatMap((searchset) => matchesIn(resourceType, searchset)),
+    Effect.flatMap(Effect.forEach((match) => Schema.decodeUnknown(StoredResourceSchema)(match)))
   )
 }
 
