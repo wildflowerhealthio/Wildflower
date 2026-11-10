@@ -38,7 +38,7 @@ import * as Mention from './mention.ts'
  */
 interface OutsidePatientCompartment {
   readonly _tag: 'OutsidePatientCompartment'
-  /** The `DecodedFile.Resource` key of the resource. */
+  /** The resource's review key. */
   readonly mentioningResourceKey: string
   /** What its `subject` slot holds as reviewed; `None` when it is empty. */
   readonly subjectAsReviewed: Option.Option<IdentifierAndReference.ReferenceType>
@@ -46,12 +46,11 @@ interface OutsidePatientCompartment {
 
 /**
  * A mention the map could link and its referent links do not: a linkable
- * logical reference, in any field, whose referent's link target is
- * `Unlinked` or that no link of the plan answers.
+ * logical reference, in any field, that no link of the plan answers.
  */
 interface Dangling {
   readonly _tag: 'Dangling'
-  /** The `DecodedFile.Resource` key of the resource carrying the mention. */
+  /** The review key of the resource carrying the mention. */
   readonly mentioningResourceKey: string
   /** The mention's path in it: see `Mention.Type.path`. */
   readonly mentionPath: string
@@ -111,7 +110,7 @@ const outsidePatientCompartmentIf = (
  * compartment, then each dangling mention, in the walk's order.
  *
  * @param plan - The batch's link plan; only its links are read
- * @param reviewKey - The `DecodedFile.Resource` key the resource is reviewed under
+ * @param reviewKey - The resource's review key
  * @param resource - The resource as decoded, or as the reviewer edited it
  */
 const leftByReferentLinks = (

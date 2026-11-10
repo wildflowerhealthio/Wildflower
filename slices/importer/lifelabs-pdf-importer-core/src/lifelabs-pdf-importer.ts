@@ -1,5 +1,10 @@
-import { DecodeFunction, type FileImporter } from '@wildflowerhealthio/importer-fundamentals'
+import {
+  DecodedFileSet,
+  DecodeFunction,
+  type FileImporter,
+} from '@wildflowerhealthio/importer-fundamentals'
 import type { PositionedTextExtractor } from '@wildflowerhealthio/positioned-text'
+import { Array as Arr, Effect } from 'effect'
 
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
@@ -38,7 +43,11 @@ const lifeLabsPdfImporter: FileImporter.Type<
   sourceFileFormat,
   decode: DecodeFunction.make({
     format,
-    decodeFileSet: (pickedFiles, settings) => decodeLifeLabsPdf(pickedFiles[0], settings),
+    decodeFileSet: (pickedFiles, settings) =>
+      Effect.map(decodeLifeLabsPdf(pickedFiles[0], settings), (decoded) => ({
+        pickedFiles: Arr.map(pickedFiles, DecodedFileSet.unidentified),
+        ...decoded,
+      })),
   }),
 }
 

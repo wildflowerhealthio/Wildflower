@@ -5,9 +5,10 @@ import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effec
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as DecodeFunction from './decode-function.ts'
-import type * as DecodedFileSet from './decoded-file-set.ts'
-import * as FormatDecode from './format-decode.ts'
+import * as DecodedFileSet from './decoded-file-set.ts'
 import type * as PickedFile from './picked-file.ts'
+import * as Section from './section.ts'
+import * as SectionedList from './sectioned-list.ts'
 
 // A decode through `importer-core`'s import stage, source files and all, is
 // tested there (`import-decoded.test.ts`). What this file covers is what the
@@ -27,12 +28,6 @@ const pickedFile = (index: number, fileName: string, bytes: number[]): PickedFil
   bytes: new Uint8Array(bytes),
 })
 
-/** A picked file that identifies itself as nothing, as every set of `decode` holds it. */
-const unidentified = (file: PickedFile.Type): DecodedFileSet.PickedFileIdentity => ({
-  pickedFile: file,
-  identifiedAs: Option.none(),
-})
-
 /** Files grouped by the prefix before their `-`; a set with an empty file rejects whole. */
 const decode = DecodeFunction.make({
   format: 'test',
@@ -45,21 +40,22 @@ const decode = DecodeFunction.make({
           })
         )
       : Effect.succeed({
-          sections: [
-            {
-              title: pickedFiles[0].fileName,
-              entries: pickedFiles.map((file) => ({
-                fullUrl: file.fileName,
+          pickedFiles: Arr.map(pickedFiles, DecodedFileSet.unidentified),
+          sectionedList: SectionedList.make([
+            Section.make(
+              pickedFiles[0].fileName,
+              pickedFiles.map((file) => ({
+                localKey: file.fileName,
                 resource: fakeResource(`${file.bytes[0]}`),
-              })),
-            },
-          ],
+              }))
+            ),
+          ]),
           notes: [`${pickedFiles.length} files`],
         }),
 })
 
 describe('DecodeFunction.make', () => {
-  it('returns each set apart, its picked files in the order they were picked and its sections under namespaced keys', async () => {
+  it('returns each set apart, its picked files in the order they were picked and its records under their local keys', async () => {
     const files = [
       pickedFile(0, 'a-1.bin', [1]),
       pickedFile(1, 'b-1.bin', [2]),
@@ -72,31 +68,23 @@ describe('DecodeFunction.make', () => {
       files,
       fileSets: [
         {
-          pickedFiles: [a1, a2].map(unidentified),
-          sections: [
-            {
-              title: 'a-1.bin',
-              entries: [a1, a2].map((file) => ({
-                fullUrl: `${FormatDecode.keyPrefix(a1)}${file.fileName}`,
+          pickedFiles: [a1, a2].map(DecodedFileSet.unidentified),
+          sectionedList: SectionedList.make([
+            Section.make(
+              'a-1.bin',
+              [a1, a2].map((file) => ({
+                localKey: file.fileName,
                 resource: fakeResource(`${file.bytes[0]}`),
-              })),
-            },
-          ],
+              }))
+            ),
+          ]),
           notes: ['2 files'],
         },
         {
-          pickedFiles: [b1].map(unidentified),
-          sections: [
-            {
-              title: 'b-1.bin',
-              entries: [
-                {
-                  fullUrl: `${FormatDecode.keyPrefix(b1)}b-1.bin`,
-                  resource: fakeResource('2'),
-                },
-              ],
-            },
-          ],
+          pickedFiles: [b1].map(DecodedFileSet.unidentified),
+          sectionedList: SectionedList.make([
+            Section.make('b-1.bin', [{ localKey: 'b-1.bin', resource: fakeResource('2') }]),
+          ]),
           notes: ['1 files'],
         },
       ],
@@ -114,7 +102,7 @@ describe('DecodeFunction.make', () => {
     expect(decoded.unreadableFiles.map((one) => one.id)).toEqual(['test/1:b-1.bin'])
   })
 
-  it('pairs each picked file with what its decode says it identifies itself as', async () => {
+  it('keeps each picked file beside what its decode says it identifies itself as', async () => {
     const identifier = Schema.decodeSync(IdentifierAndReference.IdentifierSchema)({
       system: 'urn:ietf:rfc:3986',
       value: 'urn:oid:1.2.3',
@@ -126,12 +114,12 @@ describe('DecodeFunction.make', () => {
       groupBy: () => Either.right('a'),
       decodeFileSet: (pickedFiles) =>
         Effect.succeed({
-          sections: [],
-          notes: [],
           pickedFiles: Arr.map(pickedFiles, (file, index) => ({
             pickedFile: file,
             identifiedAs: index === 0 ? Option.some(identifier) : Option.none(),
           })),
+          sectionedList: SectionedList.empty(),
+          notes: [],
         }),
     })
     const decoded = await Effect.runPromise(identifying(files, null))

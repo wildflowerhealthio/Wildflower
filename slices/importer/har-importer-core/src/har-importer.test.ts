@@ -1,11 +1,13 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import { type FhirResource, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { HarFromJson, HttpArchive, emitHar } from '@wildflowerhealthio/http-archive'
+import type { AdoptedFileSet } from '@wildflowerhealthio/importer-fundamentals'
 import {
-  type DecodedFile,
   DecodedFileSet,
+  FormatDecode,
   PickedFile,
   Referent,
+  SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
@@ -143,18 +145,21 @@ const decodeOne = async (file: PickedFile.Type): Promise<DecodedFileSet.Type> =>
  * Decode one pick into its one file set's sections and notes, every record
  * adopted as the import stage adopts it.
  */
-const readOne = async (file: PickedFile.Type): Promise<DecodedFile.DecodedFile> =>
-  DecodedFileSet.adopt(await decodeOne(file))
+const readOne = async (file: PickedFile.Type): Promise<AdoptedFileSet.Type> =>
+  Effect.runSync(DecodedFileSet.adopt(await decodeOne(file), FormatDecode.keyPrefix(file)))
 
 describe('harImporter.decode', () => {
   it('should fold a recognized source file into one section per URL, in first-seen order', async () => {
     const decoded = await readOne(pickedHar())
 
-    expect(decoded.sections.map((section) => section.title)).toEqual([PATIENT_URL, OBSERVATION_URL])
-    expect(decoded.sections[0]?.resources.map((entry) => entry.title)).toEqual([
+    expect(decoded.sectionedList.sections.map((section) => section.title)).toEqual([
+      PATIENT_URL,
+      OBSERVATION_URL,
+    ])
+    expect(decoded.sectionedList.sections[0]?.rows.map((row) => row.title)).toEqual([
       expect.stringMatching(/^Patient\//),
     ])
-    expect(decoded.sections[1]?.resources.map((entry) => entry.title)).toEqual([
+    expect(decoded.sectionedList.sections[1]?.rows.map((row) => row.title)).toEqual([
       expect.stringMatching(/^Observation\//),
       expect.stringMatching(/^Observation\//),
     ])
@@ -162,7 +167,7 @@ describe('harImporter.decode', () => {
 
   it("should hand every record over detached, keyed by the server's own id", async () => {
     const fileSet = await decodeOne(pickedHar())
-    const records = fileSet.sections.flatMap((section) => section.entries)
+    const records = SectionedList.rows(fileSet.sectionedList)
 
     expect(records.map(({ resource }) => resource.id)).toEqual([null, null, null])
     expect(records.map(({ resource }) => DetachedResource.keyOf(resource))).toEqual([
@@ -175,7 +180,9 @@ describe('harImporter.decode', () => {
   it('should title each record by the reference the import stage writes it under', async () => {
     const decoded = await readOne(pickedHar())
 
-    for (const { title, resource } of decoded.sections.flatMap((section) => section.resources)) {
+    for (const { title, resource } of decoded.sectionedList.sections.flatMap(
+      (section) => section.rows
+    )) {
       expect(title).toBe(`${resource.resourceType}/${resource.id}`)
     }
   })
@@ -209,9 +216,9 @@ describe('harImporter.decode', () => {
     })
 
     expect(
-      decoded.sections.map((section) => [
+      decoded.sectionedList.sections.map((section) => [
         section.title,
-        section.resources.map(({ resource }) =>
+        section.rows.map(({ resource }) =>
           resource.resourceType === 'Observation' || resource.resourceType === 'Patient'
             ? resource.identifier[0]?.value
             : null
@@ -275,9 +282,9 @@ describe('harImporter.decode', () => {
       ),
     })
 
-    expect(decoded.sections.map((section) => [section.title, section.resources.length])).toEqual([
-      [duplicatePatientUrl, 1],
-    ])
+    expect(
+      decoded.sectionedList.sections.map((section) => [section.title, section.rows.length])
+    ).toEqual([[duplicatePatientUrl, 1]])
     expect(decoded.notes).toEqual([
       `Duplicate of an earlier response — not imported: ${duplicatePatientUrl}`,
       `Could not be parsed and will not import: ${unparseableUrl}`,
@@ -364,7 +371,7 @@ const shoppersResourcesOf = async (
       fileName: 'shoppers.har',
       bytes: harBytesOf(exchanges),
     })
-  ).sections.flatMap((section) => section.resources.map((entry) => entry.resource))
+  ).sectionedList.sections.flatMap((section) => section.rows.map((row) => row.resource))
 
 describe('harImporter.decode over a Shoppers capture', () => {
   it.each([
@@ -483,57 +490,87 @@ const rexallExchanges = (
     })
   )
 
+/** The system Rexall's import names a prescriber known only by printed name in. */
+const REXALL_PRACTITIONER_NAME_SYSTEM =
+  'https://wildflowerhealth.io/fhir/sid/rexall-be-well/practitioner-name'
+
+/** The referents of `result`, as `[type, system, value]`. */
+const referentKeysOf = (result: AdoptedFileSet.Type): readonly (readonly string[])[] =>
+  Effect.runSync(Referent.discover(SectionedList.rows(result.sectionedList))).map(
+    ({ logicalReference }) => [
+      logicalReference.resourceType,
+      logicalReference.identifier[0].system.href,
+      logicalReference.identifier[0].value,
+    ]
+  )
+
+/** The `requester` of `result`'s MedicationRequest. */
+const requesterIn = (result: AdoptedFileSet.Type): unknown => {
+  const request = SectionedList.rows(result.sectionedList).find(
+    ({ resource }) => resource.resourceType === 'MedicationRequest'
+  )?.resource
+  return request?.resourceType === 'MedicationRequest' ? request.requester : undefined
+}
+
 describe('harImporter.decode over a Rexall capture', () => {
-  it('should name one Patient and the prescriber by printed name as its referents', async () => {
+  it('should imply the prescriber carebook names by printed name, and name it and the Patient as its referents', async () => {
     const result = await readOne({
       id: '0:rexall.har',
       fileName: 'rexall.har',
       bytes: harBytesOf(rexallExchanges()),
     })
 
-    const referents = Effect.runSync(Referent.discover([result]))
-
-    expect(
-      referents.map(({ _tag, logicalReference }) => [
-        _tag,
-        logicalReference.type,
-        logicalReference.identifier.system.href,
-        logicalReference.identifier.value,
-      ])
-    ).toEqual([
-      ['AsResource', 'Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
-      ['ByMentionOnly', 'Practitioner', Practitioner.NAME_IDENTIFIER_SYSTEM, 'DR PATEL'],
+    expect(referentKeysOf(result)).toEqual([
+      ['Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
+      ['Practitioner', REXALL_PRACTITIONER_NAME_SYSTEM, 'DR PATEL'],
     ])
+    const prescriber = SectionedList.rows(result.sectionedList).find(
+      ({ resource }) => resource.resourceType === 'Practitioner'
+    )?.resource
+    expect(requesterIn(result)).toMatchObject({
+      reference: `Practitioner/${prescriber?.id}`,
+      display: 'DR PATEL',
+    })
   })
 })
 
 describe('harImporter.decode over a Rexall capture naming a prescriber carebook does not serve', () => {
-  // The import holds no Practitioner keyed by that id, so the reference stays
-  // logical rather than pointing at an id nothing is stored under, and the
-  // identity map offers it as a provider to link.
-  it('should name the prescriber as a referent by mention, by its carebook id', async () => {
+  // The import holds no Practitioner keyed by that id, so it implies one,
+  // keyed by the carebook id and named by the display.
+  it('should imply the prescriber, keyed by its carebook id, and point the request at it', async () => {
+    const result = await readOne({
+      id: '0:rexall.har',
+      fileName: 'rexall.har',
+      bytes: harBytesOf(
+        rexallExchanges({
+          agent: { reference: 'Practitioner/dr-1', display: 'Dr. Jonathan Brown' },
+        })
+      ),
+    })
+
+    const prescriber = SectionedList.rows(result.sectionedList).find(
+      ({ resource }) => resource.resourceType === 'Practitioner'
+    )?.resource
+    expect(
+      prescriber?.resourceType === 'Practitioner' ? prescriber.name.map(({ text }) => text) : []
+    ).toEqual(['Dr. Jonathan Brown'])
+    expect(requesterIn(result)).toMatchObject({ reference: `Practitioner/${prescriber?.id}` })
+    expect(referentKeysOf(result)).toEqual([
+      ['Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
+      ['Practitioner', `${REXALL_STU3_BASE_URL}/Practitioner`, 'dr-1'],
+    ])
+  })
+
+  it('should leave a prescriber it names with no display as carebook wrote it', async () => {
     const result = await readOne({
       id: '0:rexall.har',
       fileName: 'rexall.har',
       bytes: harBytesOf(rexallExchanges({ agent: { reference: 'Practitioner/dr-1' } })),
     })
 
-    const request = result.sections
-      .flatMap((section) => section.resources)
-      .find(({ resource }) => resource.resourceType === 'MedicationRequest')?.resource
-    expect(
-      request?.resourceType === 'MedicationRequest' ? request.requester?.reference : ''
-    ).toBeNull()
-    expect(
-      Effect.runSync(Referent.discover([result])).map(({ _tag, logicalReference }) => [
-        _tag,
-        logicalReference.type,
-        logicalReference.identifier.system.href,
-        logicalReference.identifier.value,
-      ])
-    ).toEqual([
-      ['AsResource', 'Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
-      ['ByMentionOnly', 'Practitioner', `${REXALL_STU3_BASE_URL}/Practitioner`, 'dr-1'],
+    expect(requesterIn(result)).toMatchObject({ reference: null, type: 'Practitioner' })
+    expect(referentKeysOf(result)).toEqual([
+      ['Patient', REXALL_STU3_PATIENT_SYSTEM, REXALL_PROFILE_UID],
     ])
   })
 })

@@ -1,5 +1,5 @@
 /**
- * Resolving a decoded file on its batch's link plan: each decoded resource
+ * Resolving a review group's decoded rows on its batch's link plan: each decoded resource
  * written as the resource the plan has for it, with its mentions redirected to
  * their referents' link targets, or redirected where the reviewer chose for one
  * on its own; and the records the batch only mentions, as the batch's own
@@ -9,127 +9,140 @@
  * @packageDocumentation
  */
 
-import { type FhirResourceWithId, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResourceWithId, ReferenceRewrite } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Option, pipe } from 'effect'
 
-import * as DecodedFile from '../decoded-file.ts'
+import type * as ReviewRow from '../review-row.ts'
+import * as SectionedList from '../sectioned-list.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkTarget from './link-target.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as Mention from './mention.ts'
-
-/**
- * A record the batch only mentions, as it will be written, with where it
- * comes from: a `Stored` resource the device already holds, or a
- * `Provisional` one the map makes from a logical reference alone.
- */
-type LinkedRecord = DecodedFile.Resource & { readonly origin: 'Stored' | 'Provisional' }
 
 /** The review key a resource the batch only mentions is reviewed under, among the batch's linked records. */
 const linkedKey = (onlyMentioned: LinkableResource.WithId): string =>
   `linked:${LinkableResource.literalReferenceOf(onlyMentioned)}`
 
 /**
- * `mentioningResource` with every reference it carries that `plan` redirects
- * pointed at its referent's link target, keeping its `display` and its own
- * `identifier`. Walks every reference, not only the mention fields, so a
- * provider named elsewhere moves too. The same object when nothing moves.
+ * `resource`, reviewed under `reviewKey`, with its `subject` slot filled
+ * where it is empty and the reviewer chose a patient for it: an empty slot
+ * is no reference, so no rewrite reaches it. The same object otherwise.
  */
-const redirectToReferentLinkTargets =
-  (plan: LinkPlan.Type) =>
-  (mentioningResource: FhirResourceWithId): FhirResourceWithId =>
-    ResourceReferences.mapReferences(mentioningResource, (referenceAsDecoded) =>
-      Option.match(LinkPlan.redirectionIfLinked(plan, referenceAsDecoded), {
-        onNone: () => referenceAsDecoded,
-        onSome: (resolvedLiteralReference) => ({
-          ...referenceAsDecoded,
-          reference: resolvedLiteralReference,
-        }),
-      })
-    )
-
-/**
- * `mentioningResource`, reviewed under `reviewKey`, with each mention the
- * reviewer chose a link for on its own redirected where that choice says
- * (`Mention.relinked`): on the chosen resource's literal reference, or, for
- * `Unlinked`, with its literal dropped, which changes nothing when the
- * mention would then name nothing. An empty `subject` slot chosen for is
- * filled. The same object when no mention is chosen for.
- */
-const redirectChosenMentions =
-  (plan: LinkPlan.Type, reviewKey: string) =>
-  (mentioningResource: FhirResourceWithId): FhirResourceWithId =>
-    Mention.linkableIn(mentioningResource).reduce(
-      (redirected, mention) =>
-        Option.match(LinkPlan.linkTargetIfChosenForMention(plan, reviewKey, mention), {
-          onNone: () => redirected,
-          onSome: (target) =>
+const withChosenSubject = (
+  plan: LinkPlan.Type,
+  reviewKey: string,
+  resource: FhirResourceWithId
+): FhirResourceWithId =>
+  Mention.hasEmptySubject(resource)
+    ? pipe(
+        LinkPlan.linkTargetIfChosenForMention(plan, reviewKey, Mention.emptySubject),
+        Option.flatMap(LinkTarget.resourceIfLinked),
+        Option.match({
+          onNone: () => resource,
+          onSome: (patient) =>
             Mention.relinked(
-              redirected,
-              mention.path,
-              Option.map(LinkTarget.resourceIfLinked(target), LinkableResource.literalReferenceOf)
+              resource,
+              Mention.SUBJECT_PATH,
+              Option.some(LinkableResource.literalReferenceOf(patient))
             ),
-        }),
-      mentioningResource
+        })
+      )
+    : resource
+
+/**
+ * The rewrite of each reference the reviewer chose a link for on its own, in
+ * the resource reviewed under `reviewKey`: its literal set where the choice
+ * (`LinkPlan.linkTargetIfChosenForMention`) says, or dropped for `Unlinked`
+ * (`Mention.relinkedLiteral`). A reference that is no linkable mention, or
+ * that no choice is for, is left.
+ */
+const chosenMentionRewrite =
+  (plan: LinkPlan.Type, reviewKey: string): ReferenceRewrite.Type =>
+  (at) =>
+    pipe(
+      Mention.linkableTypeOf(at),
+      Option.flatMap((type) =>
+        LinkPlan.linkTargetIfChosenForMention(plan, reviewKey, { ...at, type })
+      ),
+      Option.flatMap((target) =>
+        Mention.relinkedLiteral(
+          at.reference,
+          Option.map(LinkTarget.resourceIfLinked(target), LinkableResource.literalReferenceOf)
+        )
+      )
     )
 
 /**
- * `mentioningResource`, reviewed under `reviewKey`, with every mention
- * redirected: each the reviewer chose a link for on its own where that choice
- * says, over every other redirected to its referent's link target. The same
- * object when nothing moves.
+ * Where `plan` points the references of the resource reviewed under
+ * `reviewKey`: each mention the reviewer chose a link for on its own where
+ * that choice says, over every reference that names a referent, redirected
+ * to its referent's link target (`LinkPlan.redirectionIfLinked`). Every
+ * other reference is left as decoded.
  */
-const redirectMentions =
-  (plan: LinkPlan.Type, reviewKey: string) =>
-  (mentioningResource: FhirResourceWithId): FhirResourceWithId =>
-    pipe(
-      mentioningResource,
-      redirectToReferentLinkTargets(plan),
-      redirectChosenMentions(plan, reviewKey)
-    )
+const rewriteOf = (plan: LinkPlan.Type, reviewKey: string): ReferenceRewrite.Type =>
+  ReferenceRewrite.orElse(
+    chosenMentionRewrite(plan, reviewKey),
+    ReferenceRewrite.fromLookup((reference) => LinkPlan.redirectionIfLinked(plan, reference))
+  )
+
+/**
+ * `mentioningResource`, reviewed under `reviewKey`, with every reference
+ * pointed where `plan` says ({@link rewriteOf}): each mention the
+ * reviewer chose a link for on its own where that choice says, over every
+ * other redirected to its referent's link target. Walks every reference, not
+ * only the mention fields, so a provider named elsewhere moves too, keeping
+ * its `display` and its own `identifier`. An empty `subject` slot chosen for
+ * is filled. The same object when nothing moves.
+ */
+const redirectReferences = (
+  plan: LinkPlan.Type,
+  reviewKey: string,
+  mentioningResource: FhirResourceWithId
+): FhirResourceWithId =>
+  withChosenSubject(
+    plan,
+    reviewKey,
+    ReferenceRewrite.apply(mentioningResource, rewriteOf(plan, reviewKey))
+  )
 
 /** Whether `after` holds the very resource and title `before` does. */
-const sameEntry = (before: DecodedFile.Resource, after: DecodedFile.Resource): boolean =>
+const sameRow = (before: ReviewRow.Type, after: ReviewRow.Type): boolean =>
   after.resource === before.resource && after.title === before.title
 
 /**
- * `decodedEntry` as it is resolved under `plan`: a referent's resource
+ * `decodedRow` as it is resolved under `plan`: a referent's resource
  * written as its resolved resource (a stored resource standing in for it, or
  * itself having assumed what the referents linked to it bring), any other
  * written as decoded, with its mentions redirected either way, those the
- * reviewer chose a link for under the entry's review key where their choice
- * says. An entry whose resource the resolved one replaces under another id
+ * reviewer chose a link for under the row's review key where their
+ * choice says. A row whose resource the resolved one replaces under another id
  * takes the resolved resource's label as its title; any other keeps its own.
  * The same object when nothing changes.
  */
-const resolveEntry =
-  (plan: LinkPlan.Type) =>
-  (decodedEntry: DecodedFile.Resource): DecodedFile.Resource => {
-    const redirect = redirectMentions(plan, decodedEntry.key)
-    const resolvedEntry = Option.match(
-      LinkPlan.resolvedResourceIfReferent(plan, decodedEntry.resource),
-      {
-        onNone: () => ({
-          ...decodedEntry,
-          resource: redirect(decodedEntry.resource),
-        }),
-        onSome: (resolvedResource) => ({
-          ...decodedEntry,
-          resource: redirect(resolvedResource.resource),
-          title:
-            resolvedResource.resource.id === decodedEntry.resource.id
-              ? decodedEntry.title
-              : resolvedResource.label,
-        }),
-      }
-    )
-    return sameEntry(decodedEntry, resolvedEntry) ? decodedEntry : resolvedEntry
-  }
+const resolveRow = (plan: LinkPlan.Type, decodedRow: ReviewRow.Type): ReviewRow.Type => {
+  const redirect = (resource: FhirResourceWithId): FhirResourceWithId =>
+    redirectReferences(plan, decodedRow.reviewKey, resource)
+  const resolvedRow = Option.match(LinkPlan.resolvedResourceIfReferent(plan, decodedRow.resource), {
+    onNone: () => ({
+      ...decodedRow,
+      resource: redirect(decodedRow.resource),
+    }),
+    onSome: (resolvedResource) => ({
+      ...decodedRow,
+      title:
+        resolvedResource.resource.id === decodedRow.resource.id
+          ? decodedRow.title
+          : resolvedResource.label,
+      resource: redirect(resolvedResource.resource),
+    }),
+  })
+  return sameRow(decodedRow, resolvedRow) ? decodedRow : resolvedRow
+}
 
 /**
  * `editedResource`, the reviewer's edit of the resource reviewed under
  * `reviewKey`, as it is resolved under `plan`: its mentions redirected as a
- * decoded entry's are ({@link redirectMentions}), so a mention the edit
+ * decoded row's are ({@link redirectReferences}), so a mention the edit
  * names by a decoded literal reference a stored resource now stands in for,
  * or one the reviewer chose a link for, is written where the plan says
  * today, not where it pointed when the edit was made. The edit itself is
@@ -138,43 +151,40 @@ const resolveEntry =
  */
 const resolveEdit = (
   plan: LinkPlan.Type,
-  reviewKey: string
-): ((editedResource: FhirResourceWithId) => FhirResourceWithId) => redirectMentions(plan, reviewKey)
+  reviewKey: string,
+  editedResource: FhirResourceWithId
+): FhirResourceWithId => redirectReferences(plan, reviewKey, editedResource)
 
 /**
  * The batch's linked records under `plan`: the resolved resources no
- * resolved file holds where a decoded resource was, as they will be
- * written, in the order the links first reach them. Each is `Provisional`
- * when a referent of the batch owns it (a provisional resource is its
- * referent's own record), else `Stored`: a `Decoded` target's resource is
- * always in the batch. No resolved file holds them; they are the batch's
- * own, reviewed and written beside the files.
+ * resolved row holds where a decoded resource was, as they will be
+ * written, in the order the links first reach them. No format's group holds
+ * them; they are the batch's own, reviewed and written beside the formats'.
  */
-const linkedRecords = (plan: LinkPlan.Type): readonly LinkedRecord[] =>
+const linkedRecords = (plan: LinkPlan.Type): readonly ReviewRow.Type[] =>
   pipe(
     LinkPlan.resolvedResources(plan),
     Array.filter(({ resourceExistsInBatch }) => !resourceExistsInBatch),
-    Array.map(({ resource, label, ownerReferent }): LinkedRecord => ({
-      key: linkedKey(resource),
+    Array.map(({ resource, label }): ReviewRow.Type => ({
+      reviewKey: linkedKey(resource),
       title: label,
+      isImplied: false,
       resource,
-      origin: Option.match(ownerReferent, {
-        onNone: () => 'Stored' as const,
-        onSome: () => 'Provisional' as const,
-      }),
     }))
   )
 
 /**
- * `decodedFile` resolved on `plan`: the file to review, diff and write. Every
- * section keeps its keys, and an entry nothing changed in comes back as the
- * same object. The records the batch only mentions are no file's: they are
- * {@link linkedRecords}.
+ * `sectionedList`, a review group's decoded rows, resolved on `plan`: the rows
+ * to review, diff and write. Every section keeps its keys, and a row nothing
+ * changed in comes back as the same object, a section none of whose rows
+ * changed as the same section, and a list none of whose sections changed as
+ * the same list (`SectionedList.modify`). The records the batch only
+ * mentions are no group's rows: they are {@link linkedRecords}.
  */
-const resolveFile =
-  (plan: LinkPlan.Type) =>
-  (decodedFile: DecodedFile.DecodedFile): DecodedFile.DecodedFile =>
-    DecodedFile.mapResources(decodedFile, resolveEntry(plan))
+const resolveRows = (
+  plan: LinkPlan.Type,
+  sectionedList: SectionedList.Type<ReviewRow.Type>
+): SectionedList.Type<ReviewRow.Type> =>
+  SectionedList.modify(sectionedList, (row) => resolveRow(plan, row))
 
-export { linkedKey, linkedRecords, resolveEdit, resolveFile }
-export type { LinkedRecord }
+export { linkedKey, linkedRecords, resolveEdit, resolveRows }

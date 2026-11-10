@@ -1,15 +1,14 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  DecodedFile,
   type LinkPlan,
   Mention,
   StagedImport,
   UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Option, pipe } from 'effect'
 
 import type { FormatKind } from './registry.ts'
-import { isSourceFileOf, type ResolvedBatch } from './resolve-mentions.ts'
+import { isSourceFileOf } from './resolve-mentions.ts'
+import * as ReviewGroup from './review-group.ts'
 
 /**
  * What the referent links leave unlinked in a format's rows, and the rows
@@ -33,13 +32,9 @@ type LeftUnlinked = (
 const leftUnlinkedIn =
   (plan: LinkPlan.Type, kind: FormatKind): LeftUnlinked =>
   (reviewKey, resource) =>
-    pipe(
-      Option.liftPredicate(resource, (reviewed) => !isSourceFileOf(kind, reviewed)),
-      Option.match({
-        onNone: () => [],
-        onSome: (reviewed) => UnlinkedMention.leftByReferentLinks(plan, reviewKey, reviewed),
-      })
-    )
+    isSourceFileOf(kind, resource)
+      ? []
+      : UnlinkedMention.leftByReferentLinks(plan, reviewKey, resource)
 
 /** Whether `unlinked` is of the resource's patient: outside every compartment, or a dangling `subject`. */
 const isOfPatient = (unlinked: UnlinkedMention.Type): boolean =>
@@ -49,31 +44,33 @@ const isOfPatient = (unlinked: UnlinkedMention.Type): boolean =>
   })
 
 /**
- * The keys of `kind`'s rows of `batch` left without a patient as they will
- * be written: each row's edit under `selection`, else its resolved resource
- * (`StagedImport.resolvedResourceOf`), asked what the referent links leave
- * unlinked ({@link leftUnlinkedIn}). The review leaves these out unless the
- * reviewer ticks them, so a link or an edit that gives a row its patient
- * takes it back in.
+ * The keys of the rows of `group`, `kind`'s resolved group, left without a
+ * patient as they will be written: each row's edit under `selection`, else
+ * its resolved resource (`StagedImport.resolvedResourceOf`), asked what the
+ * referent links of `plan` leave unlinked ({@link leftUnlinkedIn}). The
+ * review leaves these out unless the reviewer ticks them, so a link or an
+ * edit that gives a row its patient takes it back in.
  *
- * @param batch - The resolved batch
- * @param kind - A format the batch claimed
+ * @param plan - The plan the batch was resolved on
+ * @param kind - The format `group` is of, whose own source files are never asked
+ * @param group - The format's resolved group
  * @param selection - The format's selection, whose edits are asked of
  */
 const keysWithoutPatientOf = (
-  batch: ResolvedBatch,
+  plan: LinkPlan.Type,
   kind: FormatKind,
+  group: ReviewGroup.Type,
   selection: StagedImport.Selection
 ): ReadonlySet<string> => {
-  const leftUnlinked = leftUnlinkedIn(batch.plan, kind)
+  const leftUnlinked = leftUnlinkedIn(plan, kind)
   return new Set(
-    DecodedFile.resources(batch.formats[kind].decoded)
-      .filter((entry) =>
-        leftUnlinked(entry.key, StagedImport.resolvedResourceOf(batch.plan, selection, entry)).some(
+    ReviewGroup.rows(group)
+      .filter((row) =>
+        leftUnlinked(row.reviewKey, StagedImport.resolvedResourceOf(plan, selection, row)).some(
           isOfPatient
         )
       )
-      .map(({ key }) => key)
+      .map(({ reviewKey }) => reviewKey)
   )
 }
 

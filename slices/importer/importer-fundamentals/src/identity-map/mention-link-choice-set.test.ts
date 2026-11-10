@@ -3,13 +3,14 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Array, Equivalence, FastCheck as fc, HashMap, Option } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
+import type { AdoptedFileSet } from '../index.ts'
 import {
-  DecodedFile,
-  LinkChoice,
   LinkableResource,
+  LinkChoice,
   Mention,
   MentionLinkChoiceSet,
   Referent,
+  SectionedList,
 } from '../index.ts'
 import {
   ABSOLUTE,
@@ -22,7 +23,7 @@ import {
   discoverOnTestClock,
   fileOf,
   fileWireOf,
-  fileWithReapplicableChoicesArbitrary,
+  fileWithChoicesArbitrary,
   literalSubject,
   observation,
   patient,
@@ -30,6 +31,7 @@ import {
   resolveOnTestClock,
   STORED,
   leftByReferentLinksOnTestClock,
+  keyOf,
 } from './identity-map.test-helpers.ts'
 
 /**
@@ -52,15 +54,17 @@ afterAll(() => {
 
 const RUNS = numRunsFor({ base: 30 })
 
-const PERSON = `Patient|${SOURCE_PATIENT}|p-1`
-const ACCOUNT = `Patient|${CUSTOMER}|c-9`
+const PERSON = keyOf('Patient', SOURCE_PATIENT, 'p-1')
+const ACCOUNT = keyOf('Patient', CUSTOMER, 'c-9')
 
 /** The `subject` of the resource keyed `key` in `file`: `null` for an empty slot, `undefined` for none. */
 const subjectAt = (
-  file: DecodedFile.DecodedFile,
+  file: AdoptedFileSet.Type,
   key: string
 ): IdentifierAndReference.ReferenceType | null | undefined => {
-  const resource = DecodedFile.resources(file).find((entry) => entry.key === key)?.resource
+  const resource = SectionedList.rows(file.sectionedList).find(
+    (row) => row.reviewKey === key
+  )?.resource
   return resource !== undefined && 'subject' in resource ? resource.subject : undefined
 }
 
@@ -100,7 +104,7 @@ describe('a mention link choice on a resolved file', () => {
       subjectAt(onStored, 'k-1')?.display,
       subjectAt(onStored, 'k-1')?.identifier?.value,
     ]).toEqual(['Tyra B.', 'c-9'])
-    // The account's other mention keeps the account's own rule: not linked.
+    // The account's other mention names no record of the batch, so it stays as it is.
     expect(subjectAt(onStored, 'k-2')?.reference).toBe(null)
   })
 
@@ -113,10 +117,10 @@ describe('a mention link choice on a resolved file', () => {
 
     expect(subjectAt(resolved, 'k-1')?.reference).toBe('Patient/s-2')
     expect(subjectAt(resolved, 'k-2')?.reference).toBe(null)
-    expect(resolved.sections.map((section) => section.title)).toEqual(['Resources'])
-    expect(DecodedFile.resources(resolved).filter(({ resource }) => resource.id === 's-2')).toEqual(
-      []
-    )
+    expect(resolved.sectionedList.sections.map((section) => section.title)).toEqual(['Resources'])
+    expect(
+      SectionedList.rows(resolved.sectionedList).filter(({ resource }) => resource.id === 's-2')
+    ).toEqual([])
   })
 
   it('drops a DontLink mention’s literal and keeps its identifier and display', () => {
@@ -160,7 +164,7 @@ describe('a mention link choice on a resolved file', () => {
     ).toEqual(['Dangling k-1', 'Dangling k-2', 'OutsidePatientCompartment k-3'])
   })
 
-  it('reads a choice the mention cannot take as none: another type, or an unlinked referent', () => {
+  it('reads a choice the mention cannot take as none: another type, or a referent the batch does not hold', () => {
     const resolved = resolveOnTestClock(
       file,
       HashMap.empty(),
@@ -169,7 +173,9 @@ describe('a mention link choice on a resolved file', () => {
         ['k-2', LinkChoice.LinkToDecodedReferent({ referentKey: ACCOUNT })],
         [
           'k-3',
-          LinkChoice.LinkToDecodedReferent({ referentKey: 'Patient|https://nowhere.example|x' }),
+          LinkChoice.LinkToDecodedReferent({
+            referentKey: keyOf('Patient', 'https://nowhere.example/', 'x'),
+          }),
         ],
       ])
     )
@@ -217,40 +223,31 @@ describe('Mention.relinked', () => {
       { nil: undefined }
     )
     fc.assert(
-      fc.property(
-        fileWithReapplicableChoicesArbitrary,
-        fc.nat(),
-        literals,
-        ({ file }, pick, literal) => {
-          const entries = DecodedFile.resources(file)
-          const entry = entries[pick % Math.max(entries.length, 1)]
-          if (entry === undefined) return
-          const mentions = Mention.linkableIn(entry.resource)
-          const mention = mentions[pick % Math.max(mentions.length, 1)]
-          if (mention === undefined) return
+      fc.property(fileWithChoicesArbitrary, fc.nat(), literals, ({ file }, pick, literal) => {
+        const rows = SectionedList.rows(file.sectionedList)
+        const row = rows[pick % Math.max(rows.length, 1)]
+        if (row === undefined) return
+        const mentions = Mention.linkableIn(row.resource)
+        const mention = mentions[pick % Math.max(mentions.length, 1)]
+        if (mention === undefined) return
 
-          const relinked = Mention.relinked(
-            entry.resource,
-            mention.path,
-            Option.fromNullable(literal)
-          )
+        const relinked = Mention.relinked(row.resource, mention.path, Option.fromNullable(literal))
 
-          const before = Mention.madeIn(entry.resource)
-          const after = Mention.madeIn(relinked)
-          const elsewhere = (found: readonly Mention.Type[]): readonly Mention.Type[] =>
-            found.filter(({ path }) => path !== mention.path)
-          expect(elsewhere(after)).toEqual(elsewhere(before))
-          const now = Mention.at(relinked, mention.path)
-          if (relinked === entry.resource) return
-          // A relink sets the literal, or drops it, and keeps the rest of the mention.
-          expect(Option.map(now, ({ reference }) => reference.reference)).toEqual(
-            Option.some(literal ?? null)
-          )
-          expect(
-            Option.map(now, ({ reference }) => [reference.identifier, reference.display])
-          ).toEqual(Option.some([mention.reference.identifier, mention.reference.display]))
-        }
-      ),
+        const before = Mention.madeIn(row.resource)
+        const after = Mention.madeIn(relinked)
+        const elsewhere = (found: readonly Mention.Type[]): readonly Mention.Type[] =>
+          found.filter(({ path }) => path !== mention.path)
+        expect(elsewhere(after)).toEqual(elsewhere(before))
+        const now = Mention.at(relinked, mention.path)
+        if (relinked === row.resource) return
+        // A relink sets the literal, or drops it, and keeps the rest of the mention.
+        expect(Option.map(now, ({ reference }) => reference.reference)).toEqual(
+          Option.some(literal ?? null)
+        )
+        expect(
+          Option.map(now, ({ reference }) => [reference.identifier, reference.display])
+        ).toEqual(Option.some([mention.reference.identifier, mention.reference.display]))
+      }),
       { numRuns: RUNS }
     )
   })
@@ -259,11 +256,11 @@ describe('Mention.relinked', () => {
 describe('mention link choices and the referents', () => {
   /** Mention link choices each linkable mention of `file` can take, or none for some. */
   const mentionChoicesForArbitrary = (
-    file: DecodedFile.DecodedFile
+    file: AdoptedFileSet.Type
   ): fc.Arbitrary<MentionLinkChoiceSet.Type> => {
     const referents = discoverOnTestClock(file)
-    const slots = DecodedFile.resources(file).flatMap(({ key, resource }) =>
-      Mention.linkableIn(resource).map((mention) => ({ key, mention }))
+    const slots = SectionedList.rows(file.sectionedList).flatMap(({ reviewKey, resource }) =>
+      Mention.linkableIn(resource).map((mention) => ({ key: reviewKey, mention }))
     )
     return fc
       .tuple(
@@ -275,12 +272,16 @@ describe('mention link choices and the referents', () => {
                 fc
                   .constantFrom(...STORED.filter((stored) => stored.resourceType === mention.type))
                   .map((resource) => LinkChoice.LinkToStoredResource({ resource })),
-                ...(referents.some((referent) => referent.logicalReference.type === mention.type)
+                ...(referents.some(
+                  (referent) => referent.logicalReference.resourceType === mention.type
+                )
                   ? [
                       fc
                         .constantFrom(
                           ...referents
-                            .filter((referent) => referent.logicalReference.type === mention.type)
+                            .filter(
+                              (referent) => referent.logicalReference.resourceType === mention.type
+                            )
                             .map(Referent.key)
                         )
                         .map((referentKey) => LinkChoice.LinkToDecodedReferent({ referentKey })),
@@ -301,10 +302,10 @@ describe('mention link choices and the referents', () => {
       )
   }
 
-  it('property: resolving again on the same choices changes nothing, when the resolved file has the decoded file’s referents', () => {
+  it('property: resolving again on the same choices changes nothing, when the resolved rows keep the decoded rows’ referents', () => {
     fc.assert(
       fc.property(
-        fileWithReapplicableChoicesArbitrary.chain(({ file, choices }) =>
+        fileWithChoicesArbitrary.chain(({ file, choices }) =>
           mentionChoicesForArbitrary(file).map((mentionChoices) => ({
             file,
             choices,
@@ -315,7 +316,7 @@ describe('mention link choices and the referents', () => {
           const once = resolveOnTestClock(file, choices, mentionChoices)
           // A mention choice can redirect a referent's every mention away, so
           // the resolved file no longer holds the referent a choice links to.
-          const referentKeysOf = (of: DecodedFile.DecodedFile): readonly string[] =>
+          const referentKeysOf = (of: AdoptedFileSet.Type): readonly string[] =>
             discoverOnTestClock(of).map(Referent.key).toSorted()
           fc.pre(
             Array.getEquivalence(Equivalence.string)(referentKeysOf(once), referentKeysOf(file))
@@ -332,7 +333,7 @@ describe('mention link choices and the referents', () => {
   it('property: a mention link choice moves nothing but the mentions chosen for', () => {
     fc.assert(
       fc.property(
-        fileWithReapplicableChoicesArbitrary.chain(({ file, choices }) =>
+        fileWithChoicesArbitrary.chain(({ file, choices }) =>
           mentionChoicesForArbitrary(file).map((mentionChoices) => ({
             file,
             choices,
@@ -343,17 +344,17 @@ describe('mention link choices and the referents', () => {
           const onReferents = resolveOnTestClock(file, choices)
           const withChosen = resolveOnTestClock(file, choices, mentionChoices)
 
-          const unchosenMentionsOf = (resolved: DecodedFile.DecodedFile): readonly unknown[] =>
-            DecodedFile.resources(resolved).flatMap(({ key, resource }) =>
+          const unchosenMentionsOf = (resolved: AdoptedFileSet.Type): readonly unknown[] =>
+            SectionedList.rows(resolved.sectionedList).flatMap(({ reviewKey, resource }) =>
               Mention.madeIn(resource)
                 .filter(({ path }) =>
-                  Option.isNone(MentionLinkChoiceSet.forMention(mentionChoices, key, path))
+                  Option.isNone(MentionLinkChoiceSet.forMention(mentionChoices, reviewKey, path))
                 )
-                .map((mention) => [key, mention])
+                .map((mention) => [reviewKey, mention])
             )
           expect(unchosenMentionsOf(withChosen)).toEqual(unchosenMentionsOf(onReferents))
-          expect(Array.map(withChosen.sections, (section) => section.title)).toEqual(
-            Array.map(onReferents.sections, (section) => section.title)
+          expect(Array.map(withChosen.sectionedList.sections, (section) => section.title)).toEqual(
+            Array.map(onReferents.sectionedList.sections, (section) => section.title)
           )
         }
       ),

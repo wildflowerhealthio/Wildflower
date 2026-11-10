@@ -63,7 +63,7 @@ const storedNamedBy = (
         const request = {
           urlParams: {
             identifier: TokenSearchParam.anyOf(
-              Array.map(named, ({ identifier }) =>
+              Array.map(named, ({ identifier: [identifier] }) =>
                 TokenSearchParam.fromQualifiedIdentifier(identifier)
               )
             ),
@@ -94,15 +94,27 @@ const theOneOf = (
  * under the same literal reference: what a re-import's search finds.
  */
 const isStoredCopyOf = (referent: Referent.Type, stored: LinkableResource.WithId): boolean =>
-  Referent.match(referent, {
-    AsResource: ({ resource }) => LinkableResource.sameRecord(resource, stored),
-    ByMentionOnly: () => false,
-  })
+  LinkableResource.sameRecord(referent.resource, stored)
 
 /**
- * The choice the `hits` of one search give `referent`: `UpdateStoredResource`
- * when one is the stored copy of its own decoded resource
- * ({@link isStoredCopyOf}), whatever else was found; else
+ * The choice `referent` takes over `storedCopy`, the stored copy of its own
+ * resource: `UpdateStoredResource`, so a re-import writes the newer decode
+ * over it; but `LinkToStoredResource` for a record the import implied (its
+ * `isImplied`), which holds only what a reference said of it and
+ * would write over everything else the copy holds.
+ */
+const storedCopyChoiceOf = (
+  referent: Referent.Type,
+  storedCopy: LinkableResource.WithId
+): LinkChoice.Type =>
+  referent.isImplied
+    ? LinkChoice.LinkToStoredResource({ resource: storedCopy })
+    : LinkChoice.UpdateStoredResource({ resource: storedCopy })
+
+/**
+ * The choice the `hits` of one search give `referent`: the one over the
+ * stored copy of its own resource ({@link isStoredCopyOf},
+ * {@link storedCopyChoiceOf}), whatever else was found; else
  * `LinkToStoredResource` to the one hit ({@link theOneOf}); else none.
  */
 const choiceAmong = (
@@ -110,7 +122,7 @@ const choiceAmong = (
   hits: readonly LinkableResource.WithId[]
 ): Option.Option<LinkChoice.Type> =>
   Array.findFirst(hits, (resource): Option.Option<LinkChoice.Type> =>
-    Option.liftPredicate(LinkChoice.UpdateStoredResource({ resource }), () =>
+    Option.liftPredicate(storedCopyChoiceOf(referent, resource), () =>
       isStoredCopyOf(referent, resource)
     )
   ).pipe(
@@ -122,11 +134,12 @@ const choiceAmong = (
 /**
  * The link choice `referent` takes before the reviewer makes one: the one
  * stored resource of its type that its own identifiers name; when they name
- * none, the one its derived identifier names; else its kind's default
- * (`ReferentLinkChoiceSet.defaultFor`). A hit that is the stored copy of the referent's
- * own decoded resource ({@link isStoredCopyOf}) is `UpdateStoredResource`,
+ * none, the one its derived identifier names; else the default
+ * (`ReferentLinkChoiceSet.DEFAULT_CHOICE`). A hit that is the stored copy of
+ * the referent's own decoded resource ({@link isStoredCopyOf}) is `UpdateStoredResource`,
  * whatever else the search found, so a re-import writes the newer decode over
- * it, keeping what the copy assumed.
+ * it, keeping what the copy assumed; for an implied record it is
+ * `LinkToStoredResource`, keeping the copy ({@link storedCopyChoiceOf}).
  *
  * @remarks
  * The identifiers a source gave a referent are searched before the one its
@@ -141,17 +154,17 @@ const defaultChoice = (
   referent: Referent.Type
 ): Effect.Effect<LinkChoice.Type, SearchFailure, FhirR4ResourcesHttpApiClient> =>
   Effect.gen(function* () {
-    const { type } = referent.logicalReference
-    const namedByOwn = yield* storedNamedBy(type, Referent.ownLogicalReferencesOf(referent))
+    const { resourceType } = referent.logicalReference
+    const namedByOwn = yield* storedNamedBy(resourceType, Referent.ownLogicalReferencesOf(referent))
     const namedByDerived = Array.isEmptyReadonlyArray(namedByOwn)
       ? yield* storedNamedBy(
-          type,
+          resourceType,
           Option.toArray(Referent.maybeDerivedLogicalReferenceOf(referent))
         )
       : []
     return Option.getOrElse(
       Option.orElse(choiceAmong(referent, namedByOwn), () => choiceAmong(referent, namedByDerived)),
-      () => ReferentLinkChoiceSet.defaultFor(referent)
+      () => ReferentLinkChoiceSet.DEFAULT_CHOICE
     )
   })
 

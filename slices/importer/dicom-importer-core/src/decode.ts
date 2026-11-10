@@ -9,10 +9,12 @@ import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DocumentReferenceContext } from '@wildflowerhealthio/fhir-r4/resources'
 import {
+  type AdoptedFileSet,
   type DecodedFileSet,
-  DecodedFile,
-  type DecodeFunction,
+  type FileSetRecord,
   type PickedFile,
+  Section,
+  SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
@@ -31,18 +33,18 @@ import type { DicomSettings } from './settings.ts'
 type StudyResource = Effect.Effect.Success<ReturnType<typeof toFhirResources>>[number]
 
 /**
- * Each study record's `fullUrl`, fixed and unique within one study: a study
+ * Each study record's local key, fixed and unique within one study: a study
  * synthesizes at most one record of each type.
  */
-const STUDY_FULL_URLS = {
+const STUDY_LOCAL_KEYS = {
   Patient: 'patient',
   ServiceRequest: 'service-request',
   ImagingStudy: 'imaging-study',
 } as const satisfies Record<StudyResource['resourceType'], string>
 
-/** A study record as its section entry, under its type's fixed `fullUrl`. */
-const studyEntryOf = (resource: StudyResource): DecodedFileSet.Entry => ({
-  fullUrl: STUDY_FULL_URLS[resource.resourceType],
+/** A study record as a row of its section, under its type's fixed local key. */
+const studyRecordOf = (resource: StudyResource): FileSetRecord.Type => ({
+  localKey: STUDY_LOCAL_KEYS[resource.resourceType],
   resource,
 })
 
@@ -149,15 +151,15 @@ const studyNotes = (files: readonly StudyFile[]): readonly string[] => {
   return notes
 }
 
-/** The reference to a decoded resource of the given type, when the decode produced one. */
+/** The reference to an adopted resource of the given type, when the decode produced one. */
 const referenceTo = (
-  decoded: DecodedFile.DecodedFile,
+  adopted: AdoptedFileSet.Type,
   resourceType: 'Patient' | 'ImagingStudy'
 ): Option.Option<string> =>
   Arr.findFirst(
-    DecodedFile.resources(decoded),
-    (entry) => entry.resource.resourceType === resourceType
-  ).pipe(Option.map((entry) => `${resourceType}/${entry.resource.id}`))
+    SectionedList.rows(adopted.sectionedList),
+    (row) => row.resource.resourceType === resourceType
+  ).pipe(Option.map((row) => `${resourceType}/${row.resource.id}`))
 
 /** A `Reference` naming one resource, built through the resource schema's own value. */
 const referenceValue = (reference: string): typeof IdentifierAndReference.ReferenceSchema.Type => ({
@@ -173,7 +175,7 @@ const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
  * read into.
  *
  * @param sourceFile - The source file as `PickedFile.FromDocumentReference` minted it
- * @param decoded - The whole study's records, adopted
+ * @param adopted - The whole study's records, adopted
  * @returns The source file to store and list, with the same id it was minted under
  *
  * @remarks
@@ -190,10 +192,10 @@ const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
  */
 const linkToPatientAndStudy = (
   sourceFile: PickedFile.SourceFile,
-  decoded: DecodedFile.DecodedFile
+  adopted: AdoptedFileSet.Type
 ): PickedFile.SourceFile => {
-  const subject = referenceTo(decoded, 'Patient')
-  const study = referenceTo(decoded, 'ImagingStudy')
+  const subject = referenceTo(adopted, 'Patient')
+  const study = referenceTo(adopted, 'ImagingStudy')
   return {
     ...sourceFile,
     subject: Option.match(subject, {
@@ -232,18 +234,19 @@ const linkToPatientAndStudy = (
  * `Left` here is a `ParseError` for the whole set, which the decode constructor
  * folds into one `unreadableFiles` row per picked file.
  *
- * The resource keys are fixed — `patient`, `service-request`,
- * `imaging-study` — and are unique only *within* one study; the decode
- * function namespaces them by the set's first picked file.
+ * The local keys are fixed — `patient`, `service-request`,
+ * `imaging-study` — and are unique only *within* one study; the import
+ * stage prefixes them by the set's first picked file.
  *
  * The time zone is rejected rather than substituted — a guess would write
  * `started` instants hours from what the equipment recorded — and it is one
- * setting for the whole batch, so an unresolvable zone fails every set.
+ * setting for every study the format claimed, so an unresolvable zone fails
+ * every set.
  */
 const decodeStudy = (
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: DicomSettings
-): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFileSet.Type, ParseResult.ParseError> =>
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)
 
@@ -260,24 +263,31 @@ const decodeStudy = (
     }))
     const ordered = orderedInstances(files)
     const head = ordered[0]
-    if (head === undefined) return { sections: [], notes: [], pickedFiles: identifiedPickedFiles }
+    if (head === undefined) {
+      return {
+        pickedFiles: identifiedPickedFiles,
+        sectionedList: SectionedList.empty(),
+        notes: [],
+      }
+    }
 
     if (patientOriginalId(head.header) === undefined) {
       return {
-        sections: [],
-        notes: ['No patient identity in the DICOM header (no PatientID or PatientName).'],
         pickedFiles: identifiedPickedFiles,
+        sectionedList: SectionedList.empty(),
+        notes: ['No patient identity in the DICOM header (no PatientID or PatientName).'],
       }
     }
 
     const notes = studyNotes(files)
     const resources = yield* toFhirResources(files, settings)
-    const sections =
+    const sectionedList = SectionedList.make(
       resources.length > 0
-        ? [{ title: sectionTitle(head.header), entries: resources.map(studyEntryOf) }]
+        ? [Section.make(sectionTitle(head.header), resources.map(studyRecordOf))]
         : []
+    )
 
-    return { sections, notes, pickedFiles: identifiedPickedFiles }
+    return { pickedFiles: identifiedPickedFiles, sectionedList, notes }
   })
 
 export {

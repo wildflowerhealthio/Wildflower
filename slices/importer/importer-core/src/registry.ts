@@ -17,7 +17,7 @@ import type { Effect } from 'effect'
  * @remarks
  * Wiring a binding in is three edits *here* — the {@link FormatSettings} map,
  * the {@link formatRegistry} literal, and {@link defaultFormatSettings} — plus
- * `collectFormats` in `read-batch.ts` and the picker entry in
+ * the picker entry in
  * `importer-react`'s registry. Every one of them is a mapped or exhaustive
  * type over {@link FormatKind}, so a format added to `FormatSettings` and
  * missed anywhere else **fails to compile**; none of them can drift silently.

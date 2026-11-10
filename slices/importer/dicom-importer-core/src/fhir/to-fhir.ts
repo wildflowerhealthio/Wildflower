@@ -45,7 +45,7 @@ import {
 } from 'effect'
 
 import type { DicomSettings } from '../settings.ts'
-import { DICOM_SYSTEM } from '../source-system.ts'
+import { DICOM_PRACTITIONER_NAME_SYSTEM, DICOM_SYSTEM } from '../source-system.ts'
 import { dicomCalendarDate, dicomInstant } from './dates.ts'
 
 type Wire = Record<string, unknown>
@@ -204,15 +204,17 @@ const serviceRequestOriginalId = (header: DicomHeader.Type): string =>
 /**
  * The `requester` wire for the referring physician, whom a DICOM header names
  * only by `ReferringPhysicianName`: `fhir-r4`'s `Practitioner.tryReferenceWireFromName`
- * of the {@link naturalOrderName}, so the reference names an identity the
- * importer's identity map can link, and the same name on a prescription
- * ("Jane Smith") is the same provider. `None` when the PN has neither a given
- * nor a family name.
+ * of the {@link naturalOrderName} in `DICOM_PRACTITIONER_NAME_SYSTEM`, so the
+ * import stage implies one Practitioner for every study that names them.
+ * `None` when the PN has neither a given nor a family name.
  */
 const requesterWire = (
   referringPhysician: PersonName.Type
 ): Option.Option<typeof IdentifierAndReference.ReferenceSchema.Encoded> =>
-  Practitioner.tryReferenceWireFromName(naturalOrderName(referringPhysician))
+  Practitioner.tryReferenceWireFromName(
+    DICOM_PRACTITIONER_NAME_SYSTEM,
+    naturalOrderName(referringPhysician)
+  )
 
 const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire | undefined => {
   if (header.accessionNumber === undefined || header.accessionNumber === '') return undefined

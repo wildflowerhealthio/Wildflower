@@ -1,4 +1,4 @@
-import type { DecodeFunction, PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import type { DecodedFileSet, PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import {
   type Document,
@@ -50,13 +50,14 @@ const pageWithoutLabNoNote = (pageNumber: number): string =>
  * Exported so property tests can drive it directly, feeding `layoutDocument`'s
  * printed inverse instead of going through an extractor.
  * `decodeLifeLabsPdf` is `decodeLifeLabsPdfDocument ∘ PositionedTextExtractor`.
- * A `Patient` or `Practitioner` shared across reports appears in the section
- * of the first report naming it — the synthesis deduplicates by key.
+ * A `Patient` shared across reports appears in the section of the first
+ * report naming it — the synthesis deduplicates by key; the import stage
+ * implies each provider's Practitioner the same way.
  */
 const decodeLifeLabsPdfDocument = (
   document: Document.Type,
   settings: LifeLabsPdfSettings
-): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
+): Effect.Effect<Omit<DecodedFileSet.Type, 'pickedFiles'>, ParseResult.ParseError> =>
   Effect.gen(function* () {
     const timeZone = yield* checkTimeZone(settings.timeZone)
     const { reports, pagesWithoutLabNo } = yield* Report.tryFromDocument(document).pipe(
@@ -92,7 +93,11 @@ const decodeLifeLabsPdfDocument = (
 const decodeLifeLabsPdf = (
   file: PickedFile.NamedBytes,
   settings: LifeLabsPdfSettings
-): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError, PositionedTextExtractor> =>
+): Effect.Effect<
+  Omit<DecodedFileSet.Type, 'pickedFiles'>,
+  ParseResult.ParseError,
+  PositionedTextExtractor
+> =>
   Effect.gen(function* () {
     const extractor = yield* PositionedTextExtractor
     const document = yield* extractor.extract(file.bytes).pipe(Effect.mapError(asParseError))

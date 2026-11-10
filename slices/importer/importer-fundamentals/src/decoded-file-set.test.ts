@@ -9,11 +9,18 @@ import {
   Observation,
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Schema } from 'effect'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { Effect, Schema } from 'effect'
+import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as DecodedFileSet from './decoded-file-set.ts'
-import * as DecodedFile from './decoded-file.ts'
+import type * as FileSetRecord from './file-set-record.ts'
+import * as FormatDecode from './format-decode.ts'
+import type * as PickedFile from './picked-file.ts'
+import type * as ReviewRow from './review-row.ts'
+import * as Section from './section.ts'
+import * as SectionedList from './sectioned-list.ts'
 
 /**
  * Covers the import stage's half of a decoded set: adopting every section's
@@ -56,13 +63,27 @@ const observationOn = (subject: Record<string, unknown>): DetachedResource.Type 
     })
   )
 
-/** A section of `resources`, each identified by its position. */
+/** A section of `resources`, each under a local key that is its position. */
 const sectionOf = (
   title: string,
   resources: readonly DetachedResource.Type[]
-): DecodedFileSet.Section => ({
-  title,
-  entries: resources.map((resource, index) => ({ fullUrl: `${title}:${index}`, resource })),
+): Section.Type<FileSetRecord.Type> =>
+  Section.make(
+    title,
+    resources.map((resource, index) => ({ localKey: `${title}:${index}`, resource }))
+  )
+
+/** The one picked file every set here was read from. */
+const PICKED_FILE: PickedFile.Type = { id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array() }
+
+/** The prefix of every review key of a set read from {@link PICKED_FILE}. */
+const KEY_PREFIX = FormatDecode.keyPrefix(PICKED_FILE)
+
+/** The file set of `sections`, read from {@link PICKED_FILE}, with no notes. */
+const fileSetOf = (sections: readonly Section.Type<FileSetRecord.Type>[]): DecodedFileSet.Type => ({
+  pickedFiles: [DecodedFileSet.unidentified(PICKED_FILE)],
+  sectionedList: SectionedList.make(sections),
+  notes: [],
 })
 
 /** A minter that counts: `minted-1`, `minted-2`, …. */
@@ -74,10 +95,13 @@ const countingMinter = (): (() => string) => {
   }
 }
 
-const adoptedIn = (sections: readonly DecodedFileSet.Section[]): readonly FhirResourceWithId[] =>
-  DecodedFile.resources(DecodedFileSet.adopt({ sections, notes: [] }, countingMinter())).map(
-    ({ resource }) => resource
-  )
+const adoptedIn = (
+  sections: readonly Section.Type<FileSetRecord.Type>[]
+): readonly FhirResourceWithId[] =>
+  SectionedList.rows(
+    Effect.runSync(DecodedFileSet.adopt(fileSetOf(sections), KEY_PREFIX, countingMinter()))
+      .sectionedList
+  ).map(({ resource }) => resource)
 
 const subjectOf = (resource: FhirResourceWithId | undefined): string | null | undefined =>
   resource?.resourceType === 'Observation' ? resource.subject?.reference : undefined
@@ -421,47 +445,334 @@ describe("DecodedFileSet.adopt, a dispense's subject and its prescription's", ()
   })
 })
 
+describe('DecodedFileSet.adopt, the records its references imply', () => {
+  const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
+  const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
+
+  const NAME_SYSTEM = 'https://pharmacy.example/practitioner-name'
+
+  /** A logical reference to the provider named `name` in {@link NAME_SYSTEM}, shown as `display`. */
+  const byName = (name: string, display: string | null = name): Record<string, unknown> => ({
+    type: 'Practitioner',
+    identifier: { system: NAME_SYSTEM, value: name },
+    ...(display === null ? {} : { display }),
+  })
+
+  /** The prescription `id` on the source, for `pat-7`, requested by `requester`. */
+  const prescriptionBy = (id: string, requester: Record<string, unknown>): DetachedResource.Type =>
+    detachTest(
+      decodeRequest({
+        resourceType: 'MedicationRequest',
+        id,
+        status: 'active',
+        intent: 'order',
+        medicationCodeableConcept: { text: 'Amoxicillin' },
+        subject: { reference: 'Patient/pat-7' },
+        requester,
+      })
+    )
+
+  /** Every adopted row of `sections`, with its section's title. */
+  const rowsIn = (
+    sections: readonly Section.Type<FileSetRecord.Type>[]
+  ): readonly (ReviewRow.Type & { readonly section: string })[] =>
+    Effect.runSync(
+      DecodedFileSet.adopt(fileSetOf(sections), KEY_PREFIX, countingMinter())
+    ).sectionedList.sections.flatMap(({ title, rows }) =>
+      rows.map((row) => ({ ...row, section: title }))
+    )
+
+  const requesterOf = (resource: FhirResourceWithId | undefined): unknown =>
+    resource?.resourceType === 'MedicationRequest' ? resource.requester : undefined
+
+  const practitionersIn = (
+    rows: readonly ReviewRow.Type[]
+  ): readonly Extract<FhirResourceWithId, { readonly resourceType: 'Practitioner' }>[] =>
+    rows.flatMap(({ resource }) => (resource.resourceType === 'Practitioner' ? [resource] : []))
+
+  it('implies one Practitioner for three prescriptions naming one provider, named by the display, and resolves each', () => {
+    const rows = rowsIn([
+      sectionOf('prescriptions', [
+        patient('pat-7'),
+        prescriptionBy('rx-1', byName('Dr. A Smith')),
+        prescriptionBy('rx-2', byName('Dr. A Smith', 'DR A SMITH')),
+        prescriptionBy('rx-3', byName('Dr. A Smith')),
+      ]),
+    ])
+
+    const practitionerId = localResourceId(NAME_SYSTEM, 'Practitioner', 'Dr. A Smith')
+    const [implied] = practitionersIn(rows)
+    expect(practitionersIn(rows)).toHaveLength(1)
+    expect({
+      id: implied?.id,
+      identifier: implied?.identifier.map(({ system, value }) => [system?.href, value]),
+      name: implied?.name.map(({ text }) => text),
+    }).toEqual({
+      id: practitionerId,
+      identifier: [[NAME_SYSTEM, 'Dr. A Smith']],
+      name: ['Dr. A Smith'],
+    })
+    const impliedRow = rows.find(({ resource }) => resource.resourceType === 'Practitioner')
+    expect([impliedRow?.reviewKey, impliedRow?.title]).toEqual([
+      `${KEY_PREFIX}prescriptions:1#implied:Practitioner|${NAME_SYSTEM}|Dr. A Smith`,
+      `Practitioner/${practitionerId}`,
+    ])
+    expect(
+      rows.flatMap(({ resource }) =>
+        resource.resourceType === 'MedicationRequest' && resource.requester !== null
+          ? [
+              [
+                resource.requester.reference,
+                resource.requester.type,
+                resource.requester.identifier?.value,
+                resource.requester.display,
+              ],
+            ]
+          : []
+      )
+    ).toEqual(
+      ['Dr. A Smith', 'DR A SMITH', 'Dr. A Smith'].map((display) => [
+        `Practitioner/${practitionerId}`,
+        'Practitioner',
+        'Dr. A Smith',
+        display,
+      ])
+    )
+  })
+
+  it('implies a Practitioner a server names by id and never serves, keyed in the server’s system', () => {
+    const rows = rowsIn([
+      sectionOf('prescriptions', [
+        prescriptionBy('rx-1', { reference: 'Practitioner/dr-9', display: 'Dr. Jonathan Brown' }),
+      ]),
+    ])
+
+    const [implied] = practitionersIn(rows)
+    expect([
+      implied?.identifier.map(({ system, value }) => [system?.href, value]),
+      implied?.name.map(({ text }) => text),
+    ]).toEqual([[[`${BASE_URL}/Practitioner`, 'dr-9']], ['Dr. Jonathan Brown']])
+    expect(requesterOf(rows[0]?.resource)).toMatchObject({
+      reference: `Practitioner/${localResourceId(`${BASE_URL}/Practitioner`, 'Practitioner', 'dr-9')}`,
+    })
+  })
+
+  it('implies a Patient a reference names with a display', () => {
+    const rows = rowsIn([
+      sectionOf('results', [
+        observationOn({
+          type: 'Patient',
+          identifier: { system: HEALTH_CARD_SYSTEM, value: '1234' },
+          display: 'Tyra Banks',
+        }),
+      ]),
+    ])
+
+    const [observation, implied] = rows.map(({ resource }) => resource)
+    expect(
+      implied?.resourceType === 'Patient'
+        ? [implied.name.map(({ text }) => text), subjectOf(observation)]
+        : implied
+    ).toEqual([['Tyra Banks'], `Patient/${implied?.id}`])
+  })
+
+  it('implies nothing for a reference with no display, a literal one, or an untyped identifier', () => {
+    const rows = rowsIn([
+      sectionOf('prescriptions', [
+        prescriptionBy('rx-1', byName('Dr. A Smith', null)),
+        prescriptionBy('rx-2', {
+          reference: 'https://elsewhere.example/Practitioner/1',
+          display: 'Dr. B',
+        }),
+        prescriptionBy('rx-3', {
+          identifier: { system: NAME_SYSTEM, value: 'Dr. C Jones' },
+          display: 'Dr. C Jones',
+        }),
+      ]),
+    ])
+
+    expect(rows.map(({ resource }) => resource.resourceType)).toEqual([
+      'MedicationRequest',
+      'MedicationRequest',
+      'MedicationRequest',
+    ])
+    expect(requesterOf(rows[0]?.resource)).toMatchObject({ reference: null })
+  })
+
+  it('implies nothing for a type whose record needs more than a reference says, or one fhir-r4 does not model', () => {
+    const fill = detachTest(
+      decodeDispense({
+        resourceType: 'MedicationDispense',
+        id: 'fill-1',
+        status: 'completed',
+        medicationCodeableConcept: { text: 'Amoxicillin' },
+        authorizingPrescription: [
+          {
+            type: 'MedicationRequest',
+            identifier: { system: 'https://pharmacy.example/rx-number', value: '7000' },
+            display: 'Rx 7000',
+          },
+        ],
+        performer: [
+          {
+            actor: {
+              type: 'Organization',
+              identifier: { system: 'https://pharmacy.example/store', value: '12' },
+              display: 'Store 12',
+            },
+          },
+        ],
+      })
+    )
+
+    expect(
+      rowsIn([sectionOf('fills', [fill])]).map(({ resource }) => resource.resourceType)
+    ).toEqual(['MedicationDispense'])
+  })
+
+  it('implies nothing for a record the set holds by an identifier other than its key, and resolves to it', () => {
+    const rows = rowsIn([
+      sectionOf('people', [patientWith('pat-7', [{ system: HEALTH_CARD_SYSTEM, value: '1234' }])]),
+      sectionOf('results', [observationOn({ ...byHealthCard('1234'), display: 'Tyra Banks' })]),
+    ])
+
+    expect(rows.map(({ resource }) => resource.resourceType)).toEqual(['Patient', 'Observation'])
+    expect(subjectOf(rows[1]?.resource)).toBe(`Patient/${rows[0]?.resource.id}`)
+  })
+
+  it('places the implied records in a section of their own, last, in the order first named', () => {
+    const rows = rowsIn([
+      sectionOf('people', [patient('pat-7')]),
+      sectionOf('first', [prescriptionBy('rx-1', byName('Dr. A Smith'))]),
+      sectionOf('second', [
+        prescriptionBy('rx-2', byName('Dr. B Jones')),
+        prescriptionBy('rx-3', byName('Dr. A Smith')),
+      ]),
+    ])
+
+    expect(rows.map(({ section, resource }) => [section, resource.resourceType])).toEqual([
+      ['people', 'Patient'],
+      ['first', 'MedicationRequest'],
+      ['second', 'MedicationRequest'],
+      ['second', 'MedicationRequest'],
+      ['Implied records', 'Practitioner'],
+      ['Implied records', 'Practitioner'],
+    ])
+    expect(practitionersIn(rows).map(({ name }) => name[0]?.text)).toEqual([
+      'Dr. A Smith',
+      'Dr. B Jones',
+    ])
+  })
+
+  it('builds an implied record from the first reference to name it with a display', () => {
+    const rows = rowsIn([
+      sectionOf('prescriptions', [
+        prescriptionBy('rx-1', byName('Dr. A Smith', null)),
+        prescriptionBy('rx-2', byName('Dr. A Smith', 'DR A SMITH')),
+        prescriptionBy('rx-3', byName('Dr. A Smith', 'Dr. Adam Smith')),
+      ]),
+    ])
+
+    const impliedRow = rows.find(({ isImplied }) => isImplied)
+    expect([impliedRow?.reviewKey, practitionersIn(rows).map(({ name }) => name[0]?.text)]).toEqual(
+      [
+        `${KEY_PREFIX}prescriptions:1#implied:Practitioner|${NAME_SYSTEM}|Dr. A Smith`,
+        ['DR A SMITH'],
+      ]
+    )
+  })
+
+  it('marks each implied row implied and no decoded row', () => {
+    const rows = rowsIn([
+      sectionOf('prescriptions', [patient('pat-7'), prescriptionBy('rx-1', byName('Dr. A Smith'))]),
+    ])
+
+    expect(
+      rows.map(({ section, isImplied, resource }) => [section, isImplied, resource.resourceType])
+    ).toEqual([
+      ['prescriptions', false, 'Patient'],
+      ['prescriptions', false, 'MedicationRequest'],
+      ['Implied records', true, 'Practitioner'],
+    ])
+  })
+
+  it('adds no section when the references imply nothing', () => {
+    const adopted = Effect.runSync(
+      DecodedFileSet.adopt(
+        fileSetOf([sectionOf('people', [patient('pat-7')])]),
+        KEY_PREFIX,
+        countingMinter()
+      )
+    )
+
+    expect(adopted.sectionedList.sections.map(({ title }) => title)).toEqual(['people'])
+  })
+
+  it('property: implies one record per distinct provider named, and resolves every reference to one', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.constantFrom('Dr. A Smith', 'Dr. B Jones', 'Dr. C Lee'), {
+          minLength: 1,
+          maxLength: 6,
+        }),
+        (names) => {
+          const rows = rowsIn([
+            sectionOf(
+              'prescriptions',
+              names.map((name, index) => prescriptionBy(`rx-${index}`, byName(name)))
+            ),
+          ])
+          const practitionerIds = new Set(practitionersIn(rows).map(({ id }) => id))
+
+          expect(practitionerIds.size).toBe(new Set(names).size)
+          for (const { resource } of rows) {
+            if (resource.resourceType !== 'MedicationRequest') continue
+            expect([...practitionerIds].map((id) => `Practitioner/${id}`)).toContain(
+              resource.requester?.reference
+            )
+          }
+        }
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+})
+
 describe('DecodedFileSet.writtenReferenceTitle', () => {
   it('names a keyed record by the reference the import stage writes it under', () => {
-    const [section] = DecodedFileSet.adopt({
-      sections: [sectionOf('people', [patient('pat-7')])],
-      notes: [],
-    }).sections
-    expect(section?.resources.map(({ title }) => title)).toEqual([
+    const [section] = Effect.runSync(
+      DecodedFileSet.adopt(fileSetOf([sectionOf('people', [patient('pat-7')])]), KEY_PREFIX)
+    ).sectionedList.sections
+    expect(section?.rows.map(({ title }) => title)).toEqual([
       `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-7')}`,
     ])
   })
 
-  it('names a keyless record by its type and its fullUrl, which a re-decode keeps', () => {
-    const [section] = DecodedFileSet.adopt(
-      { sections: [sectionOf('people', [patient(null)])], notes: [] },
-      countingMinter()
-    ).sections
-    expect(section?.resources.map(({ title, resource }) => [title, resource.id])).toEqual([
-      ['Patient (people:0)', 'minted-1'],
+  it('names a keyless record by its type and its review key, which a re-decode keeps', () => {
+    const [section] = Effect.runSync(
+      DecodedFileSet.adopt(
+        fileSetOf([sectionOf('people', [patient(null)])]),
+        KEY_PREFIX,
+        countingMinter()
+      )
+    ).sectionedList.sections
+    expect(section?.rows.map(({ title, resource }) => [title, resource.id])).toEqual([
+      [`Patient (${KEY_PREFIX}people:0)`, 'minted-1'],
     ])
-  })
-
-  it('keys each adopted row by its entry fullUrl', () => {
-    const [section] = DecodedFileSet.adopt({
-      sections: [sectionOf('people', [patient('pat-7'), patient(null)])],
-      notes: [],
-    }).sections
-    expect(section?.resources.map(({ key }) => key)).toEqual(['people:0', 'people:1'])
   })
 })
 
-describe('DecodedFileSet.namespaceKeys', () => {
-  it('prefixes every fullUrl and keeps everything else', () => {
-    const section = sectionOf('people', [patient('pat-7')])
-    expect(DecodedFileSet.namespaceKeys([section], '0:a.har/')).toEqual([
-      {
-        ...section,
-        entries: section.entries.map((entry) => ({
-          ...entry,
-          fullUrl: `0:a.har/${entry.fullUrl}`,
-        })),
-      },
+describe('DecodedFileSet.adopt, review keys', () => {
+  it('keys each row by the key prefix before its local key', () => {
+    const [section] = Effect.runSync(
+      DecodedFileSet.adopt(
+        fileSetOf([sectionOf('people', [patient('pat-7'), patient(null)])]),
+        KEY_PREFIX
+      )
+    ).sectionedList.sections
+    expect(section?.rows.map(({ reviewKey }) => reviewKey)).toEqual([
+      '0:a.har/people:0',
+      '0:a.har/people:1',
     ])
   })
 })

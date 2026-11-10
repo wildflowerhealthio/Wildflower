@@ -1,11 +1,11 @@
-import { Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { FastCheck as fc } from 'effect'
+import { Effect, FastCheck as fc } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
-import * as DecodedFile from '../decoded-file.ts'
+import type * as AdoptedFileSet from '../adopted-file-set.ts'
+import * as Section from '../section.ts'
+import * as SectionedList from '../sectioned-list.ts'
 import {
-  CUSTOMER,
   SOURCE_PATIENT,
   SOURCE_PRACTITIONER,
   customerSubject,
@@ -20,6 +20,8 @@ import {
   request,
   untypedSubject,
   wireFieldsOf,
+  keyOf,
+  rowsOf,
 } from './identity-map.test-helpers.ts'
 import * as Referent from './referent.ts'
 
@@ -40,95 +42,45 @@ const wireKeyOf = (
 ): readonly string[] =>
   identifier?.system === undefined || identifier.value === undefined || identifier.value === ''
     ? []
-    : [`${type}|${new URL(identifier.system).href}|${identifier.value}`]
+    : [JSON.stringify([type, new URL(identifier.system).href, identifier.value])]
 
 /**
  * The referent keys a file's wire form names: each Patient's and
- * Practitioner's own `identifier[0]`, then each `subject`, `requester` and
- * `performer` (or `performer[].actor`) that is a logical reference (a stated
- * `type`, a system and value, and no literal) unless it is a resource's key or
- * exactly one resource answers to it, by an identifier it carries or, for a
- * Practitioner, by its printed name; of two copies under one key, the first.
+ * Practitioner's own `identifier[0]`, of two copies under one key, the first.
  */
-const wireKeysOf = (file: DecodedFile.DecodedFile): readonly string[] => {
-  const wires = DecodedFile.resources(file).map(({ resource }) => wireFieldsOf(resource))
-  const linkable = wires.filter(
-    (wire) => wire.resourceType === 'Patient' || wire.resourceType === 'Practitioner'
-  )
-  const ownKeys = new Set(
-    linkable.flatMap((wire) => wireKeyOf(wire.resourceType, wire.identifier?.[0]))
-  )
-  const answeringByKey = new Map<string, Set<string>>()
-  const answeringOwnKeys = new Set<string>()
-  for (const wire of linkable) {
-    const [own] = wireKeyOf(wire.resourceType, wire.identifier?.[0])
-    // A resource decoded twice under one key answers as its first copy.
-    if (own === undefined || answeringOwnKeys.has(own)) continue
-    answeringOwnKeys.add(own)
-    const printedName = wire.resourceType === 'Practitioner' ? wire.name?.[0]?.text : undefined
-    const answered = [
-      ...(wire.identifier ?? []).flatMap((identifier) => wireKeyOf(wire.resourceType, identifier)),
-      ...wireKeyOf('Practitioner', {
-        system: printedName === undefined ? undefined : Practitioner.NAME_IDENTIFIER_SYSTEM,
-        value: printedName,
-      }),
-    ]
-    for (const key of answered)
-      answeringByKey.set(key, (answeringByKey.get(key) ?? new Set()).add(own))
-  }
-  const typeOf = (stated: string | undefined): readonly string[] =>
-    stated === 'Patient' || stated === 'Practitioner' ? [stated] : []
-  const mentionKeys = wires
-    .flatMap((wire) => [wire.subject, wire.requester, wire.performer ?? []].flat())
-    .map((mention) => (mention !== undefined && 'actor' in mention ? mention.actor : mention))
-    .flatMap((reference) =>
-      reference === undefined || reference.reference !== undefined
-        ? []
-        : typeOf(reference.type).flatMap((type) => wireKeyOf(type, reference.identifier))
-    )
-    .filter((key) => !ownKeys.has(key) && answeringByKey.get(key)?.size !== 1)
-  return [...ownKeys, ...new Set(mentionKeys)]
-}
+const wireKeysOf = (file: AdoptedFileSet.Type): readonly string[] => [
+  ...new Set(
+    SectionedList.rows(file.sectionedList)
+      .map(({ resource }) => wireFieldsOf(resource))
+      .filter((wire) => wire.resourceType === 'Patient' || wire.resourceType === 'Practitioner')
+      .flatMap((wire) => wireKeyOf(wire.resourceType, wire.identifier?.[0]))
+  ),
+]
 
 describe('Referent.discover', () => {
-  it('finds a person, an account id and a named prescriber', () => {
+  it('finds the records of a person and a provider, and no mention', () => {
     const file = fileOf(
       patient({ id: 'p-1' }),
-      request('rx-1', literalSubject('p-1'), namedRequester('Dr. A Smith')),
-      request('rx-2', customerSubject('c-9')),
-      request('rx-3', customerSubject('c-9'))
+      practitioner('pr-1', 'Dr. A Smith'),
+      request('rx-1', literalSubject('p-1'), namedRequester('Dr. B Jones')),
+      request('rx-2', customerSubject('c-9'))
     )
 
     expect(
-      discoverOnTestClock(file).map((referent) => [
-        referent._tag,
-        Referent.key(referent),
-        referent.label,
-      ])
+      discoverOnTestClock(file).map((referent) => [Referent.key(referent), referent.label])
     ).toEqual([
-      ['AsResource', `Patient|${SOURCE_PATIENT}|p-1`, 'Tyra Banks · 1990-01-02'],
-      [
-        'ByMentionOnly',
-        `Practitioner|${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`,
-        'Dr. A Smith',
-      ],
-      ['ByMentionOnly', `Patient|${CUSTOMER}|c-9`, 'c-9'],
+      [keyOf('Patient', SOURCE_PATIENT, 'p-1'), 'Tyra Banks · 1990-01-02'],
+      [keyOf('Practitioner', SOURCE_PRACTITIONER, 'pr-1'), 'Dr. A Smith'],
     ])
   })
 
-  it('gives a referent with a resource its own identifiers and the derived one', () => {
+  it('gives a referent its own identifiers and the one its demographics derive', () => {
     const [patientReferent, practitionerReferent] = discoverOnTestClock(
       fileOf(patient({ id: 'p-1' }), practitioner('pr-1', '  Dr.  B   Jones '))
     )
 
     const systemsAndValues = (referent: Referent.Type | undefined): readonly unknown[] =>
-      referent === undefined
-        ? []
-        : Referent.match(referent, {
-            AsResource: ({ identifiers }) =>
-              identifiers.map((identifier) => [identifier.system?.href, identifier.value]),
-            ByMentionOnly: () => [],
-          })
+      (referent?.identifiers ?? []).map((identifier) => [identifier.system?.href, identifier.value])
     expect(systemsAndValues(patientReferent)).toEqual([
       [SOURCE_PATIENT, 'p-1'],
       [
@@ -136,10 +88,7 @@ describe('Referent.discover', () => {
         'banks;tyra;1990-01-02',
       ],
     ])
-    expect(systemsAndValues(practitionerReferent)).toEqual([
-      [SOURCE_PRACTITIONER, 'pr-1'],
-      [Practitioner.NAME_IDENTIFIER_SYSTEM, 'Dr. B Jones'],
-    ])
+    expect(systemsAndValues(practitionerReferent)).toEqual([[SOURCE_PRACTITIONER, 'pr-1']])
     expect(practitionerReferent?.label).toBe('Dr.  B   Jones')
   })
 
@@ -167,20 +116,31 @@ describe('Referent.discover', () => {
     expect(referents.map((referent) => referent.label)).toEqual(['p-1'])
   })
 
-  it('folds a mention of a provider’s printed name into the one decoded Practitioner of that name', () => {
-    const file = fileOf(
-      practitioner('pr-1', 'Dr. A Smith'),
-      request('rx-1', literalSubject('p-1'), namedRequester('Dr. A Smith')),
-      request('rx-2', literalSubject('p-1'), namedRequester('Dr. B Jones'))
-    )
+  it('takes a record a file decoded over the copy another file set implied under its id', () => {
+    const implied = practitioner('pr-1', 'Dr. A Smith')
+    const served = { ...practitioner('pr-1', 'Dr. A Smith'), gender: 'female' as const }
+    const impliedFile: AdoptedFileSet.Type = {
+      sectionedList: SectionedList.make([
+        Section.make('Resources', [
+          {
+            reviewKey: 'k-0',
+            title: 'implied',
+            isImplied: true,
+            resource: implied,
+          },
+        ]),
+      ]),
+      notes: [],
+    }
 
-    expect(discoverOnTestClock(file).map(Referent.key)).toEqual([
-      `Practitioner|${SOURCE_PRACTITIONER}|pr-1`,
-      `Practitioner|${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. B Jones`,
+    const referents = Effect.runSync(Referent.discover(rowsOf([impliedFile, fileOf(served)])))
+
+    expect(referents.map(({ reviewKey, resource }) => [reviewKey, resource])).toEqual([
+      ['k-0', served],
     ])
   })
 
-  it('property: finds every Patient, Practitioner and identifier-only mention no one resource answers to, once each, and nothing else', () => {
+  it('property: finds every keyed Patient and Practitioner, once each, and nothing else', () => {
     fc.assert(
       fc.property(fileArbitrary, (file) => {
         const keys = discoverOnTestClock(file).map(Referent.key)

@@ -45,6 +45,20 @@
       "key": "0:rexall-fixtures.har/har-entry-1:3",
       "resource": "MedicationDispense/wf-f8727b70b4eb7524bc79e6ee8fde94c7",
       "title": "MedicationDispense/wf-f8727b70b4eb7524bc79e6ee8fde94c7"
+    },
+    {
+      "disposition": "Included",
+      "group": "har",
+      "key": "0:rexall-fixtures.har/har-entry-1:0#implied:Practitioner|https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner|dr-smith",
+      "resource": "Practitioner/wf-302f5f49b74e5fb5f4daf96369c00cdc",
+      "title": "Practitioner/wf-302f5f49b74e5fb5f4daf96369c00cdc"
+    },
+    {
+      "disposition": "Included",
+      "group": "har",
+      "key": "0:rexall-fixtures.har/har-entry-1:1#implied:Practitioner|https://wildflowerhealth.io/fhir/sid/rexall-be-well/practitioner-name|DR PATEL",
+      "resource": "Practitioner/wf-5b684bd270696aad19122d0ad281199a",
+      "title": "Practitioner/wf-5b684bd270696aad19122d0ad281199a"
     }
   ],
   "sourceFileRePicks": [
@@ -436,9 +450,10 @@
         "extension": [],
         "identifier": {
           "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/practitioner-name",
+          "system": "https://wildflowerhealth.io/fhir/sid/rexall-be-well/practitioner-name",
           "value": "DR PATEL"
         },
+        "reference": "Practitioner/wf-5b684bd270696aad19122d0ad281199a",
         "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
@@ -675,6 +690,7 @@
           "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
           "value": "dr-smith"
         },
+        "reference": "Practitioner/wf-302f5f49b74e5fb5f4daf96369c00cdc",
         "type": "Practitioner"
       },
       "resourceType": "MedicationRequest",
@@ -746,6 +762,74 @@
           "value": "jordan.rivera@example.com"
         }
       ]
+    },
+    {
+      "address": [],
+      "communication": [],
+      "contained": [],
+      "extension": [],
+      "id": "wf-302f5f49b74e5fb5f4daf96369c00cdc",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner",
+          "value": "dr-smith"
+        }
+      ],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-b08c3fdad1358dd40ec5c8d435a73be1",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "name": [
+        {
+          "extension": [],
+          "given": [],
+          "prefix": [],
+          "suffix": [],
+          "text": "DR SMITH"
+        }
+      ],
+      "photo": [],
+      "qualification": [],
+      "resourceType": "Practitioner",
+      "telecom": []
+    },
+    {
+      "address": [],
+      "communication": [],
+      "contained": [],
+      "extension": [],
+      "id": "wf-5b684bd270696aad19122d0ad281199a",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://wildflowerhealth.io/fhir/sid/rexall-be-well/practitioner-name",
+          "value": "DR PATEL"
+        }
+      ],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-b08c3fdad1358dd40ec5c8d435a73be1",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "name": [
+        {
+          "extension": [],
+          "given": [],
+          "prefix": [],
+          "suffix": [],
+          "text": "DR PATEL"
+        }
+      ],
+      "photo": [],
+      "qualification": [],
+      "resourceType": "Practitioner",
+      "telecom": []
     }
   ]
 }

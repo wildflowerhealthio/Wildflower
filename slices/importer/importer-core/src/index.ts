@@ -1,8 +1,8 @@
 /**
  * The pure core of the importer slice: the closed format registry — every
  * registered {@link FileImporter}, typed per format — and the batch
- * machinery a shell drives: group a pick by format, read it into a
- * {@link DecodedBatch} through the import stage that makes what each format
+ * machinery a shell drives: split a batch's picks by the format that claims each, read it into a
+ * {@link DecodedBatch} of review groups through the import stage that makes what each format
  * decoded the device's own, re-decode one format under new settings, find
  * the batch's referents and resolve its mentions, say which rows the
  * referent links leave without a patient, and plan the batch's write from
@@ -21,13 +21,12 @@
  */
 export { defaultFormatSettings, formatKinds, formatRegistry } from './registry.ts'
 export type { BoundFormat, DecodeRequirements, FormatKind, FormatSettings } from './registry.ts'
-// `groupByFormat`, `decodeFormat` and `identifyPick` are steps of `readBatch`,
+// `identifyPick`, `claimPicks` and `decodeFormat` are steps of `readBatch`,
 // not a surface: the shell drives the whole read, never a leg of it. They stay
 // module-level exports for `read-batch.test.ts` and are not re-exported here.
 export { importDecoded, type ImportingFormat } from './import-decoded.ts'
 export {
   type DecodedBatch,
-  claimedFormats,
   readBatch,
   redecodeFormat,
   type UnrecognizedFile,
@@ -41,7 +40,7 @@ export {
   skipReasonFor,
   type WriteDecision,
 } from './plan-write.ts'
-export { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
+export * as ReviewGroup from './review-group.ts'
 export {
   discoverReferents,
   isSourceFileOf,

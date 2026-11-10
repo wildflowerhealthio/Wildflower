@@ -27,7 +27,7 @@ interface PreviewedResource<TParsed> {
 
 /**
  * One response's preview outcome — every non-resource outcome folded to data so
- * `preview` is total and one bad response cannot abort the batch.
+ * `preview` is total and one bad response cannot abort the archive's decode.
  */
 type PreviewedOutcome<TParsed> =
   | { readonly _tag: 'resources'; readonly resources: readonly PreviewedResource<TParsed>[] }

@@ -1,7 +1,6 @@
 /**
- * A link target: the resource a referent is linked to once every
- * `LinkToDecodedReferent` choice on the way is followed, named for where that
- * resource comes from; or none.
+ * A link target: the resource a referent or a mention is linked to, named for
+ * where that resource comes from; or, for a mention alone, none.
  *
  * @packageDocumentation
  */
@@ -28,41 +27,28 @@ interface Decoded {
   readonly storedCopy: Option.Option<LinkableResource.WithId>
 }
 
-/**
- * A resource the map makes from the referent's logical reference alone,
- * standing in until a fuller one arrives (`LinkableResource.tryProvisionalFrom`).
- */
-interface Provisional {
-  readonly _tag: 'Provisional'
-  readonly resource: LinkableResource.WithId
-}
-
-/** No resource: the referent's mentions stay as they are. */
+/** No resource: a mention the reviewer chose to leave unlinked (`LinkChoice.DontLink`). */
 interface Unlinked {
   readonly _tag: 'Unlinked'
 }
 
-type Type = Stored | Decoded | Provisional | Unlinked
+/** A target that holds a resource: what every referent is linked to. */
+type Linked = Stored | Decoded
 
-const { Stored, Decoded, Provisional, Unlinked, $is: is, $match: match } = Data.taggedEnum<Type>()
+type Type = Linked | Unlinked
+
+const { Stored, Decoded, Unlinked, $is: is, $match: match } = Data.taggedEnum<Type>()
 
 /**
- * The resource a link target's mentions are redirected to, whatever its
- * origin; `None` when it is `Unlinked`.
+ * The resource a link target's mentions are redirected to, stored or
+ * decoded; `None` when it is `Unlinked`.
  */
 const resourceIfLinked = (linkTarget: Type): Option.Option<LinkableResource.WithId> =>
   match(linkTarget, {
     Stored: ({ resource }) => Option.some(resource),
     Decoded: ({ resource }) => Option.some(resource),
-    Provisional: ({ resource }) => Option.some(resource),
     Unlinked: () => Option.none(),
   })
 
-export { Decoded, is, match, Provisional, resourceIfLinked, Stored, Unlinked }
-export type {
-  Decoded as DecodedType,
-  Provisional as ProvisionalType,
-  Stored as StoredType,
-  Type,
-  Unlinked as UnlinkedType,
-}
+export { Decoded, is, match, resourceIfLinked, Stored, Unlinked }
+export type { Decoded as DecodedType, Linked, Stored as StoredType, Type, Unlinked as UnlinkedType }

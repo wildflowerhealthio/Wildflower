@@ -13,18 +13,22 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Data, Option } from 'effect'
 
 /**
  * A keyed record's plan: the id its key derives,
  * `localResourceId(key.system, Type, key.value)`, the same on every import.
+ *
+ * @remarks
+ * Its `resourceType` and `identifier` are the logical reference to the
+ * record by its key (`LogicalReference.Type`), so a `Derived` plan is one.
  */
-interface Derived {
+interface Derived extends LogicalReference.Type<DetachedResource.Type['resourceType']> {
   readonly _tag: 'Derived'
-  readonly resourceType: DetachedResource.Type['resourceType']
   readonly id: string
-  /** The record's key, its `identifier[0]`. */
-  readonly identifier: IdentifierAndReference.QualifiedIdentifierType
+  /** The record's key, its `identifier[0]`, alone. */
+  readonly identifier: readonly [IdentifierAndReference.QualifiedIdentifierType]
 }
 
 /** A keyless record's plan: an id minted for it, a new one on every import. */
@@ -40,24 +44,34 @@ type Type = Derived | Minted
 const { Derived, Minted, $match: match } = Data.taggedEnum<Type>()
 
 /**
- * The plan of `resource`: `Derived` from its key when it is keyed, the id
- * derived here, once; `Minted` by `mintId` when it is keyless.
+ * The plan of a record of `resourceType` keyed by `identifier`: `Derived`, its
+ * id `localResourceId(identifier.system, resourceType, identifier.value)`,
+ * derived here, once.
+ */
+const derived = (
+  resourceType: DetachedResource.Type['resourceType'],
+  identifier: IdentifierAndReference.QualifiedIdentifierType
+): Derived =>
+  Derived({
+    resourceType,
+    id: localResourceId(identifier.system.href, resourceType, identifier.value),
+    identifier: [identifier],
+  })
+
+/**
+ * The plan of `resource`: {@link derived} from its key when it is keyed;
+ * `Minted` by `mintId` when it is keyless.
  *
  * @param mintId - Mints the id of a keyless record; random outside tests
  */
-const of = (resource: DetachedResource.Type, mintId: () => string): Type =>
+const make = (resource: DetachedResource.Type, mintId: () => string): Type =>
   Option.match(DetachedResource.keyIdentifierOf(resource), {
-    onSome: (identifier) =>
-      Derived({
-        resourceType: resource.resourceType,
-        id: localResourceId(identifier.system.href, resource.resourceType, identifier.value),
-        identifier,
-      }),
+    onSome: (identifier) => derived(resource.resourceType, identifier),
     onNone: () => Minted({ resourceType: resource.resourceType, id: mintId() }),
   })
 
 /** The literal reference the planned record is written under, `<Type>/<id>`. */
 const literalReference = ({ resourceType, id }: Type): string => `${resourceType}/${id}`
 
-export { Derived, literalReference, match, Minted, of }
+export { Derived, derived, literalReference, make, match, Minted }
 export type { Type }

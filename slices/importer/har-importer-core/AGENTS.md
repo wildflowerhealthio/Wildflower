@@ -38,7 +38,7 @@ shell's shared `persistTransactionBundle`.
   `DocumentReference/<id>`. A file re-picked off the server mints exactly the
   source file it came from, which the server diff then reads as `unchanged`. The
   shell reviews the minted resource like any other and writes it in the same
-  `persistBatchBundle` as the extracted resources; re-importing the same file
+  `persistTransactionBundle` as the extracted resources; re-importing the same file
   upserts rather than duplicating.
 - `src/har-importer.ts` — **`harImporter`**, the one value the shell's
   registry lists — a `FileImporter.Type` literal whose `decode` is a
@@ -50,17 +50,18 @@ shell's shared `persistTransactionBundle`.
   archive:
   `decodeHar`, then `review.ts`'s `preview` over the pool (each kind yields
   detached records), then
-  `mergeSharedResources`, folded into `DecodedFileSet` sections —
-  one section per URL, a plain insertion-ordered map (first-seen order, only
-  responses that parsed to at least one resource), each entry's `fullUrl` its
-  preview key, `<response id>:<index>` —
+  `mergeSharedResources`, folded into one `DecodedFileSet.Type` (each picked
+  file `DecodedFileSet.unidentified`) — one section per response URL, a plain
+  insertion-ordered map (first-seen order, only responses that parsed to at
+  least one resource), each record's local key its preview key,
+  `<response id>:<index>` —
   plus one diagnostic note per response that yielded nothing (no kind
   matched, parse failure, body absent, duplicate). The import stage adopts the
   records and puts them under the source-file section described above. Never
   fails: a malformed source file comes back as that file's `unreadableFiles`
-  entry, leaving the batch's other files reviewable. Resource keys are
-  `responseId:index`, unique **within one decode of one source file**;
-  `DecodeFunction.make` prefixes each set's keys with its slot in the batch, so
+  entry, leaving the batch's other files reviewable. Local keys are
+  `responseId:index`, unique **within one decode of one source file**; the
+  import stage prefixes each set's keys with its slot in the batch, so
   two source files in one pick cannot collide on `responseId:index`.
 - `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses)`
   routes each response to its top-specificity kind (`Extraction.routeTo` —
@@ -68,16 +69,17 @@ shell's shared `persistTransactionBundle`.
   (`Extraction.parseWith`). A previewed
   response keeps its response ref and the name of the kind it routed to. Every
   non-resource outcome is folded to data so one bad response cannot abort the
-  batch. Consumed by the importer's `decodeFileSet`; the per-resource selection
+  archive's decode. Consumed by the importer's `decodeFileSet`; the per-resource selection
   (exclude/edit) lives in `importer-fundamentals`' `StagedImport`.
 - `src/merge-shared-resources.ts` — **`mergeSharedResources`**, where a
   source's `mergeResources` runs. Over the whole preview, for each source that
   gives one, the detached records sharing a key,
   `(identifier[0].system, resourceType, identifier[0].value)`, become one: the
-  merged record under the first copy's review key and in its place, the later
+  merged record under the first copy's local key and in its place, the later
   copies dropped. A keyless record never merges. A response's pick is matched
   to its source by kind name. A source without a merge keeps every copy, and
-  the batch write's later PUT wins.
+  the confirm writes the later one (`planWrite`'s last candidate under one
+  `Type/id`).
 - `src/decode-har.ts` — **`decodeHar`** (the byte-level parse step) and
   `toInput`. `HttpArchive.LogFromHarJson` (`http-archive`) decodes the
   archive into an `HttpArchive.Log`; each `HttpArchive.Entry` is restated
@@ -130,7 +132,7 @@ codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
 
 - **The read half never writes.** `decodeHar` requires no services, so the write
   client is unreachable from a decode by construction. Writing is the shell's
-  shared `persistBatchBundle`, gated on a confirmed review; no importer field
+  shared `persistTransactionBundle`, gated on a confirmed review; no importer field
   takes a write client.
 - **Records arrive detached.** Each kind detaches or writes its own records,
   so nothing here, the sections and the import stage included, carries a

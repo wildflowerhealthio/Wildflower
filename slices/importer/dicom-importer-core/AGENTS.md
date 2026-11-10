@@ -14,7 +14,10 @@ carrying the one `ImagingStudy` its files make up.
 ## Shape
 
 - `src/source-system.ts` — the `DICOM_SYSTEM` URI constant
-  (`https://wildflowerhealth.io/fhir/sid/dicom`).
+  (`https://wildflowerhealth.io/fhir/sid/dicom`) and
+  `DICOM_PRACTITIONER_NAME_SYSTEM` (`<DICOM_SYSTEM>/practitioner-name`), the
+  system a referring physician known only by name is keyed in; both
+  persisted wire format.
 - `src/detect.ts` — DICM magic bytes at offset 128 (PS3.10 preamble + magic)
   or a `.dcm` extension fallback.
 - `src/settings.ts` — `DicomSettings`: the one knob, `timeZone`, the IANA zone
@@ -39,11 +42,12 @@ carrying the one `ImagingStudy` its files make up.
   only when `AccessionNumber` is present: status completed, intent order,
   identifier = accession, code from RequestedProcedureDescription or
   StudyDescription, requester from ReferringPhysicianName:
-  `Practitioner.tryReferenceWireFromName` of the physician's given names, then family
-  name (`Smith^Jane` is `Jane Smith`, as a prescription prints it; middle
-  name, prefix and suffix left out), so the referring physician is a referent
-  the identity map can link to the same provider named elsewhere, and no
-  requester for a PN with neither; the Patient's `name` keeps the PN `text`,
+  `Practitioner.tryReferenceWireFromName` in `DICOM_PRACTITIONER_NAME_SYSTEM`
+  (`<DICOM_SYSTEM>/practitioner-name`) of the physician's given names, then
+  family name (`Smith^Jane` is `Jane Smith`, as a prescription prints it;
+  middle name, prefix and suffix left out), so the import stage implies one
+  Practitioner per name, a referent the reviewer can link to the same
+  provider named elsewhere, and no requester for a PN with neither; the Patient's `name` keeps the PN `text`,
   family first), and
   `ImagingStudy` (status available, identifier `urn:dicom:uid` /
   `urn:oid:<StudyInstanceUID>`, `started` from StudyDate+StudyTime resolved
@@ -82,26 +86,26 @@ carrying the one `ImagingStudy` its files make up.
   **`decodeStudy`** takes one study's picked files and **parses each header
   itself**. A header that parsed in `studyGroupKey` parses
   again; that double parse is the deliberate price of a decode constructor with
-  no parsed-value passthrough. It yields one section of labeled FHIR
-  resources, each written detached and keyed in `DICOM_SYSTEM`
-  (`fhir-r4-adoption`'s `DetachedResource`), each entry's `fullUrl` fixed by its
+  no parsed-value passthrough. It yields one `DecodedFileSet.Type`: one section
+  of FHIR records, each written detached and keyed in `DICOM_SYSTEM`
+  (`fhir-r4-adoption`'s `DetachedResource`), each record's local key fixed by its
   type (`patient`, `service-request`, `imaging-study`), for the import stage to adopt
   before it runs
-  `linkToPatientAndStudy` and `addGridfsFileIds`, and pairs each picked file with its SOP Instance UID
+  `linkToPatientAndStudy` and `addGridfsFileIds`, and its `pickedFiles`, each picked file paired with its SOP Instance UID
   (**`sopInstanceIdentifier`**: `{ system: 'urn:ietf:rfc:3986', value:
   'urn:oid:<SOPInstanceUID>' }`, FHIR's OID convention), which the import
   stage writes as its source file's `masterIdentifier`. Titled
   `<Modality> <StudyDescription> · <StudyDate>` off the study's representative
-  header, with stable keys `patient`, `service-request`, `imaging-study`, fixed
-  _within one study_ and namespaced outside it. Notes for missing patient
+  header, with stable local keys `patient`, `service-request`, `imaging-study`,
+  fixed _within one study_ and namespaced by the import stage outside it. Notes for missing patient
   identity, an absent `AccessionNumber`, one the files disagree on, and — for a
   study of more than one file — what each file contributed.
   It rejects a `settings.timeZone` the runtime cannot resolve
   (`checkTimeZone` from `kitchen-sink`, a `ParseError`) rather than
   substituting one — every `started` it emits is resolved against that zone,
   so a guess would write instants hours away from what the equipment
-  recorded; one setting for the whole batch, so an unresolvable zone fails
-  every set, and with it every file. A study that fails to decode becomes one
+  recorded; one setting for every study the format claimed, so an
+  unresolvable zone fails every set, and with it every file. A study that fails to decode becomes one
   `unreadableFiles` row per file of it, leaving the other studies reviewable.
   **`linkToPatientAndStudy`**, the importer's `linkSourceFile`, links each
   source file to the study's own records:

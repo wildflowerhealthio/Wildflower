@@ -4,11 +4,10 @@ import { useMemo, useState } from 'react'
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import type { StagedImport } from '@wildflowerhealthio/importer-fundamentals'
-import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
+import type { LinkPlan, ReviewRow, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 
-import type { FormatKind, ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
-import { formatKinds, keysWithoutPatientOf, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
+import type { FormatKind, ResolvedBatch } from '@wildflowerhealthio/importer-core'
+import { keysWithoutPatientOf, ReviewGroup } from '@wildflowerhealthio/importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
 /**
@@ -49,25 +48,25 @@ import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
 /** One labeled resource, the group it is reviewed in, and the value the classifier probes for it. */
 interface DiffRow {
-  readonly group: ReviewGroup
+  readonly group: ReviewGroup.Key
   readonly key: string
   readonly resource: FhirResourceWithId
 }
 
 /**
  * Every previewed resource's server comparison, keyed by the group it is
- * reviewed in and then by `DecodedFile.Resource`'s `key` within the group.
+ * reviewed in and then by its review key within the group.
  *
  * @remarks
- * A resource key is unique within one format — a per-file decode's keys are
- * namespaced by the file they came from (`FormatDecode.keyPrefix`), so
+ * A resource key is unique within one format — the import stage prefixes a
+ * file set's review keys by its first picked file (`FormatDecode.keyPrefix`), so
  * DICOM's fixed `patient` / `imaging-study` and every format's source-file
  * row stay distinct across the files a format claimed. Across formats they
  * are not: two formats may both key a row `0:a.json/patient`. Scoping by
  * group is what keeps each format's badges and defaults its own; the
- * linked records, no format's, are the {@link LINKED_GROUP}.
+ * linked records, no format's, are the linked records' group.
  */
-type GroupComparisons = ReadonlyMap<ReviewGroup, ReadonlyMap<string, ServerComparison>>
+type GroupComparisons = ReadonlyMap<ReviewGroup.Key, ReadonlyMap<string, ServerComparison>>
 
 /**
  * The state of the pre-fetch: `loading` while there is nothing worth showing
@@ -116,7 +115,7 @@ const byGroupAndKey = (
   rows: readonly DiffRow[],
   byDiffKey: ReadonlyMap<string, ServerComparison>
 ): GroupComparisons => {
-  const comparisons = new Map<ReviewGroup, Map<string, ServerComparison>>()
+  const comparisons = new Map<ReviewGroup.Key, Map<string, ServerComparison>>()
   for (const row of rows) {
     const group = comparisons.get(row.group) ?? new Map<string, ServerComparison>()
     group.set(row.key, byDiffKey.get(literalReferenceOf(row.resource)) ?? AS_NEW)
@@ -126,24 +125,18 @@ const byGroupAndKey = (
 }
 
 /**
- * Every previewed resource across a batch's formats and its linked records,
- * paired with its group and labeled key — the flat list one classifier round
- * trip probes.
+ * Every previewed resource across a batch's groups, in review order, paired
+ * with its group and labeled key — the flat list one classifier round trip
+ * probes.
  */
-const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] => [
-  ...formatKinds.flatMap((kind) =>
-    DecodedFile.resources(batch.formats[kind].decoded).map((entry): DiffRow => ({
-      group: kind,
-      key: entry.key,
-      resource: entry.resource,
+const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] =>
+  ReviewGroup.entries(batch.groups, ReviewGroup.keys).flatMap(([key, group]) =>
+    ReviewGroup.rows(group).map((row): DiffRow => ({
+      group: key,
+      key: row.reviewKey,
+      resource: row.resource,
     }))
-  ),
-  ...batch.linkedRecords.map((entry): DiffRow => ({
-    group: LINKED_GROUP,
-    key: entry.key,
-    resource: entry.resource,
-  })),
-]
+  )
 
 /**
  * Run the pre-fetch over every labeled resource across the batch's formats
@@ -249,35 +242,39 @@ const useServerDiff = (batch: ResolvedBatch | undefined, batchId: number): Serve
  *   when the diff has none for it, which finds nothing unchanged)
  */
 const unchangedKeysOf = (
-  labeled: readonly DecodedFile.Resource[],
+  labeled: readonly ReviewRow.Type[],
   comparisons: ReadonlyMap<string, ServerComparison> | undefined
 ): ReadonlySet<string> =>
   new Set(
-    labeled.filter(({ key }) => comparisons?.get(key)?.status === 'unchanged').map(({ key }) => key)
+    labeled
+      .map(({ reviewKey }) => reviewKey)
+      .filter((key) => comparisons?.get(key)?.status === 'unchanged')
   )
 
 /**
- * The keys of `kind`'s rows of `batch` the review leaves out unless the
- * reviewer ticks them, derived from the batch as it is now: every row the
- * server holds `unchanged` ({@link unchangedKeysOf}), and every row left
- * without a patient as it will be written (`importer-core`'s
+ * The keys of the rows of `group`, `kind`'s resolved group, the review
+ * leaves out unless the reviewer ticks them, derived from the batch as it is
+ * now: every row the server holds `unchanged` ({@link unchangedKeysOf}), and
+ * every row left without a patient as it will be written (`importer-core`'s
  * `keysWithoutPatientOf`), so a link or a pick that gives it one takes it
  * back in.
  *
- * @param batch - The resolved batch
+ * @param plan - The plan the batch was resolved on
  * @param kind - A format the batch claimed
+ * @param group - The format's resolved group
  * @param comparisons - The format's own verdicts by resource key
  * @param selection - The format's selection, whose edits are asked of
  */
 const formatExcludedByDefault = (
-  batch: ResolvedBatch,
+  plan: LinkPlan.Type,
   kind: FormatKind,
+  group: ReviewGroup.Type,
   comparisons: ReadonlyMap<string, ServerComparison> | undefined,
   selection: StagedImport.Selection
 ): ReadonlySet<string> =>
   new Set([
-    ...unchangedKeysOf(DecodedFile.resources(batch.formats[kind].decoded), comparisons),
-    ...keysWithoutPatientOf(batch, kind, selection),
+    ...unchangedKeysOf(ReviewGroup.rows(group), comparisons),
+    ...keysWithoutPatientOf(plan, kind, group, selection),
   ])
 
 export {

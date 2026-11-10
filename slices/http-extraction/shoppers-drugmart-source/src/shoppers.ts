@@ -54,6 +54,11 @@ const ShoppersIdentifierSystem = {
   PrescriptionNumber: `${SYSTEM_BASE}/identifier/prescription-number`,
   /** A dispense's `dispenseId`. */
   DispenseId: `${SYSTEM_BASE}/identifier/dispense-id`,
+  /**
+   * A prescriber the portal knows only by `prescriberName`: the name, trimmed
+   * and its whitespace collapsed (`fhir-r4`'s `Practitioner.nameIdentifier`).
+   */
+  PractitionerName: `${SYSTEM_BASE}/identifier/practitioner-name`,
 } as const
 
 /**

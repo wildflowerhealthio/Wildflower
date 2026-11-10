@@ -25,8 +25,8 @@ registry entries; it touches neither `importer-fundamentals` nor
 `http-extraction`. There is **no per-format review UI**: the shell renders every
 format's decoded sections through one generalized per-resource review (include
 checkboxes, inline JSON edit, diagnostic notes). A format's whole review surface
-is what its `decodeFileSet` returns — sections of labeled resources, plus a
-note per thing that did not become a resource.
+is what its `decodeFileSet` returns — sections of records, each under a local
+key, plus a note per thing that did not become a resource.
 
 | Piece           | Where                                          | Contract                                                      |
 | --------------- | ---------------------------------------------- | ------------------------------------------------------------- |
@@ -34,7 +34,7 @@ note per thing that did not become a resource.
 | Response kinds  | `slices/http-extraction/*-source/`             | `HttpResponseKind` — recognize + parse (only if HTTP-shaped)  |
 | Importer        | `*-importer-core/src/<format>-importer.ts`     | one `FileImporter.Type` literal over `DecodeFunction.make`    |
 | Settings        | `*-importer-core/src/settings.ts`              | `TSettings` + `defaultSettings` (both `null` if none)         |
-| Persistence     | shell-owned                                    | one shared `persistBatchBundle` — write no sink               |
+| Persistence     | shell-owned                                    | one shared `persistTransactionBundle` — write no sink         |
 | Source file     | the `sourceFileFormat` you state               | minted by `importer-core`'s import stage                      |
 | Settings picker | `*-importer-react/src/settings-picker.tsx`     | `SettingsPickerProps<TSettings>` (only if it has settings)    |
 | Registry entry  | `importer-core/src/registry.ts`                | `FormatSettings` + `formatRegistry` + `defaultFormatSettings` |
@@ -58,19 +58,21 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 You write **one file set at a time**. `decodeFileSet(pickedFiles, settings)` takes
 the picked files that are decoded together — each a `PickedFile.Type`
 (`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) —
-and yields a `DecodeFunction.FileSetDecode`: titled sections of labeled,
-**detached** resources, plus diagnostic notes.
+and yields one `DecodedFileSet.Type`: its `pickedFiles` (§1, below), titled
+sections (`SectionedList`) of records, each a `FileSetRecord`
+`{ localKey, resource }` with its resource **detached**, and diagnostic notes.
 
 ```ts
 const decodeMyFormat = (
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: MySettings
-): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> => …
+): Effect.Effect<DecodedFileSet.Type, ParseResult.ParseError> => …
+// { pickedFiles: pickedFiles.map(DecodedFileSet.unidentified), sectionedList, notes }
 // each section:
-//   {
+//   Section.make(
 //     title,
-//     entries: resources.map((resource) => ({ fullUrl, resource })),
-//   }
+//     resources.map((resource): FileSetRecord.Type => ({ localKey, resource }))
+//   )
 ```
 
 Write each resource detached (`fhir-r4-adoption`'s `DetachedResource`): no
@@ -88,9 +90,11 @@ and providers), never a digest (DICOM still keys by one; #1508 moves it to
 its files' issuers). A record nothing references may stay keyless.
 Decode each wire with `DetachedResource.decodeUnknown(<Type>.Schema)`, which
 fails a wire that carries an `id`. A section carries no source base URL or
-system: everything the import stage needs is on the records. An entry's `fullUrl` is its identity within the
-set, as in a FHIR transaction bundle; for a format with settings it must be
-stable across a settings re-decode. The import stage titles every row by the
+system: everything the import stage needs is on the records. A record's
+`localKey` is your stable name for it within the set: it only has to be unique
+within the set, and the import stage builds the record's review key from it;
+for a format with settings it must be stable across a settings re-decode. The
+import stage titles every row by the
 reference it will be written under (`DecodedFileSet.writtenReferenceTitle`), and
 makes every `wf-` id; the decode makes neither.
 
@@ -100,26 +104,27 @@ A format whose files must be read **together** — a multi-part archive, a
 manifest naming its siblings, a DICOM study — states a `groupBy` instead (see
 §5).
 
-`DecodeFunction.make` lifts that into the batch `decode(files, settings)` the
-shell runs across every file the format claimed. That lifted decode:
+`DecodeFunction.make` lifts that into the format's `decode(files, settings)`
+the shell runs across the picks the format claimed. That lifted decode:
 
-- **namespaces every `fullUrl`** with the set's first picked file, so two sets
-  cannot collide on a key (see the obligations below);
 - folds a `ParseError` into one `unreadableFiles` row per picked file of the
   failing set;
-- returns each set apart with its picked files and its sections.
+- returns each set apart, as your `decodeFileSet` returned it.
 
 `importer-core`'s import stage (`importDecoded`, which `readBatch` runs over
 every format's `decode`) then, per set:
 
 - mints a source file for **every** picked file, its `masterIdentifier` what
   the picked file identified itself as (§1);
-- adopts the set's records (`DecodedFileSet.adopt`): a keyed record under the
+- adopts the set's records (`DecodedFileSet.adopt(decoded, keyPrefix)`): each
+  row's review key is the set's first picked file's prefix
+  (`FormatDecode.keyPrefix`) before the record's local key, so two sets cannot
+  collide on a key (see the obligations below); a keyed record lands under the
   `wf-` id its key derives, a keyless one under a random id, and each logical
-  reference to a record of the set resolved to a literal one (a reference to
-  anything else stays logical, for the identity map), so every record has its id
-  before the hooks below run;
-- lets the format link each source file to what the set decoded to
+  reference to a record of the set is resolved to a literal one (a reference
+  to anything else stays logical, for the identity map), so every record has
+  its id before the hooks below run;
+- lets the format link each source file to the set's adopted records
   (`linkSourceFile`, §4) and each record to the source files it was read from
   (`linkToSourceFiles`, §4), and prepends the source files as their own
   **"Source file"** / **"Source files"** section;
@@ -155,21 +160,23 @@ as `identifiedAs` (`DecodedFileSet.PickedFileIdentity`; DICOM: the SOP Instance
 UID as `urn:oid:<uid>` under `urn:ietf:rfc:3986`). The import stage writes that
 onto the file's source file as `masterIdentifier`, and the format's
 `linkToSourceFiles` (§4) matches each record to a source file by it. A format
-whose files name nothing leaves `pickedFiles` out, and each picked file
-identifies as nothing.
+whose files name nothing returns `pickedFiles.map(DecodedFileSet.unidentified)`,
+each picked file identifying as nothing.
 
 Four obligations:
 
-- **Stable resource keys.** A section entry's `key` must be unique within
-  one decode of a set (HAR keys by `responseId:index`). For a format with
-  settings it must also be stable across settings changes where the
-  underlying resource is unchanged (DICOM keys by the resource's role),
-  because the reviewer's per-resource exclusions and inline edits are keyed
-  by it and must survive a settings re-decode. Key **within one set** and do not
-  try to make keys unique across the batch yourself — `DecodeFunction.make`
-  prefixes each set's keys with its first picked file
-  (`FormatDecode.keyPrefix`), which is what makes a fixed key like `patient`
-  safe when the reviewer picked eight images at once.
+- **Stable local keys.** A record's `localKey` becomes its review key at
+  adopt (`ReviewRow`'s `reviewKey`), so it must be unique within one decode of
+  a set (HAR uses `<response id>:<index>`). For a format with settings it must
+  also be stable across settings changes where the underlying resource is
+  unchanged (DICOM names it by the resource's role), because the reviewer's
+  per-resource exclusions and inline edits are keyed by it and must survive
+  a settings re-decode. Name records **within one set** and do not try to
+  make them unique across the format's other sets yourself — the import stage
+  prefixes each set's local keys with its first picked file
+  (`FormatDecode.keyPrefix`, in `DecodedFileSet.adopt`), which is what makes a
+  fixed local key like `patient` safe when the reviewer picked eight images
+  at once.
 - **Sections are the display.** Pick a sectioning that means something to the
   reviewer: HAR sections by URL, LifeLabs by report. A section's `title` is the
   heading the shell renders.
@@ -182,11 +189,14 @@ Four obligations:
   carries a literal to a `Patient` or `Practitioner` the same decode emits, or
   is a logical reference: `type` stated, and an `identifier` with both
   `system` and `value`. A provider known only by a printed name is `fhir-r4`'s
-  `Practitioner.tryReferenceFromName(<name>)` (or its
-  `tryReferenceWireFromName`), the name identifier beside the `display`, as
-  the Shoppers and Rexall prescribers and DICOM's referring physician are. A
-  `display`-only reference, or an identifier-only one that states no type,
-  names nobody the map can link. See the
+  `Practitioner.tryReferenceFromName(<system>, <name>)` (or its
+  `tryReferenceWireFromName`), `<system>` the format's own practitioner-name
+  system, the name identifier beside
+  the `display`, as the Shoppers and Rexall prescribers, LifeLabs' providers
+  and DICOM's referring physician are. The format emits no Practitioner for
+  such a name: `DecodedFileSet.adopt` implies one per name across the set,
+  named by the display. A `display`-only reference, or an identifier-only one
+  that states no type, names nobody the map can link. See the
   [Source Identity Explanation](../../http-extraction/fhir-r4-adoption/docs/Source%20Identity%20Explanation.md#the-identity-map).
 
 ## 2. The settings
@@ -209,8 +219,8 @@ it, so it is never re-decoded.
 
 There is no `persist` field. Every FHIR-targeting importer writes through the
 shell's one shared `persistTransactionBundle` (`fhir-r4/clients`), so a binding
-brings no write sink and names no write client — `FileImporter` takes no `R`
-parameter. `importer-core`'s `planWrite` turns the batch's reviewed selections
+brings no write sink and names no write client — `FileImporter`'s `R` is only
+what its decode requires to read its bytes (§1). `importer-core`'s `planWrite` turns the batch's reviewed selections
 into a `WriteDecision` per reviewed resource, and the shell sends the
 `Included` ones, every format's and the batch's linked records, as one
 `POST /` transaction bundle. The confirm adds nothing to any resource: the
@@ -257,18 +267,18 @@ source file back yields the stored one, so decode-then-encode is the identity on
 State **`linkSourceFile`** on the importer when the format's source files should
 point at what was read out of them. The import stage calls it once for each
 picked file, with that file's source-file `DocumentReference` as built and
-every record the file's set decoded to, and stores the `DocumentReference` it
-returns. It reads the links off the records already produced rather than
+the set's records, adopted (an `AdoptedFileSet`), and stores the
+`DocumentReference` it returns. It reads the links off the records already produced rather than
 parsing the files a second time:
 
 ```ts
 const linkToPatientAndStudy = (
-  sourceFile: DocumentReference.Type,
-  decoded: DecodedFile.DecodedFile
-): DocumentReference.Type => ({
+  sourceFile: PickedFile.SourceFile,
+  adopted: AdoptedFileSet.Type
+): PickedFile.SourceFile => ({
   ...sourceFile,
-  subject: patientReferenceOf(decoded),
-  context: { ...(sourceFile.context ?? emptyContext), related: relatedOf(decoded) },
+  subject: patientReferenceOf(adopted),
+  context: { ...(sourceFile.context ?? emptyContext), related: relatedOf(adopted) },
 })
 ```
 
@@ -340,7 +350,7 @@ picked file and returns the key that file shares with its set-mates, or a `Left`
 when the file states none — which reports it as its own `unreadableFiles` row,
 ahead of any failing set, in the order the files were picked. Sets come out in
 the order the picked files that opened them arrived. Nothing else changes — the
-key namespacing and the failure folding are the constructor's, and the mint, the
+failure folding is the constructor's, and the key namespacing, the mint, the
 source file section and the `meta.source` stamp the import stage's, either way.
 
 `dicom-importer-core` is the worked example. What decodes together there is a
@@ -365,7 +375,7 @@ with nothing on a prototype to lose.
 
 `detect` is the routing decision at the picker: the shell tries every registered
 format's `detect` on the picked bytes, and the first match wins
-(`FormatDetector.claiming` in `importer-fundamentals`, `groupByFormat` in
+(`FormatDetector.claiming` in `importer-fundamentals`, `claimPicks` in
 `importer-core`). Keep it syntactic — an extension or a magic-bytes sniff — so
 the full parse still runs only in `decodeFileSet`. Your `format` and `detect`
 together are all `FormatDetector.Type` asks for, which is how the picker sniffs
@@ -374,7 +384,7 @@ a file without naming your settings type.
 ## 6. Register
 
 **The importer half, in `importer-core`.** Add the binding package as a
-dependency of `importer-core`, run `vp install`, and extend four constructs —
+dependency of `importer-core`, run `vp install`, and extend three constructs —
 all mapped or exhaustive types over `FormatKind`, so a format missed in any of
 them **fails to compile**:
 
@@ -382,9 +392,6 @@ them **fails to compile**:
    settings type.
 2. **`formatRegistry`** (`registry.ts`) — the literal registry of importers.
 3. **`defaultFormatSettings`** (`registry.ts`) — the default settings record.
-4. **`collectFormats`** (`read-batch.ts`) — the one place that names every
-   format literally, because TypeScript drops the correlation between a
-   computed union key and its value (its remarks explain why).
 
 `formatKinds` does **not** need an entry — it is derived from `formatRegistry`.
 
@@ -432,7 +439,7 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 `/javascript-testing-expert` command). Cover each layer where it lives:
 
 - **Decode** — a fixture file decodes to the expected sections and notes; for
-  a format with settings, keys are stable across a settings change. Pin the
+  a format with settings, local keys are stable across a settings change. Pin the
   source file contract too: a pick yields a "Source file" first section and
   `meta.source` on every extracted resource, the minted id is the same for the
   same bytes and name, and malformed bytes yield an `unreadableFiles` entry

@@ -7,8 +7,8 @@ import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-ty
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Data, type Effect } from 'effect'
 
+import type * as AdoptedFileSet from './adopted-file-set.ts'
 import type * as DecodeFunction from './decode-function.ts'
-import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
 
 /** One picked file of a set, beside the source file the import stage stores it as. */
@@ -63,7 +63,7 @@ interface Type<TSettings, TFormat extends string, R = never> {
   /** Claims a picked file — `format` and this together satisfy `FormatDetector.Type`. */
   readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
   readonly defaultSettings: TSettings
-  /** The batch decode the shell runs: never failing, requiring `R` of its caller. */
+  /** The format's decode the shell runs: never failing, requiring `R` of its caller. */
   readonly decode: DecodeFunction.Type<TSettings, TFormat, R>
   /**
    * The format's source file constants — what its source files are written under,
@@ -79,7 +79,7 @@ interface Type<TSettings, TFormat extends string, R = never> {
    * @remarks
    * The import stage calls it once for each picked file, after it has decoded
    * the file's set and built the file's source-file `DocumentReference`. It is
-   * given that `DocumentReference` and every record the set decoded to, and
+   * given that `DocumentReference` and every record of the set, adopted, and
    * returns the `DocumentReference` to store. DICOM's sets `subject` to the
    * study's `Patient` and `context.related` to its `ImagingStudy`, so the
    * stored file sits in the patient's record beside the study it holds.
@@ -94,10 +94,7 @@ interface Type<TSettings, TFormat extends string, R = never> {
    * `Patient/$everything`.
    */
   readonly linkSourceFile?:
-    | ((
-        sourceFile: PickedFile.SourceFile,
-        decoded: DecodedFile.DecodedFile
-      ) => PickedFile.SourceFile)
+    | ((sourceFile: PickedFile.SourceFile, adopted: AdoptedFileSet.Type) => PickedFile.SourceFile)
     | undefined
   /**
    * Points a record at the source files it was read from, for a format whose

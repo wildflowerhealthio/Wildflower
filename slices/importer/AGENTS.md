@@ -22,6 +22,20 @@ generators through the same `importer-fundamentals` and format bindings.
 
 Part of the offline FHIR HAR importer epic (#489).
 
+## Vocabulary
+
+- **Pick**: one file the user picked, its name and bytes (`PickedFile`).
+- **Batch**: everything picked in one go — all the picks, across every
+  format, reviewed together and confirmed as one write.
+- **File set**: the picks one format decodes together (`DecodedFileSet`): a
+  single file for HAR and LifeLabs, a study's files for DICOM.
+- **Review group**: what the review shows of one format, every file set of
+  it adopted (`ReviewGroup`).
+
+A batch holds picks; each format claims its picks (`claimPicks`) into file
+sets; each format's file sets become one review group, and the records the
+batch only links to are one more group, the linked records.
+
 ## Package roles
 
 Each package's own AGENTS.md is the authority on its shape; the roles:
@@ -32,19 +46,22 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   takes its prescription's) — the `FileImporter` contract (an interface a binding
   writes as a literal, with its `sourceFileFormat` coding constants and
   optional `linkSourceFile` and `linkToSourceFiles` hooks) and
-  `DecodeFunction.make`, the one constructor of the batch `decode`: a binding
-  gives how one set of files decodes (`decodeFileSet`) and — only if its files
+  `DecodeFunction.make`, the one constructor of a format's `decode`: a binding
+  gives how one file set decodes (`decodeFileSet`) and — only if its files
   are read together — the key they share (`groupBy`). Back comes one
-  `FormatDecode.Decoded` per format: each file set apart, its records in
-  `DecodedFileSet.Section`s under review keys namespaced so one set's keys cannot
-  collide with another's, plus an `unreadableFiles` row per picked file that
-  rejected. Also the `PickedFile` vocabulary and the codec that stores a
+  `FormatDecode.Decoded` per format: each file set apart (`DecodedFileSet`:
+  its picked files, its records in sections (`SectionedList`) under local keys
+  unique within the set, and its notes), plus an `unreadableFiles` row per
+  picked file that rejected. `DecodedFileSet.adopt` is the import stage's
+  step that gives each record its id and its review row (`ReviewRow`), keyed
+  by the set's key prefix before its local key, so one set's keys cannot
+  collide with another's. Also the `PickedFile` vocabulary and the codec that stores a
   pick as a source file and reads it back, the `FormatDetector` seam
   the picker sniffs with, the pure per-resource `StagedImport` model, and the
   **identity map**: the referents a batch names, the `LinkChoice` per referent
-  and the `MentionLinkChoices` for single mentions, `ReferentSearch` (the one
+  and the `MentionLinkChoiceSet` for single mentions, `ReferentSearch` (the one
   identifier search that defaults each referent), and the pure phases that
-  resolve a batch's decoded files on those choices (`LinkPlan`,
+  resolve a batch's decoded rows on those choices (`LinkPlan`,
   `FileResolution`). There is no `persist` sink: the write is the shell's one
   `persistTransactionBundle`.
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
@@ -80,17 +97,19 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **[`importer-core`](./importer-core/AGENTS.md)** (the pure core) — the closed
   importer registry (`FormatKind`, `FormatSettings`, `BoundFormat<K>`,
   `formatRegistry`, `defaultFormatSettings`, and `formatKinds` derived from the
-  registry) and the batch machinery over it: `groupByFormat` splits a pick by
-  the first claiming `detect`, `decodeFormat` runs one format's `decode` under
-  its own settings and imports it through `importDecoded` — the import stage,
-  the one place a detached record is adopted, a source file is minted and
-  `meta.source` is stamped — `readBatch` yields a `DecodedBatch` — one
-  `FormatDecode.Result` per registered format plus the `UnrecognizedFile`s —
-  `claimedFormats` names the formats that actually took part, `redecodeFormat`
-  re-runs one format's files from their retained picks under new settings,
+  registry) and the batch machinery over it: `claimPicks` splits a batch's
+  picks by the first claiming `detect`, `decodeFormat` runs one format's
+  `decode` under its own settings and imports it through `importDecoded` — the
+  import stage, the one place a detached record is adopted, a source file is
+  minted and `meta.source` is stamped — `readBatch` yields a `DecodedBatch` —
+  one `ReviewGroup` per claimed format, each holding the picks it was read
+  from, and the `UnrecognizedFile`s; a format took part exactly when it has a
+  group — `redecodeFormat` re-runs one format's picks, as its group holds
+  them, under new settings,
   `discoverReferents` and `resolveMentions` lift the identity map over the
   whole batch (one referent per identity across formats, one plan, a
-  `ResolvedBatch` with the batch's linked records), and
+  `ResolvedBatch` whose groups are the resolved formats' and the batch's
+  linked records'), and
   `planWrite` turns the batch's reviewed selections into a `WriteDecision` per
   reviewed resource, the `Included` ones exactly the resources to write. No
   DOM, no React, no client.
@@ -161,18 +180,20 @@ sits above `http-extraction` and below every binding.
   **resolved** batch: each referent's mentions are redirected to its link
   target, a decoded Patient or Practitioner linked to a stored one is
   replaced by it under the same review key, the stored or decoded resource
-  assumes the identifiers of the referents linked to it, and the records the
-  batch only mentions are its linked records. The shell runs it as a memo
+  assumes the identifiers of the referents linked to it, and the stored
+  records the batch only links to are its linked records. The shell runs it as a memo
   (`importer-core`'s `resolveMentions`) and hands the resolved batch to the
   server diff, the preview and the confirm, so all three see the resources
   that get written. Identity never enters the `StagedImport` selection, which
   keeps its two axes, exclusions and edits; a per-mention pick is a
-  `MentionLinkChoices` entry the plan resolves, not an edit. No format links
+  `MentionLinkChoiceSet` entry the plan resolves, not an edit. No format links
   anything itself: a format's job is to make each resource name its identity,
   by a literal to a resource the same decode emits or by a logical reference
   that states its `type` and carries an `identifier` with a `system` and a
-  `value` (`Practitioner.tryReferenceFromName` for a provider known only by a
-  printed name). See the
+  `value` (`Practitioner.tryReferenceFromName` in the source's own name
+  system for a provider known only by a printed name; with a `display`, the
+  import stage implies the record such a reference names when the set holds
+  none). See the
   [Source Identity Explanation](../http-extraction/fhir-r4-adoption/docs/Source%20Identity%20Explanation.md#the-identity-map)
   for the model.
 - **The picker takes bytes, and identifies against every registered
@@ -183,9 +204,9 @@ sits above `http-extraction` and below every binding.
   mints the source file it came from, because the id is a hash of its bytes and its
   name. The picker runs each registered format's `detect` on every
   drop and yields the pick tagged with the first format that claims it, so
-  a batch may span formats — `importer-core`'s `readBatch` groups the pick by
-  format, runs each format's own batch `decode` under that format's
-  settings, and imports what it decoded: `importer-core`'s import stage mints
+  a batch may span formats — `importer-core`'s `readBatch` splits the batch by
+  the format that claims each pick, runs each format's `decode` on the picks
+  it claimed under that format's settings, and imports what it decoded: `importer-core`'s import stage mints
   each picked file's source file `DocumentReference` under the format's
   constants, lets the format link it to the records and the records to it,
   lists it among the reviewed

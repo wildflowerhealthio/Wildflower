@@ -14,7 +14,6 @@ import { LifeLabsIdentifierSystem } from '../source-system.ts'
 import {
   observationKeyOf,
   patientKeyOf,
-  practitionerKeyOf,
   reportKeyOf,
   type ReportResources,
   type SynthesisOptions,
@@ -34,7 +33,7 @@ const patientKeyIn = (
 
 /** A group's resources, in order; none for no group. */
 const resourcesOf = (group: ReportResources | undefined): readonly FhirResource[] =>
-  group?.entries.map(({ resource }) => resource) ?? []
+  group?.records.map(({ resource }) => resource) ?? []
 
 /** The synthesized groups flattened in order — most assertions read the whole set. */
 const synthesize = (
@@ -203,13 +202,16 @@ describe('toFhirResources', () => {
           expect(patientIds.has(targetOf(observation.subject))).toBe(true)
         }
 
-        // Every resultsInterpreter reference resolves to a Practitioner minted
-        // somewhere in the batch — a provider deduped into an earlier report's
-        // group is still present once the groups are flattened.
-        const practitionerIds = new Set(ofType(resources, 'Practitioner').map(idOf))
+        // No provider is a record: every resultsInterpreter reference names
+        // one by the printed name, for the import stage to imply.
+        expect(ofType(resources, 'Practitioner')).toEqual([])
         for (const report of diagnosticReports) {
           for (const interpreter of report.resultsInterpreter) {
-            expect(practitionerIds.has(targetOf(interpreter))).toBe(true)
+            expect([interpreter.type, interpreter.identifier?.system?.href]).toEqual([
+              'Practitioner',
+              LifeLabsIdentifierSystem.PractitionerName,
+            ])
+            expect(interpreter.display?.trim()).toBe(interpreter.display)
           }
         }
       }),
@@ -235,14 +237,11 @@ describe('toFhirResources', () => {
     })
   })
 
-  it('emits each practitioner and patient once across reports that share them', () => {
+  it('emits each patient once across reports that share them, and no practitioner', () => {
     const resources = synthesize([sample, { ...sample, labNo: LabNumber.make('2024-JJ0000001') }])
 
     expect(ofType(resources, 'Patient')).toHaveLength(1)
-    expect(ofType(resources, 'Practitioner').map((p) => p.name[0]?.text)).toEqual([
-      'HAMILTON-REYES DR. SAM',
-      'NGUYEN DR. LEE',
-    ])
+    expect(ofType(resources, 'Practitioner')).toEqual([])
     expect(ofType(resources, 'DiagnosticReport')).toHaveLength(2)
   })
 
@@ -366,11 +365,32 @@ describe('toFhirResources', () => {
     ])
   })
 
-  it('keys a practitioner by the printed name, inner whitespace collapsed', () => {
-    expect(practitionerKeyOf('  HAMILTON-REYES   DR.\tSAM ')).toEqual({
-      system: LifeLabsIdentifierSystem.PractitionerName,
-      value: 'HAMILTON-REYES DR. SAM',
-    })
+  it('names a provider by the printed name, inner whitespace collapsed, shown as keyed', () => {
+    const [report] = ofType(
+      synthesize([{ ...sample, orderedBy: '  HAMILTON-REYES   DR.\tSAM ', copyTo: [] }]),
+      'DiagnosticReport'
+    )
+
+    expect(
+      report?.resultsInterpreter.map((interpreter) => [targetOf(interpreter), interpreter.display])
+    ).toEqual([
+      [
+        `${LifeLabsIdentifierSystem.PractitionerName}|HAMILTON-REYES DR. SAM`,
+        'HAMILTON-REYES DR. SAM',
+      ],
+    ])
+  })
+
+  it('names a provider printed twice on one report once', () => {
+    const [report] = ofType(
+      synthesize([{ ...sample, copyTo: ['HAMILTON-REYES  DR. SAM', 'NGUYEN DR. LEE'] }]),
+      'DiagnosticReport'
+    )
+
+    expect(report?.resultsInterpreter.map(targetOf)).toEqual([
+      `${LifeLabsIdentifierSystem.PractitionerName}|HAMILTON-REYES DR. SAM`,
+      `${LifeLabsIdentifierSystem.PractitionerName}|NGUYEN DR. LEE`,
+    ])
   })
 
   it('keys a result row by lab number, section, test name and ordinal, as printed', () => {
@@ -405,9 +425,13 @@ describe('toFhirResources', () => {
     ])
     // Every provider named on the report — the ordering provider and each CC'd
     // provider — is a resultsInterpreter reference, in that order.
+    expect(report?.resultsInterpreter.map(({ display }) => display)).toEqual([
+      'HAMILTON-REYES DR. SAM',
+      'NGUYEN DR. LEE',
+    ])
     expect(report?.resultsInterpreter.map(targetOf)).toEqual([
-      keyText(practitionerKeyOf(sample.orderedBy)),
-      keyText(practitionerKeyOf(sample.copyTo[0] ?? '')),
+      `${LifeLabsIdentifierSystem.PractitionerName}|HAMILTON-REYES DR. SAM`,
+      `${LifeLabsIdentifierSystem.PractitionerName}|NGUYEN DR. LEE`,
     ])
   })
 
@@ -607,11 +631,10 @@ describe('toFhirResources', () => {
 
     expect(groups.map((group) => group.report)).toEqual([sample, second])
     const [first, again] = groups
-    // The two reports name the same patient and practitioners — deduplicated
-    // by key, they appear in the first group and never again.
+    // The two reports name the same patient — deduplicated by key, it appears
+    // in the first group and never again.
     expect(ofType(resourcesOf(first), 'Patient')).toHaveLength(1)
     expect(ofType(resourcesOf(again), 'Patient')).toHaveLength(0)
-    expect(ofType(resourcesOf(again), 'Practitioner')).toHaveLength(0)
     // Each group still carries its own DiagnosticReport and Observations.
     expect(ofType(resourcesOf(first), 'DiagnosticReport')).toHaveLength(1)
     expect(ofType(resourcesOf(again), 'DiagnosticReport')).toHaveLength(1)

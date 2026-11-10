@@ -5,8 +5,8 @@
  * @remarks
  * Detection is the one thing several callers need from a format without
  * needing the format. The picker runs it to reject a file next to the control
- * the user just used; `importer-core`'s `readBatch` runs it again to group a
- * batch. Neither reads a `decode`, a `defaultSettings` or a source-file codec,
+ * the user just used; `importer-core`'s `readBatch` runs it again to split a
+ * batch by format. Neither reads a `decode`, a `defaultSettings` or a source-file codec,
  * and neither should have to name the settings type of a format it is only
  * sniffing — so the seam is this two-field structural type rather than a
  * widened {@link FileImporter.Type}.

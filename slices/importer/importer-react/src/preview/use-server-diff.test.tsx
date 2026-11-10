@@ -7,7 +7,7 @@ import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/c
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import { FormatDecode, LinkPlan } from '@wildflowerhealthio/importer-fundamentals'
+import { LinkPlan, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Layer, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
@@ -38,34 +38,27 @@ const RETRIES_TIMEOUT = 8_000
 const patient = (id: string): FhirResourceWithId =>
   Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
-/** A HAR result holding `resources`, the other formats claiming nothing. */
+/** A HAR group holding `resources`, the other formats claiming nothing. */
 const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => {
-  const decodedBatch = {
-    formats: {
-      har: {
-        ...FormatDecode.emptyResult('har'),
-        title: 'a.har',
-        files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
-        decoded: {
-          sections: [
-            {
-              title: 'Resources',
-              resources: resources.map((resource, index) => ({
-                key: `k-${index}`,
-                title: resource.resourceType,
-                resource,
-              })),
-            },
-          ],
-          notes: [],
+  const groups = {
+    har: {
+      sectionedList: SectionedList.make([
+        {
+          title: 'Resources',
+          rows: resources.map((resource, index) => ({
+            reviewKey: `k-${index}`,
+            title: resource.resourceType,
+            isImplied: false,
+            resource,
+          })),
         },
-      },
-      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-      dicom: FormatDecode.emptyResult('dicom'),
+      ]),
+      notes: [],
+      unreadableFiles: [],
+      files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
     },
-    unrecognizedFiles: [],
   }
-  return { ...decodedBatch, linkedRecords: [], plan: LinkPlan.empty, decodedBatch }
+  return { groups, plan: LinkPlan.empty, decoded: { groups, unrecognizedFiles: [] } }
 }
 
 /** A server that holds nothing: every GET entry of the diff bundle is a 404, so every id is new. */

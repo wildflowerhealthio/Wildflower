@@ -8,7 +8,7 @@
  * which the host provides (`positioned-text-web`'s pdfjs layer). No DOM code,
  * no `fs`, no React, no extraction library: a `wildflower-positioned-text` document in,
  * typed `LifeLabsReport` records out, and FHIR resources synthesized for the
- * shell's review — the opt-in write is the shell's own `persistBatchBundle`,
+ * shell's review — the opt-in write is the shell's own `persistTransactionBundle`,
  * not a field on this format's importer.
  *
  * @packageDocumentation

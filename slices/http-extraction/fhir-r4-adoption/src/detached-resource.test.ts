@@ -1,4 +1,8 @@
-import { type FhirResource, FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResource,
+  FhirResourceSchema,
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Arbitrary, Array as Arr, FastCheck as fc, Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -56,4 +60,16 @@ describe('hasIdentifier', () => {
       })
     }
   }
+})
+
+describe('decodeUnknownEither', () => {
+  const decodePatient = DetachedResource.decodeUnknownEither(Patient.Schema)
+
+  test('decodes a detached record, and fails one with an id or one the schema rejects', () => {
+    expect(decodePatient({ resourceType: 'Patient', name: [{ text: 'Tyra Banks' }] })._tag).toBe(
+      'Right'
+    )
+    expect(decodePatient({ resourceType: 'Patient', id: 'p-1' })._tag).toBe('Left')
+    expect(decodePatient({ resourceType: 'Patient', gender: 'dragon' })._tag).toBe('Left')
+  })
 })

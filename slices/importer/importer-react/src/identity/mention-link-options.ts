@@ -5,9 +5,8 @@
  * choice picking it makes.
  *
  * @remarks
- * A pick onto a record a referent of the batch owns (its decoded resource,
- * or the provisional one its logical reference stands for) is
- * `LinkToDecodedReferent` of that referent, so the mention follows the
+ * A pick onto a record a referent of the batch owns (its decoded resource)
+ * is `LinkToDecodedReferent` of that referent, so the mention follows the
  * referent when it is later linked to a stored one; a pick onto a stored
  * record no referent owns is `LinkToStoredResource`, which no referent's
  * later choice moves.
@@ -31,7 +30,7 @@ import * as LinkChoiceOptions from './link-choice-options.ts'
  * option (its value and its label), the mention link choice picking it
  * makes, and the literal reference it is written under.
  */
-interface MentionLinkOption extends LinkChoiceOptions.Option {
+interface MentionLinkOption extends Omit<LinkChoiceOptions.Option, 'choice'> {
   readonly choice: LinkChoice.MentionLinkChoice
   readonly resourceType: LinkableLogicalReference.ResourceType
   readonly literalReference: string

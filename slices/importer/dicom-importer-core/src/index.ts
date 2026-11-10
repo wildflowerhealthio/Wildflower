@@ -28,6 +28,7 @@ export {
 export { dicomCalendarDate, dicomInstant } from './fhir/dates.ts'
 export { defaultDicomSettings, runtimeTimeZone, type DicomSettings } from './settings.ts'
 export {
+  DICOM_PRACTITIONER_NAME_SYSTEM,
   DICOM_SOURCE_FILE_CODE,
   DICOM_SOURCE_FILE_CONTENT_TYPE,
   DICOM_SYSTEM,

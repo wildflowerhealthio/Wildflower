@@ -1,11 +1,13 @@
-import { Effect } from 'effect'
+import { Array as Arr, Effect } from 'effect'
 
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
-  type DecodedFileSet,
+  DecodedFileSet,
   DecodeFunction,
   type FileImporter,
+  type FileSetRecord,
+  SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 
 import {
@@ -27,23 +29,24 @@ const fhirPool = SourceDescriptor.poolOf(fhirSources)
 
 /**
  * The previews' records as one section per response URL, in the order each
- * URL first appears in the archive, each record's `fullUrl` its preview key
+ * URL first appears in the archive, each record's local key its preview key
  * (`<response id>:<index>`).
  */
-const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFileSet.Section[] => {
-  const byUrl = new Map<string, DecodedFileSet.Entry[]>()
-  for (const entry of previews) {
-    if (entry.outcome._tag !== 'resources' || entry.outcome.resources.length === 0) continue
-    const labeled = entry.outcome.resources.map(({ key, resource }): DecodedFileSet.Entry => ({
-      fullUrl: key,
-      resource,
-    }))
-    const existing = byUrl.get(entry.ref.url)
-    if (existing === undefined) byUrl.set(entry.ref.url, labeled)
-    else existing.push(...labeled)
-  }
-  return Array.from(byUrl, ([url, entries]) => ({ title: url, entries }))
-}
+const sectionsByUrl = (previews: readonly FhirPreview[]): SectionedList.Type<FileSetRecord.Type> =>
+  SectionedList.map(
+    SectionedList.groupBy(
+      previews.flatMap(({ ref, outcome }) =>
+        outcome._tag === 'resources'
+          ? outcome.resources.map(({ key, resource }) => ({
+              url: ref.url,
+              record: { localKey: key, resource },
+            }))
+          : []
+      ),
+      ({ url }) => url
+    ),
+    ({ record }) => record
+  )
 
 const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
   previews.flatMap((entry) => {
@@ -94,7 +97,8 @@ const harImporter: FileImporter.Type<null, typeof format> = {
         Effect.flatMap((responses) => preview(fhirPool, responses)),
         Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
         Effect.map((previews) => ({
-          sections: sectionsByUrl(previews),
+          pickedFiles: Arr.map(pickedFiles, DecodedFileSet.unidentified),
+          sectionedList: sectionsByUrl(previews),
           notes: notesFor(previews),
         }))
       ),

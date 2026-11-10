@@ -1,12 +1,17 @@
 import {
-  type DecodedFile,
+  AdoptedFileSet,
   DecodedFileSet,
   type FileImporter,
   FormatDecode,
   MetaSource,
   PickedFile,
+  type ReviewRow,
+  Section,
+  SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema } from 'effect'
+
+import type * as ReviewGroup from './review-group.ts'
 
 /**
  * The import stage: one format's decode, file set by file set, made the
@@ -16,8 +21,8 @@ import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema
  * @remarks
  * Per set, {@link importFileSet} mints a source file for every picked file
  * (`PickedFile.FromDocumentReference`'s encode, its `masterIdentifier` what the
- * picked file identified itself as), adopts its detached records
- * (`DecodedFileSet.adopt`: a keyed record under the id its key derives, a
+ * picked file identified itself as), adopts its records under review keys
+ * prefixed by the set's first picked file (`DecodedFileSet.adopt`: a keyed record under the id its key derives, a
  * keyless one under a minted id, each logical reference to a record of the set
  * resolved to a literal one, a dispense with no subject filed on its
  * prescription's), runs the format's `linkSourceFile` over every source file
@@ -69,7 +74,7 @@ const importFileSet = (
   importer: ImportingFormat,
   fileSet: DecodedFileSet.Type
 ): Effect.Effect<
-  DecodedFile.DecodedFile,
+  AdoptedFileSet.Type,
   ParseResult.ParseError | FileImporter.SourceFileNotFound,
   PickedFile.Format
 > =>
@@ -83,7 +88,10 @@ const importFileSet = (
       ),
       { concurrency: 'unbounded' }
     )
-    const adopted = DecodedFileSet.adopt(fileSet)
+    const adopted = yield* DecodedFileSet.adopt(
+      fileSet,
+      FormatDecode.keyPrefix(fileSet.pickedFiles[0].pickedFile)
+    )
 
     const linkSourceFile = importer.linkSourceFile ?? Function.identity
     const linked = Arr.map(sourceFiles, ({ pickedFile, sourceFile }) => ({
@@ -92,19 +100,11 @@ const importFileSet = (
     }))
 
     const linkToSourceFiles = importer.linkToSourceFiles ?? Effect.succeed
-    const sections = yield* Effect.forEach(adopted.sections, (section) =>
-      Effect.map(
-        Effect.forEach(section.resources, (entry) =>
-          Effect.map(linkToSourceFiles(entry.resource, linked), (resource) => ({
-            ...entry,
-            resource,
-          }))
-        ),
-        (resources) => ({ ...section, resources })
-      )
+    const linkedToSourceFiles = yield* SectionedList.forEach(adopted.sectionedList, (row) =>
+      Effect.map(linkToSourceFiles(row.resource, linked), (resource) => ({ ...row, resource }))
     )
-    const stamped = MetaSource.stampDecoded(
-      { ...adopted, sections },
+    const stamped = MetaSource.stampAdopted(
+      { sectionedList: linkedToSourceFiles, notes: adopted.notes },
       MetaSource.makeReference(
         Arr.min(
           Arr.map(linked, ({ sourceFile }) => sourceFile.id),
@@ -113,25 +113,34 @@ const importFileSet = (
       )
     )
 
-    const rows = linked.map(({ pickedFile, sourceFile }): DecodedFile.Resource => ({
-      key: sourceFileKey(pickedFile),
+    const sourceFileRows = linked.map(({ pickedFile, sourceFile }): ReviewRow.Type => ({
+      reviewKey: sourceFileKey(pickedFile),
       title: pickedFile.fileName,
+      isImplied: false,
       resource: sourceFile,
     }))
     // Their own section ahead of what was read out of them, so the reviewer
     // sees what is about to be stored before what it yielded.
-    const title = rows.length === 1 ? SOURCE_FILE_SECTION_TITLE : SOURCE_FILES_SECTION_TITLE
-    return { ...stamped, sections: [{ title, resources: rows }, ...stamped.sections] }
+    const title =
+      sourceFileRows.length === 1 ? SOURCE_FILE_SECTION_TITLE : SOURCE_FILES_SECTION_TITLE
+    return {
+      ...stamped,
+      sectionedList: SectionedList.prepend(
+        stamped.sectionedList,
+        Section.make(title, sourceFileRows)
+      ),
+    }
   })
 
 /**
  * Import one format's decode: every file set through {@link importFileSet},
- * merged into the one review the format's {@link FormatDecode.Result} holds.
+ * merged into the format's one review group, which holds the picks the
+ * format's decode read (`decoded.files`).
  *
  * @param importer - The format's importer, whose source-file constants and
  *   hooks the import reads
  * @param decoded - The format's decode, as its `decode` returned it
- * @returns The imported result, never failing
+ * @returns The format's review group, never failing
  *
  * @remarks
  * Sets are imported concurrently and each is independent: one whose source file
@@ -145,7 +154,7 @@ const importFileSet = (
 const importDecoded = <TFormat extends string>(
   importer: ImportingFormat,
   decoded: FormatDecode.Decoded<TFormat>
-): Effect.Effect<FormatDecode.Result<TFormat>> =>
+): Effect.Effect<ReviewGroup.Type> =>
   Effect.partition(
     decoded.fileSets,
     (fileSet) =>
@@ -156,16 +165,10 @@ const importDecoded = <TFormat extends string>(
       ),
     { concurrency: 'unbounded' }
   ).pipe(
-    Effect.map(([rejected, imported]): FormatDecode.Result<TFormat> => ({
-      id: FormatDecode.makeId(decoded.format, decoded.files),
-      title: decoded.files.map((file) => file.fileName).join(', '),
-      files: decoded.files,
-      format: decoded.format,
-      decoded: {
-        sections: imported.flatMap((one) => one.sections),
-        notes: imported.flatMap((one) => one.notes),
-      },
+    Effect.map(([rejected, imported]): ReviewGroup.Type => ({
+      ...AdoptedFileSet.concatenateAll(imported),
       unreadableFiles: [...decoded.unreadableFiles, ...rejected.flat()],
+      files: decoded.files,
     })),
     Effect.provideService(PickedFile.Format, importer.sourceFileFormat)
   )
