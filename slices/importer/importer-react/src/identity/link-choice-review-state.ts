@@ -7,6 +7,7 @@
  * @packageDocumentation
  */
 
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import type {
   LinkChoice,
@@ -54,7 +55,7 @@ type LinkChoiceReviewState =
 interface IdentityMapReview {
   readonly state: LinkChoiceReviewState
   /** Set the reviewer's choice for the referent keyed `referentKey`. */
-  readonly choose: (referentKey: string, choice: LinkChoice.Type) => void
+  readonly choose: (referentKey: LogicalReference.Key, choice: LinkChoice.Type) => void
   /**
    * Set the reviewer's choice for the mention at `mentionPath` of the
    * resource reviewed under `reviewKey`, over its referent's: a mention link

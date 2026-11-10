@@ -13,7 +13,7 @@
  *
  * @packageDocumentation
  */
-import { Equivalence, Option } from 'effect'
+import { Brand, Equivalence, Option } from 'effect'
 
 import {
   type IdentifierType,
@@ -42,14 +42,24 @@ const make = <TResourceType extends ResourceType.Type>(
 ): Type<TResourceType> => ({ resourceType, identifier: [identifier] })
 
 /**
+ * A logical reference spelt as a key ({@link key}): a string no other string
+ * passes for, so a map keyed by logical references takes no review key, no
+ * literal reference and no hand-spelt key.
+ */
+type Key = string & Brand.Brand<'LogicalReferenceKey'>
+
+/** Brands a spelling {@link key} made; nothing else spells a key. */
+const asKey = Brand.nominal<Key>()
+
+/**
  * How a logical reference is spelt as a key: its `resourceType`, `system`
  * and `value` as JSON, so no separator inside a system or value can make two
  * spell alike. An identifier's other fields (`use`, `type`, `period`,
  * `assigner`, `extension`) do not name what it identifies, so they are left
  * out.
  */
-const key = ({ resourceType, identifier: [{ system, value }] }: Type): string =>
-  JSON.stringify([resourceType, system.href, value])
+const key = ({ resourceType, identifier: [{ system, value }] }: Type): Key =>
+  asKey(JSON.stringify([resourceType, system.href, value]))
 
 /** Two logical references name one record when their type, system and value agree ({@link key}). */
 const equivalence: Equivalence.Equivalence<Type> = Equivalence.mapInput(Equivalence.string, key)
@@ -78,4 +88,4 @@ const tryFromReference = (reference: ReferenceType): Option.Option<Type> => {
 }
 
 export { equivalence, key, make, tryFromIdentifier, tryFromReference }
-export type { Type }
+export type { Key, Type }

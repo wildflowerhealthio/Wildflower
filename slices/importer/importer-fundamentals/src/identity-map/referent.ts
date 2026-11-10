@@ -61,7 +61,8 @@ class DuplicateReferent extends Data.TaggedError('DuplicateReferent')<{
 }> {}
 
 /** The identity map's key for `referent`. */
-const key = (referent: Type): string => LogicalReference.key(referent.logicalReference)
+const key = (referent: Type): LogicalReference.Key =>
+  LogicalReference.key(referent.logicalReference)
 
 /**
  * The logical references `referent`'s own identifiers make, its key's first:
@@ -144,7 +145,7 @@ const tryFromDecodedResource = (row: ReviewRow.Type): Effect.Effect<Option.Optio
   )
 
 /** Every referent of `referents`, keyed by {@link key}. */
-const byKey = (referents: readonly Type[]): HashMap.HashMap<string, Type> =>
+const byKey = (referents: readonly Type[]): HashMap.HashMap<LogicalReference.Key, Type> =>
   HashMap.fromIterable(referents.map((referent) => [key(referent), referent] as const))
 
 /** The first key two of `referents` share under different ids, as the failure it is. */

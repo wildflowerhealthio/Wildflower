@@ -13,6 +13,7 @@
  * @packageDocumentation
  */
 
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { HashMap } from 'effect'
 import { useCallback, useState } from 'react'
 
@@ -44,7 +45,7 @@ interface ReviewerLinkChoices {
   /** The reviewer's link choice set by mention, by `MentionLinkChoiceSet.key`. */
   readonly byMention: MentionLinkChoiceSet.Type
   /** Set the reviewer's choice for the referent keyed `referentKey`. */
-  readonly choose: (referentKey: string, choice: LinkChoice.Type) => void
+  readonly choose: (referentKey: LogicalReference.Key, choice: LinkChoice.Type) => void
   /** Set the reviewer's choice for the mention at `mentionPath` of the resource reviewed under `reviewKey`. */
   readonly chooseMention: (
     reviewKey: string,
@@ -86,7 +87,7 @@ const useReviewerLinkChoices = (
   // pick's read, the previous batch's referents must not be searched again.
   const searched = referents === undefined ? NO_REFERENTS : (current?.searched ?? NO_REFERENTS)
 
-  const choose = useCallback((referentKey: string, choice: LinkChoice.Type): void => {
+  const choose = useCallback((referentKey: LogicalReference.Key, choice: LinkChoice.Type): void => {
     setPerBatch((perBatchBefore) =>
       perBatchBefore === undefined
         ? perBatchBefore

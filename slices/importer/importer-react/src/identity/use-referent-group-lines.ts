@@ -6,6 +6,7 @@
  * @packageDocumentation
  */
 
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type LinkableLogicalReference,
   LinkableResource,
@@ -75,9 +76,9 @@ const useReferentGroupLines = (
   // The built lines are kept in state and adjusted during render (the
   // "derive from a changed prop" pattern), so a line survives the changes it
   // does not depend on.
-  const [builtLines, setBuiltLines] = useState<HashMap.HashMap<string, ReferentLine.Built>>(
-    HashMap.empty()
-  )
+  const [builtLines, setBuiltLines] = useState<
+    HashMap.HashMap<LogicalReference.Key, ReferentLine.Built>
+  >(HashMap.empty())
   const nextBuiltLines = useMemo(
     () => ReferentLine.buildAll(ofType, { linkChoices, storedOfType, onServer }, builtLines),
     [ofType, linkChoices, storedOfType, onServer, builtLines]

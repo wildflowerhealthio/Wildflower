@@ -16,6 +16,7 @@
  * @packageDocumentation
  */
 
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Data } from 'effect'
 
 import type * as LinkableResource from './linkable-resource.ts'
@@ -48,7 +49,7 @@ interface LinkToStoredResource {
  */
 interface LinkToDecodedReferent {
   readonly _tag: 'LinkToDecodedReferent'
-  readonly referentKey: string
+  readonly referentKey: LogicalReference.Key
 }
 
 /** Leave the mention linked to nothing: its literal dropped, its `identifier` and `display` kept. */
@@ -85,7 +86,7 @@ type InvalidLinkChoiceReason = 'StoredResourceOfAnotherType' | 'StoredResourceUn
 /** A choice the stage cannot follow for the referent it is made for. */
 class InvalidLinkChoice extends Data.TaggedError('InvalidLinkChoice')<{
   /** The `Referent.key` the choice is made for. */
-  readonly referentKey: string
+  readonly referentKey: LogicalReference.Key
   readonly choice: Type
   readonly reason: InvalidLinkChoiceReason
 }> {}

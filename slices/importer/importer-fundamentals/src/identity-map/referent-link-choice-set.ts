@@ -11,12 +11,13 @@
  * @packageDocumentation
  */
 
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { HashMap, Option } from 'effect'
 
 import * as LinkChoice from './link-choice.ts'
 import * as Referent from './referent.ts'
 
-type Type = HashMap.HashMap<string, LinkChoice.Type>
+type Type = HashMap.HashMap<LogicalReference.Key, LinkChoice.Type>
 
 /** No choice made for any referent: every referent takes its default. */
 const empty: Type = HashMap.empty()
@@ -32,7 +33,7 @@ const forReferent = (byReferent: Type, referent: Referent.Type): LinkChoice.Type
 const union = (under: Type, over: Type): Type => HashMap.union(under, over)
 
 /** `byReferent` without a choice for the referent keyed `referentKey`. */
-const remove = (byReferent: Type, referentKey: string): Type =>
+const remove = (byReferent: Type, referentKey: LogicalReference.Key): Type =>
   HashMap.remove(byReferent, referentKey)
 
 export { DEFAULT_CHOICE, empty, forReferent, remove, union }

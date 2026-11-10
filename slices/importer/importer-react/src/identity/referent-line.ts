@@ -11,6 +11,7 @@
  * @packageDocumentation
  */
 
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DifferingDemographics,
   LinkChoice,
@@ -91,8 +92,8 @@ const builtFromSame = (
 const buildAll = (
   ofType: readonly Referent.Type[],
   inputs: ReferentLineInputs,
-  previous: HashMap.HashMap<string, BuiltReferentLine>
-): HashMap.HashMap<string, BuiltReferentLine> => {
+  previous: HashMap.HashMap<LogicalReference.Key, BuiltReferentLine>
+): HashMap.HashMap<LogicalReference.Key, BuiltReferentLine> => {
   const entries = ofType.map((referent) => {
     const referentKey = Referent.key(referent)
     const choice = ReferentLinkChoiceSet.forReferent(inputs.linkChoices, referent)

@@ -27,7 +27,7 @@ interface Type {
    * reference, by `LogicalReference.key`.
    */
   readonly literalReferencesByLogicalReference: Record.ReadonlyRecord<
-    string,
+    LogicalReference.Key,
     Arr.NonEmptyReadonlyArray<string>
   >
 }

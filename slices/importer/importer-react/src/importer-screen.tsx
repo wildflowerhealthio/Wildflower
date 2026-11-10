@@ -3,7 +3,6 @@ import { claimedFormats, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
 import {
   type DecodedFile,
   LinkableResource,
-  type LinkChoice,
   Referent,
   SectionedList,
   StagedImport,
