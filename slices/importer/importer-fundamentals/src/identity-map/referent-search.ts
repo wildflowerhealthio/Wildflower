@@ -100,18 +100,16 @@ const isStoredCopyOf = (referent: Referent.Type, stored: LinkableResource.WithId
  * The choice `referent` takes over `storedCopy`, the stored copy of its own
  * resource: `UpdateStoredResource`, so a re-import writes the newer decode
  * over it; but `LinkToStoredResource` for a record the import implied (its
- * reviewable's `origin`), which holds only what a reference said of it and
+ * `isImplied`), which holds only what a reference said of it and
  * would write over everything else the copy holds.
  */
 const storedCopyChoiceOf = (
   referent: Referent.Type,
   storedCopy: LinkableResource.WithId
 ): LinkChoice.Type =>
-  Match.value(referent.reviewable.origin).pipe(
-    Match.when('Decoded', () => LinkChoice.UpdateStoredResource({ resource: storedCopy })),
-    Match.when('Implied', () => LinkChoice.LinkToStoredResource({ resource: storedCopy })),
-    Match.exhaustive
-  )
+  referent.isImplied
+    ? LinkChoice.LinkToStoredResource({ resource: storedCopy })
+    : LinkChoice.UpdateStoredResource({ resource: storedCopy })
 
 /**
  * The choice the `hits` of one search give `referent`: the one over the

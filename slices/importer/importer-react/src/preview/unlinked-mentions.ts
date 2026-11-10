@@ -12,6 +12,7 @@ import { isOfPatient, type LeftUnlinked } from '@wildflowerhealthio/importer-cor
 import {
   type DecodedFile,
   Mention,
+  type ReviewRow,
   SectionedList,
   StagedImport,
   UnlinkedMention,
@@ -61,8 +62,8 @@ const keysNeedingPatient = (unlinked: readonly UnlinkedMention.Type[]): Readonly
 
 /** The resources listed under Needs a patient and under Needs a provider. */
 interface Groups {
-  readonly needingPatient: readonly DecodedFile.Row[]
-  readonly needingProvider: readonly DecodedFile.Row[]
+  readonly needingPatient: readonly ReviewRow.Type[]
+  readonly needingProvider: readonly ReviewRow.Type[]
 }
 
 /**
@@ -79,9 +80,9 @@ const groupsOf = (
   )
   const rows = SectionedList.rows(decodedFile.rows)
   return {
-    needingPatient: rows.filter(({ reviewable }) => patientKeys.has(reviewable.key)),
+    needingPatient: rows.filter(({ reviewKey }) => patientKeys.has(reviewKey)),
     needingProvider: rows.filter(
-      ({ reviewable }) => providerKeys.has(reviewable.key) && !patientKeys.has(reviewable.key)
+      ({ reviewKey }) => providerKeys.has(reviewKey) && !patientKeys.has(reviewKey)
     ),
   }
 }

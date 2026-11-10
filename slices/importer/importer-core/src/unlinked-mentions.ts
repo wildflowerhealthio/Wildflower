@@ -74,7 +74,7 @@ const keysWithoutPatientOf = (
           StagedImport.resolvedResourceOf(batch.plan, selection, row)
         ).some(isOfPatient)
       )
-      .map(({ reviewable }) => reviewable.key)
+      .map(({ reviewKey }) => reviewKey)
   )
 }
 

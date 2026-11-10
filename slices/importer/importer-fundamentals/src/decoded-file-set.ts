@@ -19,7 +19,7 @@ import type * as DecodedFile from './decoded-file.ts'
 import * as ImpliedRecord from './implied-record.ts'
 import type * as PickedFile from './picked-file.ts'
 import * as ResourcePlan from './resource-plan.ts'
-import type * as Reviewable from './reviewable.ts'
+import type * as ReviewRow from './review-row.ts'
 import * as Section from './section.ts'
 import * as SectionedList from './sectioned-list.ts'
 

@@ -110,7 +110,7 @@ const revertCopiesOf = (
         LinkableResource.sameRecord(linkable, referent.resource)
       )
     )
-    .reduce((reverted, { reviewable }) => StagedImport.revert(reverted, reviewable.key), selection)
+    .reduce((reverted, { reviewKey }) => StagedImport.revert(reverted, reviewKey), selection)
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {

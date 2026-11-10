@@ -59,7 +59,7 @@ interface DiffRow {
 
 /**
  * Every previewed resource's server comparison, keyed by the group it is
- * reviewed in and then by its reviewable's `key` within the group.
+ * reviewed in and then by its review key within the group.
  *
  * @remarks
  * A resource key is unique within one format — a per-file decode's keys are
@@ -252,12 +252,12 @@ const useServerDiff = (batch: ResolvedBatch | undefined, batchId: number): Serve
  *   when the diff has none for it, which finds nothing unchanged)
  */
 const unchangedKeysOf = (
-  labeled: readonly DecodedFile.Row[],
+  labeled: readonly ReviewRow.Type[],
   comparisons: ReadonlyMap<string, ServerComparison> | undefined
 ): ReadonlySet<string> =>
   new Set(
     labeled
-      .map(({ reviewable }) => reviewable.key)
+      .map(({ reviewKey }) => reviewKey)
       .filter((key) => comparisons?.get(key)?.status === 'unchanged')
   )
 

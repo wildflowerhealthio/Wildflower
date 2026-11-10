@@ -40,8 +40,8 @@ type Type = Linked | Unlinked
 const { Stored, Decoded, Unlinked, $is: is, $match: match } = Data.taggedEnum<Type>()
 
 /**
- * The resource a link target's mentions are redirected to, whatever its
- * origin; `None` when it is `Unlinked`.
+ * The resource a link target's mentions are redirected to, stored or
+ * decoded; `None` when it is `Unlinked`.
  */
 const resourceIfLinked = (linkTarget: Type): Option.Option<LinkableResource.WithId> =>
   match(linkTarget, {

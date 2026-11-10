@@ -38,7 +38,7 @@ import * as Mention from './mention.ts'
  */
 interface OutsidePatientCompartment {
   readonly _tag: 'OutsidePatientCompartment'
-  /** The resource's reviewable's `key`. */
+  /** The resource's review key. */
   readonly mentioningResourceKey: string
   /** What its `subject` slot holds as reviewed; `None` when it is empty. */
   readonly subjectAsReviewed: Option.Option<IdentifierAndReference.ReferenceType>
@@ -50,7 +50,7 @@ interface OutsidePatientCompartment {
  */
 interface Dangling {
   readonly _tag: 'Dangling'
-  /** The reviewable `key` of the resource carrying the mention. */
+  /** The review key of the resource carrying the mention. */
   readonly mentioningResourceKey: string
   /** The mention's path in it: see `Mention.Type.path`. */
   readonly mentionPath: string
@@ -110,7 +110,7 @@ const outsidePatientCompartmentIf = (
  * compartment, then each dangling mention, in the walk's order.
  *
  * @param plan - The batch's link plan; only its links are read
- * @param reviewKey - The resource's reviewable's `key`
+ * @param reviewKey - The resource's review key
  * @param resource - The resource as decoded, or as the reviewer edited it
  */
 const leftByReferentLinks = (

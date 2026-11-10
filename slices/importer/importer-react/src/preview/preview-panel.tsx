@@ -91,7 +91,7 @@ interface PreviewPanelProps {
    * Each labeled resource's server comparison (`new` / `unchanged` /
    * `changed`, and for `changed` the leaf-level field diffs), keyed by the
    * group it is reviewed in (a format, or the linked records) and then by
-   * its reviewable's `key`. Rendered as a badge on each row — the
+   * its review key. Rendered as a badge on each row — the
    * `changed` badge opens to show `field "server" -> "import"` with a
    * per-field reset on a format's row. A key absent from the map (the
    * pre-fetch is still in flight, or the resource is not covered by the
@@ -214,10 +214,10 @@ const LinkedRecords = ({
       {linkedRecords.map((row) => {
         const description = describeResource(row.resource, labels)
         return (
-          <li key={row.reviewable.key} className={panelStyles['preview-panel__linked-row']}>
+          <li key={row.reviewKey} className={panelStyles['preview-panel__linked-row']}>
             <span className={panelStyles['preview-panel__linked-type']}>{description.type}</span>
             <span>{description.summary}</span>
-            <DiffBadge comparison={comparisons?.get(row.reviewable.key)} current={row.resource} />
+            <DiffBadge comparison={comparisons?.get(row.reviewKey)} current={row.resource} />
           </li>
         )
       })}

@@ -1,7 +1,6 @@
 /**
  * A resolved resource: a link target's resource as it will be written, having
- * assumed the identifiers of every referent linked to it, whatever its
- * origin.
+ * assumed the identifiers of every referent linked to it, stored or decoded.
  *
  * @remarks
  * One per resolved literal reference, so a stored resource two referents link

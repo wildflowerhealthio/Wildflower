@@ -21,7 +21,7 @@ import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Data, Effect, HashMap, Option, pipe, Record } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
-import type * as Reviewable from '../reviewable.ts'
+import type * as ReviewRow from '../review-row.ts'
 import * as SectionedList from '../sectioned-list.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
@@ -40,8 +40,10 @@ interface Type {
   /** The identifier the record's demographics derive, when they allow one: the last of `identifiers`. */
   readonly derivedIdentifier: Option.Option<IdentifierAndReference.IdentifierType>
   readonly resource: LinkableResource.WithId
-  /** The record's row's reviewable: the key it is reviewed under, and where it came from. */
-  readonly reviewable: Reviewable.Type
+  /** The review key of the record's row. */
+  readonly reviewKey: string
+  /** Whether the record's row is implied (`ReviewRow.Type`'s `isImplied`). */
+  readonly isImplied: boolean
   readonly label: string
 }
 
@@ -54,7 +56,7 @@ interface Type {
 class DuplicateReferent extends Data.TaggedError('DuplicateReferent')<{
   /** The logical reference their `identifier[0]` makes. */
   readonly logicalReference: LinkableLogicalReference.Type
-  /** The resources' reviewables' keys, in review order. */
+  /** The resources' review keys, in review order. */
   readonly reviewKeys: readonly string[]
 }> {}
 
@@ -110,7 +112,7 @@ const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.
  * and for a Patient or Practitioner with an unqualified `identifier[0]`, which
  * nothing can be linked to, so the stage writes it as it is.
  */
-const tryFromDecodedResource = (row: DecodedFile.Row): Effect.Effect<Option.Option<Type>> =>
+const tryFromDecodedResource = (row: ReviewRow.Type): Effect.Effect<Option.Option<Type>> =>
   pipe(
     Option.liftPredicate(row.resource, LinkableResource.is),
     Option.flatMap((resource) =>
@@ -133,7 +135,8 @@ const tryFromDecodedResource = (row: DecodedFile.Row): Effect.Effect<Option.Opti
           ),
           derivedIdentifier,
           resource,
-          reviewable: row.reviewable,
+          reviewKey: row.reviewKey,
+          isImplied: row.isImplied,
           label,
         }))
       )
@@ -156,7 +159,7 @@ const firstDuplicateAmong = (referents: readonly Type[]): Option.Option<Duplicat
         : Option.some(
             new DuplicateReferent({
               logicalReference: sharingKey[0].logicalReference,
-              reviewKeys: sharingKey.map(({ reviewable }) => reviewable.key),
+              reviewKeys: sharingKey.map(({ reviewKey }) => reviewKey),
             })
           )
     )
@@ -169,7 +172,7 @@ const firstDuplicateAmong = (referents: readonly Type[]): Option.Option<Duplicat
  * @remarks
  * A resource decoded twice under one id (two file sets implying one
  * Practitioner, say) is one referent, in the place of its first copy: the
- * first copy a file decoded, else the first implied one (by its reviewable's `origin`),
+ * first copy a file decoded, else the first implied one (`isImplied`),
  * since an implied record says only what a reference to it said. Fails with
  * {@link DuplicateReferent} when two resources under different ids, in one
  * file or two, are keyed by one logical reference.
@@ -187,7 +190,7 @@ const discover = (
     const duplicate = firstDuplicateAmong(decodedReferents)
     if (Option.isSome(duplicate)) return yield* Effect.fail(duplicate.value)
     const firstDecodedByKey = byKey(
-      decodedReferents.filter(({ reviewable }) => reviewable.origin === 'Decoded').toReversed()
+      decodedReferents.filter(({ isImplied }) => !isImplied).toReversed()
     )
     return Array.dedupeWith(decodedReferents, (left, right) => key(left) === key(right)).map(
       (referent) => Option.getOrElse(HashMap.get(firstDecodedByKey, key(referent)), () => referent)

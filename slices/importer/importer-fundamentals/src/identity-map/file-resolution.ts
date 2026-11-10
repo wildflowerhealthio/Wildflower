@@ -12,7 +12,7 @@
 import { type FhirResourceWithId, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Option, pipe } from 'effect'
 
-import type * as DecodedFile from '../decoded-file.ts'
+import type * as ReviewRow from '../review-row.ts'
 import * as SectionedList from '../sectioned-list.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkTarget from './link-target.ts'
@@ -83,15 +83,15 @@ const redirectMentions =
     )
 
 /** Whether `after` holds the very resource and title `before` does. */
-const sameRow = (before: DecodedFile.Row, after: DecodedFile.Row): boolean =>
-  after.resource === before.resource && after.reviewable.title === before.reviewable.title
+const sameRow = (before: ReviewRow.Type, after: ReviewRow.Type): boolean =>
+  after.resource === before.resource && after.title === before.title
 
 /**
  * `decodedRow` as it is resolved under `plan`: a referent's resource
  * written as its resolved resource (a stored resource standing in for it, or
  * itself having assumed what the referents linked to it bring), any other
  * written as decoded, with its mentions redirected either way, those the
- * reviewer chose a link for under the row's reviewable's key where their
+ * reviewer chose a link for under the row's review key where their
  * choice says. A row whose resource the resolved one replaces under another id
  * takes the resolved resource's label as its title; any other keeps its own.
  * The same object when nothing changes.
@@ -140,12 +140,14 @@ const resolveEdit = (
  * written, in the order the links first reach them. No resolved file holds
  * them; they are the batch's own, reviewed and written beside the files.
  */
-const linkedRecords = (plan: LinkPlan.Type): readonly DecodedFile.Row[] =>
+const linkedRecords = (plan: LinkPlan.Type): readonly ReviewRow.Type[] =>
   pipe(
     LinkPlan.resolvedResources(plan),
     Array.filter(({ resourceExistsInBatch }) => !resourceExistsInBatch),
-    Array.map(({ resource, label }): DecodedFile.Row => ({
-      reviewable: { key: linkedKey(resource), title: label, origin: 'Decoded' },
+    Array.map(({ resource, label }): ReviewRow.Type => ({
+      reviewKey: linkedKey(resource),
+      title: label,
+      isImplied: false,
       resource,
     }))
   )
