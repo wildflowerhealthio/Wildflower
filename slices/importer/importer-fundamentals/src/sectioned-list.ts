@@ -5,17 +5,17 @@
  * @remarks
  * Section order is meaning: the review lists a file set's source files first
  * and its implied records last, so every function here keeps the order of
- * sections and of the rows in each, and {@link concatenate} never merges two
- * sections that share a title.
+ * sections and of the rows in each, and {@link concatenateAll} never merges
+ * two sections that share a title.
  *
- * {@link map} keeps reference identity: a section `f` returns every row of
- * as itself comes back as the same section object, and a list none of whose
- * sections changed comes back as itself. A memoized row, and a resolve pass
- * that tells whether anything moved by comparing objects, rely on it.
+ * {@link modify} keeps reference identity: when `f` returns every row of a
+ * section unchanged, that section comes back as the same object, and a list
+ * none of whose sections changed comes back as itself. A memoized row, and a resolve
+ * pass that tells whether anything moved by comparing objects, rely on it.
  *
  * @packageDocumentation
  */
-import { Array as Arr, Effect, Option, type Predicate, type Types } from 'effect'
+import { Array as Arr, Effect, type Types } from 'effect'
 
 import * as Section from './section.ts'
 
@@ -30,48 +30,29 @@ const empty = <E>(): Type<E> => ({ sections: [] })
 /** `sections`, in the order given. */
 const make = <E>(sections: readonly Section.Type<E>[]): Type<E> => ({ sections })
 
-/**
- * Whether `before`'s `key` holds the very values `after` does, at every
- * position: where it does, `before` is already what {@link map} would build
- * from `after`, so map gives it back as itself.
- */
-const holdsSame = <K extends PropertyKey, V>(
-  before: Readonly<Record<K, readonly unknown[]>>,
-  key: K,
-  after: readonly V[]
-): before is Readonly<Record<K, readonly V[]>> =>
-  before[key].length === after.length &&
-  before[key].every((value, at) => Object.is(value, after[at]))
+/** `list` with `f` applied to every row, sections and their titles kept. */
+const map = <A, B>(list: Type<A>, f: (row: A) => B): Type<B> =>
+  make(list.sections.map(({ title, rows }) => Section.make(title, rows.map(f))))
+
+/** Whether `after` holds the very values `before` does, at every position. */
+const sameElements = (before: readonly unknown[], after: readonly unknown[]): boolean =>
+  before.length === after.length && before.every((value, at) => Object.is(value, after[at]))
 
 /**
- * `list` with `f` applied to every row, sections and their titles kept.
+ * {@link map} with a row of the same type out as in, keeping reference
+ * identity.
  *
  * @remarks
  * A section whose every row `f` returns as itself comes back as the same
  * object, and `list` comes back as itself when every section does.
  */
-const map = <A, B>(list: Type<A>, f: (row: A) => B): Type<B> => {
-  const sections = list.sections.map((section): Section.Type<B> => {
+const modify = <A>(list: Type<A>, f: (row: A) => A): Type<A> => {
+  const sections = list.sections.map((section) => {
     const rows = section.rows.map(f)
-    return holdsSame(section, 'rows', rows) ? section : Section.make(section.title, rows)
+    return sameElements(section.rows, rows) ? section : Section.make(section.title, rows)
   })
-  return holdsSame(list, 'sections', sections) ? list : make(sections)
+  return sameElements(list.sections, sections) ? list : make(sections)
 }
-
-/** `list` with each row `f` returns `Some` for replaced by its value, and a section left empty dropped. */
-const filterMap = <A, B>(list: Type<A>, f: (row: A) => Option.Option<B>): Type<B> =>
-  make(
-    Arr.filterMap(list.sections, ({ title, rows }) =>
-      Option.map(
-        Option.liftPredicate(Arr.filterMap(rows, f), Arr.isNonEmptyReadonlyArray),
-        (kept) => Section.make(title, kept)
-      )
-    )
-  )
-
-/** `list` with only the rows `predicate` holds for, and a section left empty dropped. */
-const filter = <A>(list: Type<A>, predicate: Predicate.Predicate<A>): Type<A> =>
-  filterMap(list, Option.liftPredicate(predicate))
 
 /** {@link map} with an effect: every row through `f`, in section and row order. */
 const forEach = <A, B, E, R>(
@@ -115,9 +96,6 @@ const groupBy = <E>(ungrouped: Iterable<E>, titleOf: (row: E) => string): Type<E
 const concatenateAll = <E>(all: Iterable<Type<E>>): Type<E> =>
   make(Arr.flatMap(Arr.fromIterable(all), (one) => one.sections))
 
-/** `first`'s sections, then `second`'s ({@link concatenateAll}). */
-const concatenate = <E>(first: Type<E>, second: Type<E>): Type<E> => concatenateAll([first, second])
-
 /** `section` ahead of `list`'s sections. */
 const prepend = <E>(list: Type<E>, section: Section.Type<E>): Type<E> =>
   make([section, ...list.sections])
@@ -126,18 +104,5 @@ const prepend = <E>(list: Type<E>, section: Section.Type<E>): Type<E> =>
 const append = <E>(list: Type<E>, section: Section.Type<E>): Type<E> =>
   make([...list.sections, section])
 
-export {
-  append,
-  concatenate,
-  concatenateAll,
-  empty,
-  filter,
-  filterMap,
-  forEach,
-  groupBy,
-  make,
-  map,
-  prepend,
-  rows,
-}
+export { append, concatenateAll, empty, forEach, groupBy, make, map, modify, prepend, rows }
 export type { Type }
