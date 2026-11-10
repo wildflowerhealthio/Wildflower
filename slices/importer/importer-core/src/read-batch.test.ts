@@ -11,7 +11,7 @@ import {
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor } from '@wildflowerhealthio/positioned-text'
-import { Array as Arr, Effect, Layer, ParseResult, Schema } from 'effect'
+import { Array as Arr, Effect, Layer, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -93,6 +93,7 @@ const fakeDecode = <K extends FormatKind>(kind: K): DecodeFunction.Type<unknown,
                 {
                   localKey: `r:${file.fileName}`,
                   resource: fakeResource(`${kind}-${file.fileName}`),
+                  sourceUrl: Option.none(),
                 },
               ]),
             ]),

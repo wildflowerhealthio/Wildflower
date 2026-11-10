@@ -354,7 +354,7 @@ describe('Snapshot.Layout.layOut', () => {
     ],
     [
       'a url beside its data',
-      (attachment) => ({ ...attachment, url: new URL('https://example.org/rexall.har') }),
+      (attachment) => ({ ...attachment, url: 'https://example.org/rexall.har' }),
       'The source file carries a url as well as its data.',
     ],
   ])(

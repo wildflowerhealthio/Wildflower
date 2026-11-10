@@ -47,6 +47,7 @@ const decode = DecodeFunction.make({
               pickedFiles.map((file) => ({
                 localKey: file.fileName,
                 resource: fakeResource(`${file.bytes[0]}`),
+                sourceUrl: Option.none(),
               }))
             ),
           ]),
@@ -75,6 +76,7 @@ describe('DecodeFunction.make', () => {
               [a1, a2].map((file) => ({
                 localKey: file.fileName,
                 resource: fakeResource(`${file.bytes[0]}`),
+                sourceUrl: Option.none(),
               }))
             ),
           ]),
@@ -83,7 +85,9 @@ describe('DecodeFunction.make', () => {
         {
           pickedFiles: [b1].map(DecodedFileSet.unidentified),
           sectionedList: SectionedList.make([
-            Section.make('b-1.bin', [{ localKey: 'b-1.bin', resource: fakeResource('2') }]),
+            Section.make('b-1.bin', [
+              { localKey: 'b-1.bin', resource: fakeResource('2'), sourceUrl: Option.none() },
+            ]),
           ]),
           notes: ['1 files'],
         },
