@@ -5,9 +5,9 @@ import {
   type FhirResourceWithId,
   MedicationRequest,
   Patient,
+  LogicalReference,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  FormatDecode,
   type LinkableResource,
   LinkChoice,
   LinkPlan,
@@ -17,11 +17,11 @@ import {
   SectionedList,
   UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, HashMap, Schema, TestContext } from 'effect'
+import { Array as Arr, Effect, HashMap, Option, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { DecodedBatch } from './read-batch.ts'
-import { type FormatKind, formatRegistry } from './registry.ts'
+import { type FormatKind, formatKinds, formatRegistry } from './registry.ts'
 import {
   resolveMentions,
   discoverReferents,
@@ -29,6 +29,26 @@ import {
   resolveMentionsWithFallback,
   type ResolvedBatch,
 } from './resolve-mentions.ts'
+import * as ReviewGroup from './review-group.ts'
+
+/** The key of the logical reference to the `resourceType` record named `value` in `system`. */
+const keyOf = (
+  resourceType: 'Patient' | 'Practitioner',
+  system: string,
+  value: string
+): LogicalReference.Key =>
+  LogicalReference.key(
+    LogicalReference.make(resourceType, {
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(system),
+      type: null,
+      use: null,
+      value,
+    })
+  )
 
 /**
  * A batch built by hand, its mentions resolved: each format's decoded
@@ -38,7 +58,7 @@ import {
 const SOURCE_PATIENT = 'https://source.example/patient-id'
 const CUSTOMER = 'https://source.example/customer-id'
 const DEVICE = 'https://device.example/id'
-const PERSON = JSON.stringify(['Patient', SOURCE_PATIENT, 'p-1'])
+const PERSON = keyOf('Patient', SOURCE_PATIENT, 'p-1')
 
 /** `effect` run on a `TestClock` standing at the epoch; throws its failure. */
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
@@ -70,45 +90,38 @@ const STORED_TYRA: LinkableResource.WithId = (() => {
   return stored
 })()
 
-/** `kind`'s result holding `resources`, or the empty result of a format that claimed nothing. */
-const resultOf = <K extends FormatKind>(
-  kind: K,
-  resources: readonly FhirResourceWithId[] | undefined
-): FormatDecode.Result<K> =>
-  resources === undefined
-    ? FormatDecode.emptyResult(kind)
-    : {
-        ...FormatDecode.emptyResult(kind),
-        title: `${kind} file`,
-        files: [{ id: `0:${kind}`, fileName: kind, bytes: new Uint8Array([1]) }],
-        decoded: {
-          rows: SectionedList.make([
-            {
-              title: 'Resources',
-              rows: resources.map((resource, index) => ({
-                reviewable: {
-                  key: `${kind}/k-${index}`,
-                  title: `${resource.resourceType}/${resource.id}`,
-                  origin: 'Decoded',
-                },
-                resource,
-              })),
-            },
-          ]),
-          notes: [],
-        },
-      }
+/** `kind`'s group holding `resources` in one section, read from one pick. */
+const groupOf = (kind: FormatKind, resources: readonly FhirResourceWithId[]): ReviewGroup.Type => ({
+  sectionedList: SectionedList.make([
+    {
+      title: 'Resources',
+      rows: resources.map((resource, index) => ({
+        reviewKey: `${kind}/k-${index}`,
+        title: `${resource.resourceType}/${resource.id}`,
+        isImplied: false,
+        resource,
+      })),
+    },
+  ]),
+  notes: [],
+  unreadableFiles: [],
+  files: [{ id: `0:${kind}`, fileName: kind, bytes: new Uint8Array([1]) }],
+})
 
+/** A batch of the given formats' resources, the others claiming nothing. */
 const batchOf = (formats: {
   readonly [K in FormatKind]?: readonly FhirResourceWithId[]
-}): DecodedBatch => ({
-  formats: {
-    har: resultOf('har', formats.har),
-    'lifelabs-pdf': resultOf('lifelabs-pdf', formats['lifelabs-pdf']),
-    dicom: resultOf('dicom', formats.dicom),
-  },
-  unrecognizedFiles: [],
-})
+}): DecodedBatch => {
+  const claimed = Arr.filterMap(formatKinds, (kind) =>
+    Option.map(Option.fromNullable(formats[kind]), (resources) => [kind, resources] as const)
+  )
+  return {
+    groups: Object.fromEntries(
+      claimed.map(([kind, resources]) => [kind, groupOf(kind, resources)])
+    ),
+    unrecognizedFiles: [],
+  }
+}
 
 /** `batch` with its mentions resolved on `byReferent`, and on `byMention` when given, on the test clock. */
 const resolvedOnTestClock = (
@@ -117,10 +130,15 @@ const resolvedOnTestClock = (
   byMention: MentionLinkChoiceSet.Type = MentionLinkChoiceSet.empty
 ): ResolvedBatch => runOnTestClock(resolveMentions(batch, { byReferent, byMention }))
 
-/** The resource keyed `key` in `kind`'s decoded file. */
-const at = (batch: DecodedBatch, kind: FormatKind, key: string): FhirResource | undefined =>
-  SectionedList.rows(batch.formats[kind].decoded.rows).find((row) => row.reviewable.key === key)
-    ?.resource
+/** The resource keyed `key` in `kind`'s group. */
+const at = (
+  batch: { readonly groups: ReviewGroup.Groups },
+  kind: FormatKind,
+  key: string
+): FhirResource | undefined =>
+  ReviewGroup.entries(batch.groups, [kind])
+    .flatMap(([, group]) => ReviewGroup.rows(group))
+    .find((row) => row.reviewKey === key)?.resource
 
 const subjectOf = (resource: FhirResource | undefined): string | null | undefined =>
   resource !== undefined && 'subject' in resource ? resource.subject?.reference : undefined
@@ -145,7 +163,7 @@ describe('discoverReferents', () => {
 })
 
 describe('resolveMentions', () => {
-  it('keeps every format’s sections and keys, and every other slot as it was', () => {
+  it('keeps every format’s sections and keys, and a group nothing moved in as it was', () => {
     const batch = batchOf({
       har: [request('rx-1', accountSubject)],
       'lifelabs-pdf': [patient('p-1', SOURCE_PATIENT)],
@@ -155,25 +173,25 @@ describe('resolveMentions', () => {
 
     expect(
       (['har', 'lifelabs-pdf'] as const).map((kind) =>
-        resolved.formats[kind].decoded.rows.sections.map((section) => [
+        resolved.groups[kind]?.sectionedList.sections.map((section) => [
           section.title,
-          section.rows.map((row) => row.reviewable.key),
+          section.rows.map((row) => row.reviewKey),
         ])
       )
     ).toEqual([[['Resources', ['har/k-0']]], [['Resources', ['lifelabs-pdf/k-0']]]])
-    expect(resolved.formats.dicom).toBe(batch.formats.dicom)
-    expect(resolved.unrecognizedFiles).toBe(batch.unrecognizedFiles)
-    expect(resolved.linkedRecords).toEqual([])
+    expect(resolved.groups['lifelabs-pdf']).toBe(batch.groups['lifelabs-pdf'])
+    expect(resolved.groups.dicom).toBeUndefined()
+    expect(resolved.groups.linked).toBeUndefined()
   })
 
   it('gives an empty batch back as it is, with no linked records and no link targets', () => {
     const batch = batchOf({})
 
-    const { plan, decodedBatch, ...resolved } = resolvedOnTestClock(batch, HashMap.empty())
+    const resolved = resolvedOnTestClock(batch, HashMap.empty())
 
-    expect(resolved).toEqual({ ...batch, linkedRecords: [] })
-    expect(LinkPlan.linkTargets(plan)).toEqual([])
-    expect(decodedBatch).toBe(batch)
+    expect(resolved.groups).toEqual({})
+    expect(LinkPlan.linkTargets(resolved.plan)).toEqual([])
+    expect(resolved.decoded).toBe(batch)
   })
 
   it('links a mention in one format to the person another format holds, wherever that person is linked', () => {
@@ -264,14 +282,15 @@ describe('resolveMentions with mention link choices', () => {
     )
 
     const listed = (resolved: ResolvedBatch): readonly string[] =>
-      SectionedList.rows(resolved.decodedBatch.formats.har.decoded.rows)
-        .flatMap(({ reviewable, resource }) =>
-          UnlinkedMention.leftByReferentLinks(resolved.plan, reviewable.key, resource)
+      ReviewGroup.entries(resolved.decoded.groups, formatKinds)
+        .flatMap(([, group]) => ReviewGroup.rows(group))
+        .flatMap(({ reviewKey, resource }) =>
+          UnlinkedMention.leftByReferentLinks(resolved.plan, reviewKey, resource)
         )
         .map(({ _tag, mentioningResourceKey }) => `${_tag} ${mentioningResourceKey}`)
     expect(listed(onReferents)).toEqual(['Dangling har/k-0', 'Dangling har/k-1'])
     expect(listed(withChosen)).toEqual(listed(onReferents))
-    expect(withChosen.decodedBatch).toBe(batch)
+    expect(withChosen.decoded).toBe(batch)
     expect(subjectOf(at(withChosen, 'har', 'har/k-1'))).toBe('Patient/p-1')
   })
 

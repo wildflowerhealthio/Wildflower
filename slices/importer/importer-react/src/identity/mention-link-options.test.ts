@@ -1,8 +1,13 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import { MedicationRequest, Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
 import {
+  MedicationRequest,
+  Patient,
+  Practitioner,
+  LogicalReference,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type AdoptedFileSet,
   type LinkableResource,
-  type DecodedFile,
   LinkChoice,
   LinkPlan,
   type ReferentLinkChoiceSet,
@@ -13,6 +18,25 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import * as MentionLinkOptions from './mention-link-options.ts'
 
+/** The key of the logical reference to the `resourceType` record named `value` in `system`. */
+const keyOf = (
+  resourceType: 'Patient' | 'Practitioner',
+  system: string,
+  value: string
+): LogicalReference.Key =>
+  LogicalReference.key(
+    LogicalReference.make(resourceType, {
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(system),
+      type: null,
+      use: null,
+      value,
+    })
+  )
+
 /**
  * What a mention select offers: exactly the plan's resolved resources, once
  * each, and the mention link choice picking each makes.
@@ -21,9 +45,9 @@ import * as MentionLinkOptions from './mention-link-options.ts'
 const SOURCE = 'https://source.example/patient-id'
 const NAME = 'https://source.example/practitioner-name'
 const DEVICE = 'https://device.example/id'
-const PERSON = JSON.stringify(['Patient', SOURCE, 'p-1'])
-const OTHER_PERSON = JSON.stringify(['Patient', SOURCE, 'p-2'])
-const PRESCRIBER = JSON.stringify(['Practitioner', NAME, 'Dr. A Smith'])
+const PERSON = keyOf('Patient', SOURCE, 'p-1')
+const OTHER_PERSON = keyOf('Patient', SOURCE, 'p-2')
+const PRESCRIBER = keyOf('Practitioner', NAME, 'Dr. A Smith')
 
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
@@ -56,8 +80,8 @@ const STORED_JAN: LinkableResource.WithId = decodePatient({
   name: [{ family: 'Doe', given: ['Jan'] }],
 })
 
-const file: DecodedFile.DecodedFile = {
-  rows: SectionedList.make([
+const file: AdoptedFileSet.Type = {
+  sectionedList: SectionedList.make([
     {
       title: 'Resources',
       rows: [
@@ -73,7 +97,9 @@ const file: DecodedFile.DecodedFile = {
           requester: { reference: 'Practitioner/dr-smith', display: 'Dr. A Smith' },
         }),
       ].map((resource, index) => ({
-        reviewable: { key: `k-${index}`, title: '', origin: 'Decoded' },
+        reviewKey: `k-${index}`,
+        title: '',
+        isImplied: false,
         resource,
       })),
     },
@@ -83,7 +109,9 @@ const file: DecodedFile.DecodedFile = {
 
 /** The options under `linkChoices`, off the plan, on the test clock. */
 const optionsUnder = (linkChoices: ReferentLinkChoiceSet.Type): MentionLinkOptions.Type =>
-  MentionLinkOptions.fromPlan(runOnTestClock(LinkPlan.make([file], linkChoices)))
+  MentionLinkOptions.fromPlan(
+    runOnTestClock(LinkPlan.make(SectionedList.rows(file.sectionedList), linkChoices))
+  )
 
 /** Each option for `type` as `[label, value]`. */
 const labelsAndValuesFor = (

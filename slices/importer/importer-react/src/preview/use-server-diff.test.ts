@@ -1,12 +1,8 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  type FormatKind,
-  LINKED_GROUP,
-  type ResolvedBatch,
-} from '@wildflowerhealthio/importer-core'
-import { FormatDecode, LinkPlan, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
+import { type FormatKind, type ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
+import { LinkPlan, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
@@ -24,78 +20,65 @@ import { byGroupAndKey, diffRowsOf, unchangedKeysOf } from './use-server-diff.ts
 const patient = (id: string): FhirResourceWithId =>
   Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
-/** A format result whose one section holds one resource per `[key, id]` pair. */
-const formatResult = <K extends FormatKind>(
-  format: K,
-  entries: readonly (readonly [string, string])[]
-): FormatDecode.Result<K> => ({
-  id: `${format}/test`,
-  title: 'test',
-  files: [{ id: '0:test', fileName: 'test', bytes: new Uint8Array([1]) }],
-  format,
-  decoded: {
-    rows: SectionedList.make([
-      {
-        title: 's',
-        rows: entries.map(([key, rid]) => ({
-          reviewable: { key, title: `Patient/${rid}`, origin: 'Decoded' as const },
-          resource: patient(rid),
-        })),
-      },
-    ]),
-    notes: [],
-  },
+/** A format's group of one pick whose one section holds one resource per `[key, id]` pair. */
+const formatGroup = (entries: readonly (readonly [string, string])[]): ReviewGroup.Type => ({
+  sectionedList: SectionedList.make([
+    {
+      title: 's',
+      rows: entries.map(([key, rid]) => ({
+        reviewKey: key,
+        title: `Patient/${rid}`,
+        isImplied: false,
+        resource: patient(rid),
+      })),
+    },
+  ]),
+  notes: [],
   unreadableFiles: [],
+  files: [{ id: '0:test', fileName: 'test', bytes: new Uint8Array([1]) }],
 })
 
-const makeBatch = (
-  results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>
-): ResolvedBatch => {
-  const decodedBatch = {
-    formats: {
-      har: FormatDecode.emptyResult('har'),
-      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-      dicom: FormatDecode.emptyResult('dicom'),
-      ...results,
-    },
-    unrecognizedFiles: [],
-  }
-  return { ...decodedBatch, linkedRecords: [], plan: LinkPlan.empty, decodedBatch }
-}
+const makeBatch = (groups: ReviewGroup.Groups<FormatKind>): ResolvedBatch => ({
+  groups,
+  plan: LinkPlan.empty,
+  decoded: { groups, unrecognizedFiles: [] },
+})
 
 const UNCHANGED: ServerComparison = { status: 'unchanged', fields: [] }
 const CHANGED: ServerComparison = { status: 'changed', fields: [] }
 
 describe('diffRowsOf / byGroupAndKey', () => {
   it('should probe the linked records under their own group, after the formats', () => {
+    const formats = makeBatch({ har: formatGroup([['patient', 'p-har']]) })
     const batch: ResolvedBatch = {
-      ...makeBatch({ har: formatResult('har', [['patient', 'p-har']]) }),
-      linkedRecords: [
-        {
-          reviewable: {
-            key: 'linked:Patient/p-stored',
+      ...formats,
+      groups: {
+        ...formats.groups,
+        linked: ReviewGroup.linked([
+          {
+            reviewKey: 'linked:Patient/p-stored',
             title: 'Patient/p-stored',
-            origin: 'Decoded',
+            isImplied: false,
+            resource: patient('p-stored'),
           },
-          resource: patient('p-stored'),
-        },
-      ],
+        ]),
+      },
     }
     const rows = diffRowsOf(batch)
     const verdicts = byGroupAndKey(rows, new Map([['Patient/p-stored', CHANGED]]))
 
     expect(rows.map((row) => [row.group, row.key])).toEqual([
       ['har', 'patient'],
-      [LINKED_GROUP, 'linked:Patient/p-stored'],
+      [ReviewGroup.LINKED, 'linked:Patient/p-stored'],
     ])
-    expect(verdicts.get(LINKED_GROUP)?.get('linked:Patient/p-stored')).toBe(CHANGED)
+    expect(verdicts.get(ReviewGroup.LINKED)?.get('linked:Patient/p-stored')).toBe(CHANGED)
     expect(verdicts.get('har')?.get('patient')?.status).toBe('new')
   })
 
   it('should keep verdicts apart for two formats that share a resource key', () => {
     const batch = makeBatch({
-      har: formatResult('har', [['patient', 'p-new']]),
-      dicom: formatResult('dicom', [['patient', 'p-old']]),
+      har: formatGroup([['patient', 'p-new']]),
+      dicom: formatGroup([['patient', 'p-old']]),
     })
     const verdicts = byGroupAndKey(diffRowsOf(batch), new Map([['Patient/p-old', UNCHANGED]]))
 
@@ -104,15 +87,10 @@ describe('diffRowsOf / byGroupAndKey', () => {
   })
 
   it('property: every resource of every format gets exactly its own verdict, or `new` when unclassified', () => {
-    const formatArbitrary = <K extends FormatKind>(kind: K): fc.Arbitrary<FormatDecode.Result<K>> =>
+    const formatArbitrary = (kind: FormatKind): fc.Arbitrary<ReviewGroup.Type> =>
       fc
         .uniqueArray(fc.stringMatching(/^[a-z]{1,3}$/u), { minLength: 1, maxLength: 4 })
-        .map((keys) =>
-          formatResult(
-            kind,
-            keys.map((key) => [key, `${kind}-${key}`] as const)
-          )
-        )
+        .map((keys) => formatGroup(keys.map((key) => [key, `${kind}-${key}`] as const)))
     fc.assert(
       fc.property(
         formatArbitrary('har'),
@@ -143,11 +121,15 @@ describe('unchangedKeysOf', () => {
   it('should find exactly the unchanged keys, and nothing without verdicts', () => {
     const labeled = [
       {
-        reviewable: { key: 'a', title: 'Patient/a', origin: 'Decoded' as const },
+        reviewKey: 'a',
+        title: 'Patient/a',
+        isImplied: false,
         resource: patient('a'),
       },
       {
-        reviewable: { key: 'b', title: 'Patient/b', origin: 'Decoded' as const },
+        reviewKey: 'b',
+        title: 'Patient/b',
+        isImplied: false,
         resource: patient('b'),
       },
     ]

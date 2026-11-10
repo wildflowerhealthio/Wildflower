@@ -2,11 +2,11 @@ import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
+  DecodedFileSet,
   DecodeFunction,
-  type FormatDecode,
   type PickedFile,
-  type DecodedFile,
-  type Section,
+  type ReviewRow,
+  Section,
   SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -16,20 +16,21 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
-  claimedFormats,
-  groupByFormat,
+  claimPicks,
+  type DecodedBatch,
   readBatch,
   type ReadRegistry,
   redecodeFormat,
 } from './read-batch.ts'
 import { defaultFormatSettings, type FormatKind, formatKinds, formatRegistry } from './registry.ts'
 import { isSourceFileOf } from './resolve-mentions.ts'
+import * as ReviewGroup from './review-group.ts'
 
 /**
  * The batch read over a fake registry whose formats claim files by name
- * prefix and decode by a settings-driven rule — enough to pin the grouping,
+ * prefix and decode by a settings-driven rule — enough to pin the claiming,
  * the deterministic ids, and the settings re-decode without any real
- * format — plus one pass over the real registry to show the grouping holds
+ * format — plus one pass over the real registry to show the claiming holds
  * with a genuine DICOM file and a PDF beside an unrecognized one.
  */
 
@@ -57,9 +58,16 @@ const kindOf = (fileName: string): FormatKind | undefined => {
   return undefined
 }
 
-/** Every review key a format's result offers, in review order. */
-const reviewKeys = (result: FormatDecode.Result<FormatKind>): readonly string[] =>
-  SectionedList.rows(result.decoded.rows).map((resource) => resource.reviewable.key)
+/** `kind`'s group of `batch`, failing the test when the format took no part. */
+const groupOf = (batch: DecodedBatch, kind: FormatKind): ReviewGroup.Type => {
+  const group = batch.groups[kind]
+  if (group === undefined) throw expect.fail(`expected ${kind} to take part`)
+  return group
+}
+
+/** Every review key a format's group offers, in review order. */
+const reviewKeys = (group: ReviewGroup.Type): readonly string[] =>
+  ReviewGroup.rows(group).map((row) => row.reviewKey)
 
 /** A Patient its source calls `id`, detached as a decoder hands it over. */
 const fakeResource = (id: string): DetachedResource.Type =>
@@ -79,17 +87,15 @@ const fakeDecode = <K extends FormatKind>(kind: K): DecodeFunction.Type<unknown,
             })
           )
         : Effect.succeed({
-            sections: [
-              {
-                title: `${kind}:${JSON.stringify(settings)}`,
-                rows: [
-                  {
-                    fullUrl: `r:${file.fileName}`,
-                    resource: fakeResource(`${kind}-${file.fileName}`),
-                  },
-                ],
-              },
-            ],
+            pickedFiles: [DecodedFileSet.unidentified(file)],
+            sectionedList: SectionedList.make([
+              Section.make(`${kind}:${JSON.stringify(settings)}`, [
+                {
+                  localKey: `r:${file.fileName}`,
+                  resource: fakeResource(`${kind}-${file.fileName}`),
+                },
+              ]),
+            ]),
             notes: [],
           }),
   })
@@ -102,10 +108,8 @@ const sourceFileFormatOf = (kind: FormatKind): PickedFile.FormatValue => ({
 })
 
 /** The sections a format's decode read out of its files, its source file sections left out. */
-const extractedSections = (
-  result: FormatDecode.Result<FormatKind>
-): readonly Section.Type<DecodedFile.Row>[] =>
-  result.decoded.rows.sections.filter((section) => section.title !== 'Source file')
+const extractedSections = (group: ReviewGroup.Type): readonly Section.Type<ReviewRow.Type>[] =>
+  group.sectionedList.sections.filter((section) => section.title !== 'Source file')
 
 const fakeRegistry: ReadRegistry<never> = {
   har: {
@@ -128,15 +132,15 @@ const fakeRegistry: ReadRegistry<never> = {
   },
 }
 
-describe('groupByFormat', () => {
-  it('property: every pick lands in exactly one group (or unrecognized), pick order kept within each', () => {
+describe('claimPicks', () => {
+  it('property: every pick is claimed by exactly one format (or unrecognized), pick order kept within each', () => {
     fc.assert(
       fc.property(fc.array(pickArbitrary), (picks) => {
         const stamped = withIds(picks)
-        const { groups, unrecognized } = groupByFormat(fakeRegistry, picks)
-        const regrouped = [...groups.values()].flat().concat(unrecognized)
-        expect(regrouped.length).toBe(picks.length)
-        for (const [kind, files] of groups) {
+        const { claimed, unrecognized } = claimPicks(fakeRegistry, picks)
+        const reclaimed = Object.values(claimed).flat().concat(unrecognized)
+        expect(reclaimed.length).toBe(picks.length)
+        for (const [kind, files] of Object.entries(claimed)) {
           expect(files).toEqual(stamped.filter((pick) => kindOf(pick.fileName) === kind))
         }
         expect(unrecognized).toEqual(stamped.filter((pick) => kindOf(pick.fileName) === undefined))
@@ -148,8 +152,8 @@ describe('groupByFormat', () => {
   it('property: the id it stamps is the slot in the whole batch, whatever format claimed it', () => {
     fc.assert(
       fc.property(fc.array(pickArbitrary, { maxLength: 8 }), (picks) => {
-        const { groups, unrecognized } = groupByFormat(fakeRegistry, picks)
-        const everyPick = [...groups.values()].flat().concat(unrecognized)
+        const { claimed, unrecognized } = claimPicks(fakeRegistry, picks)
+        const everyPick = Object.values(claimed).flat().concat(unrecognized)
         const ids = new Map(everyPick.map((pick) => [pick.id, pick]))
         expect(ids.size).toBe(picks.length)
         for (const [index, pick] of picks.entries()) {
@@ -168,14 +172,16 @@ describe('readBatch', () => {
         const batch = await Effect.runPromise(readBatch(fakeRegistry, defaultFormatSettings, picks))
         const stamped = withIds(picks)
         for (const kind of formatKinds) {
-          const result = batch.formats[kind]
           const expectedFiles = stamped.filter((pick) => kindOf(pick.fileName) === kind)
-          expect(result.files).toEqual(expectedFiles)
-          expect(result.format).toBe(kind)
+          expect(batch.groups[kind] === undefined).toBe(expectedFiles.length === 0)
+        }
+        for (const [kind, group] of ReviewGroup.entries(batch.groups, formatKinds)) {
+          const expectedFiles = stamped.filter((pick) => kindOf(pick.fileName) === kind)
+          expect(group.files).toEqual(expectedFiles)
           const expectedReadable = expectedFiles.filter((f) => f.bytes[0] !== 0)
           const expectedUnreadable = expectedFiles.filter((f) => f.bytes[0] === 0)
-          expect(extractedSections(result).length).toBe(expectedReadable.length)
-          expect(result.unreadableFiles.length).toBe(expectedUnreadable.length)
+          expect(extractedSections(group).length).toBe(expectedReadable.length)
+          expect(group.unreadableFiles.length).toBe(expectedUnreadable.length)
         }
         const expectedUnrecognized = picks.filter((pick) => kindOf(pick.fileName) === undefined)
         expect(batch.unrecognizedFiles.length).toBe(expectedUnrecognized.length)
@@ -195,7 +201,7 @@ describe('readBatch', () => {
     const batch = await Effect.runPromise(
       readBatch(fakeRegistry, settings, [{ fileName: 'pdf-a', bytes: new Uint8Array([1]) }])
     )
-    expect(extractedSections(batch.formats['lifelabs-pdf'])[0]?.title).toBe(
+    expect(extractedSections(groupOf(batch, 'lifelabs-pdf'))[0]?.title).toBe(
       `lifelabs-pdf:${JSON.stringify(settings['lifelabs-pdf'])}`
     )
   })
@@ -217,17 +223,23 @@ describe('redecodeFormat', () => {
           )
           for (const kind of formatKinds) {
             if (kind !== changed) {
-              expect(after.formats[kind]).toBe(before.formats[kind])
+              expect(after.groups[kind]).toBe(before.groups[kind])
               continue
             }
+            const groupAfter = after.groups[kind]
+            const groupBefore = before.groups[kind]
+            if (groupBefore === undefined) {
+              expect(after).toBe(before)
+              continue
+            }
+            if (groupAfter === undefined) throw expect.fail(`expected ${kind} to keep its group`)
             // The ids the reviewer's selection is keyed by survive the re-decode.
-            expect(after.formats[kind].id).toBe(before.formats[kind].id)
-            expect(after.formats[kind].files).toEqual(before.formats[kind].files)
-            expect(after.formats[kind].unreadableFiles.map((file) => file.id)).toEqual(
-              before.formats[kind].unreadableFiles.map((file) => file.id)
+            expect(groupAfter.files).toBe(groupBefore.files)
+            expect(groupAfter.unreadableFiles.map((file) => file.id)).toEqual(
+              groupBefore.unreadableFiles.map((file) => file.id)
             )
-            expect(reviewKeys(after.formats[kind])).toEqual(reviewKeys(before.formats[kind]))
-            for (const section of extractedSections(after.formats[kind])) {
+            expect(reviewKeys(groupAfter)).toEqual(reviewKeys(groupBefore))
+            for (const section of extractedSections(groupAfter)) {
               expect(section.title).toBe(`${changed}:${JSON.stringify(settings[changed])}`)
             }
           }
@@ -270,13 +282,13 @@ describe('readBatch over the real registry', () => {
         Effect.provide(extractorReadingBlankPage)
       )
     )
-    expect(batch.formats['lifelabs-pdf'].files.map((file) => file.fileName)).toEqual(['blank.pdf'])
-    expect(batch.formats['lifelabs-pdf'].unreadableFiles.map((file) => file.title)).toEqual([
-      'blank.pdf',
-    ])
-    expect(batch.formats.dicom.files.length).toBe(1)
-    expect(batch.formats.dicom.decoded.rows.sections[0]?.title).toBe('Source file')
-    expect(batch.formats.dicom.decoded.rows.sections.length).toBeGreaterThan(1)
+    const dicom = groupOf(batch, 'dicom')
+    const lifeLabs = groupOf(batch, 'lifelabs-pdf')
+    expect(lifeLabs.files.map((file) => file.fileName)).toEqual(['blank.pdf'])
+    expect(lifeLabs.unreadableFiles.map((file) => file.title)).toEqual(['blank.pdf'])
+    expect(dicom.files.length).toBe(1)
+    expect(dicom.sectionedList.sections[0]?.title).toBe('Source file')
+    expect(dicom.sectionedList.sections.length).toBeGreaterThan(1)
     expect(batch.unrecognizedFiles.length).toBe(1)
     expect(batch.unrecognizedFiles[0]?.title).toBe('notes.txt')
   })
@@ -306,8 +318,9 @@ describe('a DICOM study read over the real registry', () => {
         Effect.provide(extractorReadingBlankPage)
       )
     )
-    expect(batch.formats.dicom.unreadableFiles).toEqual([])
-    return SectionedList.rows(batch.formats.dicom.decoded.rows).map((row) => row.resource)
+    const dicom = groupOf(batch, 'dicom')
+    expect(dicom.unreadableFiles).toEqual([])
+    return ReviewGroup.rows(dicom).map((row) => row.resource)
   }
 
   it("files every source file under the study's patient, each instance naming its own, every record stamped with the smallest", async () => {
@@ -352,27 +365,29 @@ describe('a DICOM study read over the real registry', () => {
   })
 })
 
-describe('claimedFormats', () => {
-  it('property: names exactly the formats a pick gave files to, in registry order', async () => {
+describe('readBatch, the formats that take part', () => {
+  it('property: gives a group to exactly the formats a pick gave files to, in registry order', async () => {
     await fc.assert(
       fc.asyncProperty(batchArbitrary(6), async (picks) => {
         const batch = await Effect.runPromise(readBatch(fakeRegistry, defaultFormatSettings, picks))
         const expected = formatKinds.filter((kind) =>
           picks.some((pick) => kindOf(pick.fileName) === kind)
         )
-        expect(claimedFormats(batch.formats)).toEqual(expected)
+        expect(ReviewGroup.entries(batch.groups, formatKinds).map(([kind]) => kind)).toEqual(
+          expected
+        )
       }),
       { numRuns: numRunsFor({ base: 40 }) }
     )
   })
 
-  it('names no format for a batch of unrecognized picks only', async () => {
+  it('gives no format a group for a batch of unrecognized picks only', async () => {
     const batch = await Effect.runPromise(
       readBatch(fakeRegistry, defaultFormatSettings, [
         { fileName: 'txt-a', bytes: new Uint8Array([1]) },
       ])
     )
-    expect(claimedFormats(batch.formats)).toEqual([])
+    expect(batch.groups).toEqual({})
   })
 })
 

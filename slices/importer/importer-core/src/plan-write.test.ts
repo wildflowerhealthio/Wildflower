@@ -5,12 +5,13 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  FormatDecode,
+  type FormatDecode,
   LinkableResource,
+  LinkChoice,
   LinkPlan,
-  LinkTarget,
-  type DecodedFile,
-  type Reviewable,
+  MentionLinkChoiceSet,
+  type PickedFile,
+  type ReviewRow,
   Section,
   SectionedList,
   StagedImport,
@@ -21,25 +22,23 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { type Disposition, planWrite, skipReasonFor, type WriteDecision } from './plan-write.ts'
-import type { FormatKind } from './registry.ts'
+import { type FormatKind, formatKinds } from './registry.ts'
 import type { ResolvedBatch } from './resolve-mentions.ts'
-import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
+import * as ReviewGroup from './review-group.ts'
 
 const patient = (id: string, gender: 'male' | 'female' | null = null): FhirResourceWithId =>
   Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id, gender })
 
-/** A row keyed `key` holding `resource`, from `origin`. */
-const rowOf = (
-  key: string,
-  resource: FhirResourceWithId,
-  origin: Reviewable.Origin = 'Decoded'
-): DecodedFile.Row => ({
-  reviewable: { key, title: `${resource.resourceType}/${resource.id}`, origin },
+/** A row keyed `key` holding `resource`, implied when `isImplied`. */
+const rowOf = (key: string, resource: FhirResourceWithId, isImplied = false): ReviewRow.Type => ({
+  reviewKey: key,
+  title: `${resource.resourceType}/${resource.id}`,
+  isImplied,
   resource,
 })
 
 /** A row keyed `key` holding the Patient of id `key`. */
-const patientRow = (key: string): DecodedFile.Row => rowOf(key, patient(key))
+const patientRow = (key: string): ReviewRow.Type => rowOf(key, patient(key))
 
 /** An `unreadableFiles` row for one broken pick. */
 const unreadableFile = (fileName: string): FormatDecode.UnreadableFile => ({
@@ -51,42 +50,48 @@ const unreadableFile = (fileName: string): FormatDecode.UnreadableFile => ({
   }),
 })
 
-/** `kind`'s result of one file and one section holding `resources`. */
-const resultOf = <K extends FormatKind>(
-  kind: K,
-  resources: readonly DecodedFile.Row[]
-): FormatDecode.Result<K> => ({
-  ...FormatDecode.emptyResult(kind),
-  id: `${kind}/a`,
-  title: `${kind} a`,
-  files: [{ id: `0:${kind}`, fileName: kind, bytes: new Uint8Array([1]) }],
-  decoded: { rows: SectionedList.make([Section.make('s', resources)]), notes: [] },
+/** One picked file of `kind`, in the first batch slot. */
+const pickedFileOf = (kind: string): PickedFile.Type => ({
+  id: `0:${kind}`,
+  fileName: kind,
+  bytes: new Uint8Array([1]),
+})
+
+/** A group of one section holding `rows`, read from `files`, with no notes and no unreadable file. */
+const groupOf = (
+  rows: readonly ReviewRow.Type[],
+  files: readonly PickedFile.Type[] = [pickedFileOf('test')]
+): ReviewGroup.Type => ({
+  sectionedList: SectionedList.make([Section.make('s', rows)]),
+  notes: [],
+  unreadableFiles: [],
+  files,
 })
 
 /** A resolved batch of the given formats' rows, the others claiming nothing, with `linked` its linked records. */
 const batchOf = (
-  rows: { readonly [K in FormatKind]?: readonly DecodedFile.Row[] },
+  rows: { readonly [K in FormatKind]?: readonly ReviewRow.Type[] },
   linked: readonly LinkedRecord[] = []
 ): ResolvedBatch => {
-  const slot = <K extends FormatKind>(kind: K): FormatDecode.Result<K> => {
-    const resources = rows[kind]
-    return resources === undefined ? FormatDecode.emptyResult(kind) : resultOf(kind, resources)
-  }
-  const formats = { har: slot('har'), 'lifelabs-pdf': slot('lifelabs-pdf'), dicom: slot('dicom') }
+  const kinds = formatKinds.filter((kind) => rows[kind] !== undefined)
+  const groups = Object.fromEntries(
+    kinds.map((kind) => [kind, groupOf(rows[kind] ?? [], [pickedFileOf(kind)])])
+  )
   return {
-    formats,
-    unrecognizedFiles: [],
-    linkedRecords: linked.map(({ row }) => row),
+    groups:
+      linked.length === 0
+        ? groups
+        : { ...groups, linked: ReviewGroup.linked(linked.map(({ row }) => row)) },
     plan: LinkPlan.empty,
-    decodedBatch: { formats, unrecognizedFiles: [] },
+    decoded: { groups, unrecognizedFiles: [] },
   }
 }
 
 /** Each decision as `[group, key, disposition]`, in plan order. */
 const dispositionsOf = (
   plan: readonly WriteDecision[]
-): readonly (readonly [ReviewGroup, string, Disposition])[] =>
-  plan.map(({ group, row, disposition }) => [group, row.reviewable.key, disposition] as const)
+): readonly (readonly [ReviewGroup.Key, string, Disposition])[] =>
+  plan.map(({ group, reviewKey, disposition }) => [group, reviewKey, disposition] as const)
 
 /** No row out by default. */
 const NONE_BY_DEFAULT: ReadonlySet<string> = new Set()
@@ -100,26 +105,22 @@ const excluding = (...keys: readonly string[]): StagedImport.Selection =>
 
 describe('skipReasonFor', () => {
   it('names a format with only unreadable files unreadable', () => {
-    expect(
-      skipReasonFor({
-        ...FormatDecode.emptyResult('har'),
-        files: [{ id: '0:broken.har', fileName: 'broken.har', bytes: new Uint8Array() }],
-        unreadableFiles: [unreadableFile('broken.har')],
-      })
-    ).toBe('unreadable')
+    expect(skipReasonFor({ ...groupOf([]), unreadableFiles: [unreadableFile('broken.har')] })).toBe(
+      'unreadable'
+    )
   })
 
   it('names a format whose decode yielded resources beside an unreadable file nothing', () => {
     expect(
       skipReasonFor({
-        ...resultOf('har', [patientRow('a')]),
+        ...groupOf([patientRow('a')]),
         unreadableFiles: [unreadableFile('broken.har')],
       })
     ).toBe('nothing')
   })
 
-  it('names a format that claimed no files nothing', () => {
-    expect(skipReasonFor(FormatDecode.emptyResult('har'))).toBe('nothing')
+  it('names a format whose decode yielded no resources and no unreadable file nothing', () => {
+    expect(skipReasonFor(groupOf([]))).toBe('nothing')
   })
 })
 
@@ -159,16 +160,15 @@ describe('planWrite', () => {
     const batch = batchOf({ har: [asDecoded] }, [STORED])
     const withMentionLink: ResolvedBatch = {
       ...batch,
-      plan: {
-        ...batch.plan,
-        mentionLinks: [
-          {
-            reviewKey: 'obs-1',
-            path: 'subject',
-            target: LinkTarget.Stored({ resource: STORED_RESOURCE }),
-          },
-        ],
-      },
+      plan: LinkPlan.withMentionLinkChoiceSet(
+        batch.plan,
+        MentionLinkChoiceSet.set(
+          MentionLinkChoiceSet.empty,
+          'obs-1',
+          'subject',
+          LinkChoice.LinkToStoredResource({ resource: STORED_RESOURCE })
+        )
+      ),
     }
     const edited = observationOf('obs-1', {
       subject: { reference: 'Patient/elsewhere' },
@@ -177,10 +177,10 @@ describe('planWrite', () => {
     const selection = StagedImport.edit(StagedImport.initial(), 'obs-1', edited)
 
     const written = planWrite(withMentionLink, () => selection, noneByDefault, new Set()).find(
-      ({ row }) => row.reviewable.key === 'obs-1'
+      ({ reviewKey }) => reviewKey === 'obs-1'
     )
 
-    expect(written?.row.resource).toEqual(
+    expect(written?.resource).toEqual(
       observationOf('obs-1', { subject: { reference: STORED_PATIENT }, code: { text: 'Pulse' } })
         .resource
     )
@@ -210,8 +210,8 @@ describe('planWrite', () => {
 
           expect(plan).toEqual(
             keys.map((key): WriteDecision => ({
+              ...rowOf(key, edits(key) ? patient(key, 'female') : patient(key)),
               group: 'har',
-              row: rowOf(key, edits(key) ? patient(key, 'female') : patient(key)),
               disposition: excludes(key) ? 'Excluded' : 'Included',
             }))
           )
@@ -233,7 +233,7 @@ describe('planWrite', () => {
     expect(
       dispositionsOf(planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set()))
     ).toEqual([
-      [LINKED_GROUP, STORED.key, 'Included'],
+      [ReviewGroup.LINKED, STORED.key, 'Included'],
       ['har', 'obs-1', 'Included'],
       ['dicom', 'd', 'Included'],
     ])
@@ -248,13 +248,13 @@ describe('planWrite', () => {
     expect(
       dispositionsOf(planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set()))
     ).toEqual([
-      [LINKED_GROUP, STORED.key, 'Included'],
+      [ReviewGroup.LINKED, STORED.key, 'Included'],
       ['har', 'obs-1', 'Excluded'],
     ])
   })
 
   it('writes a record the import implied only while a written row names it', () => {
-    const implied = rowOf('implied-9', patient('implied-9'), 'Implied')
+    const implied = rowOf('implied-9', patient('implied-9'), true)
     const batch = batchOf({
       har: [implied, observationOf('obs-1', { subject: { reference: 'Patient/implied-9' } })],
     })
@@ -262,13 +262,13 @@ describe('planWrite', () => {
     expect(
       dispositionsOf(planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set()))
     ).toEqual([
-      ['har', implied.reviewable.key, 'Included'],
+      ['har', implied.reviewKey, 'Included'],
       ['har', 'obs-1', 'Included'],
     ])
     expect(
       dispositionsOf(planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set()))
     ).toEqual([
-      ['har', implied.reviewable.key, 'Unreferenced'],
+      ['har', implied.reviewKey, 'Unreferenced'],
       ['har', 'obs-1', 'Excluded'],
     ])
   })
@@ -289,7 +289,7 @@ describe('planWrite', () => {
   })
 
   it('writes the record a file decoded over the copy another file set implied under its id, whatever their order', () => {
-    const implied = rowOf('implied-9', patient('p-9'), 'Implied')
+    const implied = rowOf('implied-9', patient('p-9'), true)
     const decoded = rowOf('p-9', patient('p-9', 'female'))
     const naming = observationOf('obs-1', { subject: { reference: 'Patient/p-9' } })
 
@@ -304,7 +304,7 @@ describe('planWrite', () => {
       )
     ).toEqual([
       ['har', 'p-9', 'Included'],
-      ['har', implied.reviewable.key, 'Superseded'],
+      ['har', implied.reviewKey, 'Superseded'],
       ['har', 'obs-1', 'Included'],
     ])
   })
@@ -333,7 +333,7 @@ describe('planWrite', () => {
         planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set([STORED.key]))
       )
     ).toEqual([
-      [LINKED_GROUP, STORED.key, 'Unchanged'],
+      [ReviewGroup.LINKED, STORED.key, 'Unchanged'],
       ['har', 'obs-1', 'Included'],
     ])
   })
@@ -349,7 +349,7 @@ describe('planWrite', () => {
         planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set([STORED.key]))
       )
     ).toEqual([
-      [LINKED_GROUP, STORED.key, 'Unchanged'],
+      [ReviewGroup.LINKED, STORED.key, 'Unchanged'],
       ['har', 'obs-1', 'Excluded'],
     ])
   })
@@ -368,8 +368,8 @@ describe('planWrite', () => {
     const plan = planWrite(batch, selectionFor, noneByDefault, new Set())
 
     expect(plan).toEqual([
-      { group: 'har', row: rowOf('a', patient('p')), disposition: 'Superseded' },
-      { group: 'lifelabs-pdf', row: rowOf('b', edited), disposition: 'Included' },
+      { ...rowOf('a', patient('p')), group: 'har', disposition: 'Superseded' },
+      { ...rowOf('b', edited), group: 'lifelabs-pdf', disposition: 'Included' },
     ])
   })
 
@@ -396,9 +396,7 @@ describe('planWrite', () => {
         (ids, excludes, unchanged) => {
           const rows = ids.map((id, index) => rowOf(`k-${index}`, patient(id)))
           let selection = StagedImport.initial()
-          for (const {
-            reviewable: { key },
-          } of rows) {
+          for (const { reviewKey: key } of rows) {
             if (excludes(key))
               selection = StagedImport.toggleResource(selection, NONE_BY_DEFAULT, key)
           }
@@ -413,8 +411,8 @@ describe('planWrite', () => {
           const candidates = plan.filter(
             ({ disposition }) => disposition === 'Included' || disposition === 'Superseded'
           )
-          const literalReferenceOf = ({ row }: WriteDecision): string =>
-            `${row.resource.resourceType}/${row.resource.id}`
+          const literalReferenceOf = ({ resource }: WriteDecision): string =>
+            `${resource.resourceType}/${resource.id}`
           const included = plan.filter(({ disposition }) => disposition === 'Included')
           expect(included.length).toBe(new Set(candidates.map(literalReferenceOf)).size)
           expect(
@@ -426,9 +424,9 @@ describe('planWrite', () => {
                 : 'Included'
             )
           ).toEqual(candidates.map(({ disposition }) => disposition))
-          expect(candidates.map(({ row }) => row.reviewable.key)).toEqual([
+          expect(candidates.map(({ reviewKey }) => reviewKey)).toEqual([
             ...(unchanged ? [] : [STORED.key]),
-            ...rows.map(({ reviewable }) => reviewable.key).filter((key) => !excludes(key)),
+            ...rows.map(({ reviewKey }) => reviewKey).filter((key) => !excludes(key)),
           ])
         }
       ),
@@ -450,9 +448,7 @@ describe('planWrite', () => {
             )
           )
           let selection = StagedImport.initial()
-          for (const {
-            reviewable: { key },
-          } of observations) {
+          for (const { reviewKey: key } of observations) {
             if (excludes(key))
               selection = StagedImport.toggleResource(selection, NONE_BY_DEFAULT, key)
           }
@@ -465,8 +461,8 @@ describe('planWrite', () => {
           )
 
           expect(plan[0]).toEqual({
-            group: LINKED_GROUP,
-            row: STORED.row,
+            ...STORED.row,
+            group: ReviewGroup.LINKED,
             disposition: unchanged ? 'Unchanged' : 'Included',
           })
         }
@@ -483,7 +479,7 @@ const STORED_PATIENT = 'Patient/s-1'
 interface LinkedRecord {
   readonly key: string
   readonly literalReference: string
-  readonly row: DecodedFile.Row
+  readonly row: ReviewRow.Type
 }
 
 /** `linkedResource` as a linked record titled `title`. */
@@ -493,7 +489,7 @@ const linkedRecordOf = (linkedResource: LinkableResource.WithId, title: string):
   return {
     key,
     literalReference,
-    row: { reviewable: { key, title, origin: 'Decoded' }, resource: linkedResource },
+    row: { reviewKey: key, title, isImplied: false, resource: linkedResource },
   }
 }
 
@@ -511,8 +507,10 @@ const STORED_RESOURCE = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema)
 const STORED = linkedRecordOf(STORED_RESOURCE, 'Stored Patient')
 
 /** An Observation keyed `key` carrying the given reference fields. */
-const observationOf = (key: string, references: object): DecodedFile.Row => ({
-  reviewable: { key, title: `Observation/${key}`, origin: 'Decoded' },
+const observationOf = (key: string, references: object): ReviewRow.Type => ({
+  reviewKey: key,
+  title: `Observation/${key}`,
+  isImplied: false,
   resource: Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
     resourceType: 'Observation',
     id: key,

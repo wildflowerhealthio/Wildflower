@@ -6,7 +6,6 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  FormatDecode,
   LinkChoiceSet,
   SectionedList,
   StagedImport,
@@ -16,6 +15,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { formatRegistry } from './registry.ts'
 import { resolveMentions, type ResolvedBatch } from './resolve-mentions.ts'
+import type * as ReviewGroup from './review-group.ts'
 import { keysWithoutPatientOf } from './unlinked-mentions.ts'
 
 const SOURCE_PATIENT = 'https://source.example/patient-id'
@@ -51,39 +51,34 @@ const PATIENT = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
  * referent on its default, on a `TestClock` standing at the epoch.
  */
 const resolvedHarBatchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => {
-  const har: FormatDecode.Result<'har'> = {
-    ...FormatDecode.emptyResult('har'),
+  const har: ReviewGroup.Type = {
+    sectionedList: SectionedList.make([
+      {
+        title: 'Resources',
+        rows: resources.map((resource, index) => ({
+          reviewKey: `k-${index}`,
+          title: `${resource.resourceType}/${resource.id}`,
+          isImplied: false,
+          resource,
+        })),
+      },
+    ]),
+    notes: [],
+    unreadableFiles: [],
     files: [{ id: '0:har', fileName: 'har', bytes: new Uint8Array([1]) }],
-    decoded: {
-      rows: SectionedList.make([
-        {
-          title: 'Resources',
-          rows: resources.map((resource, index) => ({
-            reviewable: {
-              key: `k-${index}`,
-              title: `${resource.resourceType}/${resource.id}`,
-              origin: 'Decoded',
-            },
-            resource,
-          })),
-        },
-      ]),
-      notes: [],
-    },
   }
   return Effect.runSync(
-    resolveMentions(
-      {
-        formats: {
-          har,
-          'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-          dicom: FormatDecode.emptyResult('dicom'),
-        },
-        unrecognizedFiles: [],
-      },
-      LinkChoiceSet.empty
-    ).pipe(Effect.provide(TestContext.TestContext))
+    resolveMentions({ groups: { har }, unrecognizedFiles: [] }, LinkChoiceSet.empty).pipe(
+      Effect.provide(TestContext.TestContext)
+    )
   )
+}
+
+/** The HAR group of `batch`, failing the test when it has none. */
+const harGroupOf = (batch: ResolvedBatch): ReviewGroup.Type => {
+  const group = batch.groups.har
+  if (group === undefined) throw expect.fail('expected a HAR group')
+  return group
 }
 
 describe('keysWithoutPatientOf', () => {
@@ -96,7 +91,9 @@ describe('keysWithoutPatientOf', () => {
   ])
 
   it('names the rows that name no patient or an unlinked one, the source file never', () => {
-    expect([...keysWithoutPatientOf(batch, 'har', StagedImport.initial())]).toEqual(['k-3', 'k-4'])
+    expect([
+      ...keysWithoutPatientOf(batch.plan, 'har', harGroupOf(batch), StagedImport.initial()),
+    ]).toEqual(['k-3', 'k-4'])
   })
 
   it('asks a row as edited, so an edit that gives it a patient takes it out', () => {
@@ -106,6 +103,8 @@ describe('keysWithoutPatientOf', () => {
       request('rx-display', { reference: 'Patient/p-1' })
     )
 
-    expect([...keysWithoutPatientOf(batch, 'har', selection)]).toEqual(['k-4'])
+    expect([...keysWithoutPatientOf(batch.plan, 'har', harGroupOf(batch), selection)]).toEqual([
+      'k-4',
+    ])
   })
 })

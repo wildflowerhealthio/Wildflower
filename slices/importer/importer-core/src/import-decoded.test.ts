@@ -9,14 +9,15 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type DecodedFileSet,
+  DecodedFileSet,
   DecodeFunction,
   FileImporter,
+  type FileSetRecord,
   FormatDecode,
   MetaSource,
   PickedFile,
   ResourcePlan,
-  type Section,
+  Section,
   SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -25,6 +26,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { importDecoded, type ImportingFormat } from './import-decoded.ts'
+import type * as ReviewGroup from './review-group.ts'
 
 // The source file schema itself — the mint, the encode, the read-back — is
 // `importer-fundamentals`' `picked-file.ts`'s and is tested there. What this
@@ -65,19 +67,20 @@ const emptyFileError = (fileName: string): ParseResult.ParseError =>
 /** One file's bytes as one resource each — the per-file decode every set of one runs. */
 const decodeBytes = (
   file: PickedFile.Type
-): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFileSet.Type, ParseResult.ParseError> =>
   file.bytes.length === 0
     ? Effect.fail(emptyFileError(file.fileName))
     : Effect.succeed({
-        sections: [
-          {
-            title: file.fileName,
-            rows: [...file.bytes].map((byte, index) => ({
-              fullUrl: `${file.fileName}:${index}`,
+        pickedFiles: [DecodedFileSet.unidentified(file)],
+        sectionedList: SectionedList.make([
+          Section.make(
+            file.fileName,
+            [...file.bytes].map((byte, index) => ({
+              localKey: `${file.fileName}:${index}`,
               resource: fakeResource(`${byte}`),
-            })),
-          },
-        ],
+            }))
+          ),
+        ]),
         notes: [],
       })
 
@@ -88,11 +91,11 @@ const sourceFileFormat: PickedFile.FormatValue = {
   descriptionPrefix: 'Example: ',
 }
 
-/** A format's batch decode, then the import stage over it, as `readBatch` runs them. */
+/** A format's decode, then the import stage over it, as `readBatch` runs them. */
 type DecodeAndImport = (
   files: readonly PickedFile.Type[],
   settings: null
-) => Effect.Effect<FormatDecode.Result<typeof testFormat>>
+) => Effect.Effect<ReviewGroup.Type>
 
 const decodeAndImport =
   (
@@ -124,17 +127,17 @@ const fileArbitrary: fc.Arbitrary<PickedFile.Type> = fc
   })
   .map((one) => oneFile(one.fileName, one.bytes))
 
-/** The same files re-slotted as one batch, the way `readBatch` numbers a pick. */
+/** The same files re-slotted as one batch, the way `readBatch` numbers a batch's picks. */
 const asBatch = (files: readonly PickedFile.Type[]): readonly PickedFile.Type[] =>
   files.map((file, index) => pickedFile(index, file.fileName, file.bytes))
 
 /** The source file row a single-pick decode leads with. */
 const mintedSourceFile = async (
-  batchDecode: DecodeAndImport,
+  formatDecode: DecodeAndImport,
   file: PickedFile.Type
 ): Promise<PickedFile.SourceFile> => {
-  const result = await Effect.runPromise(batchDecode([file], null))
-  const resource = result.decoded.rows.sections[0]?.rows[0]?.resource
+  const result = await Effect.runPromise(formatDecode([file], null))
+  const resource = result.sectionedList.sections[0]?.rows[0]?.resource
   if (resource?.resourceType !== 'DocumentReference')
     throw expect.fail('Expected a source file DocumentReference')
   return resource
@@ -180,12 +183,12 @@ describe('the source files the import mints', () => {
   it('should mint a pick into a labeled row keyed by the pick', async () => {
     const file = oneFile('scan.bin', new Uint8Array([1, 2]))
     const result = await Effect.runPromise(decode([file], null))
-    const sourceSection = result.decoded.rows.sections[0]
+    const sourceSection = result.sectionedList.sections[0]
     expect(sourceSection?.title).toBe('Source file')
     const labeled = sourceSection?.rows[0]
 
-    expect(labeled?.reviewable.key).toBe(`${FormatDecode.keyPrefix(file)}source-file/scan.bin`)
-    expect(labeled?.reviewable.title).toBe('scan.bin')
+    expect(labeled?.reviewKey).toBe(`${FormatDecode.keyPrefix(file)}source-file/scan.bin`)
+    expect(labeled?.title).toBe('scan.bin')
   })
 
   it('should carry no upload instant on the source file it mints', async () => {
@@ -201,7 +204,7 @@ describe('the source files the import mints', () => {
         null
       )
     )
-    const titles = result.decoded.rows.sections.map((section) => section.title)
+    const titles = result.sectionedList.sections.map((section) => section.title)
     expect(titles.filter((title) => title === 'Source file')).toHaveLength(2)
   })
 
@@ -228,7 +231,7 @@ const linkingDecode = decodeAndImport(
     // The decode's own resources name the links, so a format never parses its
     // file twice to derive one.
     linkSourceFile: (sourceFile, decoded): PickedFile.SourceFile => {
-      const first = SectionedList.rows(decoded.rows)[0]
+      const first = SectionedList.rows(decoded.sectionedList)[0]
       if (first === undefined) return sourceFile
       const reference = referenceValue(`Patient/${first.resource.id}`)
       return {
@@ -260,7 +263,7 @@ describe('the source file a format links off its import', () => {
     expect(linked.id).toBe(minted.id)
 
     const result = await Effect.runPromise(linkingDecode([file], null))
-    const extracted = result.decoded.rows.sections
+    const extracted = result.sectionedList.sections
       .slice(1)
       .flatMap((section) => section.rows)
       .map((row) => row.resource.meta?.source)
@@ -268,7 +271,7 @@ describe('the source file a format links off its import', () => {
   })
 })
 
-describe('decode and import (batch behavior)', () => {
+describe("decode and import (across a format's files)", () => {
   it('property: readable files produce sections, unreadable files are collected, in pick order', async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(fileArbitrary, { maxLength: 6 }), async (picked) => {
@@ -282,7 +285,7 @@ describe('decode and import (batch behavior)', () => {
         }
         // Each readable file contributes its source file's section plus a content
         // section — every pick mints, whatever it came from.
-        expect(result.decoded.rows.sections.length).toBe(readable.length * 2)
+        expect(result.sectionedList.sections.length).toBe(readable.length * 2)
       }),
       { numRuns: numRunsFor({ base: 40 }) }
     )
@@ -294,9 +297,9 @@ describe('decode and import (batch behavior)', () => {
         fileArbitrary.filter((file) => file.bytes.length > 0),
         async (file) => {
           const result = await Effect.runPromise(decode([file], null))
-          const sections = result.decoded.rows.sections
+          const sections = result.sectionedList.sections
           expect(sections[0]?.title).toBe('Source file')
-          expect(sections[0]?.rows.map((row) => row.reviewable.key)).toEqual([
+          expect(sections[0]?.rows.map((row) => row.reviewKey)).toEqual([
             `${FormatDecode.keyPrefix(file)}source-file/${file.fileName}`,
           ])
           const sourceFileId = sections[0]?.rows[0]?.resource.id
@@ -328,7 +331,7 @@ describe('decode and import (batch behavior)', () => {
       oneFile('b.bin', new Uint8Array([2])),
     ])
     const result = await Effect.runPromise(linking(files, null))
-    const listed = result.decoded.rows.sections
+    const listed = result.sectionedList.sections
       .filter((section) => section.title === 'Source file')
       .map((section) => section.rows[0]?.resource)
     // Sets are linked concurrently, so the hook sees them in no fixed order.
@@ -368,7 +371,7 @@ describe('decode and import (batch behavior)', () => {
     expect(unidentified.masterIdentifier).toBeNull()
   })
 
-  it('property: every review key across a multi-file batch is distinct', async () => {
+  it("property: every review key across a format's files is distinct", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(
@@ -377,8 +380,8 @@ describe('decode and import (batch behavior)', () => {
         ),
         async (picked) => {
           const result = await Effect.runPromise(decode(asBatch(picked), null))
-          const keys = result.decoded.rows.sections.flatMap((section) =>
-            section.rows.map((row) => row.reviewable.key)
+          const keys = result.sectionedList.sections.flatMap((section) =>
+            section.rows.map((row) => row.reviewKey)
           )
           expect(new Set(keys).size).toBe(keys.length)
         }
@@ -400,8 +403,8 @@ describe('decode and import (batch behavior)', () => {
         null
       )
     )
-    const keys = result.decoded.rows.sections.flatMap((section) =>
-      section.rows.map((row) => row.reviewable.key)
+    const keys = result.sectionedList.sections.flatMap((section) =>
+      section.rows.map((row) => row.reviewKey)
     )
     expect(keys.length).toBe(4)
     expect(new Set(keys).size).toBe(4)
@@ -453,19 +456,20 @@ const groupByName = (file: PickedFile.Type): Either.Either<string, ParseResult.P
 /** One section per set, one resource per file; a set with an empty file rejects whole. */
 const decodeGroup = (
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>
-): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFileSet.Type, ParseResult.ParseError> =>
   pickedFiles.some((file) => file.bytes.length === 0)
     ? Effect.fail(emptyFileError(pickedFiles[0].fileName))
     : Effect.succeed({
-        sections: [
-          {
-            title: groupOf(pickedFiles[0].fileName) ?? pickedFiles[0].fileName,
-            rows: pickedFiles.map((file) => ({
-              fullUrl: `file/${file.id}`,
+        pickedFiles: Arr.map(pickedFiles, DecodedFileSet.unidentified),
+        sectionedList: SectionedList.make([
+          Section.make(
+            groupOf(pickedFiles[0].fileName) ?? pickedFiles[0].fileName,
+            pickedFiles.map((file) => ({
+              localKey: `file/${file.id}`,
               resource: fakeResource(`${file.bytes[0] ?? 0}`),
-            })),
-          },
-        ],
+            }))
+          ),
+        ]),
         notes: [`${groupOf(pickedFiles[0].fileName) ?? '?'}: ${pickedFiles.length} files`],
       })
 
@@ -474,20 +478,20 @@ const groupedDecode = decodeAndImport(
   DecodeFunction.make({ format: testFormat, groupBy: groupByName, decodeFileSet: decodeGroup })
 )
 
-const stampsOf = (result: FormatDecode.Result<string>): ReadonlySet<string> =>
+const stampsOf = (result: ReviewGroup.Type): ReadonlySet<string> =>
   new Set(
-    SectionedList.rows(result.decoded.rows).flatMap((row) => {
+    SectionedList.rows(result.sectionedList).flatMap((row) => {
       const source = row.resource.meta?.source
       return source === null || source === undefined ? [] : [source]
     })
   )
 
 /** The key namespaces the *extracted* resources carry — one per set. */
-const keyNamespacesOf = (result: FormatDecode.Result<string>): ReadonlySet<string> =>
+const keyNamespacesOf = (result: ReviewGroup.Type): ReadonlySet<string> =>
   new Set(
-    SectionedList.rows(result.decoded.rows)
+    SectionedList.rows(result.sectionedList)
       .filter((row) => row.resource.resourceType !== 'DocumentReference')
-      .map((row) => row.reviewable.key.split('/')[0] ?? row.reviewable.key)
+      .map((row) => row.reviewKey.split('/')[0] ?? row.reviewKey)
   )
 
 describe('a grouped decode', () => {
@@ -506,7 +510,7 @@ describe('a grouped decode', () => {
           expect(result.unreadableFiles).toEqual([])
           expect(keyNamespacesOf(result).size).toBe(groups.length)
           expect(stampsOf(result).size).toBe(groups.length)
-          expect(result.decoded.notes).toHaveLength(groups.length)
+          expect(result.notes).toHaveLength(groups.length)
         }
       ),
       { numRuns: numRunsFor({ base: 30 }) }
@@ -522,17 +526,17 @@ describe('a grouped decode', () => {
     if (first === undefined || second === undefined) throw expect.fail('two files expected')
     const result = await Effect.runPromise(groupedDecode(files, null))
     const prefix = FormatDecode.keyPrefix(first)
-    const extracted = result.decoded.rows.sections
+    const extracted = result.sectionedList.sections
       .filter((section) => section.title === 's')
       .flatMap((section) => section.rows)
-    expect(extracted.map((row) => row.reviewable.key)).toEqual([
+    expect(extracted.map((row) => row.reviewKey)).toEqual([
       `${prefix}file/${first.id}`,
       `${prefix}file/${second.id}`,
     ])
     expect(stampsOf(result).size).toBe(1)
     // Both source files are listed, each keyed by its own pick.
-    expect(result.decoded.rows.sections[0]?.title).toBe('Source files')
-    expect(result.decoded.rows.sections[0]?.rows.map((row) => row.reviewable.key)).toEqual([
+    expect(result.sectionedList.sections[0]?.title).toBe('Source files')
+    expect(result.sectionedList.sections[0]?.rows.map((row) => row.reviewKey)).toEqual([
       `${prefix}source-file/s-1.bin`,
       `${FormatDecode.keyPrefix(second)}source-file/s-2.bin`,
     ])
@@ -568,7 +572,7 @@ describe('a grouped decode', () => {
         null
       )
     )
-    expect(result.decoded.notes).toEqual(['b: 2 files', '10: 1 files', '2: 1 files'])
+    expect(result.notes).toEqual(['b: 2 files', '10: 1 files', '2: 1 files'])
   })
 
   it('rejects exactly the picked files of a failing set, leaving its neighbours readable', async () => {
@@ -587,7 +591,7 @@ describe('a grouped decode', () => {
       'test/1:b-1.bin',
       'test/2:b-2.bin',
     ])
-    expect(result.decoded.notes).toEqual(['a: 2 files'])
+    expect(result.notes).toEqual(['a: 2 files'])
   })
 
   it('reports the picked files of a set whose records name no source file as unreadable', async () => {
@@ -621,7 +625,7 @@ describe('a grouped decode', () => {
       ['test/1:b-1.bin', notFound],
       ['test/2:b-2.bin', notFound],
     ])
-    expect(result.decoded.notes).toEqual(['a: 1 files'])
+    expect(result.notes).toEqual(['a: 1 files'])
   })
 
   it('reports the picks no set claimed in pick order, ahead of the sets that rejected', async () => {
@@ -665,12 +669,16 @@ const scan = oneFile('scan.bin', new Uint8Array([1]))
 
 /** One file set of `scan`, holding `sections`, as a format's decode returns it. */
 const decodedOf = (
-  sections: readonly Section.Type<DecodedFileSet.Entry>[]
+  sections: readonly Section.Type<FileSetRecord.Type>[]
 ): FormatDecode.Decoded<typeof testFormat> => ({
   format: testFormat,
   files: [scan],
   fileSets: [
-    { pickedFiles: [{ pickedFile: scan, identifiedAs: Option.none() }], sections, notes: [] },
+    {
+      pickedFiles: [DecodedFileSet.unidentified(scan)],
+      sectionedList: SectionedList.make(sections),
+      notes: [],
+    },
   ],
   unreadableFiles: [],
 })
@@ -680,7 +688,7 @@ const importedRecords = async (
   decoded: FormatDecode.Decoded<typeof testFormat>
 ): Promise<readonly FhirResourceWithId[]> => {
   const result = await Effect.runPromise(importDecoded({ sourceFileFormat }, decoded))
-  return SectionedList.rows(SectionedList.make(result.decoded.rows.sections.slice(1))).map(
+  return SectionedList.rows(SectionedList.make(result.sectionedList.sections.slice(1))).map(
     (row) => row.resource
   )
 }
@@ -690,43 +698,50 @@ const importedSourceFileIds = async (
   decoded: FormatDecode.Decoded<typeof testFormat>
 ): Promise<readonly string[]> => {
   const result = await Effect.runPromise(importDecoded({ sourceFileFormat }, decoded))
-  return (result.decoded.rows.sections[0]?.rows ?? []).map((row) => row.resource.id)
+  return (result.sectionedList.sections[0]?.rows ?? []).map((row) => row.resource.id)
 }
 
 describe('the records the import adopts', () => {
   it('adopts each detached record under the id its key derives, its references to records of the set resolved', async () => {
     const detachSource = DetachedResource.fromServerRecord(SOURCE_BASE_URL)
-    const patientEntry = { fullUrl: 'patient', resource: detachSource(sourcePatient) }
-    const observationEntry = { fullUrl: 'observation', resource: detachSource(sourceObservation) }
+    const patientRecord = { localKey: 'patient', resource: detachSource(sourcePatient) }
+    const observationRecord = { localKey: 'observation', resource: detachSource(sourceObservation) }
     const [sourceFileId] = await importedSourceFileIds(decodedOf([]))
 
     const imported = await importedRecords(
       decodedOf([
-        { title: 'records', rows: [patientEntry] },
-        { title: 'results', rows: [observationEntry] },
+        { title: 'records', rows: [patientRecord] },
+        { title: 'results', rows: [observationRecord] },
       ])
     )
     // The Observation is keyless, so the stage minted its id: the expectation
     // reuses it.
     const mintedObservationId = imported[1]?.id ?? ''
-    const patientPlan = ResourcePlan.make(patientEntry.resource, () => mintedObservationId)
-    const observationPlan = ResourcePlan.make(observationEntry.resource, () => mintedObservationId)
+    const patientPlan = ResourcePlan.make(patientRecord.resource, () => mintedObservationId)
+    const observationPlan = ResourcePlan.make(observationRecord.resource, () => mintedObservationId)
     if (patientPlan._tag !== 'Derived') {
       throw new Error('unreachable: the Patient is keyed by its source id')
     }
-    const adoptRecord = adopt(
-      ReferencePlan.of([
-        {
-          logicalReference: patientPlan,
-          literalReference: ResourcePlan.literalReference(patientPlan),
-        },
-      ])
+    const adopted = Effect.runSync(
+      Effect.all([
+        adopt(patientRecord.resource, patientPlan.id),
+        adopt(observationRecord.resource, observationPlan.id),
+      ]).pipe(
+        Effect.provideService(
+          ReferencePlan.InForce,
+          ReferencePlan.of([
+            {
+              logicalReference: patientPlan,
+              literalReference: ResourcePlan.literalReference(patientPlan),
+            },
+          ])
+        )
+      )
     )
     expect(imported).toEqual(
-      [
-        adoptRecord(patientEntry.resource, patientPlan.id),
-        adoptRecord(observationEntry.resource, observationPlan.id),
-      ].map((record) => MetaSource.stamp(record, MetaSource.makeReference(sourceFileId ?? '')))
+      adopted.map((record) =>
+        MetaSource.stamp(record, MetaSource.makeReference(sourceFileId ?? ''))
+      )
     )
   })
 
@@ -738,11 +753,11 @@ describe('the records the import adopts', () => {
           title: 'records',
           rows: [
             {
-              fullUrl: 'patient',
+              localKey: 'patient',
               resource: DetachedResource.fromServerRecord(baseUrl)(sourcePatient),
             },
             {
-              fullUrl: 'observation',
+              localKey: 'observation',
               resource: DetachedResource.fromServerRecord(baseUrl)(sourceObservation),
             },
           ],
@@ -765,7 +780,7 @@ describe('the records the import adopts', () => {
           decodedOf([
             {
               title: 'records',
-              rows: [{ fullUrl: 'observation', resource: detached }],
+              rows: [{ localKey: 'observation', resource: detached }],
             },
           ])
         )
