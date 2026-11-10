@@ -13,11 +13,30 @@ carrying the one `ImagingStudy` its files make up.
 
 ## Shape
 
-- `src/source-system.ts` — the `DICOM_SYSTEM` URI constant
-  (`https://wildflowerhealth.io/fhir/sid/dicom`) and
-  `DICOM_PRACTITIONER_NAME_SYSTEM` (`<DICOM_SYSTEM>/practitioner-name`), the
-  system a referring physician known only by name is keyed in; both
+- `src/source-system.ts` — **`DICOM_SYSTEM`**
+  (`https://wildflowerhealth.io/fhir/sid/dicom`), the coding system a DICOM
+  source file is stored under, and **`DicomIdentifierSystem`**, the systems
+  records are keyed in when the file names no issuer URI: `PatientId`
+  (`…/dicom/patient-id`), `AccessionNumber` (`…/dicom/accession-number`),
+  `PatientNameBirthDate` (`…/dicom/patient-name-birth-date`), all
+  Wildflower-minted and meaning "a DICOM number of this kind whose issuer the
+  file does not state", and `StudyInstanceUid` (`urn:dicom:uid`, FHIR's own);
+  and **`DICOM_PRACTITIONER_NAME_SYSTEM`** (`<DICOM_SYSTEM>/practitioner-name`),
+  the system a referring physician known only by name is keyed in. All
   persisted wire format.
+- `src/fhir/issuer.ts` — an issuer's Universal Entity ID as `Identifier.system`
+  (IHE ITI TF-2 Appendix Z.9.1.2, FHIR's `urn:oid:`/`urn:uuid:` spellings);
+  the fallback for an issuer naming no URI is Wildflower's own, standing in
+  for the identifier-domain registry IHE assumes. **`universalSystemOf`** spells a Universal Entity ID as a system: `ISO`
+  as `urn:oid:<id>` (a well-formed OID), `UUID` as `urn:uuid:<id>` (lower
+  case), `URI` as `URL.href` spells it when `Schema.URL` accepts it, the
+  spelling a record key is read back in; `None` for any other
+  type or a malformed value. **`issuedIdentifierOf`** keys a number under that
+  system, else under the caller's fallback, with the local namespace (else an
+  unresolved Universal Entity ID, as written) as `assigner.display` — so the
+  decode is total whatever the issuer states, and with what kept a stated
+  Universal Entity ID from being its system (**`unresolvedUniversalIssuerOf`**:
+  a missing type, or a value naming no URI), for the decode's note.
 - `src/detect.ts` — DICM magic bytes at offset 128 (PS3.10 preamble + magic)
   or a `.dcm` extension fallback.
 - `src/settings.ts` — `DicomSettings`: the one knob, `timeZone`, the IANA zone
@@ -40,7 +59,7 @@ carrying the one `ImagingStudy` its files make up.
 - `src/fhir/to-fhir.ts` — **`toFhirResources`**: synthesizes `Patient`
   (name, identifier, birthDate, gender from M/F/O), `ServiceRequest` (emitted
   only when `AccessionNumber` is present: status completed, intent order,
-  identifier = accession, code from RequestedProcedureDescription or
+  identifier = the accession typed `ACSN` (v2-0203), code from RequestedProcedureDescription or
   StudyDescription, requester from ReferringPhysicianName:
   `Practitioner.tryReferenceWireFromName` in `DICOM_PRACTITIONER_NAME_SYSTEM`
   (`<DICOM_SYSTEM>/practitioner-name`) of the physician's given names, then
@@ -63,21 +82,38 @@ carrying the one `ImagingStudy` its files make up.
   its files ordered by `InstanceNumber`, `numberOfSeries`/`numberOfInstances`
   are the real counts, and `started` is the earliest StudyDate+Time any file
   states. The synthesis names no file: which source file stores an instance is
-  the import's to say (`addGridfsFileIds`). Ids are deterministic via `sourceId` (FNV-1a 64-bit of length-prefixed
-  components); the `ImagingStudy` and `ServiceRequest` ids hash the patient
-  identity (`patientOriginalId`) together with the `StudyInstanceUID` /
-  `AccessionNumber` — the identity `studyKey` splits on — so two patients'
-  files sharing a UID or accession store two studies and two requests rather
-  than one overwriting the other. **Every ordering is a function of the
+  the import's to say (`addGridfsFileIds`). Each record's key, `identifier[0]`,
+  is the identifier the file carries for it, as FHIR R4's DICOM mapping for
+  `ImagingStudy.identifier` reads them: the `Patient` its Patient ID
+  (0010,0020) under the URI Issuer of Patient ID Qualifiers Sequence
+  (0010,0024) names, else `DicomIdentifierSystem.PatientId`, with Issuer of
+  Patient ID (0010,0021) as `assigner.display`; a patient with no Patient ID
+  its `<PN text>, <YYYY-MM-DD>` (the name alone without a valid birth date) in
+  `PatientNameBirthDate`, and none at all with no name either
+  (**`patientKeyOf`**); the `ServiceRequest` its Accession Number under the
+  URI Issuer of Accession Number Sequence (0008,0051) names, else
+  `DicomIdentifierSystem.AccessionNumber`, its Local Namespace Entity ID as
+  `assigner.display` — read off the first file in study order stating an
+  accession; the `ImagingStudy` its Study Instance UID
+  (**`imagingStudyKeyOf`**). `subject` and `basedOn` name the others by those
+  keys (`DetachedResource.logicalReferenceWire`, system and value only). The
+  same study picked twice, or from two discs, keys the same records.
+  **Every ordering is a function of the
   headers** (`compareInstances`: `InstanceNumber`, `SOPInstanceUID`, then
   `SOPClassUID`; two instances it leaves tied are alike in every field), so
   the same study picked in any order imports to identical resources. Files that disagree on `AccessionNumber` are not
-  merged: the first in study order builds the one `ServiceRequest` and
-  `accessionNumbers` is what the decode reports the disagreement from.
+  merged: the first in study order builds the one `ServiceRequest`.
+  **`studyIdentifiersOf`** is the one place the patient's identifier and the
+  study's distinct accessions (by number and issuer) are chosen, for the
+  synthesis and the decode's notes alike.
 - `src/decode.ts` — what makes a set of picked files one import, and how that set
-  decodes. **`studyKey(header)`** is `StudyInstanceUID` **plus** the patient
-  identity `patientOriginalId` derives: a `PatientID` the files disagree on
-  splits the set rather than filing one patient's images in another's record.
+  decodes. **`studyKey(header)`** is `StudyInstanceUID` **plus** the
+  `patientKeyOf` key: a patient the files disagree on splits the set rather
+  than filing one patient's images in another's record. Both sets still key
+  one `ImagingStudy`, the UID, and **`withSharedStudyNotes`**, run over the
+  format's whole decode, adds **`SHARED_STUDY_NOTE`** to each set whose
+  `ImagingStudy` key another set of the batch carries too: whichever is
+  imported last replaces the other's series and patient.
   **`studyGroupKey`** is the `groupBy` the importer states: it parses the picked file's
   header (headers only, cheap) and returns `studyKey(header)`, or a `Left` —
   a file `dicom-parser` rejects states no study to belong to, and folding it
@@ -87,8 +123,8 @@ carrying the one `ImagingStudy` its files make up.
   itself**. A header that parsed in `studyGroupKey` parses
   again; that double parse is the deliberate price of a decode constructor with
   no parsed-value passthrough. It yields one `DecodedFileSet.Type`: one section
-  of FHIR records, each written detached and keyed in `DICOM_SYSTEM`
-  (`fhir-r4-adoption`'s `DetachedResource`), each record's local key fixed by its
+  of FHIR records, each written detached and keyed by the identifier its files
+  carry (`fhir-r4-adoption`'s `DetachedResource`), each record's local key fixed by its
   type (`patient`, `service-request`, `imaging-study`), for the import stage to adopt
   before it runs
   `linkToPatientAndStudy` and `addGridfsFileIds`, and its `pickedFiles`, each picked file paired with its SOP Instance UID
@@ -98,7 +134,10 @@ carrying the one `ImagingStudy` its files make up.
   `<Modality> <StudyDescription> · <StudyDate>` off the study's representative
   header, with stable local keys `patient`, `service-request`, `imaging-study`,
   fixed _within one study_ and namespaced by the import stage outside it. Notes for missing patient
-  identity, an absent `AccessionNumber`, one the files disagree on, and — for a
+  identity, an issuer sequence whose text cannot be decoded (read as absent), a
+  stated issuer of the Patient ID or the Accession Number that names no URI
+  (its number keyed under the fallback), an absent `AccessionNumber`, one the
+  files disagree on (number or issuer), and — for a
   study of more than one file — what each file contributed.
   It rejects a `settings.timeZone` the runtime cannot resolve
   (`checkTimeZone` from `kitchen-sink`, a `ParseError`) rather than
@@ -126,7 +165,8 @@ carrying the one `ImagingStudy` its files make up.
   literal for format `'dicom'`: the DICOM coding
   (`DICOM_SYSTEM|dicom-source-file`), content type `application/dicom`,
   `detectDicom`, the default settings, a `DecodeFunction.make` over
-  `studyGroupKey` and `decodeStudy`, and `linkToPatientAndStudy` and
+  `studyGroupKey` and `decodeStudy` with `withSharedStudyNotes` over its
+  result, and `linkToPatientAndStudy` and
   `addGridfsFileIds` as its `linkSourceFile` and `linkToSourceFiles`.
   **`addGridfsFileIds`** sets each `ImagingStudy` instance's `gridfsFileId`
   extension (**`GRIDFS_FILE_ID_EXTENSION_URL`**, a `valueString` because the
@@ -152,12 +192,25 @@ carrying the one `ImagingStudy` its files make up.
   (`DecodeFunction.make`, the `FileImporter` contract, the `PickedFile`
   vocabulary, `DecodedFileSet`), `fhir-r4` (resource types
   and identity), `fhir-r4-adoption` (`DetachedResource`), `kitchen-sink`
-  (`fnv1a64`, `checkTimeZone`), `effect`.
+  (`checkTimeZone`), `effect`.
 - **Depended on by**: `dicom-importer-react` (settings picker),
   `importer-react` (registry entry).
 - **Does not depend on**: any DOM, `fs`, or React package. Does not depend on
   `har-importer-core`, `lifelabs-pdf-importer-core`, or
   `http-extraction-fundamentals`.
+
+## Traps
+
+- **Every key is persisted wire format.** The ids records are stored under
+  derive from their keys, so changing a `DicomIdentifierSystem` value, the HD
+  to URI spelling, or the name-and-birth-date value re-keys every DICOM record
+  of that type already imported.
+- **A local issuer is not part of the key.** One Patient ID under two local
+  Issuers of Patient ID (0010,0021), with no universal issuer, keys one
+  `Patient` in `DicomIdentifierSystem.PatientId`: a certain match, accepted.
+  Likewise two patients' files stating one Accession Number under one issuer
+  are one `ServiceRequest`, and two stating one Study Instance UID one
+  `ImagingStudy` — `studyKey` still splits them into two sets, each noted.
 
 ## References
 

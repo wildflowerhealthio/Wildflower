@@ -12,16 +12,19 @@ export {
   sectionTitle,
   studyGroupKey,
   studyKey,
+  withSharedStudyNotes,
   type StudyFile,
 } from './decode.ts'
 export { detectDicom } from './detect.ts'
 export { dicomImporter } from './dicom-importer.ts'
 export {
-  accessionNumbers,
+  imagingStudyKeyOf,
   orderedInstances,
-  patientOriginalId,
+  patientKeyOf,
+  studyIdentifiersOf,
   studySeries,
   toFhirResources,
+  type StudyIdentifiers,
   type StudyInstance,
   type StudySeries,
 } from './fhir/to-fhir.ts'
@@ -32,4 +35,5 @@ export {
   DICOM_SOURCE_FILE_CODE,
   DICOM_SOURCE_FILE_CONTENT_TYPE,
   DICOM_SYSTEM,
+  DicomIdentifierSystem,
 } from './source-system.ts'

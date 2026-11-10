@@ -86,8 +86,8 @@ than in a system of your own, so a number that is not its province's shape
 fails the decode); where the
 file prints none for a record that must be referenced, use a Wildflower-minted
 system with a readable value made of what it does print (LifeLabs' result rows
-and providers), never a digest (DICOM still keys by one; #1508 moves it to
-its files' issuers). A record nothing references may stay keyless.
+and providers), never a digest (DICOM keys a Patient by its Patient ID under its
+issuer). A record nothing references may stay keyless.
 Decode each wire with `DetachedResource.decodeUnknown(<Type>.Schema)`, which
 fails a wire that carries an `id`. A section carries no source base URL or
 system: everything the import stage needs is on the records. A record's

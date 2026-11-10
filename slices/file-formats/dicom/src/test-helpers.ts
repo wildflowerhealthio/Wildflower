@@ -10,6 +10,7 @@ import * as fc from 'fast-check'
 
 import { concatBytes } from './bytes.ts'
 import type * as DicomHeader from './dicom-header.ts'
+import type * as HierarchicDesignator from './hierarchic-designator.ts'
 import type * as PersonName from './person-name.ts'
 import type * as PixelDataDescription from './pixel-data-description.ts'
 
@@ -209,6 +210,30 @@ const writeSqElement = (tagHex: string): Uint8Array => {
   return writeElement(tag, 'SQ', new Uint8Array(0))
 }
 
+/**
+ * Write an issuer sequence holding one item, the designator's stated
+ * attributes in tag order: Local Namespace Entity ID and Universal Entity ID
+ * as UT, Universal Entity ID Type as CS. Both the sequence and the item have
+ * a defined length.
+ */
+const writeHierarchicDesignatorSequence = (
+  tagHex: string,
+  designator: HierarchicDesignator.Type
+): Uint8Array => {
+  const itemElements = [
+    ['x00400031', 'UT', designator.localNamespaceEntityId],
+    ['x00400032', 'UT', designator.universalEntityId],
+    ['x00400033', 'CS', designator.universalEntityIdType],
+  ] as const
+  const itemBody = concatArrays(
+    itemElements.flatMap(([tag, vr, value]) =>
+      value === undefined ? [] : [writeStringElement(tag, vr, value)]
+    )
+  )
+  const item = concatArrays([writeItemHeader(0xe000, itemBody.length), itemBody])
+  return writeElement(parseTag(tagHex), 'SQ', item)
+}
+
 /** Format a PersonName as a DICOM PN value. */
 const formatPersonName = (pn: PersonName.Type): string => {
   if (pn.family === '' && pn.given === '') return pn.text
@@ -223,6 +248,7 @@ type DicomTagMap = Partial<{
   PatientName: PersonName.Type
   PatientID: string
   IssuerOfPatientID: string
+  IssuerOfPatientIDQualifiersSequence: HierarchicDesignator.Type
   PatientBirthDate: string
   PatientSex: string
   // Study
@@ -231,6 +257,7 @@ type DicomTagMap = Partial<{
   StudyTime: string
   StudyDescription: string
   AccessionNumber: string
+  IssuerOfAccessionNumberSequence: HierarchicDesignator.Type
   ReferringPhysicianName: PersonName.Type
   RequestedProcedureDescription: string
   RequestAttributesSequence: true
@@ -333,6 +360,13 @@ const writeDicom = (tags: DicomTagMap): Uint8Array => {
     if (value !== undefined)
       datasetElements.push({ tag: tagHex, bytes: writeDsElement(tagHex, value) })
   }
+  const addIssuer = (tagHex: string, designator: HierarchicDesignator.Type | undefined): void => {
+    if (designator !== undefined)
+      datasetElements.push({
+        tag: tagHex,
+        bytes: writeHierarchicDesignatorSequence(tagHex, designator),
+      })
+  }
 
   // Specific Character Set (0008,0005), written as given. Every text value
   // this writer emits is UTF-8, so non-ASCII text pairs with `ISO_IR 192`;
@@ -348,6 +382,8 @@ const writeDicom = (tags: DicomTagMap): Uint8Array => {
   addString('x00080030', 'TM', tags.StudyTime)
   // Accession Number (0008,0050)
   addString('x00080050', 'SH', tags.AccessionNumber)
+  // Issuer of Accession Number Sequence (0008,0051)
+  addIssuer('x00080051', tags.IssuerOfAccessionNumberSequence)
   // Modality (0008,0060)
   addString('x00080060', 'CS', tags.Modality)
   // Manufacturer (0008,0070)
@@ -368,6 +404,8 @@ const writeDicom = (tags: DicomTagMap): Uint8Array => {
   addString('x00100020', 'LO', tags.PatientID)
   // Issuer of Patient ID (0010,0021)
   addString('x00100021', 'LO', tags.IssuerOfPatientID)
+  // Issuer of Patient ID Qualifiers Sequence (0010,0024)
+  addIssuer('x00100024', tags.IssuerOfPatientIDQualifiersSequence)
   // Patient Birth Date (0010,0030)
   addString('x00100030', 'DA', tags.PatientBirthDate)
   // Patient Sex (0010,0040)
@@ -527,6 +565,37 @@ const dicomTextArb = (maxLength: number): fc.Arbitrary<string> =>
     .map(([first, rest]) => (first + rest).trimEnd())
 
 /**
+ * An issuer sequence item: a universal issuer of one of the HL7 v2 types, a
+ * local namespace alone, or both — never none, which the reader returns as no
+ * designator at all.
+ */
+const hierarchicDesignatorArb = (): fc.Arbitrary<HierarchicDesignator.Type> => {
+  const universal = fc.oneof(
+    dicomUidArb().map((id) => ({ universalEntityId: id, universalEntityIdType: 'ISO' })),
+    fc.uuid().map((id) => ({ universalEntityId: id, universalEntityIdType: 'UUID' })),
+    dicomTextArb(20).map((host) => ({
+      universalEntityId: `https://${host.replaceAll(' ', '')}.example/ids`,
+      universalEntityIdType: 'URI',
+    })),
+    dicomTextArb(20).map((host) => ({
+      universalEntityId: `${host.replaceAll(' ', '')}.example`,
+      universalEntityIdType: 'DNS',
+    }))
+  )
+  return fc.oneof(
+    universal.map((one) => ({ localNamespaceEntityId: undefined, ...one })),
+    dicomTextArb(20).map((namespace) => ({
+      localNamespaceEntityId: namespace,
+      universalEntityId: undefined,
+      universalEntityIdType: undefined,
+    })),
+    fc
+      .tuple(dicomTextArb(20), universal)
+      .map(([namespace, one]) => ({ localNamespaceEntityId: namespace, ...one }))
+  )
+}
+
+/**
  * Fragment byte lengths for an encapsulated Pixel Data fixture — at least one
  * fragment, since an encapsulated element with none carries no frames.
  */
@@ -568,6 +637,7 @@ const dicomHeaderArb = (): fc.Arbitrary<DicomHeader.Type> =>
       }),
       { nil: undefined }
     ),
+    issuerOfPatientIdQualifiers: fc.option(hierarchicDesignatorArb(), { nil: undefined }),
     patientBirthDate: fc.option(dicomDateArb(), { nil: undefined }),
     patientSex: fc.option(fc.constantFrom('M', 'F', 'O'), { nil: undefined }),
 
@@ -579,6 +649,7 @@ const dicomHeaderArb = (): fc.Arbitrary<DicomHeader.Type> =>
       fc.string({ minLength: 1, maxLength: 16, unit: fc.constantFrom(...'0123456789'.split('')) }),
       { nil: undefined }
     ),
+    issuerOfAccessionNumber: fc.option(hierarchicDesignatorArb(), { nil: undefined }),
     referringPhysicianName: fc.option(personNameArb(), { nil: undefined }),
     requestedProcedureDescription: fc.option(dicomTextArb(40), { nil: undefined }),
     hasRequestAttributesSequence: fc.boolean(),
@@ -643,6 +714,7 @@ const dicomHeaderArb = (): fc.Arbitrary<DicomHeader.Type> =>
     // `dicom-parser` to warn about. A file that does warn is malformed in a
     // way this writer cannot express.
     parserWarnings: fc.constant([]),
+    undecodableIssuers: fc.constant([]),
   })
 
 /**
@@ -673,6 +745,7 @@ const headerToTagMap = (header: DicomHeader.Type): DicomTagMap => ({
   PatientName: header.patientName ?? undefined,
   PatientID: header.patientId,
   IssuerOfPatientID: header.issuerOfPatientId,
+  IssuerOfPatientIDQualifiersSequence: header.issuerOfPatientIdQualifiers,
   PatientBirthDate: header.patientBirthDate,
   PatientSex: header.patientSex,
   StudyInstanceUID: header.studyInstanceUid,
@@ -680,6 +753,7 @@ const headerToTagMap = (header: DicomHeader.Type): DicomTagMap => ({
   StudyTime: header.studyTime,
   StudyDescription: header.studyDescription,
   AccessionNumber: header.accessionNumber,
+  IssuerOfAccessionNumberSequence: header.issuerOfAccessionNumber,
   ReferringPhysicianName: header.referringPhysicianName ?? undefined,
   RequestedProcedureDescription: header.requestedProcedureDescription,
   RequestAttributesSequence: header.hasRequestAttributesSequence ? true : undefined,
@@ -994,6 +1068,7 @@ export {
   type ExtraElement,
   formatPersonName,
   headerToTagMap,
+  hierarchicDesignatorArb,
   nativePixelDataArb,
   parserKeyOf,
   personNameArb,

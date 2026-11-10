@@ -5,13 +5,15 @@
  * {@link DataElement}s as raw bytes and writes them back; the
  * {@link TransferSyntax} / {@link SopClass} / {@link PlanarConfiguration} /
  * {@link PixelRepresentation} namespaces put a human-readable name to the
- * enumerated values it carries; and {@link SpecificCharacterSet} decodes its
- * text values under the character set the file declares.
+ * enumerated values it carries; {@link HierarchicDesignator} is an issuer
+ * sequence item as the file writes it; and {@link SpecificCharacterSet}
+ * decodes its text values under the character set the file declares.
  *
  * @packageDocumentation
  */
 export * as DataElement from './data-element.ts'
 export * as DicomHeader from './dicom-header.ts'
+export * as HierarchicDesignator from './hierarchic-designator.ts'
 export * as Part10 from './part10.ts'
 export * as PersonName from './person-name.ts'
 export * as PixelDataDescription from './pixel-data-description.ts'

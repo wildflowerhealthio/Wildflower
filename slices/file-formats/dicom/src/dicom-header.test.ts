@@ -9,6 +9,7 @@ import {
   describePixelDataFixture,
   dicomHeaderArb,
   headerToTagMap,
+  elementBytesOf,
   pixelDataFragmentLengthsArb,
   withElementsSpliced,
   writeDicom,
@@ -189,6 +190,117 @@ describe('DicomHeader.tryFromDicomFile', () => {
 
 const PATIENT_NAME = 0x0010_0010
 const INSTITUTION_NAME = 0x0008_0080
+const ISSUER_OF_ACCESSION_NUMBER_SEQUENCE = 0x0008_0051
+const LOCAL_NAMESPACE_ENTITY_ID = 0x0040_0031
+const UNIVERSAL_ENTITY_ID = 0x0040_0032
+const UNIVERSAL_ENTITY_ID_TYPE = 0x0040_0033
+
+/** One sequence item, `(FFFE,E000)` with a defined length, holding `elements`. */
+const itemOf = (elements: readonly Uint8Array[]): Uint8Array => {
+  const body = new Uint8Array(elements.reduce((total, one) => total + one.length, 0))
+  let offset = 0
+  for (const element of elements) {
+    body.set(element, offset)
+    offset += element.length
+  }
+  const item = new Uint8Array(8 + body.length)
+  const view = new DataView(item.buffer)
+  view.setUint16(0, 0xfffe, true)
+  view.setUint16(2, 0xe000, true)
+  view.setUint32(4, body.length, true)
+  item.set(body, 8)
+  return item
+}
+
+/** A file whose Issuer of Accession Number Sequence holds `items`. */
+const fileWithAccessionIssuers = (
+  items: readonly Uint8Array[],
+  characterSet?: string
+): Uint8Array =>
+  withElementsSpliced(
+    writeDicom({
+      ...MINIMAL_UIDS,
+      AccessionNumber: 'ACC001',
+      ...(characterSet === undefined ? {} : { SpecificCharacterSet: characterSet }),
+    }),
+    [
+      {
+        tag: ISSUER_OF_ACCESSION_NUMBER_SEQUENCE,
+        vr: 'SQ',
+        value: new Uint8Array(items.flatMap((item) => [...item])),
+      },
+    ]
+  )
+
+describe('DicomHeader.tryFromDicomFile issuer sequences', () => {
+  it('reads the first item of Issuer of Accession Number Sequence (0008,0051)', () => {
+    const bytes = fileWithAccessionIssuers([
+      itemOf([
+        elementBytesOf({ tag: LOCAL_NAMESPACE_ENTITY_ID, vr: 'UT', value: 'RADIOLOGY' }),
+        elementBytesOf({ tag: UNIVERSAL_ENTITY_ID, vr: 'UT', value: '2.16.840.1.113883.3.42' }),
+        elementBytesOf({ tag: UNIVERSAL_ENTITY_ID_TYPE, vr: 'CS', value: 'ISO' }),
+      ]),
+      itemOf([elementBytesOf({ tag: LOCAL_NAMESPACE_ENTITY_ID, vr: 'UT', value: 'SECOND' })]),
+    ])
+    expect(headerOf(bytes).issuerOfAccessionNumber).toEqual({
+      localNamespaceEntityId: 'RADIOLOGY',
+      universalEntityId: '2.16.840.1.113883.3.42',
+      universalEntityIdType: 'ISO',
+    })
+  })
+
+  it('reads an empty sequence, and an item stating no designator, as no issuer', () => {
+    expect(headerOf(fileWithAccessionIssuers([])).issuerOfAccessionNumber).toBeUndefined()
+    expect(headerOf(fileWithAccessionIssuers([itemOf([])])).issuerOfAccessionNumber).toBeUndefined()
+  })
+
+  it("decodes an item's text under the character set the file declares", () => {
+    const bytes = fileWithAccessionIssuers(
+      [
+        itemOf([
+          elementBytesOf({
+            tag: LOCAL_NAMESPACE_ENTITY_ID,
+            vr: 'UT',
+            value: new Uint8Array([0x4d, 0xfc, 0x6e, 0x63, 0x68, 0x65, 0x6e]),
+          }),
+        ]),
+      ],
+      'ISO_IR 100'
+    )
+    expect(headerOf(bytes).issuerOfAccessionNumber?.localNamespaceEntityId).toBe('München')
+  })
+
+  it('decodes an item declaring its own character set under that set', () => {
+    const bytes = fileWithAccessionIssuers(
+      [
+        itemOf([
+          elementBytesOf({ tag: 0x0008_0005, vr: 'CS', value: 'ISO_IR 100' }),
+          elementBytesOf({
+            tag: LOCAL_NAMESPACE_ENTITY_ID,
+            vr: 'UT',
+            value: new Uint8Array([0x4d, 0xfc, 0x6e, 0x63, 0x68, 0x65, 0x6e]),
+          }),
+        ]),
+      ],
+      'ISO_IR 192'
+    )
+    expect(headerOf(bytes).issuerOfAccessionNumber?.localNamespaceEntityId).toBe('München')
+  })
+
+  it('reads an item declaring a character set it cannot decode as no issuer, and says why', () => {
+    const bytes = fileWithAccessionIssuers([
+      itemOf([
+        elementBytesOf({ tag: 0x0008_0005, vr: 'CS', value: '\\ISO 2022 IR 87' }),
+        elementBytesOf({ tag: LOCAL_NAMESPACE_ENTITY_ID, vr: 'UT', value: 'RADIOLOGY' }),
+      ]),
+    ])
+    const header = headerOf(bytes)
+    expect(header.issuerOfAccessionNumber).toBeUndefined()
+    expect(header.undecodableIssuers).toHaveLength(1)
+    expect(header.undecodableIssuers[0]).toContain('IssuerOfAccessionNumberSequence (0008,0051)')
+    expect(header.undecodableIssuers[0]).toContain('ISO 2022 code extensions are not supported')
+  })
+})
 
 /** A file declaring `characterSet`, with one text element's bytes spliced in as that set encodes them. */
 const fileWithText = (
