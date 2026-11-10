@@ -28,16 +28,16 @@ import * as SectionedList from './sectioned-list.ts'
  * A record's review title, the one title every record of a set is reviewed
  * under, read off its plan: for a keyed record, the literal reference the
  * import stage writes it under, `<Type>/<id>`, its derived id; for a keyless
- * record, whose minted id changes on every re-decode, its type and its
- * `fullUrl`, `<Type> (<fullUrl>)`.
+ * record, whose minted id changes on every re-decode, its type and its review
+ * key, `<Type> (<reviewKey>)`.
  *
- * @param plan - The plan of `entry`'s record
- * @param entry - The decoded record and its `fullUrl`
+ * @param plan - The plan of the record
+ * @param reviewKey - The record's review key
  */
-const writtenReferenceTitle = (plan: ResourcePlan.Type, { fullUrl }: Entry): string =>
+const writtenReferenceTitle = (plan: ResourcePlan.Type, reviewKey: string): string =>
   ResourcePlan.match(plan, {
     Derived: ResourcePlan.literalReference,
-    Minted: ({ resourceType }) => `${resourceType} (${fullUrl})`,
+    Minted: ({ resourceType }) => `${resourceType} (${reviewKey})`,
   })
 
 /**
@@ -57,21 +57,21 @@ interface PickedFileIdentity {
 }
 
 /**
- * One file set's decode: its picked files, in the order they were picked, each
- * with what it identifies itself as, and its rows in sections (each an {@link Entry}) and its notes,
- * every review key already namespaced by the set's first picked file
- * (`FormatDecode.keyPrefix`).
+ * One file set's decode, exactly as a format's `decodeFileSet` returns it: its
+ * picked files, in the order they were picked, each with what it identifies
+ * itself as, its records in sections, each under its local key, and its notes.
  *
  * @remarks
- * A decoder builds one section per batch it reads: LifeLabs one per report,
- * DICOM one per study, the HAR importer one per response URL. Each decoder
- * writes or detaches its records itself, so a section carries no source base
- * URL or system: everything the import stage needs to adopt a record is on
- * the record. The section listing a set's source files is built by the import
- * stage, never decoded.
+ * A decoder builds one section per report, study or response URL: LifeLabs
+ * one per report, DICOM one per study, the HAR importer one per response URL.
+ * Each decoder writes or detaches its records itself, so a section carries no
+ * source base URL or system: everything the import stage needs to adopt a
+ * record is on the record. The section listing a set's source files is built
+ * by the import stage, never decoded.
  */
-interface Type extends SectionedList.Type<Entry> {
+interface Type {
   readonly pickedFiles: Arr.NonEmptyReadonlyArray<PickedFileIdentity>
+  readonly sectionedList: SectionedList.Type<FileSetRecord.Type>
   readonly notes: readonly string[]
 }
 
@@ -80,18 +80,6 @@ const unidentified = (pickedFile: PickedFile.Type): PickedFileIdentity => ({
   pickedFile,
   identifiedAs: Option.none(),
 })
-
-/**
- * Prefix every `fullUrl` in `decoded`, so one file set's cannot collide with
- * another's once the batch merges their sections.
- *
- * @param prefix - The set's key namespace, from `FormatDecode.keyPrefix`
- */
-const namespaceKeys = (
-  decoded: SectionedList.Type<Entry>,
-  prefix: string
-): SectionedList.Type<Entry> =>
-  SectionedList.map(decoded, (row) => ({ ...row, fullUrl: `${prefix}${row.fullUrl}` }))
 
 /**
  * The entries a planned record gives its set's reference plan: one for each
@@ -397,7 +385,8 @@ const adoptEntries = (
  * file set's records the device's own, before it mints source files, links
  * and stamps.
  *
- * @param decoded - The set's sections and notes
+ * @param decoded - The set's records and notes, as its format decoded them
+ * @param keyPrefix - What every review key of the set starts with
  * @param mintId - Mints the id of a keyless record; random outside tests
  * @returns The adopted file set, or the `ParseError` an implied record's schema
  *   rejects it with
@@ -415,9 +404,15 @@ const adoptEntries = (
  * identifiers, whichever section holds it. One that names a record the set
  * does not hold and implies none, a keyless one, or an identifier two
  * records of the set share, stays logical, for the identity map.
+ *
+ * Each row's review key is `keyPrefix` before the record's local key. The
+ * import stage passes the prefix of the set's first picked file
+ * (`FormatDecode.keyPrefix`), so one set's keys cannot collide with
+ * another's once their sections are merged.
  */
 const adopt = (
-  decoded: Pick<Type, 'sections' | 'notes'>,
+  decoded: Pick<Type, 'sectionedList' | 'notes'>,
+  keyPrefix: string,
   mintId: () => string = randomResourceId
 ): Either.Either<DecodedFile.DecodedFile, ParseResult.ParseError> => {
   const decodedEntries = planEntries(decoded, mintId)
@@ -439,5 +434,5 @@ const adopt = (
   })
 }
 
-export { adopt, namespaceKeys, unidentified, writtenReferenceTitle }
-export type { Entry, PickedFileIdentity, Type }
+export { adopt, unidentified, writtenReferenceTitle }
+export type { PickedFileIdentity, Type }

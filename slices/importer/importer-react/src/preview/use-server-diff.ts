@@ -62,8 +62,8 @@ interface DiffRow {
  * reviewed in and then by its review key within the group.
  *
  * @remarks
- * A resource key is unique within one format — a per-file decode's keys are
- * namespaced by the file they came from (`FormatDecode.keyPrefix`), so
+ * A resource key is unique within one format — the import stage prefixes a
+ * file set's review keys by its first picked file (`FormatDecode.keyPrefix`), so
  * DICOM's fixed `patient` / `imaging-study` and every format's source-file
  * row stay distinct across the files a format claimed. Across formats they
  * are not: two formats may both key a row `0:a.json/patient`. Scoping by

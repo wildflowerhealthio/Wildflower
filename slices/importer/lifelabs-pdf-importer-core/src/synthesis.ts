@@ -14,7 +14,11 @@
  *
  * @packageDocumentation
  */
-import { type DecodeFunction, Section } from '@wildflowerhealthio/importer-fundamentals'
+import {
+  type DecodedFileSet,
+  Section,
+  SectionedList,
+} from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, type ParseResult } from 'effect'
 
 import type * as Report from './entities/report.ts'
@@ -38,7 +42,8 @@ const reportSectionTitle = (report: Report.Type): string => {
  * @param reports - The parsed reports, in print order, one per `Lab No`
  * @param options - The zone the reports' printed clock is in, and the province
  *   that issued the health card they print
- * @returns The set's decode, for the import stage to adopt; fails with a
+ * @returns The set's decode but its picked files, which the format's decode
+ *   pairs it with for the import stage to adopt; fails with a
  *   `ParseError` when a report's `HC #` is not the chosen province's shape,
  *   or a synthesized resource does not satisfy its `fhir-r4` schema
  *
@@ -47,15 +52,17 @@ const reportSectionTitle = (report: Report.Type): string => {
  * per `Lab No` (`Report.tryFromDocument`), so every record of the set has its
  * own key. A caller that builds reports itself, such as
  * `synthetic-data-lifelabs`' render, gives each its own `Lab No` too, and
- * adopts this with `DecodedFileSet.adopt` to get the records an import of
- * their print writes.
+ * adopts this with `DecodedFileSet.adopt`, under a key prefix of its own, to
+ * get the records an import of their print writes.
  */
 const decodedReportsOf = (
   reports: readonly Report.Type[],
   options: SynthesisOptions
-): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
+): Effect.Effect<Omit<DecodedFileSet.Type, 'pickedFiles'>, ParseResult.ParseError> =>
   Effect.map(toFhirResources(reports, options), (groups) => ({
-    sections: groups.map((group) => Section.make(reportSectionTitle(group.report), group.entries)),
+    sectionedList: SectionedList.make(
+      groups.map((group) => Section.make(reportSectionTitle(group.report), group.records))
+    ),
     notes: [],
   }))
 

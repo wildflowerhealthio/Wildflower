@@ -1,9 +1,9 @@
-import { Effect } from 'effect'
+import { Array as Arr, Effect } from 'effect'
 
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
-  type DecodedFileSet,
+  DecodedFileSet,
   DecodeFunction,
   type FileImporter,
   type FileSetRecord,
@@ -97,7 +97,8 @@ const harImporter: FileImporter.Type<null, typeof format> = {
         Effect.flatMap((responses) => preview(fhirPool, responses)),
         Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
         Effect.map((previews) => ({
-          ...sectionsByUrl(previews),
+          pickedFiles: Arr.map(pickedFiles, DecodedFileSet.unidentified),
+          sectionedList: sectionsByUrl(previews),
           notes: notesFor(previews),
         }))
       ),

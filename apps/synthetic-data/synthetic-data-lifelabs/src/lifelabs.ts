@@ -77,6 +77,12 @@ const EARLIEST_REPORT_AFTER_MINUTES = 5 * 60
 const LATEST_REPORT_AFTER_MINUTES = 10 * 60
 
 /**
+ * The key prefix {@link render} adopts the reports' records under: no PDF is
+ * printed, so no picked file gives one, and nothing reads the review keys.
+ */
+const REVIEW_KEY_PREFIX = 'unprinted-lifelabs-report/'
+
+/**
  * The province that issued every person's health card: the `HC #` a report
  * prints is an Ontario number and version code ({@link healthCardNumberOf}),
  * so the reports are read with Ontario chosen.
@@ -327,7 +333,8 @@ const render = (
       timeZone: laboratory.timeZone,
       healthCardProvince: HEALTH_CARD_PROVINCE,
     })
-    return SectionedList.rows((yield* DecodedFileSet.adopt(decoded)).rows)
+    const adopted = yield* DecodedFileSet.adopt(decoded, REVIEW_KEY_PREFIX)
+    return SectionedList.rows(adopted.sectionedList)
       .map((row) => row.resource)
       .filter((resource) => resource.resourceType !== 'Patient')
       .map(withSubject(pharmacyPatient))

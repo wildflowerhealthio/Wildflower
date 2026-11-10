@@ -11,7 +11,7 @@ import { DocumentReferenceContext } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type AdoptedFileSet,
   type DecodedFileSet,
-  type DecodeFunction,
+  type FileSetRecord,
   type PickedFile,
   Section,
   SectionedList,
@@ -234,18 +234,19 @@ const linkToPatientAndStudy = (
  * `Left` here is a `ParseError` for the whole set, which the decode constructor
  * folds into one `unreadableFiles` row per picked file.
  *
- * The resource keys are fixed — `patient`, `service-request`,
- * `imaging-study` — and are unique only *within* one study; the decode
- * function namespaces them by the set's first picked file.
+ * The local keys are fixed — `patient`, `service-request`,
+ * `imaging-study` — and are unique only *within* one study; the import
+ * stage prefixes them by the set's first picked file.
  *
  * The time zone is rejected rather than substituted — a guess would write
  * `started` instants hours from what the equipment recorded — and it is one
- * setting for the whole batch, so an unresolvable zone fails every set.
+ * setting for every study the format claimed, so an unresolvable zone fails
+ * every set.
  */
 const decodeStudy = (
   pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>,
   settings: DicomSettings
-): Effect.Effect<DecodeFunction.FileSetDecode, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFileSet.Type, ParseResult.ParseError> =>
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)
 
@@ -262,24 +263,31 @@ const decodeStudy = (
     }))
     const ordered = orderedInstances(files)
     const head = ordered[0]
-    if (head === undefined) return { sections: [], notes: [], pickedFiles: identifiedPickedFiles }
+    if (head === undefined) {
+      return {
+        pickedFiles: identifiedPickedFiles,
+        sectionedList: SectionedList.empty(),
+        notes: [],
+      }
+    }
 
     if (patientOriginalId(head.header) === undefined) {
       return {
-        sections: [],
-        notes: ['No patient identity in the DICOM header (no PatientID or PatientName).'],
         pickedFiles: identifiedPickedFiles,
+        sectionedList: SectionedList.empty(),
+        notes: ['No patient identity in the DICOM header (no PatientID or PatientName).'],
       }
     }
 
     const notes = studyNotes(files)
     const resources = yield* toFhirResources(files, settings)
-    const sections =
+    const sectionedList = SectionedList.make(
       resources.length > 0
-        ? [Section.make(sectionTitle(head.header), resources.map(studyEntryOf))]
+        ? [Section.make(sectionTitle(head.header), resources.map(studyRecordOf))]
         : []
+    )
 
-    return { sections, notes, pickedFiles: identifiedPickedFiles }
+    return { pickedFiles: identifiedPickedFiles, sectionedList, notes }
   })
 
 export {

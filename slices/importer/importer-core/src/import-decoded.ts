@@ -19,8 +19,8 @@ import { Array as Arr, Effect, Function, Option, Order, type ParseResult, Schema
  * @remarks
  * Per set, {@link importFileSet} mints a source file for every picked file
  * (`PickedFile.FromDocumentReference`'s encode, its `masterIdentifier` what the
- * picked file identified itself as), adopts its detached records
- * (`DecodedFileSet.adopt`: a keyed record under the id its key derives, a
+ * picked file identified itself as), adopts its records under review keys
+ * prefixed by the set's first picked file (`DecodedFileSet.adopt`: a keyed record under the id its key derives, a
  * keyless one under a minted id, each logical reference to a record of the set
  * resolved to a literal one, a dispense with no subject filed on its
  * prescription's), runs the format's `linkSourceFile` over every source file
@@ -86,7 +86,10 @@ const importFileSet = (
       ),
       { concurrency: 'unbounded' }
     )
-    const adopted = yield* DecodedFileSet.adopt(fileSet)
+    const adopted = yield* DecodedFileSet.adopt(
+      fileSet,
+      FormatDecode.keyPrefix(fileSet.pickedFiles[0].pickedFile)
+    )
 
     const linkSourceFile = importer.linkSourceFile ?? Function.identity
     const linked = Arr.map(sourceFiles, ({ pickedFile, sourceFile }) => ({
