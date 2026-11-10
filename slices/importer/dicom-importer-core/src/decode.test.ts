@@ -13,12 +13,13 @@ import {
   type ImagingStudy,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type DecodedFile,
+  type AdoptedFileSet,
   DecodedFileSet,
   type FileImporter,
-  type FormatDecode,
+  FormatDecode,
   type PickedFile,
   Referent,
+  type ReviewRow,
   type Section,
   SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -93,15 +94,24 @@ const sample = (overrides: DicomTagMap = {}): Arr.NonEmptyReadonlyArray<PickedFi
 ]
 
 /** A decode's records adopted as the import stage adopts them. */
-const adoptedOf = (
-  decoded: Pick<DecodedFileSet.Type, 'sections' | 'notes'>
-): DecodedFile.DecodedFile => Either.getOrThrow(DecodedFileSet.adopt(decoded))
+const adoptedOf = (decoded: DecodedFileSet.Type): AdoptedFileSet.Type =>
+  Effect.runSync(
+    DecodedFileSet.adopt(decoded, FormatDecode.keyPrefix(decoded.pickedFiles[0].pickedFile))
+  )
+
+/** The local keys of a decode's records, in order. */
+const localKeysOf = (decoded: DecodedFileSet.Type): readonly string[] =>
+  SectionedList.rows(decoded.sectionedList).map(({ localKey }) => localKey)
+
+/** The review key the import stage gives the record of `decoded` under `localKey`. */
+const reviewKeyOf = (decoded: DecodedFileSet.Type, localKey: string): string =>
+  `${FormatDecode.keyPrefix(decoded.pickedFiles[0].pickedFile)}${localKey}`
 
 describe('decodeStudy', () => {
   it('resolves ImagingStudy.started against the settings time zone', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-    const study = adoptedOf(result).rows.sections[0].rows.find(
-      (r) => r.reviewable.key === 'imaging-study'
+    const study = adoptedOf(result).sectionedList.sections[0].rows.find(
+      (r) => r.reviewKey === reviewKeyOf(result, 'imaging-study')
     )?.resource
     expect(study?.resourceType).toBe('ImagingStudy')
     if (study?.resourceType !== 'ImagingStudy') return
@@ -112,8 +122,8 @@ describe('decodeStudy', () => {
   it('reads the same file as a different instant under a different zone', async () => {
     const startedIn = async (timeZone: string): Promise<string | null | undefined> => {
       const result = await Effect.runPromise(decodeStudy(sample(), { timeZone }))
-      const study = adoptedOf(result).rows.sections[0].rows.find(
-        (r) => r.reviewable.key === 'imaging-study'
+      const study = adoptedOf(result).sectionedList.sections[0].rows.find(
+        (r) => r.reviewKey === reviewKeyOf(result, 'imaging-study')
       )?.resource
       return study?.resourceType === 'ImagingStudy' ? study.started : undefined
     }
@@ -122,15 +132,14 @@ describe('decodeStudy', () => {
 
   it('yields one section with Patient, ServiceRequest, ImagingStudy', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-    expect(result.sections).toHaveLength(1)
-    const keys = adoptedOf(result).rows.sections[0].rows.map((r) => r.reviewable.key)
-    expect(keys).toEqual(['patient', 'service-request', 'imaging-study'])
+    expect(result.sectionedList.sections).toHaveLength(1)
+    expect(localKeysOf(result)).toEqual(['patient', 'service-request', 'imaging-study'])
   })
 
   it("identifies each picked file as its SOP Instance UID, in FHIR's OID convention", async () => {
     const pickedFiles = sample()
     const result = await Effect.runPromise(decodeStudy(pickedFiles, defaultDicomSettings))
-    const [identified] = result.pickedFiles ?? []
+    const [identified] = result.pickedFiles
     expect(identified?.pickedFile).toBe(pickedFiles[0])
     const identifier = Option.getOrUndefined(identified?.identifiedAs ?? Option.none())
     expect(identifier?.system?.href).toBe('urn:ietf:rfc:3986')
@@ -140,8 +149,8 @@ describe('decodeStudy', () => {
 
   it('names no file on an ImagingStudy instance', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-    const study = adoptedOf(result).rows.sections[0].rows.find(
-      (r) => r.reviewable.key === 'imaging-study'
+    const study = adoptedOf(result).sectionedList.sections[0].rows.find(
+      (r) => r.reviewKey === reviewKeyOf(result, 'imaging-study')
     )?.resource
     if (study?.resourceType !== 'ImagingStudy') throw new Error('expected ImagingStudy')
     expect(study.series[0].instance[0].extension).toEqual([])
@@ -149,7 +158,7 @@ describe('decodeStudy', () => {
 
   it('writes each record detached, keyed in the DICOM system', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-    const [section] = result.sections
+    const [section] = result.sectionedList.sections
     if (section === undefined) throw expect.fail('expected a section')
     for (const { resource } of section.rows) {
       expect(resource.id).toBeNull()
@@ -160,7 +169,7 @@ describe('decodeStudy', () => {
 
   it('section title includes modality, description, and date', async () => {
     const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-    expect(result.sections[0].title).toBe('CT Chest CT · 2024-03-15')
+    expect(result.sectionedList.sections[0].title).toBe('CT Chest CT · 2024-03-15')
   })
 
   it('notes no ServiceRequest when AccessionNumber is absent', async () => {
@@ -168,8 +177,7 @@ describe('decodeStudy', () => {
       decodeStudy(sample({ AccessionNumber: undefined }), defaultDicomSettings)
     )
     expect(result.notes.some((n) => n.includes('AccessionNumber'))).toBe(true)
-    const keys = adoptedOf(result).rows.sections[0].rows.map((r) => r.reviewable.key)
-    expect(keys).not.toContain('service-request')
+    expect(localKeysOf(result)).not.toContain('service-request')
   })
 
   it('yields zero sections and a note when no patient identity', async () => {
@@ -179,7 +187,7 @@ describe('decodeStudy', () => {
         defaultDicomSettings
       )
     )
-    expect(result.sections).toEqual([])
+    expect(result.sectionedList.sections).toEqual([])
     expect(result.notes.some((n) => n.includes('patient identity'))).toBe(true)
   })
 
@@ -194,14 +202,14 @@ describe('decodeStudy', () => {
         defaultDicomSettings
       )
     )
-    expect(result.sections).toEqual([])
+    expect(result.sectionedList.sections).toEqual([])
     expect(result.notes.some((n) => n.includes('patient identity'))).toBe(true)
   })
 
   it('resource keys are stable across the empty settings', async () => {
     const keysOf = async (): Promise<readonly string[]> => {
       const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
-      return adoptedOf(result).rows.sections.flatMap((s) => s.rows.map((r) => r.reviewable.key))
+      return adoptedOf(result).sectionedList.sections.flatMap((s) => s.rows.map((r) => r.reviewKey))
     }
     expect(await keysOf()).toEqual(await keysOf())
   })
@@ -214,7 +222,9 @@ describe('decodeStudy', () => {
       )
     )
 
-    const resources = SectionedList.rows(adoptedOf(result).rows).map(({ resource }) => resource)
+    const resources = SectionedList.rows(adoptedOf(result).sectionedList).map(
+      ({ resource }) => resource
+    )
     const physician = resources.find((resource) => resource.resourceType === 'Practitioner')
     const request = resources.find((resource) => resource.resourceType === 'ServiceRequest')
 
@@ -232,7 +242,9 @@ describe('decodeStudy', () => {
     expect(
       request?.resourceType === 'ServiceRequest' ? request.requester?.reference : request
     ).toBe(`Practitioner/${physician?.id}`)
-    const referents = Effect.runSync(Referent.discover([adoptedOf(result)]))
+    const referents = Effect.runSync(
+      Referent.discover(SectionedList.rows(adoptedOf(result).sectionedList))
+    )
     expect(
       referents.map(({ logicalReference }) => [
         logicalReference.resourceType,
@@ -258,12 +270,8 @@ describe('decodeStudy', () => {
 
     it('is still one section with the same three keys', async () => {
       const result = await Effect.runPromise(decodeStudy(twoFiles, defaultDicomSettings))
-      expect(result.sections).toHaveLength(1)
-      expect(adoptedOf(result).rows.sections[0].rows.map((r) => r.reviewable.key)).toEqual([
-        'patient',
-        'service-request',
-        'imaging-study',
-      ])
+      expect(result.sectionedList.sections).toHaveLength(1)
+      expect(localKeysOf(result)).toEqual(['patient', 'service-request', 'imaging-study'])
     })
 
     it('notes what each file contributed, in study order', async () => {
@@ -290,8 +298,8 @@ describe('decodeStudy', () => {
       ]
       const result = await Effect.runPromise(decodeStudy(conflicting, defaultDicomSettings))
       expect(result.notes[0]).toContain('disagree on AccessionNumber')
-      const request = adoptedOf(result).rows.sections[0].rows.find(
-        (r) => r.reviewable.key === 'service-request'
+      const request = adoptedOf(result).sectionedList.sections[0].rows.find(
+        (r) => r.reviewKey === reviewKeyOf(result, 'service-request')
       )?.resource
       if (request?.resourceType !== 'ServiceRequest') throw new Error('expected a ServiceRequest')
       // One request, built from the first accession in *study* order — a.dcm
@@ -318,7 +326,7 @@ describe('sectionTitle', () => {
         defaultDicomSettings
       )
     )
-    expect(result.sections[0].title).toBe('CT')
+    expect(result.sectionedList.sections[0].title).toBe('CT')
   })
 
   it('includes modality and date when available', async () => {
@@ -328,7 +336,7 @@ describe('sectionTitle', () => {
         defaultDicomSettings
       )
     )
-    expect(result.sections[0].title).toBe('MR · 2024-01-01')
+    expect(result.sectionedList.sections[0].title).toBe('MR · 2024-01-01')
   })
 
   it('reads the retired YYYY.MM.DD date spelling', async () => {
@@ -338,7 +346,7 @@ describe('sectionTitle', () => {
         defaultDicomSettings
       )
     )
-    expect(result.sections[0].title).toBe('MR · 2024-01-01')
+    expect(result.sectionedList.sections[0].title).toBe('MR · 2024-01-01')
   })
 
   it('leaves out a date that names no real day', async () => {
@@ -348,12 +356,12 @@ describe('sectionTitle', () => {
         defaultDicomSettings
       )
     )
-    expect(result.sections[0].title).toBe('MR')
+    expect(result.sectionedList.sections[0].title).toBe('MR')
   })
 })
 
 /**
- * The batch decode as the importer exposes it, its file sets apart. The
+ * The format's decode as the importer exposes it, its file sets apart. The
  * import stage over it, source files and all, is `importer-core`'s to test.
  */
 const decode = dicomImporter.decode
@@ -367,8 +375,8 @@ const asBatch = (files: readonly PickedFile.NamedBytes[]): readonly PickedFile.T
 const run = (files: readonly PickedFile.NamedBytes[]): Promise<FormatDecode.Decoded<string>> =>
   Effect.runPromise(decode(asBatch(files), SETTINGS))
 
-const rowsOf = (result: FormatDecode.Decoded<string>): readonly DecodedFile.Row[] =>
-  result.fileSets.flatMap((fileSet) => SectionedList.rows(adoptedOf(fileSet).rows))
+const rowsOf = (result: FormatDecode.Decoded<string>): readonly ReviewRow.Type[] =>
+  result.fileSets.flatMap((fileSet) => SectionedList.rows(adoptedOf(fileSet).sectionedList))
 
 /** Every decoded resource of one type, across every section. */
 const of = <K extends FhirResourceWithId['resourceType']>(
@@ -388,10 +396,10 @@ const studiesOf = (result: FormatDecode.Decoded<string>): readonly ImagingStudy.
 /** The sections a study was decoded into. */
 const studySections = (
   result: FormatDecode.Decoded<string>
-): readonly Section.Type<DecodedFile.Row>[] =>
+): readonly Section.Type<ReviewRow.Type>[] =>
   result.fileSets
-    .flatMap((fileSet) => adoptedOf(fileSet).rows.sections)
-    .filter((section) => section.rows.some((row) => row.reviewable.key.endsWith('imaging-study')))
+    .flatMap((fileSet) => adoptedOf(fileSet).sectionedList.sections)
+    .filter((section) => section.rows.some((row) => row.reviewKey.endsWith('imaging-study')))
 
 /** Each file set's source file as `linkToPatientAndStudy` links it, minted under `doc`. */
 const linkedSourceFilesOf = (
@@ -423,7 +431,7 @@ const file = (fileName: string, overrides: DicomTagMap = {}): PickedFile.NamedBy
   }),
 })
 
-describe('the DICOM batch decode', () => {
+describe('the DICOM decode', () => {
   it('reads N files of one study as one ImagingStudy', async () => {
     const result = await run([
       file('1', { SeriesInstanceUID: '1.2.3.4.5.1', SeriesNumber: 1, SOPInstanceUID: 'I1' }),

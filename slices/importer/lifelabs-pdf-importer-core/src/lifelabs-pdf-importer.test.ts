@@ -1,5 +1,5 @@
 import { HealthCardIdentifier, type HealthCardProvince } from '@wildflowerhealthio/fhir-ca-infoway'
-import { PickedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
+import { PickedFile, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { PositionedTextExtractor, UnreadablePdf } from '@wildflowerhealthio/positioned-text'
 import { Effect, Layer, Option, ParseResult, Schema } from 'effect'
@@ -111,7 +111,7 @@ const printedHealthCardArbitrary: fc.Arbitrary<PrintedHealthCard> = fc
   )
 
 describe('lifeLabsPdfImporter decode', () => {
-  it('property: a picked file is one file set of detached records, keyed under the picked file', async () => {
+  it('property: a picked file is one file set of detached records, each under its own local key', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
@@ -132,14 +132,13 @@ describe('lifeLabsPdfImporter decode', () => {
           expect(decoded.fileSets.map((fileSet) => fileSet.pickedFiles)).toEqual([
             [{ pickedFile: file, identifiedAs: Option.none() }],
           ])
-          const sections = decoded.fileSets.flatMap((fileSet) => fileSet.sections)
-          const entries = sections.flatMap((section) => section.rows)
-          expect(entries.map(({ resource }) => resource.id)).toEqual(entries.map(() => null))
-          const keys = entries.map((entry) => entry.fullUrl)
-          expect(keys.length).toBeGreaterThan(0)
-          for (const key of keys) {
-            expect(key.startsWith(FormatDecode.keyPrefix(file))).toBe(true)
-          }
+          const records = decoded.fileSets.flatMap((fileSet) =>
+            SectionedList.rows(fileSet.sectionedList)
+          )
+          expect(records.map(({ resource }) => resource.id)).toEqual(records.map(() => null))
+          const localKeys = records.map(({ localKey }) => localKey)
+          expect(localKeys.length).toBeGreaterThan(0)
+          expect(new Set(localKeys).size).toBe(localKeys.length)
         }
       ),
       { numRuns: numRunsFor({ base: 10 }) }
@@ -162,8 +161,7 @@ describe('lifeLabsPdfImporter decode', () => {
 
         expect(
           decoded.fileSets
-            .flatMap((fileSet) => fileSet.sections)
-            .flatMap((section) => section.rows)
+            .flatMap((fileSet) => SectionedList.rows(fileSet.sectionedList))
             .flatMap(({ resource }) =>
               resource.resourceType === 'Patient' ? resource.identifier : []
             )

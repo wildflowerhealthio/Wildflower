@@ -33,7 +33,7 @@ const patientKeyIn = (
 
 /** A group's resources, in order; none for no group. */
 const resourcesOf = (group: ReportResources | undefined): readonly FhirResource[] =>
-  group?.entries.map(({ resource }) => resource) ?? []
+  group?.records.map(({ resource }) => resource) ?? []
 
 /** The synthesized groups flattened in order — most assertions read the whole set. */
 const synthesize = (

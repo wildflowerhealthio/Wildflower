@@ -92,7 +92,7 @@ const extract = (harBytes: Uint8Array): ExtractionResult<DetachedResource.Type> 
     decodeHar(harBytes).pipe(Effect.flatMap((inputs) => runExtraction(fhirPool, inputs)))
   )
 
-/** Every decoded resource of one `resourceType`, in batch order. */
+/** Every decoded resource of one `resourceType`, in the extraction's order. */
 const ofType = (
   extraction: ExtractionResult<DetachedResource.Type>,
   resourceType: string
@@ -101,7 +101,7 @@ const ofType = (
     .flatMap((batch) => batch.resources)
     .filter((resource) => resource.resourceType === resourceType)
 
-/** The key of every decoded resource of one `resourceType`, in batch order. */
+/** The key of every decoded resource of one `resourceType`, in the extraction's order. */
 const keysOfType = (
   extraction: ExtractionResult<DetachedResource.Type>,
   resourceType: string

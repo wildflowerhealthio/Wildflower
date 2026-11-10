@@ -1,8 +1,8 @@
 // oxlint-disable import/max-dependencies -- every source's generator, through its importer and the import stage
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { harImporter } from '@wildflowerhealthio/har-importer-core'
-import { importDecoded } from '@wildflowerhealthio/importer-core'
-import { SectionedList, sha256Base64 } from '@wildflowerhealthio/importer-fundamentals'
+import { importDecoded, ReviewGroup } from '@wildflowerhealthio/importer-core'
+import { sha256Base64 } from '@wildflowerhealthio/importer-fundamentals'
 import type { DateTime } from 'effect'
 import { Effect, Either } from 'effect'
 import * as fc from 'fast-check'
@@ -41,7 +41,7 @@ const importHar = (bytes: Uint8Array, fileName: string): Promise<readonly FhirRe
     harImporter
       .decode([{ id: `0:${fileName}`, fileName, bytes }], null)
       .pipe(Effect.flatMap((decoded) => importDecoded(harImporter, decoded)))
-  ).then((result) => SectionedList.rows(result.decoded.rows).map((row) => row.resource))
+  ).then((group) => ReviewGroup.rows(group).map((row) => row.resource))
 
 /** A generated person's Rexall records, and a chest image re-identified as them. */
 interface RexallPersonCase {

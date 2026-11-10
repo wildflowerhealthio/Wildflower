@@ -13,7 +13,7 @@ import { decodeLifeLabsPdfDocument, Report } from '@wildflowerhealthio/lifelabs-
 import { layoutDocument } from '@wildflowerhealthio/lifelabs-pdf-importer-core/test-helpers'
 import { type Story, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import { asOfArbitrary } from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
-import { DateTime, Effect, Option, Schema, Either } from 'effect'
+import { DateTime, Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -30,6 +30,9 @@ import { labStoryArbitrary, requisitionArbitrary } from './test-helpers.ts'
  */
 
 const RUNS = numRunsFor({ base: 25 })
+
+/** The key prefix the tests adopt a decode under: nothing here reads a review key. */
+const KEY_PREFIX = 'test/'
 
 /** A Patient some other source's import adopted, keyed by a uuid. */
 const pharmacyPatientArbitrary = fc
@@ -286,7 +289,7 @@ describe('LifeLabs.reportsOf', () => {
         )
         // Adopted as the import stage adopts them, without its source file.
         const imported = SectionedList.rows(
-          Either.getOrThrow(DecodedFileSet.adopt(decoded)).rows
+          Effect.runSync(DecodedFileSet.adopt(decoded, KEY_PREFIX)).sectionedList
         ).map((row) => row.resource)
         const withoutSubject = (resource: FhirResource): FhirResource =>
           resource.resourceType === 'Observation' || resource.resourceType === 'DiagnosticReport'
@@ -322,7 +325,7 @@ describe('LifeLabs.reportsOf', () => {
           })
         )
         const patients = SectionedList.rows(
-          Either.getOrThrow(DecodedFileSet.adopt(decoded)).rows
+          Effect.runSync(DecodedFileSet.adopt(decoded, KEY_PREFIX)).sectionedList
         ).flatMap(({ resource }) => (resource.resourceType === 'Patient' ? [resource] : []))
         expect(
           patients.map((patient) =>
