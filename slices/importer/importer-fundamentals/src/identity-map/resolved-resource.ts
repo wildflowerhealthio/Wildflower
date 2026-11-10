@@ -32,7 +32,7 @@ interface Type {
   /** The identifiers it assumes: what a decoded copy of it in the file assumes too. */
   readonly identifiersToAssume: readonly IdentifierAndReference.IdentifierType[]
   /**
-   * Whether a resolved file of the batch holds the resource where a decoded
+   * Whether a resolved row of the batch holds the resource where a decoded
    * resource was: one decoded under its literal reference and written there,
    * or one a decoded resource is replaced by. When none does, the resource is
    * appended to the batch once so the review and the diff show what it gained.

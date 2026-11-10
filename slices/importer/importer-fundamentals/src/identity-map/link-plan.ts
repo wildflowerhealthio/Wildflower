@@ -34,8 +34,7 @@ import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-ty
 import { type FhirResourceWithId, LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Effect, HashMap, Match, Option, pipe } from 'effect'
 
-import type * as DecodedFile from '../decoded-file.ts'
-import * as SectionedList from '../sectioned-list.ts'
+import type * as ReviewRow from '../review-row.ts'
 import type * as LinkChoice from './link-choice.ts'
 import * as LinkTarget from './link-target.ts'
 import * as Link from './link.ts'
@@ -47,7 +46,7 @@ import type * as ReferentLinkChoiceSet from './referent-link-choice-set.ts'
 import * as Referent from './referent.ts'
 import * as ResolvedResource from './resolved-resource.ts'
 
-/** The link plan for a batch's decoded files, built once by {@link make}. */
+/** The link plan for a batch's decoded rows, built once by {@link make}. */
 interface Type {
   /** Every referent of the batch with its link target, in discovery order. */
   readonly links: readonly Link.Type[]
@@ -146,19 +145,19 @@ const resolvedLiteralReferenceOf = (
   })
 
 /**
- * The literal references of the linkable decoded resources of `decodedFiles`
+ * The literal references of the linkable decoded resources of `decodedRows`
  * the batch writes where they were decoded: those no stored resource under
  * another id stands in for. A decoded resource a stored one under another id
  * replaces is not written under its own literal reference, so a stored copy
  * under that reference, which a mention may link to, is not written by any
- * resolved file.
+ * resolved row.
  */
 const literalReferencesWrittenAsDecoded = (
-  links: readonly Link.Type[],
-  decodedFiles: readonly DecodedFile.DecodedFile[]
+  standIns: HashMap.HashMap<string, LinkableResource.WithId>,
+  decodedRows: readonly ReviewRow.Type[]
 ): readonly string[] =>
   pipe(
-    decodedFiles.flatMap((file) => SectionedList.rows(file.rows)),
+    decodedRows,
     Array.filterMap(({ resource }) =>
       Option.map(
         Option.liftPredicate(resource, LinkableResource.is),
@@ -172,25 +171,25 @@ const literalReferencesWrittenAsDecoded = (
   )
 
 /**
- * The plan for a batch's `decodedFiles` on the link choice set by referent,
+ * The plan for a batch's `decodedRows` on the link choice set by referent,
  * `byReferent`: each referent's choice made once into its link
  * (`Link.fromChoices`), and the resolved resources those links redirect to;
  * no mention link yet ({@link withMentionLinkChoiceSet}).
  *
  * @remarks
  * The referents are the whole batch's (`Referent.discover`), so a referent
- * one file holds is the link target of a mention in another, and every file
+ * one file holds is the link target of a mention in another, and every row
  * is resolved on the same plan. Fails with `Referent.DuplicateReferent` when
  * two decoded resources answer to one logical reference, and with
  * `LinkChoice.InvalidLinkChoice` when a choice cannot be followed for its
  * referent.
  */
 const make = (
-  decodedFiles: readonly DecodedFile.DecodedFile[],
+  decodedRows: readonly ReviewRow.Type[],
   byReferent: ReferentLinkChoiceSet.Type
 ): Effect.Effect<Type, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
   Effect.gen(function* () {
-    const referents = yield* Referent.discover(decodedFiles)
+    const referents = yield* Referent.discover(decodedRows)
     const links = yield* Link.fromChoices(referents, byReferent)
     const standIns = standInsOf(links)
     const resolvedResources = yield* ResolvedResource.fromLinks(

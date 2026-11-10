@@ -1,5 +1,5 @@
 /**
- * Resolving a decoded file on its batch's link plan: each decoded resource
+ * Resolving a review group's decoded rows on its batch's link plan: each decoded resource
  * written as the resource the plan has for it, with its mentions redirected to
  * their referents' link targets, or redirected where the reviewer chose for one
  * on its own; and the records the batch only mentions, as the batch's own
@@ -119,28 +119,25 @@ const sameRow = (before: ReviewRow.Type, after: ReviewRow.Type): boolean =>
  * takes the resolved resource's label as its title; any other keeps its own.
  * The same object when nothing changes.
  */
-const resolveRow =
-  (plan: LinkPlan.Type) =>
-  (decodedRow: DecodedFile.Row): DecodedFile.Row => {
-    const redirect = redirectMentions(plan, decodedRow.reviewable.key)
-    const resolvedRow = Option.match(
-      LinkPlan.resolvedResourceIfReferent(plan, decodedRow.resource),
-      {
-        onNone: () => ({
-          ...decodedRow,
-          resource: redirect(decodedRow.resource),
-        }),
-        onSome: (resolvedResource) => ({
-          reviewable:
-            resolvedResource.resource.id === decodedRow.resource.id
-              ? decodedRow.reviewable
-              : { ...decodedRow.reviewable, title: resolvedResource.label },
-          resource: redirect(resolvedResource.resource),
-        }),
-      }
-    )
-    return sameRow(decodedRow, resolvedRow) ? decodedRow : resolvedRow
-  }
+const resolveRow = (plan: LinkPlan.Type, decodedRow: ReviewRow.Type): ReviewRow.Type => {
+  const redirect = (resource: FhirResourceWithId): FhirResourceWithId =>
+    redirectReferences(plan, decodedRow.reviewKey, resource)
+  const resolvedRow = Option.match(LinkPlan.resolvedResourceIfReferent(plan, decodedRow.resource), {
+    onNone: () => ({
+      ...decodedRow,
+      resource: redirect(decodedRow.resource),
+    }),
+    onSome: (resolvedResource) => ({
+      ...decodedRow,
+      title:
+        resolvedResource.resource.id === decodedRow.resource.id
+          ? decodedRow.title
+          : resolvedResource.label,
+      resource: redirect(resolvedResource.resource),
+    }),
+  })
+  return sameRow(decodedRow, resolvedRow) ? decodedRow : resolvedRow
+}
 
 /**
  * `editedResource`, the reviewer's edit of the resource reviewed under
@@ -154,8 +151,9 @@ const resolveRow =
  */
 const resolveEdit = (
   plan: LinkPlan.Type,
-  reviewKey: string
-): ((editedResource: FhirResourceWithId) => FhirResourceWithId) => redirectMentions(plan, reviewKey)
+  reviewKey: string,
+  editedResource: FhirResourceWithId
+): FhirResourceWithId => redirectReferences(plan, reviewKey, editedResource)
 
 /**
  * The batch's linked records under `plan`: the resolved resources no
@@ -176,16 +174,17 @@ const linkedRecords = (plan: LinkPlan.Type): readonly ReviewRow.Type[] =>
   )
 
 /**
- * `decodedFile` resolved on `plan`: the file to review, diff and write. Every
- * section keeps its keys, and a row nothing changed in comes back as the
- * same object. The records the batch only mentions are no file's: they are
- * {@link linkedRecords}.
+ * `sectionedList`, a review group's decoded rows, resolved on `plan`: the rows
+ * to review, diff and write. Every section keeps its keys, and a row nothing
+ * changed in comes back as the same object, a section none of whose rows
+ * changed as the same section, and a list none of whose sections changed as
+ * the same list (`SectionedList.modify`). The records the batch only
+ * mentions are no group's rows: they are {@link linkedRecords}.
  */
-const resolveFile =
-  (plan: LinkPlan.Type) =>
-  (decodedFile: DecodedFile.DecodedFile): DecodedFile.DecodedFile => {
-    const rows = SectionedList.map(decodedFile.rows, resolveRow(plan))
-    return rows === decodedFile.rows ? decodedFile : { ...decodedFile, rows }
-  }
+const resolveRows = (
+  plan: LinkPlan.Type,
+  sectionedList: SectionedList.Type<ReviewRow.Type>
+): SectionedList.Type<ReviewRow.Type> =>
+  SectionedList.modify(sectionedList, (row) => resolveRow(plan, row))
 
-export { linkedKey, linkedRecords, resolveEdit, resolveFile }
+export { linkedKey, linkedRecords, resolveEdit, resolveRows }

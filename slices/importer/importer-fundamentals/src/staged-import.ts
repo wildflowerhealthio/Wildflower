@@ -137,7 +137,7 @@ const resolvedResourceOf = (
 ): FhirResourceWithId =>
   Option.match(editedResource(selection, resolvedRow.reviewKey), {
     onNone: () => resolvedRow.resource,
-    onSome: FileResolution.resolveEdit(plan, resolvedRow.reviewable.key),
+    onSome: (edited) => FileResolution.resolveEdit(plan, resolvedRow.reviewKey, edited),
   })
 
 export {

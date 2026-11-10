@@ -20,9 +20,7 @@ import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Data, Effect, HashMap, Option, pipe, Record } from 'effect'
 
-import type * as DecodedFile from '../decoded-file.ts'
 import type * as ReviewRow from '../review-row.ts'
-import * as SectionedList from '../sectioned-list.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
 
@@ -167,8 +165,8 @@ const firstDuplicateAmong = (referents: readonly Type[]): Option.Option<Duplicat
   )
 
 /**
- * Every referent a batch's decoded files hold, once per identity, in
- * file-then-review order.
+ * Every referent the decoded rows of a batch hold, once per identity, in
+ * the order of `decodedRows`.
  *
  * @remarks
  * A resource decoded twice under one id (two file sets implying one
@@ -179,14 +177,11 @@ const firstDuplicateAmong = (referents: readonly Type[]): Option.Option<Duplicat
  * file or two, are keyed by one logical reference.
  */
 const discover = (
-  decodedFiles: readonly Pick<DecodedFile.DecodedFile, 'rows'>[]
+  decodedRows: readonly ReviewRow.Type[]
 ): Effect.Effect<readonly Type[], DuplicateReferent> =>
   Effect.gen(function* () {
     const decodedReferents = Array.getSomes(
-      yield* Effect.forEach(
-        decodedFiles.flatMap((file) => SectionedList.rows(file.rows)),
-        tryFromDecodedResource
-      )
+      yield* Effect.forEach(decodedRows, tryFromDecodedResource)
     )
     const duplicate = firstDuplicateAmong(decodedReferents)
     if (Option.isSome(duplicate)) return yield* Effect.fail(duplicate.value)
