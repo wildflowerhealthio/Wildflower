@@ -1,8 +1,6 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type DecodedFile,
   FileResolution,
-  type FormatDecode,
   type LinkChoice,
   type LinkChoiceSet,
   LinkPlan,
@@ -10,11 +8,13 @@ import {
   PickedFile,
   Referent,
   ReferentLinkChoiceSet,
+  type ReviewRow,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, HashMap } from 'effect'
+import { Array as Arr, Effect, HashMap, Record } from 'effect'
 
-import { type DecodedBatch, claimedFormats, collectFormats } from './read-batch.ts'
-import { type FormatKind, formatRegistry } from './registry.ts'
+import type { DecodedBatch } from './read-batch.ts'
+import { type FormatKind, formatKinds, formatRegistry } from './registry.ts'
+import * as ReviewGroup from './review-group.ts'
 
 /**
  * A batch's mentions resolved: one identity map for every format the batch
@@ -26,9 +26,9 @@ import { type FormatKind, formatRegistry } from './registry.ts'
  * @packageDocumentation
  */
 
-/** The decoded file of every format `batch` claimed, in format order. */
-const decodedFilesOf = (batch: DecodedBatch): readonly DecodedFile.DecodedFile[] =>
-  claimedFormats(batch.formats).map((kind) => batch.formats[kind].decoded)
+/** The decoded rows of every format `batch` claimed, in format order, each in review order. */
+const decodedRowsOf = (batch: DecodedBatch): readonly ReviewRow.Type[] =>
+  ReviewGroup.entries(batch.groups, formatKinds).flatMap(([, group]) => ReviewGroup.rows(group))
 
 /**
  * Every referent the batch holds, once per identity across formats, in
@@ -40,21 +40,22 @@ const decodedFilesOf = (batch: DecodedBatch): readonly DecodedFile.DecodedFile[]
 const discoverReferents = (
   batch: DecodedBatch
 ): Effect.Effect<readonly Referent.Type[], Referent.DuplicateReferent> =>
-  Referent.discover(decodedFilesOf(batch))
+  Referent.discover(decodedRowsOf(batch))
 
 /**
  * A batch every mention of which resolves: the batch the diff, the preview
- * and the confirm see. Beside a decoded batch's slots it holds the linked
- * records and the plan it was resolved on, which a decoded batch cannot, and
- * the decoded batch itself. Each format slot's `decoded` holds that format's
- * resolved file.
+ * and the confirm see. Its groups are each claimed format's, resolved, and
+ * the linked records', when there are any; beside them it holds the plan it
+ * was resolved on and the batch as decoded.
  */
-interface ResolvedBatch extends DecodedBatch {
+interface ResolvedBatch {
   /**
-   * The stored records the batch only links to, written beside the files
-   * (`FileResolution.linkedRecords`), keyed by `FileResolution.linkedKey`.
+   * Each claimed format's group with its rows resolved, then the group of
+   * the stored records the batch only links to, written beside the formats'
+   * (`FileResolution.linkedRecords`), keyed by
+   * `FileResolution.linkedKey`, when there are any.
    */
-  readonly linkedRecords: readonly DecodedFile.Row[]
+  readonly groups: ReviewGroup.Groups
   /**
    * The plan the batch was resolved on: what the referent rows read each
    * choice's link target off, and what the review asks the referent links
@@ -62,11 +63,12 @@ interface ResolvedBatch extends DecodedBatch {
    */
   readonly plan: LinkPlan.Type
   /**
-   * The batch as decoded, before any link was followed: the resources the
-   * review asks the plan's referent links about, since a resolved resource
-   * also carries the mention links.
+   * The batch as decoded, before any link was followed: its groups, each
+   * holding the picks it was read from, and the resources the review asks the
+   * plan's referent links about, since a resolved resource also carries the
+   * mention links.
    */
-  readonly decodedBatch: DecodedBatch
+  readonly decoded: DecodedBatch
 }
 
 /**
@@ -79,18 +81,10 @@ const isSourceFileOf = (kind: FormatKind, resource: FhirResourceWithId): boolean
   resource.resourceType === 'DocumentReference' &&
   PickedFile.isSourceFile(formatRegistry[kind].sourceFileFormat)(resource)
 
-/**
- * `kind`'s slot of `batch` with its decoded file resolved on `plan`
- * (`FileResolution.resolveFile`); the slot itself when nothing moved in it.
- */
-const resolveFormat = <K extends FormatKind>(
-  plan: LinkPlan.Type,
-  batch: DecodedBatch,
-  kind: K
-): FormatDecode.Result<K> => {
-  const result = batch.formats[kind]
-  const resolved = FileResolution.resolveFile(plan)(result.decoded)
-  return resolved === result.decoded ? result : { ...result, decoded: resolved }
+/** `group` with its rows resolved on `plan`; the group itself when nothing moved in it. */
+const resolveGroup = (plan: LinkPlan.Type, group: ReviewGroup.Type): ReviewGroup.Type => {
+  const sectionedList = FileResolution.resolveRows(plan, group.sectionedList)
+  return sectionedList === group.sectionedList ? group : { ...group, sectionedList }
 }
 
 /** The plan for `batch` on `linkChoiceSet`: its links by referent, then its mention links. */
@@ -98,15 +92,15 @@ const planOf = (
   batch: DecodedBatch,
   linkChoiceSet: LinkChoiceSet.Type
 ): Effect.Effect<LinkPlan.Type, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
-  Effect.map(LinkPlan.make(decodedFilesOf(batch), linkChoiceSet.byReferent), (plan) =>
+  Effect.map(LinkPlan.make(decodedRowsOf(batch), linkChoiceSet.byReferent), (plan) =>
     LinkPlan.withMentionLinkChoiceSet(plan, linkChoiceSet.byMention)
   )
 
 /**
  * The batch with every mention resolved to its referent's link target, or
  * the one the reviewer chose for it on its own, the records only mentioned
- * gathered to be written as its `linkedRecords`, and the plan it was
- * resolved on: the batch to review, diff and write.
+ * gathered in a group of their own, and the plan it was resolved on: the
+ * batch to review, diff and write.
  *
  * @param batch - The decoded batch
  * @param linkChoiceSet - The reviewer's link choice set: by referent, and by
@@ -115,17 +109,17 @@ const planOf = (
  *
  * @remarks
  * One plan over the batch's referents ({@link planOf}: `LinkPlan.make` over
- * every claimed format's decoded file, the mention links laid on it with
+ * every claimed format's decoded rows, the mention links laid on it with
  * `LinkPlan.withMentionLinkChoiceSet`), and each format resolved on it once,
- * in its own slot ({@link resolveFormat}): the choices are made for the
- * decoded files' referents, so a mention in one format links to a referent
+ * in its own group: the choices are made for the
+ * decoded rows' referents, so a mention in one format links to a referent
  * another holds, and a review key is unique across the batch, so a mention
  * link names one mention of one format's resource. The resources the batch
- * only mentions are its `linkedRecords`, no format's, so a stored person
- * several formats only mention is written once. Section titles and review
- * keys are kept, so the selections survive, and a slot nothing moved in
- * comes back as it was. A batch with no claimed format comes back with no
- * linked records and an empty plan. Which of a person's names is current is
+ * only mentions are the linked records' group, no format's, so a stored
+ * person several formats only mention is written once. Section titles and
+ * review keys are kept, so the selections survive, and a group nothing moved
+ * in comes back as it was. A batch with no claimed format comes back with no
+ * groups and an empty plan. Which of a person's names is current is
  * judged at the clock's now, so the clock is the one input besides the
  * arguments. Fails with `Referent.DuplicateReferent` when two decoded
  * resources under different ids are keyed by one logical reference, and
@@ -137,18 +131,23 @@ const resolveMentions = (
   batch: DecodedBatch,
   linkChoiceSet: LinkChoiceSet.Type
 ): Effect.Effect<ResolvedBatch, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
-  Effect.flatMap(planOf(batch, linkChoiceSet), (plan) =>
-    Effect.map(
-      collectFormats((kind) => Effect.succeed(resolveFormat(plan, batch, kind))),
-      (formats): ResolvedBatch => ({
-        formats,
-        unrecognizedFiles: batch.unrecognizedFiles,
-        linkedRecords: FileResolution.linkedRecords(plan),
-        plan,
-        decodedBatch: batch,
-      })
-    )
-  )
+  Effect.map(planOf(batch, linkChoiceSet), (plan): ResolvedBatch => {
+    const linkedRecords = FileResolution.linkedRecords(plan)
+    return {
+      groups: {
+        ...Record.fromEntries(
+          ReviewGroup.entries(batch.groups, formatKinds).map(
+            ([kind, group]) => [kind, resolveGroup(plan, group)] as const
+          )
+        ),
+        ...(Arr.isNonEmptyReadonlyArray(linkedRecords)
+          ? { [ReviewGroup.LINKED]: ReviewGroup.linked(linkedRecords) }
+          : {}),
+      },
+      plan,
+      decoded: batch,
+    }
+  })
 
 /**
  * `batch` with its mentions resolved on the reviewer's `chosen` choices over

@@ -157,9 +157,9 @@ const resolveEdit = (
 
 /**
  * The batch's linked records under `plan`: the resolved resources no
- * resolved file holds where a decoded resource was, as they will be
- * written, in the order the links first reach them. No resolved file holds
- * them; they are the batch's own, reviewed and written beside the files.
+ * resolved row holds where a decoded resource was, as they will be
+ * written, in the order the links first reach them. No format's group holds
+ * them; they are the batch's own, reviewed and written beside the formats'.
  */
 const linkedRecords = (plan: LinkPlan.Type): readonly ReviewRow.Type[] =>
   pipe(

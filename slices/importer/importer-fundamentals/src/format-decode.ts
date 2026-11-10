@@ -13,25 +13,29 @@
  * {@link keyPrefix} is the one that carries weight beyond uniqueness. A
  * `decodeFileSet` keys resources within *one* set — DICOM's fixed `patient`,
  * HAR's per-archive `har-entry-<index>` — because that is all it can see, while
- * the batch merges every claimed file's sections into one review whose
- * selection, server-diff verdicts and write plan are keyed by `(format, key)`.
- * Prefixing by the set's first picked file is what keeps the merged keys
- * distinct, so unticking one file's row cannot drop another's resource.
+ * a review group merges the sections of every file set its format read, and
+ * the review's selection, server comparisons and write plan are each keyed by
+ * review key within its review group. Prefixing by the set's first picked
+ * file is what keeps the merged keys distinct, so unticking one file's row
+ * cannot drop another's resource.
  *
  * @packageDocumentation
  */
 
 import { type ParseResult } from 'effect'
 import type * as DecodedFileSet from './decoded-file-set.ts'
-import * as DecodedFile from './decoded-file.ts'
 import type * as FileImporter from './file-importer.ts'
 import type * as PickedFile from './picked-file.ts'
 
-/** The id of one format's whole decode result — deterministic in its files and their order. */
+/** The id of one format's files — deterministic in its files and their order. */
 const makeId = (format: string, files: readonly PickedFile.Type[]): string =>
   `${format}/${files.map((file) => file.id).join(',')}`
 
-/** The id of one file within its format's batch — an {@link UnreadableFile} row's, and an unrecognized picked file's. */
+/** The title one format's files are reported under: their names, in pick order. */
+const titleOf = (files: readonly PickedFile.Type[]): string =>
+  files.map((file) => file.fileName).join(', ')
+
+/** The id of one file among the picks its format claimed — an {@link UnreadableFile} row's, and an unrecognized picked file's. */
 const makeFileId = (format: string, file: PickedFile.Type): string => `${format}/${file.id}`
 
 /** The namespace every review key decoded out of one file set carries — see the module remarks. */
@@ -39,22 +43,13 @@ const keyPrefix = (file: PickedFile.Type): string => `${file.id}/`
 
 /**
  * One format's decode, file set by file set, as its `decode` returns it:
- * `importer-core`'s import stage (`importDecoded`) makes it a {@link Result}.
+ * `importer-core`'s import stage (`importDecoded`) makes it the format's
+ * review group.
  */
 interface Decoded<TFormat extends string> {
   readonly format: TFormat
   readonly files: readonly PickedFile.Type[]
   readonly fileSets: readonly DecodedFileSet.Type[]
-  readonly unreadableFiles: readonly UnreadableFile[]
-}
-
-/** One format's imported decode: its file sets' records the device's own, merged into one review. */
-interface Result<TFormat extends string> {
-  readonly id: string
-  readonly title: string
-  readonly files: readonly PickedFile.Type[]
-  readonly format: TFormat
-  readonly decoded: DecodedFile.DecodedFile
   readonly unreadableFiles: readonly UnreadableFile[]
 }
 
@@ -82,15 +77,5 @@ const makeUnreadableFile = (
   error,
 })
 
-/** A format with no claimed files — the seed for unclaimed format slots. */
-const emptyResult = <K extends string>(kind: K): Result<K> => ({
-  id: makeId(kind, []),
-  title: '',
-  files: [],
-  format: kind,
-  decoded: DecodedFile.empty,
-  unreadableFiles: [],
-})
-
-export { emptyResult, keyPrefix, makeFileId, makeId, makeUnreadableFile }
-export type { Decoded, Result, UnreadableFile }
+export { keyPrefix, makeFileId, makeId, makeUnreadableFile, titleOf }
+export type { Decoded, UnreadableFile }

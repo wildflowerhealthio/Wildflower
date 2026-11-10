@@ -36,7 +36,7 @@ const ZONE_OPTIONS = suggestedTimeZones()
  * Two things the field does beyond mirroring `settings.timeZone`:
  *
  * - It reports up on a {@link COMMIT_DELAY_MS} debounce, flushed on blur or
- *   Enter, because each report re-decodes the whole batch.
+ *   Enter, because each report re-decodes every DICOM file in the batch.
  * - It reports only a zone the runtime can resolve. Every half-typed prefix of
  *   `America/Toronto` is itself a name the runtime rejects, and committing
  *   those would flip each file to "could not be read" and back on the way
