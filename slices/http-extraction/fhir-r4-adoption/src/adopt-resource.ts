@@ -4,7 +4,7 @@ import {
   type FhirResourceWithId,
   ReferenceRewrite,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Option } from 'effect'
+import { Effect } from 'effect'
 
 import * as DetachedResource from './detached-resource.ts'
 import * as ReferencePlan from './reference-plan.ts'
@@ -14,13 +14,12 @@ const randomResourceId = (): string => crypto.randomUUID()
 
 /**
  * Adopt a detached record into the store: give it the id it is stored under,
- * and resolve each of its logical references the batch's reference plan
- * resolves to a literal one.
+ * and resolve each of its logical references the file set's reference plan
+ * (`ReferencePlan.InForce`) resolves to a literal one.
  *
- * @param referencePlan - The literal reference each logical reference into
- *   the batch resolves to
- * @returns A function from one detached record and the id it is stored under
- *   to its stored form
+ * @param record - The detached record
+ * @param id - The id it is stored under
+ * @returns Its stored form, requiring the reference plan in force
  *
  * @remarks
  * The id and the reference plan are decided before adoption, by the import
@@ -36,12 +35,14 @@ const randomResourceId = (): string => crypto.randomUUID()
  *
  * Takes no base URL: everything it needs is on the records.
  */
-const adopt = (referencePlan: ReferencePlan.Type) => {
-  return (record: DetachedResource.Type, id: string): FhirResourceWithId => ({
+const adopt = (
+  record: DetachedResource.Type,
+  id: string
+): Effect.Effect<FhirResourceWithId, never, ReferencePlan.InForce> =>
+  Effect.map(ReferencePlan.InForce, (referencePlan) => ({
     ...ReferenceRewrite.apply(record, ReferencePlan.toRewrite(referencePlan)),
     id,
-  })
-}
+  }))
 
 /**
  * The id a source gave an adopted resource: the value of its identifier in

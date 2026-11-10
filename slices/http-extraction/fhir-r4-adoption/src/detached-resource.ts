@@ -144,7 +144,7 @@ const keyIdentifier = (system: URL, value: string): IdentifierType => ({
  * @remarks
  * How a decoder writing its records detached names another record it decodes:
  * `adopt` resolves it to the literal reference that record is stored under
- * when the record is in the batch.
+ * when the record is in its file set.
  */
 const logicalReferenceWire = (
   resourceType: FhirResource['resourceType'],

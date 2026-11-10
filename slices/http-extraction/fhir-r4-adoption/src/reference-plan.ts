@@ -12,7 +12,7 @@
  */
 import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import { LogicalReference, ReferenceRewrite } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Option, pipe, Record } from 'effect'
+import { Array as Arr, Context, Option, pipe, Record } from 'effect'
 
 /** One entry of a plan: `logicalReference` resolves to `literalReference`. */
 interface Entry {
@@ -95,6 +95,12 @@ const literalReferenceIfResolved = (plan: Type, reference: ReferenceType): Optio
   )
 
 /**
+ * The reference plan the records being adopted resolve by: built once for a
+ * file set, then read, never changed, by every step of its adoption.
+ */
+class InForce extends Context.Tag('fhir-r4-adoption/ReferencePlan.InForce')<InForce, Type>() {}
+
+/**
  * `plan` as a reference rewrite: each logical reference it resolves
  * ({@link literalReferenceIfResolved}) pointed at its literal reference,
  * every other reference left as it is.
@@ -102,5 +108,5 @@ const literalReferenceIfResolved = (plan: Type, reference: ReferenceType): Optio
 const toRewrite = (plan: Type): ReferenceRewrite.Type =>
   ReferenceRewrite.fromLookup((reference) => literalReferenceIfResolved(plan, reference))
 
-export { holds, literalReferenceFor, literalReferenceIfResolved, of }
+export { holds, InForce, literalReferenceFor, literalReferenceIfResolved, of, toRewrite }
 export type { Entry, Type }
