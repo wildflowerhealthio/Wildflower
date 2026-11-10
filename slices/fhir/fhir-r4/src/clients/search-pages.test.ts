@@ -10,6 +10,7 @@ import {
   type SearchsetEntry,
   type SearchsetPage,
   searchAllPages,
+  searchEveryPage,
 } from './search-pages.ts'
 
 const RUNS = numRunsFor({ base: 100 })
@@ -185,6 +186,50 @@ describe('searchAllPages', () => {
       ),
       { numRuns: RUNS }
     )
+  })
+})
+
+describe('searchEveryPage', () => {
+  it('should read every page the next links chain to, however many there are', async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.array(fc.array(fc.string()), { maxLength: 40 }), async (entries) => {
+        // Arrange: page n continues to page n+1 until the last
+        const asked: Option.Option<string>[] = []
+
+        // Act
+        const matches = await Effect.runPromise(
+          searchEveryPage('Patient', (pageToken) => {
+            asked.push(pageToken)
+            const index = Option.match(pageToken, { onNone: () => 0, onSome: Number })
+            const next = index + 1 < entries.length ? String(index + 1) : undefined
+            return Effect.succeed({
+              entry: (entries[index] ?? []).map(match),
+              link: next === undefined ? [] : [nextLink(`/X?_pageToken=${next}`)],
+            })
+          })
+        )
+
+        // Assert
+        expect(matches).toEqual(entries.flat())
+        expect(asked).toHaveLength(Math.max(entries.length, 1))
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  it('should fail the read when a next link names a page already read, rather than reading it again', async () => {
+    const outcome = await Effect.runPromise(
+      Effect.either(
+        searchEveryPage('Patient', (pageToken) =>
+          Effect.succeed(Option.isNone(pageToken) ? page(['a'], 'p-2') : page(['b'], 'p-2'))
+        )
+      )
+    )
+
+    expect(outcome).toMatchObject({
+      _tag: 'Left',
+      left: { _tag: 'PageTokenRepeated', pageToken: 'p-2' },
+    })
   })
 })
 
