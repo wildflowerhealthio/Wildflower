@@ -2,7 +2,7 @@ import { UrlParams } from '@effect/platform'
 import { Array, Data, Effect, type Either, type ParseResult, Schema } from 'effect'
 
 import * as Bundle from '../data-types/resources/bundle.ts'
-import { FhirResourceSchema, type FhirResourceWithId, hasId } from '../resources/index.ts'
+import { type FhirResourceWithId, StoredResourceSchema } from '../resources/index.ts'
 import { batchOfGets } from './batch-of-gets.ts'
 import {
   FhirR4ResourcesHttpApiClient,
@@ -58,13 +58,6 @@ type BatchSearchFailure = BatchSearchRejected | ParseResult.ParseError | MatchWi
 type BatchSubmitFailure = Effect.Effect.Error<
   ReturnType<FhirR4ResourcesClientShape['Bundle']['Submit']>
 >
-
-/** A stored resource: a supported resource with its `id`, as a search answers with it. */
-const StoredResourceSchema = FhirResourceSchema.pipe(
-  Schema.filter((resource): resource is FhirResourceWithId => hasId(resource), {
-    message: () => 'a stored resource has an id',
-  })
-)
 
 /**
  * A searchset of stored resources: what a search entry's `resource` holds.

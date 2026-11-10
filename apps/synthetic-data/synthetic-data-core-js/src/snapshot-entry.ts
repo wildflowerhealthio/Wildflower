@@ -4,6 +4,7 @@ import {
   type FhirResource,
   FhirResourceSchema,
   ResourceType,
+  StoredResourceSchema,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { harImporter } from '@wildflowerhealthio/har-importer-core'
 import { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
@@ -116,10 +117,8 @@ const attachmentPathOf = (format: Format, fileName: string): string => `${format
 /** A resource with an id in FHIR's id grammar, as a snapshot stores it. */
 type StoredResource = FhirResource & { readonly id: string }
 
-const StoredResourceSchema = Schema.typeSchema(FhirResourceSchema).pipe(
-  Schema.filter((resource): resource is StoredResource => resource.id !== null, {
-    message: () => 'A resource in a snapshot has an id.',
-  }),
+/** A stored resource whose id is in FHIR's id grammar: what a snapshot's {@link Resource} holds. */
+const SnapshotResourceSchema = Schema.typeSchema(StoredResourceSchema).pipe(
   Schema.filter((resource) => FHIR_ID.test(resource.id), {
     message: () => `A resource in a snapshot has an id in FHIR's id grammar (${FHIR_ID_PATTERN}).`,
   })
@@ -163,7 +162,7 @@ const namesSnapshotPath = (resource: FhirResource): boolean =>
 
 /** A resource in the store, as its import wrote it. */
 const ResourceSchema = Schema.TaggedStruct('Resource', {
-  resource: StoredResourceSchema,
+  resource: SnapshotResourceSchema,
   /**
    * For a source-file `DocumentReference`, the path of the {@link Attachment}
    * holding the file it read. Its one attachment then carries neither `data`
