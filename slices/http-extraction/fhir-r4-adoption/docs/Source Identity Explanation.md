@@ -102,6 +102,12 @@ they stand outside any server (`DetachedResource` in this package).
 - **Every reference to another decoded record is a logical reference**:
   `{ reference: null, type: '<TargetType>', identifier: { system, value } }`,
   the target named by its key.
+- **Except a `Binary`, which has no identifier to be named by.** A FHIR
+  server's `Binary` is named by the server's absolute URL for it,
+  `<baseUrl>/Binary/<id>`: its decoder gives its record that URL as its
+  source URL (`FileSetRecord.sourceUrl`), and a reference or an
+  `Attachment.url` naming it is that URL, as a FHIR transaction bundle names
+  an entry with no identifier by its `fullUrl`.
 
 `DetachedResource.keyOf` reads a record's key.
 
@@ -158,7 +164,10 @@ detached one of the same type:
    A `Binary`, and a record with no `id`, keep only what they had, so they are
    keyless unless the source's own first identifier names them.
 3. **Turns each literal reference logical**, at any depth
-   ([the reference walk](#the-reference-walk), below).
+   ([the reference walk](#the-reference-walk), below), except a
+   `Binary/<id>` one, which becomes the server's absolute URL for the Binary.
+4. **Makes each `Attachment.url` naming a `Binary/<id>` absolute**, the same
+   URL, at any depth.
 
 ### The detach reference rule
 
@@ -168,6 +177,9 @@ names `(<baseUrl>/Patient, Patient, abc)`. For one `Reference`:
 
 ```text
 reference.reference is null                                        → unchanged
+the literal, less a leading `<baseUrl>/`, matches
+  `^Binary/([^/?#]+)$`                                             → reference  := <baseUrl>/Binary/<id>
+                                                                     (type and identifier kept)
 the literal, less a leading `<baseUrl>/`, does not match
   `^[A-Za-z]+/[A-Za-z0-9\-.]{1,64}$`                               → unchanged
 the type token is not an R4 resource type                          → unchanged
@@ -175,6 +187,17 @@ otherwise → reference  := null
             type       := Type
             identifier := { system: <baseUrl>/<Type>, value: id }
 ```
+
+A `Binary` is the one R4 type with no `identifier` element, so nothing could
+resolve a logical reference to one: the server's absolute URL names it
+instead. It is absolute, not relative, because `adopt` takes no base URL to
+resolve a relative literal against. Its id is any one URL path segment, not
+R4's id grammar: a Binary is named by its URL and stored under a minted id,
+so an id past 64 characters still names it, as the read kinds claim a
+`Binary/<id>` URL by any segment. An `Attachment.url` follows the same rule:
+`Binary/<id>`, relative or under the base, becomes `<baseUrl>/Binary/<id>`,
+and every other URL (a foreign absolute URL, a `data:` URL, a `#fragment`,
+another type's `Type/id`) is kept.
 
 The grammar and type checks are what leave alone, and an unchanged reference
 keeps its original spelling, absolute or relative, its `identifier` included:
@@ -222,19 +245,28 @@ It then adds the records the set's references name and none of its records
 is, each planned from the reference that implies it ([Implied records](#implied-records), below).
 From those plans it builds the set's **reference plan** (`ReferencePlan`,
 here): for each logical reference (`fhir-r4`'s `LogicalReference`, a resource
-type and one qualified identifier), the literal reference it resolves to. The reference plan is a plain data
+type and one qualified identifier), the literal reference it resolves to,
+and for each source URL, the literal reference a literal reference or an
+`Attachment.url` spelling it resolves to. The reference plan is a plain data
 structure that holds what it is given; which identifiers go in is the import
 stage's choice, and it puts in every qualified identifier of each keyed
 record, its key and every other, each resolving to the literal reference its
 record is written under, as a FHIR conditional reference matches a record by
 any of its identifiers. A keyless record's id is minted at import, so it puts
-nothing in for one, whatever identifiers it carries.
+no identifier in for one, whatever identifiers it carries; a keyless record
+a source served at a URL (a FHIR server's `Binary`) gets a source URL entry
+instead, resolving to the literal reference it is written under. A keyed
+record is named by its identifiers alone.
 
 The import stage puts that reference plan in force (`ReferencePlan.InForce`)
 while it adopts the set. `adopt(record, id)` stores `record` under the id its
-resource plan gave it, and resolves each logical reference through the
-reference plan in force, by the reference's type and its own qualified
-identifier:
+resource plan gave it, and resolves each reference and attachment URL
+through the reference plan in force. A literal reference or an
+`Attachment.url` that spells a record's source URL (matched on the URL's
+`href`, so two spellings of one URL match) becomes the literal reference
+that record is written under; one that spells none keeps its literal, the
+server's URL for a record the set does not hold. A logical reference
+resolves by its type and its own qualified identifier:
 
 - **A logical reference the reference plan resolves** becomes the literal
   reference the plan gives it, its `type` and `identifier` kept:
@@ -263,8 +295,11 @@ implies — a FHIR `Observation`'s `Encounter/1`, a fill's
 `authorizingPrescription` by a prescription number the set lacks — stays
 logical, and so does one by an identifier two of its records share. They are
 left for the importer's identity map (below), and nothing is written that
-points at an id nothing is stored under. A reference to a **keyless** record
-stays logical too, whichever of its identifiers it names it by.
+points at an id nothing is stored under. A logical reference to a
+**keyless** record stays logical too, whichever of its identifiers it names
+it by. A reference to a `Binary` the source never served keeps the source's
+absolute URL for it: it points at the server's real record rather than at a
+local id nothing is stored under.
 
 One record is filed before it is adopted. A source can know who a
 prescription is for and not who one of its fills was for: Shoppers' history
@@ -336,21 +371,24 @@ depth, so `note[].authorReference` (`Annotation.author[x]`, one level down
 inside an array), a nested `PlanDefinition.action[].subjectReference`, an
 `Identifier.assigner` and an extension's `valueReference` are all reached, and
 a `Reference` field added to a resource schema is walked with no edit here.
+`ResourceAttachments.mapUrls` walks every `Attachment` the same way, by
+`fhir-r4`'s `Attachment` schema, so `DocumentReference.content[].attachment`,
+`DiagnosticReport.presentedForm[]` and `Patient.photo[]` are all reached.
 
 The walk rebuilds only what a rewrite changed and replaces a `Reference` only
 with what the rewrite returns for it, so a resource keeps its own shape; the
 type system cannot follow that, so `fromServerRecord` casts back to the
 resource's own type once. `adopt-resource.test.ts` diffs every field that
 holds no reference on generated resources, through both `fromServerRecord`
-and `adopt`, so a field touched outside the references fails, and walks each
-resource schema's AST so the list of reference fields it diffs around stays
-complete.
+and `adopt`, so a field touched outside the references and attachments
+fails, and walks each resource schema's AST so the lists of reference and
+attachment fields it diffs around stay complete.
 
 ### Never touched
 
 `contained` (raw passthrough JSON, in which the walk finds no decoded
 `Reference`; a decoded `Identifier` injected there would write `null`s onto
-the wire), `meta.source`, and `Attachment.url`.
+the wire) and `meta.source`.
 
 `meta.source` is not a rewrite site because the importer's import stage
 (`importer-core`'s `importDecoded`) sets it to a reference to the source-file

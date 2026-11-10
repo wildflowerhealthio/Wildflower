@@ -54,9 +54,18 @@ shell's shared `persistTransactionBundle`.
   file `DecodedFileSet.unidentified`) — one section per response URL, a plain
   insertion-ordered map (first-seen order, only responses that parsed to at
   least one resource), each record's local key its preview key,
-  `<response id>:<index>` —
+  `<response id>:<index>`, and its source URL `None`, except a `Binary` a read
+  served, whose source URL is the read's URL less its query,
+  `<root>/Binary/<id>` (`fhir-r4-adoption`'s
+  `DetachedResource.serverBinaryUrlIfRead`): the server's URL for it, which a
+  reference or an `Attachment.url` naming it is detached to, so the import
+  stage resolves one to the other. Only the first record per source URL is
+  kept (`withRepeatedRecordsAsDuplicates`, after `mergeSharedResources`), so
+  a Binary read twice is one record, and a response left with none is noted
+  as a duplicate of the one that held it —
   plus one diagnostic note per response that yielded nothing (no kind
-  matched, parse failure, body absent, duplicate). The import stage adopts the
+  matched, parse failure, body absent, duplicate, or a `Binary` read served
+  as its raw content, which parses to no record). The import stage adopts the
   records and puts them under the source-file section described above. Never
   fails: a malformed source file comes back as that file's `unreadableFiles`
   entry, leaving the batch's other files reviewable. Local keys are

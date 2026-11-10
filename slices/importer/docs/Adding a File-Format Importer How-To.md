@@ -60,7 +60,9 @@ the picked files that are decoded together — each a `PickedFile.Type`
 (`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) —
 and yields one `DecodedFileSet.Type`: its `pickedFiles` (§1, below), titled
 sections (`SectionedList`) of records, each a `FileSetRecord`
-`{ localKey, resource }` with its resource **detached**, and diagnostic notes.
+`{ localKey, resource, sourceUrl }` with its resource **detached**, and
+diagnostic notes. `sourceUrl` is `Option.none()` unless a source served the
+record at a URL that is the only thing naming it (a FHIR server's `Binary`).
 
 ```ts
 const decodeMyFormat = (
@@ -71,7 +73,11 @@ const decodeMyFormat = (
 // each section:
 //   Section.make(
 //     title,
-//     resources.map((resource): FileSetRecord.Type => ({ localKey, resource }))
+//     resources.map((resource): FileSetRecord.Type => ({
+//       localKey,
+//       resource,
+//       sourceUrl: Option.none(),
+//     }))
 //   )
 ```
 
@@ -122,8 +128,10 @@ every format's `decode`) then, per set:
   collide on a key (see the obligations below); a keyed record lands under the
   `wf-` id its key derives, a keyless one under a random id, and each logical
   reference to a record of the set is resolved to a literal one (a reference
-  to anything else stays logical, for the identity map), so every record has
-  its id before the hooks below run;
+  to anything else stays logical, for the identity map), and each literal
+  reference or `Attachment.url` spelling a keyless record's source URL
+  (`FileSetRecord.sourceUrl`) to that record, so every record has its id
+  before the hooks below run;
 - lets the format link each source file to the set's adopted records
   (`linkSourceFile`, §4) and each record to the source files it was read from
   (`linkToSourceFiles`, §4), and prepends the source files as their own
