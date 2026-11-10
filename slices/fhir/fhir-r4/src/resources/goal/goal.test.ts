@@ -442,6 +442,7 @@ describe('GoalSearchParams', () => {
       _count: '20',
       _pageToken: 'opaque-server-token',
       _id: 'goal-1',
+      identifier: 'https://clinic.example/goal|g-7',
       'lifecycle-status': 'active',
       subject: 'Patient/p-1',
       patient: 'p-1',

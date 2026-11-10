@@ -21,4 +21,15 @@ describe('PractitionerSearchParams', () => {
     // Assert — an undeclared key would be dropped on decode and absent here.
     expect(reEncoded).toEqual(query)
   })
+
+  it('should carry the name parameters through the wire unchanged', () => {
+    // Arrange
+    const query = { family: 'Lee', given: 'Sam' }
+
+    // Act
+    const reEncoded = Schema.encodeSync(SearchParams)(Schema.decodeUnknownSync(SearchParams)(query))
+
+    // Assert
+    expect(reEncoded).toEqual(query)
+  })
 })
