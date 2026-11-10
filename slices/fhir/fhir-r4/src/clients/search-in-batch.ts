@@ -29,7 +29,15 @@ import {
  * @packageDocumentation
  */
 
-/** One search of a batch: a searchable resource type and its search parameters. */
+/**
+ * One search of a batch: a searchable resource type and its search parameters.
+ *
+ * @remarks
+ * The parameters go on the wire as written, URL-encoded but not FHIR-escaped,
+ * so a `,` in a value means "or". A literal `string` value (a `name`,
+ * `family` or `given`) goes through `StringSearchParam.escape` first, a
+ * literal token through `TokenSearchParam`.
+ */
 type BatchSearch = {
   readonly [ResourceType in SearchableResourceType]: {
     readonly resourceType: ResourceType
@@ -130,11 +138,14 @@ const matchesOfEntry = (
  * @remarks
  * Each search answers with its first page, sized by its own `_count`: the
  * `next` link of a searchset is not followed, but says the answer is cut off
- * (`truncated`), so a caller can tell a first page from a complete answer. A search the server rejects
- * fails as {@link BatchSearchRejected} at its position while the others keep
- * their matches; a search whose parameters do not encode, or a failure to
- * submit the batch at all, fails the whole call.
+ * (`truncated`), so a caller can tell a first page from a complete answer.
+ * A search the server rejects fails as {@link BatchSearchRejected} at its
+ * position while the others keep their matches; a search whose parameters do
+ * not encode, or a failure to submit the batch at all, fails the whole call.
  * Nothing is submitted for no searches.
+ *
+ * Values are sent as written, so a literal string value is escaped by
+ * `StringSearchParam.escape` before it is put in a {@link BatchSearch}.
  *
  * @param searches - The searches, in the order their answers are given
  * @returns Each search's matches and whether its searchset continued past

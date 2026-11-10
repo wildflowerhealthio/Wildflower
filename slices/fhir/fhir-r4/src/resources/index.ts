@@ -8,6 +8,7 @@ export {
 } from './fhir-resource-with-id.ts'
 export * as LogicalReference from './logical-reference.ts'
 export * as DateSearchParam from './search/date-search-param.ts'
+export * as StringSearchParam from './search/string-search-param.ts'
 export * as TokenSearchParam from './search/token-search-param.ts'
 export * as ReferenceRewrite from './reference-rewrite.ts'
 export * as ResourceAttachments from './resource-attachments.ts'

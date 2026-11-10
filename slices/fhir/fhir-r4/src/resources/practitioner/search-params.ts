@@ -10,8 +10,9 @@ const NumFromStr = Schema.NumberFromString.pipe(Schema.int(), Schema.greaterThan
  * `_id` and `identifier` are FHIR `token` parameters (a bare value or the
  * `system|value` form, passed through as written); `name` is a `string`
  * parameter matched against any part of the practitioner's names, `family`
- * and `given` against that part alone. The
- * narrowings that remain are catalogued in
+ * and `given` against that part alone, each passed through as written too,
+ * so `a,b` matches either: a literal value goes through
+ * `StringSearchParam.escape` first. The narrowings that remain are catalogued in
  * `fhir-r4/docs/Client Capabilities Reference.md`.
  */
 const SearchParams = Schema.Struct({

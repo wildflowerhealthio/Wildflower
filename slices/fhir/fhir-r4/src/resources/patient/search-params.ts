@@ -26,7 +26,9 @@ const BoolFromStr = Schema.transform(Schema.Literal('true', 'false'), Schema.Boo
  * any of them) — how the importer finds the stored Patient an identity names.
  * `name`, `family` and `given` are FHIR `string` parameters: `name` is
  * matched against any part of the patient's names, `family` and `given`
- * against that part alone. The narrowings that remain are catalogued in
+ * against that part alone. They too are passed through as written, so
+ * `a,b` matches either; a literal value goes through
+ * `StringSearchParam.escape` first. The narrowings that remain are catalogued in
  * `fhir-r4/docs/Client Capabilities Reference.md`.
  */
 const SearchParams = Schema.Struct({
