@@ -109,13 +109,16 @@ through the real importers, and serves a snapshot's files from memory as a
 `synthetic-data-react`'s.
 
 `src/import-golden/` is the **import golden pin**: fixed picks of every source
-kind (the committed HAR and Rexall fixtures, and one hand-written person run
-through each generator at a fixed as-of), imported headless through
+kind (the committed HAR and Rexall fixtures, a FHIR server's document and its
+`Binary`, and one hand-written person run through each generator at a fixed
+as-of), imported headless through
 `importer-core` with every default accepted, and compared byte for byte with
 the goldens in `__golden__/` (sorted keys, two-space indent, a trailing
 newline; `vp fmt` leaves them alone). A LifeLabs pick is `%PDF-` and the
 positioned text it prints, as JSON, which the test's fake
-`PositionedTextExtractor` reads back. A golden diff is a change to
+`PositionedTextExtractor` reads back. A keyless record's id is random outside
+tests, so the test mints them in order (`crypto.randomUUID` replaced); only
+the document case holds one, its `Binary`. A golden diff is a change to
 what an import writes; `vp test -u` regenerates them. See the importer's
 [Adding a File-Format Importer How-To](../../../slices/importer/docs/Adding%20a%20File-Format%20Importer%20How-To.md#7-tests-per-layer).
 

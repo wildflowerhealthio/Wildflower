@@ -1,9 +1,9 @@
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { PositionedTextExtractor } from '@wildflowerhealthio/positioned-text'
 import { Effect, Layer, TestClock, TestContext } from 'effect'
-import { describe, expect, it } from 'vite-plus/test'
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { chromeFhirCapturePick, rexallFixturePick } from './fixture-picks.ts'
+import { chromeFhirCapturePick, fhirDocumentPick, rexallFixturePick } from './fixture-picks.ts'
 import {
   AS_OF,
   dicomPick,
@@ -38,6 +38,9 @@ interface GoldenCase {
 
 const CASES: readonly GoldenCase[] = [
   { name: 'fhir-har', picks: Effect.succeed([chromeFhirCapturePick()]) },
+  // A DocumentReference and the Binary its attachments name: the one case
+  // holding a keyless record, whose id is minted.
+  { name: 'fhir-document-har', picks: Effect.all([fhirDocumentPick()]) },
   { name: 'rexall-fixtures-har', picks: Effect.all([rexallFixturePick()]) },
   { name: 'rexall-har', picks: Effect.all([rexallPick('rexall.har', AS_OF)]) },
   { name: 'shoppers-har', picks: Effect.all([shoppersPick()]) },
@@ -72,6 +75,17 @@ const goldenTextFor = (
   )
 
 describe('an import with every default accepted', () => {
+  // A keyless record's id is a random UUID outside tests. Each case mints
+  // them in order from one, so its golden is the same on every run.
+  beforeEach(() => {
+    let minted = 0
+    vi.spyOn(crypto, 'randomUUID').mockImplementation(() => {
+      minted += 1
+      return `00000000-0000-4000-8000-${String(minted).padStart(12, '0')}`
+    })
+    return () => vi.restoreAllMocks()
+  })
+
   it.each(CASES)('writes what the $name golden pins', async ({ name, picks }) => {
     await expect(await goldenTextFor(picks)).toMatchFileSnapshot(`./__golden__/${name}.json`)
   })
