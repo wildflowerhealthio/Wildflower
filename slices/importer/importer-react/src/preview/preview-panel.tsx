@@ -1,18 +1,17 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { type DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import { StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 import { Array, Data, Option } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
 import {
-  type FormatKind,
-  type FormatSettings,
-  type ResolvedBatch,
-  claimedFormats,
   type ExcludedByDefaultFor,
+  type FormatKind,
   formatKinds,
-  LINKED_GROUP,
+  type FormatSettings,
   planWrite,
+  type ResolvedBatch,
+  ReviewGroup,
 } from '@wildflowerhealthio/importer-core'
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
@@ -39,8 +38,8 @@ import panelStyles from './preview-panel.module.css'
  * confirming is an informed, opt-in act.
  *
  * @remarks
- * A pick is a *batch* of one or more files, grouped by format and decoded
- * into one `FormatDecode.Result` per format, rendered together under
+ * A batch is one or more picks, claimed by format and decoded
+ * into one review group per format, rendered together under
  * one confirm. The display is fully general — the same for every format:
  * formats shown under that format's settings form (when it has settings), each
  * format showing its decoded sections (title + per-resource rows with
@@ -75,7 +74,7 @@ type SettingsChangeHandler<K extends FormatKind> = (format: K, settings: FormatS
 
 /** Props for {@link PreviewPanel}. */
 interface PreviewPanelProps {
-  /** The decoded batch, one entry per format plus unrecognized files. */
+  /** The resolved batch: its review groups, its plan, and the batch as decoded, unrecognized files and all. */
   readonly batch: ResolvedBatch
   /** The current per-format settings the decodes ran under. */
   readonly settings: FormatSettings
@@ -195,11 +194,12 @@ const PreviewActions = ({
  * are), and changing it means choosing differently there.
  */
 const LinkedRecords = ({
-  linkedRecords,
+  linked,
   labels,
   comparisons,
 }: {
-  readonly linkedRecords: readonly DecodedFile.Row[]
+  /** The linked records' group. */
+  readonly linked: ReviewGroup.Type
   /** The label of each record a subject may be redirected to, by its literal reference. */
   readonly labels: ReadonlyMap<string, string>
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
@@ -211,7 +211,7 @@ const LinkedRecords = ({
     <h3 className={panelStyles['preview-panel__format-heading']}>{LINKED_RECORDS_HEADING}</h3>
     <p className={panelStyles['preview-panel__linked-note']}>{LINKED_RECORDS_NOTE}</p>
     <ul className={panelStyles['preview-panel__linked-list']}>
-      {linkedRecords.map((row) => {
+      {ReviewGroup.rows(linked).map((row) => {
         const description = describeResource(row.resource, labels)
         return (
           <li key={row.reviewKey} className={panelStyles['preview-panel__linked-row']}>
@@ -262,8 +262,10 @@ const PreviewPanel = ({
 
   const totalFiles = useMemo(
     () =>
-      formatKinds.reduce((sum, kind) => sum + batch.formats[kind].files.length, 0) +
-      batch.unrecognizedFiles.length,
+      ReviewGroup.entries(batch.decoded.groups, formatKinds).reduce(
+        (sum, [, group]) => sum + group.files.length,
+        0
+      ) + batch.decoded.unrecognizedFiles.length,
     [batch]
   )
 
@@ -290,8 +292,6 @@ const PreviewPanel = ({
     setEditing(makeClosedEditor())
   }
 
-  const activeFormats = useMemo(() => claimedFormats(batch.formats), [batch])
-
   return (
     <section aria-label="Import preview" className={panelStyles['preview-panel']}>
       <h2 className={panelStyles['preview-panel__heading']}>
@@ -304,49 +304,56 @@ const PreviewPanel = ({
       )}
       {referentRows}
       <div className={panelStyles['preview-panel__format-groups']}>
-        {activeFormats.map((kind) => {
-          const result = batch.formats[kind]
-          return (
-            <section
-              key={kind}
-              className={panelStyles['preview-panel__format-group']}
-              aria-label={settingsRegistry[kind].display.title}
-            >
-              <h3 className={panelStyles['preview-panel__format-heading']}>
-                {settingsRegistry[kind].display.title}
-              </h3>
-              <FormatSettingsForm
-                kind={kind}
-                settings={settings}
-                settingsRegistry={settingsRegistry}
-                onSettingsChange={onSettingsChange}
-              />
-              <div className={panelStyles['preview-panel__file-sections']}>
-                <FormatReviewBody
-                  result={result}
-                  selection={selectionFor(kind)}
-                  excludedByDefault={excludedByDefaultFor(kind)}
-                  comparisons={comparisons.get(kind)}
-                  mentionLinkOptions={mentionLinkOptions}
-                  onChooseMention={onChooseMention}
+        {ReviewGroup.entries(batch.groups, formatKinds).map(([kind, resolvedGroup]) =>
+          // Always present: a resolved batch's format groups are its decoded batch's, resolved.
+          Option.fromNullable(batch.decoded.groups[kind]).pipe(
+            Option.map((decodedGroup) => (
+              <section
+                key={kind}
+                className={panelStyles['preview-panel__format-group']}
+                aria-label={settingsRegistry[kind].display.title}
+              >
+                <h3 className={panelStyles['preview-panel__format-heading']}>
+                  {settingsRegistry[kind].display.title}
+                </h3>
+                <FormatSettingsForm
                   kind={kind}
-                  decodedFile={batch.decodedBatch.formats[kind].decoded}
-                  plan={batch.plan}
-                  onSelectionChange={(selection) => onSelectionChange(kind, selection)}
-                  onEditResource={(key, resource) => openEditor(kind, key, resource)}
+                  settings={settings}
+                  settingsRegistry={settingsRegistry}
+                  onSettingsChange={onSettingsChange}
                 />
-              </div>
-            </section>
+                <div className={panelStyles['preview-panel__file-sections']}>
+                  <FormatReviewBody
+                    resolvedGroup={resolvedGroup}
+                    selection={selectionFor(kind)}
+                    excludedByDefault={excludedByDefaultFor(kind)}
+                    comparisons={comparisons.get(kind)}
+                    mentionLinkOptions={mentionLinkOptions}
+                    onChooseMention={onChooseMention}
+                    kind={kind}
+                    decodedSectionedList={decodedGroup.sectionedList}
+                    plan={batch.plan}
+                    onSelectionChange={(selection) => onSelectionChange(kind, selection)}
+                    onEditResource={(key, resource) => openEditor(kind, key, resource)}
+                  />
+                </div>
+              </section>
+            )),
+            Option.getOrNull
           )
-        })}
-        {batch.linkedRecords.length > 0 && (
-          <LinkedRecords
-            linkedRecords={batch.linkedRecords}
-            labels={mentionLinkOptions.labelsByLiteralReference}
-            comparisons={comparisons.get(LINKED_GROUP)}
-          />
         )}
-        {batch.unrecognizedFiles.map((file) => (
+        {Option.fromNullable(batch.groups.linked).pipe(
+          Option.map((linked) => (
+            <LinkedRecords
+              key={ReviewGroup.LINKED}
+              linked={linked}
+              labels={mentionLinkOptions.labelsByLiteralReference}
+              comparisons={comparisons.get(ReviewGroup.LINKED)}
+            />
+          )),
+          Option.getOrNull
+        )}
+        {batch.decoded.unrecognizedFiles.map((file) => (
           <section
             key={file.id}
             className={panelStyles['preview-panel__file-section']}

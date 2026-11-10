@@ -4,10 +4,9 @@ import {
   type FormatKind,
   type LeftUnlinked,
   leftUnlinkedIn,
+  type ReviewGroup,
 } from '@wildflowerhealthio/importer-core'
 import {
-  type DecodedFile,
-  type FormatDecode,
   LinkChoice,
   type LinkPlan,
   Mention,
@@ -84,15 +83,15 @@ interface TypeTally {
   readonly excluded: number
 }
 
-/** The per-type tallies of one format's decoded resources, in first-seen order. */
+/** The per-type tallies of one format's rows, in first-seen order. */
 const perTypeTallies = (
-  decodedFile: DecodedFile.DecodedFile,
+  sectionedList: SectionedList.Type<ReviewRow.Type>,
   selection: StagedImport.Selection,
   excludedByDefault: ReadonlySet<string>
 ): readonly TypeTally[] => {
   const order: string[] = []
   const totals = new Map<string, { total: number; excluded: number }>()
-  for (const row of SectionedList.rows(decodedFile.rows)) {
+  for (const row of SectionedList.rows(sectionedList)) {
     const type = resourceTypeOf(row.resource)
     const excluded = StagedImport.isResourceIncluded(selection, excludedByDefault, row.reviewKey)
       ? 0
@@ -373,19 +372,20 @@ const ResourceRow = ({
  * the format's diagnostic notes folded into a collapsed details block.
  */
 const FormatReviewBody = ({
-  result,
+  resolvedGroup,
   selection,
   excludedByDefault,
   comparisons,
   mentionLinkOptions = MentionLinkOptions.empty,
   kind,
-  decodedFile,
+  decodedSectionedList,
   plan,
   onSelectionChange,
   onEditResource,
   onChooseMention = chooseNothing,
 }: {
-  readonly result: FormatDecode.Result<string>
+  /** The format's review group, its rows resolved. */
+  readonly resolvedGroup: ReviewGroup.Type
   readonly selection: StagedImport.Selection
   /** The keys of the rows that are out unless the reviewer ticks them. */
   readonly excludedByDefault: ReadonlySet<string>
@@ -394,8 +394,8 @@ const FormatReviewBody = ({
   readonly mentionLinkOptions?: MentionLinkOptions.Type
   /** The format reviewed: whose own source files are never listed. */
   readonly kind: FormatKind
-  /** The format's file as decoded: each row, unless edited, is asked of as it is here. */
-  readonly decodedFile: DecodedFile.DecodedFile
+  /** The format's rows as decoded: each row, unless edited, is asked of as it is here. */
+  readonly decodedSectionedList: SectionedList.Type<ReviewRow.Type>
   /** The batch's plan: what its referent links leave unlinked is asked of it. */
   readonly plan: LinkPlan.Type
   readonly onSelectionChange: (selection: StagedImport.Selection) => void
@@ -403,17 +403,17 @@ const FormatReviewBody = ({
   /** The identity map's action a pick drives. */
   readonly onChooseMention?: ChooseMention
 }): JSX.Element => {
-  const { rows, notes } = result.decoded
+  const { sectionedList, notes, unreadableFiles } = resolvedGroup
   const tallies = useMemo(
-    () => perTypeTallies(result.decoded, selection, excludedByDefault),
-    [result.decoded, selection, excludedByDefault]
+    () => perTypeTallies(sectionedList, selection, excludedByDefault),
+    [sectionedList, selection, excludedByDefault]
   )
   const leftUnlinked = useMemo(() => leftUnlinkedIn(plan, kind), [plan, kind])
   const unlinked = useMemo(
-    () => unlinkedInRows(decodedFile, selection, leftUnlinked),
-    [decodedFile, selection, leftUnlinked]
+    () => unlinkedInRows(decodedSectionedList, selection, leftUnlinked),
+    [decodedSectionedList, selection, leftUnlinked]
   )
-  const groups = useMemo(() => groupsOf(result.decoded, unlinked), [result.decoded, unlinked])
+  const groups = useMemo(() => groupsOf(sectionedList, unlinked), [sectionedList, unlinked])
 
   // A pick is a mention link choice, which the resolved row, and its edit
   // override resolved on the plan, follow.
@@ -470,19 +470,19 @@ const FormatReviewBody = ({
       )}
       {unlinkedGroup(NEEDS_A_PATIENT_HEADING, groups.needingPatient)}
       {unlinkedGroup(NEEDS_A_PROVIDER_HEADING, groups.needingProvider)}
-      {rows.sections.length === 0 && result.unreadableFiles.length === 0 && (
+      {sectionedList.sections.length === 0 && unreadableFiles.length === 0 && (
         <p className={styles['review-body__empty']}>{NO_RESOURCES_MESSAGE}</p>
       )}
-      {result.unreadableFiles.length > 0 && (
+      {unreadableFiles.length > 0 && (
         <ul className={styles['review-body__note-list']}>
-          {result.unreadableFiles.map((file) => (
+          {unreadableFiles.map((file) => (
             <li key={file.id} className={styles['review-body__note']}>
               {file.title}: {UNREADABLE_FILE_MESSAGE}
             </li>
           ))}
         </ul>
       )}
-      {rows.sections.map((section) => (
+      {sectionedList.sections.map((section) => (
         <section
           // A resource key is namespaced by the file it came from
           // (`FormatDecode.keyPrefix`), so it is unique across the format —
