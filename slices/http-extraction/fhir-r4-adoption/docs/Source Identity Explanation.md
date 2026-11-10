@@ -198,12 +198,12 @@ stays on the request.
 
 The import stage stores each detached record with `adopt`, which takes no
 base URL or system: everything it needs is on the records, the id each is
-stored under, and the batch's reference plan.
+stored under, and the file set's reference plan.
 
-The batch is one file set, and before adopting any of its records the import
+A file set is adopted as one: before adopting any of its records the import
 stage (`importer-fundamentals`' `DecodedFileSet.adopt`) plans each one where
 it is written: its **resource plan** (`importer-fundamentals`'
-`ResourcePlan`), kept beside its entry.
+`ResourcePlan`), kept beside its record.
 
 - **A keyed record** is `Derived`: stored under
   `localResourceId(key.system, resourceType, key.value)`, the derivation
@@ -213,9 +213,9 @@ it is written: its **resource plan** (`importer-fundamentals`'
   UUID (`randomResourceId`, injected so a test can count). A re-import of it
   is a second record.
 
-It then adds the records the batch's references name and none of its records
-is, each planned like any other ([Implied records](#implied-records), below).
-From those plans it builds the batch's **reference plan** (`ReferencePlan`,
+It then adds the records the set's references name and none of its records
+is, each planned from the reference that implies it ([Implied records](#implied-records), below).
+From those plans it builds the set's **reference plan** (`ReferencePlan`,
 here): for each logical reference (`fhir-r4`'s `LogicalReference`, a resource
 type and one qualified identifier), the literal reference it resolves to. The reference plan is a plain data
 structure that holds what it is given; which identifiers go in is the import
@@ -225,9 +225,11 @@ record is written under, as a FHIR conditional reference matches a record by
 any of its identifiers. A keyless record's id is minted at import, so it puts
 nothing in for one, whatever identifiers it carries.
 
-`adopt(referencePlan)(record, id)` stores `record` under the id its resource
-plan gave it, and resolves each logical reference through the reference plan,
-by the reference's type and its own qualified identifier:
+The import stage puts that reference plan in force (`ReferencePlan.InForce`)
+while it adopts the set. `adopt(record, id)` stores `record` under the id its
+resource plan gave it, and resolves each logical reference through the
+reference plan in force, by the reference's type and its own qualified
+identifier:
 
 - **A logical reference the reference plan resolves** becomes the literal
   reference the plan gives it, its `type` and `identifier` kept:
@@ -242,7 +244,7 @@ otherwise                                 → unchanged
 The reference plan matches on the type and the identifier's `system` and
 `value` alone; `use`, `type`, `period` and the rest do not name what an
 identifier identifies. It reads a literal reference it already holds, so a
-reference whose target is not in the batch costs no hash. Two entries for one
+reference whose target is not in the set costs no hash. Two entries for one
 type and identifier with different literal references make that identifier
 **ambiguous**, and it resolves to nothing: as a FHIR conditional reference
 that matches several records is an error, except that here the reference
@@ -251,9 +253,9 @@ not ambiguous.
 
 This is a FHIR server processing a transaction bundle: a conditional reference
 resolves against the bundle's own entries, and one that matches none of them
-stays as it is. So a reference to a record the batch neither holds nor
+stays as it is. So a reference to a record the set neither holds nor
 implies — a FHIR `Observation`'s `Encounter/1`, a fill's
-`authorizingPrescription` by a prescription number the batch lacks — stays
+`authorizingPrescription` by a prescription number the set lacks — stays
 logical, and so does one by an identifier two of its records share. They are
 left for the importer's identity map (below), and nothing is written that
 points at an id nothing is stored under. A reference to a **keyless** record
@@ -265,8 +267,8 @@ feed names only the account, so its fills have no `subject`. A
 `MedicationDispense` with no `subject` takes the `subject` of its
 `authorizingPrescription`, as the prescription spells it, when its
 prescriptions agree: every prescription it names that resolves to a
-`MedicationRequest` of the batch has a copy whose `subject` names a Patient of
-the batch (a copy that names none is skipped), and every copy that names one
+`MedicationRequest` of the set has a copy whose `subject` names a Patient of
+the set (a copy that names none is skipped), and every copy that names one
 names the same Patient. Otherwise it is left with no `subject`. A dispense
 that has a `subject` keeps it, whatever it names and whether or not it
 resolves: it is the source's own statement of who received the fill.
@@ -292,10 +294,10 @@ called (its `display`), which for a person or a provider is a record. So
 before it builds the reference plan, the import stage implies that record
 (`DecodedFileSet.adopt`'s `impliedSectionOf`):
 
-- Every logical reference of the batch (`ResourceReferences.collect`, then
+- Every logical reference of the set (`ResourceReferences.collect`, then
   `LogicalReference.tryFromReference`: typed, by a qualified identifier and
   with no literal) that carries a `display` and whose target no record of
-  the batch holds by any of its identifiers (`ReferencePlan.holds`) implies
+  the set holds by any of its identifiers (`ReferencePlan.holds`) implies
   one record per distinct logical reference, built from the first reference
   to name it.
 - `importer-fundamentals`' `ImpliedRecord.tryFromLogicalReference` reads an
@@ -305,22 +307,25 @@ before it builds the reference plan, the import stage implies that record
   since R4 requires elements a reference cannot carry (a
   `MedicationRequest`'s `subject`, `status`, `intent` and `medication[x]`,
   for one). So a Shoppers history fill's `authorizingPrescription` by a
-  prescription the batch lacks stays logical.
-- The implied record's `fullUrl` is
-  `<referencing fullUrl>#implied:<Type>|<system>|<value>`, a stable key and
+  prescription the set lacks stays logical.
+- The implied record's local key is
+  `<referencing local key>#implied:<Type>|<system>|<value>`, a stable key and
   nothing more. The implied records are reviewed in a section of their own,
-  `Implied records`, after the batch's decoded sections, and each row says
-  it is implied by its `origin` (`DecodedFile.Origin`).
+  `Implied records`, after the set's decoded sections, and each row says
+  it is implied by its `isImplied` (`ReviewRow`).
 
-It is keyed, so its plan is `Derived` and every reference to it resolves to
+It is keyed by the identifier of the reference that implies it, so its plan
+is `Derived` (`ResourcePlan.derived`) and every reference to it resolves to
 it as a literal, as if the source had sent it. The review shows it as a row
 of its own, and the identity map treats it as any decoded record.
 
 ### The reference walk
 
-`fromServerRecord` and `adopt` rewrite a resource's references with
-`fhir-r4`'s `ResourceReferences.mapReferences`, and the import stage reads
-them with `ResourceReferences.collect`. It is a structural walk: it finds
+`fromServerRecord` rewrites a resource's references with `fhir-r4`'s
+`ResourceReferences.mapReferences`; `adopt` with a `ReferenceRewrite` (the
+reference plan's, `ReferencePlan.toRewrite`), which gives each reference only
+its new literal reference and walks with `mapReferences` too. The import
+stage reads them with `ResourceReferences.collect`. It is a structural walk: it finds
 every decoded `Reference` by `fhir-r4`'s own `Reference` schema, at any
 depth, so `note[].authorReference` (`Annotation.author[x]`, one level down
 inside an array), a nested `PlanDefinition.action[].subjectReference`, an

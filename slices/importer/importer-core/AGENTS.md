@@ -33,20 +33,23 @@ package alone and a layer that provides those.
   `Object.fromEntries` erases the key-to-value correlation the record's type
   states, so a derived version needs an `as FormatSettings` and checks nothing,
   while the literal makes a missing format a compile error. Adding a format is
-  one `FormatSettings` entry, one registry entry, one default — and
-  `collectFormats` below, which `resolveMentions` also assembles its batch
-  through. All four are mapped or exhaustive types over `FormatKind`, so missing
-  any of them is a compile error.
+  one `FormatSettings` entry, one registry entry, one default. All three are
+  mapped or exhaustive types over `FormatKind`, so missing any of them is a
+  compile error.
 - `src/import-decoded.ts` — **the import stage**, the one place a record is
   made the device's own, a source file is minted and `meta.source` is
   stamped. **`importDecoded(importer, decoded)`** takes one format's
   `FormatDecode.Decoded` and the **`ImportingFormat`** it reads off the
   format's importer (`sourceFileFormat`, `linkSourceFile`,
-  `linkToSourceFiles`), and returns its `FormatDecode.Result`, never failing.
+  `linkToSourceFiles`), and returns the format's `ReviewGroup` (every file
+  set's adopted rows in sections, its notes, its unreadable files and the
+  picks the decode read), never failing.
   Per file set it mints a source file for **every** picked file
   (`Schema.encode(PickedFile.FromDocumentReference)`), its `masterIdentifier`
   what the picked file identified itself as; adopts its detached records with
-  `DecodedFileSet.adopt` (a keyed record under the id its key derives, a
+  `DecodedFileSet.adopt` under the key prefix of the set's first picked file
+  (`FormatDecode.keyPrefix`), so each row's review key is that prefix before
+  the record's local key (a keyed record under the id its key derives, a
   keyless one under a random id, the records the set's references name and
   none of its records is implied, each logical reference to a record of the
   set resolved to a literal one); runs `linkSourceFile` over each source file with the
@@ -55,7 +58,7 @@ package alone and a layer that provides those.
   with the set's **representative** — the picked file whose source file id is
   lexicographically smallest, and a source file id is a content hash, so the
   stamp is independent of the order the files were picked in
-  (`MetaSource.stampDecoded`) — and prepends the source files as the set's
+  (`MetaSource.stampAdopted`) — and prepends the source files as the set's
   **"Source file"** / **"Source files"** section. Nothing is de-duplicated
   across sets or files: each set's records are kept and keyed as they are. A
   set whose source file cannot be minted, or whose `linkToSourceFiles` fails
@@ -70,77 +73,69 @@ package alone and a layer that provides those.
   fields). `readBatch` and `redecodeFormat` require the `R` of the registry
   they are handed: `DecodeRequirements` for `formatRegistry`, `never` for a
   fake whose decodes read their bytes themselves. **`readBatch`** takes the picker's
-  `PickedFile.NamedBytes`, groups them by format
-  and decodes every group concurrently into a **`DecodedBatch`**: its
-  `formats`, a **`FormatResults`** record of one `FormatDecode.Result<K>` per
-  registered format (an `emptyResult` for a format that claimed nothing),
-  and its `unrecognizedFiles`, the **`UnrecognizedFile`**s, plain data for the
-  picks no `detect` claimed. Every format's decode goes through
-  `importDecoded` in `decodeFormat`, so a batch read or re-decoded is always
-  imported. The format slots are a field of their own rather
-  than spread beside `unrecognizedFiles`, so `batch.formats[kind]` under a
-  generic `K` is that format's own `Result<K>`. A decoded batch holds no
-  linked records and no link targets; **`claimedFormats`** takes the
-  `FormatResults` (`batch.formats`) and names the formats that actually took
-  part, the one predicate the preview and the confirm both read;
-  **`redecodeFormat`** re-runs one format's files from their retained picks
-  under new settings (ids are deterministic, so no id-preservation logic is
-  needed).
-  **`groupByFormat` is the one place a pick's id is minted** — its position in
+  `PickedFile.NamedBytes`, splits them by the format that claims each
+  (**`claimPicks`**, a **`ClaimedPicks`**: the picks each format `claimed`,
+  keyed by format, and the `unrecognized` ones) and decodes every format's
+  picks concurrently into a **`DecodedBatch`**: its `groups`, one
+  `ReviewGroup` per format that claimed a pick, keyed by format, each holding
+  the picks it was read from (`files`), which a re-decode reads again; and its
+  `unrecognizedFiles`, the **`UnrecognizedFile`**s, plain data for the picks
+  no `detect` claimed. A format took part exactly when it has a group. Every
+  format's decode goes through `importDecoded` in `decodeFormat`, so a batch
+  read or re-decoded is always imported. A decoded batch holds no linked
+  records and no link targets; **`redecodeFormat`** re-runs one format's picks,
+  as its group holds them, under new settings and replaces that format's
+  group, every other group passed back as it was (ids are deterministic, so
+  no id-preservation logic is needed).
+  **`claimPicks` is the one place a pick's id is minted** — its position in
   the whole batch and its file name, so two `report.pdf`s out of two folders
   stay distinct and a settings re-decode, which hands the same files back,
   yields the same ids. Nothing above or below it mints one: a picker source
   produces `NamedBytes`.
   Its three internal steps — `identifyPick` (the first claiming detector, via
-  `FormatDetector.claiming`), `groupByFormat`, and `decodeFormat` (generic in
+  `FormatDetector.claiming`), `claimPicks`, and `decodeFormat` (generic in
   `K` so `registry[kind]` and `settings[kind]` stay correlated with no
   per-format `Match` branch, then the import stage) — are module-level exports for this package's own
   tests and are **not** re-exported from `index.ts`: the shell drives the whole
   read, never a leg of it.
-  **`collectFormats`** is the one place the registry is enumerated by name,
-  and its remarks say why: TypeScript drops the correlation between a computed
-  union key and its value, so a record assembled from a `kind` variable is
-  checked against nothing. It yields a **`FormatResults`**, which each caller
-  places in its batch.
 - `src/resolve-mentions.ts` — a batch's mentions resolved (a resolved batch
   is one whose mentions are resolved), service-free Effects on the clock. The
   batch goes from **decoded** (`DecodedBatch`, as `readBatch` read it) to
   **resolved** (`ResolvedBatch`, every link followed, as it will be written)
   against what is **stored** on the device, the identity map's three states
   (`importer-fundamentals`' AGENTS).
-  **`ResolvedBatch`** is a decoded batch, each format slot's `decoded`
-  holding the resolved file, plus its **`linkedRecords`** (the resolved
-  records no resolved file holds, written beside the files, no format's), **`plan`** (the
-  `LinkPlan` it was resolved on, which the referent rows ask each referent's
-  link target of, and the review asks what its referent links leave
-  unlinked, `UnlinkedMention.leftByReferentLinks`) and **`decodedBatch`**
-  (the batch as decoded, whose rows that question is asked of, since a
-  resolved row also carries the mention links). **`isSourceFileOf(kind,
+  **`ResolvedBatch`** holds its **`groups`** (each claimed format's group
+  with its rows resolved, and the **linked records'** group, the resolved
+  records no resolved row holds, written beside the formats', no format's,
+  when there are any, read as the optional `groups.linked`), its **`plan`** (the `LinkPlan` it was
+  resolved on, which the referent rows ask each referent's link target of,
+  and the review asks what its referent links leave unlinked,
+  `UnlinkedMention.leftByReferentLinks`) and **`decoded`** (the batch as
+  decoded, whose rows that question is asked of, since a resolved row also
+  carries the mention links). **`isSourceFileOf(kind,
   resource)`** says whether a resource is a format's own source file, which
   the review never asks a patient for.
   Only `resolveMentions` makes one, and the diff, the preview and the confirm
   take nothing else.
   **`discoverReferents(batch)`** is `Referent.discover` over every claimed
-  format's `decoded`: one referent per identity across formats,
+  format's decoded rows: one referent per identity across formats,
   format-then-review order.
   **`resolveMentions(batch, linkChoiceSet)`** (a `LinkChoiceSet`, by
   referent and by mention) resolves every mention in every
-  claimed format's `decoded` on one plan over the batch's referents
-  (`LinkPlan.make` once, over every claimed format's decoded file, the
+  claimed format's decoded rows on one plan over the batch's referents
+  (`LinkPlan.make` once, over every claimed format's decoded rows, the
   link choice set by mention laid on it with
   `LinkPlan.withMentionLinkChoiceSet`), resolving
-  each format once, in its own slot (`resolveFormat`, over
-  `FileResolution.resolveFile(plan)`), so a mention in one format
+  each format once, in its own group (`resolveGroup(plan, group)`, over
+  `FileResolution.resolveRows(plan, sectionedList)`), so a mention in one format
   links to a referent another holds, and a review key being unique across
   the batch, a mention link choice names one mention of one format's
-  resource; it fills `linkedRecords` with the
-  resolved records no resolved file holds (`FileResolution.linkedRecords`), and `plan`, so
-  the screen's hook reads each referent's link target without planning
-  again. Keys and section
-  titles are kept; the format slots are reassembled through `collectFormats`,
-  a slot nothing moved in coming back as it was, and a batch with no claimed
-  format comes back with no linked records, an empty plan and nothing
-  unlinked. It fails with
+  resource; it adds the linked records' group (`ReviewGroup.linked` over
+  `FileResolution.linkedRecords`) when there are any, and `plan`, so the
+  screen's hook reads each referent's link target without planning again.
+  Keys and section titles are kept, a group nothing moved in coming back as
+  it was, and a batch with no claimed format comes back with no groups, an
+  empty plan and nothing unlinked. It fails with
   `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`, as the plan
   does; a mention link choice its mention cannot take is no choice, never a
   failure.
@@ -160,26 +155,35 @@ package alone and a layer that provides those.
   `UnlinkedMention.leftByReferentLinks` on the plan, nothing for the format's
   own source file. **`isOfPatient`** says whether an unlinked mention is of
   the resource's patient (outside every compartment, or a dangling
-  `subject`). **`keysWithoutPatientOf(batch, kind, selection)`** names the
-  rows left without a patient as they will be written (each row's edit,
+  `subject`). **`keysWithoutPatientOf(plan, kind, group, selection)`** names
+  the rows of a format's resolved group left without a patient as they will be written (each row's edit,
   else its resolved resource): the half of the review's default exclusion
   that is not the server diff. `importer-react`'s screen and the import
   golden pin in `synthetic-data-core-js` both read it, so a headless import
   with every default accepted excludes what the screen does.
-- `src/review-group.ts` — **`ReviewGroup`**, the group a reviewed resource
-  falls in: a `FormatKind`, or **`LINKED_GROUP`** for the batch's linked
-  records, which no format holds. A resource key is unique within a group,
-  not across groups, so the server diff, the preview and the write plan each
-  scope a resource by its group.
+- `src/review-group.ts` — **`ReviewGroup`**, the groups a batch's reviewed
+  records fall into. A **`Key`** is a `FormatKind`, or **`LINKED`** for the
+  batch's linked records, which no format holds; **`keys`** is review order,
+  the formats in registry order, then the linked records. A group
+  (**`Type`**) is its rows in sections (`sectionedList`), its `notes`, its
+  `unreadableFiles` and the picks it was read from (`files`, empty for the
+  linked records' group); a batch's **`Groups`** hold one per key that takes
+  part, every other key absent; **`entries(groups, order)`** is the one walk,
+  the groups present in a given order, **`rows`** flattens one group, and
+  **`linked(rows)`** is the linked records' group, one section, no notes, no
+  unreadable files, no picks. A review key is unique within a group, not across
+  groups, so the server diff, the preview and the write plan each scope a
+  record by its group.
 - `src/plan-write.ts` — **`planWrite(batch, selectionFor,
   excludedByDefaultFor, unchangedLinked)`**,
   the pure half of the confirm: one **`WriteDecision`** per reviewed
-  resource — its `ReviewGroup`, its `row` as reviewed (the inline edit,
-  resolved on the batch's plan, substituted), and its **`Disposition`** — in
-  submit order: the linked records first, then each claimed format in
-  registry order, rows in review order. Each row first gets a
-  `ProvisionalDecision` (internal), settled or a candidate, which becomes its
-  `WriteDecision` once the candidates under one `Type/id` are told apart. It
+  resource — the `ReviewRow` as reviewed (the inline edit, resolved on
+  the batch's plan, substituted) with its `ReviewGroup` and its
+  **`Disposition`** — in submit order: the linked records first, then each
+  claimed format in registry order, rows in review order. Each row first
+  gets a `ProvisionalDecision` (internal), the row with its `ReviewGroup`
+  and a verdict, settled or a candidate, which becomes its `WriteDecision`
+  once the candidates under one `Type/id` are told apart. It
   adds no provenance and rewrites nothing: the import stage already minted
   the source file and stamped `meta.source`. The five dispositions, in the
   order they are decided:
@@ -193,11 +197,11 @@ package alone and a layer that provides those.
     being the consent to it, so a batch can write it and no format's
     resources.
   - **`Unreferenced`** — a format row the import implied
-    (its reviewable's `origin` is `Implied`) that no candidate format row
+    (`isImplied`) that no candidate format row
     names by its literal `Type/<id>` (`Mention.madeIn`): written alone it
     would be an orphan.
   - **`Superseded`** — a candidate a later candidate shares its `Type/id`
-    with, or an implied candidate (its reviewable's `origin`) a decoded one
+    with, or an implied candidate (`isImplied`) a decoded one
     shares its `Type/id` with, whatever their order: a record a file decoded says more
     than one a reference implied.
   - **`Included`** — the last candidate under its `Type/id`: the transaction
@@ -208,7 +212,7 @@ package alone and a layer that provides those.
   It is the one place the rule for the linked records lives, since the review
   shows them read-only; the preview's counts and the confirm both read it.
   A claimed format with no `Included` decision writes nothing, and
-  **`skipReasonFor(result)`** says why, a **`SkipReason`**: `unreadable` when
+  **`skipReasonFor(group)`** says why, a **`SkipReason`**: `unreadable` when
   its decode yielded no resources and some file was unreadable, else
   `nothing`.
 
@@ -230,9 +234,10 @@ through the same stage. Imports no `*-importer-react` and no `web-trace-core`.
   reintroduce a shell-side mint, a side map of source files, or a "primary
   file".
 - **Ids are deterministic via `FormatDecode.makeId`.** An id is derived from
-  the format tag and the picked files' own ids — which `groupByFormat` mints
+  the format tag and the picked files' own ids — which `claimPicks` mints
   from each file's position in the batch and its name, so two picks of the same
-  name stay distinct — and a re-decode hands the same `files` array back, so
+  name stay distinct — and a re-decode reads the same picks back off the
+  format's group (`files`), so
   the same ids come out and the reviewer's selection keeps applying.
 - **`decode` never fails.** A malformed file is an `unreadableFiles` entry,
   folded by `DecodeFunction.make`; there is no `catchAll` in the read half, and a

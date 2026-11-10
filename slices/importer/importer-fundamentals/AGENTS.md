@@ -14,7 +14,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 - `src/file-importer.ts` — **`FileImporter.Type<TSettings, TFormat>`**, "a
   file-format importer" as one first-class value a closed registry lists:
-  `format`, `display`, `detect`, `defaultSettings`, the batch `decode`,
+  `format`, `display`, `detect`, `defaultSettings`, the format's `decode`,
   `sourceFileFormat` (the format's `PickedFile.FormatValue` — its `coding` /
   `contentType` / `securityLabel` / `descriptionPrefix`, the last spelled by
   the binding, conventionally `` `${display.title}: ` ``), and the optional
@@ -33,7 +33,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   applying those to the same `sourceFileFormat`, which is why that value is
   spelled **once** per binding. Two optional hooks sit beside it, both run by
   the import stage, one each way between a set's source files and its
-  records. **`linkSourceFile(sourceFile, decoded)`** makes a source file name
+  records. **`linkSourceFile(sourceFile, adopted)`** makes a source file name
   the records read out of it: it runs once per picked file of a set, with that
   file's source file, as minted, and the set's records, adopted, and returns
   the source file to list and stamp with (its `id` must not change; left out,
@@ -67,89 +67,107 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   describes a _component_, not the importer value.
 - `src/format-decode.ts` — the **`FormatDecode`** namespace: **`Decoded<K>`**
   (what a format's `decode` returns: its files, its **`DecodedFileSet`**s
-  apart, and its **`UnreadableFile`** rows), **`Result<K>`** (one format's
-  imported decode, as `importer-core`'s import stage makes it: its id, title,
-  files, merged `DecodedFile` and unreadable rows), **`makeUnreadableFile`** (the
-  row one pick is reported as), **`emptyResult`** for a format that claimed
-  nothing, and the identity derivations every id and review key is built from.
+  apart, and its **`UnreadableFile`** rows), **`makeUnreadableFile`** (the
+  row one pick is reported as), **`titleOf`** (the title a format's picks are
+  reported under), and the identity derivations every id and review key is
+  built from.
   All three read a picked file's **`id`** — minted once, over the whole batch in
   pick order, by `importer-core`'s `readBatch`, so two picks of the same name
   (two `report.pdf`s out of two folders) stay distinct and a settings re-decode
-  yields the same ids. **`makeId`** names a whole batch, **`makeFileId`** one
-  file within it, and **`keyPrefix`** is the namespace every review key decoded
-  out of one file set carries — which is what keeps a fixed key like DICOM's
-  `patient`, or HAR's per-archive `har-entry-<index>`, from colliding across the
-  files one format claimed.
+  yields the same ids. **`makeId`** names one format's picks, **`makeFileId`**
+  one pick among them, and **`keyPrefix`** is the namespace every review key of
+  one file set carries: the import stage builds each row's review key as the
+  prefix of the set's first picked file before the record's local key, which
+  is what keeps a fixed local key like DICOM's `patient`, or HAR's per-archive
+  `har-entry-<index>`, from colliding across the file sets one format claimed.
 - `src/sectioned-list.ts` — the **`SectionedList`** namespace: the one
   container every stage of an import carries its records in. **`Type<E>`** is
-  `{ sections }`, each a `Section.Type<E>`. **`map`**, **`filterMap`**,
-  **`filter`** and **`forEach`** (the `Effect` traversal) work row by row;
+  `{ sections }`, each a `Section.Type<E>`. **`map`**, **`modify`** and
+  **`forEach`** (the `Effect` traversal) work row by row;
   **`rows`** flattens; **`groupBy`** sections rows by title in the order each
-  first appears; **`make`**, **`empty`**, **`concatenate`**,
-  **`concatenateAll`**, **`prepend`** and **`append`** build. Section order is
+  first appears; **`make`**, **`empty`**, **`concatenateAll`**, **`prepend`**
+  and **`append`** build. Section order is
   meaning (a set's source files first, its implied records last), so nothing
-  reorders sections or merges two that share a title. `map` keeps reference
-  identity: a section `f` changed nothing in comes back as itself, and so does
-  a list none of whose sections changed, which `FileResolution.resolveFile`
+  reorders sections or merges two that share a title. `modify`, the
+  same-typed `map`, keeps reference identity: a section `f` changed nothing in
+  comes back as itself, and so does
+  a list none of whose sections changed, which `FileResolution.resolveRows`
   and the review's memoized rows rely on.
 - `src/section.ts` — the **`Section`** namespace: **`Type<E>`**, one titled
   group of rows `{ title, rows }`, and **`make(title, rows)`**.
-- `src/reviewable.ts` — the **`Reviewable`** namespace: **`Type`**, the
-  review's address for one record `{ key, title, origin }` (the `key` the
-  reviewer's ticks and edits, the server diff and the link choices index
-  by), and **`Origin`** (`Decoded` or `Implied`, the one place a record says
-  it was implied; the import stage's source-file rows and the identity map's
-  linked records are `Decoded`).
-- `src/decoded-file.ts` — the **`DecodedFile`** namespace: **`Row`**, a
-  decoded file's row `{ reviewable, resource }` (a `Reviewable.Type` and the
-  record it will write); **`DecodedFile`**, a file set's records the
-  device's own: its **`rows`**, a `SectionedList.Type` of `Row`, beside its
-  `notes`; **`empty`** and **`concatenateAll`** (every file's sections in
-  order, and every file's notes).
+- `src/file-set-record.ts` — the **`FileSetRecord`** namespace: **`Type`**,
+  one record of a file set `{ localKey, resource }`, read from the set or
+  implied by it, not yet given an id. `resource` is the record **detached**
+  (`fhir-r4-adoption`'s `DetachedResource`: no id, keyed by its first
+  identifier, naming every other record of the set by a logical reference).
+  `localKey` is the decoder's stable name for the record within its set: it
+  only has to be unique within the set and stable across a settings
+  re-decode, and its one job is to become the record's review key, which the
+  import stage builds from it (`DecodedFileSet.adopt`).
+- `src/review-row.ts` — the **`ReviewRow`** namespace: **`Type`**, one record
+  as the review addresses, titles and writes it,
+  `{ reviewKey, title, isImplied, resource }`: the `reviewKey` the reviewer's
+  ticks and edits, the server diff and the link choices index by, the `title`
+  the review shows it under, `isImplied` (the import built the record from a
+  reference to a record no file of its set holds; the import stage's
+  source-file rows and the identity map's linked records are not implied),
+  and the record it will write, with the id it is written under.
+- `src/adopted-file-set.ts` — the **`AdoptedFileSet`** namespace: **`Type`**,
+  one file set's records made the device's own, the import stage's output for
+  one set: its **`sectionedList`**, a `SectionedList.Type` of `ReviewRow`,
+  beside its `notes`; **`concatenateAll`** (every set's sections in order, and
+  every set's notes).
 - `src/decoded-file-set.ts` — the **`DecodedFileSet`** namespace: one file
-  set as its format decoded it. **`Type`** is its `pickedFiles` (read
-  together, in the order they were picked), its `sections` and its `notes`.
+  set as its format decoded it. **`Type`** is exactly what a format's
+  `decodeFileSet` returns: its `pickedFiles` (read together, in the order
+  they were picked, never empty), its **`sectionedList`**, a
+  `SectionedList.Type` of `FileSetRecord`, and its `notes`.
   Each picked file is a **`PickedFileIdentity`**: the file beside
   `identifiedAs`, the FHIR `Identifier` its own content names it by (DICOM's
   SOP Instance UID as `urn:oid:`), or `None` for a format whose files do not
   name themselves; the import stage writes it onto the file's source file as
-  `masterIdentifier`. Its records are a `SectionedList.Type` of **`Entry`**, one
-  section per source batch, each row an `Entry` `{ fullUrl, resource }`:
-  its identity within the set before it is stored (FHIR's `Bundle.entry.fullUrl`
-  in a transaction, what the review tracks a choice by) and its record **detached** (`fhir-r4-adoption`'s `DetachedResource`: no
-  id, keyed by its first identifier, naming every other decoded record by a
-  logical reference). A decoder writes or detaches its own records, so a
-  section carries no source base URL or system. The "Source file(s)" section is the import stage's own,
-  never decoded. **`writtenReferenceTitle(plan, entry)`** is every
-  decoded record's review title, read off the entry's `ResourcePlan`: for a
-  `Derived` plan the literal reference the import stage writes it under,
-  `<Type>/<id>`, or `<Type> (<fullUrl>)` for a `Minted` one, whose id
-  changes on every re-decode; `adopt` titles each row with it, so no decoder
-  titles its records.
-  **`namespaceKeys(decoded, prefix)`** prefixes every entry's `fullUrl`;
-  **`unidentified(pickedFile)`** is a picked file identifying as nothing.
-  **`adopt({ sections, notes }, mintId?)`** is how the import stage makes a
-  decode's records the device's own, as a `DecodedFile`, in five named
-  steps. It plans every entry (`planEntries`: `ResourcePlan.make`, each plan
-  kept beside its entry, every one `Decoded`). It implies the records the
-  set's references name and no record of the set is (`impliedSectionOf`, a
-  pipeline over the set's references, `ResourceReferences.collect`: each
-  logical reference, `LogicalReference.tryFromReference`, that has a
-  `display` and whose target no record of the set holds by any identifier,
-  `ReferencePlan.holds`, implies one record per distinct logical reference,
-  built by `ImpliedRecord.tryFromLogicalReference` from the first reference
-  to name it, under `ImpliedRecord.fullUrlOf`, planned like any entry and
-  `Implied`), in a section of their own titled `Implied records`, the last
-  of the set's sections, added only when the set implies a record. It builds
-  the set's `fhir-r4-adoption` `ReferencePlan` from the `Derived` plans (`referencePlanOf`; one
-  entry for each qualified identifier of a keyed record, its key and every
-  other, each resolving to its plan's literal reference: the one place that
-  decides which identifiers resolve; a keyless record's identifiers stay
-  out), then runs `fhir-r4-adoption`'s `adopt` over each record with that
-  reference plan and its plan's `id` (`adoptEntries`), each a
-  `DecodedFile.Row` whose reviewable keeps its entry's **`origin`**. So a keyed record lands on the id its
-  key derives, a keyless one on an id `mintId` mints (a random UUID unless a
-  test injects one), in entry order, and a logical reference resolves when
+  `masterIdentifier`. **`unidentified(pickedFile)`** is a picked file
+  identifying as nothing, which HAR and LifeLabs give for each of theirs. A
+  decoder builds one section per report, study or response URL and writes or
+  detaches its own records, so a section carries no source base URL or
+  system. The "Source file(s)" section is the import stage's own, never
+  decoded. **`writtenReferenceTitle(plan, reviewKey)`** is every decoded
+  record's review title, read off its `ResourcePlan`: for a `Derived` plan
+  the literal reference the import stage writes it under, `<Type>/<id>`, or
+  `<Type> (<reviewKey>)` for a `Minted` one, whose id changes on every
+  re-decode; `adopt` titles each row with it, so no decoder titles its
+  records.
+  **`adopt(decoded, keyPrefix, mintId?)`** is how the import stage makes a
+  file set's records the device's own: given the set's `sectionedList` and
+  `notes` and the prefix every review key of the set starts with, an Effect
+  of an `AdoptedFileSet` failing with the `ParseError` an implied record's
+  schema rejects it with, in five named steps. It plans every record
+  (`planRecords`: `ResourcePlan.make`, each plan kept beside its record in a
+  `PlannedRecord` `{ record, plan, isImplied }`, none implied). It implies
+  the records the set's references name and no record of the set is
+  (`impliedSectionOf`, a pipeline over the planned records' references,
+  `ResourceReferences.collect`: each logical reference,
+  `LogicalReference.tryFromReference`, that has a `display` and whose target
+  no record of the set holds by any identifier, `ReferencePlan.holds`,
+  implies one record per distinct logical reference, built by
+  `ImpliedRecord.tryFromLogicalReference` from the first reference to name
+  it, under the local key `ImpliedRecord.localKeyOf` gives, planned by
+  `ResourcePlan.derived` from the reference's own identifier, and implied),
+  in a section of their own titled `Implied records`, the last of the set's
+  sections, added only when the set implies a record. It builds the set's
+  `fhir-r4-adoption` `ReferencePlan` from the `Derived` plans
+  (`referencePlanOf`; one entry for each qualified identifier of a keyed
+  record, its key and every other, each resolving to its plan's literal
+  reference: the one place that decides which identifiers resolve; a keyless
+  record's identifiers stay out) and puts it in force
+  (`Effect.provideService` of `ReferencePlan.InForce`, so every adoption step
+  reads it from the environment and none takes it as a parameter), then runs
+  `fhir-r4-adoption`'s `adopt` over each record with its plan's `id`
+  (`adoptRecords`, over `SectionedList.forEach`), each a `ReviewRow` keyed
+  by `keyPrefix` before the record's local key and keeping whether it is
+  implied. So a keyed record lands on the id its key derives, a keyless one
+  on an id `mintId` mints (a random UUID unless a test injects one), in
+  record order, and a logical reference resolves when
   the set holds a keyed record it names by any of that record's identifiers,
   whichever section holds it, as a FHIR server resolves a conditional
   reference against a transaction bundle; one naming a record the set does
@@ -182,11 +200,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   carry (a `MedicationRequest`'s `subject` among them, so a Shoppers
   history-only fill's `authorizingPrescription` stays logical). A type the
   table does not list (one `fhir-r4` does not model) implies none too.
-  **`fullUrlOf(referencingFullUrl, logicalReference)`** is
-  `<referencingFullUrl>#implied:<Type>|<system>|<value>`, only a key: stable
-  across a settings re-decode, and unique across the batch since the
-  referencing entry's `fullUrl` is. Nothing reads it back; a row says it is
-  implied by its `origin`.
+  **`localKeyOf(referencingLocalKey, logicalReference)`** is
+  `<referencingLocalKey>#implied:<Type>|<system>|<value>`, only a key: stable
+  across a settings re-decode, and unique within the set since the
+  referencing record's local key is. Nothing reads it back; a row says it is
+  implied by its `isImplied`.
 - `src/resource-plan.ts` — the **`ResourcePlan`** namespace: where one
   decoded record is written, decided before any record of its set is
   adopted, as a FHIR server decides each transaction entry's id before
@@ -197,10 +215,13 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `QualifiedIdentifier`, so a `Derived` plan is the `LogicalReference` to its
   record)
   or **`Minted`** (`{ resourceType, id }`: a keyless record, a new location
-  every import), matched with `ResourcePlan.match`. **`make(resource,
-  mintId)`** plans one record, deriving a keyed record's id there, once, or
-  minting a keyless one's; **`literalReference(plan)`** is `<Type>/<id>`.
-- `src/decode-function.ts` — the **`DecodeFunction`** namespace: the batch
+  every import), matched with `ResourcePlan.match`.
+  **`derived(resourceType, identifier)`** is the plan of a record keyed by
+  `identifier`, its id derived there, once; **`make(resource, mintId)`** plans
+  one record, `derived` from its key or minting a keyless one's id; an implied
+  record's plan is `derived` from the identifier of the reference that
+  implies it. **`literalReference(plan)`** is `<Type>/<id>`.
+- `src/decode-function.ts` — the **`DecodeFunction`** namespace: a format's
   decode's signature **and the one constructor that builds it**. **`Type`** is
   the signature a `FileImporter` exposes (files and settings in, one
   `FormatDecode.Decoded` out, never failing, requiring `R`: `never` for a
@@ -209,34 +230,33 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `FileImporter.Type` carries the same `R`, and `make` takes it from the
   `Config`'s `decodeFileSet`.
   **`make(config)`** takes one **`Config`**: the `format`, a `decodeFileSet`
-  (the picked files of one set in, a **`FileSetDecode`** out: its
-  `SectionedList.Type` of `DecodedFileSet.Entry` as the import stage receives it, its notes, and optionally `pickedFiles`,
-  each picked file of the set
-  paired with the `Identifier` it identifies as; left out, each identifies as
-  nothing), and — optionally — a `groupBy`. **`groupBy`** is called per
+  (the picked files of one set in, a `DecodedFileSet.Type` out, as the import
+  stage receives it: its `pickedFiles`, each paired with what it identifies
+  as, `DecodedFileSet.unidentified` for a format whose files do not name
+  themselves; its records in sections under their local keys; and its
+  notes), and — optionally — a `groupBy`. **`groupBy`** is called per
   file and returns the key it shares with its set-mates, or a `Left` that
   reports it as its own `unreadableFiles` row (in the order the files were
   picked, ahead of any failing set); left out, every file is its own set, keyed
   by its own id. A format that needs a parse to state that key **parses
   twice** — once here, once in `decodeFileSet` — which is the
   deliberate price of a constructor with no parsed-value passthrough in it.
-  Per set, concurrently across sets, `make` runs `decodeFileSet`,
-  **namespaces the decode's review keys** by the set's first picked file
-  (`FormatDecode.keyPrefix`), and folds a `ParseError` into one
-  `unreadableFiles` row per picked file of the failing set. It returns each
-  set apart, with its picked files, because `importer-core`'s import stage
-  builds each set's source files and sets its records' `meta.source` from them.
+  Per set, concurrently across sets, `make` runs `decodeFileSet` and folds a
+  `ParseError` into one `unreadableFiles` row per picked file of the failing
+  set. It returns each set apart, with its picked files and its records under
+  their local keys, because `importer-core`'s import stage builds each set's
+  source files and review keys and sets its records' `meta.source`.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two
   axes: `includedByReviewer` (their own include/exclude choices, `true` or
-  `false` by a row's reviewable's `key`; a key absent there takes the
+  `false` by a row's `reviewKey`; a key absent there takes the
   default the shell derives and passes in as `excludedByDefault`) and
   `resourceOverrides` (per-resource inline edits over `FhirResourceWithId`, same
   keying — the reviewer's edited resource, resolved on the batch's plan
   (`FileResolution.resolveEdit`), replaces the resolved original at
-  confirm). `initial` / `toggleResource` / `setResourcesIncluded` (the batch
-  form of `toggleResource`, so the shell can opt a whole section in or out at
+  confirm). `initial` / `toggleResource` / `setResourcesIncluded` (the
+  many-key form of `toggleResource`, so the shell can opt a whole section in or out at
   once) / `edit` / `revert` are the transitions;
   `isResourceIncluded` / `isResourceEdited` / `editedResource` /
   `resolvedResourceOf` (the resource the review writes for a resolved row)
@@ -248,16 +268,17 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   nothing dangling.
 - `src/identity-map/` — the **identity map**: for every referent an import
   discovers, what it links to on the device, the one search that defaults it,
-  and the phases that resolve a batch's decoded files on those choices, each
+  and the phases that resolve a batch's decoded rows on those choices, each
   pure or an Effect whose only input besides its arguments is the clock
   (which of a person's names is current). One namespace per file, one phase
   each; `importer-core`'s `resolveMentions` runs them over a batch. Three
   states run through the names, one adjective each:
-  - **decoded** — as the file arrived: a `DecodedFile`, its referents and
-    mentions as the source wrote them.
-  - **resolved** — every link followed, as it will be written: a file
-    resolved on its batch's link plan (`FileResolution.resolveFile(plan)`), the
-    resource under a resolved literal reference (`ResolvedResource`).
+  - **decoded** — as the file arrived: a review group's rows as the import
+    stage made them, their referents and mentions as the source wrote them.
+  - **resolved** — every link followed, as it will be written: rows resolved
+    on their batch's link plan (`FileResolution.resolveRows(plan,
+    sectionedList)`), the resource under a resolved literal reference
+    (`ResolvedResource`).
   - **stored** — already on the device: what a referent search finds and a
     link choice links to or updates.
 
@@ -307,16 +328,18 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `subject` that states none, a `Patient` (FHIR's Patient
     CompartmentDefinition names `subject` for every type the importer
     handles), an empty `subject` slot included as an empty reference;
-    `linkableTypeOf` is that type. **`relinked`** is the resource with the
-    mention at a path redirected to a literal reference, or, for `None`, with its
-    literal dropped, keeping its `identifier` and `display` and changing
-    nothing when the mention would then name nothing; it fills an empty
-    `subject` slot.
+    `linkableTypeOf` is that type, and **`emptySubject`** an empty `subject`
+    slot as a linkable mention. **`relinkedLiteral`** is the literal a
+    relinked mention is written with: the one given, or, for `None`, `null`,
+    its literal dropped, unless the mention would then name nothing, when it
+    is left. **`relinked`** is the resource with the mention at a path
+    relinked so (`ReferenceRewrite.apply`), keeping its `identifier` and
+    `display`; it fills an empty `subject` slot, which no rewrite reaches.
   - **`Referent`** — a Patient or Practitioner the import holds a record
     of, which may already exist on the device, once per identity: its
     decoded `resource` (keyed by its `identifier[0]`), carrying every
-    identifier a search tries, its own and the derived one, and its row's
-    `reviewable` (its review key and `origin`). Every referent
+    identifier a search tries, its own and the derived one, its row's
+    `reviewKey` and whether it `isImplied`, and its `label`. Every referent
     has a record: a reference to one the import never saw implies it at
     decode (`DecodedFileSet.adopt`). `ownLogicalReferencesOf` is the logical
     references a referent's source-given identifiers make (a derived
@@ -325,12 +348,13 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `logicalReferencesOf` both: every logical reference a referent answers
     to. A logical reference names the referent it is the key of, else the one
     referent that answers to it, so a health card number a decoded Patient
-    also carries is that Patient. **`discover`** finds them over a batch's
-    files, once per identity (a record two file sets imply under one id is
-    one referent, and a copy a file decoded is taken over an implied one by
-    its reviewable's `origin`), and fails with **`DuplicateReferent`** when two resources
+    also carries is that Patient. **`discover(decodedRows)`** finds them over
+    a batch's decoded rows, once per identity (a record two file sets imply
+    under one id is one referent, and a copy a file decoded is taken over an
+    implied one by `isImplied`), and fails with **`DuplicateReferent`** when two resources
     under different ids, in one file or two, share a key; `byKey` indexes
-    into a `HashMap`.
+    into a `HashMap`. A referent's **`key`** is its `LogicalReference.Key`,
+    so every map by referent takes no other string.
   - **`LinkChoiceSet`** — the reviewer's whole answer (**`Type`**,
     `{ byReferent, byMention }`; `empty`): what the screen holds and a batch
     is resolved on.
@@ -379,7 +403,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     for `UpdateStoredResource`, the stored resource for
     `LinkToStoredResource`. The first choice it cannot follow is its failure.
   - **`ResolvedResource`** — the resource under one resolved literal
-    reference as it will be written, whatever its origin: its
+    reference as it will be written, stored or decoded: its
     `resolvedLiteralReference`, the copy written (the decoded one when a link
     is redirected to it, so a re-import's newer decode wins over the stored
     copy a mention links to; else the last link's) having assumed its
@@ -387,39 +411,41 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     copy of it the links carry, a stored copy a mention links to or the one a
     `Decoded` target updates, then those of every referent linked to it: the
     one place a copy's identifiers are carried forward), whether the
-    `resourceExistsInBatch` (a resolved file writes it where a decoded
+    `resourceExistsInBatch` (a resolved row writes it where a decoded
     resource was: one decoded there and not replaced by another stored
     resource, or one a decoded resource is replaced by), its `label`, the
-    title of an entry it replaces or is appended as, and its
+    title of a row it replaces or is appended as, and its
     `ownerReferent`: the referent whose decoded resource it is when the copy
     written comes from a `Decoded` target, `None` when it is a stored
     resource, even one under the id a referent's own record would have.
-    **`make`** builds one from the **`LinkedResource`**s
-    under a literal reference (a link whose target holds a resource: the
-    referent and that target); **`fromLinks`** groups a batch's links by the
+    **`make`** builds one from the links redirected to a literal reference
+    (each a referent and the target holding its resource); **`fromLinks`** groups a batch's links by the
     literal reference they redirect to and makes one per group, in the order
     the links first reach it.
-  - **`MentionLink`** — a mention the reviewer chose a link for on its own
-    (`reviewKey`, `path`) with its link target. **`fromChoices(links,
-    byMention)`** makes them from the link choice set by mention: a
-    `LinkToStoredResource` that stored resource, a `LinkToDecodedReferent`
-    its referent's link target (none when that referent is not in the
-    batch, so the mention is redirected where its own referent's link target
-    says), a `DontLink` `Unlinked`. Only an explicit `DontLink` unlinks a
-    mention.
   - **`LinkPlan`** — the theory the identity map is coded to: the reviewer's
     choices become links, the links are the plan, the plan resolves the
     batch, and the screen offers what the plan will write. The plan
-    (**`Type`**) is three lists: **`links`**, **`mentionLinks`** and
-    **`resolvedResources`**; outside the module it is read only through its
-    questions, each a search over those lists. **`make(decodedFiles,
-    byReferent)`** makes the links once per batch over its referents
+    (**`Type`**) holds the **`links`** and the **`resolvedResources`** in
+    discovery order, and indexes each question by the key it asks with:
+    links by referent key (`Referent.key`), links by every logical reference
+    a referent answers to (`Referent.logicalReferencesOf`), the stored
+    stand-in by the decoded resource's literal reference (the first in
+    discovery order kept), the link target chosen for each mention by
+    `MentionLinkChoiceSet.key`, and resolved resources by the literal
+    reference each is written under. Outside the module it is read only
+    through its questions.
+    **`make(decodedRows, byReferent)`** makes the links once per batch over its referents
     (`Referent.discover`), so a referent one file holds is the link target
-    of a mention in another, and the resolved
-    resources they redirect to (`ResolvedResource.fromLinks`);
-    **`withMentionLinkChoiceSet(plan, byMention)`** lays on the mention links
-    (`MentionLink.fromChoices`); **`empty`** is the plan of a batch with no
-    referent. Its questions, each named for the fact its `None` states:
+    of a mention in another, the stand-ins, and the resolved
+    resources the links redirect to (`ResolvedResource.fromLinks`);
+    **`withMentionLinkChoiceSet(plan, byMention)`** lays on the link target
+    each mention the reviewer chose for takes, one `HashMap.filterMap` of
+    the link choice set by mention: a `LinkToStoredResource` that stored
+    resource, a `LinkToDecodedReferent` its referent's link target (none when
+    that referent is not in the batch, so the mention is redirected where its
+    own referent's link target says), a `DontLink` `Unlinked`; only an
+    explicit `DontLink` unlinks a mention. **`empty`** is the plan of a batch
+    with no referent. Its questions, each named for the fact its `None` states:
     **`linkTargetIfReferentKey`** (a referent's link target, when the key is
     a referent of the batch), **`linkTargets`** (every referent's, in
     discovery order), **`redirectionIfLinked`** (where a decoded reference is
@@ -435,29 +461,30 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     type the mention names, so a `subject` is never redirected to a
     Practitioner) and **`resolvedResources`** (every resolved resource).
   - **`FileResolution`** — pure, every function taking the plan first, since
-    it is fixed for a batch: **`resolveFile(plan)`** writes each decoded
-    resource of one file (`SectionedList.map`) as the resolved
+    it is fixed for a batch: **`resolveRows(plan, sectionedList)`** writes
+    each decoded resource of a review group's rows (`SectionedList.modify`) as the resolved
     resource `LinkPlan.resolvedResourceIfReferent` has for it, titled by its
     label when it replaces the decoded one under another id, else as decoded,
-    its mentions redirected to their referents' link targets either way
-    (`ResourceReferences.mapReferences`, keeping `display` and `identifier`),
-    then each the reviewer chose a link for under the row's review key
-    redirected where that choice says (`Mention.relinked`: on the chosen
+    its references rewritten either way by one `ReferenceRewrite` per row,
+    keeping `display` and `identifier`: each mention the reviewer chose a
+    link for under the row's review key where that choice says (on the chosen
     resource's literal reference, or, for `Unlinked`, with its literal
-    dropped; an empty `subject` slot chosen for is filled);
-    **`resolveEdit(plan, reviewKey)`**: the reviewer's edit of the row
+    dropped, `Mention.relinkedLiteral`), over every other reference that
+    names a referent, redirected to its link target
+    (`LinkPlan.redirectionIfLinked`); an empty `subject` slot chosen for is
+    filled;
+    **`resolveEdit(plan, reviewKey, editedResource)`**: the reviewer's edit of the row
     reviewed under that key with its mentions redirected the same way, never
     replaced by a resolved resource, so an edit naming a decoded record a
     stored one now stands in for, or a mention chosen for, is written where
     the plan says now;
     **`linkedRecords(plan)`**: the batch's linked records, the resolved
-    resources no resolved file holds, each a `DecodedFile.Row`
+    resources no resolved row holds, each a `ReviewRow`
     (a decoded record whose id a stored record,
     linked to under another of the record's keys, stands in for in every
-    file), as
-    they will be written, their reviewables keyed by
-    **`linkedKey`** and titled by their label, in the order the links first
-    reach them, no file's and so no format's.
+    file), as they will be written, keyed by **`linkedKey`**, titled by
+    their label and not implied, in the order the links first reach them, no
+    file's and so no format's.
   - **`UnlinkedMention`** — **`leftByReferentLinks(plan, reviewKey,
     resource)`**: what the plan's referent links leave unlinked in one
     resource as decoded or edited, never as resolved (the plan says where its
@@ -477,7 +504,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     found ahead of a namesake; a hit that is the stored copy of the
     referent's own decoded resource (same literal reference: a re-import) is
     `UpdateStoredResource`, whatever else was found, or `LinkToStoredResource`
-    for a referent whose `origin` is `Implied`, which would write only what a
+    for a referent that `isImplied`, which would write only what a
     reference said over the copy; otherwise the one hit is
     `LinkToStoredResource`, two hits are ambiguous and no hit is
     `ReferentLinkChoiceSet.DEFAULT_CHOICE`, so the reviewer chooses; the hits are the
@@ -536,11 +563,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 Depends on `effect` (and `kitchen-sink` in tests), `fhir-r4-adoption` for
 `DetachedResource`, `ReferencePlan` and `adopt` alone (a
-a `DecodedFileSet.Entry`'s record, `ResourcePlan`'s keys,
+`FileSetRecord`'s record, `ResourcePlan`'s keys,
 `DecodedFileSet.adopt` and the records `ImpliedRecord` builds; it depends on no importer package), plus `fhir-r4` for the
 `DocumentReference` schema and the `Identifier` a picked file identifies itself
 as, `fhir-r4/resources` for
-`FhirResourceWithId` (`decoded-file.ts` and `staged-import.ts` are concrete over
+`FhirResourceWithId` (`review-row.ts` and `staged-import.ts` are concrete over
 it, not generic — every format binds it, so there is no `TParsed` left to
 abstract over; a reviewed resource always has the id it is written under), for the `Patient` and `Practitioner` schemas an implied record decodes through, and for the identity map's `Patient`, `Practitioner` and
 `ResourceReferences`, its one reference walk, `fhir-r4/data-types` for `Meta`
@@ -603,30 +630,31 @@ but `fhir-r4-adoption`.
   vocabulary and codec; `importer-core`'s import stage runs them. The shell has
   no source file knowledge at all — it reviews the minted row like any other
   resource. Do not put the mint in the shell or in a decode.
-- **Review keys are namespaced per file set, here and nowhere else.** A
-  `decodeFileSet` keys within _one_ set, because that is all it can see; the
-  batch merges every claimed file's sections into one format-wide review,
-  while the selection, the server-diff verdicts and the write plan are all
-  keyed by `(format, key)`. `DecodeFunction.make` prefixes each set's keys with
-  its first picked file (`FormatDecode.keyPrefix`), which is what makes a
-  fixed key safe. Do not push that obligation down into a `decodeFileSet` —
-  one that tries to be unique across a batch cannot be, since it is not given
-  the batch.
+- **Review keys are namespaced per file set, in the import stage and nowhere
+  else.** A `decodeFileSet` gives local keys unique within _one_ set, because
+  that is all it can see; a review group merges the sections of every file
+  set its format read, while the selection, the server-diff verdicts and the
+  write plan are each keyed by review key within its review group.
+  `DecodedFileSet.adopt` builds each review key as the prefix of the set's
+  first picked file (`FormatDecode.keyPrefix`) before the local key, which is
+  what makes a fixed local key safe. Do not push that obligation down into a
+  `decodeFileSet` — one that tries to be unique across its format's file sets
+  cannot be, since it is given one set.
 - **Identity is the map's, never the selection's.** `StagedImport` keeps
   exclusions and edits; where a mention is redirected lives in the
   `ReferentLinkChoiceSet` and, for a mention the reviewer chose for on its own,
   the `MentionLinkChoiceSet`, held beside the selections, and `importer-core`'s
   `resolveMentions` runs over the batch before the server diff, the preview
   and the confirm, so all three see the resources that get written: one
-  `LinkPlan.make` over the batch's decoded files, the mention links laid on
-  it (`LinkPlan.withMentionLinkChoiceSet`), every file resolved on it once
-  (`FileResolution.resolveFile(plan)`), the batch's linked records off it
-  (`FileResolution.linkedRecords(plan)`). Resolving is a function of its arguments and
-  the clock, and keeps every file's sections and keys. A batch of decoded
-  files is resolved on one plan over the batch's referents:
-  the choices are made for the decoded files' referents, and a referent one
-  file holds is the link target of a mention in another. Resolving the
-  resolved files again on the same choices changes nothing when they have the
+  `LinkPlan.make` over the batch's decoded rows, the mention links laid on
+  it (`LinkPlan.withMentionLinkChoiceSet`), every review group's rows
+  resolved on it once (`FileResolution.resolveRows(plan, sectionedList)`),
+  the batch's linked records off it (`FileResolution.linkedRecords(plan)`).
+  Resolving is a function of its arguments and the clock, and keeps every
+  group's sections and keys. A batch's decoded rows are resolved on one plan
+  over the batch's referents: the choices are made for the decoded rows'
+  referents, and a referent one file holds is the link target of a mention
+  in another. Resolving the resolved rows again on the same choices changes nothing when they have the
   same referents: no mention several decoded resources answer
   to, and no mention a linked stored resource answers to, since once resolved
   one resource answers to each of those mentions. A referent's mentions are
@@ -635,8 +663,8 @@ but `fhir-r4-adoption`.
   label, the stored resource assuming the referent's identifiers and its own
   derived one and keeping its demographics byte for byte; every mention of
   the referent, a literal `Type/<decoded id>` or a logical reference, is
-  redirected through `ResourceReferences.mapReferences`, keeping its `display` and
-  `identifier`; a resolved resource no resolved file holds (a decoded record
+  redirected by the row's reference rewrite (`ReferenceRewrite.apply`),
+  keeping its `display` and `identifier`; a resolved resource no resolved file holds (a decoded record
   whose id a stored one stands in for under another key) is one of the
   batch's **linked records**, held once for the batch and in no file, so the
   review shows it and the identifiers it assumed; a decoded resource that is its referent's link target is
@@ -665,7 +693,7 @@ but `fhir-r4-adoption`.
   choice wins over its referent's rule for that one mention; only an explicit
   `DontLink` unlinks one, and a choice of a type the mention cannot name, or
   of a referent the batch does not hold, is none.
-- **Selection keys by a row's `key`.** Selection state must
+- **Selection keys by a row's `reviewKey`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.
 

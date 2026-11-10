@@ -7,7 +7,7 @@ PDF's text, runs the positioned-text dialect over the extracted
 `wildflower-positioned-text` document to typed `LifeLabsReport` records, and
 synthesizes Patient, DiagnosticReport, and Observation FHIR resources, the
 import stage implying a Practitioner for each provider a report names — the importer's opt-in write happens through the shell's shared
-`persistBatchBundle` afterwards.
+`persistTransactionBundle` afterwards.
 The picker's user hands in the PDF itself, not the anonymizer's JSON output:
 this binding does its own extraction.
 
@@ -58,13 +58,13 @@ that hands back a hand-written positioned-text document.
   emits `Patient`, `DiagnosticReport`, and `Observation` resources
   detached, each keyed by a real identifier the report prints (see
   `source-system.ts`), grouped as one `ReportResources` per report, each
-  resource an entry whose `fullUrl` is `<Type>/<key value>` — a `Patient`
+  resource a record whose local key is `<Type>/<key value>` — a `Patient`
   several reports share (one key) is minted once, in the group of the first
   report naming it, so flattening the groups in order writes every reference
   target before its referrer. A shared Patient is written from the
   latest-reported of its reports (the earlier in the document on a tie), so a
   card reissued between reports carries its current version code. A provider
-  is no entry: the `DiagnosticReport`'s `resultsInterpreter` names the
+  is no record: the `DiagnosticReport`'s `resultsInterpreter` names the
   ordering provider and each CC'd one, once per name, as `fhir-r4`'s
   `Practitioner.tryReferenceWireFromName` in
   `LifeLabsIdentifierSystem.PractitionerName` (the printed name, its
@@ -105,8 +105,9 @@ that hands back a hand-written positioned-text document.
   its province's health card system, which `fhir-ca-infoway` declares. A leaf
   module so the
   importer and the FHIR synthesis import it without a cycle.
-- `src/decode.ts` — **`decodeLifeLabsPdf`** (the `decodeFileSet` the format's
-  importer lifts into its batch `decode`) and **`decodeLifeLabsPdfDocument`** (the pure
+- `src/decode.ts` — **`decodeLifeLabsPdf`** (one picked file's decode, a
+  `DecodedFileSet.Type` but its `pickedFiles`, which the importer's
+  `decodeFileSet` adds) and **`decodeLifeLabsPdfDocument`** (the pure
   "document ↦ sections" leg tests drive directly).
   `decodeLifeLabsPdf(file, settings)` requires a `PositionedTextExtractor`,
   runs its `extract` on the picked file's bytes
@@ -117,19 +118,20 @@ that hands back a hand-written positioned-text document.
   (`Page 3 prints no Lab No, so it was skipped.`). The import stage
   adopts the records.
   Both extraction failure (`UnreadablePdf`) and an unrecognized LifeLabs
-  document surface as `ParseError` — the one error channel the batch decode folds into that file's
+  document surface as `ParseError` — the one error channel the format's decode folds into that file's
   `unreadableFiles` entry. It reads only the picked file's name and bytes: this
   format derives no id from its source file, and the import stage does the
   `meta.source` stamping.
 - `src/synthesis.ts` — **the FHIR synthesis without the PDF decoder**,
   exported as the `/synthesis` subpath: the `Report` model's types and
   `LabNumber`, `toFhirResources`, **`decodedReportsOf`**
-  (the reports as the decode yields them, one per `Lab No`: the synthesis,
+  (the reports as the decode yields them, one per `Lab No`, a
+  `DecodedFileSet.Type` but its `pickedFiles`: the synthesis,
   its records written
   detached and keyed by what the report prints, one section per
   report titled by **`reportSectionTitle`** (the report's `Lab No`, and its
-  date of service when it prints one), each entry's
-  `fullUrl` `<Type>/<key value>`)
+  date of service when it prints one), each record's
+  local key `<Type>/<key value>`)
   and the
   `ReportResources` / `SynthesisOptions` types, none of which requires an
   extractor. For callers that build reports themselves
@@ -155,19 +157,21 @@ that hands back a hand-written positioned-text document.
   that path; the bytes are carried, hashed, and handed back exactly as they
   arrived. The mint derives a deterministic id from the file's SHA-256 and
   name, and encodes to a `DocumentReference` —
-  **no PUT**; the shell writes it in the same `persistBatchBundle` as the
+  **no PUT**; the shell writes it in the same `persistTransactionBundle` as the
   synthesized resources. Same shape as HAR's.
 - `src/lifelabs-pdf-importer.ts` — **`lifeLabsPdfImporter`**, the
   `FileImporter.Type` literal for format `'lifelabs-pdf'`, its `decode` a
-  `DecodeFunction.make` with `decodeLifeLabsPdf` as its `decodeFileSet` — no
+  `DecodeFunction.make` whose `decodeFileSet` is `decodeLifeLabsPdf` of the
+  set's one picked file, beside `pickedFiles` each
+  `DecodedFileSet.unidentified` — no
   `groupBy` (a report stands alone), and it states no `linkSourceFile`. Its
-  `R` is `PositionedTextExtractor`. The batch decode it returns folds a file
+  `R` is `PositionedTextExtractor`. The decode it returns folds a file
   whose bytes yield no report into that file's `unreadableFiles` entry; the
   import stage mints every pick's source file `DocumentReference`, reviews it
   as its own "Source file" section, and stamps every synthesized resource's
   `meta.source` with it. What the import returns is what the user reviews —
   this format has no routing decisions to interpose, and the write is the
-  shell's one `persistBatchBundle`, not an importer field.
+  shell's one `persistTransactionBundle`, not an importer field.
 - `src/settings.ts` — **`LifeLabsPdfSettings`** `{ timeZone,
   healthCardProvince }`, default `America/Toronto` and Ontario (`'ON'`): the
   report prints local clock times with no zone, and FHIR's
@@ -217,7 +221,7 @@ and must stay out of the production bundle. Never imports `har-importer-core`,
   footer says. A page that prints no `Lab No` is skipped in the parse, and
   noted. A masked export, every lab number masked to the same digits, reads
   as one report. So every record of a LifeLabs file set has its own key and
-  `fullUrl`.
+  local key.
 - **A key is a real identifier, never a digest.** What the report prints,
   in a system named for it, or a Wildflower-minted system over printed text
   for what it prints no number for.

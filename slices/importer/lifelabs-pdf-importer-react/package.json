@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/lifelabs-pdf-importer-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The LifeLabs PDF format's UI for the importer slice: the time-zone LifeLabsPdfSettingsPicker and the per-report ReviewBody — the same interactive review the HAR format renders, re-exported, since the review is a view over the format-agnostic Review model. Presentation and interaction only.",
+  "description": "The LifeLabs PDF format's UI for the importer slice: the LifeLabsPdfSettingsPicker (the report's time zone and health card province); the shell's generalized sectioned review covers the format's review. Presentation and interaction only.",
   "license": "MIT",
   "repository": {
     "type": "git",

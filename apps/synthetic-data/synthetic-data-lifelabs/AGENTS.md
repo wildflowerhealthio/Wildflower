@@ -53,7 +53,7 @@ and read back is the same report.
 Depends on `synthetic-data-fundamentals` (the story model and `StoryDay` from
 `/story`, `Seeding` from `/seeding`), `lifelabs-pdf-importer-core/synthesis`
 (the `Report` types, `decodedReportsOf`), `importer-fundamentals`
-(`DecodedFileSet.adopt`, `DecodedFile`) and
+(`DecodedFileSet.adopt`, `SectionedList`) and
 `fhir-r4` (`AdministrativeGender`, the resource and `Reference` types). The
 `/synthesis` subpath is the synthesis alone, without the importer's decode. The tests also use
 `lifelabs-pdf-importer-core`'s main entry and `/test-helpers` (to print a
