@@ -44,24 +44,34 @@ type Type = Derived | Minted
 const { Derived, Minted, $match: match } = Data.taggedEnum<Type>()
 
 /**
- * The plan of `resource`: `Derived` from its key when it is keyed, the id
- * derived here, once; `Minted` by `mintId` when it is keyless.
+ * The plan of a record of `resourceType` keyed by `identifier`: `Derived`, its
+ * id `localResourceId(identifier.system, resourceType, identifier.value)`,
+ * derived here, once.
+ */
+const derived = (
+  resourceType: DetachedResource.Type['resourceType'],
+  identifier: IdentifierAndReference.QualifiedIdentifierType
+): Derived =>
+  Derived({
+    resourceType,
+    id: localResourceId(identifier.system.href, resourceType, identifier.value),
+    identifier: [identifier],
+  })
+
+/**
+ * The plan of `resource`: {@link derived} from its key when it is keyed;
+ * `Minted` by `mintId` when it is keyless.
  *
  * @param mintId - Mints the id of a keyless record; random outside tests
  */
 const make = (resource: DetachedResource.Type, mintId: () => string): Type =>
   Option.match(DetachedResource.keyIdentifierOf(resource), {
-    onSome: (identifier) =>
-      Derived({
-        resourceType: resource.resourceType,
-        id: localResourceId(identifier.system.href, resource.resourceType, identifier.value),
-        identifier: [identifier],
-      }),
+    onSome: (identifier) => derived(resource.resourceType, identifier),
     onNone: () => Minted({ resourceType: resource.resourceType, id: mintId() }),
   })
 
 /** The literal reference the planned record is written under, `<Type>/<id>`. */
 const literalReference = ({ resourceType, id }: Type): string => `${resourceType}/${id}`
 
-export { Derived, literalReference, make, match, Minted }
+export { Derived, derived, literalReference, make, match, Minted }
 export type { Type }
