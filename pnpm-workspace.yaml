@@ -60,20 +60,20 @@ catalog:
   '@effect/language-service': ^0.87.5
   '@effect/opentelemetry': 0.64.2
   '@effect/platform': 0.97.3
-  '@cornerstonejs/core': 5.14.0
-  '@cornerstonejs/dicom-image-loader': 5.14.0
+  '@cornerstonejs/core': 5.15.2
+  '@cornerstonejs/dicom-image-loader': 5.15.2
   '@dnd-kit/core': ^6.3.1
   '@dnd-kit/sortable': ^10.0.0
   '@dnd-kit/utilities': ^3.2.2
   '@fontsource-variable/atkinson-hyperlegible-mono': ^5.3.0
   '@fontsource-variable/atkinson-hyperlegible-next': ^5.3.0
-  '@observablehq/plot': 0.6.17
+  '@observablehq/plot': 0.6.19
   '@opentelemetry/api': 1.9.1
   '@opentelemetry/exporter-trace-otlp-http': ^0.223.0
   '@opentelemetry/resources': 2.12.0
   '@opentelemetry/sdk-trace-base': ^2.12.0
   '@opentelemetry/sdk-trace-web': ^2.12.0
-  '@opentelemetry/semantic-conventions': ^1.44.0
+  '@opentelemetry/semantic-conventions': ^1.45.0
   # Keep the `@sentry/*` packages aligned on a single version so only one
   # copy of `@sentry/core` is installed. Divergent majors install two
   # side-by-side, and the mismatched `Client` types break
@@ -87,8 +87,8 @@ catalog:
   '@sentry/cli': 2.58.6
   # The Scalar API reference, vendored through npm (never the CDN script) so the
   # static server-docs console at /server-docs ships self-contained.
-  '@scalar/api-reference': ^1.76.4
-  '@tanstack/react-query': ^5.105.0
+  '@scalar/api-reference': ^1.77.0
+  '@tanstack/react-query': ^5.107.1
   '@tanstack/react-router': ^1.170.46
   '@tanstack/router-plugin': ^1.168.48
   '@tanstack/virtual-file-routes': ^1.162.0
@@ -99,7 +99,7 @@ catalog:
   '@testing-library/dom': ^10.4.2
   '@testing-library/react': ^16.3.3
   '@testing-library/user-event': ^14.6.8
-  '@tsdown/css': ^0.23.2
+  '@tsdown/css': ^0.23.7
   '@types/fhir': ^0.0.44
   # `har-schema` is the published HAR 1.2 JSON Schema and `ajv` compiles it —
   # together they are how `web-trace-core` holds its emitter to the real spec
@@ -115,7 +115,7 @@ catalog:
   '@types/node': ^26
   '@types/react': 19.3.0
   '@types/react-dom': 19.3.0
-  '@vitejs/plugin-react': ^6.1.2
+  '@vitejs/plugin-react': ^6.2.1
   effect: 3.22.4
   esbuild: ^0.28.2
   # Browser shim for Node's `events`, aliased in `apps/importer-web/vite.config.ts`.
@@ -134,16 +134,16 @@ catalog:
   # (relay-core-js), and the structured-field codec it is built on, which
   # relay-core-js uses to serialize the signature input itself.
   http-message-signatures: ^1.0.6
-  jsdom: ^30.1.3
+  jsdom: ^31.0.0
   # `vp run lint:deps`: fails on an import its package's manifest doesn't
   # declare, which the package graph check (scripts/package-graph.ts) trusts.
   elkjs: 0.12.1
-  knip: ^6.43.0
+  knip: ^6.44.1
   # The book (apps/wildflower-site/book-web) renders its diagrams with mermaid,
   # vendored into the build so the pages load nothing from another origin.
-  mermaid: 12.2.0
+  mermaid: 12.3.0
   nanoid: ^6.0.2
-  pdfjs-dist: 6.4.299
+  pdfjs-dist: 6.5.438
   protobufjs: 8.8.1
   qrcode-generator: 2.0.4
   react: 19.3.1
@@ -171,8 +171,8 @@ catalog:
   # `tsc` build step. pnpm links the higher version into node_modules/.bin/tsc
   # when two packages named `typescript` both ship it, so `tsc` is this copy.
   typescript-7: npm:typescript@7.0.2
-  vite: npm:@voidzero-dev/vite-plus-core@1.4.0
-  vite-plus: 1.4.0
+  vite: npm:@voidzero-dev/vite-plus-core@1.5.0
+  vite-plus: 1.5.0
   web-tree-sitter: 0.27.1
 catalogMode: prefer
 
