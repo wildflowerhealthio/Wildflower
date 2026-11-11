@@ -12,7 +12,6 @@ import {
   type PatientChoice,
   PatientChoiceLine,
   PatientPicker,
-  patientChoiceKeyOf,
   patientQuery,
   ReadFailureLine,
   SmartHandshakeGate,
@@ -73,9 +72,10 @@ const AssistantPage = ({ connection }: { readonly connection: SmartConnection })
       )}
       {patientChoice.pipe(
         Option.map((chosen) => (
-          // Keyed per choice, so a change of patient starts the chat afresh.
+          // `AssistantChat` keys the chat by its place, so a change of patient
+          // starts the chat afresh and the key check is kept.
           <PatientChat
-            key={patientChoiceKeyOf(chosen)}
+            key="patient-chat"
             fhirBaseUrl={connection.fhirBaseUrl}
             patientChoice={chosen}
           />

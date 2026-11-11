@@ -2,7 +2,6 @@ import { HttpClient, HttpClientRequest, type HttpClientResponse } from '@effect/
 import { Data, Effect, Option, Schema } from 'effect'
 
 import { IdSchema } from '../data-types/base/primitives.ts'
-import * as Resource from '../data-types/base/resource.ts'
 import * as ResourceType from '../resources/resource-type.ts'
 import { operationOutcomeTextOf } from './operation-outcome-text.ts'
 
@@ -35,13 +34,14 @@ interface ResourceJson {
 }
 
 /**
- * The part of a written record a write reads back: fhir-r4's `Resource`
- * fields, narrowed to a record of a known type that has an id.
+ * The part of a written record a write reads back: its known type, its id
+ * and its `meta.versionId`. Nothing else is decoded, so a stored record this
+ * package's stricter schemas would refuse still reads as written.
  */
 const WrittenRecordSchema = Schema.Struct({
-  ...Resource.fields,
   resourceType: ResourceType.Schema,
   id: IdSchema,
+  meta: Schema.optional(Schema.Struct({ versionId: Schema.optional(Schema.String) })),
 })
 
 /** The record a write stored, as the server answered with it. */

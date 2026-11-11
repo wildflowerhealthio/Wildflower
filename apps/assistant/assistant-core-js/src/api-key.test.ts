@@ -1,5 +1,5 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Inspectable, Option, Redacted } from 'effect'
+import { Effect, Either, Inspectable, Option, Redacted } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -54,12 +54,14 @@ describe('ApiKey', () => {
     expect(Effect.runSync(ApiKey.read(page))).toEqual(Option.none())
   })
 
-  it('should read no key when the browser refuses the read or the storage itself', () => {
+  it('should fail the read when the browser refuses the read or the storage itself', () => {
     const refusingRead = memoryStoragePage(['getItem'])
     refusingRead.localStorage.items.set(ApiKey.STORAGE_KEY, 'sk-ant-kept')
 
-    expect(Effect.runSync(ApiKey.read(refusingRead))).toEqual(Option.none())
-    expect(Effect.runSync(ApiKey.read(blockedStoragePage()))).toEqual(Option.none())
+    expect(Either.isLeft(Effect.runSync(Effect.either(ApiKey.read(refusingRead))))).toBe(true)
+    expect(Either.isLeft(Effect.runSync(Effect.either(ApiKey.read(blockedStoragePage()))))).toBe(
+      true
+    )
   })
 
   it('should fail naming the write when the browser refuses it', () => {

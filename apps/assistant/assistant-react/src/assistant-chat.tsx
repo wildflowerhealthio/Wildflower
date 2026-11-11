@@ -63,8 +63,12 @@ const AssistantChat = ({
     <div {...rootProps} className={cn(styles['assistant-chat'], className)}>
       {Match.value(claudeAccess.access).pipe(
         Match.when({ kind: 'checking-key' }, () => <PageLoading message="Checking your key…" />),
-        Match.when({ kind: 'needs-key' }, ({ keyWasRejected }) => (
-          <KeySetup keyWasRejected={keyWasRejected} onSaveKey={claudeAccess.saveKey} />
+        Match.when({ kind: 'needs-key' }, ({ keyWasRejected, keyUnreadable }) => (
+          <KeySetup
+            keyWasRejected={keyWasRejected}
+            keyUnreadable={keyUnreadable}
+            onSaveKey={claudeAccess.saveKey}
+          />
         )),
         Match.when({ kind: 'models-unavailable' }, ({ failure }) => (
           <div className={styles['assistant-chat__unavailable']}>

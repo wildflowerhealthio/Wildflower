@@ -104,7 +104,8 @@ Every module is a namespace (`src/index.ts`):
 
 ## Rules
 
-- **A turn's request.** `max_tokens: 64000`, the chat's tools, top-level
+- **A turn's request.** `max_tokens: 64000` (or the model's own limit when
+  the listing gives a lower one), the chat's tools, top-level
   `cache_control: { type: 'ephemeral' }`, `thinking: { type: 'adaptive',
   display: 'summarized' }` only where the model's capabilities accept it,
   and server-side refusal fallbacks on every model: `betas:
@@ -159,9 +160,14 @@ Every module is a namespace (`src/index.ts`):
   adds one; a record about no one patient is created as given. An update is
   refused when the record, now or as proposed, or a resource it contains, is
   about another patient. With "All patients", writes are sent
-  as given. A `next` cursor is the next link's path under the FHIR base,
-  base64url-encoded; one that leaves the base or names a type not offered is
-  refused.
+  as given. A `next` cursor is the next link's path under the FHIR base
+  (the base itself included), base64url-encoded; `next_page` reads only a
+  cursor a page kept in the chat gave (`Tools.cursorsIssuedIn`), and one that
+  leaves the base or names a type not offered is refused. In a chat about one
+  patient, `_revinclude` is refused on a type nothing pins, and the types
+  that name their patient outside a single `subject` or `patient` element
+  can't be created. A read whose result is over `MAX_RESULT_CHARACTERS` is
+  refused, telling the agent to narrow it.
 - **Tool results.** Each tool's result is defined once as a `Schema.parseJson`
   schema the tool encodes with and the transcript's card decodes with:
   `Tools.PageResult` (`search_records`, `next_page`), `Tools.ReadRecordResult`

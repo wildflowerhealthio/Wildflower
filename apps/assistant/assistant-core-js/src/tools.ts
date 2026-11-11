@@ -341,15 +341,18 @@ const offeredTypesOf = (
 
 /**
  * The types `create_record` offers a chat about `patient`: those
- * `creatable` covers that the chat can keep to them, but not `Patient` in a
- * chat about one patient, since a new patient is not that patient.
+ * `creatable` covers that the chat can keep to them, but in a chat about one
+ * patient not `Patient`, since a new patient is not that patient, nor a type
+ * the tool can't point at them ({@link PatientPin.canBePointedAtPatient}).
  */
 const creatableTypesOf = (
   creatable: RecordAccess.ResourceTypes,
   patient: ChatPatient.Type
 ): readonly ResourceType.Type[] =>
   offeredTypesOf(creatable, patient).filter(
-    (resourceType) => patient.kind === 'all-patients' || resourceType !== 'Patient'
+    (resourceType) =>
+      patient.kind === 'all-patients' ||
+      (resourceType !== 'Patient' && PatientPin.canBePointedAtPatient(resourceType))
   )
 
 /**
@@ -454,8 +457,10 @@ const pathUnderBaseOf = ({
 }): Option.Option<string> => {
   const base = URL.parse(`${fhirBaseUrl}/`)
   const target = base === null ? null : URL.parse(url, base)
-  if (base === null || target === null) return Option.none()
-  return target.origin === base.origin && target.pathname.startsWith(base.pathname)
+  if (base === null || target === null || target.origin !== base.origin) return Option.none()
+  // The base itself (`<base>?_getpages=…`, a server's paging handle) is under it too.
+  if (`${target.pathname}/` === base.pathname) return Option.some(target.search)
+  return target.pathname.startsWith(base.pathname)
     ? Option.some(`${target.pathname.slice(base.pathname.length)}${target.search}`)
     : Option.none()
 }
@@ -487,6 +492,21 @@ const refuseOtherPatientsRecords = (
         : Effect.void,
   })
 
+/**
+ * The most characters of JSON a read's result may hold. A larger one (a
+ * document with its file inline, say) would not fit a request, and a kept
+ * round is sent again with every later question.
+ */
+const MAX_RESULT_CHARACTERS = 400_000
+
+/** `json`, a read's result, or refused when it is over {@link MAX_RESULT_CHARACTERS}. */
+const withinResultLimit = (json: string): Effect.Effect<string, ToolCallRefused> =>
+  json.length > MAX_RESULT_CHARACTERS
+    ? refuse(
+        `The result is too large to show (${String(json.length)} characters; the most is ${String(MAX_RESULT_CHARACTERS)}). Search with a smaller _count, or with _elements naming the fields you need, leaving out large ones such as a document's content.`
+      )
+    : Effect.succeed(json)
+
 /** The type a page path (`Observation?…`) searches; `None` for a server's paging handle (`?…`). */
 const searchedTypeIfNamed = (path: string): Option.Option<string> =>
   Option.fromNullable(path.split(/[?/]/u)[0]).pipe(Option.filter(Str.isNonEmpty))
@@ -517,15 +537,17 @@ const readPage = (
     const nextPath = Option.flatMap(nextUrl, (url) =>
       pathUnderBaseOf({ url, fhirBaseUrl: records.fhirBaseUrl })
     )
-    return Schema.encodeSync(PageResult)({
-      resources,
-      ...(page.total === undefined ? {} : { total: page.total }),
-      more: Option.isSome(nextUrl),
-      ...Option.match(nextPath, {
-        onNone: () => ({}),
-        onSome: (next) => ({ next: cursorOf(next) }),
-      }),
-    })
+    return yield* withinResultLimit(
+      Schema.encodeSync(PageResult)({
+        resources,
+        ...(page.total === undefined ? {} : { total: page.total }),
+        more: Option.isSome(nextUrl),
+        ...Option.match(nextPath, {
+          onNone: () => ({}),
+          onSome: (next) => ({ next: cursorOf(next) }),
+        }),
+      })
+    )
   })
 
 const searchRecords = (
@@ -569,7 +591,8 @@ const searchRecords = (
 
 const nextPage = (
   tools: Type,
-  input: unknown
+  input: unknown,
+  cursorsIssued: ReadonlySet<string>
 ): Effect.Effect<string, ToolCallRefused | FhirReadFailed, FhirRecords> =>
   Effect.gen(function* () {
     const { cursor } = yield* decodeInput(NextPageInput, input)
@@ -577,6 +600,9 @@ const nextPage = (
     const notACursor = new ToolCallRefused({
       reason: "That isn't a cursor a search gave. Search again with search_records.",
     })
+    // Only a cursor a page in this chat gave is read: any other path would
+    // skip the patient, the parameters and the page size a search is held to.
+    if (!cursorsIssued.has(cursor)) return yield* Effect.fail(notACursor)
     const path = yield* Encoding.decodeBase64UrlString(cursor).pipe(
       Either.flatMap((decoded) =>
         Either.fromOption(pathUnderBaseOf({ url: decoded, fhirBaseUrl }), () => notACursor)
@@ -611,7 +637,7 @@ const readRecord = (
             )
           : Effect.void,
     })
-    return Schema.encodeSync(ReadRecordResult)(record)
+    return yield* withinResultLimit(Schema.encodeSync(ReadRecordResult)(record))
   })
 
 /** A `CapabilityStatement`, as far as `capabilities` reads it. */
@@ -764,6 +790,30 @@ const versionsReadIn = (chat: Chat.Type): ReadonlyMap<string, string> =>
               )
             )
       )
+    })
+  )
+
+/**
+ * The `next` cursors the chat's pages have given so far: the one in every
+ * successful `search_records` or `next_page` result in `chat` that has one.
+ * `next_page` reads no other.
+ */
+const cursorsIssuedIn = (chat: Chat.Type): ReadonlySet<string> =>
+  new Set(
+    chat.entries.flatMap((entry) => {
+      if (entry._tag !== 'tool-round') return []
+      const toolNameById = new Map(
+        Chat.toolCallsOf(entry.message).map(({ id, name }) => [id, name] as const)
+      )
+      return entry.results.flatMap(({ tool_use_id, is_error, content }) => {
+        const toolName = toolNameById.get(tool_use_id)
+        return is_error !== true && (toolName === SEARCH_RECORDS || toolName === NEXT_PAGE)
+          ? decodePageResult(content).pipe(
+              Option.flatMapNullable(({ next }) => next),
+              Option.toArray
+            )
+          : []
+      })
     })
   )
 
@@ -1079,16 +1129,18 @@ const refuseUnknownTool = (call: Call): Effect.Effect<never, ToolCallRefused> =>
  * and succeed with its tool result: the JSON the tool read, or `is_error:
  * true` and why it failed. A call to a tool the chat doesn't have, or to a
  * write tool (which {@link propose} takes), is a failed result too.
+ * `next_page` reads only a cursor in `cursorsIssued` ({@link cursorsIssuedIn}).
  */
 const run = (
   tools: Type,
-  call: Call
+  call: Call,
+  cursorsIssued: ReadonlySet<string>
 ): Effect.Effect<BetaToolResultBlockParam, never, FhirRecords> => {
   const offered = tools.definitions.some(({ name }) => name === call.name)
   const result: Effect.Effect<string, ToolCallRefused | FhirReadFailed, FhirRecords> = offered
     ? Match.value(call.name).pipe(
         Match.when(SEARCH_RECORDS, () => searchRecords(tools, call.input)),
-        Match.when(NEXT_PAGE, () => nextPage(tools, call.input)),
+        Match.when(NEXT_PAGE, () => nextPage(tools, call.input, cursorsIssued)),
         Match.when(READ_RECORD, () => readRecord(tools, call.input)),
         Match.when(CAPABILITIES, () => capabilities(tools, call.input)),
         Match.orElse(() => refuseUnknownTool(call))
@@ -1104,6 +1156,7 @@ export {
   CapabilitiesResult,
   carryOut,
   CREATE_RECORD,
+  cursorsIssuedIn,
   DECLINED_TEXT,
   DEFAULT_COUNT,
   isWriteCall,

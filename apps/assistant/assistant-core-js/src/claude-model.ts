@@ -63,6 +63,12 @@ const ClaudeModelSchema = Schema.Struct({
   supportsAdaptiveThinking: Schema.propertySignature(SupportsAdaptiveThinking).pipe(
     Schema.fromKey('capabilities')
   ),
+  /** The most `max_tokens` a request to the model may ask for; `null` when the listing gives none. */
+  maxTokens: Schema.propertySignature(Schema.NullOr(Schema.Number)).pipe(
+    Schema.fromKey('max_tokens')
+  ),
+  /** `active`, `deprecated`, or `retired`: a retired model stays listed but answers no request. */
+  lifecycle: Schema.String,
 })
 
 /**
@@ -76,10 +82,10 @@ const NewestFirst: Order.Order<Type> = Order.reverse(
   Order.mapInput(DateTime.Order, (model: Type) => model.createdAt)
 )
 
-/** The models a chat may use from `models`: the `claude-` ones, newest first. */
+/** The models a chat may use from `models`: the `claude-` ones not retired, newest first. */
 const choicesOf = (models: readonly Type[]): readonly Type[] =>
   Array.sort(
-    models.filter((model) => model.id.startsWith('claude-')),
+    models.filter((model) => model.id.startsWith('claude-') && model.lifecycle !== 'retired'),
     NewestFirst
   )
 
@@ -131,14 +137,12 @@ const startingModelOf = (
 }
 
 /**
- * The id of the model last chosen, kept in `page`'s `localStorage`. `None`
- * when none was, and also when the browser refuses the read: the default
- * model is chosen instead.
+ * The id of the model last chosen, kept in `page`'s `localStorage`; `None`
+ * when none was. Fails when the browser refuses the read.
  */
-const readChosenId = (page: StoragePage): Effect.Effect<Option.Option<string>> =>
+const readChosenId = (page: StoragePage): Effect.Effect<Option.Option<string>, StorageBlocked> =>
   storageOf(page, 'localStorage', 'read', CHOSEN_ID_STORAGE_KEY).pipe(
-    Effect.flatMap((storage) => getStorageItem(storage, CHOSEN_ID_STORAGE_KEY)),
-    Effect.orElseSucceed(() => Option.none<string>())
+    Effect.flatMap((storage) => getStorageItem(storage, CHOSEN_ID_STORAGE_KEY))
   )
 
 /** Keep `modelId` as the last chosen model in `page`'s `localStorage`. */

@@ -29,7 +29,7 @@ import type * as WriteProposal from './write-proposal.ts'
  * @packageDocumentation
  */
 
-/** The most a reply may write, thinking included. */
+/** The most a reply may write, thinking included, on a model that allows as much. */
 const MAX_TOKENS = 64000
 
 /**
@@ -107,7 +107,7 @@ const requestParamsOf = (
   today: DateTime.DateTime
 ): BetaMessageStreamParams => ({
   model: model.id,
-  max_tokens: MAX_TOKENS,
+  max_tokens: Math.min(MAX_TOKENS, model.maxTokens ?? MAX_TOKENS),
   system: Style.systemPromptOf({ style: chat.style, patient, today, recordAccess }),
   messages: Chat.requestMessagesOf(chat),
   tools: [...tools.definitions],
@@ -199,6 +199,7 @@ type CallStep =
 const stepOf = (
   tools: Tools.Type,
   versionsRead: ReadonlyMap<string, string>,
+  cursorsIssued: ReadonlySet<string>,
   call: Tools.Call
 ): Effect.Effect<CallStep, never, FhirRecords> =>
   Tools.isWriteCall(call)
@@ -209,7 +210,10 @@ const stepOf = (
           onRight: (proposal): CallStep => ({ kind: 'awaiting-decision', proposal }),
         })
       )
-    : Effect.map(Tools.run(tools, call), (result): CallStep => ({ kind: 'answered', result }))
+    : Effect.map(Tools.run(tools, call, cursorsIssued), (result): CallStep => ({
+        kind: 'answered',
+        result,
+      }))
 
 /**
  * The person's decision on each of `proposals`, by the id of the call it
@@ -290,7 +294,8 @@ const toolRoundOf = (
     return Effect.fail(UnexpectedStop.make({ stopReason: 'tool_use' }))
   }
   const versionsRead = Tools.versionsReadIn(chat)
-  return Effect.forEach(calls, (call) => stepOf(tools, versionsRead, call), {
+  const cursorsIssued = Tools.cursorsIssuedIn(chat)
+  return Effect.forEach(calls, (call) => stepOf(tools, versionsRead, cursorsIssued, call), {
     concurrency: 'unbounded',
   }).pipe(
     Effect.flatMap((steps) =>

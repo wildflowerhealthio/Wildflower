@@ -1,6 +1,6 @@
 import { AuthenticationError } from '@anthropic-ai/sdk'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { DateTime, Effect, Option } from 'effect'
+import { DateTime, Effect, Either, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -21,6 +21,8 @@ const modelArb: fc.Arbitrary<ClaudeModel.Type> = fc.record({
     .integer({ min: 0, max: 4_000_000_000_000 })
     .map((millis) => DateTime.unsafeMake(millis)),
   supportsAdaptiveThinking: fc.boolean(),
+  maxTokens: fc.constantFrom(null, 32_000, 64_000),
+  lifecycle: fc.constant('active'),
 })
 
 const model = (id: string, createdAt = '2026-01-01T00:00:00Z'): ClaudeModel.Type => ({
@@ -28,6 +30,8 @@ const model = (id: string, createdAt = '2026-01-01T00:00:00Z'): ClaudeModel.Type
   displayName: id,
   createdAt: DateTime.unsafeMake(createdAt),
   supportsAdaptiveThinking: true,
+  maxTokens: 64_000,
+  lifecycle: 'active',
 })
 
 describe('ClaudeModel.choicesOf', () => {
@@ -98,6 +102,11 @@ describe('ClaudeModel.list', () => {
           supportsAdaptiveThinking: null,
         }),
         modelInfoOf({ id: 'not-claude', createdAt: '2026-09-01T00:00:00Z' }),
+        modelInfoOf({
+          id: 'claude-retired',
+          createdAt: '2026-10-01T00:00:00Z',
+          lifecycle: 'retired',
+        }),
         modelInfoOf({ id: 'claude-opus-5', createdAt: '2026-08-01T00:00:00Z' }),
       ],
     })
@@ -110,24 +119,32 @@ describe('ClaudeModel.list', () => {
         displayName: 'claude-opus-5',
         createdAt: DateTime.unsafeMake('2026-08-01T00:00:00Z'),
         supportsAdaptiveThinking: true,
+        maxTokens: 64_000,
+        lifecycle: 'active',
       },
       {
         id: 'claude-sonnet-5',
         displayName: 'Claude Sonnet 5',
         createdAt: DateTime.unsafeMake('2026-05-01T00:00:00Z'),
         supportsAdaptiveThinking: true,
+        maxTokens: 64_000,
+        lifecycle: 'active',
       },
       {
         id: 'claude-haiku-4-5',
         displayName: 'claude-haiku-4-5',
         createdAt: DateTime.unsafeMake('2025-10-01T00:00:00Z'),
         supportsAdaptiveThinking: false,
+        maxTokens: 64_000,
+        lifecycle: 'active',
       },
       {
         id: 'claude-old',
         displayName: 'claude-old',
         createdAt: DateTime.unsafeMake('2024-01-01T00:00:00Z'),
         supportsAdaptiveThinking: false,
+        maxTokens: 64_000,
+        lifecycle: 'active',
       },
     ])
   })
@@ -192,12 +209,16 @@ describe('ClaudeModel chosen id', () => {
     )
   })
 
-  it('should read no choice when the browser refuses the read or the storage itself', () => {
+  it('should fail the read when the browser refuses the read or the storage itself', () => {
     const refusingRead = memoryStoragePage(['getItem'])
     refusingRead.localStorage.items.set(ClaudeModel.CHOSEN_ID_STORAGE_KEY, 'claude-opus-5')
 
-    expect(Effect.runSync(ClaudeModel.readChosenId(refusingRead))).toEqual(Option.none())
-    expect(Effect.runSync(ClaudeModel.readChosenId(blockedStoragePage()))).toEqual(Option.none())
+    expect(
+      Either.isLeft(Effect.runSync(Effect.either(ClaudeModel.readChosenId(refusingRead))))
+    ).toBe(true)
+    expect(
+      Either.isLeft(Effect.runSync(Effect.either(ClaudeModel.readChosenId(blockedStoragePage()))))
+    ).toBe(true)
   })
 
   it('should fail naming the write when the browser refuses it', () => {

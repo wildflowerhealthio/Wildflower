@@ -19,7 +19,12 @@ import type { AssistantEnvironment } from './assistant-environment.ts'
  */
 type ClaudeAccess =
   | { readonly kind: 'checking-key' }
-  | { readonly kind: 'needs-key'; readonly keyWasRejected: boolean }
+  | {
+      readonly kind: 'needs-key'
+      readonly keyWasRejected: boolean
+      /** The browser refused to read the kept key, so it is asked for again. */
+      readonly keyUnreadable: boolean
+    }
   | {
       readonly kind: 'models-unavailable'
       readonly apiKey: ApiKey.Type
@@ -69,7 +74,13 @@ const accessAfterCheck = (
     Effect.provide(claudeLayerFor(apiKey)),
     Effect.flatMap((models) =>
       Effect.all({
-        chosenId: ClaudeModel.readChosenId(page),
+        chosenId: ClaudeModel.readChosenId(page).pipe(
+          Effect.catchAll((blocked) =>
+            Effect.logWarning('The browser would not read the chosen model', blocked).pipe(
+              Effect.as(Option.none<string>())
+            )
+          )
+        ),
         keyKept: keepOnSuccess
           ? ApiKey.write(page, apiKey).pipe(
               Effect.as(true),
@@ -94,7 +105,7 @@ const accessAfterCheck = (
     Effect.catchAll((failure) =>
       Effect.succeed<ClaudeAccess>(
         failure.kind === 'key-rejected'
-          ? { kind: 'needs-key', keyWasRejected: true }
+          ? { kind: 'needs-key', keyWasRejected: true, keyUnreadable: false }
           : { kind: 'models-unavailable', apiKey, failure }
       )
     )
@@ -108,15 +119,17 @@ const accessAfterCheck = (
  */
 const useClaudeAccess = (environment: AssistantEnvironment): ClaudeAccessControls => {
   const { page } = environment
+  const [keptKey] = useState(() => Effect.runSync(Effect.either(ApiKey.read(page))))
   const [keyCheck, setKeyCheck] = useState<Option.Option<KeyCheck>>(() =>
-    Effect.runSync(ApiKey.read(page)).pipe(
+    Either.getRight(keptKey).pipe(
+      Option.flatten,
       Option.map((apiKey) => ({ apiKey, keepOnSuccess: false }))
     )
   )
   const [access, setAccess] = useState<ClaudeAccess>(() =>
     Option.isSome(keyCheck)
       ? { kind: 'checking-key' }
-      : { kind: 'needs-key', keyWasRejected: false }
+      : { kind: 'needs-key', keyWasRejected: false, keyUnreadable: Either.isLeft(keptKey) }
   )
   const [forgetFailed, setForgetFailed] = useState(false)
 
@@ -178,7 +191,7 @@ const useClaudeAccess = (environment: AssistantEnvironment): ClaudeAccessControl
       onRight: () => {
         setForgetFailed(false)
         setKeyCheck(Option.none())
-        setAccess({ kind: 'needs-key', keyWasRejected: false })
+        setAccess({ kind: 'needs-key', keyWasRejected: false, keyUnreadable: false })
       },
     })
   }, [page])

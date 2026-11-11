@@ -44,6 +44,8 @@ const sonnet: ClaudeModel.Type = {
   displayName: 'Claude Sonnet 5',
   createdAt: DateTime.unsafeMake('2026-05-01T00:00:00Z'),
   supportsAdaptiveThinking: true,
+  maxTokens: 64_000,
+  lifecycle: 'active',
 }
 const patient: ChatPatient.Type = { kind: 'all-patients' }
 const recordAccess = RecordAccess.fromGrantedScopes([Scope.parse('system/*.cruds')])
@@ -146,6 +148,15 @@ describe('Turn.run', () => {
       { kind: 'text', text: 'are fine.' },
     ])
     expect(stub.requests).toHaveLength(1)
+  })
+
+  it("should ask for no more output than the model's own limit", () => {
+    const params = Turn.paramsOf(
+      { chat: asked, model: { ...sonnet, maxTokens: 32_000 }, patient, recordAccess },
+      DateTime.unsafeMakeZoned('2026-11-11T12:00:00Z', { timeZone: 'UTC' })
+    )
+
+    expect(params.max_tokens).toBe(32_000)
   })
 
   it('should keep a reply cut off at max_tokens, marked so', async () => {

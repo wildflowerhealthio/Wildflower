@@ -37,9 +37,14 @@ const runCall = (
   tools: Tools.Type,
   server: StubFhirRecords,
   name: string,
-  input: unknown
+  input: unknown,
+  cursorsIssued: ReadonlySet<string> = new Set()
 ): BetaToolResultBlockParam =>
-  Effect.runSync(Tools.run(tools, { id: 'call-1', name, input }).pipe(Effect.provide(server.layer)))
+  Effect.runSync(
+    Tools.run(tools, { id: 'call-1', name, input }, cursorsIssued).pipe(
+      Effect.provide(server.layer)
+    )
+  )
 
 const succeeded = (content: unknown): BetaToolResultBlockParam => ({
   type: 'tool_result',
@@ -296,6 +301,37 @@ describe('Tools.run search_records', () => {
     expect(server.readPaths).toEqual([])
   })
 
+  it('should refuse _revinclude on a type nothing pins, reading nothing', () => {
+    const server = stubFhirRecords({ '': Effect.succeed(searchBundleOf([])) })
+
+    const result = runCall(toolsFor(ada), server, 'search_records', {
+      resourceType: 'Practitioner',
+      params: [{ name: '_revinclude', value: 'Appointment:practitioner' }],
+    })
+
+    expect(result.is_error).toBe(true)
+    expect(server.readPaths).toEqual([])
+  })
+
+  it('should refuse a page too large to send, saying how to narrow it', () => {
+    const document = {
+      resourceType: 'DocumentReference',
+      id: 'd1',
+      content: [{ attachment: { data: 'A'.repeat(500_000) } }],
+    }
+    const server = stubFhirRecords({
+      'DocumentReference?': Effect.succeed(searchBundleOf([document])),
+    })
+
+    const result = runCall(toolsFor(everyone), server, 'search_records', {
+      resourceType: 'DocumentReference',
+      params: [],
+    })
+
+    expect(result.is_error).toBe(true)
+    expect(result.content).toContain('too large')
+  })
+
   it("should refuse a page holding another patient's records", () => {
     const server = stubFhirRecords({
       'Observation?': Effect.succeed(
@@ -370,7 +406,7 @@ describe('Tools.run next_page', () => {
       params: [],
     })
     const cursor = Encoding.encodeBase64Url('Observation?patient=p1&_count=20&page=2')
-    const second = runCall(tools, server, 'next_page', { cursor })
+    const second = runCall(tools, server, 'next_page', { cursor }, new Set([cursor]))
 
     expect(first).toEqual(
       succeeded({ resources: [observation('o1', 'p1')], more: true, next: cursor })
@@ -399,13 +435,40 @@ describe('Tools.run next_page', () => {
     ['Group?member=p2'],
   ])('should refuse a cursor for %s, reading nothing', (path) => {
     const server = stubFhirRecords({ '': Effect.succeed(searchBundleOf([])) })
+    const cursor = Encoding.encodeBase64Url(path)
+
+    const result = runCall(toolsFor(ada), server, 'next_page', { cursor }, new Set([cursor]))
+
+    expect(result.is_error).toBe(true)
+    expect(server.readPaths).toEqual([])
+  })
+
+  it('should refuse a cursor no page in the chat gave, reading nothing', () => {
+    const server = stubFhirRecords({ '': Effect.succeed(searchBundleOf([])) })
 
     const result = runCall(toolsFor(ada), server, 'next_page', {
-      cursor: Encoding.encodeBase64Url(path),
+      cursor: Encoding.encodeBase64Url('Observation?patient=p2&_elements=code'),
     })
 
     expect(result.is_error).toBe(true)
     expect(server.readPaths).toEqual([])
+  })
+
+  it("should give a cursor for a next link on the FHIR base itself, a server's paging handle", () => {
+    const server = stubFhirRecords({
+      'Observation?': Effect.succeed(
+        searchBundleOf([], { nextUrl: `${STUB_FHIR_BASE}?_getpages=abc` })
+      ),
+    })
+
+    expect(
+      runCall(toolsFor(everyone), server, 'search_records', {
+        resourceType: 'Observation',
+        params: [],
+      })
+    ).toEqual(
+      succeeded({ resources: [], more: true, next: Encoding.encodeBase64Url('?_getpages=abc') })
+    )
   })
 })
 
@@ -625,6 +688,12 @@ describe('Tools.propose create_record', () => {
     )
   })
 
+  it("should not offer a type it can't point at the patient in a chat about one", () => {
+    expect(toolsFor(ada).creatableTypes).not.toContain('Coverage')
+    expect(toolsFor(ada).creatableTypes).toContain('Observation')
+    expect(toolsFor(everyone).creatableTypes).toContain('Coverage')
+  })
+
   it('should refuse a type the grant cannot create', () => {
     const tools = toolsFor(everyone, accessOf('patient/Condition.c'))
 
@@ -800,6 +869,43 @@ describe('Tools.propose update_record', () => {
         chatHavingRead(storedWeight)
       )
     ).toEqual(Either.left(failed('The record already says this, so there is nothing to change.')))
+  })
+})
+
+describe('Tools.cursorsIssuedIn', () => {
+  it('should hold the next cursor of each page the chat read, and none from failed calls', () => {
+    const chat = Chat.append(Chat.start('telehealth'), {
+      _tag: 'tool-round',
+      modelId: 'claude-sonnet-5',
+      message: {
+        role: 'assistant',
+        content: [
+          toolUseBlock('search', 'search_records', {}),
+          toolUseBlock('last', 'next_page', {}),
+          toolUseBlock('failed', 'search_records', {}),
+        ],
+      },
+      results: [
+        {
+          type: 'tool_result',
+          tool_use_id: 'search',
+          content: JSON.stringify({ resources: [], more: true, next: 'cursor-1' }),
+        },
+        {
+          type: 'tool_result',
+          tool_use_id: 'last',
+          content: JSON.stringify({ resources: [], more: false }),
+        },
+        {
+          type: 'tool_result',
+          tool_use_id: 'failed',
+          is_error: true,
+          content: JSON.stringify({ resources: [], more: true, next: 'cursor-2' }),
+        },
+      ],
+    })
+
+    expect(Tools.cursorsIssuedIn(chat)).toEqual(new Set(['cursor-1']))
   })
 })
 

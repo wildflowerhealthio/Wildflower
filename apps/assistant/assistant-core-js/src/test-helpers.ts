@@ -114,13 +114,19 @@ const modelInfoOf = ({
   displayName = id,
   createdAt,
   supportsAdaptiveThinking = true,
+  maxTokens = 64_000,
+  lifecycle = 'active',
 }: {
   readonly id: string
   readonly displayName?: string
   readonly createdAt: string
   /** Whether the capabilities say adaptive thinking is supported; `null` for no capabilities. */
   readonly supportsAdaptiveThinking?: boolean | null
+  readonly maxTokens?: number | null
+  readonly lifecycle?: string
 }): unknown => ({
+  max_tokens: maxTokens,
+  lifecycle,
   type: 'model',
   id,
   display_name: displayName,

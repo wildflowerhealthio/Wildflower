@@ -183,6 +183,18 @@ describe('ResourceWrite.create', () => {
 })
 
 describe('ResourceWrite.update', () => {
+  it('should read a stored record whose meta the stricter schemas would refuse', async () => {
+    const changed = { ...observation, id: 'o1', status: 'amended' }
+    const storedMeta = { versionId: '2', tag: [{ system: 'local-tags', code: 'x' }] }
+    const written = await Effect.runPromise(
+      ResourceWrite.update({ resource: changed, versionId: '1' }).pipe(
+        Effect.provide(serverAnswering([], answer(200, { ...changed, meta: storedMeta })))
+      )
+    )
+
+    expect(written.versionId).toEqual(Option.some('2'))
+  })
+
   it('should PUT the resource to its type and id with If-Match naming the version as a weak tag', async () => {
     const sent: SentRequest[] = []
     const changed = { ...observation, id: 'o1', status: 'amended' }

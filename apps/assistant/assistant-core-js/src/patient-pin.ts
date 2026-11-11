@@ -126,6 +126,31 @@ const NOT_PATIENT_SPECIFIC: ReadonlySet<ResourceType.Type> = new Set<ResourceTyp
   'ValueSet',
 ])
 
+/**
+ * The `by-reference` types that name their patient in neither a single
+ * `subject` nor a single `patient` element (`Coverage.beneficiary`,
+ * `Task.for`, `Appointment.participant`, the repeating `Account.subject`),
+ * so a new record of one can't be pointed at the chat's patient.
+ */
+const NO_SINGLE_PATIENT_ELEMENT: ReadonlySet<ResourceType.Type> = new Set<ResourceType.Type>([
+  'Account',
+  'Appointment',
+  'AppointmentResponse',
+  'AuditEvent',
+  'Contract',
+  'Coverage',
+  'EnrollmentRequest',
+  'Person',
+  'Provenance',
+  'ResearchSubject',
+  'SupplyRequest',
+  'Task',
+])
+
+/** Whether a new record of `resourceType` can be pointed at one patient, or needs no pointing. */
+const canBePointedAtPatient = (resourceType: ResourceType.Type): boolean =>
+  !NO_SINGLE_PATIENT_ELEMENT.has(resourceType)
+
 /** How `resourceType` is kept to one patient; `None` when nothing here knows how. */
 const of = (resourceType: ResourceType.Type): Option.Option<Type> => {
   if (resourceType === 'Patient') return Option.some({ kind: 'the-patient' })
@@ -139,12 +164,14 @@ const of = (resourceType: ResourceType.Type): Option.Option<Type> => {
   return Option.none()
 }
 
-/** The parameters a pinned search may not set, since they name whose records to read. */
+/** The parameters a pinned search may not set, since they choose whose records are read. */
 const patientNamingParametersOf = (pin: Type): readonly string[] =>
   Match.value(pin).pipe(
     Match.when({ kind: 'the-patient' }, () => ['_id']),
     Match.when({ kind: 'by-reference' }, () => ['patient', 'subject']),
-    Match.when({ kind: 'not-patient-specific' }, () => []),
+    // Nothing pins these, so a `_revinclude` would bring back the records
+    // of every patient that reference the ones found.
+    Match.when({ kind: 'not-patient-specific' }, () => ['_revinclude']),
     Match.exhaustive
   )
 
@@ -189,12 +216,18 @@ const pinnedParamsOf = (
 /** A reference, as far as the patient check reads it. */
 const PatientCheckReference = Schema.Struct({ reference: Schema.optional(Schema.String) })
 
+/** One reference or several: `Account.subject` and `Contract.subject` repeat. */
+const PatientCheckReferences = Schema.Union(
+  PatientCheckReference,
+  Schema.Array(PatientCheckReference)
+)
+
 /** A record, as far as the patient check reads it: its type, its id, and whom it is about. */
 const PatientCheckedRecord = Schema.Struct({
   resourceType: Schema.String,
   id: Schema.optional(Schema.String),
-  subject: Schema.optional(PatientCheckReference),
-  patient: Schema.optional(PatientCheckReference),
+  subject: Schema.optional(PatientCheckReferences),
+  patient: Schema.optional(PatientCheckReferences),
 })
 
 /** The id of the patient `reference` points at, if it points at a `Patient`. */
@@ -213,14 +246,16 @@ const isAboutAnotherPatient = (record: unknown, patientId: string): boolean =>
       onSome: ({ resourceType, id, subject, patient }) =>
         resourceType === 'Patient'
           ? id !== patientId
-          : [subject, patient].some((reference) =>
-              Option.fromNullable(reference?.reference).pipe(
-                Option.flatMap(patientIdOf),
-                Option.exists((referencedId) => referencedId !== patientId)
-              )
-            ),
+          : Array.ensure(subject ?? [])
+              .concat(Array.ensure(patient ?? []))
+              .some((reference) =>
+                Option.fromNullable(reference.reference).pipe(
+                  Option.flatMap(patientIdOf),
+                  Option.exists((referencedId) => referencedId !== patientId)
+                )
+              ),
     })
   )
 
-export { isAboutAnotherPatient, of, pinnedParamsOf }
+export { canBePointedAtPatient, isAboutAnotherPatient, of, pinnedParamsOf }
 export type { Type }

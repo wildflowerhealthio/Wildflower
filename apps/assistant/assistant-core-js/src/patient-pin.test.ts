@@ -63,6 +63,14 @@ describe('PatientPin.isAboutAnotherPatient', () => {
     [{ resourceType: 'Observation', subject: { reference: 'Patient/p1/_history/3' } }, false],
     [{ resourceType: 'AllergyIntolerance', patient: { reference: 'Patient/p2' } }, true],
     [{ resourceType: 'Practitioner', id: 'dr1' }, false],
+    [{ resourceType: 'Account', subject: [{ reference: 'Patient/p1' }] }, false],
+    [
+      {
+        resourceType: 'Account',
+        subject: [{ reference: 'Patient/p1' }, { reference: 'Patient/p2' }],
+      },
+      true,
+    ],
     [{ resourceType: 'Observation', subject: { reference: 'Group/g1' } }, false],
     ['not a record', true],
   ] as const)('should say whether %j is about a patient other than p1: %s', (record, about) => {

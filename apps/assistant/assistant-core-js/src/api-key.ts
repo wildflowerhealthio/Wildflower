@@ -34,15 +34,13 @@ type Type = Redacted.Redacted<string>
 const fromInput: (input: string) => Option.Option<Type> = Schema.decodeOption(ApiKeySchema)
 
 /**
- * The key kept in `page`'s `localStorage`. `None` when there is none, and
- * also when the browser refuses the read: a key that cannot be read is a key
- * the person enters again.
+ * The key kept in `page`'s `localStorage`; `None` when there is none. Fails
+ * when the browser refuses the read.
  */
-const read = (page: StoragePage): Effect.Effect<Option.Option<Type>> =>
+const read = (page: StoragePage): Effect.Effect<Option.Option<Type>, StorageBlocked> =>
   storageOf(page, 'localStorage', 'read', STORAGE_KEY).pipe(
     Effect.flatMap((storage) => getStorageItem(storage, STORAGE_KEY)),
-    Effect.map(Option.flatMap(fromInput)),
-    Effect.orElseSucceed(() => Option.none<Type>())
+    Effect.map(Option.flatMap(fromInput))
   )
 
 /** Keep `apiKey` in `page`'s `localStorage`, replacing any key kept before. */
