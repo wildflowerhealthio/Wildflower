@@ -28,8 +28,12 @@ interface PendingWrites {
   readonly decisions: ReadonlyMap<string, WriteProposal.Decision>
 }
 
-/** Why the chat could not be kept: what was kept could not be read, or the browser would not keep it. */
-type ChatStorageProblem = 'unreadable' | 'not-kept'
+/**
+ * Why the chat could not be kept: what was kept could not be read, the
+ * browser would not keep the chat, or it would not keep the person's
+ * message, which was therefore not sent.
+ */
+type ChatStorageProblem = 'unreadable' | 'not-kept' | 'message-not-kept'
 
 /** {@link useChat}'s state and the actions that move it on. */
 interface ChatControls {
@@ -55,12 +59,18 @@ interface ChatControls {
   readonly requestStyle: (style: Style.Type) => void
   readonly confirmAcademic: () => void
   readonly cancelAcademic: () => void
-  /** Ask `text` on `model` with `apiKey`, streaming the reply in. */
+  /**
+   * Send `text` on `model` with `apiKey`, streaming the reply in. Resolves
+   * once the person's message is kept in the chat and the turn has started;
+   * rejects, starting nothing, when the browser won't keep the message (the
+   * storage problem says so) or a turn is already running. How the turn
+   * goes, failures included, never rejects it.
+   */
   readonly send: (message: {
     readonly text: string
     readonly model: ClaudeModel.Type
     readonly apiKey: ApiKey.Type
-  }) => void
+  }) => Promise<void>
   /**
    * Decide the proposal for the call `callId`; once every proposal of the
    * round is decided, the turn goes on. Nothing once it is decided.
@@ -193,10 +203,19 @@ const useChat = (
 
   const send = useCallback<ChatControls['send']>(
     ({ text, model, apiKey }) => {
-      if (turnRunning) return
+      if (turnRunning) return Promise.reject(new Error('A turn is already running.'))
       const asked = Chat.append(chat, Chat.userEntryOf(text))
+      const askedWrite = Effect.runSync(
+        Effect.either(
+          Chat.write(place, asked).pipe(Effect.provide(Layer.provide(Chat.layer, storage)))
+        )
+      )
+      if (Either.isLeft(askedWrite)) {
+        setStorageProblem(Option.some('message-not-kept'))
+        return Promise.reject(askedWrite.left)
+      }
+      setStorageProblem(Option.filter((problem) => problem !== 'message-not-kept'))
       setChat(asked)
-      keep(asked)
       setTurnFailure(Option.none())
       setAnnouncement('')
       setStreamingReply(Option.some({ thinking: '', text: '' }))
@@ -279,8 +298,9 @@ const useChat = (
           )
         )
       )
+      return Promise.resolve()
     },
-    [chat, claudeLayerFor, fhirRecordsLayer, keep, place.patient, recordAccess, turnRunning]
+    [chat, claudeLayerFor, fhirRecordsLayer, keep, place, recordAccess, storage, turnRunning]
   )
 
   const decideWrite = useCallback<ChatControls['decideWrite']>(

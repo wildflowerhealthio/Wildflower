@@ -19,6 +19,10 @@ const storageProblemText = (problem: ChatStorageProblem): string =>
       'not-kept',
       () => "This browser won't keep the chat in this tab, so it will be lost if the page reloads."
     ),
+    Match.when(
+      'message-not-kept',
+      () => "This browser won't keep your message in this tab, so it wasn't sent."
+    ),
     Match.exhaustive
   )
 

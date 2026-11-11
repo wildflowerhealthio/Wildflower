@@ -1,7 +1,7 @@
 import { APIConnectionError, RateLimitError } from '@anthropic-ai/sdk'
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ApiKey, Chat, ClaudeModel } from '@wildflowerhealthio/assistant-core-js'
+import { ApiKey, BrowserStorage, Chat, ClaudeModel } from '@wildflowerhealthio/assistant-core-js'
 import {
   failingReply,
   heldReply,
@@ -15,7 +15,7 @@ import {
   toolUseBlock,
 } from '@wildflowerhealthio/assistant-core-js/test-helpers'
 import { answerJson, bundleOf } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
-import { Deferred, Effect, Option } from 'effect'
+import { Deferred, Effect, Layer, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -217,6 +217,35 @@ describe('AssistantChat turns', () => {
       alert.compareDocumentPosition(screen.getByLabelText('Message')) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
+  })
+
+  it("should not send a message the browser won't keep, keeping the draft and saying so", async () => {
+    const user = userEvent.setup()
+    const local = memoryStorage()
+    const { claude } = renderChat({
+      keptKey,
+      replies: [replyWith('Never sent')],
+      storage: {
+        ...local,
+        layer: Layer.merge(
+          Layer.succeed(BrowserStorage.Local, local.local),
+          Layer.succeed(BrowserStorage.Session, BrowserStorage.refusingStore('sessionStorage'))
+        ),
+      },
+    })
+    await screen.findByLabelText('Message')
+
+    await ask(user, 'Hello')
+
+    expect(
+      await screen.findByText(
+        "This browser won't keep your message in this tab, so it wasn't sent."
+      )
+    ).toBeDefined()
+    expect(screen.getByLabelText<HTMLTextAreaElement>('Message').value).toBe('Hello')
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDefined()
+    expect(screen.queryByText('No reply to this message.')).toBeNull()
+    expect(claude.requests).toHaveLength(0)
   })
 
   it('should pick up the chat kept in the tab', () => {

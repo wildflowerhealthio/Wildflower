@@ -9,16 +9,20 @@ interface ComposerProps extends Omit<ComponentProps<'form'>, 'children' | 'onSub
   readonly replying: boolean
   /** Nothing can be written: a change Claude proposed waits on the person's decision. Stop stays. */
   readonly messageDisabled: boolean
-  readonly onSend: (text: string) => void
+  /**
+   * Send the draft. The message box and Send are locked until it settles;
+   * the draft is cleared once it resolves and kept when it rejects.
+   */
+  readonly onSend: (text: string) => Promise<void>
   readonly onStop: () => void
   readonly onNewChat: () => void
 }
 
 /**
  * Where the person writes: the message box (disabled while Claude's
- * proposed changes wait on the person), then Send (or Stop while a turn
- * runs) and "New chat". Lines about the chat go above it, never below its
- * buttons.
+ * proposed changes wait on the person, and while a message is being sent),
+ * then Send (or Stop while a turn runs) and "New chat". Lines about the
+ * chat go above it, never below its buttons.
  */
 const Composer = ({
   replying,
@@ -30,8 +34,9 @@ const Composer = ({
   ...rootProps
 }: ComposerProps): JSX.Element => {
   const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
   const messageDomId = useId()
-  const sendable = !replying && draft.trim() !== ''
+  const sendable = !replying && !sending && draft.trim() !== ''
   return (
     <form
       {...rootProps}
@@ -39,8 +44,16 @@ const Composer = ({
       onSubmit={(event) => {
         event.preventDefault()
         if (!sendable) return
-        onSend(draft)
-        setDraft('')
+        setSending(true)
+        onSend(draft).then(
+          () => {
+            setDraft('')
+            setSending(false)
+          },
+          () => {
+            setSending(false)
+          }
+        )
       }}
     >
       <label htmlFor={messageDomId} className="sr-only">
@@ -51,7 +64,7 @@ const Composer = ({
         className={cn('input-3', styles['composer__message'])}
         rows={3}
         value={draft}
-        disabled={messageDisabled}
+        disabled={messageDisabled || sending}
         placeholder="Ask Claude"
         onChange={(event) => {
           setDraft(event.currentTarget.value)

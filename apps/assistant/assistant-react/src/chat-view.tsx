@@ -83,9 +83,7 @@ const ChatView = ({
       <Composer
         replying={chat.turnRunning}
         messageDisabled={chat.writesAwaitingDecision}
-        onSend={(text) => {
-          chat.send({ text, model: ready.model, apiKey: ready.apiKey })
-        }}
+        onSend={(text) => chat.send({ text, model: ready.model, apiKey: ready.apiKey })}
         onStop={chat.stop}
         onNewChat={chat.newChat}
       />
