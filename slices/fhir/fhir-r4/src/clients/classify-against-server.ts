@@ -1,6 +1,5 @@
 import { Array as Arr, Effect, Option, Schema } from 'effect'
 
-import type * as Bundle from '../data-types/resources/bundle.ts'
 import {
   FhirResourceSchema,
   type FhirResource,
@@ -9,6 +8,7 @@ import {
   literalReferenceOf,
 } from '../resources/index.ts'
 import * as Telemetry from '../telemetry/index.ts'
+import { batchOfGets } from './batch-of-gets.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import { diffJson, setAtPath, type FieldDiff } from './field-diff.ts'
 import { statusOk } from './persist-batch-bundle.ts'
@@ -174,40 +174,7 @@ const classifyAgainstServer = (
 
     const client = yield* FhirR4ResourcesHttpApiClient
 
-    const payload: Bundle.BundleValue<unknown> = {
-      resourceType: 'Bundle' as const,
-      type: 'batch' as const,
-      id: null,
-      implicitRules: null,
-      language: null,
-      meta: null,
-      identifier: null,
-      link: [],
-      signature: null,
-      timestamp: null,
-      total: null,
-      entry: resources.map((resource) => ({
-        id: null,
-        extension: [],
-        modifierExtension: [],
-        fullUrl: null,
-        link: [],
-        request: {
-          id: null,
-          extension: [],
-          modifierExtension: [],
-          method: 'GET' as const,
-          url: literalReferenceOf(resource),
-          ifNoneMatch: null,
-          ifModifiedSince: null,
-          ifMatch: null,
-          ifNoneExist: null,
-        },
-        resource: null,
-        response: null,
-        search: null,
-      })),
-    }
+    const payload = batchOfGets(resources.map(literalReferenceOf))
 
     const submission = yield* client.Bundle.Submit({ payload }).pipe(
       Effect.matchEffect({

@@ -27,10 +27,26 @@ export {
   type PageLink,
   PageTokenRepeated,
   searchAllPages,
+  searchEveryPage,
   type SearchPages,
   type SearchsetEntry,
   type SearchsetPage,
 } from './search-pages.ts'
+export {
+  searchAllOfType,
+  type SearchableResource,
+  type SearchableResourceType,
+  searchByIdentifiers,
+  type SearchFailure,
+  type SearchParamsByType,
+} from './search-by-type.ts'
+export {
+  type BatchSearch,
+  type BatchSearchFailure,
+  BatchSearchRejected,
+  type BatchSubmitFailure,
+  searchInBatch,
+} from './search-in-batch.ts'
 export {
   FhirR4ResourcesHttpApiClient,
   type FhirR4ResourcesHttpApiClientShape,

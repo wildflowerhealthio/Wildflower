@@ -1,0 +1,177 @@
+import { UrlParams } from '@effect/platform'
+import { Array, Data, Effect, type Either, type ParseResult, Schema } from 'effect'
+
+import * as Bundle from '../data-types/resources/bundle.ts'
+import { type FhirResourceWithId, StoredResourceSchema } from '../resources/index.ts'
+import { batchOfGets } from './batch-of-gets.ts'
+import {
+  FhirR4ResourcesHttpApiClient,
+  type FhirR4ResourcesClientShape,
+} from './fhir-r4-resources-http-api-client.ts'
+import { NO_RESPONSE_STATUS, statusOk } from './persist-batch-bundle.ts'
+import {
+  type SearchableResourceType,
+  type SearchParamsByType,
+  searchesByType,
+} from './search-by-type.ts'
+import {
+  matchesIn,
+  type MatchWithoutResource,
+  NEXT_RELATION,
+  type SearchPages,
+} from './search-pages.ts'
+
+/**
+ * Several searches in one round trip: a FHIR `POST /` `batch` Bundle whose
+ * entries are each a `GET <Type>?<query>`, every entry answering with its own
+ * searchset.
+ *
+ * @packageDocumentation
+ */
+
+/**
+ * One search of a batch: a searchable resource type and its search parameters.
+ *
+ * @remarks
+ * The parameters go on the wire as written, URL-encoded but not FHIR-escaped,
+ * so a `,` in a value means "or". A literal `string` value (a `name`,
+ * `family` or `given`) goes through `StringSearchParam.escape` first, a
+ * literal token through `TokenSearchParam`.
+ */
+type BatchSearch = {
+  readonly [ResourceType in SearchableResourceType]: {
+    readonly resourceType: ResourceType
+    readonly urlParams: SearchParamsByType[ResourceType]
+  }
+}[SearchableResourceType]
+
+/**
+ * A search of a batch the server answered with a non-2xx status, or did not
+ * answer at all ({@link NO_RESPONSE_STATUS}, when the response bundle holds no
+ * entry for it): not "no match", since nothing says what it would have found.
+ */
+class BatchSearchRejected extends Data.TaggedError('BatchSearchRejected')<{
+  /** The resource type the search was for. */
+  readonly resourceType: SearchableResourceType
+  /** The entry's echoed status, `"NNN Text"`, or {@link NO_RESPONSE_STATUS}. */
+  readonly status: string
+  /** The OperationOutcome the server gave for the entry, when it gave one. */
+  readonly outcome: Bundle.OperationOutcomeType | null
+}> {}
+
+/**
+ * What one search of a batch can fail with: the server rejected it
+ * ({@link BatchSearchRejected}), its answer is not a searchset of stored
+ * resources (a `ParseError`), or a match carries no resource
+ * ({@link MatchWithoutResource}).
+ */
+type BatchSearchFailure = BatchSearchRejected | ParseResult.ParseError | MatchWithoutResource
+
+/** What submitting the batch can fail with: the typed client's own failures for `POST /`. */
+type BatchSubmitFailure = Effect.Effect.Error<
+  ReturnType<FhirR4ResourcesClientShape['Bundle']['Submit']>
+>
+
+/**
+ * A searchset, its entries' resources not yet decoded: what a search entry's
+ * `resource` holds.
+ *
+ * @remarks
+ * Decoded here rather than by the endpoint, whose entry `resource` is
+ * `Schema.Any` (see `http-api-definition/bundle.ts`). The entries' resources
+ * stay unknown until `matchesIn` has dropped the `outcome` entries, whose
+ * OperationOutcome is no stored resource; each match is then decoded by
+ * {@link StoredResourceSchema}.
+ */
+const SearchsetSchema = Bundle.Schema(Schema.Unknown)
+
+/**
+ * `search` as a batch entry's `request.url`: `<Type>?<query>`, the query its
+ * search parameters as the typed client encodes them, URL-encoded.
+ */
+const searchUrlOf = <ResourceType extends SearchableResourceType>(search: {
+  readonly resourceType: ResourceType
+  readonly urlParams: SearchParamsByType[ResourceType]
+}): Effect.Effect<string, ParseResult.ParseError> =>
+  Effect.map(
+    Schema.encode(searchesByType[search.resourceType].searchParams)(search.urlParams),
+    (encoded) => `${search.resourceType}?${UrlParams.toString(UrlParams.fromInput(encoded))}`
+  )
+
+/** One entry of a batch-response: a search's answer. */
+type ResponseEntry = Bundle.BundleValue<unknown>['entry'][number]
+
+/**
+ * The stored resources of `resourceType` a search's answer matched: its
+ * entry's searchset, when the entry's status is a 2xx, its matches read by
+ * `matchesIn` and each decoded as a stored resource, and whether the
+ * searchset carries a `next` link, so continues past this first page.
+ */
+const matchesOfEntry = (
+  resourceType: SearchableResourceType,
+  entry: ResponseEntry | undefined
+): Effect.Effect<SearchPages<FhirResourceWithId>, BatchSearchFailure> => {
+  if (entry === undefined || entry.response === null) {
+    return Effect.fail(
+      new BatchSearchRejected({ resourceType, status: NO_RESPONSE_STATUS, outcome: null })
+    )
+  }
+  const { status, outcome } = entry.response
+  if (!statusOk(status)) {
+    return Effect.fail(new BatchSearchRejected({ resourceType, status, outcome: outcome ?? null }))
+  }
+  return Effect.gen(function* () {
+    const searchset = yield* Schema.decodeUnknown(SearchsetSchema)(entry.resource)
+    const matches = yield* Effect.flatMap(
+      matchesIn(resourceType, searchset),
+      Effect.forEach((match) => Schema.decodeUnknown(StoredResourceSchema)(match))
+    )
+    const truncated = searchset.link.some(({ relation }) => relation === NEXT_RELATION)
+    return { matches, truncated }
+  })
+}
+
+/**
+ * Run `searches` as one `POST /` `batch` Bundle, one `GET <Type>?<query>`
+ * entry each, and give each search's matches, or its failure, at its position.
+ *
+ * @remarks
+ * Each search answers with its first page, sized by its own `_count`: the
+ * `next` link of a searchset is not followed, but says the answer is cut off
+ * (`truncated`), so a caller can tell a first page from a complete answer.
+ * A search the server rejects fails as {@link BatchSearchRejected} at its
+ * position while the others keep their matches; a search whose parameters do
+ * not encode, or a failure to submit the batch at all, fails the whole call.
+ * Nothing is submitted for no searches.
+ *
+ * Values are sent as written, so a literal string value is escaped by
+ * `StringSearchParam.escape` before it is put in a {@link BatchSearch}.
+ *
+ * @param searches - The searches, in the order their answers are given
+ * @returns Each search's matches and whether its searchset continued past
+ *   them, or its {@link BatchSearchFailure}, in the order of `searches`
+ */
+const searchInBatch = (
+  searches: readonly BatchSearch[]
+): Effect.Effect<
+  readonly Either.Either<SearchPages<FhirResourceWithId>, BatchSearchFailure>[],
+  BatchSubmitFailure | ParseResult.ParseError,
+  FhirR4ResourcesHttpApiClient
+> =>
+  Array.match(searches, {
+    onEmpty: () => Effect.succeed([]),
+    onNonEmpty: (submitted) =>
+      Effect.gen(function* () {
+        const client = yield* FhirR4ResourcesHttpApiClient
+        const urls = yield* Effect.forEach(submitted, searchUrlOf)
+        const response = yield* client.Bundle.Submit({ payload: batchOfGets(urls) })
+        // FHIR R4 § 3.2.5.2: a batch-response holds one entry per request
+        // entry, in the same order.
+        return yield* Effect.forEach(submitted, (search, index) =>
+          Effect.either(matchesOfEntry(search.resourceType, response.entry[index]))
+        )
+      }),
+  })
+
+export { BatchSearchRejected, searchInBatch }
+export type { BatchSearch, BatchSearchFailure, BatchSubmitFailure }
