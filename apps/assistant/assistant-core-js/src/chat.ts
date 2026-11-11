@@ -9,6 +9,7 @@ import type {
 import type { Error as PlatformError, KeyValueStore } from '@effect/platform'
 import { Array, Context, Effect, Layer, Match, Option, Predicate, Schema } from 'effect'
 
+import * as MessageParams from './anthropic-ai/message-params.ts'
 import * as BrowserStorage from './browser-storage.ts'
 import * as ChatPatient from './chat-patient.ts'
 import * as Style from './style.ts'
@@ -34,55 +35,6 @@ import * as Style from './style.ts'
  */
 
 /**
- * Whether `value` has the outline of an `@anthropic-ai/sdk` message param
- * with `role`: string content, or an array of objects each naming its
- * block `type`.
- */
-const isMessageParamWithRole =
-  (role: BetaMessageParam['role']) =>
-  (value: unknown): boolean =>
-    Predicate.isRecord(value) &&
-    value['role'] === role &&
-    (Predicate.isString(value['content']) ||
-      (globalThis.Array.isArray(value['content']) &&
-        value['content'].every(
-          (block: unknown) => Predicate.isRecord(block) && Predicate.isString(block['type'])
-        )))
-
-/**
- * A user message, as the SDK types it.
- *
- * @remarks
- * Checked only for its outline (role, and content that is a string or typed
- * blocks): the blocks are the SDK's dozens of types, every one written by
- * this app from what it sent or what the SDK returned, so the SDK's own
- * types are asserted rather than mirrored in schemas that would drift.
- */
-const UserMessageSchema = Schema.declare(
-  (value: unknown): value is BetaUserMessageParam => isMessageParamWithRole('user')(value),
-  { identifier: 'BetaUserMessageParam' }
-)
-
-/** An assistant message, as the SDK types it; checked only for its outline, as {@link UserMessageSchema}. */
-const AssistantMessageSchema = Schema.declare(
-  (value: unknown): value is BetaAssistantMessageParam =>
-    isMessageParamWithRole('assistant')(value),
-  { identifier: 'BetaAssistantMessageParam' }
-)
-
-/**
- * A tool result, as the SDK types it; checked only for its outline (its
- * block type and the id of the call it answers), as {@link UserMessageSchema}.
- */
-const ToolResultSchema = Schema.declare(
-  (value: unknown): value is BetaToolResultBlockParam =>
-    Predicate.isRecord(value) &&
-    value['type'] === 'tool_result' &&
-    Predicate.isString(value['tool_use_id']),
-  { identifier: 'BetaToolResultBlockParam' }
-)
-
-/**
  * The stop reasons a reply that ends a turn is kept with: `end_turn`,
  * finished; and `max_tokens`, cut off at the output limit with what came
  * before kept.
@@ -90,13 +42,13 @@ const ToolResultSchema = Schema.declare(
 const ReplyStopReason = Schema.Literal('end_turn', 'max_tokens')
 
 /** Something the person asked. */
-const QuestionEntry = Schema.TaggedStruct('question', { message: UserMessageSchema })
+const QuestionEntry = Schema.TaggedStruct('question', { message: MessageParams.UserMessageSchema })
 
 /** Claude's answer, from the model `modelId` names, as returned. */
 const ReplyEntry = Schema.TaggedStruct('reply', {
   modelId: Schema.String,
   stopReason: ReplyStopReason,
-  message: AssistantMessageSchema,
+  message: MessageParams.AssistantMessageSchema,
 })
 
 /**
@@ -107,8 +59,8 @@ const ReplyEntry = Schema.TaggedStruct('reply', {
  */
 const ToolRoundEntry = Schema.TaggedStruct('tool-round', {
   modelId: Schema.String,
-  message: AssistantMessageSchema,
-  results: Schema.NonEmptyArray(ToolResultSchema),
+  message: MessageParams.AssistantMessageSchema,
+  results: Schema.NonEmptyArray(MessageParams.ToolResultSchema),
 })
 
 /** A reply that called tools, and the results it was sent back. */

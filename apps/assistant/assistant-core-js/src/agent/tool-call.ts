@@ -4,8 +4,8 @@ import type {
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { Match, Option, Predicate, Schema } from 'effect'
 
-import { countOf } from './internal/count-of.ts'
-import * as Tools from './tools.ts'
+import { countOf } from '../internal/count-of.ts'
+import * as Tools from './tools/index.ts'
 
 /**
  * A tool call kept in a chat, in words for the transcript's card: one line

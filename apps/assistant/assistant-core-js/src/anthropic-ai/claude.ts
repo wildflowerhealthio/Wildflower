@@ -12,7 +12,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { Context, Layer, Match, Redacted, Schema } from 'effect'
 
-import type * as ApiKey from './api-key.ts'
+import type * as ApiKey from '../api-key.ts'
 
 /**
  * One streamed reply: its events as they arrive, then the whole message.

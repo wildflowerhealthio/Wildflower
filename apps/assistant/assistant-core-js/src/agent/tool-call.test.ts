@@ -3,7 +3,7 @@ import { Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ToolCall from './tool-call.ts'
-import * as Tools from './tools.ts'
+import * as Tools from './tools/index.ts'
 
 const search: ToolCall.Call = {
   name: 'search_records',

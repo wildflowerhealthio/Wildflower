@@ -1,7 +1,7 @@
 import type { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Either, Match, Option, Schema } from 'effect'
 
-import * as SearchParam from './search-param.ts'
+import * as SearchParam from '../search-param.ts'
 
 /**
  * How a chat about one patient keeps its reads to that patient: the search

@@ -10,7 +10,7 @@ import Anthropic, {
 import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import * as ApiKey from './api-key.ts'
+import * as ApiKey from '../api-key.ts'
 import { Claude, ClaudeRequestFailed } from './claude.ts'
 
 const headers = new Headers()

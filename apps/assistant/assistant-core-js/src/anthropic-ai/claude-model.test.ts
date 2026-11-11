@@ -4,10 +4,10 @@ import { DateTime, Effect, Either, Layer, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type * as BrowserStorage from './browser-storage.ts'
+import type * as BrowserStorage from '../browser-storage.ts'
+import { memoryStorage, modelInfoOf, refusingStorage, stubClaude } from '../test-helpers.ts'
 import * as ClaudeModel from './claude-model.ts'
 import { ClaudeRequestFailed } from './claude.ts'
-import { memoryStorage, modelInfoOf, refusingStorage, stubClaude } from './test-helpers.ts'
 
 const RUNS = numRunsFor({ base: 100 })
 

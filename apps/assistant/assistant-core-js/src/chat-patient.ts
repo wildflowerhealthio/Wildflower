@@ -1,4 +1,4 @@
-import { HumanName, type WithMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { WithMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Match, Option } from 'effect'
 
@@ -8,7 +8,7 @@ import { Match, Option } from 'effect'
  *
  * @remarks
  * A namespace module: `ChatPatient.Type`, `ChatPatient.keyOf`,
- * `ChatPatient.patientIdIfOne`, `ChatPatient.paragraphOf`. The kinds are
+ * `ChatPatient.patientIdIfOne`. The kinds are
  * `smart-app-react`'s `PatientChoice`'s once the chosen patient's record has
  * been read: the chat carries the FHIR `Patient` and reads its name and
  * birth date from it.
@@ -43,35 +43,5 @@ const patientIdIfOne = (chatPatient: Type): Option.Option<string> =>
     Match.exhaustive
   )
 
-/** `patient` in words: their display name and birth date, or that the record gives none. */
-const nameAndBirthOf = (patient: Patient.Type): string => {
-  const named = Option.fromNullable(HumanName.displayName(patient.name)).pipe(
-    Option.getOrElse(() => 'whose record gives no name')
-  )
-  const born = Option.fromNullable(patient.birthDate).pipe(
-    Option.match({
-      onSome: (birthDate) => `born ${birthDate}`,
-      onNone: () => 'whose record gives no birth date',
-    })
-  )
-  return `${named}, ${born}`
-}
-
-/** Whose record the chat is about, in words, for the system prompt. */
-const paragraphOf = (chatPatient: Type): string =>
-  Match.value(chatPatient).pipe(
-    Match.when(
-      { kind: 'patient' },
-      ({ patient }) =>
-        `This chat is about one patient, ${nameAndBirthOf(patient)}. Your tools keep every search, read and write to this patient's records.`
-    ),
-    Match.when(
-      { kind: 'all-patients' },
-      () =>
-        'This chat is not about one patient: the person chose "All patients", every patient on the server.'
-    ),
-    Match.exhaustive
-  )
-
-export { keyOf, paragraphOf, patientIdIfOne }
+export { keyOf, patientIdIfOne }
 export type { Type }

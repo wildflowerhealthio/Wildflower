@@ -20,9 +20,9 @@ import type { ResourceWrite } from '@wildflowerhealthio/fhir-r4/clients'
 import { hasId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, Layer, Option, Schema } from 'effect'
 
+import { Claude, type ClaudeClient, type ClaudeMessageStream } from './anthropic-ai/claude.ts'
 import * as BrowserStorage from './browser-storage.ts'
 import type * as ChatPatient from './chat-patient.ts'
-import { Claude, type ClaudeClient, type ClaudeMessageStream } from './claude.ts'
 import { FhirReadFailed, FhirRecords, type FhirWriteFailed } from './fhir-records.ts'
 
 /** In-memory `localStorage` and `sessionStorage`, and the layer providing them. */

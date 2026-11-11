@@ -6,7 +6,7 @@
  * - {@link BrowserStorage} — the browser's `localStorage` and `sessionStorage`, as key-value stores.
  * - {@link ApiKey} — the person's Claude API key, kept in `localStorage`.
  * - {@link ClaudeModel} — the models the key can use, and the one chosen.
- * - {@link Style} — the two chat styles and the system prompt each builds.
+ * - {@link Style} — the two chat styles.
  * - {@link ChatPatient} — whose record a chat is about.
  * - {@link Chat} — a chat's entries, its codec and its `sessionStorage` place.
  * - {@link RecordAccess} — what the grant lets the assistant do with the record.
@@ -29,16 +29,16 @@ export * as ApiKey from './api-key.ts'
 export * as BrowserStorage from './browser-storage.ts'
 export * as Chat from './chat.ts'
 export * as ChatPatient from './chat-patient.ts'
-export { Claude, ClaudeRequestFailed } from './claude.ts'
-export type { ClaudeClient, ClaudeMessageStream } from './claude.ts'
-export * as ClaudeModel from './claude-model.ts'
+export { Claude, ClaudeRequestFailed } from './anthropic-ai/claude.ts'
+export type { ClaudeClient, ClaudeMessageStream } from './anthropic-ai/claude.ts'
+export * as ClaudeModel from './anthropic-ai/claude-model.ts'
 export { FhirReadFailed, FhirRecords, FhirWriteFailed } from './fhir-records.ts'
 export type { FhirReadFailure } from './fhir-records.ts'
-export * as PatientPin from './patient-pin.ts'
-export * as RecordAccess from './record-access.ts'
+export * as PatientPin from './agent/patient-pin.ts'
+export * as RecordAccess from './agent/record-access.ts'
 export * as SearchParam from './search-param.ts'
 export * as Style from './style.ts'
-export * as ToolCall from './tool-call.ts'
-export * as Tools from './tools.ts'
-export * as Turn from './turn.ts'
+export * as ToolCall from './agent/tool-call.ts'
+export * as Tools from './agent/tools/index.ts'
+export * as Turn from './agent/turn.ts'
 export * as WriteProposal from './write-proposal.ts'

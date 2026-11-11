@@ -11,12 +11,10 @@ import type { Array } from 'effect'
 import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Option } from 'effect'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import type * as ChatPatient from './chat-patient.ts'
-import * as Chat from './chat.ts'
-import type * as ClaudeModel from './claude-model.ts'
-import { ClaudeRequestFailed } from './claude.ts'
-import * as RecordAccess from './record-access.ts'
-import * as Style from './style.ts'
+import type * as ClaudeModel from '../anthropic-ai/claude-model.ts'
+import { ClaudeRequestFailed } from '../anthropic-ai/claude.ts'
+import type * as ChatPatient from '../chat-patient.ts'
+import * as Chat from '../chat.ts'
 import {
   failingReply,
   type HeldReply,
@@ -34,10 +32,12 @@ import {
   thinkingBlock,
   thinkingDelta,
   toolUseBlock,
-} from './test-helpers.ts'
-import * as Tools from './tools.ts'
+} from '../test-helpers.ts'
+import type * as WriteProposal from '../write-proposal.ts'
+import * as SystemPrompt from './prompts/system-prompt.ts'
+import * as RecordAccess from './record-access.ts'
+import * as Tools from './tools/index.ts'
 import * as Turn from './turn.ts'
-import type * as WriteProposal from './write-proposal.ts'
 
 const sonnet: ClaudeModel.Type = {
   id: 'claude-sonnet-5',
@@ -99,7 +99,7 @@ describe('Turn.paramsOf', () => {
     expect(Turn.paramsOf(askedRequest, today)).toEqual({
       model: 'claude-sonnet-5',
       max_tokens: 64000,
-      system: Style.systemPromptOf({ style: 'telehealth', patient, today, recordAccess }),
+      system: SystemPrompt.of({ style: 'telehealth', patient, today, recordAccess }),
       messages: [{ role: 'user', content: 'How are my labs?' }],
       tools: Tools.make({ access: recordAccess, patient }).definitions,
       cache_control: { type: 'ephemeral' },
@@ -254,7 +254,7 @@ describe('Turn.run', () => {
     await runTurn(stub, { ...askedRequest, chat: academic }).outcome
 
     expect(stub.requests[0]?.messages).toEqual(Chat.requestMessagesOf(academic))
-    expect(stub.requests[0]?.system).toContain(Style.voiceOf('academic'))
+    expect(stub.requests[0]?.system).toContain(SystemPrompt.voiceOf('academic'))
     expect(stub.requests[0]?.system).toContain("Today's date is")
   })
 })

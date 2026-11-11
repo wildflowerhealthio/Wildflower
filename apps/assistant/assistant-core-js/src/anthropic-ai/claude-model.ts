@@ -1,7 +1,7 @@
 import type { Error as PlatformError, KeyValueStore } from '@effect/platform'
 import { Array, Context, DateTime, Effect, Layer, Option, Order, ParseResult, Schema } from 'effect'
 
-import * as BrowserStorage from './browser-storage.ts'
+import * as BrowserStorage from '../browser-storage.ts'
 import { Claude, ClaudeRequestFailed } from './claude.ts'
 
 /**

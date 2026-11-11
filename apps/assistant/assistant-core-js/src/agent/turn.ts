@@ -7,15 +7,15 @@ import type {
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { Array, DateTime, Effect, Either, Match, Option, Schema } from 'effect'
 
-import type * as ChatPatient from './chat-patient.ts'
-import * as Chat from './chat.ts'
-import type * as ClaudeModel from './claude-model.ts'
-import { Claude, ClaudeRequestFailed } from './claude.ts'
-import type { FhirRecords } from './fhir-records.ts'
+import type * as ClaudeModel from '../anthropic-ai/claude-model.ts'
+import { Claude, ClaudeRequestFailed } from '../anthropic-ai/claude.ts'
+import type * as ChatPatient from '../chat-patient.ts'
+import * as Chat from '../chat.ts'
+import type { FhirRecords } from '../fhir-records.ts'
+import type * as WriteProposal from '../write-proposal.ts'
+import * as SystemPrompt from './prompts/system-prompt.ts'
 import type * as RecordAccess from './record-access.ts'
-import * as Style from './style.ts'
-import * as Tools from './tools.ts'
-import type * as WriteProposal from './write-proposal.ts'
+import * as Tools from './tools/index.ts'
 
 /**
  * One turn of a chat: the chat's messages sent to Claude, each reply
@@ -108,7 +108,7 @@ const requestParamsOf = (
 ): BetaMessageStreamParams => ({
   model: model.id,
   max_tokens: Math.min(MAX_TOKENS, model.maxTokens ?? MAX_TOKENS),
-  system: Style.systemPromptOf({ style: chat.style, patient, today, recordAccess }),
+  system: SystemPrompt.of({ style: chat.style, patient, today, recordAccess }),
   messages: Chat.requestMessagesOf(chat),
   tools: [...tools.definitions],
   cache_control: { type: 'ephemeral' },
