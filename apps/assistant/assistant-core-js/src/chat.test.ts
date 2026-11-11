@@ -58,9 +58,9 @@ const toolResultArb = fc.record({
 })
 
 const entryArb: fc.Arbitrary<Chat.Entry> = fc.oneof(
-  fc.string().map(Chat.questionOf),
+  fc.string().map(Chat.userEntryOf),
   fc.record({
-    _tag: fc.constant('reply' as const),
+    _tag: fc.constant('agent' as const),
     modelId: modelIdArb,
     stopReason: fc.constantFrom('end_turn' as const, 'max_tokens' as const),
     message: assistantMessageArb,
@@ -98,7 +98,7 @@ describe('Chat codec', () => {
   it('should refuse a stored message whose role does not match its entry', () => {
     const decoded = Schema.decodeUnknownEither(Chat.Schema)({
       style: 'telehealth',
-      entries: [{ _tag: 'question', message: { role: 'assistant', content: 'hi' } }],
+      entries: [{ _tag: 'user', message: { role: 'assistant', content: 'hi' } }],
     })
 
     expect(decoded._tag).toBe('Left')
@@ -119,17 +119,17 @@ describe('Chat.append', () => {
 })
 
 describe('Chat.requestMessagesOf', () => {
-  it('should send questions and replies in order, leaving out a declined question with its refusal', () => {
+  it('should send user and agent entries in order, leaving out a declined user entry with its refusal', () => {
     const answer = { role: 'assistant' as const, content: [textBlock('Hello')] }
     const chat: Chat.Type = {
       style: 'telehealth',
       entries: [
-        Chat.questionOf('hi'),
-        { _tag: 'reply', modelId: 'claude-sonnet-5', stopReason: 'end_turn', message: answer },
-        Chat.questionOf('declined question'),
+        Chat.userEntryOf('hi'),
+        { _tag: 'agent', modelId: 'claude-sonnet-5', stopReason: 'end_turn', message: answer },
+        Chat.userEntryOf('declined question'),
         { _tag: 'refusal', modelId: 'claude-sonnet-5' },
-        Chat.questionOf('stopped question'),
-        Chat.questionOf('next question'),
+        Chat.userEntryOf('stopped question'),
+        Chat.userEntryOf('next question'),
       ],
     }
 
@@ -149,7 +149,7 @@ describe('Chat.requestMessagesOf', () => {
       trigger: { type: 'refusal', category: 'cyber' },
     }
     const reply: Chat.Entry = {
-      _tag: 'reply',
+      _tag: 'agent',
       modelId: 'claude-opus-5',
       stopReason: 'end_turn',
       message: {
@@ -165,7 +165,7 @@ describe('Chat.requestMessagesOf', () => {
     }
 
     expect(
-      Chat.requestMessagesOf({ style: 'telehealth', entries: [Chat.questionOf('q'), reply] })
+      Chat.requestMessagesOf({ style: 'telehealth', entries: [Chat.userEntryOf('q'), reply] })
     ).toEqual([
       { role: 'user', content: 'q' },
       {
@@ -189,8 +189,8 @@ describe('Chat.requestMessagesOf', () => {
           const chat: Chat.Type = {
             style: 'academic',
             entries: [
-              Chat.questionOf('q'),
-              { _tag: 'reply', modelId: 'claude-opus-5', stopReason: 'end_turn', message },
+              Chat.userEntryOf('q'),
+              { _tag: 'agent', modelId: 'claude-opus-5', stopReason: 'end_turn', message },
             ],
           }
 
@@ -222,14 +222,14 @@ describe('Chat tool rounds', () => {
 
   it('should send a tool round as its reply then its results, in order', () => {
     const answer: Chat.Entry = {
-      _tag: 'reply',
+      _tag: 'agent',
       modelId: 'claude-sonnet-5',
       stopReason: 'end_turn',
       message: { role: 'assistant', content: [textBlock('Nothing found.')] },
     }
     const chat: Chat.Type = {
       style: 'telehealth',
-      entries: [Chat.questionOf('labs?'), toolRound, answer],
+      entries: [Chat.userEntryOf('labs?'), toolRound, answer],
     }
 
     expect(Chat.requestMessagesOf(chat)).toEqual([
@@ -240,15 +240,15 @@ describe('Chat tool rounds', () => {
     ])
   })
 
-  it('should leave out a declined question with its tool rounds, keeping what came before', () => {
+  it('should leave out a declined user entry with its tool rounds, keeping what came before', () => {
     const chat: Chat.Type = {
       style: 'telehealth',
       entries: [
-        Chat.questionOf('first'),
-        Chat.questionOf('declined'),
+        Chat.userEntryOf('first'),
+        Chat.userEntryOf('declined'),
         toolRound,
         { _tag: 'refusal', modelId: 'claude-sonnet-5' },
-        Chat.questionOf('next'),
+        Chat.userEntryOf('next'),
       ],
     }
 

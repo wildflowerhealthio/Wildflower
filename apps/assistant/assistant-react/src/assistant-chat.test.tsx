@@ -132,7 +132,7 @@ describe('AssistantChat turns', () => {
     expect(within(thinking!).getByText('Checking the request.')).toBeDefined()
   })
 
-  it('should abort the stream on Stop and keep the question with no reply', async () => {
+  it('should abort the stream on Stop and keep the user entry with no reply', async () => {
     const user = userEvent.setup()
     const reply = heldReply()
     const { storage } = renderChat({ keptKey, replies: [reply] })
@@ -148,7 +148,7 @@ describe('AssistantChat turns', () => {
     expect(screen.queryByText('Partial answer')).toBeNull()
     expect(screen.getByRole('button', { name: 'Send' })).toBeDefined()
     expect(keptChatIn(storage)).toEqual(
-      Option.some({ style: 'telehealth', entries: [Chat.questionOf('Tell me everything')] })
+      Option.some({ style: 'telehealth', entries: [Chat.userEntryOf('Tell me everything')] })
     )
   })
 
@@ -221,7 +221,7 @@ describe('AssistantChat turns', () => {
 
   it('should pick up the chat kept in the tab', () => {
     const storage = memoryStorage()
-    const kept = Chat.append(Chat.start('academic'), Chat.questionOf('Kept question'))
+    const kept = Chat.append(Chat.start('academic'), Chat.userEntryOf('Kept question'))
     keepChatIn(storage, kept)
 
     renderChat({ keptKey, storage })
@@ -322,7 +322,7 @@ describe('AssistantChat tools', () => {
     expect(fhir.urls).toEqual(['https://fhir.example/Observation?code=4548-4&patient=p1&_count=20'])
     expect(claude.requests[1]?.tools).toEqual(claude.requests[0]?.tools)
     const kept = Option.getOrThrow(keptChatIn(storage))
-    expect(kept.entries.map(({ _tag }) => _tag)).toEqual(['question', 'tool-round', 'reply'])
+    expect(kept.entries.map(({ _tag }) => _tag)).toEqual(['user', 'tool-round', 'agent'])
   })
 
   it('should offer Claude no tools when the grant reaches no records', async () => {
@@ -389,7 +389,7 @@ describe('AssistantChat writes', () => {
     ).toBeDefined()
     expect(screen.getByLabelText('Message')).toHaveProperty('disabled', false)
     const kept = Option.getOrThrow(keptChatIn(storage))
-    expect(kept.entries.map(({ _tag }) => _tag)).toEqual(['question', 'tool-round', 'reply'])
+    expect(kept.entries.map(({ _tag }) => _tag)).toEqual(['user', 'tool-round', 'agent'])
   })
 
   it('should take the waiting line away and free the message box once every change is decided, while it saves', async () => {
@@ -456,7 +456,7 @@ describe('AssistantChat writes', () => {
     })
   })
 
-  it('should drop the waiting change on Stop, writing nothing and keeping the question', async () => {
+  it('should drop the waiting change on Stop, writing nothing and keeping the user entry', async () => {
     const user = userEvent.setup()
     const { fhir, storage } = renderChat({
       keptKey,
@@ -473,7 +473,7 @@ describe('AssistantChat writes', () => {
     expect(screen.getByLabelText('Message')).toHaveProperty('disabled', false)
     expect(sentTo(fhir)).toEqual([])
     expect(keptChatIn(storage)).toEqual(
-      Option.some({ style: 'telehealth', entries: [Chat.questionOf('Record my weight')] })
+      Option.some({ style: 'telehealth', entries: [Chat.userEntryOf('Record my weight')] })
     )
   })
 })

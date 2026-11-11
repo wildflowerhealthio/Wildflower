@@ -56,7 +56,7 @@ interface ChatControls {
   readonly confirmAcademic: () => void
   readonly cancelAcademic: () => void
   /** Ask `text` on `model` with `apiKey`, streaming the reply in. */
-  readonly send: (question: {
+  readonly send: (message: {
     readonly text: string
     readonly model: ClaudeModel.Type
     readonly apiKey: ApiKey.Type
@@ -66,7 +66,7 @@ interface ChatControls {
    * round is decided, the turn goes on. Nothing once it is decided.
    */
   readonly decideWrite: (callId: string, decision: WriteProposal.Decision) => void
-  /** Abort the turn: the reply streaming in, or the wait for decisions. The question stays, with no reply. */
+  /** Abort the turn: the reply streaming in, or the wait for decisions. The person's message stays, with no reply. */
   readonly stop: () => void
   /** Drop this chat and start another in the default style. */
   readonly newChat: () => void
@@ -81,11 +81,11 @@ interface ChatRecords {
 /** What the live region says once a turn has kept `entry`. */
 const announcementOf = (entry: Chat.Entry): string =>
   Match.value(entry).pipe(
-    Match.tag('reply', ({ stopReason }) =>
+    Match.tag('agent', ({ stopReason }) =>
       stopReason === 'max_tokens' ? 'Claude replied, but the reply was cut off.' : 'Claude replied.'
     ),
     Match.tag('refusal', () => 'Claude declined to answer this.'),
-    Match.tag('question', () => ''),
+    Match.tag('user', () => ''),
     Match.tag('tool-round', () => ''),
     Match.exhaustive
   )
@@ -194,7 +194,7 @@ const useChat = (
   const send = useCallback<ChatControls['send']>(
     ({ text, model, apiKey }) => {
       if (turnRunning) return
-      const asked = Chat.append(chat, Chat.questionOf(text))
+      const asked = Chat.append(chat, Chat.userEntryOf(text))
       setChat(asked)
       keep(asked)
       setTurnFailure(Option.none())

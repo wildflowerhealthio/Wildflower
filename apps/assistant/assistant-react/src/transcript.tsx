@@ -16,7 +16,7 @@ import { WriteCard } from './write-card.tsx'
 import styles from './transcript.module.css'
 
 /** The text the person typed in `message`. */
-const questionTextOf = ({ content }: BetaUserMessageParam): string =>
+const userTextOf = ({ content }: BetaUserMessageParam): string =>
   typeof content === 'string'
     ? content
     : Array.filterMap(content, (block) =>
@@ -88,7 +88,7 @@ const ToolCallBlock = ({
  * round waits on the person, the write it proposes as a {@link WriteCard}),
  * nothing else.
  */
-const ReplyBlocks = ({
+const AgentMessageBlocks = ({
   message,
   toolResults,
   writes = Option.none(),
@@ -142,38 +142,39 @@ const TranscriptEntry = ({
   readonly answered: boolean
 }): JSX.Element | null =>
   Match.value(entry).pipe(
-    Match.tag('question', ({ message }) => (
-      <li className={styles['transcript__question']}>
-        <p className={cn('text-body-2', styles['transcript__question-text'])}>
-          {questionTextOf(message)}
-        </p>
+    Match.tag('user', ({ message }) => (
+      <li className={styles['transcript__user']}>
+        <p className={cn('text-body-2', styles['transcript__user-text'])}>{userTextOf(message)}</p>
         {answered ? null : <TranscriptNote>No reply to this message.</TranscriptNote>}
       </li>
     )),
-    Match.tag('reply', ({ message, stopReason }) => (
-      <li className={styles['transcript__reply']}>
-        <ReplyBlocks message={message} toolResults={NO_TOOL_RESULTS} />
+    Match.tag('agent', ({ message, stopReason }) => (
+      <li className={styles['transcript__agent']}>
+        <AgentMessageBlocks message={message} toolResults={NO_TOOL_RESULTS} />
         {stopReason === 'max_tokens' ? (
           <TranscriptNote>Claude reached its output limit and stopped partway.</TranscriptNote>
         ) : null}
       </li>
     )),
     Match.tag('tool-round', (round) => (
-      <li className={styles['transcript__reply']}>
-        <ReplyBlocks message={round.message} toolResults={Chat.toolResultsByCallIdOf(round)} />
+      <li className={styles['transcript__agent']}>
+        <AgentMessageBlocks
+          message={round.message}
+          toolResults={Chat.toolResultsByCallIdOf(round)}
+        />
       </li>
     )),
     Match.tag('refusal', () => (
-      <li className={styles['transcript__reply']}>
+      <li className={styles['transcript__agent']}>
         <TranscriptNote>Claude declined to answer this.</TranscriptNote>
       </li>
     )),
     Match.exhaustive
   )
 
-/** Whether the entry after `index` is Claude's (a reply, a tool round or a refusal) rather than another question or nothing. */
+/** Whether the entry after `index` is Claude's (a reply, a tool round or a refusal) rather than another user entry or nothing. */
 const isFollowedByClaudeAt = (entries: readonly Chat.Entry[], index: number): boolean =>
-  Option.fromNullable(entries[index + 1]).pipe(Option.exists((next) => next._tag !== 'question'))
+  Option.fromNullable(entries[index + 1]).pipe(Option.exists((next) => next._tag !== 'user'))
 
 /** Props for {@link Transcript}: the chat, the reply streaming in, the round waiting on the person, and any other `<ol>` prop. */
 interface TranscriptProps extends Omit<ComponentProps<'ol'>, 'children'> {
@@ -185,10 +186,10 @@ interface TranscriptProps extends Omit<ComponentProps<'ol'>, 'children'> {
 }
 
 /**
- * The chat so far: each question, each reply (thinking folded under
+ * The chat so far: each of the person's messages, each reply (thinking folded under
  * "Thinking", text as Markdown, tool calls as cards), each refusal, and the
  * reply streaming in, or the round waiting on the person, its proposed
- * writes as cards to approve or decline. A question nothing answered says so.
+ * writes as cards to approve or decline. A message nothing answered says so.
  *
  * @remarks
  * Entries are only ever appended, so an entry's position is its identity.
@@ -209,7 +210,7 @@ const Transcript = ({
           key={`entry-${String(index)}`}
           entry={entry}
           answered={
-            entry._tag !== 'question' ||
+            entry._tag !== 'user' ||
             isFollowedByClaudeAt(entries, index) ||
             (index === entries.length - 1 && turnRunning)
           }
@@ -217,7 +218,7 @@ const Transcript = ({
       ))}
       {streamingReply.pipe(
         Option.map(({ thinking, text }) => (
-          <li key="streaming" className={styles['transcript__reply']} aria-busy="true">
+          <li key="streaming" className={styles['transcript__agent']} aria-busy="true">
             {thinking === '' ? null : <ThinkingDisclosure thinking={thinking} />}
             {text === '' ? (
               <TranscriptNote>Claude is writing…</TranscriptNote>
@@ -230,8 +231,8 @@ const Transcript = ({
       )}
       {pendingWrites.pipe(
         Option.map((pending) => (
-          <li key="pending-writes" className={styles['transcript__reply']}>
-            <ReplyBlocks
+          <li key="pending-writes" className={styles['transcript__agent']}>
+            <AgentMessageBlocks
               message={pending.proposed.message}
               toolResults={pending.proposed.results}
               writes={Option.some({ pendingWrites: pending, onDecideWrite })}

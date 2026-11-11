@@ -1,5 +1,5 @@
 /*
- * The chat: the person's questions set off to the right in a raised bubble,
+ * The chat: the person's messages set off to the right in a raised bubble,
  * Claude's replies full width beneath them.
  */
 .transcript {
@@ -11,14 +11,14 @@
   list-style: none;
 }
 
-.transcript__question {
+.transcript__user {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: var(--space-2);
 }
 
-.transcript__question-text {
+.transcript__user-text {
   max-width: min(36rem, 85%);
   margin: 0;
   padding: var(--space-4) var(--space-5);
@@ -27,7 +27,7 @@
   white-space: pre-wrap;
 }
 
-.transcript__reply {
+.transcript__agent {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);

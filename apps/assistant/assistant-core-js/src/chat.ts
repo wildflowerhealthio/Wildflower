@@ -21,7 +21,7 @@ import * as Style from './style.ts'
  *
  * @remarks
  * A namespace module: `Chat.Schema`, `Chat.Type`, `Chat.Entry`,
- * `Chat.ToolRound`, `Chat.questionOf`, `Chat.start`, `Chat.append`,
+ * `Chat.ToolRound`, `Chat.userEntryOf`, `Chat.start`, `Chat.append`,
  * `Chat.requestMessagesOf`, `Chat.toolCallsOf`, `Chat.toolResultsByCallIdOf`,
  * and the storage: `Chat.Store`, `Chat.layer`, `Chat.storageKeyOf`,
  * `Chat.read`, `Chat.write`, `Chat.forget`.
@@ -35,19 +35,19 @@ import * as Style from './style.ts'
  */
 
 /**
- * The stop reasons a reply that ends a turn is kept with: `end_turn`,
+ * The stop reasons an agent entry, the reply that ends a turn, is kept with: `end_turn`,
  * finished; and `max_tokens`, cut off at the output limit with what came
  * before kept.
  */
-const ReplyStopReason = Schema.Literal('end_turn', 'max_tokens')
+const AgentStopReason = Schema.Literal('end_turn', 'max_tokens')
 
-/** Something the person asked. */
-const QuestionEntry = Schema.TaggedStruct('question', { message: MessageParams.UserMessageSchema })
+/** What the person wrote. */
+const UserEntry = Schema.TaggedStruct('user', { message: MessageParams.UserMessageSchema })
 
-/** Claude's answer, from the model `modelId` names, as returned. */
-const ReplyEntry = Schema.TaggedStruct('reply', {
+/** The agent's reply that ended a turn, from the model `modelId` names, as returned. */
+const AgentEntry = Schema.TaggedStruct('agent', {
   modelId: Schema.String,
-  stopReason: ReplyStopReason,
+  stopReason: AgentStopReason,
   message: MessageParams.AssistantMessageSchema,
 })
 
@@ -67,13 +67,13 @@ const ToolRoundEntry = Schema.TaggedStruct('tool-round', {
 type ToolRound = typeof ToolRoundEntry.Type
 
 /**
- * The model `modelId` names declined to answer the question before it
+ * The model `modelId` names declined to answer the user entry before it
  * (`stop_reason: "refusal"`). Whatever it had written is not kept.
  */
 const RefusalEntry = Schema.TaggedStruct('refusal', { modelId: Schema.String })
 
 /** One entry in a chat, in the order they happened. */
-const EntrySchema = Schema.Union(QuestionEntry, ReplyEntry, ToolRoundEntry, RefusalEntry)
+const EntrySchema = Schema.Union(UserEntry, AgentEntry, ToolRoundEntry, RefusalEntry)
 
 /** One entry in a chat. */
 type Entry = typeof EntrySchema.Type
@@ -96,9 +96,9 @@ const append = (chat: Type, entry: Entry): Type => ({
   entries: [...chat.entries, entry],
 })
 
-/** A question entry for `text`, as the person typed it. */
-const questionOf = (text: string): Entry => ({
-  _tag: 'question',
+/** A user entry for `text`, as the person typed it. */
+const userEntryOf = (text: string): Entry => ({
+  _tag: 'user',
   message: { role: 'user', content: text },
 })
 
@@ -150,22 +150,22 @@ const toolResultsByCallIdOf = (round: ToolRound): ReadonlyMap<string, BetaToolRe
   new Map(round.results.map((result) => [result.tool_use_id, result] as const))
 
 /**
- * Whether the entry at `index` belongs to a question Claude declined: the
- * refusal itself, or the question and its tool rounds, whose next question
- * or refusal is a refusal.
+ * Whether the entry at `index` belongs to a user entry Claude declined: the
+ * refusal itself, or the user entry and its tool rounds, whose next user
+ * entry or refusal is a refusal.
  */
 const isDeclinedAt = (entries: readonly Entry[], index: number): boolean =>
   entries[index]?._tag === 'refusal' ||
   Array.findFirst(
     entries.slice(index + 1),
-    (later) => later._tag === 'question' || later._tag === 'refusal'
+    (later) => later._tag === 'user' || later._tag === 'refusal'
   ).pipe(Option.exists((later) => later._tag === 'refusal'))
 
 /** The messages `entry` stands for in a request: a tool round is the reply that called and the user message of its results. */
 const messagesOfEntry = (entry: Entry): readonly BetaMessageParam[] =>
   Match.value(entry).pipe(
-    Match.tag('question', ({ message }) => [message]),
-    Match.tag('reply', ({ message }) => [withoutDeclinedParts(message)]),
+    Match.tag('user', ({ message }) => [message]),
+    Match.tag('agent', ({ message }) => [withoutDeclinedParts(message)]),
     Match.tag('tool-round', ({ message, results }) => [
       withoutDeclinedParts(message),
       { role: 'user', content: [...results] } satisfies BetaUserMessageParam,
@@ -175,11 +175,11 @@ const messagesOfEntry = (entry: Entry): readonly BetaMessageParam[] =>
   )
 
 /**
- * The messages a turn sends for `chat`: each question, each reply, and each
- * tool round as its reply then one user message of its results, in order. A
- * question Claude declined is left out with everything up to its refusal, so
- * the chat can go on from there; a question with no reply (the person
- * stopped it) stays, and the API reads it together with the next.
+ * The messages a turn sends for `chat`: each user entry, each agent entry,
+ * and each tool round as its reply then one user message of its results, in
+ * order. A user entry Claude declined is left out with everything up to its
+ * refusal, so the chat can go on from there; a user entry with no reply (the
+ * person stopped it) stays, and the API reads it together with the next.
  */
 const requestMessagesOf = (chat: Type): BetaMessageParam[] =>
   chat.entries.flatMap((entry, index) =>
@@ -254,7 +254,7 @@ export {
   EntrySchema,
   forget,
   layer,
-  questionOf,
+  userEntryOf,
   read,
   requestMessagesOf,
   start,

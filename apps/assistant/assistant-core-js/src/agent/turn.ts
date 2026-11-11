@@ -59,7 +59,7 @@ type TurnFailure = ClaudeRequestFailed | UnexpectedStop
 
 /** What a turn sends. */
 interface TurnRequest {
-  /** The chat so far, ending with the person's question. */
+  /** The chat so far, ending with the person's user entry. */
   readonly chat: Chat.Type
   /** The model this turn runs on. */
   readonly model: ClaudeModel.Type
@@ -172,8 +172,8 @@ const finalEntryOf = (
   model: ClaudeModel.Type,
   message: BetaMessage
 ): Effect.Effect<Chat.Entry, UnexpectedStop> => {
-  const replyStoppedFor = (stopReason: 'end_turn' | 'max_tokens'): Chat.Entry => ({
-    _tag: 'reply',
+  const agentEntryFor = (stopReason: 'end_turn' | 'max_tokens'): Chat.Entry => ({
+    _tag: 'agent',
     modelId: model.id,
     stopReason,
     message: { role: 'assistant', content: message.content },
@@ -182,9 +182,9 @@ const finalEntryOf = (
     Match.when('max_tokens', (stopReason) =>
       message.content.some((block) => block.type === 'tool_use')
         ? Effect.fail(UnexpectedStop.make({ stopReason }))
-        : Effect.succeed(replyStoppedFor(stopReason))
+        : Effect.succeed(agentEntryFor(stopReason))
     ),
-    Match.when('end_turn', (stopReason) => Effect.succeed(replyStoppedFor(stopReason))),
+    Match.when('end_turn', (stopReason) => Effect.succeed(agentEntryFor(stopReason))),
     Match.when('refusal', () => Effect.succeed<Chat.Entry>({ _tag: 'refusal', modelId: model.id })),
     Match.orElse((stopReason) => Effect.fail(UnexpectedStop.make({ stopReason })))
   )

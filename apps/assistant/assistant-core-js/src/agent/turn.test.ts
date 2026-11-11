@@ -49,7 +49,7 @@ const sonnet: ClaudeModel.Type = {
 }
 const patient: ChatPatient.Type = { kind: 'all-patients' }
 const recordAccess = RecordAccess.fromGrantedScopes([Scope.parse('system/*.cruds')])
-const asked = Chat.append(Chat.start('telehealth'), Chat.questionOf('How are my labs?'))
+const asked = Chat.append(Chat.start('telehealth'), Chat.userEntryOf('How are my labs?'))
 const utc = DateTime.layerCurrentZone(DateTime.zoneUnsafeMakeNamed('UTC'))
 const askedRequest: Turn.Request = { chat: asked, model: sonnet, patient, recordAccess }
 
@@ -136,7 +136,7 @@ describe('Turn.run', () => {
 
     expect(await outcome).toEqual(
       Exit.succeed({
-        _tag: 'reply',
+        _tag: 'agent',
         modelId: 'claude-sonnet-5',
         stopReason: 'end_turn',
         message: { role: 'assistant', content },
@@ -167,7 +167,7 @@ describe('Turn.run', () => {
     })
 
     expect(await runTurn(stub).outcome).toMatchObject(
-      Exit.succeed({ _tag: 'reply', stopReason: 'max_tokens' })
+      Exit.succeed({ _tag: 'agent', stopReason: 'max_tokens' })
     )
   })
 
@@ -244,7 +244,7 @@ describe('Turn.run', () => {
   })
 
   it("should send the chat's request messages under its style's system prompt", async () => {
-    const academic = Chat.append(Chat.start('academic'), Chat.questionOf('Case?'))
+    const academic = Chat.append(Chat.start('academic'), Chat.userEntryOf('Case?'))
     const stub = stubClaude({
       replies: [
         scriptedReply([], messageOf({ content: [textBlock('Case.')], stopReason: 'end_turn' })),
@@ -317,7 +317,7 @@ describe('Turn.run with tools', () => {
     }
     expect(await outcome).toEqual(
       Exit.succeed({
-        _tag: 'reply',
+        _tag: 'agent',
         modelId: 'claude-sonnet-5',
         stopReason: 'end_turn',
         message: { role: 'assistant', content: answerContent },

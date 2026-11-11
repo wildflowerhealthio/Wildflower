@@ -80,7 +80,7 @@ const chatHavingRead = (...records: readonly unknown[]): Chat.Type =>
           },
         ],
       }),
-    Chat.append(Chat.start('telehealth'), Chat.questionOf('Fix my record'))
+    Chat.append(Chat.start('telehealth'), Chat.userEntryOf('Fix my record'))
   )
 
 /** Propose the write `name` with `resource` against `server`, as call `call-1`, after `chat`. */

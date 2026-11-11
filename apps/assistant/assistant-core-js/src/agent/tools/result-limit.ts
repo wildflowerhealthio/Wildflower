@@ -11,7 +11,7 @@ import { refuse, type ToolCallRefused } from './refusal.ts'
 /**
  * The most characters of JSON a read's result may hold. A larger one (a
  * document with its file inline, say) would not fit a request, and a kept
- * round is sent again with every later question.
+ * round is sent again with every later message.
  */
 const MAX_RESULT_CHARACTERS = 400_000
 
