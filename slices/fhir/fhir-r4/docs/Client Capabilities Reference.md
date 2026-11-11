@@ -85,7 +85,7 @@ To fix: parameterise `Reference` by allowed target types and apply a regex on `r
 
 ## Patient search parameters (subset declared)
 
-Per FHIR R4 § Patient.search, the standard parameters include `_id`, `_lastUpdated`, `name`, `family`, `given`, `identifier`, `address`, `address-city/state/postalcode/country`, `telecom`, `email`, `phone`, `birthdate` (with date prefixes), `gender`, `active`, `deceased`, `general-practitioner`, `organization`, `link`. The `HttpApi` description (and therefore the typed client) declares only: `_count`, `_pageToken`, `identifier` (a `token`, passed through as written — built with `TokenSearchParam`, which escapes the reserved characters and comma-joins alternatives; the importer finds the stored Patient an identity names with `identifier=system|value`), `name`, `family`, `given` (FHIR `string` parameters, passed through as written so `a,b` matches either — a literal value is escaped with `StringSearchParam.escape` first: `name` matched against any part of the patient's names, `family` and `given` against that part alone), `gender`, `active`, `birthdate` (the shared `DateSearchParam` value — see "Date search parameter modelling" below). HFS may support more server-side, but the typed client can't express them.
+Per FHIR R4 § Patient.search, the standard parameters include `_id`, `_lastUpdated`, `name`, `family`, `given`, `identifier`, `address`, `address-city/state/postalcode/country`, `telecom`, `email`, `phone`, `birthdate` (with date prefixes), `gender`, `active`, `deceased`, `general-practitioner`, `organization`, `link`. The `HttpApi` description (and therefore the typed client) declares only: `_count`, `_cursor`, `identifier` (a `token`, passed through as written — built with `TokenSearchParam`, which escapes the reserved characters and comma-joins alternatives; the importer finds the stored Patient an identity names with `identifier=system|value`), `name`, `family`, `given` (FHIR `string` parameters, passed through as written so `a,b` matches either — a literal value is escaped with `StringSearchParam.escape` first: `name` matched against any part of the patient's names, `family` and `given` against that part alone), `gender`, `active`, `birthdate` (the shared `DateSearchParam` value — see "Date search parameter modelling" below). HFS may support more server-side, but the typed client can't express them.
 
 Implication: a client that looks a patient up by `_id` through the typed client cannot; it reads `Patient/{id}` instead (`GetById`). The string parameters take no modifier (`:exact`, `:contains`), since a key carries its parameter name only.
 
@@ -93,7 +93,7 @@ The SMART apps do not hit this gap, because they do not use the typed client: `f
 
 ## Observation search parameters (subset declared)
 
-Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`, `date` (with prefixes), `status`, `category`, `identifier`, `performer`, `based-on`, `part-of`, `value-quantity`, `value-string`, `value-concept`, `code-value-quantity`, `component-code`, `component-value-quantity`, etc. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `identifier`, `status`, `category`, `code`, `subject`, `patient`, `date`, `based-on`, `part-of`.
+Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`, `date` (with prefixes), `status`, `category`, `identifier`, `performer`, `based-on`, `part-of`, `value-quantity`, `value-string`, `value-concept`, `code-value-quantity`, `component-code`, `component-value-quantity`, etc. The `HttpApi` description declares: `_count`, `_cursor`, `_id`, `identifier`, `status`, `category`, `code`, `subject`, `patient`, `date`, `based-on`, `part-of`.
 
 `status` is narrowed to the `Observation.status` value set (`registered | preliminary | final | amended | corrected | cancelled | entered-in-error | unknown`). `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" below), matched by the server against `Observation.effective[x]`. `identifier`, `category`, `code`, `subject`, `patient`, `based-on`, and `part-of` are plain strings passed through as written.
 
@@ -103,7 +103,7 @@ The SMART viewer reads Observations around the typed client rather than through 
 
 ## DocumentReference search parameters (subset declared)
 
-Per FHIR R4 § DocumentReference.search, the standard parameters include `_id`, `_lastUpdated`, `patient`, `subject`, `type`, `category`, `status`, `date`, `period`, `author`, `custodian`, `encounter`, `facility`, `setting`, `identifier`, `relatesto`, `relation`, `security-label`, `format`, `contenttype`, `language`, `location`, etc. The `HttpApi` description (and therefore the typed client) declares: `_count`, `_pageToken`, `_id`, `identifier`, `category`, `type`, `status`, `date`.
+Per FHIR R4 § DocumentReference.search, the standard parameters include `_id`, `_lastUpdated`, `patient`, `subject`, `type`, `category`, `status`, `date`, `period`, `author`, `custodian`, `encounter`, `facility`, `setting`, `identifier`, `relatesto`, `relation`, `security-label`, `format`, `contenttype`, `language`, `location`, etc. The `HttpApi` description (and therefore the typed client) declares: `_count`, `_cursor`, `_id`, `identifier`, `category`, `type`, `status`, `date`.
 
 `status` is narrowed to the `DocumentReference.status` value set (`current | superseded | entered-in-error`), so an out-of-set code fails to typecheck. `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" below).
 
@@ -148,13 +148,13 @@ Normalizations and deviations:
 
 ## DiagnosticReport search parameters (subset declared)
 
-Per FHIR R4 § DiagnosticReport.search, the standard parameters include `_id`, `_lastUpdated`, `patient`, `subject`, `encounter`, `code`, `category`, `status`, `date` (with prefixes), `issued`, `identifier`, `performer`, `result`, `results-interpreter`, `specimen`, `conclusion`, `media`, `based-on`. The `HttpApi` description (and therefore the typed client) declares: `_count`, `_pageToken`, `_id`, `identifier`, `category`, `code`, `status`, `subject`, `date`.
+Per FHIR R4 § DiagnosticReport.search, the standard parameters include `_id`, `_lastUpdated`, `patient`, `subject`, `encounter`, `code`, `category`, `status`, `date` (with prefixes), `issued`, `identifier`, `performer`, `result`, `results-interpreter`, `specimen`, `conclusion`, `media`, `based-on`. The `HttpApi` description (and therefore the typed client) declares: `_count`, `_cursor`, `_id`, `identifier`, `category`, `code`, `status`, `subject`, `date`.
 
 `status` is narrowed to the `DiagnosticReport.status` value set, so an out-of-set code fails to typecheck. `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" below) and maps to `effective[x]`, as the spec defines it. `subject` is the one reference-typed parameter declared on any resource here — the literal `Patient/<id>` string a patient's lab reports are gathered by (the same `subject=` search the server's `$everything` runs). `patient`, `performer`, `result` and the rest of the reference parameters are not declared, and every parameter is single-valued (see the DocumentReference narrowings above).
 
 ## Practitioner search parameters (subset declared)
 
-Per FHIR R4 § Practitioner.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `name`, `family`, `given`, `phonetic`, `telecom`, `email`, `phone`, `address` and its parts, `gender`, `active`, `communication`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `identifier`, `name`, `family`, `given`. `name` is a FHIR `string` parameter matched against any part of the practitioner's names, and `family` and `given` against that part alone, each passed through as written (a literal value is escaped with `StringSearchParam.escape` first); the rest are not declared, so a client looking a practitioner up by licence number goes through `identifier` (the `system|value` form) rather than a dedicated parameter.
+Per FHIR R4 § Practitioner.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `name`, `family`, `given`, `phonetic`, `telecom`, `email`, `phone`, `address` and its parts, `gender`, `active`, `communication`. The `HttpApi` description declares: `_count`, `_cursor`, `_id`, `identifier`, `name`, `family`, `given`. `name` is a FHIR `string` parameter matched against any part of the practitioner's names, and `family` and `given` against that part alone, each passed through as written (a literal value is escaped with `StringSearchParam.escape` first); the rest are not declared, so a client looking a practitioner up by licence number goes through `identifier` (the `system|value` form) rather than a dedicated parameter.
 
 ## DiagnosticReport / Practitioner choice / required modeling
 
@@ -162,7 +162,7 @@ Per FHIR R4 § Practitioner.search, the standard parameters include `_id`, `_las
 
 ## MedicationRequest / MedicationDispense search parameters (paging and identifier declared)
 
-Per FHIR R4, `MedicationRequest.search` and `MedicationDispense.search` define parameters such as `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`/`context`, `status`, `intent` (request only), `authoredon` / `whenprepared` / `whenhandedover` (with date prefixes), `identifier`, `medication`, and `prescription` (dispense only). The `HttpApi` description declares `_count`, `_pageToken` and `identifier` (a `token`, passed through as written) only. HFS indexes the full R4 parameter set server-side (e.g. `MedicationRequest.subject` feeds Patient `$everything`), but the typed client can't express the other filters. Adding `subject`/`patient`/`code`/`status` would unlock the canonical medication workflows.
+Per FHIR R4, `MedicationRequest.search` and `MedicationDispense.search` define parameters such as `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`/`context`, `status`, `intent` (request only), `authoredon` / `whenprepared` / `whenhandedover` (with date prefixes), `identifier`, `medication`, and `prescription` (dispense only). The `HttpApi` description declares `_count`, `_cursor` and `identifier` (a `token`, passed through as written) only. HFS indexes the full R4 parameter set server-side (e.g. `MedicationRequest.subject` feeds Patient `$everything`), but the typed client can't express the other filters. Adding `subject`/`patient`/`code`/`status` would unlock the canonical medication workflows.
 
 ## `POST /` batch bundle (endpoint + persist client)
 
@@ -214,7 +214,7 @@ These are now serialized as "absent or non-empty array" matching every other `0.
 - **`searchByIdentifiers(resourceType, identifiers)`** — every stored resource carrying any of the qualified identifiers, each once: one search per chunk of 500 identifiers (`IDENTIFIER_CHUNK_SIZE`), the chunks one after another, each a `POST <Type>/_search` with `identifier` the chunk's identifiers as one `TokenSearchParam.anyOf` value and `_count=1000`, the most HFS gives in one page, followed page by page to the last (`searchEveryPage`). The chunks keep each `identifier` value well under the 1000 values HFS's SQLite backend fails at: it nests one `OR` per token value, and SQLite refuses an expression deeper than 1000. It posts rather than gets because a search for hundreds of identifiers does not fit in a URL. A resource matched by two chunks is given once, by its `Type/id`.
 - **`searchAllOfType(resourceType, { pageSize, pageLimit })`** — every stored resource of the type, `pageSize` to a page, up to `pageLimit` pages, said to be `truncated` when the limit left pages unread (`searchAllPages`).
 
-Each later page is the same `POST` with the `_pageToken` the previous page's `next` link carries (see "Page tokens are opaque server state" below).
+Each later page is the same `POST` with the `_cursor` the previous page's `next` link carries (see "Cursors are opaque server state" below).
 
 ## Record matching (`$match`, client side)
 
@@ -226,9 +226,9 @@ HFS has no `$match` operation, so `fhir-r4/clients`' `ResourceMatch.matchAll(que
 
 Names compare after decomposing to NFD and dropping combining marks, lower-casing and collapsing whitespace, with a leading `Dr`, `Dr.` or `Doctor` dropped (`prefix` is not compared at all); any name of the query may match any name of the stored record. There is no fuzzy or phonetic matching. The family name is searched for in that normalised form, so finding an accented name by its unaccented spelling is the server's string search's to do. A stored name with only `text` is not found by a `family` search, though it grades if another search returns it. Only a name search's first page is read (`_count` of 1000): one whose searchset continues past it fails the match with `DemographicSearchPageFull` rather than lose candidates. Any failed search, an identifier search or a rejected batch entry, fails the match: it is never "no match".
 
-## Page tokens are opaque server state
+## Cursors are opaque server state
 
-`_pageToken` is declared as a plain string in every resource's `SearchParams`; the server (HFS) mints and interprets it. The client treats it as opaque and never constructs one.
+`_cursor` is declared as a plain string in every resource's `SearchParams`; the server (HFS) mints and interprets it, writing it into a searchset's `next` link. The client treats it as opaque and never constructs one.
 
 ## Binary inherits DomainResource (TODO)
 
@@ -274,7 +274,7 @@ Note: a single collation block (e.g. inside `choice-element-passthrough-fields.t
 
 ## ServiceRequest search parameters (subset declared)
 
-Per FHIR R4 § ServiceRequest.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `status`, `intent`, `code`, `subject`, `patient`, `encounter`, `authored`, `requester`, `performer`, `category`, `priority`, `body-site`, `occurrence`, `based-on`, `replaces`, `instantiates-canonical`, `instantiates-uri`, `requisition`, `specimen`. The `HttpApi` description (and therefore the typed client) declares: `_count`, `_pageToken`, `_id`, `identifier`, `status`, `intent`, `code`, `subject`, `patient`, `authored`, `category`, `instantiates-canonical`, `based-on`.
+Per FHIR R4 § ServiceRequest.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `status`, `intent`, `code`, `subject`, `patient`, `encounter`, `authored`, `requester`, `performer`, `category`, `priority`, `body-site`, `occurrence`, `based-on`, `replaces`, `instantiates-canonical`, `instantiates-uri`, `requisition`, `specimen`. The `HttpApi` description (and therefore the typed client) declares: `_count`, `_cursor`, `_id`, `identifier`, `status`, `intent`, `code`, `subject`, `patient`, `authored`, `category`, `instantiates-canonical`, `based-on`.
 
 `status` is narrowed to the `ServiceRequest.status` value set (`draft | active | on-hold | revoked | completed | entered-in-error | unknown`). `intent` is narrowed to the `ServiceRequest.intent` value set (`proposal | plan | directive | order | original-order | reflex-order | filler-order | instance-order | option`). `authored` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" above). `identifier`, `code`, `subject`, `patient`, `category`, `instantiates-canonical`, and `based-on` are plain strings passed through as written.
 
@@ -288,7 +288,7 @@ SMART apps read ServiceRequests around the typed client: `fhir-r4-react/smart`'s
 
 ## ImagingStudy search parameters (subset declared)
 
-Per FHIR R4 § ImagingStudy.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `status`, `subject`, `patient`, `encounter`, `started`, `modality`, `bodysite`, `dicom-class`, `instance`, `performer`, `reason`, `series`, `endpoint`, `basedon`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `identifier`, `status`, `subject`, `started`, `modality`, `basedOn`.
+Per FHIR R4 § ImagingStudy.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `status`, `subject`, `patient`, `encounter`, `started`, `modality`, `bodysite`, `dicom-class`, `instance`, `performer`, `reason`, `series`, `endpoint`, `basedon`. The `HttpApi` description declares: `_count`, `_cursor`, `_id`, `identifier`, `status`, `subject`, `started`, `modality`, `basedOn`.
 
 `status` is narrowed to the `ImagingStudy.status` value set (`registered | available | cancelled | entered-in-error | unknown`). `started` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" above). `modality` and `basedOn` are plain strings — `modality` carries the DICOM modality code (e.g. `CT`, `MR`), and `basedOn` a literal reference string.
 
@@ -309,7 +309,7 @@ Notably absent: `patient`, `encounter`, `bodysite`, `dicom-class`, `instance`, `
 
 ## CarePlan search parameters (subset declared)
 
-Per FHIR R4 § CarePlan.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `status`, `intent`, `category`, `subject`, `patient`, `encounter`, `date`, `based-on`, `replaces`, `part-of`, `instantiates-canonical`, `instantiates-uri`, `care-team`, `performer`, `goal`, `condition`, `activity-code`, `activity-date`, `activity-reference`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `identifier`, `status`, `intent`, `subject`, `patient`, `category`, `date`.
+Per FHIR R4 § CarePlan.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `status`, `intent`, `category`, `subject`, `patient`, `encounter`, `date`, `based-on`, `replaces`, `part-of`, `instantiates-canonical`, `instantiates-uri`, `care-team`, `performer`, `goal`, `condition`, `activity-code`, `activity-date`, `activity-reference`. The `HttpApi` description declares: `_count`, `_cursor`, `_id`, `identifier`, `status`, `intent`, `subject`, `patient`, `category`, `date`.
 
 `status` is narrowed to the `CarePlan.status` value set (`draft | active | on-hold | revoked | completed | entered-in-error | unknown`). `intent` is narrowed to the `CarePlan.intent` value set (`proposal | plan | order | option`). `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" above), matched by the server against `CarePlan.period`. `identifier`, `subject`, `patient`, and `category` are plain strings passed through as written.
 
@@ -325,7 +325,7 @@ Notably absent: `encounter`, `based-on`, `replaces`, `part-of`, `care-team`, `pe
 
 ## Goal search parameters (subset declared)
 
-Per FHIR R4 § Goal.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `lifecycle-status`, `achievement-status`, `category`, `subject`, `patient`, `start-date`, `target-date`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `identifier`, `lifecycle-status`, `subject`, `patient`.
+Per FHIR R4 § Goal.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `lifecycle-status`, `achievement-status`, `category`, `subject`, `patient`, `start-date`, `target-date`. The `HttpApi` description declares: `_count`, `_cursor`, `_id`, `identifier`, `lifecycle-status`, `subject`, `patient`.
 
 `lifecycle-status` is narrowed to the `Goal.lifecycleStatus` value set (`proposed | planned | accepted | active | on-hold | completed | cancelled | entered-in-error | rejected`). `identifier`, `subject` and `patient` are plain strings passed through as written.
 
@@ -341,7 +341,7 @@ Required `lifecycleStatus`, `description` (CodeableConcept), and `subject` are m
 
 ## PlanDefinition search parameters (subset declared)
 
-Per FHIR R4 § PlanDefinition.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `url`, `version`, `name`, `title`, `status`, `date`, `description`, `publisher`, `jurisdiction`, `topic`, `context`, `context-type`, `context-quantity`, `effective`, `type`, `definition`, `composed-of`, `depends-on`, `derived-from`, `predecessor`, `successor`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `identifier`, `url`, `name`, `title`, `status`, `date`, `topic`.
+Per FHIR R4 § PlanDefinition.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `url`, `version`, `name`, `title`, `status`, `date`, `description`, `publisher`, `jurisdiction`, `topic`, `context`, `context-type`, `context-quantity`, `effective`, `type`, `definition`, `composed-of`, `depends-on`, `derived-from`, `predecessor`, `successor`. The `HttpApi` description declares: `_count`, `_cursor`, `_id`, `identifier`, `url`, `name`, `title`, `status`, `date`, `topic`.
 
 `status` is narrowed to the `PlanDefinition.status` value set (`draft | active | retired | unknown`). `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" above). `identifier`, `url`, `name`, `title`, and `topic` are plain strings passed through as written.
 
@@ -359,7 +359,7 @@ The recursive `action` array's arbitrary is pinned to `[]`, so property tests ne
 
 ## Procedure search parameters (subset declared)
 
-Per FHIR R4 § Procedure.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `code`, `patient`, `subject`, `encounter`, `date`, `performer`, `location`, `reason-code`, `reason-reference`, `based-on`, `part-of`, `category`, `status`, `instantiates-canonical`, `instantiates-uri`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `identifier`, `status`, `code`, `subject`, `patient`, `date`, `based-on`, `part-of`, `category`, `instantiates-canonical`.
+Per FHIR R4 § Procedure.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `code`, `patient`, `subject`, `encounter`, `date`, `performer`, `location`, `reason-code`, `reason-reference`, `based-on`, `part-of`, `category`, `status`, `instantiates-canonical`, `instantiates-uri`. The `HttpApi` description declares: `_count`, `_cursor`, `_id`, `identifier`, `status`, `code`, `subject`, `patient`, `date`, `based-on`, `part-of`, `category`, `instantiates-canonical`.
 
 `status` is narrowed to the `Procedure.status` value set (`preparation | in-progress | not-done | on-hold | stopped | completed | entered-in-error | unknown`). `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" above), matched by the server against `Procedure.performed[x]`. `identifier`, `code`, `subject`, `patient`, `based-on`, `part-of`, `category`, and `instantiates-canonical` are plain strings passed through as written.
 
