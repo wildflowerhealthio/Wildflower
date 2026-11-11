@@ -23,6 +23,7 @@
     "remark-gfm": "catalog:"
   },
   "devDependencies": {
+    "@effect/platform": "catalog:",
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@testing-library/user-event": "catalog:",
@@ -45,6 +46,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@effect/platform": "catalog:",
     "@wildflowerhealthio/assistant-core-js": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/fhir-r4-react": "workspace:*",

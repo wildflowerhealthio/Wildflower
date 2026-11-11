@@ -1,4 +1,4 @@
-import { type ApiKey, Claude, type StoragePage } from '@wildflowerhealthio/assistant-core-js'
+import { type ApiKey, BrowserStorage, Claude } from '@wildflowerhealthio/assistant-core-js'
 import type { Layer } from 'effect'
 
 /**
@@ -7,18 +7,19 @@ import type { Layer } from 'effect'
  * a stub client.
  */
 interface AssistantEnvironment {
-  /** Where the key, the model choice and the chats are kept: `window` in an app. */
-  readonly page: StoragePage
+  /**
+   * Where the key, the model choice and the chats are kept:
+   * `BrowserStorage.layer` in an app, which reads the page's storage each
+   * time it is built.
+   */
+  readonly storage: Layer.Layer<BrowserStorage.Local | BrowserStorage.Session>
   /** The Claude API as `apiKey` reaches it: `Claude.layerForApiKey` in an app. */
   readonly claudeLayerFor: (apiKey: ApiKey.Type) => Layer.Layer<Claude>
 }
 
 /** The page's own `window` storage, and the real Claude API. */
 const BROWSER_ENVIRONMENT: AssistantEnvironment = {
-  // Read on use, not at import, so importing the package needs no `window`.
-  get page(): StoragePage {
-    return window
-  },
+  storage: BrowserStorage.layer,
   claudeLayerFor: Claude.layerForApiKey,
 }
 

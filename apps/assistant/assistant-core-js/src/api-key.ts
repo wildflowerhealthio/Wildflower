@@ -1,22 +1,17 @@
-import {
-  getStorageItem,
-  removeStorageItem,
-  setStorageItem,
-  type StorageBlocked,
-} from '@wildflowerhealthio/kitchen-sink'
-import { Effect, Option, type Redacted, Schema } from 'effect'
+import type { Error as PlatformError, KeyValueStore } from '@effect/platform'
+import { Context, Effect, Layer, Option, type Redacted, Schema } from 'effect'
 
-import { type StoragePage, storageOf } from './internal/page-storage.ts'
+import * as BrowserStorage from './browser-storage.ts'
 
 /**
  * The person's own Claude API key, kept in this browser's `localStorage` and
  * sent only to Anthropic.
  *
  * @remarks
- * A namespace module: `ApiKey.Type`, `ApiKey.fromInput`, `ApiKey.read`,
- * `ApiKey.write`, `ApiKey.forget`. The key is held `Redacted`, so printing
- * or logging it shows `<redacted>`; `Redacted.value` takes it out where the
- * client is built.
+ * A namespace module: `ApiKey.Type`, `ApiKey.fromInput`, `ApiKey.Store`,
+ * `ApiKey.layer`, `ApiKey.read`, `ApiKey.write`, `ApiKey.forget`. The key is
+ * held `Redacted`, so printing or logging it shows `<redacted>`;
+ * `Redacted.value` takes it out where the client is built.
  *
  * @packageDocumentation
  */
@@ -33,29 +28,38 @@ type Type = Redacted.Redacted<string>
 /** The key in `input`, trimmed; `None` when nothing but whitespace was entered. */
 const fromInput: (input: string) => Option.Option<Type> = Schema.decodeOption(ApiKeySchema)
 
+/** Where the key is kept: {@link BrowserStorage.Local}, holding the key as JSON. */
+class Store extends Context.Tag('@wildflowerhealthio/assistant-core-js/ApiKey/Store')<
+  Store,
+  KeyValueStore.SchemaStore<Type, never>
+>() {}
+
+/** The {@link Store} over {@link BrowserStorage.Local}. */
+const layer: Layer.Layer<Store, never, BrowserStorage.Local> = Layer.effect(
+  Store,
+  Effect.map(BrowserStorage.Local, (store) => store.forSchema(ApiKeySchema))
+)
+
 /**
- * The key kept in `page`'s `localStorage`; `None` when there is none. Fails
- * when the browser refuses the read.
+ * The kept key; `None` when there is none, or what is kept is not a key.
+ * Fails when the browser refuses the read.
  */
-const read = (page: StoragePage): Effect.Effect<Option.Option<Type>, StorageBlocked> =>
-  storageOf(page, 'localStorage', 'read', STORAGE_KEY).pipe(
-    Effect.flatMap((storage) => getStorageItem(storage, STORAGE_KEY)),
-    Effect.map(Option.flatMap(fromInput))
+const read: Effect.Effect<Option.Option<Type>, PlatformError.PlatformError, Store> = Store.pipe(
+  Effect.flatMap((store) => store.get(STORAGE_KEY)),
+  Effect.catchTag('ParseError', () => Effect.succeed(Option.none<Type>()))
+)
+
+/** Keep `apiKey`, replacing any key kept before. */
+const write = (apiKey: Type): Effect.Effect<void, PlatformError.PlatformError, Store> =>
+  Store.pipe(
+    Effect.flatMap((store) => store.set(STORAGE_KEY, apiKey)),
+    Effect.catchTag('ParseError', Effect.die)
   )
 
-/** Keep `apiKey` in `page`'s `localStorage`, replacing any key kept before. */
-const write = (page: StoragePage, apiKey: Type): Effect.Effect<void, StorageBlocked> =>
-  storageOf(page, 'localStorage', 'write', STORAGE_KEY).pipe(
-    Effect.flatMap((storage) =>
-      setStorageItem(storage, STORAGE_KEY, Schema.encodeSync(ApiKeySchema)(apiKey))
-    )
-  )
+/** Remove the kept key, whether or not one is kept. */
+const forget: Effect.Effect<void, PlatformError.PlatformError, Store> = Store.pipe(
+  Effect.flatMap((store) => store.remove(STORAGE_KEY))
+)
 
-/** Remove the key from `page`'s `localStorage`, whether or not one is kept. */
-const forget = (page: StoragePage): Effect.Effect<void, StorageBlocked> =>
-  storageOf(page, 'localStorage', 'remove', STORAGE_KEY).pipe(
-    Effect.flatMap((storage) => removeStorageItem(storage, STORAGE_KEY))
-  )
-
-export { forget, fromInput, read, STORAGE_KEY, write }
+export { forget, fromInput, layer, read, Store, STORAGE_KEY, write }
 export type { Type }

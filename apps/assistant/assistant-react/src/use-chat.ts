@@ -104,11 +104,15 @@ const announcementOf = (entry: Chat.Entry): string =>
  * starts a new one and says so.
  */
 const useChat = (
-  { page, claudeLayerFor }: AssistantEnvironment,
+  { storage, claudeLayerFor }: AssistantEnvironment,
   place: Chat.Place,
   { recordAccess, fhirRecordsLayer }: ChatRecords
 ): ChatControls => {
-  const [initial] = useState(() => Effect.runSync(Effect.either(Chat.read(page, place))))
+  const [initial] = useState(() =>
+    Effect.runSync(
+      Effect.either(Chat.read(place).pipe(Effect.provide(Layer.provide(Chat.layer, storage))))
+    )
+  )
   const [chat, setChat] = useState<Chat.Type>(() =>
     Either.match(initial, {
       onLeft: () => Chat.start(Style.DEFAULT),
@@ -146,14 +150,21 @@ const useChat = (
 
   const keep = useCallback(
     (kept: Chat.Type): void => {
-      Either.match(Effect.runSync(Effect.either(Chat.write(page, place, kept))), {
-        onLeft: () => {
-          setStorageProblem(Option.some('not-kept'))
-        },
-        onRight: () => undefined,
-      })
+      Either.match(
+        Effect.runSync(
+          Effect.either(
+            Chat.write(place, kept).pipe(Effect.provide(Layer.provide(Chat.layer, storage)))
+          )
+        ),
+        {
+          onLeft: () => {
+            setStorageProblem(Option.some('not-kept'))
+          },
+          onRight: () => undefined,
+        }
+      )
     },
-    [page, place]
+    [storage, place]
   )
 
   const styleLocked = chat.entries.length > 0
@@ -299,20 +310,25 @@ const useChat = (
     interruptTurn()
     turnFiber.current = Option.none()
     currentTurnNumber.current += 1
-    Either.match(Effect.runSync(Effect.either(Chat.forget(page, place))), {
-      onLeft: () => {
-        setStorageProblem(Option.some('not-kept'))
-      },
-      onRight: () => {
-        setStorageProblem(Option.none())
-      },
-    })
+    Either.match(
+      Effect.runSync(
+        Effect.either(Chat.forget(place).pipe(Effect.provide(Layer.provide(Chat.layer, storage))))
+      ),
+      {
+        onLeft: () => {
+          setStorageProblem(Option.some('not-kept'))
+        },
+        onRight: () => {
+          setStorageProblem(Option.none())
+        },
+      }
+    )
     setChat(Chat.start(Style.DEFAULT))
     setStreamingReply(Option.none())
     setPendingWrites(Option.none())
     setTurnFailure(Option.none())
     setAnnouncement('')
-  }, [interruptTurn, page, place])
+  }, [interruptTurn, storage, place])
 
   return {
     chat,

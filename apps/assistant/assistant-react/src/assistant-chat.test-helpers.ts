@@ -1,9 +1,10 @@
 import { AuthenticationError } from '@anthropic-ai/sdk'
 import { render, type RenderResult } from '@testing-library/react'
-import { ApiKey, type Chat, ClaudeModel } from '@wildflowerhealthio/assistant-core-js'
+import { ApiKey, Chat, ClaudeModel } from '@wildflowerhealthio/assistant-core-js'
 import {
   type HeldReply,
-  memoryStoragePage,
+  type MemoryStorage,
+  memoryStorage,
   modelInfoOf,
   onePatientChat,
   type StubClaude,
@@ -16,7 +17,7 @@ import {
   stubSmartRuntime,
 } from '@wildflowerhealthio/fhir-r4-react/smart/test-helpers'
 import { Scope } from '@wildflowerhealthio/scopes-core'
-import { Option, Redacted } from 'effect'
+import { Effect, Layer, Option, Redacted } from 'effect'
 import { createElement } from 'react'
 
 import { AssistantChat } from './assistant-chat.tsx'
@@ -51,13 +52,13 @@ const PLACE: Chat.Place = { fhirBaseUrl: STUB_FHIR_BASE, patient: PATIENT }
 /** A rendered chat over in-memory storage, the stub client its good key reaches, and its FHIR server. */
 interface RenderedChat {
   readonly rendered: RenderResult
-  readonly page: ReturnType<typeof memoryStoragePage>
+  readonly storage: MemoryStorage
   readonly claude: StubClaude
   readonly fhir: StubFhirServer
 }
 
 /**
- * Render `AssistantChat` at {@link PLACE} over `page`, with `keptKey` kept:
+ * Render `AssistantChat` at {@link PLACE} over `storage`, with `keptKey` kept:
  * {@link GOOD_KEY} reaches a stub listing {@link LISTED_MODELS} and
  * answering with `replies` in turn; the API rejects any other key. The
  * sign-in was granted `grantedScopes` (`system/*.cruds` unless given), and
@@ -66,23 +67,25 @@ interface RenderedChat {
 const renderChat = ({
   replies = [],
   keptKey = Option.none(),
-  page = memoryStoragePage(),
+  storage = memoryStorage(),
   grantedScopes = ['system/*.cruds'],
   fhirAnswers = {},
 }: {
   readonly replies?: readonly HeldReply[]
   readonly keptKey?: Option.Option<string>
-  readonly page?: ReturnType<typeof memoryStoragePage>
+  readonly storage?: MemoryStorage
   readonly grantedScopes?: readonly string[]
   readonly fhirAnswers?: StubAnswers
 } = {}): RenderedChat => {
-  Option.map(keptKey, (key) => page.localStorage.items.set(ApiKey.STORAGE_KEY, key))
+  Option.map(keptKey, (key) =>
+    Effect.runSync(storage.local.set(ApiKey.STORAGE_KEY, JSON.stringify(key)))
+  )
   const claude = stubClaude({ models: LISTED_MODELS, replies })
   const rejecting = stubClaude({
     modelsThrow: new AuthenticationError(401, undefined, 'invalid x-api-key', new Headers()),
   })
   const environment: AssistantEnvironment = {
-    page,
+    storage: storage.layer,
     claudeLayerFor: (apiKey) =>
       Redacted.value(apiKey) === GOOD_KEY ? claude.layer : rejecting.layer,
   }
@@ -96,7 +99,18 @@ const renderChat = ({
       environment,
     })
   )
-  return { rendered, page, claude, fhir }
+  return { rendered, storage, claude, fhir }
+}
+
+/** The chat kept at {@link PLACE} in `storage`; `None` when there is none. */
+const keptChatIn = (storage: MemoryStorage): Option.Option<Chat.Type> =>
+  Effect.runSync(Chat.read(PLACE).pipe(Effect.provide(Layer.provide(Chat.layer, storage.layer))))
+
+/** Keep `chat` at {@link PLACE} in `storage`. */
+const keepChatIn = (storage: MemoryStorage, chat: Chat.Type): void => {
+  Effect.runSync(
+    Chat.write(PLACE, chat).pipe(Effect.provide(Layer.provide(Chat.layer, storage.layer)))
+  )
 }
 
 /** `showModal` as a stand-in: the dialog is open. */
@@ -125,5 +139,5 @@ const stubDialogMethods = (): (() => void) => {
   }
 }
 
-export { GOOD_KEY, PLACE, renderChat, stubDialogMethods }
+export { GOOD_KEY, keepChatIn, keptChatIn, PLACE, renderChat, stubDialogMethods }
 export type { RenderedChat }

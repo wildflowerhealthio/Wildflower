@@ -6,16 +6,11 @@ import type {
   BetaToolUseBlockParam,
   BetaUserMessageParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import {
-  getStorageItem,
-  removeStorageItem,
-  setStorageItem,
-  type StorageBlocked,
-} from '@wildflowerhealthio/kitchen-sink'
-import { Array, Effect, Match, Option, Predicate, Schema } from 'effect'
+import type { Error as PlatformError, KeyValueStore } from '@effect/platform'
+import { Array, Context, Effect, Layer, Match, Option, Predicate, Schema } from 'effect'
 
+import * as BrowserStorage from './browser-storage.ts'
 import * as ChatPatient from './chat-patient.ts'
-import { type StoragePage, storageOf } from './internal/page-storage.ts'
 import * as Style from './style.ts'
 
 /**
@@ -27,8 +22,8 @@ import * as Style from './style.ts'
  * A namespace module: `Chat.Schema`, `Chat.Type`, `Chat.Entry`,
  * `Chat.ToolRound`, `Chat.questionOf`, `Chat.start`, `Chat.append`,
  * `Chat.requestMessagesOf`, `Chat.toolCallsOf`, `Chat.toolResultsByCallIdOf`,
- * and the storage calls `Chat.storageKeyOf`, `Chat.read`, `Chat.write`,
- * `Chat.forget`.
+ * and the storage: `Chat.Store`, `Chat.layer`, `Chat.storageKeyOf`,
+ * `Chat.read`, `Chat.write`, `Chat.forget`.
  *
  * Append-only: {@link append} adds an entry after the last, and nothing
  * rewrites one. Each message is kept exactly as it was sent or returned,
@@ -248,8 +243,17 @@ class StoredChatUnreadable extends Schema.TaggedError<StoredChatUnreadable>()(
   {}
 ) {}
 
-/** The chat as the JSON kept in `sessionStorage`. */
-const StoredChat = Schema.parseJson(ChatSchema)
+/** Where chats are kept: {@link BrowserStorage.Session}, each as JSON. */
+class Store extends Context.Tag('@wildflowerhealthio/assistant-core-js/Chat/Store')<
+  Store,
+  KeyValueStore.SchemaStore<Type, never>
+>() {}
+
+/** The {@link Store} over {@link BrowserStorage.Session}. */
+const layer: Layer.Layer<Store, never, BrowserStorage.Session> = Layer.effect(
+  Store,
+  Effect.map(BrowserStorage.Session, (store) => store.forSchema(ChatSchema))
+)
 
 /** Where a chat is kept: the FHIR server it reads and whose record it is about. */
 interface ChatPlace {
@@ -266,59 +270,44 @@ const storageKeyOf = ({ fhirBaseUrl, patient }: ChatPlace): string =>
   `wildflower.assistant-chat:${fhirBaseUrl}:${ChatPatient.keyOf(patient)}`
 
 /**
- * The chat kept at `place` in `page`'s `sessionStorage`; `None` when there is
- * none. Fails when the browser refuses the read, or when what is kept is not
- * a chat ({@link StoredChatUnreadable}).
+ * The chat kept at `place`; `None` when there is none. Fails when the
+ * browser refuses the read, or when what is kept is not a chat
+ * ({@link StoredChatUnreadable}).
  */
 const read = (
-  page: StoragePage,
   place: ChatPlace
-): Effect.Effect<Option.Option<Type>, StorageBlocked | StoredChatUnreadable> => {
-  const key = storageKeyOf(place)
-  return storageOf(page, 'sessionStorage', 'read', key).pipe(
-    Effect.flatMap((storage) => getStorageItem(storage, key)),
-    Effect.flatMap(
-      Option.match({
-        onNone: () => Effect.succeed(Option.none<Type>()),
-        onSome: (json) =>
-          Schema.decode(StoredChat)(json).pipe(
-            Effect.mapBoth({ onFailure: () => new StoredChatUnreadable(), onSuccess: Option.some })
-          ),
-      })
-    )
+): Effect.Effect<Option.Option<Type>, PlatformError.PlatformError | StoredChatUnreadable, Store> =>
+  Store.pipe(
+    Effect.flatMap((store) => store.get(storageKeyOf(place))),
+    Effect.catchTag('ParseError', () => Effect.fail(new StoredChatUnreadable()))
   )
-}
 
-/** Keep `chat` at `place` in `page`'s `sessionStorage`, replacing what was kept. */
+/** Keep `chat` at `place`, replacing what was kept. */
 const write = (
-  page: StoragePage,
   place: ChatPlace,
   chat: Type
-): Effect.Effect<void, StorageBlocked> => {
-  const key = storageKeyOf(place)
-  return storageOf(page, 'sessionStorage', 'write', key).pipe(
-    Effect.flatMap((storage) => setStorageItem(storage, key, Schema.encodeSync(StoredChat)(chat)))
+): Effect.Effect<void, PlatformError.PlatformError, Store> =>
+  Store.pipe(
+    Effect.flatMap((store) => store.set(storageKeyOf(place), chat)),
+    Effect.catchTag('ParseError', Effect.die)
   )
-}
 
-/** Remove the chat at `place` from `page`'s `sessionStorage`, for a new chat. */
-const forget = (page: StoragePage, place: ChatPlace): Effect.Effect<void, StorageBlocked> => {
-  const key = storageKeyOf(place)
-  return storageOf(page, 'sessionStorage', 'remove', key).pipe(
-    Effect.flatMap((storage) => removeStorageItem(storage, key))
-  )
-}
+/** Remove the chat at `place`, for a new chat. */
+const forget = (place: ChatPlace): Effect.Effect<void, PlatformError.PlatformError, Store> =>
+  Store.pipe(Effect.flatMap((store) => store.remove(storageKeyOf(place))))
 
 export {
   append,
   ChatSchema as Schema,
   EntrySchema,
   forget,
+  layer,
   questionOf,
   read,
   requestMessagesOf,
   start,
   storageKeyOf,
+  Store,
   StoredChatUnreadable,
   toolCallsOf,
   toolResultsByCallIdOf,

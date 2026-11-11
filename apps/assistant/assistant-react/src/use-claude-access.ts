@@ -3,10 +3,16 @@ import {
   ClaudeModel,
   type ClaudeRequestFailed,
 } from '@wildflowerhealthio/assistant-core-js'
-import { Effect, Either, Fiber, Option } from 'effect'
+import { Effect, Either, Fiber, Layer, Option } from 'effect'
 import { useCallback, useEffect, useState } from 'react'
 
 import type { AssistantEnvironment } from './assistant-environment.ts'
+
+/** The kept key and model choice, over `environment`'s storage. */
+const accessStoresOf = ({
+  storage,
+}: AssistantEnvironment): Layer.Layer<ApiKey.Store | ClaudeModel.ChosenIdStore> =>
+  Layer.merge(ApiKey.layer, ClaudeModel.chosenIdLayer).pipe(Layer.provide(storage))
 
 /**
  * Where the person's access to Claude stands:
@@ -67,14 +73,14 @@ interface ClaudeAccessControls {
  * any other failure, `no-models` when the key can use none.
  */
 const accessAfterCheck = (
-  { page, claudeLayerFor }: AssistantEnvironment,
+  environment: AssistantEnvironment,
   { apiKey, keepOnSuccess }: KeyCheck
 ): Effect.Effect<ClaudeAccess> =>
   ClaudeModel.list.pipe(
-    Effect.provide(claudeLayerFor(apiKey)),
+    Effect.provide(environment.claudeLayerFor(apiKey)),
     Effect.flatMap((models) =>
       Effect.all({
-        chosenId: ClaudeModel.readChosenId(page).pipe(
+        chosenId: ClaudeModel.readChosenId.pipe(
           Effect.catchAll((blocked) =>
             Effect.logWarning('The browser would not read the chosen model', blocked).pipe(
               Effect.as(Option.none<string>())
@@ -82,7 +88,7 @@ const accessAfterCheck = (
           )
         ),
         keyKept: keepOnSuccess
-          ? ApiKey.write(page, apiKey).pipe(
+          ? ApiKey.write(apiKey).pipe(
               Effect.as(true),
               Effect.catchAll((blocked) =>
                 Effect.logWarning('The browser would not keep the Claude API key', blocked).pipe(
@@ -92,6 +98,7 @@ const accessAfterCheck = (
             )
           : Effect.succeed(true),
       }).pipe(
+        Effect.provide(accessStoresOf(environment)),
         Effect.map(({ chosenId, keyKept }) =>
           ClaudeModel.startingModelOf(models, chosenId).pipe(
             Option.match({
@@ -118,8 +125,9 @@ const accessAfterCheck = (
  * `localStorage`; and forgetting the key.
  */
 const useClaudeAccess = (environment: AssistantEnvironment): ClaudeAccessControls => {
-  const { page } = environment
-  const [keptKey] = useState(() => Effect.runSync(Effect.either(ApiKey.read(page))))
+  const [keptKey] = useState(() =>
+    Effect.runSync(Effect.either(ApiKey.read.pipe(Effect.provide(accessStoresOf(environment)))))
+  )
   const [keyCheck, setKeyCheck] = useState<Option.Option<KeyCheck>>(() =>
     Either.getRight(keptKey).pipe(
       Option.flatten,
@@ -173,28 +181,34 @@ const useClaudeAccess = (environment: AssistantEnvironment): ClaudeAccessControl
       if (listed === undefined) return
       setAccess({ ...access, model: listed })
       Effect.runSync(
-        ClaudeModel.writeChosenId(page, modelId).pipe(
+        ClaudeModel.writeChosenId(modelId).pipe(
+          Effect.provide(accessStoresOf(environment)),
           Effect.catchAll((blocked) =>
             Effect.logWarning('The browser would not keep the chosen model', blocked)
           )
         )
       )
     },
-    [access, page]
+    [access, environment]
   )
 
   const forgetKey = useCallback((): void => {
-    Either.match(Effect.runSync(Effect.either(ApiKey.forget(page))), {
-      onLeft: () => {
-        setForgetFailed(true)
-      },
-      onRight: () => {
-        setForgetFailed(false)
-        setKeyCheck(Option.none())
-        setAccess({ kind: 'needs-key', keyWasRejected: false, keyUnreadable: false })
-      },
-    })
-  }, [page])
+    Either.match(
+      Effect.runSync(
+        Effect.either(ApiKey.forget.pipe(Effect.provide(accessStoresOf(environment))))
+      ),
+      {
+        onLeft: () => {
+          setForgetFailed(true)
+        },
+        onRight: () => {
+          setForgetFailed(false)
+          setKeyCheck(Option.none())
+          setAccess({ kind: 'needs-key', keyWasRejected: false, keyUnreadable: false })
+        },
+      }
+    )
+  }, [environment])
 
   return { access, saveKey, retry, chooseModel, forgetKey, forgetFailed }
 }

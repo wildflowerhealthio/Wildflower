@@ -3,6 +3,7 @@
  *
  * Every module is a namespace:
  *
+ * - {@link BrowserStorage} — the browser's `localStorage` and `sessionStorage`, as key-value stores.
  * - {@link ApiKey} — the person's Claude API key, kept in `localStorage`.
  * - {@link ClaudeModel} — the models the key can use, and the one chosen.
  * - {@link Style} — the two chat styles and the system prompt each builds.
@@ -25,6 +26,7 @@
  * @packageDocumentation
  */
 export * as ApiKey from './api-key.ts'
+export * as BrowserStorage from './browser-storage.ts'
 export * as Chat from './chat.ts'
 export * as ChatPatient from './chat-patient.ts'
 export { Claude, ClaudeRequestFailed } from './claude.ts'
@@ -32,7 +34,6 @@ export type { ClaudeClient, ClaudeMessageStream } from './claude.ts'
 export * as ClaudeModel from './claude-model.ts'
 export { FhirReadFailed, FhirRecords, FhirWriteFailed } from './fhir-records.ts'
 export type { FhirReadFailure } from './fhir-records.ts'
-export type { StoragePage } from './internal/page-storage.ts'
 export * as PatientPin from './patient-pin.ts'
 export * as RecordAccess from './record-access.ts'
 export * as SearchParam from './search-param.ts'

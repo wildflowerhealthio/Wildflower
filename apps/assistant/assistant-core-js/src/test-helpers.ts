@@ -1,9 +1,9 @@
 /**
  * Stand-ins for this package's tests and, through the
- * `assistant-core-js/test-helpers` subpath, its consumers': a page whose
- * storage is in memory, a Claude client that answers without the network,
- * a FHIR server that answers from a table, and the SDK shapes a reply
- * streams.
+ * `assistant-core-js/test-helpers` subpath, its consumers': browser
+ * storage in memory or refused, a Claude client that answers without the
+ * network, a FHIR server that answers from a table, and the SDK shapes a
+ * reply streams.
  *
  * @packageDocumentation
  */
@@ -15,64 +15,47 @@ import type {
   BetaRawMessageStreamEvent,
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import { KeyValueStore } from '@effect/platform'
 import type { ResourceWrite } from '@wildflowerhealthio/fhir-r4/clients'
 import { hasId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, Layer, Option, Schema } from 'effect'
 
+import * as BrowserStorage from './browser-storage.ts'
 import type * as ChatPatient from './chat-patient.ts'
 import { Claude, type ClaudeClient, type ClaudeMessageStream } from './claude.ts'
 import { FhirReadFailed, FhirRecords, type FhirWriteFailed } from './fhir-records.ts'
-import type { KeptStorage, StoragePage } from './internal/page-storage.ts'
 
-/** A storage call a blocked browser refuses. */
-type StorageCall = 'getItem' | 'setItem' | 'removeItem'
+/** In-memory `localStorage` and `sessionStorage`, and the layer providing them. */
+interface MemoryStorage {
+  /** Both stores, each the same instance every time the layer is built, so what one run keeps the next reads. */
+  readonly layer: Layer.Layer<BrowserStorage.Local | BrowserStorage.Session>
+  readonly local: KeyValueStore.KeyValueStore
+  readonly session: KeyValueStore.KeyValueStore
+}
 
-/** A `Map`-backed storage whose calls named in `refusing` throw as a blocked browser's do. */
-const memoryStorage = (
-  refusing: readonly StorageCall[] = []
-): KeptStorage & {
-  readonly items: Map<string, string>
-} => {
-  const items = new Map<string, string>()
-  const refuseIf = (call: StorageCall): void => {
-    if (refusing.includes(call)) {
-      throw new DOMException('The operation is insecure.', 'SecurityError')
-    }
-  }
+/** A store in memory, empty. */
+const memoryStore = (): KeyValueStore.KeyValueStore =>
+  Effect.runSync(KeyValueStore.KeyValueStore.pipe(Effect.provide(KeyValueStore.layerMemory)))
+
+/** Empty in-memory `localStorage` and `sessionStorage`. */
+const memoryStorage = (): MemoryStorage => {
+  const local = memoryStore()
+  const session = memoryStore()
   return {
-    items,
-    getItem: (key) => {
-      refuseIf('getItem')
-      return items.get(key) ?? null
-    },
-    setItem: (key, value) => {
-      refuseIf('setItem')
-      items.set(key, value)
-    },
-    removeItem: (key) => {
-      refuseIf('removeItem')
-      items.delete(key)
-    },
+    layer: Layer.merge(
+      Layer.succeed(BrowserStorage.Local, local),
+      Layer.succeed(BrowserStorage.Session, session)
+    ),
+    local,
+    session,
   }
 }
 
-/** A page with in-memory `localStorage` and `sessionStorage`, both refusing `refusing`. */
-const memoryStoragePage = (
-  refusing: readonly StorageCall[] = []
-): StoragePage & {
-  readonly localStorage: ReturnType<typeof memoryStorage>
-  readonly sessionStorage: ReturnType<typeof memoryStorage>
-} => ({ localStorage: memoryStorage(refusing), sessionStorage: memoryStorage(refusing) })
-
-/** A page whose storage throws on the property read itself, as some blocked browsers do. */
-const blockedStoragePage = (): StoragePage => ({
-  get localStorage(): KeptStorage {
-    throw new DOMException('The operation is insecure.', 'SecurityError')
-  },
-  get sessionStorage(): KeptStorage {
-    throw new DOMException('The operation is insecure.', 'SecurityError')
-  },
-})
+/** Storage a blocked browser gives: every read, write and removal fails. */
+const refusingStorage: Layer.Layer<BrowserStorage.Local | BrowserStorage.Session> = Layer.merge(
+  Layer.succeed(BrowserStorage.Local, BrowserStorage.refusingStore('localStorage')),
+  Layer.succeed(BrowserStorage.Session, BrowserStorage.refusingStore('sessionStorage'))
+)
 
 /**
  * A chat about the one patient `id`, whose `Patient` record carries the
@@ -454,12 +437,11 @@ const messageOf = ({
 
 export {
   STUB_FHIR_BASE,
-  blockedStoragePage,
   failingReply,
   fhirFailure,
   heldReply,
   memoryStorage,
-  memoryStoragePage,
+  refusingStorage,
   messageOf,
   modelInfoOf,
   onePatientChat,
@@ -474,4 +456,4 @@ export {
   thinkingDelta,
   toolUseBlock,
 }
-export type { HeldReply, StorageCall, StubClaude, StubFhirRecords, StubWrite, StubWriteAnswer }
+export type { HeldReply, MemoryStorage, StubClaude, StubFhirRecords, StubWrite, StubWriteAnswer }

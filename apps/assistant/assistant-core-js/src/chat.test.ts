@@ -4,14 +4,15 @@ import type {
   BetaToolResultBlockParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Layer, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import type * as BrowserStorage from './browser-storage.ts'
 import * as Chat from './chat.ts'
 import {
-  blockedStoragePage,
-  memoryStoragePage,
+  memoryStorage,
+  refusingStorage,
   onePatientChat,
   textBlock,
   thinkingBlock,
@@ -294,6 +295,12 @@ describe('Chat tool rounds', () => {
   })
 })
 
+/** `effect` against the chats kept in `storage`. */
+const keptIn = <A, E>(
+  storage: Layer.Layer<BrowserStorage.Local | BrowserStorage.Session>,
+  effect: Effect.Effect<A, E, Chat.Store>
+): Effect.Effect<A, E> => effect.pipe(Effect.provide(Layer.provide(Chat.layer, storage)))
+
 describe('Chat storage', () => {
   it('should key a chat by the FHIR base and the patient, * for every patient', () => {
     expect(Chat.storageKeyOf(place)).toBe('wildflower.assistant-chat:https://fhir.example/r4:p1')
@@ -305,37 +312,37 @@ describe('Chat storage', () => {
   it('should read back the chat it wrote, in sessionStorage', () => {
     fc.assert(
       fc.property(chatArb, (chat) => {
-        const page = memoryStoragePage()
+        const storage = memoryStorage()
 
-        Effect.runSync(Chat.write(page, place, chat))
+        Effect.runSync(keptIn(storage.layer, Chat.write(place, chat)))
 
-        expect(Effect.runSync(Chat.read(page, place))).toEqual(Option.some(chat))
-        expect(page.sessionStorage.items.has(Chat.storageKeyOf(place))).toBe(true)
-        expect(page.localStorage.items.size).toBe(0)
+        expect(Effect.runSync(keptIn(storage.layer, Chat.read(place)))).toEqual(Option.some(chat))
+        expect(Effect.runSync(storage.session.has(Chat.storageKeyOf(place)))).toBe(true)
+        expect(Effect.runSync(storage.local.size)).toBe(0)
       }),
       { numRuns: RUNS }
     )
   })
 
   it('should read no chat where none is kept, or once it is forgotten', () => {
-    const page = memoryStoragePage()
-    expect(Effect.runSync(Chat.read(page, place))).toEqual(Option.none())
+    const { layer } = memoryStorage()
+    expect(Effect.runSync(keptIn(layer, Chat.read(place)))).toEqual(Option.none())
 
-    Effect.runSync(Chat.write(page, place, Chat.start('telehealth')))
-    Effect.runSync(Chat.forget(page, place))
+    Effect.runSync(keptIn(layer, Chat.write(place, Chat.start('telehealth'))))
+    Effect.runSync(keptIn(layer, Chat.forget(place)))
 
-    expect(Effect.runSync(Chat.read(page, place))).toEqual(Option.none())
+    expect(Effect.runSync(keptIn(layer, Chat.read(place)))).toEqual(Option.none())
   })
 
   it('should fail when the browser refuses the read, or what is kept is not a chat', () => {
-    const notAChat = memoryStoragePage()
-    notAChat.sessionStorage.items.set(Chat.storageKeyOf(place), '{"style":"loud"}')
+    const notAChat = memoryStorage()
+    Effect.runSync(notAChat.session.set(Chat.storageKeyOf(place), '{"style":"loud"}'))
 
-    expect(Effect.runSync(Effect.flip(Chat.read(blockedStoragePage(), place)))).toMatchObject({
-      _tag: 'StorageBlocked',
-      operation: 'read',
+    expect(Effect.runSync(Effect.flip(keptIn(refusingStorage, Chat.read(place))))).toMatchObject({
+      _tag: 'SystemError',
+      method: 'get',
     })
-    const unreadable = Effect.runSync(Effect.flip(Chat.read(notAChat, place)))
+    const unreadable = Effect.runSync(Effect.flip(keptIn(notAChat.layer, Chat.read(place))))
     expect(unreadable).toEqual(new Chat.StoredChatUnreadable())
     expect(JSON.stringify(unreadable)).not.toContain('loud')
   })

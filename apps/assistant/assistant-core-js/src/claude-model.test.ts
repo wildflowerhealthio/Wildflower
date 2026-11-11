@@ -1,12 +1,13 @@
 import { AuthenticationError } from '@anthropic-ai/sdk'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { DateTime, Effect, Either, Option } from 'effect'
+import { DateTime, Effect, Either, Layer, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import type * as BrowserStorage from './browser-storage.ts'
 import * as ClaudeModel from './claude-model.ts'
 import { ClaudeRequestFailed } from './claude.ts'
-import { blockedStoragePage, memoryStoragePage, modelInfoOf, stubClaude } from './test-helpers.ts'
+import { memoryStorage, modelInfoOf, refusingStorage, stubClaude } from './test-helpers.ts'
 
 const RUNS = numRunsFor({ base: 100 })
 
@@ -195,37 +196,42 @@ describe('ClaudeModel.list', () => {
   })
 })
 
+/** `effect` against the model choice kept in `storage`. */
+const keptIn = <A, E>(
+  storage: Layer.Layer<BrowserStorage.Local | BrowserStorage.Session>,
+  effect: Effect.Effect<A, E, ClaudeModel.ChosenIdStore>
+): Effect.Effect<A, E> =>
+  effect.pipe(Effect.provide(Layer.provide(ClaudeModel.chosenIdLayer, storage)))
+
 describe('ClaudeModel chosen id', () => {
   it('should read back the id it wrote', () => {
     fc.assert(
       fc.property(fc.string(), (modelId) => {
-        const page = memoryStoragePage()
+        const { layer } = memoryStorage()
 
-        Effect.runSync(ClaudeModel.writeChosenId(page, modelId))
+        Effect.runSync(keptIn(layer, ClaudeModel.writeChosenId(modelId)))
 
-        expect(Effect.runSync(ClaudeModel.readChosenId(page))).toEqual(Option.some(modelId))
+        expect(Effect.runSync(keptIn(layer, ClaudeModel.readChosenId))).toEqual(
+          Option.some(modelId)
+        )
       }),
       { numRuns: RUNS }
     )
   })
 
-  it('should fail the read when the browser refuses the read or the storage itself', () => {
-    const refusingRead = memoryStoragePage(['getItem'])
-    refusingRead.localStorage.items.set(ClaudeModel.CHOSEN_ID_STORAGE_KEY, 'claude-opus-5')
-
+  it('should fail the read when the browser refuses it', () => {
     expect(
-      Either.isLeft(Effect.runSync(Effect.either(ClaudeModel.readChosenId(refusingRead))))
-    ).toBe(true)
-    expect(
-      Either.isLeft(Effect.runSync(Effect.either(ClaudeModel.readChosenId(blockedStoragePage()))))
+      Either.isLeft(
+        Effect.runSync(Effect.either(keptIn(refusingStorage, ClaudeModel.readChosenId)))
+      )
     ).toBe(true)
   })
 
   it('should fail naming the write when the browser refuses it', () => {
     const failure = Effect.runSync(
-      Effect.flip(ClaudeModel.writeChosenId(memoryStoragePage(['setItem']), 'claude-opus-5'))
+      Effect.flip(keptIn(refusingStorage, ClaudeModel.writeChosenId('claude-opus-5')))
     )
 
-    expect(failure).toMatchObject({ _tag: 'StorageBlocked', operation: 'write' })
+    expect(failure).toMatchObject({ _tag: 'SystemError', method: 'set' })
   })
 })

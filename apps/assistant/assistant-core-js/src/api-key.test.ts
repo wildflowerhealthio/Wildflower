@@ -1,10 +1,11 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Either, Inspectable, Option, Redacted } from 'effect'
+import { Effect, Inspectable, Layer, Option, Redacted } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ApiKey from './api-key.ts'
-import { blockedStoragePage, memoryStoragePage } from './test-helpers.ts'
+import type * as BrowserStorage from './browser-storage.ts'
+import { memoryStorage, refusingStorage } from './test-helpers.ts'
 
 const RUNS = numRunsFor({ base: 100 })
 
@@ -20,17 +21,25 @@ const pastedKeyArb = fc
 const keyOf = (input: string): ApiKey.Type =>
   Option.getOrThrowWith(ApiKey.fromInput(input), () => new Error(`Not a key: ${input}`))
 
+/** `effect` against the key kept in `storage`. */
+const keptIn = <A, E>(
+  storage: Layer.Layer<BrowserStorage.Local | BrowserStorage.Session>,
+  effect: Effect.Effect<A, E, ApiKey.Store>
+): Effect.Effect<A, E> => effect.pipe(Effect.provide(Layer.provide(ApiKey.layer, storage)))
+
 describe('ApiKey', () => {
   it('should read back the trimmed key it wrote', () => {
     fc.assert(
       fc.property(pastedKeyArb, ({ pasted, key }) => {
-        const page = memoryStoragePage()
+        const storage = memoryStorage()
 
-        Effect.runSync(ApiKey.write(page, keyOf(pasted)))
-        const kept = Effect.runSync(ApiKey.read(page))
+        Effect.runSync(keptIn(storage.layer, ApiKey.write(keyOf(pasted))))
+        const kept = Effect.runSync(keptIn(storage.layer, ApiKey.read))
 
         expect(Option.map(kept, Redacted.value)).toEqual(Option.some(key))
-        expect(page.localStorage.items.get(ApiKey.STORAGE_KEY)).toBe(key)
+        expect(Effect.runSync(storage.local.get(ApiKey.STORAGE_KEY))).toEqual(
+          Option.some(JSON.stringify(key))
+        )
       }),
       { numRuns: RUNS }
     )
@@ -46,33 +55,38 @@ describe('ApiKey', () => {
   })
 
   it('should read no key once it is forgotten', () => {
-    const page = memoryStoragePage()
-    Effect.runSync(ApiKey.write(page, keyOf('sk-ant-kept')))
+    const { layer } = memoryStorage()
+    Effect.runSync(keptIn(layer, ApiKey.write(keyOf('sk-ant-kept'))))
 
-    Effect.runSync(ApiKey.forget(page))
+    Effect.runSync(keptIn(layer, ApiKey.forget))
 
-    expect(Effect.runSync(ApiKey.read(page))).toEqual(Option.none())
+    expect(Effect.runSync(keptIn(layer, ApiKey.read))).toEqual(Option.none())
   })
 
-  it('should fail the read when the browser refuses the read or the storage itself', () => {
-    const refusingRead = memoryStoragePage(['getItem'])
-    refusingRead.localStorage.items.set(ApiKey.STORAGE_KEY, 'sk-ant-kept')
+  it('should read no key where what is kept is not one', () => {
+    const storage = memoryStorage()
+    Effect.runSync(storage.local.set(ApiKey.STORAGE_KEY, '"   "'))
 
-    expect(Either.isLeft(Effect.runSync(Effect.either(ApiKey.read(refusingRead))))).toBe(true)
-    expect(Either.isLeft(Effect.runSync(Effect.either(ApiKey.read(blockedStoragePage()))))).toBe(
-      true
-    )
+    expect(Effect.runSync(keptIn(storage.layer, ApiKey.read))).toEqual(Option.none())
+  })
+
+  it('should fail the read when the browser refuses it, never reading as no key', () => {
+    expect(Effect.runSync(Effect.flip(keptIn(refusingStorage, ApiKey.read)))).toMatchObject({
+      _tag: 'SystemError',
+      reason: 'PermissionDenied',
+      method: 'get',
+    })
   })
 
   it('should fail naming the write when the browser refuses it', () => {
     const failure = Effect.runSync(
-      Effect.flip(ApiKey.write(memoryStoragePage(['setItem']), keyOf('sk-ant-new')))
+      Effect.flip(keptIn(refusingStorage, ApiKey.write(keyOf('sk-ant-new'))))
     )
 
     expect(failure).toMatchObject({
-      _tag: 'StorageBlocked',
-      operation: 'write',
-      key: ApiKey.STORAGE_KEY,
+      _tag: 'SystemError',
+      method: 'set',
+      pathOrDescriptor: ApiKey.STORAGE_KEY,
     })
   })
 

@@ -26,6 +26,7 @@
     "@anthropic-ai/sdk": "catalog:"
   },
   "devDependencies": {
+    "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
@@ -38,8 +39,8 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@effect/platform": "catalog:",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
-    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/scopes-core": "workspace:*",
     "effect": "catalog:"
   }

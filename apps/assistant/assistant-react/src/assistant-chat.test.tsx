@@ -5,7 +5,7 @@ import { ApiKey, Chat, ClaudeModel } from '@wildflowerhealthio/assistant-core-js
 import {
   failingReply,
   heldReply,
-  memoryStoragePage,
+  memoryStorage,
   messageOf,
   scriptedReply,
   textBlock,
@@ -20,7 +20,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import {
   GOOD_KEY,
-  PLACE,
+  keepChatIn,
+  keptChatIn,
   type RenderedChat,
   renderChat,
   stubDialogMethods,
@@ -65,38 +66,40 @@ describe('AssistantChat key setup', () => {
 
   it("should say a rejected key wasn't accepted, keep it out of storage, and show no chat", async () => {
     const user = userEvent.setup()
-    const { page } = renderChat()
+    const { storage } = renderChat()
 
     await user.type(screen.getByLabelText('Claude API key'), 'sk-ant-wrong')
     await user.click(screen.getByRole('button', { name: 'Save key' }))
 
     expect(await screen.findByText("This key wasn't accepted.")).toBeDefined()
     expect(screen.queryByLabelText('Message')).toBeNull()
-    expect(page.localStorage.items.has(ApiKey.STORAGE_KEY)).toBe(false)
+    expect(Effect.runSync(storage.local.has(ApiKey.STORAGE_KEY))).toBe(false)
   })
 
   it('should keep an accepted key and open the chat on Sonnet 5', async () => {
     const user = userEvent.setup()
-    const { page } = renderChat()
+    const { storage } = renderChat()
 
     await user.type(screen.getByLabelText('Claude API key'), `  ${GOOD_KEY} `)
     await user.click(screen.getByRole('button', { name: 'Save key' }))
 
     expect(await screen.findByLabelText('Message')).toBeDefined()
-    expect(page.localStorage.items.get(ApiKey.STORAGE_KEY)).toBe(GOOD_KEY)
+    expect(Effect.runSync(storage.local.get(ApiKey.STORAGE_KEY))).toEqual(
+      Option.some(JSON.stringify(GOOD_KEY))
+    )
     expect(screen.getByLabelText<HTMLSelectElement>('Model').value).toBe(ClaudeModel.DEFAULT_ID)
   })
 
   it('should forget the key from Settings and ask for one again', async () => {
     const user = userEvent.setup()
-    const { page } = renderChat({ keptKey })
+    const { storage } = renderChat({ keptKey })
     await screen.findByLabelText('Message')
 
     await user.click(screen.getByRole('button', { name: 'Settings' }))
     await user.click(screen.getByRole('button', { name: 'Forget key' }))
 
     expect(await screen.findByLabelText('Claude API key')).toBeDefined()
-    expect(page.localStorage.items.has(ApiKey.STORAGE_KEY)).toBe(false)
+    expect(Effect.runSync(storage.local.has(ApiKey.STORAGE_KEY))).toBe(false)
   })
 })
 
@@ -132,7 +135,7 @@ describe('AssistantChat turns', () => {
   it('should abort the stream on Stop and keep the question with no reply', async () => {
     const user = userEvent.setup()
     const reply = heldReply()
-    const { page } = renderChat({ keptKey, replies: [reply] })
+    const { storage } = renderChat({ keptKey, replies: [reply] })
     await screen.findByLabelText('Message')
 
     await ask(user, 'Tell me everything')
@@ -144,7 +147,7 @@ describe('AssistantChat turns', () => {
     expect(reply.aborted()).toBe(true)
     expect(screen.queryByText('Partial answer')).toBeNull()
     expect(screen.getByRole('button', { name: 'Send' })).toBeDefined()
-    expect(Effect.runSync(Chat.read(page, PLACE))).toEqual(
+    expect(keptChatIn(storage)).toEqual(
       Option.some({ style: 'telehealth', entries: [Chat.questionOf('Tell me everything')] })
     )
   })
@@ -171,7 +174,10 @@ describe('AssistantChat turns', () => {
 
   it('should run the next turn on the model picked between turns', async () => {
     const user = userEvent.setup()
-    const { claude, page } = renderChat({ keptKey, replies: [replyWith('One'), replyWith('Two')] })
+    const { claude, storage } = renderChat({
+      keptKey,
+      replies: [replyWith('One'), replyWith('Two')],
+    })
     await screen.findByLabelText('Message')
 
     await ask(user, 'First')
@@ -184,7 +190,9 @@ describe('AssistantChat turns', () => {
       ClaudeModel.DEFAULT_ID,
       'claude-opus-5',
     ])
-    expect(page.localStorage.items.get(ClaudeModel.CHOSEN_ID_STORAGE_KEY)).toBe('claude-opus-5')
+    expect(Effect.runSync(storage.local.get(ClaudeModel.CHOSEN_ID_STORAGE_KEY))).toEqual(
+      Option.some(JSON.stringify('claude-opus-5'))
+    )
   })
 
   it.each([
@@ -212,11 +220,11 @@ describe('AssistantChat turns', () => {
   })
 
   it('should pick up the chat kept in the tab', () => {
-    const page = memoryStoragePage()
+    const storage = memoryStorage()
     const kept = Chat.append(Chat.start('academic'), Chat.questionOf('Kept question'))
-    Effect.runSync(Chat.write(page, PLACE, kept))
+    keepChatIn(storage, kept)
 
-    renderChat({ keptKey, page })
+    renderChat({ keptKey, storage })
 
     return screen.findByText('Kept question')
   })
@@ -296,7 +304,7 @@ describe('AssistantChat tools', () => {
 
   it("should run Claude's search pinned to the patient, show it as a card, and keep the round", async () => {
     const user = userEvent.setup()
-    const { fhir, claude, page } = renderChat({
+    const { fhir, claude, storage } = renderChat({
       keptKey,
       fhirAnswers: { 'Observation?': answerJson(bundleOf([a1c])) },
       replies: [
@@ -313,7 +321,7 @@ describe('AssistantChat tools', () => {
     expect(document.body.textContent).not.toContain('Hemoglobin A1c')
     expect(fhir.urls).toEqual(['https://fhir.example/Observation?code=4548-4&patient=p1&_count=20'])
     expect(claude.requests[1]?.tools).toEqual(claude.requests[0]?.tools)
-    const kept = Option.getOrThrow(Effect.runSync(Chat.read(page, PLACE)))
+    const kept = Option.getOrThrow(keptChatIn(storage))
     expect(kept.entries.map(({ _tag }) => _tag)).toEqual(['question', 'tool-round', 'reply'])
   })
 
@@ -350,7 +358,7 @@ describe('AssistantChat writes', () => {
 
   it('should hold the turn on a card until the change is approved, with the composer disabled meanwhile', async () => {
     const user = userEvent.setup()
-    const { fhir, page } = renderChat({
+    const { fhir, storage } = renderChat({
       keptKey,
       fhirAnswers: { Observation: answerJson(stored, 201) },
       replies: [
@@ -380,7 +388,7 @@ describe('AssistantChat writes', () => {
       screen.getByText('Create Observation: Created Observation/123', { selector: 'summary' })
     ).toBeDefined()
     expect(screen.getByLabelText('Message')).toHaveProperty('disabled', false)
-    const kept = Option.getOrThrow(Effect.runSync(Chat.read(page, PLACE)))
+    const kept = Option.getOrThrow(keptChatIn(storage))
     expect(kept.entries.map(({ _tag }) => _tag)).toEqual(['question', 'tool-round', 'reply'])
   })
 
@@ -450,7 +458,7 @@ describe('AssistantChat writes', () => {
 
   it('should drop the waiting change on Stop, writing nothing and keeping the question', async () => {
     const user = userEvent.setup()
-    const { fhir, page } = renderChat({
+    const { fhir, storage } = renderChat({
       keptKey,
       replies: [scriptedReply([], messageOf({ content: [createCall], stopReason: 'tool_use' }))],
     })
@@ -464,7 +472,7 @@ describe('AssistantChat writes', () => {
     expect(screen.queryByRole('region', { name: 'Create Observation' })).toBeNull()
     expect(screen.getByLabelText('Message')).toHaveProperty('disabled', false)
     expect(sentTo(fhir)).toEqual([])
-    expect(Effect.runSync(Chat.read(page, PLACE))).toEqual(
+    expect(keptChatIn(storage)).toEqual(
       Option.some({ style: 'telehealth', entries: [Chat.questionOf('Record my weight')] })
     )
   })

@@ -1,12 +1,8 @@
-import {
-  getStorageItem,
-  setStorageItem,
-  type StorageBlocked,
-} from '@wildflowerhealthio/kitchen-sink'
-import { Array, DateTime, Effect, Option, Order, ParseResult, Schema } from 'effect'
+import type { Error as PlatformError, KeyValueStore } from '@effect/platform'
+import { Array, Context, DateTime, Effect, Layer, Option, Order, ParseResult, Schema } from 'effect'
 
+import * as BrowserStorage from './browser-storage.ts'
 import { Claude, ClaudeRequestFailed } from './claude.ts'
-import { type StoragePage, storageOf } from './internal/page-storage.ts'
 
 /**
  * A Claude model the person's key can use, as `GET /v1/models` lists it, and
@@ -14,7 +10,8 @@ import { type StoragePage, storageOf } from './internal/page-storage.ts'
  *
  * @remarks
  * A namespace module: `ClaudeModel.Type`, `ClaudeModel.list`,
- * `ClaudeModel.startingModelOf`, `ClaudeModel.readChosenId`, `ClaudeModel.writeChosenId`.
+ * `ClaudeModel.startingModelOf`, and the remembered choice: `ClaudeModel.ChosenIdStore`,
+ * `ClaudeModel.chosenIdLayer`, `ClaudeModel.readChosenId`, `ClaudeModel.writeChosenId`.
  *
  * @packageDocumentation
  */
@@ -136,23 +133,43 @@ const startingModelOf = (
   )
 }
 
-/**
- * The id of the model last chosen, kept in `page`'s `localStorage`; `None`
- * when none was. Fails when the browser refuses the read.
- */
-const readChosenId = (page: StoragePage): Effect.Effect<Option.Option<string>, StorageBlocked> =>
-  storageOf(page, 'localStorage', 'read', CHOSEN_ID_STORAGE_KEY).pipe(
-    Effect.flatMap((storage) => getStorageItem(storage, CHOSEN_ID_STORAGE_KEY))
-  )
+/** Where the last chosen model's id is kept: {@link BrowserStorage.Local}, as JSON. */
+class ChosenIdStore extends Context.Tag(
+  '@wildflowerhealthio/assistant-core-js/ClaudeModel/ChosenIdStore'
+)<ChosenIdStore, KeyValueStore.SchemaStore<string, never>>() {}
 
-/** Keep `modelId` as the last chosen model in `page`'s `localStorage`. */
-const writeChosenId = (page: StoragePage, modelId: string): Effect.Effect<void, StorageBlocked> =>
-  storageOf(page, 'localStorage', 'write', CHOSEN_ID_STORAGE_KEY).pipe(
-    Effect.flatMap((storage) => setStorageItem(storage, CHOSEN_ID_STORAGE_KEY, modelId))
+/** The {@link ChosenIdStore} over {@link BrowserStorage.Local}. */
+const chosenIdLayer: Layer.Layer<ChosenIdStore, never, BrowserStorage.Local> = Layer.effect(
+  ChosenIdStore,
+  Effect.map(BrowserStorage.Local, (store) => store.forSchema(Schema.String))
+)
+
+/**
+ * The id of the model last chosen; `None` when none was, or what is kept is
+ * not an id. Fails when the browser refuses the read.
+ */
+const readChosenId: Effect.Effect<
+  Option.Option<string>,
+  PlatformError.PlatformError,
+  ChosenIdStore
+> = ChosenIdStore.pipe(
+  Effect.flatMap((store) => store.get(CHOSEN_ID_STORAGE_KEY)),
+  Effect.catchTag('ParseError', () => Effect.succeed(Option.none<string>()))
+)
+
+/** Keep `modelId` as the last chosen model. */
+const writeChosenId = (
+  modelId: string
+): Effect.Effect<void, PlatformError.PlatformError, ChosenIdStore> =>
+  ChosenIdStore.pipe(
+    Effect.flatMap((store) => store.set(CHOSEN_ID_STORAGE_KEY, modelId)),
+    Effect.catchTag('ParseError', Effect.die)
   )
 
 export {
   CHOSEN_ID_STORAGE_KEY,
+  chosenIdLayer,
+  ChosenIdStore,
   choicesOf,
   ClaudeModelSchema as Schema,
   DEFAULT_ID,
