@@ -8,7 +8,8 @@ import { Context, Effect, Layer, Option } from 'effect'
  *
  * @remarks
  * A namespace module: `BrowserStorage.Local`, `BrowserStorage.Session`,
- * `BrowserStorage.layer`, `BrowserStorage.refusingStore`. What each thing
+ * `BrowserStorage.layer`, `BrowserStorage.memoryStore`,
+ * `BrowserStorage.refusingStore`. What each thing
  * kept is, and its key, is the task-specific store built on top of one of
  * these: `ApiKey.Store`, `ClaudeModel.ChosenIdStore`, `Chat.Store`.
  *
@@ -26,6 +27,13 @@ class Session extends Context.Tag('@wildflowerhealthio/assistant-core-js/Browser
   Session,
   KeyValueStore.KeyValueStore
 >() {}
+
+/**
+ * An empty store in memory, gone with the page: where a chat is kept once
+ * the person chooses that over a browser that refuses `sessionStorage`.
+ */
+const memoryStore = (): KeyValueStore.KeyValueStore =>
+  Effect.runSync(KeyValueStore.KeyValueStore.pipe(Effect.provide(KeyValueStore.layerMemory)))
 
 /** The Web Storage areas the two stores are backed by. */
 type Area = 'localStorage' | 'sessionStorage'
@@ -78,5 +86,5 @@ const layer: Layer.Layer<Local | Session> = Layer.merge(
   Layer.effect(Session, storeOf('sessionStorage'))
 )
 
-export { layer, Local, refusingStore, Session }
+export { layer, Local, memoryStore, refusingStore, Session }
 export type { Area }

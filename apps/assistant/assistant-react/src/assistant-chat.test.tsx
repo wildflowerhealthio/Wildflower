@@ -250,6 +250,36 @@ describe('AssistantChat turns', () => {
     expect(claude.requests).toHaveLength(0)
   })
 
+  it("should send once the person keeps the chat in memory over a browser that won't keep it", async () => {
+    const user = userEvent.setup()
+    const { local } = memoryStorage()
+    const session = BrowserStorage.refusingStore('sessionStorage')
+    const { claude } = renderChat({
+      keptKey,
+      replies: [replyWith('Kept in memory')],
+      storage: {
+        layer: Layer.merge(
+          Layer.succeed(BrowserStorage.Local, local),
+          Layer.succeed(BrowserStorage.Session, session)
+        ),
+        local,
+        session,
+      },
+    })
+    await screen.findByLabelText('Message')
+    await ask(user, 'Hello')
+
+    await user.click(await screen.findByRole('button', { name: 'Keep this chat in memory' }))
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    expect(await screen.findByText('Kept in memory')).toBeDefined()
+    expect(
+      screen.getByText('This chat is kept in memory only, so it will be lost if the page reloads.')
+    ).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Keep this chat in memory' })).toBeNull()
+    expect(claude.requests).toHaveLength(1)
+  })
+
   it('should pick up the chat kept in the tab', () => {
     const storage = memoryStorage()
     const kept = Chat.append(Chat.start('academic'), Chat.userEntryOf('Kept question'))

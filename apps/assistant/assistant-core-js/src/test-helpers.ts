@@ -15,7 +15,7 @@ import type {
   BetaRawMessageStreamEvent,
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import { KeyValueStore } from '@effect/platform'
+import type { KeyValueStore } from '@effect/platform'
 import type { ResourceWrite } from '@wildflowerhealthio/fhir-r4/clients'
 import { hasId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, Layer, Option, Schema } from 'effect'
@@ -33,14 +33,10 @@ interface MemoryStorage {
   readonly session: KeyValueStore.KeyValueStore
 }
 
-/** A store in memory, empty. */
-const memoryStore = (): KeyValueStore.KeyValueStore =>
-  Effect.runSync(KeyValueStore.KeyValueStore.pipe(Effect.provide(KeyValueStore.layerMemory)))
-
 /** Empty in-memory `localStorage` and `sessionStorage`. */
 const memoryStorage = (): MemoryStorage => {
-  const local = memoryStore()
-  const session = memoryStore()
+  const local = BrowserStorage.memoryStore()
+  const session = BrowserStorage.memoryStore()
   return {
     layer: Layer.merge(
       Layer.succeed(BrowserStorage.Local, local),

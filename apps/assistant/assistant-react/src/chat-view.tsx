@@ -79,6 +79,7 @@ const ChatView = ({
         keyKept={ready.keyKept}
         turnFailure={chat.turnFailure}
         writesAwaitingDecision={chat.writesAwaitingDecision}
+        onKeepInMemory={chat.keepInMemory}
       />
       <Composer
         replying={chat.turnRunning}

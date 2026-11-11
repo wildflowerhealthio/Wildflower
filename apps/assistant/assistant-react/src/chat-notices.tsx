@@ -15,16 +15,21 @@ const storageProblemText = (problem: ChatStorageProblem): string =>
       'unreadable',
       () => "The chat kept in this tab couldn't be read, so this is a new chat."
     ),
-    Match.when(
-      'not-kept',
-      () => "This browser won't keep the chat in this tab, so it will be lost if the page reloads."
-    ),
+    Match.when('not-kept', () => "This browser won't keep the chat in this tab."),
     Match.when(
       'message-not-kept',
       () => "This browser won't keep your message in this tab, so it wasn't sent."
     ),
+    Match.when(
+      'kept-in-memory',
+      () => 'This chat is kept in memory only, so it will be lost if the page reloads.'
+    ),
     Match.exhaustive
   )
+
+/** Whether `problem` is the browser refusing the tab's storage, which keeping the chat in memory gets round. */
+const isRefusedStorage = (problem: ChatStorageProblem): boolean =>
+  problem === 'not-kept' || problem === 'message-not-kept'
 
 /** Props for {@link ChatNotices}. */
 interface ChatNoticesProps {
@@ -35,6 +40,8 @@ interface ChatNoticesProps {
   readonly turnFailure: Option.Option<Turn.Failure>
   /** A write Claude proposed waits on the person's decision, so nothing else can be sent. */
   readonly writesAwaitingDecision: boolean
+  /** Keep the chat in memory instead, offered while the browser refuses the tab's storage. */
+  readonly onKeepInMemory: () => void
 }
 
 /**
@@ -49,6 +56,7 @@ const ChatNotices = ({
   keyKept,
   turnFailure,
   writesAwaitingDecision,
+  onKeepInMemory,
 }: ChatNoticesProps): JSX.Element => (
   <div className={styles['chat-notices']}>
     {style === 'academic' ? (
@@ -58,9 +66,16 @@ const ChatNotices = ({
     ) : null}
     {storageProblem.pipe(
       Option.map((problem) => (
-        <p key="storage" role="status" className={cn('text-body-3', styles['chat-notices__line'])}>
-          {storageProblemText(problem)}
-        </p>
+        <div key="storage" className={styles['chat-notices__storage']}>
+          <p role="status" className={cn('text-body-3', styles['chat-notices__line'])}>
+            {storageProblemText(problem)}
+          </p>
+          {isRefusedStorage(problem) ? (
+            <button type="button" className="button-3 outline" onClick={onKeepInMemory}>
+              Keep this chat in memory
+            </button>
+          ) : null}
+        </div>
       )),
       Option.getOrNull
     )}

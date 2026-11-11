@@ -1,5 +1,6 @@
 import {
   type ApiKey,
+  BrowserStorage,
   Chat,
   type ClaudeModel,
   type FhirRecords,
@@ -29,11 +30,12 @@ interface PendingWrites {
 }
 
 /**
- * Why the chat could not be kept: what was kept could not be read, the
+ * Why the chat is not kept in the tab: what was kept could not be read, the
  * browser would not keep the chat, or it would not keep the person's
- * message, which was therefore not sent.
+ * message, which was therefore not sent; or the person chose to keep the
+ * chat in memory instead, where a reload loses it.
  */
-type ChatStorageProblem = 'unreadable' | 'not-kept' | 'message-not-kept'
+type ChatStorageProblem = 'unreadable' | 'not-kept' | 'message-not-kept' | 'kept-in-memory'
 
 /** {@link useChat}'s state and the actions that move it on. */
 interface ChatControls {
@@ -80,6 +82,11 @@ interface ChatControls {
   readonly stop: () => void
   /** Drop this chat and start another in the default style. */
   readonly newChat: () => void
+  /**
+   * Keep this chat, and a new one started after it, in memory instead of the tab's
+   * `sessionStorage`, for a browser that won't keep it there. A reload loses it.
+   */
+  readonly keepInMemory: () => void
 }
 
 /** What a chat's tools reach: what the grant allows, and the FHIR server they read. */
@@ -91,6 +98,10 @@ interface ChatRecords {
 /** The chats kept in `storage`. */
 const chatStoreOf = (storage: AssistantEnvironment['storage']): Layer.Layer<Chat.Store> =>
   Layer.provide(Chat.layer, storage)
+
+/** The chats kept in a new, empty store in memory. */
+const memoryChatStore = (): Layer.Layer<Chat.Store> =>
+  Layer.provide(Chat.layer, Layer.succeed(BrowserStorage.Session, BrowserStorage.memoryStore()))
 
 /** What the live region says once a turn has kept `entry`. */
 const announcementOf = (entry: Chat.Entry): string =>
@@ -122,8 +133,11 @@ const useChat = (
   place: Chat.Place,
   { recordAccess, fhirRecordsLayer }: ChatRecords
 ): ChatControls => {
+  // Where the chat is kept: the tab's `sessionStorage`, or memory once the
+  // person chooses that over a browser that won't keep it.
+  const [chatStore, setChatStore] = useState(() => chatStoreOf(storage))
   const [initial] = useState(() =>
-    Effect.runSync(Effect.either(Chat.read(place).pipe(Effect.provide(chatStoreOf(storage)))))
+    Effect.runSync(Effect.either(Chat.read(place).pipe(Effect.provide(chatStore))))
   )
   const [chat, setChat] = useState<Chat.Type>(() =>
     Either.match(initial, {
@@ -163,9 +177,7 @@ const useChat = (
   const keep = useCallback(
     (kept: Chat.Type): void => {
       Either.match(
-        Effect.runSync(
-          Effect.either(Chat.write(place, kept).pipe(Effect.provide(chatStoreOf(storage))))
-        ),
+        Effect.runSync(Effect.either(Chat.write(place, kept).pipe(Effect.provide(chatStore)))),
         {
           onLeft: () => {
             setStorageProblem(Option.some('not-kept'))
@@ -174,7 +186,7 @@ const useChat = (
         }
       )
     },
-    [storage, place]
+    [chatStore, place]
   )
 
   const styleLocked = chat.entries.length > 0
@@ -206,7 +218,7 @@ const useChat = (
       if (turnRunning) return Promise.reject(new Error('A turn is already running.'))
       const asked = Chat.append(chat, Chat.userEntryOf(text))
       const askedWrite = Effect.runSync(
-        Effect.either(Chat.write(place, asked).pipe(Effect.provide(chatStoreOf(storage))))
+        Effect.either(Chat.write(place, asked).pipe(Effect.provide(chatStore)))
       )
       if (Either.isLeft(askedWrite)) {
         setStorageProblem(Option.some('message-not-kept'))
@@ -298,7 +310,7 @@ const useChat = (
       )
       return Promise.resolve()
     },
-    [chat, claudeLayerFor, fhirRecordsLayer, keep, place, recordAccess, storage, turnRunning]
+    [chat, claudeLayerFor, fhirRecordsLayer, keep, place, recordAccess, chatStore, turnRunning]
   )
 
   const decideWrite = useCallback<ChatControls['decideWrite']>(
@@ -329,13 +341,13 @@ const useChat = (
     turnFiber.current = Option.none()
     currentTurnNumber.current += 1
     Either.match(
-      Effect.runSync(Effect.either(Chat.forget(place).pipe(Effect.provide(chatStoreOf(storage))))),
+      Effect.runSync(Effect.either(Chat.forget(place).pipe(Effect.provide(chatStore)))),
       {
         onLeft: () => {
           setStorageProblem(Option.some('not-kept'))
         },
         onRight: () => {
-          setStorageProblem(Option.none())
+          setStorageProblem(Option.filter((problem) => problem === 'kept-in-memory'))
         },
       }
     )
@@ -344,7 +356,15 @@ const useChat = (
     setPendingWrites(Option.none())
     setTurnFailure(Option.none())
     setAnnouncement('')
-  }, [interruptTurn, storage, place])
+  }, [interruptTurn, chatStore, place])
+
+  const keepInMemory = useCallback((): void => {
+    const inMemory = memoryChatStore()
+    // Memory never refuses, so the chat so far is kept as it stands.
+    Effect.runSync(Effect.either(Chat.write(place, chat).pipe(Effect.provide(inMemory))))
+    setChatStore(inMemory)
+    setStorageProblem(Option.some('kept-in-memory'))
+  }, [chat, place])
 
   return {
     chat,
@@ -364,6 +384,7 @@ const useChat = (
     decideWrite,
     stop: interruptTurn,
     newChat,
+    keepInMemory,
   }
 }
 
