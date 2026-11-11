@@ -38,6 +38,7 @@
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
@@ -56,6 +57,7 @@
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:"

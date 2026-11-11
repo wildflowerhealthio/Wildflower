@@ -43,6 +43,10 @@ catalogue, range presets and the URL codec a shared link round-trips through —
 all pure functions, property-tested without a DOM. `plots-react` draws
 the fundamentals' series with Observable Plot, importing no domain package.
 
+The Assistant is not a slice either: a chat with Claude over a patient's
+record, it lives in `apps/assistant` — see
+[apps/assistant/AGENTS.md](../apps/assistant/AGENTS.md).
+
 FHIR Sync for Pebble's watchapp and settings page live in
 `apps/fhir-sync-pebble` — see
 [apps/fhir-sync-pebble/AGENTS.md](../apps/fhir-sync-pebble/AGENTS.md). Their

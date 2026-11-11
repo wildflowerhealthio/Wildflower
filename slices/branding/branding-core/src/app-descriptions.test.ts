@@ -12,15 +12,21 @@ import { MARKETING_ANCHORS } from './nav.ts'
 import { APP_SLUGS, sectionUrl } from './site.ts'
 
 /**
- * Every described app: the homepage's SMART apps, and the launcher and
- * Wildflower Authorization, which have a landing page but no homepage row.
+ * Every described app: the homepage's SMART apps, and the launcher, Wildflower
+ * Authorization and the Assistant, which have a landing page but no homepage
+ * row.
  */
-const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'launcher', 'authorization']
+const DESCRIBED_APP_IDS: readonly AppSectionId[] = [
+  ...APP_SECTION_IDS,
+  'launcher',
+  'authorization',
+  'assistant',
+]
 
 const appSectionIdArb = fc.constantFrom<AppSectionId>(...DESCRIBED_APP_IDS)
 
 describe('APP_SECTION_IDS', () => {
-  it('should list every described app but the launcher and authorization exactly once, and nothing else', () => {
+  it('should list every described app but the launcher, authorization and the Assistant exactly once, and nothing else', () => {
     expect(DESCRIBED_APP_IDS.toSorted()).toStrictEqual(Object.keys(APP_DESCRIPTIONS).toSorted())
   })
 
@@ -70,7 +76,7 @@ describe('APP_DESCRIPTIONS', () => {
 })
 
 describe('SMART_APP_LAUNCH_PAGES', () => {
-  it('should list the five first-party SMART apps, at their own origins on the published site', () => {
+  it('should list the six first-party SMART apps, at their own origins on the published site', () => {
     // Act
     const launchPages = SMART_APP_LAUNCH_PAGES
 
@@ -79,6 +85,7 @@ describe('SMART_APP_LAUNCH_PAGES', () => {
       { app: 'medications', launchPageUrl: 'https://medications.wildflowerhealth.io/' },
       { app: 'importer', launchPageUrl: 'https://importer.wildflowerhealth.io/' },
       { app: 'plots', launchPageUrl: 'https://plots.wildflowerhealth.io/' },
+      { app: 'assistant', launchPageUrl: 'https://assistant.wildflowerhealth.io/' },
       { app: 'syntheticData', launchPageUrl: 'https://synthetic-data.wildflowerhealth.io/' },
       { app: 'strength', launchPageUrl: 'https://strength.wildflowerhealth.io/' },
     ])

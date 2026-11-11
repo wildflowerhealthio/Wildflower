@@ -1104,6 +1104,7 @@ const routingServer = (config: {
       fhirBaseUrl: decodeFhirBaseUrl(''),
       accessToken: Option.none(),
       launchPatientId: Option.none(),
+      grantedScopes: [],
     }),
     httpLayer
   ).runSmart

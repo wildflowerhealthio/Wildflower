@@ -60,6 +60,7 @@ const TEST_SHARD_COUNT = 4
  */
 const AREA_TEST_SECONDS: ReadonlyMap<string, number> = new Map([
   ['apps/app-catalog', 4],
+  ['apps/assistant', 3],
   ['apps/authorization', 6],
   ['apps/fhir-sync-pebble', 11],
   ['apps/host', 41],

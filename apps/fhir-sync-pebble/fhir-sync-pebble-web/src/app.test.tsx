@@ -362,4 +362,5 @@ const grantedConnection = ({
     fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
     accessToken,
     launchPatientId: Option.none(),
+    grantedScopes: [],
   })

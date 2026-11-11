@@ -559,6 +559,7 @@ mod tests {
             ("strength", true),
             ("plots", true),
             ("synthetic-data", true),
+            ("assistant", true),
         ];
         let (status, body) = send(&st, put_json("/home-screen", home_screen_body(&ordered))).await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
@@ -582,6 +583,7 @@ mod tests {
                 "strength",
                 "plots",
                 "synthetic-data",
+                "assistant",
             ],
         );
         let growth = body
@@ -636,6 +638,7 @@ mod tests {
                     ("importer", true),
                     ("ohif-viewer", true),
                     ("plots", true),
+                    ("synthetic-data", true),
                     ("ghost", true),
                 ]),
             ),

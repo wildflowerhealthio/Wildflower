@@ -85,8 +85,8 @@ const stubFhirServer = (answers: StubAnswers): StubFhirServer => {
 }
 
 /**
- * A connection to {@link STUB_FHIR_BASE} with no token and no launch patient,
- * unless `fields` says otherwise.
+ * A connection to {@link STUB_FHIR_BASE} with no token, no launch patient and
+ * no granted scopes, unless `fields` says otherwise.
  */
 const stubConnection = (
   fields: Partial<ConstructorParameters<typeof SmartConnection>[0]> = {}
@@ -95,6 +95,7 @@ const stubConnection = (
     fhirBaseUrl: STUB_FHIR_BASE,
     accessToken: Option.none(),
     launchPatientId: Option.none(),
+    grantedScopes: [],
     ...fields,
   })
 

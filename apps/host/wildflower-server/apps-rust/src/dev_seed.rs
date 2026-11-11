@@ -2,7 +2,8 @@
 //! apps' local vite dev servers.
 //!
 //! The first-party apps (Medications, Importer, the OHIF imaging
-//! viewer, Server Docs, Plots, the Synthetic Data Loader, Strength) ship as
+//! viewer, Server Docs, Plots, the Synthetic Data Loader, Strength, the
+//! Assistant) ship as
 //! rows served from their own origins under <https://wildflowerhealth.io> (apps
 //! migrations `0005_first_party_apps_to_cloud` and
 //! `0024_launch_apps_from_their_own_origins`). That is the right production target and
@@ -47,6 +48,7 @@ const PLOTS_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
 const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
 const STRENGTH_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
 const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
+const ASSISTANT_DEV_CLIENT_ID: &str = "17613ed083c9fded0178ed0c5ebf7cfe";
 
 /// One debug-only row: an app id, its display fields, its OAuth client, and the
 /// launch URL pointing at the local dev server.
@@ -109,6 +111,8 @@ struct DevAppPorts {
     synthetic_data_dev: i32,
     #[serde(rename = "strength-dev")]
     strength_dev: i32,
+    #[serde(rename = "assistant-dev")]
+    assistant_dev: i32,
 }
 
 /// The debug-only rows, with their ports read from the shared JSON.
@@ -119,7 +123,7 @@ struct DevAppPorts {
 /// a compile-time-embedded, version-controlled file, so a failure here is a
 /// broken build, not a runtime condition, and only ever reachable in a debug
 /// build.
-fn dev_apps() -> [DevApp; 7] {
+fn dev_apps() -> [DevApp; 8] {
     let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON)
         .expect("the embedded dev-app-ports.json must declare a port per dev app id");
     [
@@ -171,6 +175,13 @@ fn dev_apps() -> [DevApp; 7] {
             name: "Wildflower Strength (Dev)",
             subtitle: "Local vite dev server for apps/strength/strength-web",
             url: dev_launch_url(ports.strength_dev),
+        },
+        DevApp {
+            id: "assistant-dev",
+            client_id: ASSISTANT_DEV_CLIENT_ID,
+            name: "Wildflower Assistant (Dev)",
+            subtitle: "Local vite dev server for apps/assistant/assistant-web",
+            url: dev_launch_url(ports.assistant_dev),
         },
     ]
 }
@@ -423,6 +434,30 @@ mod tests {
     }
 
     #[test]
+    fn the_assistant_dev_row_launches_its_dev_server() {
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
+        seed_dev_apps(pool.clone()).unwrap();
+        let store = SqliteAppsStore::new(pool).unwrap();
+
+        let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).unwrap();
+        let port = ports.assistant_dev;
+        let registration = dev_row(&store, "assistant-dev");
+        assert_eq!(registration.name, "Wildflower Assistant (Dev)");
+        assert_eq!(
+            registration.subtitle.as_deref(),
+            Some("Local vite dev server for apps/assistant/assistant-web"),
+        );
+        assert_eq!(
+            registration.client_id.as_deref(),
+            Some(ASSISTANT_DEV_CLIENT_ID)
+        );
+        assert_eq!(
+            registration.url.to_string(),
+            format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}"),
+        );
+    }
+
+    #[test]
     fn the_production_rows_stay_beside_the_dev_rows() {
         let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
@@ -436,6 +471,7 @@ mod tests {
             ("plots", "474e103de61f9141c4b640d59bfa130e"),
             ("synthetic-data", "225ba6af034a3acec6be7ff8010df67f"),
             ("server-docs", "664a01e8614050cd82ffe90350b81413"),
+            ("assistant", "9883d102933b1561e343cae5fd9f26eb"),
         ] {
             let registration = store.find_app(id).unwrap().expect("migrated row");
             assert_eq!(registration.client_id.as_deref(), Some(client_id));

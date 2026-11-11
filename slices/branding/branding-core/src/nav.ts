@@ -93,6 +93,7 @@ const HEADER_NAV_GROUPS: readonly NavGroup[] = [
     links: [
       { kind: 'section', label: 'Wildflower Medications', section: 'medications' },
       { kind: 'section', label: 'Wildflower Plots', section: 'plots' },
+      { kind: 'section', label: 'Wildflower Assistant', section: 'assistant' },
       { kind: 'section', label: 'Wildflower Imaging', section: 'ohifViewer' },
     ],
   },

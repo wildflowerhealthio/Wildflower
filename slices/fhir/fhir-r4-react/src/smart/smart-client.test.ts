@@ -1,3 +1,4 @@
+import { ResourceWrite } from '@wildflowerhealthio/fhir-r4/clients'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Either, Exit, Option } from 'effect'
 import * as fc from 'fast-check'
@@ -27,6 +28,7 @@ const CONNECTION = new SmartConnection({
   fhirBaseUrl: decodeFhirBaseUrl('https://fhir.example/r4/'),
   accessToken: Option.some('token-1'),
   launchPatientId: Option.some('pat-1'),
+  grantedScopes: [],
 })
 
 /** A stub server answering every request with `answer`. */
@@ -171,6 +173,7 @@ describe('SmartClient.request', () => {
           fhirBaseUrl: CONNECTION.fhirBaseUrl,
           accessToken: Option.none(),
           launchPatientId: CONNECTION.launchPatientId,
+          grantedScopes: CONNECTION.grantedScopes,
         })
       )
     )
@@ -250,5 +253,63 @@ describe('SmartClient.request', () => {
 
     expect(failure).toBeInstanceOf(FhirResponseNotJson)
     expect(failure).toMatchObject({ url: 'https://fhir.example/r4/Patient' })
+  })
+})
+
+describe('SmartClient writes', () => {
+  const observation = {
+    resourceType: 'Observation',
+    id: 'o1',
+    status: 'final',
+    code: { text: 'Weight' },
+  } as const
+
+  /** `write` run through the `SmartClient` for {@link CONNECTION}, over `server`. */
+  const writeThrough = <A>(
+    server: StubFhirServer,
+    write: (client: typeof SmartClient.Service) => Effect.Effect<A, ResourceWrite.Failed>
+  ): Effect.Effect<A, ResourceWrite.Failed> =>
+    SmartClient.pipe(
+      Effect.flatMap(write),
+      Effect.provide(SmartClient.layer(CONNECTION)),
+      Effect.provide(server.transport)
+    )
+
+  test('creates under the FHIR base, with the bearer token', async () => {
+    const server = serverAnswering(answerJson({ ...observation, meta: { versionId: '1' } }, 201))
+
+    const written = await Effect.runPromise(
+      writeThrough(server, (client) => client.create({ resource: observation }))
+    )
+
+    expect(written.id).toBe('o1')
+    expect(server.urls).toEqual(['https://fhir.example/r4/Observation'])
+    expect(server.requests[0]?.method).toBe('POST')
+    expect(authorizationsOf(server)).toEqual(['Bearer token-1'])
+  })
+
+  test('updates under the FHIR base with If-Match, with the bearer token', async () => {
+    const server = serverAnswering(answerJson({ ...observation, meta: { versionId: '4' } }))
+
+    const written = await Effect.runPromise(
+      writeThrough(server, (client) => client.update({ resource: observation, versionId: '3' }))
+    )
+
+    expect(written.versionId).toEqual(Option.some('4'))
+    expect(server.urls).toEqual(['https://fhir.example/r4/Observation/o1'])
+    expect(server.requests[0]?.headers['if-match']).toBe('W/"3"')
+    expect(authorizationsOf(server)).toEqual(['Bearer token-1'])
+  })
+
+  test('fails an update whose version is stale as precondition-failed', async () => {
+    const exit = await Effect.runPromiseExit(
+      writeThrough(serverAnswering(answerStatus(412)), (client) =>
+        client.update({ resource: observation, versionId: '3' })
+      )
+    )
+
+    expect(exit).toEqual(
+      Exit.fail(new ResourceWrite.Failed({ failure: { kind: 'precondition-failed' } }))
+    )
   })
 })

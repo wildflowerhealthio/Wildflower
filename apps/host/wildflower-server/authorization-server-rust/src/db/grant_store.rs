@@ -2764,6 +2764,84 @@ mod tests {
         );
     }
 
+    /// An install already at `0050` gains the Assistant's client when `0051`
+    /// runs: a public client returning to the app's own origin, allowed
+    /// exactly what the app asks for, with the data apps' refresh policy.
+    /// Reverting `0051` removes it, with a refresh-token family issued to it.
+    #[test]
+    fn an_install_already_at_0050_gains_the_assistant_client() {
+        use chrono::Duration;
+        use diesel::connection::SimpleConnection as _;
+
+        use crate::db::clients::clients;
+        use crate::domain::client::{Client, ClientKind, RefreshPolicy};
+
+        const ASSISTANT: &str = "9883d102933b1561e343cae5fd9f26eb";
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0050"),
+        )
+        .expect("migrate to 0050");
+        assert!(
+            column_for_client(&mut conn, "client_id", ASSISTANT).is_empty(),
+            "no migration through 0050 seeds the Assistant"
+        );
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0051"),
+        )
+        .expect("upgrade through 0051");
+        let assistant = clients::table
+            .find(ASSISTANT)
+            .select(Client::as_select())
+            .first(&mut conn)
+            .expect("0051 seeds the Assistant's client");
+        assert_eq!(assistant.name, "Wildflower Assistant");
+        assert_eq!(assistant.kind, ClientKind::Public);
+        assert!(assistant.secret_hash.is_none());
+        assert_eq!(
+            allowed_scopes_of(&mut conn, ASSISTANT),
+            r#"["launch","openid","fhirUser","system/*.cruds"]"#,
+        );
+        assert_eq!(
+            column_for_client(&mut conn, "redirect_uris", ASSISTANT)[0].name,
+            r#"["https://assistant.wildflowerhealth.io/"]"#,
+        );
+        assert_eq!(
+            assistant.refresh_policy,
+            RefreshPolicy {
+                idle_ttl: Some(Duration::days(7)),
+                max_ttl: Some(Duration::days(30)),
+                ends_with_browser_session: false,
+            }
+        );
+
+        conn.batch_execute(&format!(
+            "INSERT INTO refresh_token_families (family_id, client_id, scopes, issued_at, expires_at) \
+             VALUES ('assistant-family', '{ASSISTANT}', '[]', '2026-11-01', '2026-12-01'); \
+             INSERT INTO refresh_tokens (token_hash, family_id, issued_at) \
+             VALUES ('assistant-token', 'assistant-family', '2026-11-01')"
+        ))
+        .expect("a family issued to the Assistant");
+        let migration_0051 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0051"))
+            .expect("0051 is embedded");
+        migration_0051.revert(&mut conn).expect("revert 0051");
+        assert!(column_for_client(&mut conn, "client_id", ASSISTANT).is_empty());
+        let families: Vec<Name> =
+            diesel::sql_query("SELECT family_id AS name FROM refresh_token_families")
+                .load(&mut conn)
+                .expect("query refresh_token_families");
+        assert!(families.is_empty(), "the Assistant's family goes with it");
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database

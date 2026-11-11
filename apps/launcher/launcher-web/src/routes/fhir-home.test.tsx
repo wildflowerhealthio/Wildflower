@@ -85,7 +85,7 @@ describe('FhirServerHome', () => {
         ({ app }) => `${APP_DESCRIPTIONS[app].name}${APP_DESCRIPTIONS[app].tagline}`
       )
     )
-    expect(appTiles).toHaveLength(5)
+    expect(appTiles).toHaveLength(6)
     expect(screen.queryByRole('link', { name: /FHIR Sync for Pebble/ })).toBeNull()
   })
 
@@ -99,6 +99,7 @@ describe('FhirServerHome', () => {
       'https://medications.wildflowerhealth.io/',
       'https://importer.wildflowerhealth.io/',
       'https://plots.wildflowerhealth.io/',
+      'https://assistant.wildflowerhealth.io/',
       'https://synthetic-data.wildflowerhealth.io/',
       'https://strength.wildflowerhealth.io/',
     ])

@@ -1,0 +1,10 @@
+.chat-view__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-5);
+}
+
+.chat-view__settings {
+  margin-left: auto;
+}

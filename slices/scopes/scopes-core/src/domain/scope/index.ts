@@ -1,3 +1,5 @@
+import { Schema as S } from 'effect'
+
 import * as Contexts from './contexts/index.ts'
 import * as Permission from './permission/index.ts'
 import * as ResourceType from './resource-type/index.ts'
@@ -46,6 +48,15 @@ namespace ResourceScope {
 
 type Any = Wildflower | FhirV1 | FhirV2 | Known | Unknown
 
+/** An already-parsed {@link Any}, for a schema class that holds scopes. */
+const Schema: S.Schema<Any> = S.Union(
+  S.instanceOf(Wildflower),
+  S.instanceOf(FhirV1),
+  S.instanceOf(FhirV2),
+  S.instanceOf(Known),
+  S.instanceOf(Unknown)
+)
+
 /**
  * Parse one scope string into its richest form — total (mirrors Rust's
  * `Scope::from`): known → wildflower → FHIR → unknown.
@@ -64,6 +75,7 @@ export {
   BaseScope as Base,
   ResourceScope,
   type Any,
+  Schema,
   parse,
   ResourceScopeConfiguration,
   MultiScope,

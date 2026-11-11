@@ -43,6 +43,14 @@ offers the same choices; this package re-exports its preset groups.
   `appRootRedirect(startRoute)` — what a routed app's router runs over, the
   gate it is built under, and what its `/` redirects to; see
   [Routing a SMART app](#routing-a-smart-app).
+- `useGrantedScopes()` — the scopes the page's sign-in was granted, as
+  `scopes-core` `Scope` values: a connection carries its grant
+  (`SmartConnection.grantedScopes`), which may be less than the app's
+  `registration.scope` asked for when the Owner unticked scopes on the
+  consent card. It reads the runtime `SmartHandshakeGate` provides, as
+  `useRunSmart` does; a page handed the connection reads the field directly.
+  `scopes-core`'s `Grant.make` turns the list into a grant to check coverage
+  against.
 - `LoadingLine`, `LoadingMoreLine` and `ReadFailureLine` — the read-status
   vocabulary an app's page speaks: `Loading…` (or `Loading <subject>…`)
   before anything lands, `Loading more…` while later pages arrive, and
@@ -71,12 +79,17 @@ offers the same choices; this package re-exports its preset groups.
     read, which says so when the server has no such patient) or "All
     patients", and a "Change patient" link. Both read through the runtime
     the gate provides (`useRunSmart`).
+  - `patientQuery(runSmart, patientId)` — the query `PatientChoiceLine`
+    reads (cache key `['patient', id]`), exported so an app that needs the
+    patient's record for its own page (the Assistant's chat) reads the same
+    cache entry rather than a second `fetchPatient`.
 
 Consumers: `apps/medications/medications-web`, `apps/plots/plots-web`, `apps/strength/strength-web`,
+`apps/assistant/assistant-web`,
 `apps/importer-web` and `apps/synthetic-data/synthetic-data-web` mount
 `SmartAppRoot`, which an EHR launches at the app root; the first three speak
-the read-status lines, as does `synthetic-data-react`'s screen, and pick the
-patient with the patient choice; `apps/fhir-sync-pebble/fhir-sync-pebble-web` mounts
+the read-status lines, as does `synthetic-data-react`'s screen, and they and
+the Assistant pick the patient with the patient choice; `apps/fhir-sync-pebble/fhir-sync-pebble-web` mounts
 `SmartAppRoot` too, but is only ever opened standalone;
 `apps/launcher/launcher-web`'s landing uses only `ConnectMenu`, with
 `target: 'wildflower'`.

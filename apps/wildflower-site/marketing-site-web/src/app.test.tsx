@@ -65,6 +65,7 @@ describe('App', () => {
     expect(hrefs).toStrictEqual([
       'https://medications.wildflowerhealth.io/',
       'https://plots.wildflowerhealth.io/',
+      'https://assistant.wildflowerhealth.io/',
       'https://ohif-viewer.wildflowerhealth.io/',
       'https://importer.wildflowerhealth.io/',
       'https://launcher.wildflowerhealth.io/',

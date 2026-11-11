@@ -485,7 +485,7 @@ mod tests {
     /// launcher, `0029` does the OHIF viewer and `0030` FHIR Sync for Pebble), and
     /// Wildflower Authorization by `0031` (the launcher's scopes are narrowed by
     /// `0032`), and `0037` puts each hosted app's own origin in front of the
-    /// redirect on `wildflowerhealth.io` it held — so a
+    /// redirect on `wildflowerhealth.io` it held, and the Assistant by `0051` — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -508,6 +508,7 @@ mod tests {
             "474e103de61f9141c4b640d59bfa130e",
             "225ba6af034a3acec6be7ff8010df67f",
             "7277e898bee8ac81ea44788236e619a5",
+            "9883d102933b1561e343cae5fd9f26eb",
         ] {
             let client = store
                 .read(|tx| tx.client_by_id(client_id))
@@ -889,6 +890,36 @@ mod tests {
                 AllowedGrantType::AuthorizationCode,
                 AllowedGrantType::RefreshToken,
             ],
+        );
+        // The Assistant carries only its own origin's redirect, seeded by
+        // `0051` after the apps left `wildflowerhealth.io`, and the data apps'
+        // refresh policy. Its scopes are pinned to
+        // `apps/assistant/assistant-web/src/config.ts` by `seeding.rs`'s
+        // `seeds_the_assistant_dev_client_with_the_apps_own_scopes`.
+        let assistant = store
+            .read(|tx| tx.client_by_id("9883d102933b1561e343cae5fd9f26eb"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(assistant.name, "Wildflower Assistant");
+        assert_eq!(
+            assistant.redirect_uris,
+            vec![url::Url::parse("https://assistant.wildflowerhealth.io/")
+                .expect("a valid absolute redirect")],
+        );
+        assert_eq!(
+            assistant.allowed_grant_types,
+            vec![
+                AllowedGrantType::AuthorizationCode,
+                AllowedGrantType::RefreshToken,
+            ],
+        );
+        assert_eq!(
+            assistant.refresh_policy,
+            RefreshPolicy {
+                idle_ttl: Some(Duration::days(7)),
+                max_ttl: Some(Duration::days(30)),
+                ends_with_browser_session: false,
+            },
         );
     }
 

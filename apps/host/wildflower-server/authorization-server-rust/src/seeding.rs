@@ -52,9 +52,9 @@ pub(crate) const FHIR_UI_REFRESH_POLICY: RefreshPolicy = RefreshPolicy {
 };
 
 /// A data app's client (Medications, Plots, Strength, Importer, Synthetic
-/// Data, the OHIF viewer): a week unused, thirty days at most, outliving the
-/// browser session. Each dev twin gets its production client's policy, which
-/// migration `0050` seeds.
+/// Data, the OHIF viewer, the Assistant): a week unused, thirty days at most,
+/// outliving the browser session. Each dev twin gets its production client's
+/// policy, which migration `0050` seeds (`0051` the Assistant's).
 #[cfg(debug_assertions)]
 pub(crate) const DATA_APP_REFRESH_POLICY: RefreshPolicy = RefreshPolicy {
     idle_ttl: Some(Duration::days(7)),
@@ -226,7 +226,7 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
     "/../../../../dev-app-ports.json"
 ));
 
-/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the seven first-party
+/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the eight first-party
 /// apps that register an OAuth client. The file also carries `server-docs-dev`
 /// and `watch-lifts-dev`, which are not SMART apps and so have no client
 /// here; serde ignores them.
@@ -261,6 +261,10 @@ struct DevAppPorts {
     /// loopback redirect names.
     #[serde(rename = "strength-dev")]
     strength_dev: u16,
+    /// The port the Assistant vite dev server listens on, and its dev client's
+    /// loopback redirect names.
+    #[serde(rename = "assistant-dev")]
+    assistant_dev: u16,
 }
 
 /// The Medications dev server's client.
@@ -288,6 +292,9 @@ pub(crate) const STRENGTH_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5
 /// The OHIF imaging viewer dev server's client.
 #[cfg(debug_assertions)]
 pub(crate) const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
+/// The Assistant dev server's client.
+#[cfg(debug_assertions)]
+pub(crate) const ASSISTANT_DEV_CLIENT_ID: &str = "17613ed083c9fded0178ed0c5ebf7cfe";
 /// The FHIR Sync for Pebble dev server's client. It has no dev tile: the app
 /// is standalone-only.
 #[cfg(debug_assertions)]
@@ -368,6 +375,16 @@ const STRENGTH_DEV_SCOPES: &[&str] = &[
     "system/Procedure.crus",
     "system/Observation.crus",
 ];
+
+/// The Assistant dev client's scopes: exactly `ASSISTANT_SCOPE` in
+/// `apps/assistant/assistant-web/src/config.ts`, which requests the same set for
+/// an EHR launch and a standalone connect, and the same set the production
+/// Assistant client allows (the authorization server migration
+/// `0051_seed_assistant_client`). A test below reads that file and pins all
+/// three together. Every interaction on every resource type: the grant the
+/// Owner approves, not this list, decides what the agent can do.
+#[cfg(debug_assertions)]
+const ASSISTANT_DEV_SCOPES: &[&str] = &["launch", "openid", "fhirUser", "system/*.cruds"];
 
 /// The loopback redirect route for a dev app served at its origin root — every
 /// first-party app but the OHIF viewer, whose launch targets a sub-route.
@@ -530,6 +547,16 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             // [`STRENGTH_DEV_SCOPES`].
             STRENGTH_DEV_SCOPES,
             ports.strength_dev,
+            DEV_ROOT_REDIRECT_PATH,
+            DATA_APP_REFRESH_POLICY,
+        ),
+        (
+            ASSISTANT_DEV_CLIENT_ID,
+            "Wildflower Assistant (Dev)",
+            // `apps/assistant/assistant-web/src/config.ts`'s `ASSISTANT_SCOPE` — see
+            // [`ASSISTANT_DEV_SCOPES`].
+            ASSISTANT_DEV_SCOPES,
+            ports.assistant_dev,
             DEV_ROOT_REDIRECT_PATH,
             DATA_APP_REFRESH_POLICY,
         ),
@@ -772,6 +799,66 @@ mod tests {
             .expect("query client")
             .expect("migration 0025 re-keys the Strength client");
         assert_eq!(production.allowed_scopes, STRENGTH_DEV_SCOPES);
+    }
+
+    /// The Assistant dev client is seeded on its dev server's loopback root
+    /// with exactly the scopes the app requests and the data apps' refresh
+    /// policy, and the production Assistant client (the authorization server
+    /// migration `0051`) allows the same set under the same policy. The app's
+    /// `ASSISTANT_SCOPE` and both client ids are read out of `config.ts` itself,
+    /// the one place the app writes them, so neither client can drift from it
+    /// unnoticed.
+    #[cfg(debug_assertions)]
+    #[test]
+    fn seeds_the_assistant_dev_client_with_the_apps_own_scopes() {
+        const ASSISTANT_CONFIG_TS: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../../apps/assistant/assistant-web/src/config.ts"
+        ));
+        /// The production client `0051_seed_assistant_client` seeds.
+        const ASSISTANT_CLIENT_ID: &str = "9883d102933b1561e343cae5fd9f26eb";
+        let scope_string = format!(
+            "const ASSISTANT_SCOPE = '{}'",
+            ASSISTANT_DEV_SCOPES.join(" ")
+        );
+        assert!(
+            ASSISTANT_CONFIG_TS.contains(&scope_string),
+            "apps/assistant/assistant-web/src/config.ts must declare exactly {scope_string}",
+        );
+        for client_id in [ASSISTANT_DEV_CLIENT_ID, ASSISTANT_CLIENT_ID] {
+            assert!(
+                ASSISTANT_CONFIG_TS.contains(&format!("'{client_id}'")),
+                "apps/assistant/assistant-web/src/config.ts must launch as {client_id}",
+            );
+        }
+
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
+        seed_dev_app_clients(pool.clone()).expect("seed dev clients");
+        let store = SqliteGrantStore::new(pool).expect("open grant store");
+        let client = store
+            .read(|tx| tx.client_by_id(ASSISTANT_DEV_CLIENT_ID))
+            .expect("query client")
+            .expect("assistant dev client seeded");
+        let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
+        assert_eq!(client.name, "Wildflower Assistant (Dev)");
+        assert_eq!(client.kind, ClientKind::Public);
+        assert_eq!(client.allowed_scopes, ASSISTANT_DEV_SCOPES);
+        assert_eq!(
+            client.redirect_uris,
+            vec![
+                url::Url::parse(&format!("http://localhost:{}/", ports.assistant_dev))
+                    .expect("a valid absolute redirect")
+            ],
+        );
+        assert_eq!(client.refresh_policy, DATA_APP_REFRESH_POLICY);
+
+        let production = store
+            .read(|tx| tx.client_by_id(ASSISTANT_CLIENT_ID))
+            .expect("query client")
+            .expect("migration 0051 seeds the Assistant client");
+        assert_eq!(production.allowed_scopes, ASSISTANT_DEV_SCOPES);
+        assert_eq!(production.refresh_policy, DATA_APP_REFRESH_POLICY);
     }
 
     /// The host app's client is seeded under

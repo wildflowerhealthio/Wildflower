@@ -102,6 +102,7 @@ describe('SyntheticDataApp', () => {
           fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
           accessToken: Option.some(ACCESS_TOKEN),
           launchPatientId: Option.none(),
+          grantedScopes: [],
         }),
         recordingServer()
       ),

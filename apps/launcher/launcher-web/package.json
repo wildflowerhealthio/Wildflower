@@ -32,6 +32,7 @@
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
     "@wildflowerhealthio/request-log-react": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "@wildflowerhealthio/scopes-react": "workspace:*",
     "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",

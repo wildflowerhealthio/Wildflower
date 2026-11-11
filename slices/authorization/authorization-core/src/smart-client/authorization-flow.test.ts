@@ -508,7 +508,7 @@ describe('parseTokenResponse', () => {
           expect(result).toEqual(
             Either.right({
               accessToken: 'a-token',
-              scope: '',
+              scope: undefined,
               expiresInSeconds: undefined,
               patient: undefined,
             })

@@ -55,6 +55,7 @@ export default defineConfig({
     // running everything under a single root config.
     projects: [
       'apps/app-catalog/*/vite.config.ts',
+      'apps/assistant/*/vite.config.ts',
       'apps/authorization/*/vite.config.ts',
       'apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/pkjs/vite.config.ts',
       'apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/test/vite.config.ts',

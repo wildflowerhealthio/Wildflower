@@ -123,6 +123,11 @@ const APP_SITES: Readonly<Record<HostedAppId, AppSite>> = {
     buildDir: 'apps/plots/plots-web/dist',
     sentryDsnVariable: 'VITE_SENTRY_DSN_PLOTS_WEB',
   },
+  assistant: {
+    packageName: '@wildflowerhealthio/assistant-web',
+    buildDir: 'apps/assistant/assistant-web/dist',
+    sentryDsnVariable: 'VITE_SENTRY_DSN_ASSISTANT_WEB',
+  },
   syntheticData: {
     packageName: '@wildflowerhealthio/synthetic-data-web',
     buildDir: 'apps/synthetic-data/synthetic-data-web/dist',
@@ -257,6 +262,7 @@ const PREVIEW_GROUP_COUNT = 2
  */
 const PREVIEW_SITE_SECONDS: ReadonlyMap<string, number> = new Map([
   ['app-catalog', 10],
+  ['assistant', 50],
   ['authorization', 70],
   ['fhir-sync-pebble', 50],
   ['importer', 80],

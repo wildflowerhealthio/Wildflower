@@ -14,6 +14,7 @@ import {
   SERVER_MANAGED_META_FIELDS,
   type DiffStatus,
   type ServerComparison,
+  withoutServerManagedMeta,
 } from './classify-against-server.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import { formatPath, present } from './field-diff.ts'
@@ -304,3 +305,22 @@ const runWith = async (
   )
   return { requests: records, classifications }
 }
+
+describe('withoutServerManagedMeta', () => {
+  it("should drop only the server-managed fields from a record's meta", () => {
+    expect(
+      withoutServerManagedMeta({
+        resourceType: 'Observation',
+        id: 'o1',
+        meta: { versionId: '3', lastUpdated: '2026-01-01T00:00:00Z', source: 'x', tag: [] },
+      })
+    ).toEqual({ resourceType: 'Observation', id: 'o1', meta: { tag: [] } })
+  })
+
+  it.each([
+    ['a record with no meta', { resourceType: 'Patient' }],
+    ['a string', 'Patient'],
+  ])('should leave %s as it is', (_case, value) => {
+    expect(withoutServerManagedMeta(value)).toEqual(value)
+  })
+})

@@ -1,0 +1,29 @@
+.chat-notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.chat-notices:empty {
+  display: none;
+}
+
+.chat-notices__storage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.chat-notices__line {
+  margin: 0;
+}
+
+.chat-notices__academic-banner {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-3);
+  background: var(--color-warning-background);
+  color: var(--color-warning-foreground);
+}

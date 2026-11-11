@@ -76,6 +76,7 @@ const renderImporterApp = (
       fhirBaseUrl: decodeFhirBaseUrl(fhirBaseUrl),
       accessToken: Option.some(accessToken),
       launchPatientId: Option.none(),
+      grantedScopes: [],
     }),
     transport
   )

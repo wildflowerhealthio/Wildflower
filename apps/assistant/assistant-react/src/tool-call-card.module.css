@@ -1,0 +1,41 @@
+/*
+ * One tool call in a reply: a quiet line that opens to the call's
+ * parameters and how many records it found.
+ */
+.tool-call-card {
+  border-left: 2px solid var(--color-divider);
+  padding-left: var(--space-4);
+}
+
+.tool-call-card__summary {
+  color: var(--color-neutral-3);
+  cursor: pointer;
+}
+
+.tool-call-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--color-neutral-3);
+}
+
+.tool-call-card__parameters {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+}
+
+.tool-call-card__parameter {
+  display: contents;
+}
+
+.tool-call-card__parameter dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.tool-call-card__result {
+  margin: 0;
+}

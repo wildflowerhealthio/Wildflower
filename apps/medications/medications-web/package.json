@@ -36,6 +36,7 @@
     "@wildflowerhealthio/medication-sponsorship-react": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "@wildflowerhealthio/smart-app-core": "workspace:*",
     "@wildflowerhealthio/smart-app-react": "workspace:*",
     "@wildflowerhealthio/telemetry-core": "workspace:*",

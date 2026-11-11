@@ -32,6 +32,7 @@ describe('APP_REDIRECTS', () => {
     expect(Object.values(APEX_REDIRECT_PATHS).toSorted()).toEqual(
       [
         'app-catalog',
+        'assistant',
         'authorization',
         'fhir-sync-pebble',
         'health-viewer',

@@ -76,3 +76,5 @@ Each app's test reads the app's own `config.ts`, the one place the app writes it
 {{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs MEDICATIONS_DEV_SCOPES tests="tests::seeds_the_medications_dev_client_with_the_apps_own_scopes"}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs STRENGTH_DEV_SCOPES tests="tests::seeds_the_strength_dev_client_with_the_apps_own_scopes"}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs ASSISTANT_DEV_SCOPES tests="tests::seeds_the_assistant_dev_client_with_the_apps_own_scopes"}}

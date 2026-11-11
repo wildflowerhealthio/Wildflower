@@ -52,6 +52,24 @@
       }
     },
     {
+      "id": "assistant",
+      "name": "Wildflower Assistant",
+      "description": "A chat with Claude about the health records on any server that speaks SMART on FHIR, using your own Anthropic API key.",
+      "launchUrl": "https://assistant.wildflowerhealth.io/",
+      "publisher": {
+        "kind": "first-party",
+        "name": "Wildflower Health"
+      },
+      "tags": ["medications", "lab-results", "vitals"],
+      "scopes": ["launch", "openid", "fhirUser", "system/*.cruds"],
+      "oauthClient": {
+        "clientId": "9883d102933b1561e343cae5fd9f26eb",
+        "redirectUris": ["https://assistant.wildflowerhealth.io/"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
+    },
+    {
       "id": "strength",
       "name": "Wildflower Strength",
       "description": "A strength-training program, the workout due today and every set you lift, kept on your own FHIR record.",

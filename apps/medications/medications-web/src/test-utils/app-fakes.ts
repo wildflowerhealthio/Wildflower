@@ -91,6 +91,7 @@ const handshakeLaunchedWith = (patientId: string | null): SmartHandshake =>
       fhirBaseUrl: smart.decodeFhirBaseUrl('https://fhir.example'),
       accessToken: Option.some('token'),
       launchPatientId: Option.fromNullable(patientId),
+      grantedScopes: [],
     }),
   })
 

@@ -25,6 +25,7 @@ const connectionFor = (patientId: string | null): SmartConnection =>
     fhirBaseUrl: decodeFhirBaseUrl(SERVER_URL),
     accessToken: Option.some(ACCESS_TOKEN),
     launchPatientId: Option.fromNullable(patientId),
+    grantedScopes: [],
   })
 
 /** The codings of a concept the fake server searches on. */
