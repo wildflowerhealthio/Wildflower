@@ -5,6 +5,7 @@
 }
 
 .composer__message {
+  box-sizing: border-box;
   width: 100%;
   min-height: 5rem;
   resize: vertical;
