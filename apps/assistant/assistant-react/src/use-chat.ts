@@ -88,6 +88,10 @@ interface ChatRecords {
   readonly fhirRecordsLayer: Layer.Layer<FhirRecords>
 }
 
+/** The chats kept in `storage`. */
+const chatStoreOf = (storage: AssistantEnvironment['storage']): Layer.Layer<Chat.Store> =>
+  Layer.provide(Chat.layer, storage)
+
 /** What the live region says once a turn has kept `entry`. */
 const announcementOf = (entry: Chat.Entry): string =>
   Match.value(entry).pipe(
@@ -119,9 +123,7 @@ const useChat = (
   { recordAccess, fhirRecordsLayer }: ChatRecords
 ): ChatControls => {
   const [initial] = useState(() =>
-    Effect.runSync(
-      Effect.either(Chat.read(place).pipe(Effect.provide(Layer.provide(Chat.layer, storage))))
-    )
+    Effect.runSync(Effect.either(Chat.read(place).pipe(Effect.provide(chatStoreOf(storage)))))
   )
   const [chat, setChat] = useState<Chat.Type>(() =>
     Either.match(initial, {
@@ -162,9 +164,7 @@ const useChat = (
     (kept: Chat.Type): void => {
       Either.match(
         Effect.runSync(
-          Effect.either(
-            Chat.write(place, kept).pipe(Effect.provide(Layer.provide(Chat.layer, storage)))
-          )
+          Effect.either(Chat.write(place, kept).pipe(Effect.provide(chatStoreOf(storage))))
         ),
         {
           onLeft: () => {
@@ -206,9 +206,7 @@ const useChat = (
       if (turnRunning) return Promise.reject(new Error('A turn is already running.'))
       const asked = Chat.append(chat, Chat.userEntryOf(text))
       const askedWrite = Effect.runSync(
-        Effect.either(
-          Chat.write(place, asked).pipe(Effect.provide(Layer.provide(Chat.layer, storage)))
-        )
+        Effect.either(Chat.write(place, asked).pipe(Effect.provide(chatStoreOf(storage))))
       )
       if (Either.isLeft(askedWrite)) {
         setStorageProblem(Option.some('message-not-kept'))
@@ -331,9 +329,7 @@ const useChat = (
     turnFiber.current = Option.none()
     currentTurnNumber.current += 1
     Either.match(
-      Effect.runSync(
-        Effect.either(Chat.forget(place).pipe(Effect.provide(Layer.provide(Chat.layer, storage))))
-      ),
+      Effect.runSync(Effect.either(Chat.forget(place).pipe(Effect.provide(chatStoreOf(storage))))),
       {
         onLeft: () => {
           setStorageProblem(Option.some('not-kept'))

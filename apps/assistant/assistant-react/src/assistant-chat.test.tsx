@@ -221,16 +221,18 @@ describe('AssistantChat turns', () => {
 
   it("should not send a message the browser won't keep, keeping the draft and saying so", async () => {
     const user = userEvent.setup()
-    const local = memoryStorage()
+    const { local } = memoryStorage()
+    const session = BrowserStorage.refusingStore('sessionStorage')
     const { claude } = renderChat({
       keptKey,
       replies: [replyWith('Never sent')],
       storage: {
-        ...local,
         layer: Layer.merge(
-          Layer.succeed(BrowserStorage.Local, local.local),
-          Layer.succeed(BrowserStorage.Session, BrowserStorage.refusingStore('sessionStorage'))
+          Layer.succeed(BrowserStorage.Local, local),
+          Layer.succeed(BrowserStorage.Session, session)
         ),
+        local,
+        session,
       },
     })
     await screen.findByLabelText('Message')
