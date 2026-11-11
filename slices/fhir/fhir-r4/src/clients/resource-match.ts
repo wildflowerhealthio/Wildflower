@@ -323,8 +323,8 @@ const bestCandidates = <TResourceType extends ResourceType.Type>(
  * `family`, one `searchInBatch` per type holding each distinct search once.
  * The server's string search casts the net (it reads `family` as "starts
  * with"); every match it returns is graded here, and one that grades as
- * neither is dropped. Only a search's first page is read: one that comes back
- * full fails as {@link DemographicSearchPageFull}.
+ * neither is dropped. Only a search's first page is read: one whose searchset
+ * links a next page fails as {@link DemographicSearchPageFull}.
  *
  * Any failed search fails the match: it is not "no match".
  *
