@@ -8,7 +8,7 @@ describe('MedicationRequestSearchParams', () => {
     // Arrange
     const query = {
       _count: '20',
-      _pageToken: 'opaque-server-token',
+      _cursor: 'opaque-server-token',
       identifier: 'https://shoppers.example/rx|R-1,https://shoppers.example/rx|R-2',
     }
 

@@ -432,7 +432,7 @@ describe('CarePlanSearchParams', () => {
     // Arrange
     const query = {
       _count: '20',
-      _pageToken: 'opaque-server-token',
+      _cursor: 'opaque-server-token',
       _id: 'cp-1',
       identifier: 'https://clinic.example/care-plan|cp-7',
       status: 'active',

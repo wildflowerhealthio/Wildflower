@@ -73,15 +73,15 @@ describe('searchByIdentifiers', () => {
     // Act
     const { requests, result } = await runWith(
       searchByIdentifiers('Practitioner', identifiers),
-      (form) => pages.get(form['_pageToken']) ?? searchset([], null)
+      (form) => pages.get(form['_cursor']) ?? searchset([], null)
     )
 
     // Assert
     expect(result.map(({ id }) => id)).toEqual(['d-1', 'd-2', 'd-3'])
     expect(requests.map(({ form }) => form)).toEqual([
       { identifier: 'https://cpso.example/licence|A1234', _count: '1000' },
-      { identifier: 'https://cpso.example/licence|A1234', _count: '1000', _pageToken: 'page-2' },
-      { identifier: 'https://cpso.example/licence|A1234', _count: '1000', _pageToken: 'page-3' },
+      { identifier: 'https://cpso.example/licence|A1234', _count: '1000', _cursor: 'page-2' },
+      { identifier: 'https://cpso.example/licence|A1234', _count: '1000', _cursor: 'page-3' },
     ])
   })
 
@@ -129,7 +129,7 @@ describe('searchAllOfType', () => {
     const { requests, result } = await runWith(
       searchAllOfType('Patient', { pageSize, pageLimit: 2 }),
       (form) => {
-        const pageToken = form['_pageToken'] ?? '0'
+        const pageToken = form['_cursor'] ?? '0'
         return searchset([storedPatient(`p-${pageToken}`)], `${pageToken}-next`)
       }
     )
@@ -141,7 +141,33 @@ describe('searchAllOfType', () => {
     })
     expect(requests.map(({ url, form }) => ({ url, form }))).toEqual([
       { url: `${TEST_ORIGIN}/Patient/_search`, form: { _count: '2' } },
-      { url: `${TEST_ORIGIN}/Patient/_search`, form: { _count: '2', _pageToken: '0-next' } },
+      { url: `${TEST_ORIGIN}/Patient/_search`, form: { _count: '2', _cursor: '0-next' } },
+    ])
+  })
+
+  it('should continue past the first page with the _cursor an HFS next link carries, and say the list is whole', async () => {
+    // Arrange: HFS repeats the search in its next link and adds an opaque,
+    // percent-encoded `_cursor`
+    const cursor = 'eyJwb3MiOjJ9+/='
+    const hfsNextLink = `${TEST_ORIGIN}/Patient?_count=2&_cursor=${encodeURIComponent(cursor)}`
+
+    // Act
+    const { requests, result } = await runWith(
+      searchAllOfType('Patient', { pageSize: 2, pageLimit: 10 }),
+      (form) =>
+        form['_cursor'] === cursor
+          ? searchset([storedPatient('p-3')], null)
+          : searchsetLinkingTo([storedPatient('p-1'), storedPatient('p-2')], hfsNextLink)
+    )
+
+    // Assert
+    expect({ ids: result.matches.map(({ id }) => id), truncated: result.truncated }).toEqual({
+      ids: ['p-1', 'p-2', 'p-3'],
+      truncated: false,
+    })
+    expect(requests.map(({ form }) => form)).toEqual([
+      { _count: '2' },
+      { _count: '2', _cursor: cursor },
     ])
   })
 })
@@ -200,7 +226,7 @@ const searchsetOf = (entries: readonly object[], nextPageToken: string | null): 
       link:
         nextPageToken === null
           ? []
-          : [{ relation: 'next', url: `${TEST_ORIGIN}/X?_pageToken=${nextPageToken}` }],
+          : [{ relation: 'next', url: `${TEST_ORIGIN}/X?_cursor=${nextPageToken}` }],
     }),
     { status: 200, headers: { 'content-type': 'application/fhir+json' } }
   )
@@ -209,6 +235,18 @@ const searchset = (resources: readonly object[], nextPageToken: string | null): 
   searchsetOf(
     resources.map((resource) => ({ resource, search: { mode: 'match' } })),
     nextPageToken
+  )
+
+/** A searchset of `resources` whose `next` link is `nextUrl` exactly, as the server wrote it. */
+const searchsetLinkingTo = (resources: readonly object[], nextUrl: string): Response =>
+  new Response(
+    JSON.stringify({
+      resourceType: 'Bundle',
+      type: 'searchset',
+      entry: resources.map((resource) => ({ resource, search: { mode: 'match' } })),
+      link: [{ relation: 'next', url: nextUrl }],
+    }),
+    { status: 200, headers: { 'content-type': 'application/fhir+json' } }
   )
 
 const clientLayer = (

@@ -16,18 +16,18 @@ import {
 const RUNS = numRunsFor({ base: 100 })
 
 describe('nextPageToken', () => {
-  it('should read the _pageToken off the next link, relative or absolute', () => {
-    expect(nextPageToken([nextLink('/Patient?_count=50&_pageToken=cursor-2')])).toBe('cursor-2')
+  it('should read the _cursor off the next link, relative or absolute', () => {
+    expect(nextPageToken([nextLink('/Patient?_count=50&_cursor=cursor-2')])).toBe('cursor-2')
     expect(
-      nextPageToken([nextLink('https://fhir.example/Patient?_count=50&_pageToken=cursor-2')])
+      nextPageToken([nextLink('https://fhir.example/Patient?_count=50&_cursor=cursor-2')])
     ).toBe('cursor-2')
   })
 
   it('should read no token when there is no next link, or it carries none', () => {
     expect(nextPageToken([])).toBeUndefined()
-    expect(nextPageToken([{ relation: 'self', url: '/Patient?_pageToken=x' }])).toBeUndefined()
+    expect(nextPageToken([{ relation: 'self', url: '/Patient?_cursor=x' }])).toBeUndefined()
     expect(nextPageToken([nextLink('/Patient?_count=50')])).toBeUndefined()
-    expect(nextPageToken([nextLink('/Patient?_pageToken=')])).toBeUndefined()
+    expect(nextPageToken([nextLink('/Patient?_cursor=')])).toBeUndefined()
   })
 })
 
@@ -170,7 +170,7 @@ describe('searchAllPages', () => {
                 const next = index + 1 < entries.length ? String(index + 1) : undefined
                 return Effect.succeed({
                   entry: (entries[index] ?? []).map(match),
-                  link: next === undefined ? [] : [nextLink(`/X?_pageToken=${next}`)],
+                  link: next === undefined ? [] : [nextLink(`/X?_cursor=${next}`)],
                 })
               },
               { pageLimit }
@@ -204,7 +204,7 @@ describe('searchEveryPage', () => {
             const next = index + 1 < entries.length ? String(index + 1) : undefined
             return Effect.succeed({
               entry: (entries[index] ?? []).map(match),
-              link: next === undefined ? [] : [nextLink(`/X?_pageToken=${next}`)],
+              link: next === undefined ? [] : [nextLink(`/X?_cursor=${next}`)],
             })
           })
         )
@@ -244,5 +244,5 @@ const match = (resource: string): SearchsetEntry<string> => ({
 
 const page = (resources: readonly string[], next: string | undefined): SearchsetPage<string> => ({
   entry: resources.map(match),
-  link: next === undefined ? [] : [nextLink(`/Patient?_count=2&_pageToken=${next}`)],
+  link: next === undefined ? [] : [nextLink(`/Patient?_count=2&_cursor=${next}`)],
 })

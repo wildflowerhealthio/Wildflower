@@ -499,7 +499,7 @@ const searchset = (resources: readonly unknown[], nextCursor?: string): unknown 
       : [
           {
             relation: 'next',
-            url: `${SERVER_URL}/DocumentReference?category=any&_pageToken=${nextCursor}`,
+            url: `${SERVER_URL}/DocumentReference?category=any&_cursor=${nextCursor}`,
           },
         ],
 })

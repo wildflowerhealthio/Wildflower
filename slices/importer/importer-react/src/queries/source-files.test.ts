@@ -135,9 +135,9 @@ describe('sourceFilesInfiniteQueryOptions', () => {
     const data = await queryClient.infiniteQuery({ ...options, pages: 3 })
 
     // Assert — the second request was the next link, and the third never happened
-    const nextLink = `${SERVER_URL}/DocumentReference?category=any&_pageToken=cursor-2`
+    const nextLink = `${SERVER_URL}/DocumentReference?category=any&_cursor=cursor-2`
     expect(sentRequests).toHaveLength(2)
-    expect(paramsOf(0)['_pageToken']).toBeUndefined()
+    expect(paramsOf(0)['_cursor']).toBeUndefined()
     expect(sentRequests[1]?.url).toBe(nextLink)
     expect(data.pages.flatMap((page) => page.sourceFiles.map((one) => one.id))).toEqual([
       'p1',
@@ -278,7 +278,7 @@ const searchset = (resources: readonly unknown[], nextCursor?: string): unknown 
       : [
           {
             relation: 'next',
-            url: `${SERVER_URL}/DocumentReference?category=any&_pageToken=${nextCursor}`,
+            url: `${SERVER_URL}/DocumentReference?category=any&_cursor=${nextCursor}`,
           },
         ],
 })

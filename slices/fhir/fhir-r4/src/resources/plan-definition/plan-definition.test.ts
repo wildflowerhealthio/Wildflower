@@ -604,7 +604,7 @@ describe('PlanDefinitionSearchParams', () => {
     // Arrange
     const query = {
       _count: '20',
-      _pageToken: 'opaque-server-token',
+      _cursor: 'opaque-server-token',
       _id: 'pd-1',
       identifier: 'http://example.com/plans|pd-1',
       url: 'http://example.com/PlanDefinition/starting-strength',
