@@ -22,7 +22,7 @@ Keep these if you touch `fhir-r4` — removing one breaks every consumer's `vp p
 
 ## Re-decoding an already-decoded resource: `uri`/`url` fields are `URL`, not `string`
 
-A FHIR `uri` primitive stays a plain string on the wire and on loosely-typed `contained` resources, but on a **fully-typed, already-decoded** `fhir-r4` resource it is a `URL` instance. `Coding.system`, `Identifier.system`, and `Attachment.url` are tightened to `Schema.URL`, so `sys instanceof URL === true` and `JSON.stringify` renders it unquoted. Re-decoding such a resource through a permissive local `Schema.Struct` with `system: Schema.String` then returns `Option.none()` for the whole concept whenever a top-level coding carries a system — silently disabling any `=== <system-uri>` comparison downstream.
+A FHIR `uri` primitive stays a plain string on the wire and on loosely-typed `contained` resources, but on a **fully-typed, already-decoded** `fhir-r4` resource it is a `URL` instance. `Coding.system` and `Identifier.system` are tightened to `Schema.URL` (`Attachment.url` stays a string, since R4 lets it be relative, `Binary/<id>`), so `sys instanceof URL === true` and `JSON.stringify` renders it unquoted. Re-decoding such a resource through a permissive local `Schema.Struct` with `system: Schema.String` then returns `Option.none()` for the whole concept whenever a top-level coding carries a system — silently disabling any `=== <system-uri>` comparison downstream.
 
 The asymmetry is the tell: the same field reads as a `string` on a `contained` resource and as a `URL` on the top-level concept. `vp check` won't catch it; only a runtime decode of a resource carrying the field does.
 

@@ -109,13 +109,16 @@ through the real importers, and serves a snapshot's files from memory as a
 `synthetic-data-react`'s.
 
 `src/import-golden/` is the **import golden pin**: fixed picks of every source
-kind (the committed HAR and Rexall fixtures, and one hand-written person run
-through each generator at a fixed as-of), imported headless through
+kind (the committed HAR and Rexall fixtures, a FHIR server's document and its
+`Binary`, and one hand-written person run through each generator at a fixed
+as-of), imported headless through
 `importer-core` with every default accepted, and compared byte for byte with
 the goldens in `__golden__/` (sorted keys, two-space indent, a trailing
 newline; `vp fmt` leaves them alone). A LifeLabs pick is `%PDF-` and the
 positioned text it prints, as JSON, which the test's fake
-`PositionedTextExtractor` reads back. A golden diff is a change to
+`PositionedTextExtractor` reads back. A keyless record's id is random outside
+tests, so the test mints them in order (`crypto.randomUUID` replaced); only
+the document case holds one, its `Binary`. A golden diff is a change to
 what an import writes; `vp test -u` regenerates them. See the importer's
 [Adding a File-Format Importer How-To](../../../slices/importer/docs/Adding%20a%20File-Format%20Importer%20How-To.md#7-tests-per-layer).
 
@@ -156,11 +159,12 @@ package.
 
 ## Traps
 
-- **A linked source file's `url` is relative,** and `fhir-r4` reads
-  `Attachment.url` as an absolute `URL`: a `Resource` holds the link as
-  `attachmentPath`, and only its file carries it as `url`. Decode a resource
-  file with `Entry.ResourceFileSchema`, never straight through
-  `FhirResourceSchema`.
+- **A linked source file's `url` is the snapshot path of its attachment:** a
+  `Resource` holds the link as `attachmentPath`, and only its file carries it
+  as `url`; a `Resource` whose own attachment `url` is a relative path that is
+  no FHIR `<Type>/<id>` (an imported `Binary/<id>` is one) does not decode or
+  encode. Decode a resource file with `Entry.ResourceFileSchema`, never
+  straight through `FhirResourceSchema`.
 - **`fhir-r4` encodes to its own key order and empty arrays.** A resource's
   file is whatever `FhirResourceSchema` encodes the decoded resource to, so a
   hand-written resource file does not round-trip to the same text; one

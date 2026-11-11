@@ -1,7 +1,7 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
-import { Effect, Option } from 'effect'
+import { Effect, Either, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { fhirR4ResponseKinds } from './response-kinds.ts'
@@ -24,11 +24,96 @@ const detachedFrom = (name: string, url: string, body: unknown): readonly Detach
   )
 
 describe('fhirR4ResponseKinds', () => {
-  it('contains the three kinds in plan order', () => {
+  it('contains the five kinds in plan order', () => {
     expect(fhirR4ResponseKinds.map((kind) => kind.name)).toEqual([
       'PatientResponseKind',
       'ObservationResponseKind',
       'ObservationListResponseKind',
+      'DocumentReferenceResponseKind',
+      'BinaryResponseKind',
+    ])
+  })
+
+  it.each([
+    { url: 'https://r4.example.org/baseR4/Binary/bin-1', kind: 'BinaryResponseKind' },
+    { url: 'https://r4.example.org/baseR4/Binary/bin-1?_format=json', kind: 'BinaryResponseKind' },
+    {
+      url: 'https://r4.example.org/baseR4/DocumentReference/doc-1',
+      kind: 'DocumentReferenceResponseKind',
+    },
+  ])('claims "$url" by $kind alone', ({ url, kind }) => {
+    expect(
+      fhirR4ResponseKinds
+        .filter((candidate) => Option.isSome(candidate.tryRecognize(url, Option.some('GET'))))
+        .map((candidate) => candidate.name)
+    ).toEqual([kind])
+  })
+
+  it('detaches a JSON Binary keyless, its id dropped', () => {
+    const root = 'https://r4.example.org/baseR4'
+    const [binary] = detachedFrom('BinaryResponseKind', `${root}/Binary/bin-1`, {
+      resourceType: 'Binary',
+      id: 'bin-1',
+      contentType: 'application/pdf',
+      data: 'JVBERi0=',
+    })
+    expect(binary).toMatchObject({
+      resourceType: 'Binary',
+      id: null,
+      contentType: 'application/pdf',
+      data: 'JVBERi0=',
+    })
+  })
+
+  it('reads a Binary read served as its raw content as no record', () => {
+    const result = Effect.runSync(
+      Effect.either(
+        kindNamed('BinaryResponseKind').parse(
+          makeHttpResponse({
+            url: 'https://r4.example.org/baseR4/Binary/bin-1',
+            headers: [['content-type', 'application/pdf']],
+            body: '%PDF-1.7',
+          })
+        )
+      )
+    )
+    expect(result).toEqual(Either.right([]))
+  })
+
+  it('fails a Binary read whose JSON is no Binary', () => {
+    const result = Effect.runSync(
+      Effect.either(
+        kindNamed('BinaryResponseKind').parse(
+          makeHttpResponse({
+            url: 'https://r4.example.org/baseR4/Binary/bin-1',
+            headers: [['content-type', 'application/fhir+json']],
+            body: JSON.stringify({ resourceType: 'Patient', id: 'bin-1' }),
+          })
+        )
+      )
+    )
+    expect(result).toMatchObject({ _tag: 'Left', left: { _tag: 'ParseError' } })
+  })
+
+  it("detaches a DocumentReference's Binary attachment and reference to the server's URL for the Binary", () => {
+    const root = 'https://r4.example.org/baseR4'
+    const [document] = detachedFrom(
+      'DocumentReferenceResponseKind',
+      `${root}/DocumentReference/doc-1`,
+      {
+        resourceType: 'DocumentReference',
+        id: 'doc-1',
+        status: 'current',
+        content: [{ attachment: { contentType: 'application/pdf', url: 'Binary/bin-1' } }],
+        context: { related: [{ reference: `${root}/Binary/bin-1` }] },
+      }
+    )
+    if (document?.resourceType !== 'DocumentReference') {
+      throw new Error('expected a DocumentReference')
+    }
+    expect([document.content[0]?.attachment.url, document.context?.related[0]?.reference]).toEqual([
+      `${root}/Binary/bin-1`,
+      `${root}/Binary/bin-1`,
     ])
   })
 

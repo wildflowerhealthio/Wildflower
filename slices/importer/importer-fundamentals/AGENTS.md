@@ -96,14 +96,17 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 - `src/section.ts` — the **`Section`** namespace: **`Type<E>`**, one titled
   group of rows `{ title, rows }`, and **`make(title, rows)`**.
 - `src/file-set-record.ts` — the **`FileSetRecord`** namespace: **`Type`**,
-  one record of a file set `{ localKey, resource }`, read from the set or
-  implied by it, not yet given an id. `resource` is the record **detached**
+  one record of a file set `{ localKey, resource, sourceUrl }`, read from the
+  set or implied by it, not yet given an id. `resource` is the record **detached**
   (`fhir-r4-adoption`'s `DetachedResource`: no id, keyed by its first
   identifier, naming every other record of the set by a logical reference).
   `localKey` is the decoder's stable name for the record within its set: it
   only has to be unique within the set and stable across a settings
   re-decode, and its one job is to become the record's review key, which the
-  import stage builds from it (`DecodedFileSet.adopt`).
+  import stage builds from it (`DecodedFileSet.adopt`). `sourceUrl` is the
+  URL a source served the record at, for a record nothing else names: a
+  FHIR server's `Binary`, at the server's URL for it, which a reference or an
+  `Attachment.url` naming it is detached to; `None` for every other record.
 - `src/review-row.ts` — the **`ReviewRow`** namespace: **`Type`**, one record
   as the review addresses, titles and writes it,
   `{ reviewKey, title, isImplied, resource }`: the `reviewKey` the reviewer's
@@ -159,7 +162,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   (`referencePlanOf`; one entry for each qualified identifier of a keyed
   record, its key and every other, each resolving to its plan's literal
   reference: the one place that decides which identifiers resolve; a keyless
-  record's identifiers stay out) and puts it in force
+  record's identifiers stay out) and from the `Minted` plans of records with a
+  `sourceUrl` (`sourceUrlEntryOf`; one source URL entry each, resolving to
+  its plan's literal reference; a keyed record is named by its identifiers
+  alone), and puts it in force
   (`Effect.provideService` of `ReferencePlan.InForce`, so every adoption step
   reads it from the environment and none takes it as a parameter), then runs
   `fhir-r4-adoption`'s `adopt` over each record with its plan's `id`
@@ -173,7 +179,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   reference against a transaction bundle; one naming a record the set does
   not hold, a keyless one, or an identifier two records of the set share
   (`ReferencePlan`'s ambiguous case; a record listing one identifier twice
-  is no clash), stays logical, for the identity map. Since the set holds every record it
+  is no clash), stays logical, for the identity map. A literal reference or
+  an `Attachment.url` that spells a keyless record's source URL resolves to
+  that record, as a FHIR server resolves a transaction bundle's reference to
+  an entry by its `fullUrl`; one spelling none keeps its literal, the
+  source's absolute URL for its target. Since the set holds every record it
   implies, a provider a source names only by a printed name, or a Rexall prescriber carebook names as
   `Practitioner/<id>` and never serves, is a row of its own, and every
   reference to it resolves to it. Before adopting, a

@@ -3,8 +3,9 @@ import {
   type FhirResource,
   type FhirResourceWithId,
   ReferenceRewrite,
+  ResourceAttachments,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 
 import * as DetachedResource from './detached-resource.ts'
 import * as ReferencePlan from './reference-plan.ts'
@@ -13,9 +14,22 @@ import * as ReferencePlan from './reference-plan.ts'
 const randomResourceId = (): string => crypto.randomUUID()
 
 /**
+ * `record` with each `Attachment.url` that is the source URL of a record of
+ * the set (`ReferencePlan.literalReferenceForSourceUrl`) pointed at the
+ * literal reference that record is stored under; every other URL as it is.
+ */
+const adoptAttachmentUrls = <TResource extends FhirResource>(
+  record: TResource,
+  referencePlan: ReferencePlan.Type
+): TResource =>
+  ResourceAttachments.mapUrls(record, (url) =>
+    Option.getOrElse(ReferencePlan.literalReferenceForSourceUrl(referencePlan, url), () => url)
+  )
+
+/**
  * Adopt a detached record into the store: give it the id it is stored under,
- * and resolve each of its logical references the file set's reference plan
- * (`ReferencePlan.InForce`) resolves to a literal one.
+ * and resolve each of its references and attachment URLs the file set's
+ * reference plan (`ReferencePlan.InForce`) resolves to a literal reference.
  *
  * @param record - The detached record
  * @param id - The id it is stored under
@@ -26,12 +40,15 @@ const randomResourceId = (): string => crypto.randomUUID()
  * stage: the id a keyed record's key derives, so a re-import lands on the
  * same id, or a minted one for a keyless record. Every reference the
  * record carries, at any depth, is rewritten by the plan's rewrite
- * (`ReferencePlan.toRewrite`): a logical reference the plan resolves gets
- * the literal reference the plan gives it, `type` and `identifier` kept; one
- * it does not resolve — a target the source never served, an account
- * number, a provider's printed name — stays logical, for the importer's
- * identity map. Nothing else changes: the record's identifiers, its key
- * first, are written as they are.
+ * (`ReferencePlan.toRewrite`): a reference the plan resolves gets the
+ * literal reference the plan gives it, `type` and `identifier` kept. A
+ * logical one it does not resolve — a target the source never served, an
+ * account number, a provider's printed name — stays logical, for the
+ * importer's identity map; a literal one (a server's absolute URL for a
+ * `Binary` the set does not hold) keeps its literal, which points at the
+ * server's record. Every `Attachment.url` resolves the same way
+ * ({@link adoptAttachmentUrls}). Nothing else changes: the record's
+ * identifiers, its key first, are written as they are.
  *
  * Takes no base URL: everything it needs is on the records.
  */
@@ -40,7 +57,10 @@ const adopt = (
   id: string
 ): Effect.Effect<FhirResourceWithId, never, ReferencePlan.InForce> =>
   Effect.map(ReferencePlan.InForce, (referencePlan) => ({
-    ...ReferenceRewrite.apply(record, ReferencePlan.toRewrite(referencePlan)),
+    ...adoptAttachmentUrls(
+      ReferenceRewrite.apply(record, ReferencePlan.toRewrite(referencePlan)),
+      referencePlan
+    ),
     id,
   }))
 

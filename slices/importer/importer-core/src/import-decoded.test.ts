@@ -78,6 +78,7 @@ const decodeBytes = (
             [...file.bytes].map((byte, index) => ({
               localKey: `${file.fileName}:${index}`,
               resource: fakeResource(`${byte}`),
+              sourceUrl: Option.none(),
             }))
           ),
         ]),
@@ -467,6 +468,7 @@ const decodeGroup = (
             pickedFiles.map((file) => ({
               localKey: `file/${file.id}`,
               resource: fakeResource(`${file.bytes[0] ?? 0}`),
+              sourceUrl: Option.none(),
             }))
           ),
         ]),
@@ -704,8 +706,16 @@ const importedSourceFileIds = async (
 describe('the records the import adopts', () => {
   it('adopts each detached record under the id its key derives, its references to records of the set resolved', async () => {
     const detachSource = DetachedResource.fromServerRecord(SOURCE_BASE_URL)
-    const patientRecord = { localKey: 'patient', resource: detachSource(sourcePatient) }
-    const observationRecord = { localKey: 'observation', resource: detachSource(sourceObservation) }
+    const patientRecord = {
+      localKey: 'patient',
+      resource: detachSource(sourcePatient),
+      sourceUrl: Option.none(),
+    }
+    const observationRecord = {
+      localKey: 'observation',
+      resource: detachSource(sourceObservation),
+      sourceUrl: Option.none(),
+    }
     const [sourceFileId] = await importedSourceFileIds(decodedOf([]))
 
     const imported = await importedRecords(
@@ -729,12 +739,15 @@ describe('the records the import adopts', () => {
       ]).pipe(
         Effect.provideService(
           ReferencePlan.InForce,
-          ReferencePlan.of([
-            {
-              logicalReference: patientPlan,
-              literalReference: ResourcePlan.literalReference(patientPlan),
-            },
-          ])
+          ReferencePlan.of(
+            [
+              {
+                logicalReference: patientPlan,
+                literalReference: ResourcePlan.literalReference(patientPlan),
+              },
+            ],
+            []
+          )
         )
       )
     )
@@ -755,10 +768,12 @@ describe('the records the import adopts', () => {
             {
               localKey: 'patient',
               resource: DetachedResource.fromServerRecord(baseUrl)(sourcePatient),
+              sourceUrl: Option.none(),
             },
             {
               localKey: 'observation',
               resource: DetachedResource.fromServerRecord(baseUrl)(sourceObservation),
+              sourceUrl: Option.none(),
             },
           ],
         },
@@ -780,7 +795,7 @@ describe('the records the import adopts', () => {
           decodedOf([
             {
               title: 'records',
-              rows: [{ localKey: 'observation', resource: detached }],
+              rows: [{ localKey: 'observation', resource: detached, sourceUrl: Option.none() }],
             },
           ])
         )

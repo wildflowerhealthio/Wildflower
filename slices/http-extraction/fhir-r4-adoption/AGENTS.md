@@ -5,10 +5,14 @@ from that source, and a detached resource adopted into the device's store.
 A detached resource has no id (FHIR's logical id only means something on the
 server that assigned it), is keyed by its first identifier — FHIR's
 `Identifier.system` and `value` — and names every other decoded record by a
-logical reference. Adopting one stores it under a local id derived from its
-key and resolves each logical reference to a record of its file set to a literal
-one, as a FHIR server resolves a conditional reference against a transaction
-bundle. It sits above `fhir-r4` (the resource schemas and
+logical reference; a `Binary`, which has no identifier, is named by the
+server's absolute URL for it, its source URL. Adopting one stores it under a
+local id derived from its key and resolves each logical reference to a record
+of its file set to a literal one, as a FHIR server resolves a conditional
+reference against a transaction bundle, and each literal reference or
+`Attachment.url` spelling a record's source URL to that record's literal
+reference, as it resolves a reference to an entry with no identifier by its
+`fullUrl`. It sits above `fhir-r4` (the resource schemas and
 `localResourceId`); `http-extraction-fundamentals` (the response-kind
 vocabulary) stays FHIR-free and below it.
 
@@ -36,33 +40,47 @@ vocabulary) stays FHIR-free and below it.
   relative or under `<baseUrl>/`, into the logical reference to its target by
   key, replacing any identifier the server had put on it; any other reference
   (a non-R4 token like carebook's `PrescriptionOrder` included) keeps its
-  spelling and identifier. It keeps the resource's own type.
-  `fromServerRecord` walks a record's references with `fhir-r4`'s
-  `ResourceReferences.mapReferences`, and `adopt` with `ReferenceRewrite.apply`
-  over it; both reach every reference at any depth (an `Identifier.assigner`
-  included), and the import stage reads them with
-  `ResourceReferences.collect`.
+  spelling and identifier. A `Binary/<id>` reference, or `Attachment.url`, is
+  instead made the server's absolute URL for the Binary,
+  `<baseUrl>/Binary/<id>`, its `type` and `identifier` kept: R4 gives `Binary`
+  no identifier to name it by. It keeps the resource's own type.
+  `serverBinaryUrlIfRead(readUrl)` is the same URL read off a `Binary` read's
+  URL, the source URL a decoder gives the Binary, so the two are built in one
+  place. `fromServerRecord` walks a record's references with `fhir-r4`'s
+  `ResourceReferences.mapReferences` and its attachments with
+  `ResourceAttachments.mapUrls`, and `adopt` with `ReferenceRewrite.apply` and
+  `ResourceAttachments.mapUrls`; both reach every reference and attachment at
+  any depth (an `Identifier.assigner` included), and the import stage reads
+  references with `ResourceReferences.collect`.
 - `src/reference-plan.ts` — the **`ReferencePlan`** namespace, a plain data
   structure: for each logical reference (`fhir-r4`'s **`LogicalReference`**,
   a resource type and one qualified identifier), the literal reference it
-  resolves to. **`of(entries)`** holds each
-  `{ logicalReference, literalReference }` it is given and decides nothing
-  about which identifiers go in; its builder does.
+  resolves to, and for each source URL, the literal reference a literal
+  reference or an `Attachment.url` spelling it resolves to.
+  **`of(entries, sourceUrlEntries)`** holds each
+  `{ logicalReference, literalReference }` and each **`SourceUrlEntry`**
+  `{ sourceUrl, literalReference }` it is given and decides nothing about
+  which go in; its builder does.
   **`literalReferenceFor(plan, logicalReference)`** matches on the type and
   the identifier's `system` and `value` alone (`LogicalReference.key`), and
   is `None` for one the plan does not hold or holds with two different
   literal references: as a FHIR conditional reference matching several
   records, it is ambiguous, so the reference stays logical (the same entry
-  given twice is no clash). **`holds(plan, logicalReference)`** is whether
+  given twice is no clash). **`literalReferenceForSourceUrl(plan, url)`**
+  matches an absolute URL on its `href`, so two spellings of one URL are one
+  source URL, and is `None` for a relative URL, one the plan does not hold, or
+  one it holds with two different literal references; a plan with no source
+  URL entries parses nothing. **`holds(plan, logicalReference)`** is whether
   the plan has any entry for it, one or several that disagree: a record the
   set holds, which the import stage implies no record for.
   **`literalReferenceIfResolved(plan, reference)`** is what a reference
-  resolves to: `None` unless it is a logical reference
+  resolves to: for a literal reference, what `literalReferenceForSourceUrl`
+  resolves its literal to; otherwise `None` unless it is a logical reference
   (`LogicalReference.tryFromReference`) `literalReferenceFor` resolves; the
   import stage reads it to ask whether a reference names a record of the
   set. **`toRewrite(plan)`** is the plan as a `fhir-r4` `ReferenceRewrite`:
-  each logical reference it resolves pointed at its literal reference, every
-  other left; `adopt` rewrites by it. Its literal references are keyed by
+  each reference it resolves pointed at its literal reference, every other
+  left; `adopt` rewrites by it. Its literal references are keyed by
   `LogicalReference.Key`. **`InForce`** is the `Context.Tag` of the plan a
   file set's records are adopted by: the import stage builds the plan once
   and provides it, and every adoption step reads it from the environment.
@@ -72,9 +90,12 @@ vocabulary) stays FHIR-free and below it.
   minted one for a keyless record, `randomResourceId`, a UUID, outside
   tests), and rewrites its references by `ReferencePlan.toRewrite` of the
   reference plan in force, an Effect requiring `ReferencePlan.InForce`: a
-  logical reference the plan resolves gets the literal reference it gives,
-  keeping `type` and `identifier`; one the plan does not resolve stays
-  logical, for the importer's identity map.
+  reference the plan resolves gets the literal reference it gives, keeping
+  `type` and `identifier`, and an `Attachment.url` the one
+  `ReferencePlan.literalReferenceForSourceUrl` gives it; a logical reference
+  the plan does not resolve stays logical, for the importer's identity map,
+  and a literal one or an attachment URL keeps its spelling, the server's URL
+  for its target.
   `adoptedReferenceOf(system, Type, id)` is the literal reference the
   import stores the record with that key under, for a resource written
   outside that source; `originalIdOf(system, resource)` reads the value of a
@@ -103,18 +124,25 @@ everything is read off the records.
   `localResourceId` over a record's key, so changing the system a source keys
   a type in (a FHIR server's base URL included) re-keys every record of that
   type from that source.
-- **A keyless record gets a fresh id on every import.** Nothing names it, so a
-  re-import is a second record, and a reference to it stays logical.
+- **A keyless record gets a fresh id on every import.** No key names it, so a
+  re-import is a second record. A logical reference to it stays logical; only
+  its source URL (a FHIR server's `Binary`) names it within its file set.
+- **A server's `Binary` reference detaches absolute, not logical.** Detaching
+  makes a `Binary/<id>` reference or attachment URL absolute,
+  `<baseUrl>/Binary/<id>`, because `adopt` takes no base URL to resolve a
+  relative one against; the Binary's record must carry that same URL as its
+  source URL for it to resolve.
 - **A logical reference only resolves against its file set.** One naming a record
   the file set does not hold stays logical here, by design: nothing is stored
   under the id it would derive. The import stage implies a Patient or
   Practitioner such a reference names with a `display` before it builds the
   plan, so the set then holds it; any other stays logical.
-- **The reference walk keeps a resource's shape by construction, not by the
-  type system.** `ResourceReferences.mapReferences` replaces a `Reference`
-  only with what the rewrite returns for it, so `fromServerRecord`'s one cast
-  back to the resource's own type holds only while each rewrite returns a
-  `Reference`.
+- **The reference and attachment walks keep a resource's shape by
+  construction, not by the type system.** `ResourceReferences.mapReferences`
+  replaces a `Reference` only with what the rewrite returns for it, and
+  `ResourceAttachments.mapUrls` only an attachment's `url`, so
+  `fromServerRecord`'s one cast back to the resource's own type holds only
+  while each rewrite returns a `Reference`.
 
 ## References
 

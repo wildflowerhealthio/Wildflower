@@ -12,6 +12,7 @@ import { Code } from '../base/code.ts'
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
 import * as FhirString from '../base/fhir-string.ts'
+import { UriSchema } from '../base/primitives.ts'
 
 const AttachmentStruct = mutableEncoded(
   StructNoContext({
@@ -19,7 +20,8 @@ const AttachmentStruct = mutableEncoded(
     contentType: OrNullAsOptional(Code),
     creation: OrNullAsOptional(Schema.DateTimeUtc),
     data: OrNullAsOptional(Schema.String),
-    url: OrNullAsOptional(Schema.URL),
+    // R4 `url`, which may be relative (`Binary/<id>`), so a string, not a `URL`.
+    url: OrNullAsOptional(UriSchema),
     hash: OrNullAsOptional(Schema.String),
     language: OrNullAsOptional(Code),
     size: OrNullAsOptional(Schema.Int),
