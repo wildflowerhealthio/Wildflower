@@ -122,9 +122,9 @@ it under `PatientChoiceLine`; its props are in the
   gets no turn, the draft stays in the composer, and the storage line says
   the message wasn't sent. Later writes in the turn that fail say the chat
   won't be kept, and the turn goes on. While the browser refuses, the
-  storage line offers "Keep this chat in memory" (`keepInMemory`): the chat
+  storage line offers "Keep until this tab closes or refreshes" (`keepInMemory`): the chat
   moves to a store in memory for the rest of this `useChat`, so it sends,
-  and the line says a reload will lose it.
+  and the line says it is kept until the tab closes or refreshes.
 - **A settled turn from an earlier chat changes nothing.** `useChat` numbers
   its turns; New chat moves the number on, so an interrupted turn that
   settles late cannot write into the new chat.

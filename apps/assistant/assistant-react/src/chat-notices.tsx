@@ -20,10 +20,7 @@ const storageProblemText = (problem: ChatStorageProblem): string =>
       'message-not-kept',
       () => "This browser won't keep your message in this tab, so it wasn't sent."
     ),
-    Match.when(
-      'kept-in-memory',
-      () => 'This chat is kept in memory only, so it will be lost if the page reloads.'
-    ),
+    Match.when('kept-in-memory', () => 'This chat is kept until this tab closes or refreshes.'),
     Match.exhaustive
   )
 
@@ -72,7 +69,7 @@ const ChatNotices = ({
           </p>
           {isRefusedStorage(problem) ? (
             <button type="button" className="button-3 outline" onClick={onKeepInMemory}>
-              Keep this chat in memory
+              Keep until this tab closes or refreshes
             </button>
           ) : null}
         </div>
