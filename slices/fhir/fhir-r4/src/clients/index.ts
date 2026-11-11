@@ -23,7 +23,7 @@ export {
   MatchWithoutResource,
   NEXT_RELATION,
   nextPageToken,
-  PAGE_TOKEN_PARAM,
+  CURSOR_PARAM,
   type PageLink,
   PageTokenRepeated,
   searchAllPages,

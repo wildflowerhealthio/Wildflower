@@ -33,7 +33,7 @@ const BoolFromStr = Schema.transform(Schema.Literal('true', 'false'), Schema.Boo
  */
 const SearchParams = Schema.Struct({
   _count: Schema.optional(NumFromStr.pipe(Schema.between(0, 1000))),
-  _pageToken: Schema.optional(Schema.String),
+  _cursor: Schema.optional(Schema.String),
   identifier: Schema.optional(Schema.String),
   name: Schema.optional(Schema.String),
   family: Schema.optional(Schema.String),

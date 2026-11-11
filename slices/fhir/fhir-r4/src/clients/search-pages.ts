@@ -8,7 +8,7 @@ import { Chunk, Data, Effect, HashSet, Option, Stream } from 'effect'
  * @remarks
  * FHIR does not put the next page's cursor in a field of its own: it hands
  * back a whole `link` entry whose `relation` is `next` and whose `url` repeats
- * the search with the cursor added. The typed client takes `_pageToken` as a
+ * the search with the cursor added. The typed client takes `_cursor` as a
  * search parameter, so a pager pulls that one parameter back out of the link
  * rather than following the URL, which would bypass the client's schema and
  * its auth.
@@ -20,7 +20,7 @@ import { Chunk, Data, Effect, HashSet, Option, Stream } from 'effect'
 const NEXT_RELATION = 'next'
 
 /** The search parameter the typed client carries a continuation cursor in. */
-const PAGE_TOKEN_PARAM = '_pageToken'
+const CURSOR_PARAM = '_cursor'
 
 /**
  * A `Bundle.link` entry, narrowed to the two fields paging reads.
@@ -58,7 +58,7 @@ class MatchWithoutResource extends Data.TaggedError('MatchWithoutResource')<{
 }> {}
 
 /**
- * A `next` link whose `_pageToken` names a page already read: a server that
+ * A `next` link whose `_cursor` names a page already read: a server that
  * loops, which paging stops at rather than reading the same page again.
  */
 class PageTokenRepeated extends Data.TaggedError('PageTokenRepeated')<{
@@ -105,16 +105,16 @@ interface SearchPages<TResource> {
 const RELATIVE_LINK_BASE = 'https://relative.invalid'
 
 /**
- * The `_pageToken` that continues a searchset, or `undefined` at the last page.
+ * The `_cursor` that continues a searchset, or `undefined` at the last page.
  *
  * @param links - The bundle's `link` entries, in the order the server sent them
- * @returns The cursor to pass as the next request's `_pageToken`, or `undefined`
+ * @returns The cursor to pass as the next request's `_cursor`, or `undefined`
  *   when there is no next link, its URL is unparseable, or it carries no token
  *
  * @remarks
  * An unparseable or token-less `next` link reads as "no more pages" rather than
  * raising: the caller cannot act on the distinction, since either way there is
- * no cursor to send. A present-but-empty `_pageToken=` is token-less too: the
+ * no cursor to send. A present-but-empty `_cursor=` is token-less too: the
  * server minted no cursor, and treating `''` as one would make paging ask for
  * the same page forever, since the empty string is not `null` and so reads to
  * TanStack Query as a real next page.
@@ -123,7 +123,7 @@ const nextPageToken = (links: readonly PageLink[]): string | undefined => {
   const next = links.find((link) => link.relation === NEXT_RELATION)
   if (next === undefined) return undefined
   try {
-    const token = new URL(next.url, RELATIVE_LINK_BASE).searchParams.get(PAGE_TOKEN_PARAM)
+    const token = new URL(next.url, RELATIVE_LINK_BASE).searchParams.get(CURSOR_PARAM)
     return token === null || token === '' ? undefined : token
   } catch {
     return undefined
@@ -181,7 +181,7 @@ const pagesOf = <TResource, E, R>(
  * `pageLimit` pages.
  *
  * @param resourceType - The resource type the search is for, named by a failure
- * @param searchPage - One page of the search, given the `_pageToken` that
+ * @param searchPage - One page of the search, given the `_cursor` that
  *   continues it (`None` for the first page)
  * @param options - `pageLimit`: how many pages are read before the list is
  *   given as it is, `truncated`
@@ -209,7 +209,7 @@ const searchAllPages = <TResource, E, R>(
  * a search whose every match counts, so no page is left unread.
  *
  * @param resourceType - The resource type the search is for, named by a failure
- * @param searchPage - One page of the search, given the `_pageToken` that
+ * @param searchPage - One page of the search, given the `_cursor` that
  *   continues it (`None` for the first page)
  * @returns The matches of every page, in page order
  */
@@ -227,7 +227,7 @@ export {
   MatchWithoutResource,
   NEXT_RELATION,
   nextPageToken,
-  PAGE_TOKEN_PARAM,
+  CURSOR_PARAM,
   PageTokenRepeated,
   searchAllPages,
   searchEveryPage,

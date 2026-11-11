@@ -85,7 +85,7 @@ type SearchFailure = Effect.Effect.Error<
 /** The search parameters every searchable type shares: paging and `identifier`. */
 interface SharedSearchParams {
   readonly _count?: number
-  readonly _pageToken?: string
+  readonly _cursor?: string
   readonly identifier?: string
 }
 
@@ -184,11 +184,11 @@ const IDENTIFIER_SEARCH_PAGE_SIZE = 1000
 const IDENTIFIER_CHUNK_SIZE = 500
 
 /**
- * `_pageToken` as a search parameter: the token that continues a search, or
+ * `_cursor` as a search parameter: the token that continues a search, or
  * none for its first page.
  */
-const pageTokenParam = (pageToken: Option.Option<string>): { readonly _pageToken?: string } =>
-  Option.match(pageToken, { onNone: () => ({}), onSome: (_pageToken) => ({ _pageToken }) })
+const cursorParam = (pageToken: Option.Option<string>): { readonly _cursor?: string } =>
+  Option.match(pageToken, { onNone: () => ({}), onSome: (_cursor) => ({ _cursor }) })
 
 /**
  * `resources` with each stored resource once, by its `Type/id`, at its first
@@ -240,7 +240,7 @@ const searchByIdentifiers = <ResourceType extends SearchableResourceType>(
         searchesByType[resourceType].search(client, {
           identifier,
           _count: IDENTIFIER_SEARCH_PAGE_SIZE,
-          ...pageTokenParam(pageToken),
+          ...cursorParam(pageToken),
         })
       )
     })
@@ -270,7 +270,7 @@ const searchAllOfType = <ResourceType extends SearchableResourceType>(
       (pageToken) =>
         searchesByType[resourceType].search(client, {
           _count: options.pageSize,
-          ...pageTokenParam(pageToken),
+          ...cursorParam(pageToken),
         }),
       { pageLimit: options.pageLimit }
     )
