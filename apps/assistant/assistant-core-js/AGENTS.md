@@ -9,49 +9,24 @@ write the agent proposes. `assistant-react` draws it.
 
 ## Shape
 
-Every module is a namespace (`src/index.ts`):
+`src/` holds the domain; `src/agent/` what the agent is told and can do;
+`src/anthropic-ai/` how the Claude API is reached. Every module is a
+namespace (`src/index.ts`):
 
-- `src/api-key.ts` — `ApiKey`: the key, trimmed and held `Redacted`, kept in
-  `localStorage` at `wildflower.assistant.api-key` (`read`, `write`,
-  `forget`, `fromInput`). A refused read is no key.
-- `src/claude.ts` — `Claude`, the Effect service the API is reached through:
-  the structural `ClaudeClient` (the model list and a streamed beta message)
-  an `Anthropic` client satisfies, built by `Claude.layerForApiKey` with
-  `dangerouslyAllowBrowser`. `ClaudeRequestFailed` is how a call fails:
-  `fromThrown` matches the SDK's error classes, most specific first
-  (`AuthenticationError` → `key-rejected`, `RateLimitError` → `rate-limited`,
-  `OverloadedError` → `overloaded`, `APIConnectionError` → `unreachable`,
-  any other `APIError` → `api-error` with its status, anything else thrown →
-  `unexpected-error`); a model listing that does not decode is
-  `model-list-unreadable`.
-- `src/claude-model.ts` — `ClaudeModel`: `list` decodes `GET /v1/models`
-  (every page) into id, display name, release instant and
-  `supportsAdaptiveThinking`, read one way from the SDK's `capabilities`
-  (`null` supports nothing), keeps the `claude-` models, newest first
-  (`choicesOf`); `startingModelOf` is the remembered id while it is
-  listed, else `claude-sonnet-5`, else the first; the remembered id is kept
-  in `localStorage` at `wildflower.assistant.model`.
-- `src/style.ts` — `Style`: `telehealth` (the default) or `academic`, and
-  `systemPromptOf`, which joins the style's voice
-  (`src/telehealth-voice.ts`, `src/academic-voice.ts`),
-  `ChatPatient.paragraphOf` the patient, today's date and
-  `RecordAccess.paragraphOf` the grant, one paragraph each. The telehealth voice says who to contact and how to look
-  them up with the tools.
-- `src/record-access.ts` — `RecordAccess`: from `SmartConnection.grantedScopes`,
-  the types the agent may read (`r`), search (`s`), create (`c`) and update
-  (`u`), each
-  every type (a `*` scope) or the named R4 types; coverage is `scopes-core`'s
-  (`Grant`, `MultiScope.within`), asked in every FHIR context, as both the v2
-  letter and the v1 word. `paragraphOf` says it in words for the prompt:
-  what can be read, created and changed, and, when anything can be written,
-  that each write is approved by the person first and that a mistaken
-  record is marked `entered-in-error` through an update, never deleted.
-- `src/patient-pin.ts` — `PatientPin`: per R4 type, how a chat about one
-  patient keeps it to them (`Patient` by `_id`; the Patient compartment's
-  types by `patient`, or `subject=Patient/<id>`; practitioners,
-  organizations, medications and the like as they are), the parameters a
-  pinned search may not set, and `isAboutAnotherPatient`, the check every
-  record read back passes.
+- `src/browser-storage.ts` — `BrowserStorage`: the browser's
+  `localStorage` (`Local`) and `sessionStorage` (`Session`) as
+  `@effect/platform` `KeyValueStore`s, and `layer`, both over the page's
+  own storage. The property is read in the Effect when the layer is built:
+  a browser that throws on the read gets a store whose every call fails
+  with a `PlatformError` (`refusingStore`).
+- `src/api-key.ts` — `ApiKey`: the key, trimmed and held `Redacted`, kept
+  through `ApiKey.Store` (a schema store over `BrowserStorage.Local`) at
+  `wildflower.assistant.api-key` (`read`, `write`, `forget`, `fromInput`).
+  A kept value that is not a key reads as no key.
+- `src/style.ts` — `Style`: `telehealth` (the default) or `academic`.
+- `src/chat-patient.ts` — `ChatPatient`: one patient's FHIR `Patient`
+  record (with its id) or every patient; `keyOf` (the id, or `*`) and
+  `patientIdIfOne`.
 - `src/search-param.ts` — `SearchParam`: one search parameter as the agent
   gives it (`name`, `value`), the `Name` grammar a search's names are held
   to, and `baseNameOf` (the parameter a modifier or chain is of).
@@ -60,47 +35,97 @@ Every module is a namespace (`src/index.ts`):
   JSON, and `fhir-r4`'s `ResourceWrite` `create` and `update`), and
   `FhirReadFailed` and `FhirWriteFailed`, values saying why a read or a write
   failed.
-- `src/tools.ts` — `Tools`: `make` builds a chat's tool definitions from
-  its `RecordAccess` and patient; `run` runs one read call against
-  `FhirRecords` and succeeds with its `tool_result`; `propose` turns a write
-  call into a `WriteProposal` or the result refusing it; `carryOut` makes
-  a decided proposal and succeeds with its `tool_result`; `versionsReadIn`
-  is the version of each record the chat has read or written, from its kept
-  results.
 - `src/write-proposal.ts` — `WriteProposal`: a write the agent proposed
   (`create` with the resource as it will be sent; `update` with the
   resource, the version it is against and its `FieldDiff`s from the record
   as it is now), `Decision` (`approved`, or `declined` with an optional
   reason), and `summaryOf` ("Create Observation", "Update
   MedicationRequest/123, 2 fields").
-- `src/tool-call.ts` — `ToolCall`: a kept call in words for the
+- `src/chat.ts` — `Chat`: a style and its entries (`user`; `agent` with
+  its `modelId` and `end_turn` / `max_tokens`; `tool-round`, a reply that
+  stopped for `tool_use` with its `modelId` and the results of the calls it
+  ran; `refusal` with its `modelId`), the codec, `userEntryOf`,
+  `requestMessagesOf` (what a turn sends), `toolCallsOf` and
+  `toolResultsByCallIdOf`, and `Chat.Store`, a schema store over
+  `BrowserStorage.Session` keeping each chat at
+  `wildflower.assistant-chat:<fhirBaseUrl>:<patient>`.
+- `src/agent/record-access.ts` — `RecordAccess`: from
+  `SmartConnection.grantedScopes`, the types the agent may read (`r`),
+  search (`s`), create (`c`) and update (`u`), each every type (a `*`
+  scope) or the named R4 types; coverage is `scopes-core`'s (`Grant`,
+  `MultiScope.within`), asked in every FHIR context, as both the v2 letter
+  and the v1 word.
+- `src/agent/patient-pin.ts` — `PatientPin`: per R4 type, how a chat about
+  one patient keeps it to them (`Patient` by `_id`; the Patient
+  compartment's types by `patient`, or `subject=Patient/<id>`;
+  practitioners, organizations, medications and the like as they are), the
+  parameters a pinned search may not set, and `isAboutAnotherPatient`, the
+  check every record read back passes.
+- `src/agent/prompts/` — the system prompt: `system-prompt.ts`
+  (`SystemPrompt.of`, which joins the style's voice, the patient, today's
+  date and the grant, one paragraph each, and `voiceOf`), the two voices
+  (`telehealth-voice.ts`, `academic-voice.ts`; the telehealth voice says who
+  to contact and how to look them up with the tools),
+  `chat-patient-paragraph.ts` (whose record the chat is about: the name and
+  birth date read from the record with `fhir-r4`'s `HumanName.displayName`,
+  and its FHIR id as `Patient/<id>`) and `record-access-paragraph.ts` (what
+  can be read, created and changed and, when anything can be written, that
+  each write is approved by the person first and that a mistaken record is
+  marked `entered-in-error` through an update, never deleted).
+- `src/agent/tools/` — `Tools`, collected by `index.ts`: `make` builds a
+  chat's tool definitions from its `RecordAccess` and patient; `run` runs
+  one read call against `FhirRecords` and succeeds with its `tool_result`;
+  `propose` turns a write call into a `WriteProposal` or the result
+  refusing it; `carryOut` makes a decided proposal and succeeds with its
+  `tool_result`; `versionsReadIn` is the version of each record the chat
+  has read or written, from its kept results. One file per tool
+  (`search-records.ts`, `next-page.ts`, `read-record.ts`,
+  `capabilities.ts`, `create-record.ts`, `update-record.ts`), each with its
+  definition, input and how it runs; and what they share: `tool-names.ts`,
+  `chat-tools.ts` (the tools of one chat, a call), `refusal.ts`,
+  `tool-result.ts`, `result-limit.ts`, `page.ts` (a page of results and its
+  cursor), `record-versions.ts`, `write-record.ts`, `write-patient-pin.ts`
+  (keeping a write to the chat's patient), `write-proposals.ts` (`propose`,
+  `carryOut`) and `json-schema.ts`.
+- `src/agent/tool-call.ts` — `ToolCall`: a kept call in words for the
   transcript's card (`summaryOf`, `parametersOf`, `resultSummaryOf`: how
   many records came back, or "Created Observation/123", "Declined",
   "Failed: …"; `lineOf`, the card's line, which for a write carries its
   outcome).
-- `src/chat-patient.ts` — `ChatPatient`: one patient's FHIR `Patient`
-  record (with its id) or every patient; `keyOf` (the id, or `*`),
-  `patientIdIfOne`, and `paragraphOf`, whose record the chat is about in
-  words, the name and birth date read from the record (`fhir-r4`'s
-  `HumanName.displayName`).
-- `src/chat.ts` — `Chat`: a style and its entries (`question`; `reply` with
-  its `modelId` and `end_turn` / `max_tokens`; `tool-round`, a reply that
-  stopped for `tool_use` with its `modelId` and the results of the calls it
-  ran; `refusal` with its `modelId`), the codec, `requestMessagesOf` (what a
-  turn sends), `toolCallsOf` and `toolResultsByCallIdOf`, and the chat's place in
-  `sessionStorage` at `wildflower.assistant-chat:<fhirBaseUrl>:<patient>`.
-- `src/turn.ts` — `Turn`: `paramsOf`, the streamed request, and `run`, the
-  loop: stream a reply, reporting each text and thinking delta; on
-  `tool_use`, run its reads and propose its writes side by side, ask for
+- `src/agent/turn.ts` — `Turn`: `paramsOf`, the streamed request, and
+  `run`, the loop: stream a reply, reporting each text and thinking delta;
+  on `tool_use`, run its reads and propose its writes side by side, ask for
   the person's decisions on the proposals (`Report.confirmWrites`, with the
   round's `ProposedWrites`), make the approved writes, report the
   `tool-round` and stream again; on any other stop, map `stop_reason` to the
   entry the chat keeps.
+- `src/anthropic-ai/claude.ts` — `Claude`, the Effect service the API is
+  reached through: the structural `ClaudeClient` (the model list and a
+  streamed beta message) an `Anthropic` client satisfies, built by
+  `Claude.layerForApiKey` with `dangerouslyAllowBrowser`.
+  `ClaudeRequestFailed` is how a call fails: `fromThrown` matches the SDK's
+  error classes, most specific first (`AuthenticationError` →
+  `key-rejected`, `RateLimitError` → `rate-limited`, `OverloadedError` →
+  `overloaded`, `APIConnectionError` → `unreachable`, any other `APIError`
+  → `api-error` with its status, anything else thrown →
+  `unexpected-error`); a model listing that does not decode is
+  `model-list-unreadable`.
+- `src/anthropic-ai/claude-model.ts` — `ClaudeModel`: `list` decodes `GET
+  /v1/models` (every page) into id, display name, release instant and
+  `supportsAdaptiveThinking`, read one way from the SDK's `capabilities`
+  (`null` supports nothing), keeps the `claude-` models, newest first
+  (`choicesOf`); `startingModelOf` is the remembered id while it is listed,
+  else `claude-sonnet-5`, else the first; the remembered id is kept through
+  `ClaudeModel.ChosenIdStore` over `BrowserStorage.Local` at
+  `wildflower.assistant.model`.
+- `src/anthropic-ai/message-params.ts` — `MessageParams`: the outline
+  schemas of the SDK's user message, assistant message and tool result
+  that a chat's entries hold.
 - `src/test-helpers.ts` — the `./test-helpers` subpath: in-memory and
-  blocked storage pages, `stubClaude` with scripted or held replies,
-  `stubFhirRecords` answering reads by path prefix and recording writes
-  (stored by `storeWrite` unless a test answers them), and the SDK and FHIR
-  shapes a turn reads.
+  refusing storage (`memoryStorage`, `refusingStorage`), `stubClaude` with
+  scripted or held replies, `stubFhirRecords` answering reads by path
+  prefix and recording writes (stored by `storeWrite` unless a test answers
+  them), and the SDK and FHIR shapes a turn reads.
 
 ## Rules
 
@@ -189,10 +214,10 @@ Every module is a namespace (`src/index.ts`):
   grows; a tool round is one entry, kept once its calls finish, so no call
   is ever kept without its result. What goes back to the API is derived: a
   tool round is its reply then one user message of its results, a declined
-  question is left out with everything up to its
+  user entry is left out with everything up to its
   refusal, and a reply a fallback switched models in is sent without the
   thinking and tool calls before its last `fallback` block.
-- **The message codec checks an outline.** `Chat`'s message schemas are
+- **The message codec checks an outline.** `MessageParams`' schemas are
   `Schema.declare` guards on role and typed blocks that assert the SDK's
   types; every block was written by this app from the SDK, and mirroring the
   SDK's block types in schemas would drift from it.
@@ -204,11 +229,16 @@ Every module is a namespace (`src/index.ts`):
   `FhirWriteFailed` and the tools' refusals are values turned into tool
   results, never thrown or logged. The client's OpenTelemetry spans
   are `metadata_only`, and it sends no trace context to Anthropic.
-- **Storage refusals.** A refused read of the key or the model choice reads
-  as none; every other refusal fails as `kitchen-sink`'s `StorageBlocked`.
-  Each call reads `page.localStorage` / `page.sessionStorage` inside the
-  Effect, since a blocked browser can throw on the property itself.
-- **Prompts are plain prose for current models**, one file per style, with
+- **Storage refusals fail.** Every refused read, write or removal fails
+  with `@effect/platform`'s `PlatformError` (a `SystemError`,
+  `PermissionDenied`); a refused read never reads as nothing kept. A
+  browser that throws on the `localStorage` or `sessionStorage` property
+  itself gets `BrowserStorage.refusingStore`, so it fails the same way
+  rather than as a defect. A kept key or model id that does not decode
+  reads as none; a kept chat that does not decode is
+  `StoredChatUnreadable`, and its parse error, which would quote it, is
+  dropped.
+- **Prompts are plain prose for current models**, one voice file per style, with
   no capitalised MUSTs. Each voice says to write only when asked, saying
   first what it will propose. The record-access paragraph says which types
   the agent can read, create and change, and how writes go.

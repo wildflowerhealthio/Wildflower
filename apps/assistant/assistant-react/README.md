@@ -17,13 +17,13 @@ import { AssistantChat } from '@wildflowerhealthio/assistant-react'
 />
 ```
 
-| Prop            | Type                                     | What it is                                                                                                                                                                                 |
-| --------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `fhirBaseUrl`   | `string`                                 | The connected FHIR server's base URL. Chats are kept per server.                                                                                                                           |
-| `patient`       | `ChatPatient.Type` (`assistant-core-js`) | `{ kind: 'patient', patient }`, `patient` the FHIR `Patient` record (with its id), or `{ kind: 'all-patients' }`. Chats are kept per patient.                                              |
-| `grantedScopes` | `readonly Scope.Any[]` (`scopes-core`)   | The scopes the sign-in was granted: `SmartConnection.grantedScopes`, or `smart-app-react`'s `useGrantedScopes()`. They decide which tools Claude gets and which record types each reaches. |
-| `runSmart`      | `RunSmart` (`fhir-r4-react/smart`)       | Runs the tools' reads and writes over the page's SMART connection: `useRunSmart()` under `SmartHandshakeGate`.                                                                             |
-| `environment`   | `AssistantEnvironment`, optional         | The storage and Claude API the chat runs against. Defaults to `BROWSER_ENVIRONMENT` (`window`'s storage, the real API); tests pass in-memory storage and a stub.                           |
+| Prop            | Type                                     | What it is                                                                                                                                                                                           |
+| --------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fhirBaseUrl`   | `string`                                 | The connected FHIR server's base URL. Chats are kept per server.                                                                                                                                     |
+| `patient`       | `ChatPatient.Type` (`assistant-core-js`) | `{ kind: 'patient', patient }`, `patient` the FHIR `Patient` record (with its id), or `{ kind: 'all-patients' }`. Chats are kept per patient.                                                        |
+| `grantedScopes` | `readonly Scope.Any[]` (`scopes-core`)   | The scopes the sign-in was granted: `SmartConnection.grantedScopes`, or `smart-app-react`'s `useGrantedScopes()`. They decide which tools Claude gets and which record types each reaches.           |
+| `runSmart`      | `RunSmart` (`fhir-r4-react/smart`)       | Runs the tools' reads and writes over the page's SMART connection: `useRunSmart()` under `SmartHandshakeGate`.                                                                                       |
+| `environment`   | `AssistantEnvironment`, optional         | The storage and Claude API the chat runs against. Defaults to `BROWSER_ENVIRONMENT` (`BrowserStorage.layer` over the page's storage, the real API); tests pass `memoryStorage()`'s layer and a stub. |
 
 Any other `<div>` prop (`className`, `id`, `aria-*`, `data-*`) goes to the
 root `<div>`.

@@ -10,7 +10,7 @@ React. See [AGENTS.md](./AGENTS.md) for its modules and rules.
 ```ts
 import { Chat, Claude, RecordAccess, Turn } from '@wildflowerhealthio/assistant-core-js'
 
-const asked = Chat.append(Chat.start('telehealth'), Chat.questionOf('What does my record say?'))
+const asked = Chat.append(Chat.start('telehealth'), Chat.userEntryOf('What does my record say?'))
 const recordAccess = RecordAccess.fromGrantedScopes(connection.grantedScopes)
 const entry = Turn.run(
   { chat: asked, model, patient, recordAccess },
@@ -32,4 +32,5 @@ const entry = Turn.run(
 
 Tests stub the API and the FHIR server through
 `@wildflowerhealthio/assistant-core-js/test-helpers` (`stubClaude`,
-`scriptedReply`, `heldReply`, `stubFhirRecords`, `memoryStoragePage`).
+`scriptedReply`, `heldReply`, `stubFhirRecords`, `memoryStorage`,
+`refusingStorage`).
