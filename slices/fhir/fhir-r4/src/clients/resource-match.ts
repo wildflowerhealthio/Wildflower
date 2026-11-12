@@ -1,104 +1,109 @@
-import type { TimelessDateFromString } from '@wildflowerhealthio/kitchen-sink/schema'
-import {
-  Array,
-  Data,
-  Effect,
-  type Either,
-  Equivalence,
-  HashMap,
-  Option,
-  type ParseResult,
-  Record,
-  Schema,
-} from 'effect'
+import { Array, Effect, Equivalence, HashMap, Option, Record } from 'effect'
 
 import type { IdentifierAndReference } from '../data-types/index.ts'
 import { type FhirResourceWithId, literalReferenceOf } from '../resources/fhir-resource-with-id.ts'
+import type { FhirResource } from '../resources/fhir-resource.ts'
 import * as LogicalReference from '../resources/logical-reference.ts'
 import type * as ResourceType from '../resources/resource-type.ts'
-import * as DateSearchParam from '../resources/search/date-search-param.ts'
-import * as StringSearchParam from '../resources/search/string-search-param.ts'
 import * as TokenSearchParam from '../resources/search/token-search-param.ts'
 import type { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import * as MatchGrade from './match-grade.ts'
 import * as MatchQuery from './match-query.ts'
 import {
   isSearchableResourceType,
+  searchAllOfType,
   searchByIdentifiers,
   type SearchFailure,
 } from './search-by-type.ts'
-import {
-  type BatchSearch,
-  type BatchSearchFailure,
-  type BatchSubmitFailure,
-  searchInBatch,
-} from './search-in-batch.ts'
-import type { MatchWithoutResource, PageTokenRepeated, SearchPages } from './search-pages.ts'
+import type { MatchWithoutResource, PageTokenRepeated } from './search-pages.ts'
 
 /**
- * Matching records against the store as FHIR's `Patient/$match` does,
- * client side and for every searchable type: queries in, graded candidates
- * out, a whole batch at once.
+ * Matching records against the store as FHIR's `$match` does, client side
+ * and for every searchable type: queries in, graded candidates out, a whole
+ * batch at once.
  *
  * @packageDocumentation
  */
 
 /**
- * A stored record a query matched, and how well.
+ * What a candidate was found by: `identifier`, a stored record carrying one
+ * of the query's identifiers, or `name`, a stored record its type's rule
+ * graded against the query's record.
+ */
+type Evidence = 'identifier' | 'name'
+
+/**
+ * A stored record a query matched, how well, and what it was found by.
  *
  * @typeParam TResourceType - The type of record the query was for
  */
 interface Candidate<TResourceType extends ResourceType.Type = ResourceType.Type> {
   readonly resource: Extract<FhirResourceWithId, { readonly resourceType: TResourceType }>
   readonly grade: MatchGrade.Type
+  readonly by: Evidence
 }
 
 /** What a match is asked for, as `$match` names its parameters. */
 interface Options {
-  /** Give `certain` candidates only: no search by name and birth date is sent. */
+  /** Give candidates found by identifier only: no stored record is fetched to grade by name. */
   readonly onlyCertainMatches: boolean
   /** The most candidates given for one query, best grade first; `None` for every one. */
   readonly count: Option.Option<number>
 }
 
-/**
- * A search by name and birth date: a Patient's family name and birth date, or
- * a Practitioner's family name. The family name is as {@link MatchGrade}
- * compares it.
- */
-type DemographicSearch =
-  | {
-      readonly resourceType: 'Patient'
-      readonly family: string
-      readonly birthDate: typeof TimelessDateFromString.Type
-    }
-  | { readonly resourceType: 'Practitioner'; readonly family: string }
-
-/**
- * The page size a search by name and birth date asks for: the most the server
- * gives in one page. Only the first page is read, so a search that continues
- * past it fails the match ({@link DemographicSearchPageFull}).
- */
-const DEMOGRAPHIC_SEARCH_PAGE_SIZE = 1000
-
-/**
- * A search by name and birth date that continued past its first page: it
- * matched more records than it gave, so candidates would be lost unseen.
- */
-class DemographicSearchPageFull extends Data.TaggedError('DemographicSearchPageFull')<{
-  readonly search: DemographicSearch
-  readonly pageSize: number
-}> {}
-
 /** What a match can fail with: any failed search. A failed search is not "no match". */
-type Failure =
-  | SearchFailure
-  | MatchWithoutResource
-  | PageTokenRepeated
-  | BatchSubmitFailure
-  | BatchSearchFailure
-  | ParseResult.ParseError
-  | DemographicSearchPageFull
+type Failure = SearchFailure | MatchWithoutResource | PageTokenRepeated
+
+/** How many searches of different resource types run at once. */
+const SEARCH_CONCURRENCY = 4
+
+/**
+ * The page size the name stage lists a type's stored records with: the most
+ * the server gives in one page, so the list takes as few round trips as it
+ * can.
+ */
+const STORED_PAGE_SIZE = 1000
+
+/** Every resource type a record is matched by name as well as by identifier: one with a row in {@link nameRulesByType}. */
+type NameRuledResourceType = 'Patient' | 'Practitioner'
+
+/** What {@link nameRulesByType} holds for one resource type: how the name stage fetches its records, and how it grades them. */
+interface NameRule<TResourceType extends NameRuledResourceType> {
+  /** Every stored record of the type, which the name stage grades a query's record against. */
+  readonly fetchStored: Effect.Effect<
+    readonly FhirResourceWithId[],
+    Failure,
+    FhirR4ResourcesHttpApiClient
+  >
+  /** The grade `storedRecord` takes as a match of `queryRecord`; `None` when it is no match. */
+  readonly grade: (
+    queryRecord: MatchQuery.RecordOf<TResourceType>,
+    storedRecord: MatchQuery.RecordOf<TResourceType>
+  ) => Option.Option<MatchGrade.Type>
+}
+
+/**
+ * Every {@link NameRuledResourceType}'s {@link NameRule}. A type without a
+ * row is matched by identifier only.
+ */
+const nameRulesByType: {
+  readonly [TResourceType in NameRuledResourceType]: NameRule<TResourceType>
+} = {
+  Patient: {
+    fetchStored: searchAllOfType('Patient', { pageSize: STORED_PAGE_SIZE }),
+    grade: MatchGrade.patientGradeOf,
+  },
+  Practitioner: {
+    fetchStored: searchAllOfType('Practitioner', { pageSize: STORED_PAGE_SIZE }),
+    grade: MatchGrade.practitionerGradeOf,
+  },
+}
+
+/** Whether `resourceType` is a {@link NameRuledResourceType}: one with a row in the table. */
+const isNameRuledResourceType = <TResourceType extends ResourceType.Type>(
+  resourceType: TResourceType
+): resourceType is TResourceType & NameRuledResourceType =>
+  Object.hasOwn(nameRulesByType, resourceType)
 
 /** Whether `resource` is of `resourceType`, narrowing it to that type's resource. */
 const isOfType =
@@ -155,7 +160,8 @@ const storedNamedBy = (
                 ? searchByIdentifiers(resourceType, distinctIdentifiers(identifiers))
                 : Effect.succeed([]),
           }
-        )
+        ),
+      { concurrency: SEARCH_CONCURRENCY }
     ),
     Array.flatten
   )
@@ -165,15 +171,15 @@ const indexByIdentifier = (
   stored: readonly FhirResourceWithId[]
 ): HashMap.HashMap<LogicalReference.Key, readonly FhirResourceWithId[]> =>
   Array.reduce(stored, HashMap.empty(), (index, resource) =>
-    Array.reduce(MatchQuery.fromResource(resource).identifier, index, (byKey, identifier) =>
+    Array.reduce(MatchQuery.qualifiedIdentifiersOf(resource), index, (byKey, identifier) =>
       HashMap.modifyAt(byKey, identifierKey(resource.resourceType, identifier), (found) =>
         Option.some([...Option.getOrElse(found, () => []), resource])
       )
     )
   )
 
-/** The stored records of `index` carrying any of `query`'s identifiers, each once. */
-const certainCandidatesOf = <TResourceType extends ResourceType.Type>(
+/** The stored records of `index` carrying any of `query`'s identifiers, each once, `certain`. */
+const identifierCandidatesOf = <TResourceType extends ResourceType.Type>(
   query: MatchQuery.Type<TResourceType>,
   index: HashMap.HashMap<LogicalReference.Key, readonly FhirResourceWithId[]>
 ): readonly Candidate<TResourceType>[] =>
@@ -184,115 +190,85 @@ const certainCandidatesOf = <TResourceType extends ResourceType.Type>(
     sameStoredResource
   )
     .filter(isOfType(query.resourceType))
-    .map((resource) => ({ resource, grade: 'certain' }))
+    .map((resource) => ({ resource, grade: 'certain', by: 'identifier' }))
+
+/** Whether `resource` is a record of `resourceType`, narrowing it to that type's record. */
+const isRecordOfType =
+  <TResourceType extends ResourceType.Type>(resourceType: TResourceType) =>
+  (resource: FhirResource): resource is MatchQuery.RecordOf<TResourceType> =>
+    resource.resourceType === resourceType
 
 /**
- * The searches by name and birth date that cast the net for `query`: for a
- * Patient with a birth date, one per family name its names have, with the
- * birth date; for a Practitioner, one per family name; none for any other
- * record, or a person with no family name.
+ * The grade `storedRecord` takes as a match of `queryRecord` by the rule of
+ * `resourceType`; `None` when either is not of that type, or the rule finds
+ * no match.
  */
-const demographicSearchesOf = (query: MatchQuery.Type): readonly DemographicSearch[] => {
-  const families = Array.dedupe(
-    MatchGrade.comparableNamesOf(query.name).map(({ family }) => family)
-  )
-  if (query.resourceType === 'Practitioner') {
-    return families.map((family) => ({ resourceType: 'Practitioner', family }))
-  }
-  const { birthDate } = query
-  return query.resourceType === 'Patient' && birthDate !== null
-    ? families.map((family) => ({ resourceType: 'Patient', family, birthDate }))
-    : []
-}
-
-/** One search's key: identical searches share it, so each is sent once. */
-const demographicSearchKey = (search: DemographicSearch): string => JSON.stringify(search)
-
-/** `search` as a search of a batch: `family` and, for a Patient, `birthdate`, a page's worth. */
-const batchSearchOf = (
-  search: DemographicSearch
-): Effect.Effect<BatchSearch, ParseResult.ParseError> => {
-  const family = StringSearchParam.escape(search.family)
-  return search.resourceType === 'Patient'
-    ? Effect.map(Schema.decode(DateSearchParam.Schema)(search.birthDate), (birthdate) => ({
-        resourceType: 'Patient',
-        urlParams: { family, birthdate, _count: DEMOGRAPHIC_SEARCH_PAGE_SIZE },
-      }))
-    : Effect.succeed({
-        resourceType: 'Practitioner',
-        urlParams: { family, _count: DEMOGRAPHIC_SEARCH_PAGE_SIZE },
-      })
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- one type, not the union, so the row read and the records narrowed to its type agree
+const nameGradeOf = <TResourceType extends NameRuledResourceType>(
+  resourceType: TResourceType,
+  queryRecord: FhirResource,
+  storedRecord: FhirResource
+): Option.Option<MatchGrade.Type> => {
+  const isOfRuledType = isRecordOfType(resourceType)
+  return isOfRuledType(queryRecord) && isOfRuledType(storedRecord)
+    ? nameRulesByType[resourceType].grade(queryRecord, storedRecord)
+    : Option.none()
 }
 
 /**
- * The matches of one search of a batch, failing when its searchset continued
- * past its first page (`truncated`): the one place that decides whether an
- * answer left matches unread.
+ * Whether `query` goes on to the name stage: its type has a rule, it carries
+ * its record, nothing was found for it by identifier, and more than certain
+ * matches were asked for.
  */
-const firstPageMatches = (
-  search: DemographicSearch,
-  answer: Either.Either<SearchPages<FhirResourceWithId>, BatchSearchFailure>
-): Effect.Effect<readonly FhirResourceWithId[], BatchSearchFailure | DemographicSearchPageFull> =>
-  Effect.flatMap(answer, ({ matches, truncated }) =>
-    truncated
-      ? Effect.fail(
-          new DemographicSearchPageFull({ search, pageSize: DEMOGRAPHIC_SEARCH_PAGE_SIZE })
-        )
-      : Effect.succeed(matches)
-  )
+const goesToNameStage = <TResourceType extends ResourceType.Type>(
+  query: MatchQuery.Type<TResourceType>,
+  identifierCandidates: readonly Candidate<TResourceType>[],
+  options: Options
+): boolean =>
+  !options.onlyCertainMatches &&
+  identifierCandidates.length === 0 &&
+  Option.isSome(query.record) &&
+  isNameRuledResourceType(query.resourceType)
 
 /**
- * The matches of every search of `searches`, by {@link demographicSearchKey}:
- * the distinct searches sent as one `searchInBatch` per resource type.
+ * Every stored record of each of `resourceTypes`, by type: one
+ * {@link NameRule.fetchStored} per type, every page of it.
  */
-const matchesOfDemographicSearches = (
-  searches: readonly DemographicSearch[]
+const fetchStoredOfTypes = (
+  resourceTypes: readonly NameRuledResourceType[]
 ): Effect.Effect<
-  HashMap.HashMap<string, readonly FhirResourceWithId[]>,
+  HashMap.HashMap<ResourceType.Type, readonly FhirResourceWithId[]>,
   Failure,
   FhirR4ResourcesHttpApiClient
-> => {
-  const distinct = Array.dedupeWith(
-    searches,
-    Equivalence.mapInput(Equivalence.string, demographicSearchKey)
-  )
-  return Effect.forEach(
-    Record.values(Array.groupBy(distinct, ({ resourceType }) => resourceType)),
-    (searchesOfType) =>
-      Effect.gen(function* () {
-        const batchSearches = yield* Effect.forEach(searchesOfType, batchSearchOf)
-        const answers = yield* searchInBatch(batchSearches)
-        return yield* Effect.forEach(Array.zip(searchesOfType, answers), ([search, answer]) =>
-          Effect.map(
-            firstPageMatches(search, answer),
-            (matches) => [demographicSearchKey(search), matches] as const
-          )
-        )
-      })
-  ).pipe(Effect.map((byType) => HashMap.fromIterable(Array.flatten(byType))))
-}
+> =>
+  Effect.forEach(
+    resourceTypes,
+    (resourceType) =>
+      Effect.map(
+        nameRulesByType[resourceType].fetchStored,
+        (stored) => [resourceType, stored] as const
+      ),
+    { concurrency: SEARCH_CONCURRENCY }
+  ).pipe(Effect.map(HashMap.fromIterable))
 
-/** The candidates `searches`' matches give `query`, graded by name and birth date, each once. */
-const demographicCandidatesOf = <TResourceType extends ResourceType.Type>(
+/** The records of `storedOfType` its type's rule grades as matches of `query`'s record, `by: 'name'`. */
+const nameCandidatesOf = <TResourceType extends ResourceType.Type>(
   query: MatchQuery.Type<TResourceType>,
-  searches: readonly DemographicSearch[],
-  matchesBySearch: HashMap.HashMap<string, readonly FhirResourceWithId[]>
-): readonly Candidate<TResourceType>[] =>
-  Array.dedupeWith(
-    searches.flatMap((search) =>
-      Option.getOrElse(HashMap.get(matchesBySearch, demographicSearchKey(search)), () => [])
-    ),
-    sameStoredResource
-  )
-    .filter(isOfType(query.resourceType))
-    .flatMap((resource) =>
-      Option.toArray(
-        Option.map(
-          MatchGrade.demographicGradeOf(query, MatchQuery.fromResource(resource)),
-          (grade) => ({ resource, grade })
-        )
-      )
-    )
+  storedOfType: readonly FhirResourceWithId[]
+): readonly Candidate<TResourceType>[] => {
+  const { resourceType } = query
+  return Option.match(query.record, {
+    onNone: () => [],
+    onSome: (queryRecord) =>
+      isNameRuledResourceType(resourceType)
+        ? Array.filterMap(storedOfType.filter(isOfType(query.resourceType)), (resource) =>
+            nameGradeOf(resourceType, queryRecord, resource).pipe(
+              Option.map((grade) => ({ resource, grade, by: 'name' }))
+            )
+          )
+        : [],
+  })
+}
 
 /** `candidates` best grade first, as many as `count` allows. */
 const bestCandidates = <TResourceType extends ResourceType.Type>(
@@ -304,34 +280,34 @@ const bestCandidates = <TResourceType extends ResourceType.Type>(
 }
 
 /**
- * The stored records each of `queries` matches, graded, as `$match` answers:
- * `certain` by identifier for every searchable type, then `probable` and
- * `possible` by name and birth date for a person nothing matched for certain.
+ * The stored records each of `queries` matches, graded, as `$match` answers,
+ * in two stages: by identifier for every searchable type, then by name for a
+ * query of a type with a rule ({@link nameRulesByType}) nothing was found
+ * for by identifier.
  *
  * @remarks
- * The certain matches take one `searchByIdentifiers` per resource type for
+ * The identifier stage takes one `searchByIdentifiers` per resource type for
  * the whole batch, every qualified identifier of every query of the type in
- * it, and a stored record is a certain candidate of every query whose
+ * it, and a stored record is a `certain` candidate of every query whose
  * identifiers it carries. A query with no qualified identifier, and a type
- * with no identifier search (`Binary`), has no certain candidate and sends
- * nothing.
+ * with no identifier search (`Binary`), has no candidate by identifier and
+ * sends nothing.
  *
- * Unless `onlyCertainMatches`, a Patient or Practitioner query with no
- * certain candidate is then searched for by name and birth date
- * (`MatchGrade.demographicGradeOf` for the rules): a Patient by
- * `family` and `birthdate` (none without a birth date), a Practitioner by
- * `family`, one `searchInBatch` per type holding each distinct search once.
- * The server's string search casts the net (it reads `family` as "starts
- * with"); every match it returns is graded here, and one that grades as
- * neither is dropped. Only a search's first page is read: one whose searchset
- * links a next page fails as {@link DemographicSearchPageFull}.
+ * Unless `onlyCertainMatches`, a query that carries its record, of a type
+ * with a rule, with no candidate by identifier goes on to the name stage:
+ * every stored record of its type is fetched (`searchAllOfType`, every page,
+ * once per type for the whole batch) and the type's rule grades each against
+ * the query's record, client side; one that grades as no match is dropped.
+ * Only Patient and Practitioner have a rule; any other type is matched by
+ * identifier only.
  *
- * Any failed search fails the match: it is not "no match".
+ * Searches of different types run {@link SEARCH_CONCURRENCY} at a time. Any
+ * failed search fails the match: it is not "no match".
  *
  * @param queries - The records to match
  * @param options - `onlyCertainMatches` and `count`, as `$match` takes them
- * @returns Each query's candidates, best grade first, in the order of
- *   `queries`
+ * @returns Each query's candidates, best grade first, then cut to `count`,
+ *   in the order of `queries`
  */
 const matchAll = <TResourceType extends ResourceType.Type>(
   queries: readonly MatchQuery.Type<TResourceType>[],
@@ -343,22 +319,37 @@ const matchAll = <TResourceType extends ResourceType.Type>(
 > =>
   Effect.gen(function* () {
     const storedByIdentifier = indexByIdentifier(yield* storedNamedBy(queries))
-    const withSearches = queries.map((query) => {
-      const certain = certainCandidatesOf(query, storedByIdentifier)
-      const searches =
-        options.onlyCertainMatches || certain.length > 0 ? [] : demographicSearchesOf(query)
-      return { query, certain, searches }
+    const identifierStage = queries.map((query) => {
+      const identifierCandidates = identifierCandidatesOf(query, storedByIdentifier)
+      return {
+        query,
+        identifierCandidates,
+        toNameStage: goesToNameStage(query, identifierCandidates, options),
+      }
     })
-    const matchesBySearch = yield* matchesOfDemographicSearches(
-      withSearches.flatMap(({ searches }) => searches)
+    const storedByType = yield* fetchStoredOfTypes(
+      Array.dedupe(
+        identifierStage
+          .filter(({ toNameStage }) => toNameStage)
+          .map(({ query }) => query.resourceType)
+          .filter(isNameRuledResourceType)
+      )
     )
-    return withSearches.map(({ query, certain, searches }) =>
+    return identifierStage.map(({ query, identifierCandidates, toNameStage }) =>
       bestCandidates(
-        [...certain, ...demographicCandidatesOf(query, searches, matchesBySearch)],
+        [
+          ...identifierCandidates,
+          ...(toNameStage
+            ? nameCandidatesOf(
+                query,
+                Option.getOrElse(HashMap.get(storedByType, query.resourceType), () => [])
+              )
+            : []),
+        ],
         options.count
       )
     )
   })
 
-export { DemographicSearchPageFull, matchAll }
-export type { Candidate, DemographicSearch, Failure, Options }
+export { matchAll }
+export type { Candidate, Evidence, Failure, Options }

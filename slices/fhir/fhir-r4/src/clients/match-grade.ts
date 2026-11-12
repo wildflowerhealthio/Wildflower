@@ -1,20 +1,21 @@
-import { Array, Match, Option, Order, String as Str } from 'effect'
+import { Array, Option, Order, String as Str } from 'effect'
 
 import type { HumanName } from '../data-types/index.ts'
-import type * as MatchQuery from './match-query.ts'
+import type * as Patient from '../resources/patient/patient.ts'
+import type * as Practitioner from '../resources/practitioner/practitioner.ts'
 
 /**
  * How well a stored record matches a query, graded as FHIR's `$match` grades
  * a candidate (the `match-grade` extension's value set), and the grading of
- * people by name and birth date.
+ * Patients and Practitioners by name (and a Patient's birth date).
  *
  * @packageDocumentation
  */
 
 /**
  * A candidate's grade: `certain` (it carries one of the query's
- * identifiers), `probable` and `possible` (its name and birth date agree, more
- * or less), and `certainly-not`, which the value set holds and nothing here
+ * identifiers), `probable` and `possible` (it agrees with the query, more or
+ * less), and `certainly-not`, which the value set holds and nothing here
  * gives.
  */
 type Type = 'certain' | 'probable' | 'possible' | 'certainly-not'
@@ -124,15 +125,15 @@ const practitionerNameGrade = (
   return firstInitialsAgree(queryName, storedName) ? Option.some('possible') : Option.none()
 }
 
-/** The best grade any of `query`'s names takes against any of `stored`'s by `nameGrade`. */
+/** The best grade any name of `queryNames` takes against any of `storedNames` by `nameGrade`. */
 const bestNameGrade = (
-  query: MatchQuery.Type,
-  stored: MatchQuery.Type,
+  queryNames: readonly (typeof HumanName.Schema.Type)[],
+  storedNames: readonly (typeof HumanName.Schema.Type)[],
   nameGrade: (queryName: ComparableName, storedName: ComparableName) => Option.Option<Type>
 ): Option.Option<Type> => {
-  const storedNames = comparableNamesOf(stored.name)
-  const grades = comparableNamesOf(query.name).flatMap((queryName) =>
-    Array.filterMap(storedNames, (storedName) => nameGrade(queryName, storedName))
+  const comparableStoredNames = comparableNamesOf(storedNames)
+  const grades = comparableNamesOf(queryNames).flatMap((queryName) =>
+    Array.filterMap(comparableStoredNames, (storedName) => nameGrade(queryName, storedName))
   )
   return Array.isNonEmptyReadonlyArray(grades)
     ? Option.some(Array.min(grades, bestFirst))
@@ -140,29 +141,29 @@ const bestNameGrade = (
 }
 
 /**
- * The grade `stored` takes as a match of `query` by name and birth date:
- * `probable` or `possible`, or `None` when it is neither.
+ * The grade the stored Patient `stored` takes as a match of `query`:
+ * `probable` or `possible` by name ({@link patientNameGrade}) when both state
+ * the same birth date, else `None`.
  *
  * @remarks
- * Only people are graded so: a Patient by family name, given names and birth
- * date (both stating the same one), a Practitioner by family name and given
- * names; any other record, or a stored record of another type, is `None`.
  * Names compare as {@link comparableNameOf} reads them, any name of the
  * query against any name of the stored record, the best grade winning. The
  * comparison is exact once normalised: no phonetic or fuzzy matching.
  */
-const demographicGradeOf = (query: MatchQuery.Type, stored: MatchQuery.Type): Option.Option<Type> =>
-  query.resourceType !== stored.resourceType
-    ? Option.none()
-    : Match.value(query.resourceType).pipe(
-        Match.when('Patient', () =>
-          query.birthDate !== null && query.birthDate === stored.birthDate
-            ? bestNameGrade(query, stored, patientNameGrade)
-            : Option.none()
-        ),
-        Match.when('Practitioner', () => bestNameGrade(query, stored, practitionerNameGrade)),
-        Match.orElse(() => Option.none())
-      )
+const patientGradeOf = (query: Patient.Type, stored: Patient.Type): Option.Option<Type> =>
+  query.birthDate !== null && query.birthDate === stored.birthDate
+    ? bestNameGrade(query.name, stored.name, patientNameGrade)
+    : Option.none()
 
-export { bestFirst, comparableNamesOf, demographicGradeOf }
+/**
+ * The grade the stored Practitioner `stored` takes as a match of `query`:
+ * `probable` or `possible` by name ({@link practitionerNameGrade}), else
+ * `None`. Names compare as {@link patientGradeOf}'s do.
+ */
+const practitionerGradeOf = (
+  query: Practitioner.Type,
+  stored: Practitioner.Type
+): Option.Option<Type> => bestNameGrade(query.name, stored.name, practitionerNameGrade)
+
+export { bestFirst, comparableNamesOf, patientGradeOf, practitionerGradeOf }
 export type { ComparableName, Type }

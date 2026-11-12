@@ -1,22 +1,28 @@
-import type { TimelessDateFromString } from '@wildflowerhealthio/kitchen-sink/schema'
+import { Option } from 'effect'
 
-import { type HumanName, IdentifierAndReference } from '../data-types/index.ts'
+import { IdentifierAndReference } from '../data-types/index.ts'
 import type { FhirResource } from '../resources/fhir-resource.ts'
 import type * as LogicalReference from '../resources/logical-reference.ts'
 import type * as ResourceType from '../resources/resource-type.ts'
 
 /**
  * What a record is matched against the store by, as FHIR's `$match` takes a
- * resource: the slice of the record a match reads.
+ * resource: its type, its qualified identifiers, and the record itself when
+ * there is one.
  *
  * @remarks
- * Shaped as a slice of a resource (`resourceType`, its qualified
- * `identifier`s, and a person's `name`s and `birthDate`), so a decoded record
- * and a logical reference reduce to the same thing: a logical reference is a
- * query with one identifier and no demographics.
+ * A decoded record and a logical reference reduce to the same thing: a
+ * logical reference is a query with one identifier and no record. What a
+ * match reads of the record beyond its identifiers is its type's rule's to
+ * say (`ResourceMatch`), so the query carries the whole record.
  *
  * @packageDocumentation
  */
+
+/** The resource of `TResourceType` a query carries; `never` for a type nothing decodes. */
+type RecordOf<TResourceType extends ResourceType.Type> = FhirResource & {
+  readonly resourceType: TResourceType
+}
 
 /**
  * One record to match.
@@ -28,10 +34,8 @@ interface Type<TResourceType extends ResourceType.Type = ResourceType.Type> {
   readonly resourceType: TResourceType
   /** The record's identifiers that name something: a stored record carrying any of them is a certain match. */
   readonly identifier: readonly IdentifierAndReference.QualifiedIdentifierType[]
-  /** A person's names, as the record gives them; none for any other record. */
-  readonly name: readonly (typeof HumanName.Schema.Type)[]
-  /** A person's birth date; `null` when the record states none, and for any record not a person. */
-  readonly birthDate: typeof TimelessDateFromString.Type | null
+  /** The record matched; `None` for a logical reference, which names a record without giving it. */
+  readonly record: Option.Option<RecordOf<TResourceType>>
 }
 
 /**
@@ -45,33 +49,23 @@ const qualifiedIdentifiersOf = (
     ? []
     : resource.identifier.filter(IdentifierAndReference.isQualifiedIdentifier)
 
-/** The names and birth date of `resource` when it is a person; none for any other record. */
-const demographicsOf = (resource: FhirResource): Pick<Type, 'name' | 'birthDate'> =>
-  resource.resourceType === 'Patient' || resource.resourceType === 'Practitioner'
-    ? { name: resource.name, birthDate: resource.birthDate }
-    : { name: [], birthDate: null }
-
-/** The query matching `resource`: its type, qualified identifiers and, for a person, demographics. */
+/** The query matching `resource`: its type, its qualified identifiers and the record. */
 const fromResource = <TResource extends FhirResource>(
   resource: TResource
-): Type<TResource['resourceType']> => {
-  const anyResource: FhirResource = resource
-  return {
-    resourceType: resource.resourceType,
-    identifier: qualifiedIdentifiersOf(anyResource),
-    ...demographicsOf(anyResource),
-  }
-}
+): Type<TResource['resourceType']> => ({
+  resourceType: resource.resourceType,
+  identifier: qualifiedIdentifiersOf(resource),
+  record: Option.some(resource),
+})
 
-/** The query matching the record `logicalReference` names: its one identifier, nothing else known. */
+/** The query matching the record `logicalReference` names: its one identifier, no record. */
 const fromLogicalReference = <TResourceType extends ResourceType.Type>(
   logicalReference: LogicalReference.Type<TResourceType>
 ): Type<TResourceType> => ({
   resourceType: logicalReference.resourceType,
   identifier: logicalReference.identifier,
-  name: [],
-  birthDate: null,
+  record: Option.none(),
 })
 
-export { fromLogicalReference, fromResource }
-export type { Type }
+export { fromLogicalReference, fromResource, qualifiedIdentifiersOf }
+export type { RecordOf, Type }
