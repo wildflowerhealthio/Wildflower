@@ -10,11 +10,8 @@
  * orphans already-stored data, so treat this file as append-mostly.
  *
  * Every stored Wildflower URL no single package owns is defined here or built
- * from a base defined here: the extensions and code systems below, the
- * canonical urls of definitional resources, and the identifier systems
- * `fhir-r4`'s resource namespaces mint under
- * {@link WILDFLOWER_IDENTIFIER_SYSTEM_BASE} (`Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM`).
- * A URL one package owns lives with it and is exported from there for its
+ * from a base defined here: the extensions and code systems below, and the
+ * canonical urls of definitional resources. A URL one package owns lives with it and is exported from there for its
  * readers: the system a source keys its own ids under (`…/fhir/sid/<source>`),
  * a source's practitioner-name system, and `web-trace-core`'s codec systems.
  */
@@ -95,14 +92,6 @@ const WildflowerCodeSystem = {
  */
 const WILDFLOWER_CANONICAL_BASE = 'https://wildflowerhealth.io/fhir'
 
-/**
- * Base for every identifier system Wildflower mints for an identity no source
- * keys, such as a person's name and birth date. Shared rather than per
- * source, so the same identity from two sources is one identifier. Stable
- * identifiers, not resolvable documents.
- */
-const WILDFLOWER_IDENTIFIER_SYSTEM_BASE = 'https://wildflowerhealth.io/fhir/identifier'
-
 /** Wildflower-minted extension URLs for values R4 has no conventional slot for. */
 const WildflowerExtension = {
   /**
@@ -140,7 +129,6 @@ export {
   WILDFLOWER_CANONICAL_BASE,
   WILDFLOWER_CODE_SYSTEM_BASE,
   WILDFLOWER_EXTENSION_BASE,
-  WILDFLOWER_IDENTIFIER_SYSTEM_BASE,
   WildflowerCodeSystem,
   WildflowerExtension,
 }
