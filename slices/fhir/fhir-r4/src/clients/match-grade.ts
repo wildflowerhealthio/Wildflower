@@ -13,10 +13,10 @@ import type * as Practitioner from '../resources/practitioner/practitioner.ts'
  */
 
 /**
- * A candidate's grade: `certain` (it carries one of the query's
- * identifiers), `probable` and `possible` (it agrees with the query, more or
- * less), and `certainly-not`, which the value set holds and nothing here
- * gives.
+ * A candidate's grade: `certain` (the one stored record carrying any of
+ * the query's identifiers), `probable` and `possible` (it agrees with the
+ * query, more or less), and `certainly-not`, which the value set holds and
+ * nothing here gives.
  */
 type Type = 'certain' | 'probable' | 'possible' | 'certainly-not'
 
@@ -43,6 +43,24 @@ interface ComparableName {
 /** The words a doctor's title is written as, compared once lower-cased. */
 const DOCTOR_TITLES: ReadonlySet<string> = new Set(['dr', 'dr.', 'doctor'])
 
+/**
+ * The words a credential is written as after a name ("John Smith, MD"),
+ * compared once lower-cased and without dots.
+ */
+const CREDENTIALS: ReadonlySet<string> = new Set([
+  'md',
+  'do',
+  'np',
+  'pa',
+  'rn',
+  'rph',
+  'pharmd',
+  'phd',
+  'dds',
+  'dmd',
+  'od',
+])
+
 /** The words of `namePart`, lower-cased and without diacritics (decomposed, combining marks dropped). */
 const wordsOf = (namePart: string): readonly string[] =>
   namePart
@@ -60,34 +78,79 @@ const withoutLeadingTitle = (words: readonly string[]): readonly string[] =>
       DOCTOR_TITLES.has(Array.headNonEmpty(spoken)) ? Array.tailNonEmpty(spoken) : spoken,
   })
 
+/** Whether `words` are a credential: at least one word, every one of them in {@link CREDENTIALS}. */
+const isCredential = (words: readonly string[]): boolean =>
+  Array.isNonEmptyReadonlyArray(words) &&
+  words.every((word) => CREDENTIALS.has(word.replaceAll('.', '')))
+
+/** `family` and `given` words as a comparable name; `None` when no family name is left. */
+const comparableNameFrom = (
+  familyWords: readonly string[],
+  givenWords: readonly string[]
+): Option.Option<ComparableName> => {
+  const family = withoutLeadingTitle(familyWords).join(' ')
+  return Option.liftPredicate({ family, given: withoutLeadingTitle(givenWords) }, () =>
+    Str.isNonEmpty(family)
+  )
+}
+
+/**
+ * The family and given words of `text` written family first ("Schmitt, John
+ * Jacob"): it has exactly one comma, and what follows it is not a
+ * credential ("John Smith, MD"); `None` for any other text.
+ */
+const familyFirstWordsOf = (
+  text: string
+): Option.Option<readonly [readonly string[], readonly string[]]> =>
+  Option.liftPredicate(text.split(','), (parts) => parts.length === 2).pipe(
+    Option.map(
+      ([familyPart = '', givenPart = '']) => [wordsOf(familyPart), wordsOf(givenPart)] as const
+    ),
+    Option.filter(([, givenWords]) => !isCredential(givenWords))
+  )
+
+/**
+ * `text` as a comparable name: family first when it is written so
+ * ({@link familyFirstWordsOf}), else given names then a family name, the last
+ * word.
+ */
+const comparableTextNameOf = (text: string): Option.Option<ComparableName> =>
+  Option.match(familyFirstWordsOf(text), {
+    onSome: ([familyWords, givenWords]) => comparableNameFrom(familyWords, givenWords),
+    onNone: () => {
+      const textWords = withoutLeadingTitle(wordsOf(text))
+      return Option.map(Array.last(textWords), (family) => ({
+        family,
+        given: textWords.slice(0, -1),
+      }))
+    },
+  })
+
 /**
  * `name` as it is compared: its `family` and `given` parts when it states
- * either, else its `text` read as given names then a family name (the last
- * word); `None` when no family name is left, since every grade needs one.
- * `prefix` and `suffix` are not compared, so a title written there is
- * ignored as one written leading the text, the family or the given names is.
+ * either, else its `text` ({@link comparableTextNameOf}); `None` when no
+ * family name is left, so a name without one is not compared. `prefix` and
+ * `suffix` are not compared, so a title written there is ignored as one
+ * written leading the text, the family or the given names is.
  */
-const comparableNameOf = (name: typeof HumanName.Schema.Type): Option.Option<ComparableName> => {
-  if (name.family !== null || name.given.length > 0) {
-    const family = withoutLeadingTitle(wordsOf(name.family ?? '')).join(' ')
-    const given = withoutLeadingTitle(name.given.flatMap(wordsOf))
-    return Option.liftPredicate({ family, given }, () => Str.isNonEmpty(family))
-  }
-  const textWords = withoutLeadingTitle(wordsOf(name.text ?? ''))
-  return Option.map(Array.last(textWords), (family) => ({
-    family,
-    given: textWords.slice(0, -1),
-  }))
-}
+const comparableNameOf = (name: typeof HumanName.Schema.Type): Option.Option<ComparableName> =>
+  name.family !== null || name.given.length > 0
+    ? comparableNameFrom(wordsOf(name.family ?? ''), name.given.flatMap(wordsOf))
+    : comparableTextNameOf(name.text ?? '')
 
 /** Every name of `names` that can be compared ({@link comparableNameOf}), in record order. */
 const comparableNamesOf = (
   names: readonly (typeof HumanName.Schema.Type)[]
 ): readonly ComparableName[] => Array.filterMap(names, comparableNameOf)
 
-/** Whether every given name `queryName` has is among `storedName`'s. */
+/** Whether `queryName` has a given name and every one it has is among `storedName`'s. */
 const givenNamesCovered = (queryName: ComparableName, storedName: ComparableName): boolean =>
+  Array.isNonEmptyReadonlyArray(queryName.given) &&
   queryName.given.every((given) => storedName.given.includes(given))
+
+/** Whether any given name of `queryName` is among `storedName`'s. */
+const anyGivenNameShared = (queryName: ComparableName, storedName: ComparableName): boolean =>
+  queryName.given.some((given) => storedName.given.includes(given))
 
 /** Whether both names have a first given name and the two start with the same letter. */
 const firstInitialsAgree = (queryName: ComparableName, storedName: ComparableName): boolean =>
@@ -100,21 +163,26 @@ const firstInitialsAgree = (queryName: ComparableName, storedName: ComparableNam
 /**
  * A patient's name against a stored one, their birth dates already equal:
  * `probable` when the family names are equal and the stored name has every
- * given name the query's has, `possible` when only the family names are.
+ * given name the query's has (at least one); `possible` when the family
+ * names are equal and the given names are not so covered, or when the family
+ * names differ and any given name is shared.
  */
 const patientNameGrade = (
   queryName: ComparableName,
   storedName: ComparableName
-): Option.Option<Type> =>
-  queryName.family !== storedName.family
-    ? Option.none()
-    : Option.some(givenNamesCovered(queryName, storedName) ? 'probable' : 'possible')
+): Option.Option<Type> => {
+  if (queryName.family === storedName.family) {
+    return Option.some(givenNamesCovered(queryName, storedName) ? 'probable' : 'possible')
+  }
+  return anyGivenNameShared(queryName, storedName) ? Option.some('possible') : Option.none()
+}
 
 /**
- * A practitioner's name against a stored one: `probable` when the family names
- * are equal and the stored name has every given name the query's has,
- * `possible` when the family names are equal and the first given names share
- * their initial (`J` and `Jonathan`).
+ * A practitioner's name against a stored one: `probable` when the family
+ * names are equal and the stored name has every given name the query's has
+ * (at least one); `possible` when the family names are equal and the query
+ * has no given name ("Dr. Smith"), or the first given names share their
+ * initial (`J` and `Jonathan`).
  */
 const practitionerNameGrade = (
   queryName: ComparableName,
@@ -122,7 +190,9 @@ const practitionerNameGrade = (
 ): Option.Option<Type> => {
   if (queryName.family !== storedName.family) return Option.none()
   if (givenNamesCovered(queryName, storedName)) return Option.some('probable')
-  return firstInitialsAgree(queryName, storedName) ? Option.some('possible') : Option.none()
+  return Array.isEmptyReadonlyArray(queryName.given) || firstInitialsAgree(queryName, storedName)
+    ? Option.some('possible')
+    : Option.none()
 }
 
 /** The best grade any name of `queryNames` takes against any of `storedNames` by `nameGrade`. */

@@ -178,19 +178,32 @@ const indexByIdentifier = (
     )
   )
 
-/** The stored records of `index` carrying any of `query`'s identifiers, each once, `certain`. */
+/**
+ * The grade a candidate found by identifier takes: `certain` when it is the
+ * only one its query has, `probable` when the query's identifiers name
+ * several stored records, since a record has one stored copy and the store
+ * cannot say which it is.
+ */
+const identifierGradeOf = (candidateCount: number): MatchGrade.Type =>
+  candidateCount > 1 ? 'probable' : 'certain'
+
+/**
+ * The stored records of `index` carrying any of `query`'s identifiers, each
+ * once, graded by how many there are ({@link identifierGradeOf}).
+ */
 const identifierCandidatesOf = <TResourceType extends ResourceType.Type>(
   query: MatchQuery.Type<TResourceType>,
   index: HashMap.HashMap<LogicalReference.Key, readonly FhirResourceWithId[]>
-): readonly Candidate<TResourceType>[] =>
-  Array.dedupeWith(
+): readonly Candidate<TResourceType>[] => {
+  const found = Array.dedupeWith(
     query.identifier.flatMap((identifier) =>
       Option.getOrElse(HashMap.get(index, identifierKey(query.resourceType, identifier)), () => [])
     ),
     sameStoredResource
-  )
-    .filter(isOfType(query.resourceType))
-    .map((resource) => ({ resource, grade: 'certain', by: 'identifier' }))
+  ).filter(isOfType(query.resourceType))
+  const grade = identifierGradeOf(found.length)
+  return found.map((resource) => ({ resource, grade, by: 'identifier' }))
+}
 
 /** Whether `resource` is a record of `resourceType`, narrowing it to that type's record. */
 const isRecordOfType =
@@ -289,7 +302,8 @@ const bestCandidates = <TResourceType extends ResourceType.Type>(
  * The identifier stage takes one `searchByIdentifiers` per resource type for
  * the whole batch, every qualified identifier of every query of the type in
  * it, and a stored record is a `certain` candidate of every query whose
- * identifiers it carries. A query with no qualified identifier, and a type
+ * identifiers it carries; a query whose identifiers name several stored
+ * records has each as a `probable` candidate instead. A query with no qualified identifier, and a type
  * with no identifier search (`Binary`), has no candidate by identifier and
  * sends nothing.
  *
