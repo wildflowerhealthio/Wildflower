@@ -3,12 +3,19 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, type RenderHookResult, renderHook, waitFor } from '@testing-library/react'
 import { FhirR4ResourcesRouterContext, type RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
-import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
-import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirR4ResourcesHttpApiClient,
+  ResourceMatch,
+} from '@wildflowerhealthio/fhir-r4/clients'
+import { IdentifierAndReference, withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  type FhirResourceWithId,
+  LogicalReference,
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import { LinkPlan, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, Layer, Schema } from 'effect'
+import { ImportMatch, LinkPlan, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
+import { Effect, HashSet, Layer, Option, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -35,8 +42,15 @@ afterEach(() => {
 /** The time a failed classification's two retries take at TanStack's default backoff, with room. */
 const RETRIES_TIMEOUT = 8_000
 
-const patient = (id: string): FhirResourceWithId =>
-  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
+const patient = (id: string, identifier: readonly object[] = []): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+    resourceType: 'Patient',
+    id,
+    identifier,
+  })
+
+/** How many diff bundles the empty server has answered. */
+let bundlesAnswered = 0
 
 /** A HAR group holding `resources`, the other formats claiming nothing. */
 const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => {
@@ -67,6 +81,7 @@ const emptyServerLayer = Layer.succeed(
   HttpClient.make((request) => {
     const text =
       request.body._tag === 'Uint8Array' ? new TextDecoder().decode(request.body.body) : ''
+    bundlesAnswered += 1
     const entries = Schema.decodeUnknownSync(
       Schema.Struct({ entry: Schema.Array(Schema.Unknown) })
     )(JSON.parse(text))
@@ -113,7 +128,8 @@ const runAuthedWith = (fates: readonly ('answer' | 'reject')[]): RunAuthed => {
 /** The hook over `batch` under `batchId`, under one query client, re-renderable with another pair. */
 const renderDiff = (
   batch: ResolvedBatch,
-  batchId: number
+  batchId: number,
+  importMatch: Option.Option<ImportMatch.Type> = Option.none()
 ): RenderHookResult<ServerDiffState, { batch: ResolvedBatch; batchId: number }> => {
   const queryClient = new QueryClient()
   const withQueryClient = ({ children }: { readonly children: ReactNode }): JSX.Element => (
@@ -121,7 +137,7 @@ const renderDiff = (
   )
   return renderHook(
     ({ batch: current, batchId: id }: { batch: ResolvedBatch; batchId: number }) =>
-      useServerDiff(current, id),
+      useServerDiff(current, id, importMatch),
     { initialProps: { batch, batchId }, wrapper: withQueryClient }
   )
 }
@@ -183,5 +199,48 @@ describe('useServerDiff', () => {
     await waitFor(() => {
       expect(result.current).toMatchObject({ _tag: 'ready', refreshing: false })
     })
+  })
+
+  it('should compare a record with its matched copy under another id, and read nothing by id', async () => {
+    // Arrange: the match searched the record's identifier and found one copy, stored elsewhere
+    bundlesAnswered = 0
+    currentRunAuthed = runAuthedWith([])
+    const identifier = { system: 'https://source.example/id', value: 'p-1' }
+    const imported = patient('p-1', [identifier])
+    const qualified = Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)(identifier)
+    if (!IdentifierAndReference.isQualifiedIdentifier(qualified)) throw new Error('unreachable')
+    const importMatch: ImportMatch.Type = {
+      ...ImportMatch.empty,
+      foundByIdentifier: ResourceMatch.indexByIdentifier([patient('stored-9', [identifier])]),
+      searchedIdentifiers: HashSet.make(
+        LogicalReference.key(LogicalReference.make('Patient', qualified))
+      ),
+    }
+
+    // Act
+    const { result } = renderDiff(batchOf([imported]), 1, Option.some(importMatch))
+
+    // Assert
+    await waitFor(() => {
+      expect(result.current).toMatchObject({ _tag: 'ready', refreshing: false })
+    })
+    expect(statusesOf(result.current)).toEqual(['unchanged'])
+    expect(bundlesAnswered).toBe(0)
+  })
+
+  it('should read by id only the records the match did not search', async () => {
+    // Arrange: a match that searched nothing
+    bundlesAnswered = 0
+    currentRunAuthed = runAuthedWith([])
+
+    // Act
+    const { result } = renderDiff(batchOf([patient('p-1')]), 1, Option.some(ImportMatch.empty))
+
+    // Assert
+    await waitFor(() => {
+      expect(result.current).toMatchObject({ _tag: 'ready', refreshing: false })
+    })
+    expect(statusesOf(result.current)).toEqual(['new'])
+    expect(bundlesAnswered).toBe(1)
   })
 })

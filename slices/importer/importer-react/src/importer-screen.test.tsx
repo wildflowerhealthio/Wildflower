@@ -11,7 +11,6 @@ import {
   SmartConnection,
   smartRuntimeFor,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
-import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, Layer, Option, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
@@ -517,7 +516,7 @@ describe('ImporterScreen', () => {
     expect(document.activeElement).toBe(zoneInput)
   })
 
-  it('reads only the source list, one search per referent and the diff bundle to reach a review', async () => {
+  it('reads only the source list, one identifier search per type, the stored list and the by-id bundle to reach a review', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
@@ -528,9 +527,11 @@ describe('ImporterScreen', () => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
 
-    // Assert — no writes; the reads are the picker's source list, the one
-    // Patient's identifier search, the diff bundle's reads, and, once the review
-    // has painted, the first page of stored Patients its select offers.
+    // Assert — no writes; the reads are the picker's source list, the
+    // match's one identifier search per type, the by-id read of the one row it
+    // cannot search (the source file), and, once the review has painted, the
+    // first page of stored Patients its select offers. The Patient states no
+    // birth date, so the match sends no birth date search to grade it by name.
     expect(writes()).toHaveLength(0)
     await waitFor(() => {
       expect(reads()).toContain('search Patient?_count')
@@ -539,25 +540,25 @@ describe('ImporterScreen', () => {
       [
         'search DocumentReference?_count&_sort&category',
         'search Patient?_count&identifier',
+        'search Observation?_count&identifier',
         'read DocumentReference',
-        'read Patient',
-        'read Observation',
-        'read Observation',
         'search Patient?_count',
       ].toSorted()
     )
   })
 
-  it('links the Patient to the stored one its demographics name: the stored one is written, with every subject pointing at it', async () => {
-    // Arrange — the device already holds Tyra, under its own id and the
-    // identifier her name and birth date derive
+  it('links the Patient to the one stored record her name and birth date match: the stored one is written, with every subject pointing at it', async () => {
+    // Arrange — the device already holds Tyra, under its own id and
+    // identifier, with her name and birth date
     currentRunAuthed = routingServer({ stored: [STORED_TYRA] })
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
-    // Act — the search pre-selects her; confirm
+    // Act — the match finds her by her birth date, grades her probable and
+    // pre-selects her; confirm
     await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
     const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
     expect(person.value).toBe('stored:Patient/s-1')
+    expect(reads()).toContain('search Patient?_count&birthdate')
     expect(screen.getByText(/1 record on the server, 0 records from this import/)).toBeDefined()
     await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
     await waitFor(() => {
@@ -571,11 +572,7 @@ describe('ImporterScreen', () => {
     const identifiers = heldWireOf(JSON.parse(patientWrites[0]?.body ?? '')).identifier.map(
       ({ system, value }) => `${system}|${value}`
     )
-    expect(identifiers).toEqual([
-      `${DEVICE}|s-1`,
-      `${Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM}|${DERIVED.value}`,
-      'https://r4.example.org/baseR4/Patient|pat-7',
-    ])
+    expect(identifiers).toEqual([`${DEVICE}|s-1`, 'https://r4.example.org/baseR4/Patient|pat-7'])
     const subjects = writes()
       .filter((write) => write.url.includes('/Observation/'))
       .map((write) => subjectOf(write.body))
@@ -649,14 +646,14 @@ describe('ImporterScreen', () => {
   })
 
   it("drops an edit made on a Patient's row when the Patient is linked to another record", async () => {
-    // Arrange — the device holds Tyra under no identifier the import carries,
+    // Arrange — the device holds a record the match grades only possible,
     // so the Patient starts as new and the stored one is offered, not chosen
-    currentRunAuthed = routingServer({ stored: [{ ...STORED_TYRA, identifier: [] }] })
+    currentRunAuthed = routingServer({ stored: [POSSIBLE_TYRA] })
     render(<ImporterScreen />, { wrapper: withQueryClient })
     await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
     const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
     expect(person.value).toBe('create')
-    await within(person).findByRole('option', { name: TYRA })
+    await within(person).findByRole('option', { name: POSSIBLE_TYRA_LABEL })
 
     // Act — edit the source Patient's row, then link it to the stored one
     await userEvent.click(screen.getByRole('button', { name: /^Edit Patient/ }))
@@ -692,14 +689,14 @@ describe('ImporterScreen', () => {
 
   it("drops an edit made on another file's copy of a Patient when the Patient is linked to another record", async () => {
     // Arrange — two files decode one Patient, one referent with two rows
-    currentRunAuthed = routingServer({ stored: [{ ...STORED_TYRA, identifier: [] }] })
+    currentRunAuthed = routingServer({ stored: [POSSIBLE_TYRA] })
     render(<ImporterScreen />, { wrapper: withQueryClient })
     await userEvent.upload(screen.getByLabelText('Import file'), [
       namedPatientHar('a.har'),
       namedPatientHar('b.har'),
     ])
     const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
-    await within(person).findByRole('option', { name: TYRA })
+    await within(person).findByRole('option', { name: POSSIBLE_TYRA_LABEL })
 
     // Act — edit the second file's copy, then link the Patient to the stored one
     const edits = screen.getAllByRole('button', { name: /^Edit Patient/ })
@@ -754,16 +751,16 @@ describe('ImporterScreen', () => {
   })
 
   it('redirects a subject picked onto the Patient to the stored record the Patient is later linked to', async () => {
-    // Arrange — the device holds Tyra under no identifier the import carries,
+    // Arrange — the device holds a record the match grades only possible,
     // so the Patient starts as new and the stored one is offered, not chosen
-    currentRunAuthed = routingServer({ stored: [{ ...STORED_TYRA, identifier: [] }] })
+    currentRunAuthed = routingServer({ stored: [POSSIBLE_TYRA] })
     render(<ImporterScreen />, { wrapper: withQueryClient })
     await userEvent.upload(
       screen.getByLabelText('Import file'),
       new File([NAMED_NO_SUBJECT_HAR], 'a.har', { type: 'application/json' })
     )
     const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
-    await within(person).findByRole('option', { name: TYRA })
+    await within(person).findByRole('option', { name: POSSIBLE_TYRA_LABEL })
     const group = screen.getByRole('region', { name: 'Needs a patient' })
     const [first] = within(group).getAllByRole<HTMLSelectElement>('combobox')
     if (first === undefined) throw new Error('unreachable: each listed row has a subject select')
@@ -846,30 +843,29 @@ const TYRA = 'Tyra Banks · 1990-01-02'
 /** The system the stored Patient's own identifier is under. */
 const DEVICE = 'https://device.example/id'
 
-/** The identifier Tyra's name and birth date derive. */
-const DERIVED = Option.getOrThrow(
-  Effect.runSync(
-    Patient.nameBirthDateIdentifier(
-      Schema.decodeUnknownSync(Patient.Schema)({
-        resourceType: 'Patient',
-        name: [{ family: 'Banks', given: ['Tyra'] }],
-        birthDate: '1990-01-02',
-      })
-    )
-  )
-)
-
-/** Tyra as the device already holds her: her own id, and the identifier her demographics derive. */
+/** Tyra as the server already holds her: her own id under the server's own system, her name and birth date. */
 const STORED_TYRA = {
   resourceType: 'Patient',
   id: 's-1',
-  identifier: [
-    { system: DEVICE, value: 's-1' },
-    { system: Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM, value: DERIVED.value },
-  ],
+  identifier: [{ system: DEVICE, value: 's-1' }],
   name: [{ family: 'Banks', given: ['Tyra'] }],
   birthDate: '1990-01-02',
 }
+
+/**
+ * A stored record that may be Tyra: her family name and birth date with only
+ * an initial for a given name, under no identifier the import carries, so the
+ * match grades it `possible` and picks no default.
+ */
+const POSSIBLE_TYRA = {
+  resourceType: 'Patient',
+  id: 's-1',
+  name: [{ family: 'Banks', given: ['T'] }],
+  birthDate: '1990-01-02',
+}
+
+/** {@link POSSIBLE_TYRA} as the stored option is labelled. */
+const POSSIBLE_TYRA_LABEL = 'T Banks · 1990-01-02'
 
 /** A {@link NAMED_PATIENT_HAR} `File`, for the OS-picker path. */
 const namedPatientHar = (name: string): File =>
@@ -881,10 +877,10 @@ const namedPatientHar = (name: string): File =>
  */
 const reads = (): readonly string[] =>
   recorded
-    .filter((request) => request.method === 'GET')
+    .filter((request) => request.method === 'GET' || request.method === 'SEARCH')
     .map((request) => {
       const [path = '', query] = request.url.split('?')
-      const segments = path.split('/').filter((segment) => segment !== '')
+      const segments = path.split('/').filter((segment) => segment !== '' && segment !== '_search')
       if (query === undefined) return `read ${segments.at(-2) ?? ''}`
       const names = [...new URLSearchParams(query).keys()].toSorted().join('&')
       return `search ${segments.at(-1) ?? ''}?${names}`
@@ -926,7 +922,7 @@ const idFromUrl = (url: string): string => {
   return segments[segments.length - 1] ?? ''
 }
 
-/** Just enough of a held resource to key it and search it by identifier. */
+/** Just enough of a held resource to key it and search it by identifier, birth date and name. */
 const HeldWire = Schema.Struct({
   resourceType: Schema.String,
   id: Schema.String,
@@ -934,8 +930,47 @@ const HeldWire = Schema.Struct({
     Schema.Array(Schema.Struct({ system: Schema.String, value: Schema.String })),
     { default: () => [] }
   ),
+  birthDate: Schema.optional(Schema.String),
+  name: Schema.optionalWith(
+    Schema.Array(
+      Schema.Struct({
+        family: Schema.optional(Schema.String),
+        given: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+        text: Schema.optional(Schema.String),
+      })
+    ),
+    { default: () => [] }
+  ),
 })
 const heldWireOf = Schema.decodeUnknownSync(HeldWire)
+
+/** `text` as HFS indexes a name part: lower-cased, without diacritics. */
+const folded = (text: string): string =>
+  text.normalize('NFD').replaceAll(/\p{M}/gu, '').toLowerCase()
+
+/**
+ * Whether `wire` passes a typed search's `form` as HFS answers it: carrying
+ * any of its `identifier` tokens, born on any of its `birthdate` dates, and
+ * with a name part (family, a given name or text) starting with any of its
+ * `name` values, case and accents folded; a parameter the form leaves out
+ * filters nothing.
+ */
+const passesSearch = (wire: unknown, form: URLSearchParams): boolean => {
+  const { identifier, birthDate, name } = heldWireOf(wire)
+  const tokens = form.get('identifier')?.split(',')
+  const birthDates = form.get('birthdate')?.split(',')
+  const names = form.get('name')?.split(',')
+  return (
+    (tokens === undefined ||
+      identifier.some(({ system, value }) => tokens.includes(`${system}|${value}`))) &&
+    (birthDates === undefined || (birthDate !== undefined && birthDates.includes(birthDate))) &&
+    (names === undefined ||
+      name
+        .flatMap(({ family, given, text }) => [family, ...given, text])
+        .filter((part) => part !== undefined)
+        .some((part) => names.some((value) => folded(part).startsWith(folded(value)))))
+  )
+}
 
 /** A request URL with its search parameters, as the log records it. */
 const urlWithParams = (request: HttpClientRequest.HttpClientRequest): string => {
@@ -949,9 +984,12 @@ const urlWithParams = (request: HttpClientRequest.HttpClientRequest): string => 
 /**
  * A stub server that records every request and holds what it is given and
  * what is written to it: a `category` search answers with the configured
- * source files, an `identifier` search with the held resources of its type
- * carrying any of its `system|value` tokens, a `_count`-only search with
- * every held resource of its type, a read with the held resource, and a PUT
+ * source files, a typed `POST <Type>/_search` with the held resources of its
+ * type it finds as HFS would (`passesSearch`: by `identifier`, `birthdate` or
+ * `name`; one with none of them, every held resource of its type), a `GET`
+ * `identifier` search with the held resources of its type carrying any of
+ * its `system|value` tokens, a `GET` `_count`-only search with every held
+ * resource of its type, a read with the held resource, and a PUT
  * stores and echoes its body (or a 503 when `failWrite` says so). A
  * `transaction` bundle one of whose entries `failWrite` rejects is refused
  * as a whole, as HFS refuses one: a 400 with an OperationOutcome, nothing
@@ -1066,8 +1104,18 @@ const routingServer = (config: {
         }
       }
 
-      recorded.push({ method: request.method, url: urlWithParams(request), body })
       const segments = path.split('/').filter((segment) => segment !== '')
+      // A `POST <Type>/_search` is the typed client's search, its parameters
+      // a form body: the matcher's identifier and name-stage searches, and
+      // the referent rows' stored lists. Recorded as a read, its parameters
+      // in its URL.
+      if (request.method === 'POST' && segments.at(-1) === '_search') {
+        const form = new URLSearchParams(body)
+        recorded.push({ method: 'SEARCH', url: `${path}?${form.toString()}`, body: '' })
+        const hits = heldOfType(segments.at(-2) ?? '').filter((wire) => passesSearch(wire, form))
+        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(hits))))
+      }
+      recorded.push({ method: request.method, url: urlWithParams(request), body })
       if (request.method === 'GET' && params['category'] !== undefined) {
         const wires = sourceFiles.map((one) => one.wire)
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(wires))))
