@@ -75,6 +75,8 @@ interface NameRule<TResourceType extends NameRuledResourceType> {
     Failure,
     FhirR4ResourcesHttpApiClient
   >
+  /** Whether `queryRecord` can grade any stored record: when not, nothing is fetched for it. */
+  readonly canGrade: (queryRecord: MatchQuery.RecordOf<TResourceType>) => boolean
   /** The grade `storedRecord` takes as a match of `queryRecord`; `None` when it is no match. */
   readonly grade: (
     queryRecord: MatchQuery.RecordOf<TResourceType>,
@@ -91,10 +93,12 @@ const nameRulesByType: {
 } = {
   Patient: {
     fetchStored: searchAllOfType('Patient', { pageSize: STORED_PAGE_SIZE }),
+    canGrade: MatchGrade.canGradePatient,
     grade: MatchGrade.patientGradeOf,
   },
   Practitioner: {
     fetchStored: searchAllOfType('Practitioner', { pageSize: STORED_PAGE_SIZE }),
+    canGrade: MatchGrade.canGradePractitioner,
     grade: MatchGrade.practitionerGradeOf,
   },
 }
@@ -239,19 +243,35 @@ const nameGradeOf = <TResourceType extends NameRuledResourceType>(
 }
 
 /**
+ * Whether `queryRecord` can grade any stored record by the rule of
+ * `resourceType` ({@link NameRule.canGrade}); `false` when it is not of that
+ * type.
+ */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- one type, not the union, so the row read and the record narrowed to its type agree
+const canGradeByName = <TResourceType extends NameRuledResourceType>(
+  resourceType: TResourceType,
+  queryRecord: FhirResource
+): boolean =>
+  isRecordOfType(resourceType)(queryRecord) && nameRulesByType[resourceType].canGrade(queryRecord)
+
+/**
  * Whether `query` goes on to the name stage: its type has a rule, it carries
- * its record, nothing was found for it by identifier, and more than certain
- * matches were asked for.
+ * a record that rule can grade by, nothing was found for it by identifier,
+ * and more than certain matches were asked for.
  */
 const goesToNameStage = <TResourceType extends ResourceType.Type>(
   query: MatchQuery.Type<TResourceType>,
   identifierCandidates: readonly Candidate<TResourceType>[],
   options: Options
-): boolean =>
-  !options.onlyCertainMatches &&
-  identifierCandidates.length === 0 &&
-  Option.isSome(query.record) &&
-  isNameRuledResourceType(query.resourceType)
+): boolean => {
+  const { resourceType } = query
+  return (
+    !options.onlyCertainMatches &&
+    identifierCandidates.length === 0 &&
+    isNameRuledResourceType(resourceType) &&
+    Option.exists(query.record, (queryRecord) => canGradeByName(resourceType, queryRecord))
+  )
+}
 
 /**
  * Every stored record of each of `resourceTypes`, by type: one
@@ -318,7 +338,9 @@ const bestCandidates = <TResourceType extends ResourceType.Type>(
  * no candidate by identifier and sends nothing.
  *
  * Unless `onlyCertainMatches`, a query that carries its record, of a type
- * with a rule, with no candidate by identifier goes on to the name stage:
+ * with a rule that can grade by it (a Patient with a birth date and a
+ * family name, a Practitioner with a family name), with no candidate by
+ * identifier goes on to the name stage:
  * every stored record of its type is fetched (`searchAllOfType`, every page,
  * once per type for the whole batch) and the type's rule grades each against
  * the query's record, client side; one that grades as no match is dropped.

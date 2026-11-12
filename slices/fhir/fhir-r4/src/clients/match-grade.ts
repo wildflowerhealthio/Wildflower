@@ -114,29 +114,32 @@ const comparableNameFrom = (
 }
 
 /**
- * The comma-separated parts of `text` as words, without the credentials and
- * generational suffixes that trail them after a comma ("John Smith, MD",
- * "John Smith, MD, PhD", "Smith, John, RPh", "Schmitt, John, Jr"); a first
- * part is always kept.
+ * The comma-separated parts of `text` as words, without an empty part ("John
+ * Smith,") and without the credentials and generational suffixes that trail
+ * them after a comma ("John Smith, MD", "John Smith, MD, PhD", "Smith, John,
+ * RPh", "Schmitt, John, Jr"); a first part is always kept.
  */
 const partsWithoutDroppableTail = (text: string): readonly (readonly string[])[] => {
   const withoutTail = (parts: readonly (readonly string[])[]): readonly (readonly string[])[] =>
     parts.length > 1 && isDroppableTail(parts.at(-1) ?? [])
       ? withoutTail(parts.slice(0, -1))
       : parts
-  return withoutTail(text.split(',').map(wordsOf))
+  return withoutTail(text.split(',').map(wordsOf).filter(Array.isNonEmptyReadonlyArray))
 }
 
 /**
  * `text` as a comparable name, its credential and suffix tail dropped first
  * ({@link partsWithoutDroppableTail}): family first when exactly one comma
- * is left ("Schmitt, John Jacob"), else given names then a family name, the
- * last word once trailing generational suffixes are dropped ("John Smith
- * Jr"), with any other commas read as spaces.
+ * is left ("Schmitt, John Jacob"), the given names without the generational
+ * suffixes trailing them ("Schmitt, John Jr"), else given names then a
+ * family name, the last word once trailing generational suffixes are dropped
+ * ("John Smith Jr"), with any other commas read as spaces.
  */
 const comparableTextNameOf = (text: string): Option.Option<ComparableName> => {
   const parts = partsWithoutDroppableTail(text)
-  if (parts.length === 2) return comparableNameFrom(parts[0] ?? [], parts[1] ?? [])
+  if (parts.length === 2) {
+    return comparableNameFrom(parts[0] ?? [], withoutTrailingSuffixes(parts[1] ?? []))
+  }
   const textWords = withoutTrailingSuffixes(withoutLeadingTitle(parts.flat()))
   return Option.map(Array.last(textWords), (family) => ({
     family,
@@ -229,6 +232,21 @@ const bestNameGrade = (
 }
 
 /**
+ * Whether the Patient `query` can grade any stored Patient
+ * ({@link patientGradeOf}): it states a birth date and has a name with a
+ * family name.
+ */
+const canGradePatient = (query: Patient.Type): boolean =>
+  query.birthDate !== null && Array.isNonEmptyReadonlyArray(comparableNamesOf(query.name))
+
+/**
+ * Whether the Practitioner `query` can grade any stored Practitioner
+ * ({@link practitionerGradeOf}): it has a name with a family name.
+ */
+const canGradePractitioner = (query: Practitioner.Type): boolean =>
+  Array.isNonEmptyReadonlyArray(comparableNamesOf(query.name))
+
+/**
  * The grade the stored Patient `stored` takes as a match of `query`:
  * `probable` or `possible` by name ({@link patientNameGrade}) when both state
  * the same birth date, else `None`.
@@ -253,5 +271,12 @@ const practitionerGradeOf = (
   stored: Practitioner.Type
 ): Option.Option<Type> => bestNameGrade(query.name, stored.name, practitionerNameGrade)
 
-export { bestFirst, comparableNamesOf, patientGradeOf, practitionerGradeOf }
+export {
+  bestFirst,
+  canGradePatient,
+  canGradePractitioner,
+  comparableNamesOf,
+  patientGradeOf,
+  practitionerGradeOf,
+}
 export type { ComparableName, Type }
