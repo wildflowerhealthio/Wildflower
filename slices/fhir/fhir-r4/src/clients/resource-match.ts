@@ -261,6 +261,12 @@ const identifierGradeOf = (candidateCount: number): MatchGrade.Type =>
 /**
  * The stored records of `index` carrying any of `query`'s identifiers, each
  * once, graded by how many there are ({@link identifierGradeOf}).
+ *
+ * @remarks
+ * The identifier stage of {@link matchAll}, over records already fetched: a
+ * caller holding the records a match found by identifier
+ * ({@link indexByIdentifier}) reads a query whose identifiers that match
+ * searched again without a request.
  */
 const identifierCandidatesOf = <TResourceType extends ResourceType.Type>(
   query: MatchQuery.Type<TResourceType>,
@@ -470,5 +476,5 @@ const matchAll = <TResourceType extends ResourceType.Type>(
     )
   })
 
-export { matchAll }
-export type { Candidate, Evidence, Failure, Options }
+export { identifierCandidatesOf, indexByIdentifier, matchAll }
+export type { Candidate, Evidence, Failure, IdentifierIndex, Options }

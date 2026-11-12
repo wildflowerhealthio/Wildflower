@@ -24,7 +24,9 @@ import {
 import {
   type MatchWithoutResource,
   type PageTokenRepeated,
+  searchAllPages,
   searchEveryPage,
+  type SearchPages,
   type SearchsetPage,
 } from './search-pages.ts'
 
@@ -303,11 +305,43 @@ const searchAllOfType = <ResourceType extends SearchableResourceType>(
     )
   )
 
+/**
+ * The stored resources of `resourceType`, `pageSize` to a page, read page
+ * after page up to `pageLimit` pages (`searchAllPages`), and whether the
+ * limit left pages unread: a list offered as it is, said to be cut off.
+ *
+ * @param resourceType - The type of the resources listed
+ * @param options - `pageSize`: how many resources one page asks for;
+ *   `pageLimit`: how many pages are read at most
+ * @returns The resources of the pages read, in page order, and whether the
+ *   limit cut the list off
+ */
+const searchPagesOfType = <ResourceType extends SearchableResourceType>(
+  resourceType: ResourceType,
+  options: { readonly pageSize: number; readonly pageLimit: number }
+): Effect.Effect<
+  SearchPages<SearchableResource<ResourceType>>,
+  SearchFailure | MatchWithoutResource | PageTokenRepeated,
+  FhirR4ResourcesHttpApiClient
+> =>
+  Effect.flatMap(FhirR4ResourcesHttpApiClient, (client) =>
+    searchAllPages(
+      resourceType,
+      (pageToken) =>
+        searchesByType[resourceType].search(client, {
+          _count: options.pageSize,
+          ...cursorParam(pageToken),
+        }),
+      { pageLimit: options.pageLimit }
+    )
+  )
+
 export {
   isSearchableResourceType,
   OR_VALUES_PER_SEARCH,
   searchAllOfType,
   searchAnyOf,
+  searchPagesOfType,
   searchByIdentifiers,
   searchesByType,
 }
