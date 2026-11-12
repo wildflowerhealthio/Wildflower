@@ -32,11 +32,13 @@ import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
  * off the batch's match (`ImportMatch.matchedCopyOf`, found once per batch
  * by `useImportMatch`), whatever its id: the compare drops the `id`
  * (`compareWithStoredCopy`), while the write still goes to the resource's own
- * id. A resource the match cannot speak for (a `Binary`, a record with no
- * qualified identifier, one carrying an identifier the match did not search)
- * is compared with the copy under its own id instead, all of them in one
- * `POST /` batch of GET entries (`classifyAgainstServer`), sent only when
- * there is one; so a classification is at most one round trip.
+ * id. A resource with no matched copy, whether the match found none or
+ * cannot speak for it (a `Binary`, a record with no qualified identifier, one
+ * carrying an identifier the match did not search), is compared with the
+ * copy under its own id instead, so a stored copy whose identifiers were
+ * edited still reads as `changed`. All of them go in one `POST /` batch of GET
+ * entries (`classifyAgainstServer`), sent only when there is one; so a
+ * classification is at most one round trip.
  *
  * The classification is a TanStack Query, so the shell can **block on it**
  * (the `loading` state gates the preview) rather than paint the panel first
@@ -145,10 +147,9 @@ const byGroupAndKey = (
 
 /**
  * Each of `resources` classified against its matched copy in `importMatch`
- * (`ImportMatch.matchedCopyOf`): `new` when the match found none, compared
- * with it when it found one, and, for every resource the match did not
- * search for (all of them when there is no match), against the copy under
- * its own id, in one batch.
+ * (`ImportMatch.matchedCopyOf`) when the match found one, and every other
+ * resource (the match found none, did not search for it, or there is no
+ * match) against the copy under its own id, in one batch.
  *
  * @returns The verdicts by `Type/id`; never fails, as `classifyAgainstServer`
  *   does not
@@ -167,20 +168,20 @@ const classifyAgainstMatches = (
         }),
       ] as const
   )
-  const notSearched = matched.flatMap(([resource, matchedCopy]) =>
-    ImportMatch.MatchedCopy.$is('NotSearched')(matchedCopy) ? [resource] : []
+  const byId = matched.flatMap(([resource, matchedCopy]) =>
+    ImportMatch.MatchedCopy.$is('Found')(matchedCopy) ? [] : [resource]
   )
   return Effect.map(
-    classifyAgainstServer(notSearched),
-    (byId) =>
+    classifyAgainstServer(byId),
+    (byOwnId) =>
       new Map([
-        ...byId,
+        ...byOwnId,
         ...matched.flatMap(([resource, matchedCopy]) =>
           ImportMatch.MatchedCopy.$match(matchedCopy, {
             Found: ({ copy }) => [
               [literalReferenceOf(resource), compareWithStoredCopy(resource, copy)] as const,
             ],
-            NotFound: () => [[literalReferenceOf(resource), AS_NEW] as const],
+            NotFound: () => [],
             NotSearched: () => [],
           })
         ),

@@ -108,7 +108,7 @@ const candidatesOf = (
  * server diff compares it with; `NotFound`, no stored record its identifiers
  * name; `NotSearched`, a record the match cannot speak for (no qualified
  * identifier, a type with no identifier search, or an identifier the match
- * did not search), which the diff reads under its own id.
+ * did not search). The diff reads both of the last under the record's own id.
  */
 type MatchedCopy =
   | { readonly _tag: 'Found'; readonly copy: FhirResourceWithId }
