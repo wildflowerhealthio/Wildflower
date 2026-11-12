@@ -40,12 +40,16 @@ describe('generateFhirR4OpenApiSpec', () => {
 
     // Assert — no operation advertises Effect's HttpApiDecodeError 400, and the
     // schemas that existed only to describe it are pruned. `FhirDateSearch`
-    // survives because the FHIR contract itself names it (the `date` /
-    // `birthdate` search parameter value); pinning the exact set keeps a stray
-    // schema from creeping back.
+    // and `FhirDateSearchAnyOf` survive because the FHIR contract itself names
+    // them (the `date` search parameter value, and `birthdate`'s comma-joined
+    // list of them); pinning the exact set keeps a stray schema from creeping
+    // back.
     const json = JSON.stringify(spec)
     expect(json).not.toContain('HttpApiDecodeError')
-    expect(Object.keys(spec.components?.schemas ?? {})).toEqual(['FhirDateSearch'])
+    expect(Object.keys(spec.components?.schemas ?? {})).toEqual([
+      'FhirDateSearchAnyOf',
+      'FhirDateSearch',
+    ])
   })
 
   it('should match the committed snapshot embedded by fhir-r4-rust (regenerate with UPDATE_OPENAPI=1)', () => {

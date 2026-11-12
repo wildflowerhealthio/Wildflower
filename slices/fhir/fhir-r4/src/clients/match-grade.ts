@@ -162,6 +162,33 @@ const comparableNamesOf = (
   names: readonly (typeof HumanName.Schema.Type)[]
 ): readonly ComparableName[] => Array.filterMap(names, comparableNameOf)
 
+/**
+ * Whether `word` can find the names it is part of: not a doctor's title
+ * ({@link DOCTOR_TITLES}), a credential ({@link CREDENTIALS}) or a
+ * generational suffix, and more than one letter once its dots are dropped,
+ * so not an initial.
+ */
+const isSearchableWord = (word: string): boolean => {
+  const withoutDots = word.replaceAll('.', '')
+  return (
+    withoutDots.length > 1 &&
+    !DOCTOR_TITLES.has(word) &&
+    !CREDENTIALS.has(withoutDots) &&
+    !GENERATIONAL_SUFFIXES.has(withoutDots)
+  )
+}
+
+/**
+ * The words of the family names of `names`, as {@link comparableNamesOf}
+ * reads them (lower-cased, without diacritics), each once, without the words
+ * that cannot find a name ({@link isSearchableWord}): what a `name` search
+ * for the records `names` can grade against is sent with.
+ */
+const familySearchWordsOf = (names: readonly (typeof HumanName.Schema.Type)[]): readonly string[] =>
+  Array.dedupe(
+    comparableNamesOf(names).flatMap(({ family }) => family.split(' ').filter(isSearchableWord))
+  )
+
 /** Whether `queryName` has a given name and every one it has is among `storedName`'s. */
 const givenNamesCovered = (queryName: ComparableName, storedName: ComparableName): boolean =>
   Array.isNonEmptyReadonlyArray(queryName.given) &&
@@ -274,6 +301,7 @@ export {
   canGradePatient,
   canGradePractitioner,
   comparableNamesOf,
+  familySearchWordsOf,
   patientGradeOf,
   practitionerGradeOf,
 }

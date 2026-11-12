@@ -164,22 +164,27 @@ const isSearchableResourceType = (resourceType: string): resourceType is Searcha
   Object.hasOwn(searchesByType, resourceType)
 
 /**
- * The page size an identifier search asks for: the most the server gives in
- * one page, so a search for many identifiers takes as few round trips as it
- * can.
+ * The page size a search for any of many values asks for: the most the
+ * server gives in one page, so it takes as few round trips as it can.
  */
-const IDENTIFIER_SEARCH_PAGE_SIZE = 1000
+const ANY_OF_PAGE_SIZE = 1000
 
 /**
- * How many identifiers one identifier search carries: well under the 1000
- * a single `identifier` value fails at on HFS's SQLite backend.
+ * How many values one search ORs together: well under the 1000 a single
+ * parameter value fails at on HFS's SQLite backend.
  *
  * @remarks
- * HFS ORs a token parameter's values by nesting one expression level per
- * value, and SQLite refuses to prepare an expression deeper than 1000, so a
- * search for that many identifiers in one value answers with a 500.
+ * HFS ORs a parameter's comma-joined values by nesting one expression level
+ * per value, and SQLite refuses to prepare an expression deeper than 1000,
+ * so a search for that many values in one parameter answers with a 500.
  */
-const IDENTIFIER_CHUNK_SIZE = 500
+const OR_VALUES_PER_SEARCH = 500
+
+/** The paging parameters of one page of a search: its size, and the token that continues it. */
+interface Paging {
+  readonly _count: number
+  readonly _cursor?: string
+}
 
 /**
  * `_cursor` as a search parameter: the token that continues a search, or
@@ -205,17 +210,52 @@ const distinctByReference = <TResource extends FhirResourceWithId>(
 }
 
 /**
- * Every stored resource of `resourceType` carrying any of `identifiers`: one
- * search per chunk of {@link IDENTIFIER_CHUNK_SIZE} identifiers, each a
- * `POST <Type>/_search` with `identifier` the chunk's identifiers as one token
- * value (`TokenSearchParam.anyOf`), read page after page to the last.
+ * Every stored resource of `resourceType` that any of `values` finds: one
+ * search per chunk of {@link OR_VALUES_PER_SEARCH} values, each the page
+ * `searchPage` asks for with that chunk, read page after page to the last
+ * (`searchEveryPage`).
+ *
+ * @remarks
+ * The chunks are searched one after another, and a resource two chunks find
+ * is given once, by its `Type/id`. A match without its resource fails the
+ * search (`MatchWithoutResource`), as does any failed page: a failed search
+ * is not "no match".
+ *
+ * @param resourceType - The type of the resources searched
+ * @param values - The values any of which finds a match, in the order they are chunked
+ * @param searchPage - One page of the search for `chunk`, with `paging` spread into its parameters
+ * @returns Every match, each once, in the order the server gave them
+ */
+const searchAnyOf = <ResourceType extends SearchableResourceType, Value>(
+  resourceType: ResourceType,
+  values: Array.NonEmptyReadonlyArray<Value>,
+  searchPage: (
+    client: FhirR4ResourcesClientShape,
+    chunk: Array.NonEmptyReadonlyArray<Value>,
+    paging: Paging
+  ) => Effect.Effect<SearchsetPage<SearchableResource<ResourceType>>, SearchFailure>
+): Effect.Effect<
+  readonly SearchableResource<ResourceType>[],
+  SearchFailure | MatchWithoutResource | PageTokenRepeated,
+  FhirR4ResourcesHttpApiClient
+> =>
+  Effect.flatMap(FhirR4ResourcesHttpApiClient, (client) =>
+    Effect.forEach(Array.chunksOf(values, OR_VALUES_PER_SEARCH), (chunk) =>
+      searchEveryPage(resourceType, (pageToken) =>
+        searchPage(client, chunk, { _count: ANY_OF_PAGE_SIZE, ...cursorParam(pageToken) })
+      )
+    )
+  ).pipe(Effect.map((chunkMatches) => distinctByReference(chunkMatches.flat())))
+
+/**
+ * Every stored resource of `resourceType` carrying any of `identifiers`
+ * ({@link searchAnyOf}): each search a `POST <Type>/_search` with
+ * `identifier` the chunk's identifiers as one token value
+ * (`TokenSearchParam.anyOf`).
  *
  * @remarks
  * A `POST` rather than a `GET`, since a search for hundreds of identifiers is
- * too long for a URL. The chunks are searched one after another, and a
- * resource carrying identifiers of two chunks is given once. A match without
- * its resource fails the search (`MatchWithoutResource`), as does any failed
- * page: a failed search is not "no match".
+ * too long for a URL.
  *
  * @param resourceType - The type of the resources searched
  * @param identifiers - The identifiers any of which a match carries
@@ -229,20 +269,14 @@ const searchByIdentifiers = <ResourceType extends SearchableResourceType>(
   SearchFailure | MatchWithoutResource | PageTokenRepeated,
   FhirR4ResourcesHttpApiClient
 > =>
-  Effect.flatMap(FhirR4ResourcesHttpApiClient, (client) =>
-    Effect.forEach(Array.chunksOf(identifiers, IDENTIFIER_CHUNK_SIZE), (chunk) => {
-      const identifier = TokenSearchParam.anyOf(
+  searchAnyOf(resourceType, identifiers, (client, chunk, paging) =>
+    searchesByType[resourceType].search(client, {
+      identifier: TokenSearchParam.anyOf(
         Array.map(chunk, TokenSearchParam.fromQualifiedIdentifier)
-      )
-      return searchEveryPage(resourceType, (pageToken) =>
-        searchesByType[resourceType].search(client, {
-          identifier,
-          _count: IDENTIFIER_SEARCH_PAGE_SIZE,
-          ...cursorParam(pageToken),
-        })
-      )
+      ),
+      ...paging,
     })
-  ).pipe(Effect.map((chunkMatches) => distinctByReference(chunkMatches.flat())))
+  )
 
 /**
  * Every stored resource of `resourceType`, `pageSize` to a page, read page
@@ -270,10 +304,17 @@ const searchAllOfType = <ResourceType extends SearchableResourceType>(
   )
 
 export {
-  IDENTIFIER_CHUNK_SIZE,
   isSearchableResourceType,
+  OR_VALUES_PER_SEARCH,
   searchAllOfType,
+  searchAnyOf,
   searchByIdentifiers,
   searchesByType,
 }
-export type { SearchableResource, SearchableResourceType, SearchFailure, SearchParamsByType }
+export type {
+  Paging,
+  SearchableResource,
+  SearchableResourceType,
+  SearchFailure,
+  SearchParamsByType,
+}

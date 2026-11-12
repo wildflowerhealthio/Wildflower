@@ -1,3 +1,5 @@
+import { Array } from 'effect'
+
 import * as TokenSearchParam from './token-search-param.ts'
 
 /**
@@ -20,4 +22,11 @@ import * as TokenSearchParam from './token-search-param.ts'
 /** `raw` with every reserved character escaped by a backslash, so the server reads it as one literal value. */
 const escape: (raw: string) => string = TokenSearchParam.escape
 
-export { escape }
+/**
+ * `values` as one `string` search value matching a resource any one of them
+ * matches: each escaped ({@link escape}), then comma-joined.
+ */
+const anyOf = (values: Array.NonEmptyReadonlyArray<string>): string =>
+  Array.join(Array.map(values, escape), ',')
+
+export { anyOf, escape }

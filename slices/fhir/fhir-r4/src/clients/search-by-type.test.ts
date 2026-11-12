@@ -9,7 +9,7 @@ import {
   type SearchableResourceType,
   searchByIdentifiers,
 } from './index.ts'
-import { IDENTIFIER_CHUNK_SIZE } from './search-by-type.ts'
+import { OR_VALUES_PER_SEARCH } from './search-by-type.ts'
 
 describe('searchByIdentifiers', () => {
   it('should send one POST <Type>/_search with the identifiers as one escaped token value and a full page', async () => {
@@ -39,10 +39,10 @@ describe('searchByIdentifiers', () => {
 
   it('should search the identifiers a chunk at a time, giving a resource two chunks match once', async () => {
     // Arrange: one identifier more than a chunk holds
-    const identifiers = Array.makeBy(IDENTIFIER_CHUNK_SIZE + 1, (index) =>
+    const identifiers = Array.makeBy(OR_VALUES_PER_SEARCH + 1, (index) =>
       qualified('https://shoppers.example/customer', `${index}`)
     )
-    const lastIdentifier = `https://shoppers.example/customer|${IDENTIFIER_CHUNK_SIZE}`
+    const lastIdentifier = `https://shoppers.example/customer|${OR_VALUES_PER_SEARCH}`
 
     // Act
     const { requests, result } = await runWith(
@@ -55,7 +55,7 @@ describe('searchByIdentifiers', () => {
 
     // Assert
     expect(requests.map(({ form }) => form['identifier']?.split(',').length)).toEqual([
-      IDENTIFIER_CHUNK_SIZE,
+      OR_VALUES_PER_SEARCH,
       1,
     ])
     expect(result.map(({ id }) => id)).toEqual(['p-1', 'p-both', 'p-2'])

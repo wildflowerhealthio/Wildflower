@@ -40,11 +40,12 @@ const SearchParams = Schema.Struct({
   given: Schema.optional(Schema.String),
   gender: Schema.optional(AdministrativeGender),
   active: Schema.optional(BoolFromStr),
-  // FHIR `birthdate` search param maps to `Patient.birthDate`. A
-  // `DateSearchParam` value: an optional comparison prefix in front of a date
-  // literal of any precision (`ge2000`, `2000-05`, `lt2000-05-01`), carrying
-  // the period that precision implies.
-  birthdate: Schema.optional(DateSearchParam.Schema),
+  // FHIR `birthdate` search param maps to `Patient.birthDate`. One or more
+  // `DateSearchParam` values, comma-joined to match any of them
+  // (`DateSearchParam.AnyOf`): each an optional comparison prefix in front of
+  // a date literal of any precision (`ge2000`, `2000-05`, `lt2000-05-01`),
+  // carrying the period that precision implies.
+  birthdate: Schema.optional(DateSearchParam.AnyOf),
 })
 
 type SearchParamsType = Schema.Schema.Type<typeof SearchParams>

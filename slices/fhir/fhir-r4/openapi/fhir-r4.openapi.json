@@ -117,7 +117,7 @@
             "name": "birthdate",
             "in": "query",
             "schema": {
-              "$ref": "#/components/schemas/FhirDateSearch"
+              "$ref": "#/components/schemas/FhirDateSearchAnyOf"
             },
             "required": false
           }
@@ -1512,7 +1512,7 @@
                     ]
                   },
                   "birthdate": {
-                    "$ref": "#/components/schemas/FhirDateSearch"
+                    "$ref": "#/components/schemas/FhirDateSearchAnyOf"
                   }
                 },
                 "additionalProperties": false
@@ -23298,6 +23298,10 @@
   },
   "components": {
     "schemas": {
+      "FhirDateSearchAnyOf": {
+        "type": "string",
+        "description": "Several FHIR R4 date search values (see FhirDateSearch) joined by commas, matching a resource any one of them matches, e.g. 1980-02-03,1990-05-06. See slices/fhir/fhir-r4/docs/Client Capabilities Reference.md."
+      },
       "FhirDateSearch": {
         "type": "string",
         "description": "A FHIR R4 date search value (§ search.html#date): an optional comparison prefix (eq/ne/gt/lt/ge/le/sa/eb/ap) in front of a date or dateTime of any precision, e.g. ge2026, 2026-07, or lt2026-07-27T14:27:30Z. The value denotes the period its precision implies. See slices/fhir/fhir-r4/docs/Client Capabilities Reference.md."

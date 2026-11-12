@@ -220,4 +220,24 @@ const DateSearchParam = Schema.transformOrFail(Schema.String, DateSearchValue, {
     'slices/fhir/fhir-r4/docs/Client Capabilities Reference.md.',
 })
 
-export { DateSearchParam as Schema, Prefix, type Decoded as Type }
+/**
+ * Several FHIR `date` search-parameter values comma-joined, matching a
+ * resource any one of them matches (§ search.html#combining): `1980-02-03,1990-05-06`.
+ * Each value decodes as {@link DateSearchParam} does, and the list encodes
+ * back to the exact wire spelling.
+ *
+ * @remarks
+ * A date value carries no reserved character (`,`, `|`, `$`, `\`), so the
+ * values are joined as written.
+ */
+const AnyOf = Schema.compose(Schema.split(','), Schema.NonEmptyArray(DateSearchParam), {
+  strict: false,
+}).annotations({
+  identifier: 'FhirDateSearchAnyOf',
+  description:
+    'Several FHIR R4 date search values (see FhirDateSearch) joined by commas, ' +
+    'matching a resource any one of them matches, e.g. 1980-02-03,1990-05-06. See ' +
+    'slices/fhir/fhir-r4/docs/Client Capabilities Reference.md.',
+})
+
+export { AnyOf, DateSearchParam as Schema, Prefix, type Decoded as Type }

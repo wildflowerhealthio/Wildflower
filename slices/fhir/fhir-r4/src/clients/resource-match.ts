@@ -1,17 +1,19 @@
-import { Array, Effect, Equivalence, HashMap, Option, pipe, Record } from 'effect'
+import { Array, Effect, Equivalence, HashMap, Option, pipe, Record, Schema } from 'effect'
 
 import type { IdentifierAndReference } from '../data-types/index.ts'
 import { type FhirResourceWithId, literalReferenceOf } from '../resources/fhir-resource-with-id.ts'
 import type { FhirResource } from '../resources/fhir-resource.ts'
 import * as LogicalReference from '../resources/logical-reference.ts'
 import type * as ResourceType from '../resources/resource-type.ts'
+import * as DateSearchParam from '../resources/search/date-search-param.ts'
+import * as StringSearchParam from '../resources/search/string-search-param.ts'
 import * as TokenSearchParam from '../resources/search/token-search-param.ts'
 import type { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import * as MatchGrade from './match-grade.ts'
 import * as MatchQuery from './match-query.ts'
 import {
   isSearchableResourceType,
-  searchAllOfType,
+  searchAnyOf,
   searchByIdentifiers,
   type SearchFailure,
 } from './search-by-type.ts'
@@ -57,24 +59,26 @@ type Failure = SearchFailure | MatchWithoutResource | PageTokenRepeated
 /** How many searches of different resource types run at once. */
 const SEARCH_CONCURRENCY = 4
 
-/**
- * The page size the name stage lists a type's stored records with: the most
- * the server gives in one page, so the list takes as few round trips as it
- * can.
- */
-const STORED_PAGE_SIZE = 1000
-
 /** Every resource type a record is matched by name as well as by identifier: one with a row in {@link nameRulesByType}. */
 type NameRuledResourceType = 'Patient' | 'Practitioner'
 
-/** What {@link nameRulesByType} holds for one resource type: how the name stage fetches its records, and how it grades them. */
+/** What the name stage's search for one type finds: the stored records it grades the queries' records against. */
+type NameStageSearch = Effect.Effect<
+  readonly FhirResourceWithId[],
+  Failure,
+  FhirR4ResourcesHttpApiClient
+>
+
+/** What {@link nameRulesByType} holds for one resource type: how the name stage searches its records, and how it grades them. */
 interface NameRule<TResourceType extends NameRuledResourceType> {
-  /** Every stored record of the type, which the name stage grades a query's record against. */
-  readonly fetchStored: Effect.Effect<
-    readonly FhirResourceWithId[],
-    Failure,
-    FhirR4ResourcesHttpApiClient
-  >
+  /**
+   * The stored records `queryRecords` are graded against: every stored
+   * record any of them can grade as a match, and others, which grade as no
+   * match. Nothing is sent when no query record gives a value to search by.
+   */
+  readonly searchGradable: (
+    queryRecords: readonly MatchQuery.RecordOf<TResourceType>[]
+  ) => NameStageSearch
   /** Whether `queryRecord` can grade any stored record: when not, nothing is fetched for it. */
   readonly canGrade: (queryRecord: MatchQuery.RecordOf<TResourceType>) => boolean
   /** The grade `storedRecord` takes as a match of `queryRecord`; `None` when it is no match. */
@@ -85,6 +89,63 @@ interface NameRule<TResourceType extends NameRuledResourceType> {
 }
 
 /**
+ * `values` searched by `search` ({@link searchAnyOf}), or nothing sent and
+ * nothing found when there are none.
+ */
+const searchUnlessEmpty = <Value>(
+  values: readonly Value[],
+  search: (values: Array.NonEmptyReadonlyArray<Value>) => NameStageSearch
+): NameStageSearch => (Array.isNonEmptyReadonlyArray(values) ? search(values) : Effect.succeed([]))
+
+/**
+ * Every stored Patient born on a birth date of `queryRecords`: a
+ * `birthdate` search ORing the distinct dates (`DateSearchParam.AnyOf`), a
+ * chunk of them at a time ({@link searchAnyOf}), no name sent. Every Patient grade needs equal birth dates, so this finds
+ * every stored Patient that can grade, however the names are written.
+ */
+const searchPatientsBornOn = (
+  queryRecords: readonly MatchQuery.RecordOf<'Patient'>[]
+): NameStageSearch =>
+  searchUnlessEmpty(
+    pipe(
+      Array.dedupe(
+        Array.filterMap(queryRecords, ({ birthDate }) => Option.fromNullable(birthDate))
+      ),
+      Array.filterMap((birthDate) => Schema.decodeOption(DateSearchParam.Schema)(birthDate))
+    ),
+    (birthDates) =>
+      searchAnyOf('Patient', birthDates, (client, birthdate, paging) =>
+        client.Patient.Search({ payload: { birthdate, ...paging } })
+      )
+  )
+
+/**
+ * Every stored Practitioner with a name starting with a family name word of
+ * `queryRecords` ({@link MatchGrade.familySearchWordsOf}): a `name` search
+ * ORing the distinct words (`StringSearchParam.anyOf`), a chunk of them at a
+ * time ({@link searchAnyOf}), no given name sent,
+ * since every Practitioner grade needs equal family names.
+ *
+ * @remarks
+ * HFS indexes a name's family, each given name and its text as separate
+ * values, folded to lower case without accents, and a `name` value finds a
+ * record when any of them starts with it. So `brown` finds the family names
+ * "Brown" and "Browning", but not a stored name written only as text ("DR J
+ * BROWN"), which the rule could grade: such a record is not found by the
+ * name stage, unless another of its names is.
+ */
+const searchPractitionersByFamily = (
+  queryRecords: readonly MatchQuery.RecordOf<'Practitioner'>[]
+): NameStageSearch =>
+  searchUnlessEmpty(
+    Array.dedupe(queryRecords.flatMap(({ name }) => MatchGrade.familySearchWordsOf(name))),
+    (familyWords) =>
+      searchAnyOf('Practitioner', familyWords, (client, words, paging) =>
+        client.Practitioner.Search({ payload: { name: StringSearchParam.anyOf(words), ...paging } })
+      )
+  )
+
+/**
  * Every {@link NameRuledResourceType}'s {@link NameRule}. A type without a
  * row is matched by identifier only.
  */
@@ -92,12 +153,12 @@ const nameRulesByType: {
   readonly [TResourceType in NameRuledResourceType]: NameRule<TResourceType>
 } = {
   Patient: {
-    fetchStored: searchAllOfType('Patient', { pageSize: STORED_PAGE_SIZE }),
+    searchGradable: searchPatientsBornOn,
     canGrade: MatchGrade.canGradePatient,
     grade: MatchGrade.patientGradeOf,
   },
   Practitioner: {
-    fetchStored: searchAllOfType('Practitioner', { pageSize: STORED_PAGE_SIZE }),
+    searchGradable: searchPractitionersByFamily,
     canGrade: MatchGrade.canGradePractitioner,
     grade: MatchGrade.practitionerGradeOf,
   },
@@ -274,21 +335,36 @@ const goesToNameStage = <TResourceType extends ResourceType.Type>(
 }
 
 /**
- * Every stored record of each of `resourceTypes`, by type: one
- * {@link NameRule.fetchStored} per type, every page of it.
+ * The stored records the rule of `resourceType` grades the records of
+ * `queryRecords` of that type against ({@link NameRule.searchGradable}).
  */
-const fetchStoredOfTypes = (
-  resourceTypes: readonly NameRuledResourceType[]
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- one type, not the union, so the row read and the records narrowed to its type agree
+const searchGradableOfType = <TResourceType extends NameRuledResourceType>(
+  resourceType: TResourceType,
+  queryRecords: readonly FhirResource[]
+): NameStageSearch =>
+  nameRulesByType[resourceType].searchGradable(queryRecords.filter(isRecordOfType(resourceType)))
+
+/**
+ * The stored records each type of `queries` is graded against, by type: one
+ * {@link NameRule.searchGradable} per type, with the records of every query
+ * of the type, the types {@link SEARCH_CONCURRENCY} at a time.
+ */
+const searchGradableByType = (
+  queries: readonly MatchQuery.Type[]
 ): Effect.Effect<
   HashMap.HashMap<ResourceType.Type, readonly FhirResourceWithId[]>,
   Failure,
   FhirR4ResourcesHttpApiClient
 > =>
   Effect.forEach(
-    resourceTypes,
+    Array.dedupe(queries.map(({ resourceType }) => resourceType).filter(isNameRuledResourceType)),
     (resourceType) =>
       Effect.map(
-        nameRulesByType[resourceType].fetchStored,
+        searchGradableOfType(
+          resourceType,
+          Array.filterMap(queries, ({ record }) => record)
+        ),
         (stored) => [resourceType, stored] as const
       ),
     { concurrency: SEARCH_CONCURRENCY }
@@ -341,8 +417,10 @@ const bestCandidates = <TResourceType extends ResourceType.Type>(
  * with a rule that can grade by it (a Patient with a birth date and a
  * family name, a Practitioner with a family name), with no candidate by
  * identifier goes on to the name stage:
- * every stored record of its type is fetched (`searchAllOfType`, every page,
- * once per type for the whole batch) and the type's rule grades each against
+ * its type's row searches the stored records it can grade against, one
+ * search set per type for the whole batch built from every such query of the
+ * type (Patients by any of their birth dates, Practitioners by any of their
+ * family name words), and the type's rule grades each found record against
  * the query's record, client side; one that grades as no match is dropped.
  * Only Patient and Practitioner have a rule; any other type is matched by
  * identifier only.
@@ -373,13 +451,8 @@ const matchAll = <TResourceType extends ResourceType.Type>(
         toNameStage: goesToNameStage(query, identifierCandidates, options),
       }
     })
-    const storedByType = yield* fetchStoredOfTypes(
-      Array.dedupe(
-        identifierStage
-          .filter(({ toNameStage }) => toNameStage)
-          .map(({ query }) => query.resourceType)
-          .filter(isNameRuledResourceType)
-      )
+    const storedByType = yield* searchGradableByType(
+      identifierStage.filter(({ toNameStage }) => toNameStage).map(({ query }) => query)
     )
     return identifierStage.map(({ query, identifierCandidates, toNameStage }) =>
       bestCandidates(
