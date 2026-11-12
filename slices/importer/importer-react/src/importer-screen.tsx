@@ -136,7 +136,11 @@ const ImporterScreen = (): JSX.Element => {
   )
   // The resolved batch: what the diff classifies, the preview shows and the confirm writes.
   const batch = shown?.resolved
-  const diff = useServerDiff(batch, batchId)
+  const diff = useServerDiff(
+    batch,
+    batchId,
+    Option.flatMap(Option.fromNullable(shown), ({ importMatch }) => importMatch)
+  )
 
   const selectionFor = useCallback(
     (format: FormatKind): StagedImport.Selection => selections.get(format) ?? UNTOUCHED,

@@ -1,36 +1,37 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query'
-import { Effect, Match, Option } from 'effect'
+import { Effect } from 'effect'
 import { useMemo } from 'react'
 
 import { type RunAuthed, useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import {
-  FhirR4ResourcesHttpApiClient,
+  type FhirR4ResourcesHttpApiClient,
+  type MatchWithoutResource,
   type PageTokenRepeated,
+  type SearchFailure,
   type SearchPages,
-  searchAllPages,
+  searchPagesOfType,
 } from '@wildflowerhealthio/fhir-r4/clients'
 import {
   type LinkableLogicalReference,
   LinkableResource,
-  type ReferentSearch,
 } from '@wildflowerhealthio/importer-fundamentals'
 
 import { STORED_RESOURCES_QUERY_KEY } from '../queries/keys.ts'
 
 /**
  * The server's stored Patients or Practitioners: what a referent's select
- * offers besides the search's hit, so the reviewer can link it to another
+ * offers besides its default, so the reviewer can link it to another
  * record.
  *
  * @remarks
- * Every page of `GET <Type>?_count=` through the typed client
- * (`fhir-r4/clients`' `searchAllPages`), capped at {@link STORED_PAGE_LIMIT}
+ * Every page of `POST <Type>/_search` with `_count` through the typed client
+ * (`fhir-r4/clients`' `searchPagesOfType`), capped at {@link STORED_PAGE_LIMIT}
  * pages, and said to be cut off when the cap left pages unread. A select has
  * no room for a "load more" action, and a personal server holds a household's
  * worth of people and their providers, not a hospital's, so the whole list is
  * read up front and offered at once. Each resource arrives with the label the
  * review shows it by, read on the clock the read runs on. The read starts as
- * soon as the batch's referents are known (`useDefaultLinkChoicesSearch`
+ * soon as the batch's referents are known (`useImportMatch`
  * prefetches it, through {@link storedResourcesQuery}) rather than when the
  * rows mount.
  *
@@ -62,44 +63,14 @@ const labeled = (resource: LinkableResource.WithId): Effect.Effect<StoredResourc
     (label) => ({ resource, label })
   )
 
-/** The request for one page of a stored list: `pageToken` continues it, `None` asks for the first. */
-const pageRequest = (
-  pageToken: Option.Option<string>
-): { readonly urlParams: { readonly _count: number; readonly _cursor?: string } } => ({
-  urlParams: {
-    _count: STORED_PAGE_SIZE,
-    ...Option.match(pageToken, {
-      onNone: () => ({}),
-      onSome: (_cursor) => ({ _cursor }),
-    }),
-  },
-})
-
 /** Every stored resource of `resourceType`, page after page, up to {@link STORED_PAGE_LIMIT} pages. */
 const storedResources = (
   resourceType: LinkableLogicalReference.ResourceType
 ): Effect.Effect<
   SearchPages<LinkableResource.WithId>,
-  ReferentSearch.SearchFailure | PageTokenRepeated,
+  SearchFailure | MatchWithoutResource | PageTokenRepeated,
   FhirR4ResourcesHttpApiClient
-> =>
-  Effect.flatMap(FhirR4ResourcesHttpApiClient, (client) =>
-    Match.value(resourceType).pipe(
-      Match.when('Patient', (type) =>
-        searchAllPages(type, (pageToken) => client.Patient.SearchByGet(pageRequest(pageToken)), {
-          pageLimit: STORED_PAGE_LIMIT,
-        })
-      ),
-      Match.when('Practitioner', (type) =>
-        searchAllPages(
-          type,
-          (pageToken) => client.Practitioner.SearchByGet(pageRequest(pageToken)),
-          { pageLimit: STORED_PAGE_LIMIT }
-        )
-      ),
-      Match.exhaustive
-    )
-  )
+> => searchPagesOfType(resourceType, { pageSize: STORED_PAGE_SIZE, pageLimit: STORED_PAGE_LIMIT })
 
 /** The key one stored list is cached under: the root and its resource type. */
 type StoredResourcesQueryKey = readonly [
