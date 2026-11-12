@@ -235,6 +235,21 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     })
   })
 
+  it('should list nothing for a record its rule cannot grade by: a Patient with no birth date, a person with no family name', async () => {
+    const queries = [
+      queryOf(patientWire({ name: [ANN_BROWN] })),
+      queryOf(patientWire({ name: [{ given: ['Ann'] }], birthDate: BORN })),
+      queryOf(practitionerWire({ name: [{ given: ['Jonathan'] }] })),
+    ]
+
+    const { requests, result } = await runWith(
+      ResourceMatch.matchAll(queries, EVERY_GRADE),
+      inMemoryServer([patientWire({ id: 'p-ann', name: [ANN_BROWN], birthDate: BORN })])
+    )
+
+    expect({ requests, result }).toEqual({ requests: [], result: [[], [], []] })
+  })
+
   it('should list nothing for a logical reference, which carries no record', async () => {
     const query = MatchQuery.fromLogicalReference(logicalReference('Patient', SHOPPERS_1))
 

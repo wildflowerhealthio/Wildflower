@@ -204,6 +204,16 @@ describe('MatchGrade.comparableNamesOf', () => {
       name: { family: 'schmitt', given: ['john'] },
     },
     {
+      form: 'one comma and a generational suffix trailing the given names: the suffix dropped, family first',
+      text: 'Schmitt, John Jr.',
+      name: { family: 'schmitt', given: ['john'] },
+    },
+    {
+      form: 'a trailing comma: the empty part dropped, given names then family',
+      text: 'John Smith,',
+      name: { family: 'smith', given: ['john'] },
+    },
+    {
       form: 'two credentials after commas: both dropped, given names then family',
       text: 'John Smith, MD, PhD',
       name: { family: 'smith', given: ['john'] },
