@@ -1282,11 +1282,6 @@
           "extension": [],
           "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "6f1c2a54-3b8e-4d71-9a0c-5e2f7b9d1c43"
-        },
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date",
-          "value": "okafor;avery;1974-09-21"
         }
       ],
       "link": [],

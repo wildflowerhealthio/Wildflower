@@ -227,11 +227,6 @@
           "extension": [],
           "system": "https://wildflowerhealth.io/fhir/sid/dicom/patient-id",
           "value": "MRN1"
-        },
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date",
-          "value": "okafor;avery;1974-09-21"
         }
       ],
       "link": [],
