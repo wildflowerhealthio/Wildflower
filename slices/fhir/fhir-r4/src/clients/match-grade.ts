@@ -45,20 +45,18 @@ const DOCTOR_TITLES: ReadonlySet<string> = new Set(['dr', 'dr.', 'doctor'])
 
 /**
  * The words a credential is written as after a name ("John Smith, MD"),
- * compared once lower-cased and without dots.
+ * compared once lower-cased and without dots. Credentials that are also
+ * names ("Do", "Pa", "Od") are left out, so "Nguyen, Do" keeps its given name.
  */
 const CREDENTIALS: ReadonlySet<string> = new Set([
   'md',
-  'do',
   'np',
-  'pa',
   'rn',
   'rph',
   'pharmd',
   'phd',
   'dds',
   'dmd',
-  'od',
 ])
 
 /**
