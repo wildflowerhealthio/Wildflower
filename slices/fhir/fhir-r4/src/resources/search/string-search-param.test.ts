@@ -29,3 +29,9 @@ describe('StringSearchParam.escape', () => {
     )
   })
 })
+
+describe('StringSearchParam.anyOf', () => {
+  it('escapes each value, then joins them with the commas that OR them', () => {
+    expect(StringSearchParam.anyOf(['brown', 'smith, jr'])).toBe('brown,smith\\, jr')
+  })
+})

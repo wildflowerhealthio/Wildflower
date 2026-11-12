@@ -1,12 +1,13 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Either, Layer, Option, Schema } from 'effect'
+import { Array, Effect, Either, Layer, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { IdentifierAndReference } from '../data-types/index.ts'
 import { FhirResourceSchema, literalReferenceOf, LogicalReference } from '../resources/index.ts'
 import { FhirR4ResourcesHttpApiClient, MatchQuery, ResourceMatch } from './index.ts'
+import { OR_VALUES_PER_SEARCH } from './search-by-type.ts'
 
 const RUNS = numRunsFor({ base: 50 })
 
@@ -124,7 +125,7 @@ describe('ResourceMatch.matchAll: the identifier stage', () => {
 })
 
 describe('ResourceMatch.matchAll: the name stage', () => {
-  it('should list each person type once, every record of it, only for queries nothing was found for by identifier', async () => {
+  it('should search each person type once, by the queries nothing was found for by identifier', async () => {
     // Arrange
     const queries = [
       queryOf(patientWire({ identifier: [SHOPPERS_1], name: [ANN_BROWN], birthDate: BORN })),
@@ -134,6 +135,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
       queryOf(practitionerWire({ name: [{ text: 'DR J BROWN' }] })),
       queryOf(practitionerWire({ name: [{ family: 'Brown', given: ['Jonathan'] }] })),
     ]
+    // Arrange: a stored practitioner named only as text, which HFS does not find by family
     const server = inMemoryServer([
       patientWire({ id: 'p-1', identifier: [SHOPPERS_1], name: [ANN_BROWN], birthDate: BORN }),
       patientWire({ id: 'p-ann', name: [ANN_BROWN], birthDate: BORN }),
@@ -143,24 +145,27 @@ describe('ResourceMatch.matchAll: the name stage', () => {
         birthDate: BORN,
       }),
       patientWire({ id: 'p-older', name: [ANN_BROWN], birthDate: '1950-01-01' }),
+      patientWire({ id: 'p-zoe', name: [{ family: 'Smith', given: ['Zoe'] }], birthDate: BORN }),
       practitionerWire({ id: 'd-jon', name: [{ family: 'Brown', given: ['Jonathan'] }] }),
+      practitionerWire({ id: 'd-text', name: [{ text: 'Jonathan Brown' }] }),
+      practitionerWire({ id: 'd-smith', name: [{ family: 'Smith', given: ['Jonathan'] }] }),
     ])
 
     // Act
     const { requests, result } = await runWith(ResourceMatch.matchAll(queries, EVERY_GRADE), server)
 
     // Assert
-    const [identifierSearch, ...listings] = requests
+    const [identifierSearch, ...nameSearches] = requests
     expect(identifierSearch).toEqual({
       url: '/Patient/_search',
       form: { identifier: 'https://shoppers.example/customer|1', _count: '1000' },
     })
-    // The listings run concurrently, so their order is not pinned.
-    expect(listings).toHaveLength(2)
-    expect(listings).toEqual(
+    // The searches of different types run concurrently, so their order is not pinned.
+    expect(nameSearches).toHaveLength(2)
+    expect(nameSearches).toEqual(
       expect.arrayContaining([
-        { url: '/Patient/_search', form: { _count: '1000' } },
-        { url: '/Practitioner/_search', form: { _count: '1000' } },
+        { url: '/Patient/_search', form: { birthdate: BORN, _count: '1000' } },
+        { url: '/Practitioner/_search', form: { name: 'brown', _count: '1000' } },
       ])
     )
     expect(result.map(candidateRefs)).toEqual([
@@ -177,7 +182,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     ])
   })
 
-  it("should read every page of a type's records", async () => {
+  it('should read every page of a search', async () => {
     // Arrange: one record a page, the match on the last
     const query = queryOf(patientWire({ name: [ANN_BROWN], birthDate: BORN }))
     const server = inMemoryServer(
@@ -195,15 +200,102 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     // Assert
     expect({ forms: requests.map(({ form }) => form), result: result.map(candidateRefs) }).toEqual({
       forms: [
-        { _count: '1000' },
-        { _count: '1000', _cursor: '1' },
-        { _count: '1000', _cursor: '2' },
+        { birthdate: BORN, _count: '1000' },
+        { birthdate: BORN, _count: '1000', _cursor: '1' },
+        { birthdate: BORN, _count: '1000', _cursor: '2' },
       ],
       result: [['Patient/p-ann probable by name']],
     })
   })
 
-  it('should list nothing when every query was found by identifier', async () => {
+  it('should search Patients by the distinct birth dates of every query, and no name', async () => {
+    // Arrange
+    const queries = [
+      queryOf(patientWire({ name: [ANN_BROWN], birthDate: BORN })),
+      queryOf(patientWire({ name: [{ text: 'Dr Zoe Smith' }], birthDate: '1990-05-06' })),
+      queryOf(patientWire({ name: [{ family: 'Jones' }], birthDate: BORN })),
+    ]
+
+    // Act
+    const { requests } = await runWith(
+      ResourceMatch.matchAll(queries, EVERY_GRADE),
+      inMemoryServer([])
+    )
+
+    // Assert
+    expect(requests).toEqual([
+      { url: '/Patient/_search', form: { birthdate: `${BORN},1990-05-06`, _count: '1000' } },
+    ])
+  })
+
+  it('should search Practitioners by the distinct family words of every query, without titles, credentials, suffixes, initials or given names', async () => {
+    // Arrange
+    const queries = [
+      queryOf(practitionerWire({ name: [{ text: 'DR J BROWN' }] })),
+      queryOf(practitionerWire({ name: [{ family: 'Brown', given: ['Jonathan'] }] })),
+      queryOf(practitionerWire({ name: [{ text: 'Smith, John, MD' }] })),
+      queryOf(practitionerWire({ name: [{ text: 'John Schmitt Jr' }] })),
+      queryOf(practitionerWire({ name: [{ family: 'van der Berg', given: ['Anna'] }] })),
+      queryOf(practitionerWire({ name: [{ family: 'Dr. Patel Jr. PharmD' }] })),
+      queryOf(practitionerWire({ name: [{ family: 'Müller' }] })),
+      queryOf(practitionerWire({ name: [{ family: 'O', given: ['Liz'] }] })),
+    ]
+
+    // Act
+    const { requests } = await runWith(
+      ResourceMatch.matchAll(queries, EVERY_GRADE),
+      inMemoryServer([])
+    )
+
+    // Assert
+    expect(requests).toEqual([
+      {
+        url: '/Practitioner/_search',
+        form: { name: 'brown,smith,schmitt,van,der,berg,patel,muller', _count: '1000' },
+      },
+    ])
+  })
+
+  it('should send nothing for a Practitioner with no family word to search by', async () => {
+    const query = queryOf(practitionerWire({ name: [{ family: 'J', given: ['Liz'] }] }))
+
+    const { requests, result } = await runWith(
+      ResourceMatch.matchAll([query], EVERY_GRADE),
+      inMemoryServer([practitionerWire({ id: 'd-j', name: [{ family: 'J', given: ['Liz'] }] })])
+    )
+
+    expect({ requests, result }).toEqual({ requests: [], result: [[]] })
+  })
+
+  it('should search a chunk of values at a time, giving a record two chunks find once', async () => {
+    // Arrange: one birth date more than a chunk holds, each its own query
+    const birthDates = Array.makeBy(OR_VALUES_PER_SEARCH + 1, (day) =>
+      new Date(Date.UTC(1900, 0, 1 + day)).toISOString().slice(0, 10)
+    )
+    const queries = birthDates.map((birthDate) =>
+      queryOf(patientWire({ name: [ANN_BROWN], birthDate }))
+    )
+    const lastBirthDate = birthDates.at(-1) ?? ''
+    const ann = patientWire({ id: 'p-ann', name: [ANN_BROWN], birthDate: lastBirthDate })
+
+    // Act: the server finds p-ann in both chunks
+    const { requests, result } = await runWith(ResourceMatch.matchAll(queries, EVERY_GRADE), () =>
+      searchset([ann])
+    )
+
+    // Assert
+    expect({
+      chunkSizes: requests.map(({ form }) => form['birthdate']?.split(',').length),
+      lastChunk: requests.at(-1)?.form['birthdate'],
+      found: result.flatMap(candidateRefs),
+    }).toEqual({
+      chunkSizes: [OR_VALUES_PER_SEARCH, 1],
+      lastChunk: lastBirthDate,
+      found: ['Patient/p-ann probable by name'],
+    })
+  })
+
+  it('should search nothing by name when every query was found by identifier', async () => {
     const query = queryOf(
       patientWire({ identifier: [SHOPPERS_1], name: [ANN_BROWN], birthDate: BORN })
     )
@@ -216,7 +308,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     ])
   })
 
-  it('should list nothing when only certain matches are asked for', async () => {
+  it('should search nothing by name when only certain matches are asked for', async () => {
     const query = queryOf(
       patientWire({ identifier: [SHOPPERS_1], name: [ANN_BROWN], birthDate: BORN })
     )
@@ -235,7 +327,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     })
   })
 
-  it('should list nothing for a record its rule cannot grade by: a Patient with no birth date, a person with no family name', async () => {
+  it('should search nothing by name for a record its rule cannot grade by: a Patient with no birth date, a person with no family name', async () => {
     const queries = [
       queryOf(patientWire({ name: [ANN_BROWN] })),
       queryOf(patientWire({ name: [{ given: ['Ann'] }], birthDate: BORN })),
@@ -250,7 +342,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     expect({ requests, result }).toEqual({ requests: [], result: [[], [], []] })
   })
 
-  it('should list nothing for a logical reference, which carries no record', async () => {
+  it('should search nothing by name for a logical reference, which carries no record', async () => {
     const query = MatchQuery.fromLogicalReference(logicalReference('Patient', SHOPPERS_1))
 
     const { requests } = await runWith(
@@ -298,7 +390,7 @@ describe('ResourceMatch.matchAll: failures', () => {
     expect(outcome).toMatchObject({ _tag: 'ServiceUnavailable' })
   })
 
-  it("should fail with a failed listing of a type's records, not find no match", async () => {
+  it('should fail with a failed name stage search, not find no match', async () => {
     const query = queryOf(patientWire({ name: [ANN_BROWN], birthDate: BORN }))
 
     const outcome = await failureOf(
@@ -384,7 +476,7 @@ const logicalReference = (
 const candidateRefs = (candidates: readonly ResourceMatch.Candidate[]): readonly string[] =>
   candidates.map(({ resource, grade, by }) => `${literalReferenceOf(resource)} ${grade} by ${by}`)
 
-// The in-memory server: a type's _search, by identifier or every record, as HFS answers it
+// The in-memory server: a type's _search by identifier, birthdate or name, as HFS answers it
 
 interface RecordedRequest {
   readonly url: string
@@ -416,22 +508,52 @@ const tokensOf = (value: string): readonly string[] => {
 const carriesAnyOf = (stored: Wire, tokens: readonly string[]): boolean =>
   (stored.identifier ?? []).some(({ system, value }) => tokens.includes(`${system}|${value}`))
 
+/** `text` as HFS indexes a name part: lower-cased, without diacritics. */
+const folded = (text: string): string =>
+  text.normalize('NFD').replaceAll(/\p{M}/gu, '').toLowerCase()
+
 /**
- * A server holding `stored`: a search with `identifier` answers with the
- * records carrying any of its tokens, one without with every record of the
- * type, `pageSize` to a page (every match on one page by default), a `next`
- * link carrying the offset as `_cursor`.
+ * Whether any of `values` starts a name part of `stored` as HFS indexes them:
+ * its family, each given name and its text, each a value of its own.
+ */
+const nameStartsWithAnyOf = (stored: Wire, values: readonly string[]): boolean =>
+  (stored.name ?? [])
+    .flatMap(({ family, given = [], text }) => [family, ...given, text])
+    .filter((part) => part !== undefined)
+    .some((part) => values.some((value) => folded(part).startsWith(folded(value))))
+
+/** Whether `stored` is born on any of `birthDates`, compared as written. */
+const bornOnAnyOf = (stored: Wire, birthDates: readonly string[]): boolean =>
+  stored.birthDate !== undefined && birthDates.includes(stored.birthDate)
+
+/** Whether `stored` passes the search's filter on `parameter`, or `parameter` is not in `form`. */
+const passes = (
+  form: URLSearchParams,
+  parameter: string,
+  filter: (values: readonly string[]) => boolean
+): boolean => {
+  const value = form.get(parameter)
+  return value === null || filter(tokensOf(value))
+}
+
+/**
+ * A server holding `stored`: a search answers with the records of its type
+ * passing each filter it carries (`identifier`: carrying any of its tokens;
+ * `birthdate`: born on any of its dates; `name`: a name part starting with
+ * any of its values), `pageSize` to a page (every match on one page by
+ * default), a `next` link carrying the offset as `_cursor`.
  */
 const inMemoryServer =
   (stored: readonly Wire[], { pageSize = Number.POSITIVE_INFINITY } = {}): Server =>
   ({ url, body }) => {
     const [, resourceType = ''] = /^\/(\w+)\/_search$/u.exec(url) ?? []
     const form = new URLSearchParams(body)
-    const identifier = form.get('identifier')
     const matches = stored.filter(
       (resource) =>
         resource.resourceType === resourceType &&
-        (identifier === null || carriesAnyOf(resource, tokensOf(identifier)))
+        passes(form, 'identifier', (tokens) => carriesAnyOf(resource, tokens)) &&
+        passes(form, 'birthdate', (birthDates) => bornOnAnyOf(resource, birthDates)) &&
+        passes(form, 'name', (values) => nameStartsWithAnyOf(resource, values))
     )
     const offset = Number(form.get('_cursor') ?? '0')
     const end = offset + pageSize
@@ -506,28 +628,41 @@ const identifierArbitrary = fc.record({
   value: fc.constantFrom('1', '2', '3'),
 })
 
+const structuredNameArbitrary = fc.record({
+  family: fc.constantFrom('Brown', 'Browning', 'BRÖWN'),
+  given: fc.subarray(['Ann', 'Jonathan', 'J']),
+})
+
 const nameArbitrary = fc.oneof(
-  fc.record({
-    family: fc.constantFrom('Brown', 'Browning', 'BRÖWN'),
-    given: fc.subarray(['Ann', 'Jonathan', 'J']),
-  }),
+  structuredNameArbitrary,
   fc
     .tuple(fc.constantFrom('Dr', 'Ann', 'J'), fc.constantFrom('Brown', 'Browning'))
     .map(([first, family]) => ({ text: `${first} ${family}` }))
 )
 
-const storedWireArbitrary: fc.Arbitrary<Wire> = fc.record(
-  {
-    resourceType: fc.constantFrom('Patient', 'Practitioner'),
-    identifier: fc.array(identifierArbitrary, { maxLength: 2 }),
-    name: fc.array(nameArbitrary, { maxLength: 2 }),
-    birthDate: fc.constantFrom('1980-02-03', '1990-05-06'),
-  },
-  { requiredKeys: ['resourceType'] }
-)
+const wireArbitrary = (
+  names: fc.Arbitrary<NonNullable<Wire['name']>[number]>
+): fc.Arbitrary<Wire> =>
+  fc.record(
+    {
+      resourceType: fc.constantFrom('Patient', 'Practitioner'),
+      identifier: fc.array(identifierArbitrary, { maxLength: 2 }),
+      name: fc.array(names, { maxLength: 2 }),
+      birthDate: fc.constantFrom('1980-02-03', '1990-05-06'),
+    },
+    { requiredKeys: ['resourceType'] }
+  )
+
+/**
+ * Stored records with structured names only: HFS does not find a
+ * Practitioner by a name written only as text, so a batch whose other
+ * queries find such a record by another of its names grades it where the
+ * query alone does not.
+ */
+const storedWireArbitrary: fc.Arbitrary<Wire> = wireArbitrary(structuredNameArbitrary)
 
 const queryArbitrary: fc.Arbitrary<MatchQuery.Type> = fc.oneof(
-  storedWireArbitrary.map(queryOf),
+  wireArbitrary(nameArbitrary).map(queryOf),
   fc
     .tuple(fc.constantFrom('Patient' as const, 'Practitioner' as const), identifierArbitrary)
     .map(([resourceType, identifier]) =>
