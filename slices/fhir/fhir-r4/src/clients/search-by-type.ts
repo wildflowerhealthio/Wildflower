@@ -24,9 +24,7 @@ import {
 import {
   type MatchWithoutResource,
   type PageTokenRepeated,
-  searchAllPages,
   searchEveryPage,
-  type SearchPages,
   type SearchsetPage,
 } from './search-pages.ts'
 
@@ -247,32 +245,27 @@ const searchByIdentifiers = <ResourceType extends SearchableResourceType>(
   ).pipe(Effect.map((chunkMatches) => distinctByReference(chunkMatches.flat())))
 
 /**
- * Every stored resource of `resourceType`, `pageSize` to a page, up to
- * `pageLimit` pages, as `searchAllPages` reads them.
+ * Every stored resource of `resourceType`, `pageSize` to a page, read page
+ * after page to the last (`searchEveryPage`).
  *
  * @param resourceType - The type of the resources listed
- * @param options - `pageSize`: how many resources one page asks for;
- *   `pageLimit`: how many pages are read before the list is given as it is
- * @returns The resources of every page read, in page order, and whether the
- *   page limit left pages unread
+ * @param options - `pageSize`: how many resources one page asks for
+ * @returns The resources of every page, in page order
  */
 const searchAllOfType = <ResourceType extends SearchableResourceType>(
   resourceType: ResourceType,
-  options: { readonly pageSize: number; readonly pageLimit: number }
+  options: { readonly pageSize: number }
 ): Effect.Effect<
-  SearchPages<SearchableResource<ResourceType>>,
+  readonly SearchableResource<ResourceType>[],
   SearchFailure | MatchWithoutResource | PageTokenRepeated,
   FhirR4ResourcesHttpApiClient
 > =>
   Effect.flatMap(FhirR4ResourcesHttpApiClient, (client) =>
-    searchAllPages(
-      resourceType,
-      (pageToken) =>
-        searchesByType[resourceType].search(client, {
-          _count: options.pageSize,
-          ...cursorParam(pageToken),
-        }),
-      { pageLimit: options.pageLimit }
+    searchEveryPage(resourceType, (pageToken) =>
+      searchesByType[resourceType].search(client, {
+        _count: options.pageSize,
+        ...cursorParam(pageToken),
+      })
     )
   )
 
