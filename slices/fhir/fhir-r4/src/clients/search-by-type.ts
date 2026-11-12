@@ -337,6 +337,7 @@ const searchPagesOfType = <ResourceType extends SearchableResourceType>(
   )
 
 export {
+  distinctByReference,
   isSearchableResourceType,
   OR_VALUES_PER_SEARCH,
   searchAllOfType,

@@ -16,6 +16,7 @@
  */
 
 import {
+  distinctByReference,
   type FhirR4ResourcesHttpApiClient,
   isSearchableResourceType,
   MatchQuery,
@@ -28,7 +29,7 @@ import {
   LogicalReference,
   type ResourceType,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Data, Effect, Equivalence, HashMap, HashSet, Option, pipe } from 'effect'
+import { Array, Data, Effect, HashMap, HashSet, Option, pipe } from 'effect'
 
 /** The stored records an import's records match. */
 interface Type {
@@ -46,12 +47,6 @@ const empty: Type = {
   foundByIdentifier: {},
   searchedIdentifiers: HashSet.empty(),
 }
-
-/** Two stored records are one when they share a literal reference, `Type/<id>`. */
-const sameRecord: Equivalence.Equivalence<FhirResourceWithId> = Equivalence.mapInput(
-  Equivalence.string,
-  literalReferenceOf
-)
 
 /** The key `identifier` of a record of `resourceType` is searched under. */
 const identifierKey = (
@@ -78,7 +73,7 @@ const searchedKeysOf = (query: MatchQuery.Type): readonly LogicalReference.Key[]
 const find = (
   records: readonly FhirResourceWithId[]
 ): Effect.Effect<Type, ResourceMatch.Failure, FhirR4ResourcesHttpApiClient> => {
-  const matched = Array.dedupeWith(records, sameRecord)
+  const matched = distinctByReference(records)
   const queries: readonly MatchQuery.Type[] = matched.map(MatchQuery.fromResource)
   return Effect.map(
     ResourceMatch.matchAll(queries, { onlyCertainMatches: false, count: Option.none() }),
@@ -91,7 +86,7 @@ const find = (
           candidatesPerRecord.flat(),
           Array.filter(({ by }) => by === 'identifier'),
           Array.map(({ resource }) => resource),
-          Array.dedupeWith(sameRecord)
+          distinctByReference
         )
       ),
       searchedIdentifiers: HashSet.fromIterable(queries.flatMap(searchedKeysOf)),
