@@ -528,10 +528,12 @@ describe('ImporterScreen', () => {
     })
 
     // Assert — no writes; the reads are the picker's source list, the
-    // match's one identifier search per type, the by-id read of the one row it
-    // cannot search (the source file), and, once the review has painted, the
-    // first page of stored Patients its select offers. The Patient states no
-    // birth date, so the match sends no birth date search to grade it by name.
+    // match's one identifier search per type, one by-id bundle reading every
+    // row without a matched copy (the source file it cannot search, and the
+    // Patient and Observations it found nothing for), and, once the review
+    // has painted, the first page of stored Patients its select offers. The
+    // Patient states no birth date, so the match sends no birth date search
+    // to grade it by name.
     expect(writes()).toHaveLength(0)
     await waitFor(() => {
       expect(reads()).toContain('search Patient?_count')
@@ -542,6 +544,9 @@ describe('ImporterScreen', () => {
         'search Patient?_count&identifier',
         'search Observation?_count&identifier',
         'read DocumentReference',
+        'read Patient',
+        'read Observation',
+        'read Observation',
         'search Patient?_count',
       ].toSorted()
     )

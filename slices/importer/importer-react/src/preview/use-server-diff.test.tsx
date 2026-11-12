@@ -23,7 +23,7 @@ import { type ServerDiffState, useServerDiff } from './use-server-diff.ts'
 
 /**
  * The server diff hook over a stub `runAuthed`: one that answers the diff
- * bundle (every id new, since the stub server holds nothing), one that rejects
+ * bundle (every id new unless a test puts a copy on the stub server), one that rejects
  * as an auth defect does, in the order the test lists, so the states a batch
  * passes through on a failed first diff and a change after it read back.
  */
@@ -37,6 +37,8 @@ let currentRunAuthed: RunAuthed
 
 afterEach(() => {
   cleanup()
+  storedOnServer = new Map()
+  entriesAnswered = []
 })
 
 /** The time a failed classification's two retries take at TanStack's default backoff, with room. */
@@ -49,8 +51,14 @@ const patient = (id: string, identifier: readonly object[] = []): FhirResourceWi
     identifier,
   })
 
-/** How many diff bundles the empty server has answered. */
+/** How many diff bundles the stub server has answered. */
 let bundlesAnswered = 0
+
+/** The `Type/id` of every GET entry the stub server has answered. */
+let entriesAnswered: string[] = []
+
+/** The records the stub server holds, by `Type/id`; reset by each test that uses it. */
+let storedOnServer: ReadonlyMap<string, FhirResourceWithId> = new Map()
 
 /** A HAR group holding `resources`, the other formats claiming nothing. */
 const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => {
@@ -75,16 +83,22 @@ const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => {
   return { groups, plan: LinkPlan.empty, decoded: { groups, unrecognizedFiles: [] } }
 }
 
-/** A server that holds nothing: every GET entry of the diff bundle is a 404, so every id is new. */
-const emptyServerLayer = Layer.succeed(
+/**
+ * A server that holds `storedOnServer`: a GET entry for one of them answers
+ * it, every other is a 404, so its id is new.
+ */
+const stubServerLayer = Layer.succeed(
   HttpClient.HttpClient,
   HttpClient.make((request) => {
     const text =
       request.body._tag === 'Uint8Array' ? new TextDecoder().decode(request.body.body) : ''
     bundlesAnswered += 1
     const entries = Schema.decodeUnknownSync(
-      Schema.Struct({ entry: Schema.Array(Schema.Unknown) })
+      Schema.Struct({
+        entry: Schema.Array(Schema.Struct({ request: Schema.Struct({ url: Schema.String }) })),
+      })
     )(JSON.parse(text))
+    entriesAnswered.push(...entries.entry.map(({ request: { url } }) => url))
     return Effect.succeed(
       HttpClientResponse.fromWeb(
         request,
@@ -92,7 +106,12 @@ const emptyServerLayer = Layer.succeed(
           JSON.stringify({
             resourceType: 'Bundle',
             type: 'batch-response',
-            entry: entries.entry.map(() => ({ response: { status: '404 Not Found' } })),
+            entry: entries.entry.map(({ request: { url } }) => {
+              const stored = storedOnServer.get(url)
+              return stored === undefined
+                ? { response: { status: '404 Not Found' } }
+                : { resource: stored, response: { status: '200 OK' } }
+            }),
           }),
           { headers: { 'content-type': 'application/json' } }
         )
@@ -103,7 +122,7 @@ const emptyServerLayer = Layer.succeed(
 
 /**
  * A `runAuthed` that takes each call's fate from `fates` in order: `answer`
- * runs the effect against the empty server, `reject` fails the call as an
+ * runs the effect against the stub server, `reject` fails the call as an
  * auth defect does. Past the list, every call answers.
  */
 const runAuthedWith = (fates: readonly ('answer' | 'reject')[]): RunAuthed => {
@@ -117,7 +136,7 @@ const runAuthedWith = (fates: readonly ('answer' | 'reject')[]): RunAuthed => {
     return Effect.runPromise(
       effect.pipe(
         Effect.provide(
-          FhirR4ResourcesRouterContext.sliceRuntimeLayer.pipe(Layer.provideMerge(emptyServerLayer))
+          FhirR4ResourcesRouterContext.sliceRuntimeLayer.pipe(Layer.provideMerge(stubServerLayer))
         ),
         Effect.scoped
       )
@@ -140,6 +159,13 @@ const renderDiff = (
       useServerDiff(current, id, importMatch),
     { initialProps: { batch, batchId }, wrapper: withQueryClient }
   )
+}
+
+/** The searched key of a Patient `identifier`, as the match records it. */
+const searchedKey = (identifier: object): LogicalReference.Key => {
+  const qualified = Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)(identifier)
+  if (!IdentifierAndReference.isQualifiedIdentifier(qualified)) throw new Error('unreachable')
+  return LogicalReference.key(LogicalReference.make('Patient', qualified))
 }
 
 const statusesOf = (state: ServerDiffState): readonly string[] =>
@@ -242,5 +268,62 @@ describe('useServerDiff', () => {
     })
     expect(statusesOf(result.current)).toEqual(['new'])
     expect(bundlesAnswered).toBe(1)
+  })
+  it('should read by id a record whose identifiers the match searched and found nothing for', async () => {
+    // Arrange: the match searched the record's identifier and found nothing,
+    // while a copy whose identifiers were edited is stored under its own id
+    bundlesAnswered = 0
+    currentRunAuthed = runAuthedWith([])
+    const identifier = { system: 'https://source.example/id', value: 'p-1' }
+    const imported = patient('p-1', [identifier])
+    storedOnServer = new Map([['Patient/p-1', patient('p-1')]])
+    const importMatch: ImportMatch.Type = {
+      ...ImportMatch.empty,
+      searchedIdentifiers: HashSet.make(searchedKey(identifier)),
+    }
+
+    // Act
+    const { result } = renderDiff(batchOf([imported]), 1, Option.some(importMatch))
+
+    // Assert
+    await waitFor(() => {
+      expect(result.current).toMatchObject({ _tag: 'ready', refreshing: false })
+    })
+    expect(statusesOf(result.current)).toEqual(['changed'])
+    expect(bundlesAnswered).toBe(1)
+  })
+
+  it('should read every record without a matched copy in one batch, and none with one', async () => {
+    // Arrange: one record matched, one searched and not found, one not searched
+    bundlesAnswered = 0
+    currentRunAuthed = runAuthedWith([])
+    const matchedIdentifier = { system: 'https://source.example/id', value: 'p-1' }
+    const unmatchedIdentifier = { system: 'https://source.example/id', value: 'p-2' }
+    const importMatch: ImportMatch.Type = {
+      ...ImportMatch.empty,
+      foundByIdentifier: ResourceMatch.indexByIdentifier([
+        patient('stored-9', [matchedIdentifier]),
+      ]),
+      searchedIdentifiers: HashSet.make(
+        searchedKey(matchedIdentifier),
+        searchedKey(unmatchedIdentifier)
+      ),
+    }
+    const batch = batchOf([
+      patient('p-1', [matchedIdentifier]),
+      patient('p-2', [unmatchedIdentifier]),
+      patient('p-3'),
+    ])
+
+    // Act
+    const { result } = renderDiff(batch, 1, Option.some(importMatch))
+
+    // Assert
+    await waitFor(() => {
+      expect(result.current).toMatchObject({ _tag: 'ready', refreshing: false })
+    })
+    expect(statusesOf(result.current)).toEqual(['unchanged', 'new', 'new'])
+    expect(bundlesAnswered).toBe(1)
+    expect(entriesAnswered).toEqual(['Patient/p-2', 'Patient/p-3'])
   })
 })
