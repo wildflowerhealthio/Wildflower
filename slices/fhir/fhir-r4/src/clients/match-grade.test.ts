@@ -214,6 +214,11 @@ describe('MatchGrade.comparableNamesOf', () => {
       name: { family: 'smith', given: ['john'] },
     },
     {
+      form: 'one comma before a given name that is also a credential elsewhere: family first',
+      text: 'Nguyen, Do',
+      name: { family: 'nguyen', given: ['do'] },
+    },
+    {
       form: 'two credentials after commas: both dropped, given names then family',
       text: 'John Smith, MD, PhD',
       name: { family: 'smith', given: ['john'] },
