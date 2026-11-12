@@ -1,4 +1,4 @@
-import { Array, Effect, Equivalence, HashMap, Option, Record } from 'effect'
+import { Array, Effect, Equivalence, HashMap, Option, pipe, Record } from 'effect'
 
 import type { IdentifierAndReference } from '../data-types/index.ts'
 import { type FhirResourceWithId, literalReferenceOf } from '../resources/fhir-resource-with-id.ts'
@@ -135,47 +135,53 @@ const distinctIdentifiers = (
   )
 
 /**
- * Every stored record carrying any identifier of `queries`: one
+ * Fetches every stored record carrying any identifier of `queries`: one
  * `searchByIdentifiers` per searchable type a query names an identifier of,
- * every identifier of every query of the type in it. A type with no such
- * identifier, and a type with no identifier search (`Binary`), sends nothing.
+ * every identifier of every query of the type in it, the types
+ * {@link SEARCH_CONCURRENCY} at a time. A type with no such identifier, and
+ * a type with no identifier search (`Binary`), sends nothing.
  */
-const storedNamedBy = (
+const fetchStoredByIdentifiers = (
   queries: readonly MatchQuery.Type[]
-): Effect.Effect<
-  readonly FhirResourceWithId[],
-  SearchFailure | MatchWithoutResource | PageTokenRepeated,
-  FhirR4ResourcesHttpApiClient
-> =>
-  Effect.map(
-    Effect.forEach(
-      Record.toEntries(Array.groupBy(queries, ({ resourceType }) => resourceType)),
-      ([resourceType, queriesOfType]) =>
-        Array.match(
+): Effect.Effect<readonly FhirResourceWithId[], Failure, FhirR4ResourcesHttpApiClient> =>
+  pipe(
+    Array.groupBy(queries, ({ resourceType }) => resourceType),
+    Record.toEntries,
+    Array.filterMap(([resourceType, queriesOfType]) =>
+      Option.all([
+        Option.liftPredicate(resourceType, isSearchableResourceType),
+        Option.liftPredicate(
           queriesOfType.flatMap(({ identifier }) => identifier),
-          {
-            onEmpty: () => Effect.succeed([]),
-            onNonEmpty: (identifiers) =>
-              isSearchableResourceType(resourceType)
-                ? searchByIdentifiers(resourceType, distinctIdentifiers(identifiers))
-                : Effect.succeed([]),
-          }
+          Array.isNonEmptyReadonlyArray<IdentifierAndReference.QualifiedIdentifierType>
         ),
-      { concurrency: SEARCH_CONCURRENCY }
+      ])
     ),
-    Array.flatten
+    (searches) =>
+      Effect.forEach(
+        searches,
+        ([resourceType, identifiers]) =>
+          searchByIdentifiers(resourceType, distinctIdentifiers(identifiers)),
+        { concurrency: SEARCH_CONCURRENCY }
+      ),
+    Effect.map(Array.flatten)
   )
 
-/** `stored` under the key of every qualified identifier it carries ({@link identifierKey}). */
-const indexByIdentifier = (
-  stored: readonly FhirResourceWithId[]
-): HashMap.HashMap<LogicalReference.Key, readonly FhirResourceWithId[]> =>
-  Array.reduce(stored, HashMap.empty(), (index, resource) =>
-    Array.reduce(MatchQuery.qualifiedIdentifiersOf(resource), index, (byKey, identifier) =>
-      HashMap.modifyAt(byKey, identifierKey(resource.resourceType, identifier), (found) =>
-        Option.some([...Option.getOrElse(found, () => []), resource])
-      )
-    )
+/** The keys `resource` is found under: one per qualified identifier it carries ({@link identifierKey}). */
+const identifierKeysOf = (resource: FhirResourceWithId): readonly LogicalReference.Key[] =>
+  MatchQuery.qualifiedIdentifiersOf(resource).map((identifier) =>
+    identifierKey(resource.resourceType, identifier)
+  )
+
+/** The stored records found under each key, every record of `stored` under its {@link identifierKeysOf}. */
+type IdentifierIndex = Record.ReadonlyRecord<string, readonly FhirResourceWithId[]>
+
+/** `stored` under the key of every qualified identifier it carries ({@link identifierKeysOf}). */
+const indexByIdentifier = (stored: readonly FhirResourceWithId[]): IdentifierIndex =>
+  pipe(
+    stored,
+    Array.flatMap((resource) => identifierKeysOf(resource).map((key) => [key, resource] as const)),
+    Array.groupBy(([key]) => key),
+    Record.map(Array.map(([, resource]) => resource))
   )
 
 /**
@@ -193,14 +199,18 @@ const identifierGradeOf = (candidateCount: number): MatchGrade.Type =>
  */
 const identifierCandidatesOf = <TResourceType extends ResourceType.Type>(
   query: MatchQuery.Type<TResourceType>,
-  index: HashMap.HashMap<LogicalReference.Key, readonly FhirResourceWithId[]>
+  index: IdentifierIndex
 ): readonly Candidate<TResourceType>[] => {
-  const found = Array.dedupeWith(
-    query.identifier.flatMap((identifier) =>
-      Option.getOrElse(HashMap.get(index, identifierKey(query.resourceType, identifier)), () => [])
+  const found = pipe(
+    query.identifier,
+    Array.flatMap((identifier) =>
+      Record.get(index, identifierKey(query.resourceType, identifier)).pipe(
+        Option.getOrElse(() => [])
+      )
     ),
-    sameStoredResource
-  ).filter(isOfType(query.resourceType))
+    Array.dedupeWith(sameStoredResource),
+    Array.filter(isOfType(query.resourceType))
+  )
   const grade = identifierGradeOf(found.length)
   return found.map((resource) => ({ resource, grade, by: 'identifier' }))
 }
@@ -303,9 +313,9 @@ const bestCandidates = <TResourceType extends ResourceType.Type>(
  * the whole batch, every qualified identifier of every query of the type in
  * it, and a stored record is a `certain` candidate of every query whose
  * identifiers it carries; a query whose identifiers name several stored
- * records has each as a `probable` candidate instead. A query with no qualified identifier, and a type
- * with no identifier search (`Binary`), has no candidate by identifier and
- * sends nothing.
+ * records has each as a `probable` candidate instead. A query with no
+ * qualified identifier, and a type with no identifier search (`Binary`), has
+ * no candidate by identifier and sends nothing.
  *
  * Unless `onlyCertainMatches`, a query that carries its record, of a type
  * with a rule, with no candidate by identifier goes on to the name stage:
@@ -332,7 +342,7 @@ const matchAll = <TResourceType extends ResourceType.Type>(
   FhirR4ResourcesHttpApiClient
 > =>
   Effect.gen(function* () {
-    const storedByIdentifier = indexByIdentifier(yield* storedNamedBy(queries))
+    const storedByIdentifier = indexByIdentifier(yield* fetchStoredByIdentifiers(queries))
     const identifierStage = queries.map((query) => {
       const identifierCandidates = identifierCandidatesOf(query, storedByIdentifier)
       return {
@@ -356,7 +366,7 @@ const matchAll = <TResourceType extends ResourceType.Type>(
           ...(toNameStage
             ? nameCandidatesOf(
                 query,
-                Option.getOrElse(HashMap.get(storedByType, query.resourceType), () => [])
+                HashMap.get(storedByType, query.resourceType).pipe(Option.getOrElse(() => []))
               )
             : []),
         ],
