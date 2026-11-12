@@ -275,8 +275,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   they name several, the one under the record's own literal reference;
   `NotFound`; or `NotSearched` unless every qualified identifier of the
   record was searched (a record with none, a `Binary`, a resolved referent
-  carrying an identifier it assumed from a stored copy), which the diff
-  reads by id. A namesake found by name is never a matched copy. **`empty`**
+  carrying an identifier it assumed from a stored copy). The diff reads a
+  `NotFound` or `NotSearched` record by id. A namesake found by name is never a matched copy. **`empty`**
   is nothing matched.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource

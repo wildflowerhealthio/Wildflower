@@ -234,12 +234,13 @@ The importer has no HTTP wire union to derive, so there is no separate
   identifiers name, read off the batch's match (`ImportMatch.matchedCopyOf`)
   without a request, and compared by content with its `id` dropped
   (`compareWithStoredCopy`), so a copy stored under another id still reads
-  `unchanged`; the write still goes to the resource's own id. A resource the
-  match cannot speak for (no qualified identifier, a `Binary`, an
-  identifier the match did not search, or no match at all when it failed)
-  is compared with the copy under its own id, every such resource in one
-  `POST /` batch of GETs (`classifyAgainstServer`), sent only when there is
-  one. The screen blocks the
+  `unchanged`; the write still goes to the resource's own id. A resource
+  with no matched copy (the match found none, or cannot speak for it: no
+  qualified identifier, a `Binary`, an identifier the match did not search,
+  or no match at all when it failed) is compared with the copy under its own
+  id, so a stored copy whose identifiers were edited reads `changed`, not
+  `new`; every such resource goes in one `POST /` batch of GETs
+  (`classifyAgainstServer`), sent only when there is one. The screen blocks the
   first paint on it but **not** on the re-classification a settings change or
   a link choice triggers, since unmounting the panel mid-review would drop the
   focus of whatever control the reviewer is using; the verdicts the batch last
