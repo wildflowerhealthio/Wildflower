@@ -37,20 +37,24 @@ describe('ResourceMatch.matchAll: the identifier stage', () => {
     )
 
     // Assert
-    expect(requests).toEqual([
-      {
-        url: '/Patient/_search',
-        form: {
-          identifier:
-            'https://shoppers.example/customer|1,https://rexall.example/uid|9,https://shoppers.example/customer|2',
-          _count: '1000',
+    // The searches of different types run concurrently, so their order is not pinned.
+    expect(requests).toHaveLength(2)
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        {
+          url: '/Patient/_search',
+          form: {
+            identifier:
+              'https://shoppers.example/customer|1,https://rexall.example/uid|9,https://shoppers.example/customer|2',
+            _count: '1000',
+          },
         },
-      },
-      {
-        url: '/Practitioner/_search',
-        form: { identifier: 'https://cpso.example/licence|7', _count: '1000' },
-      },
-    ])
+        {
+          url: '/Practitioner/_search',
+          form: { identifier: 'https://cpso.example/licence|7', _count: '1000' },
+        },
+      ])
+    )
     expect(result.map(candidateRefs)).toEqual([
       ['Patient/p-1 certain by identifier'],
       ['Patient/p-2 certain by identifier'],
