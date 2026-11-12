@@ -184,19 +184,24 @@ describe('MatchGrade.comparableNamesOf', () => {
       name: { family: 'schmitt', given: ['john'] },
     },
     {
-      form: 'one comma before a credential: given names then family, as without a comma',
+      form: 'one comma before a credential: the credential dropped, given names then family',
       text: 'John Schmitt, MD',
-      name: { family: 'md', given: ['john', 'schmitt,'] },
+      name: { family: 'schmitt', given: ['john'] },
     },
     {
-      form: 'one comma before a dotted credential: given names then family',
+      form: 'one comma before a dotted credential: the credential dropped',
       text: 'Schmitt, M.D.',
-      name: { family: 'm.d.', given: ['schmitt,'] },
+      name: { family: 'schmitt', given: [] },
     },
     {
-      form: 'two commas: given names then family',
+      form: 'two commas, the last before a credential: the credential dropped, family first',
+      text: 'Schmitt, John, RPh',
+      name: { family: 'schmitt', given: ['john'] },
+    },
+    {
+      form: 'two commas: given names then family, the commas read as spaces',
       text: 'Schmitt, John, Jr',
-      name: { family: 'jr', given: ['schmitt,', 'john,'] },
+      name: { family: 'jr', given: ['schmitt', 'john'] },
     },
   ])('should read a text-only name with $form', ({ text, name }) => {
     const { name: names } = practitioner([{ text }])

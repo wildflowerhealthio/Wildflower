@@ -146,14 +146,19 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     const { requests, result } = await runWith(ResourceMatch.matchAll(queries, EVERY_GRADE), server)
 
     // Assert
-    expect(requests).toEqual([
-      {
-        url: '/Patient/_search',
-        form: { identifier: 'https://shoppers.example/customer|1', _count: '1000' },
-      },
-      { url: '/Patient/_search', form: { _count: '1000' } },
-      { url: '/Practitioner/_search', form: { _count: '1000' } },
-    ])
+    const [identifierSearch, ...listings] = requests
+    expect(identifierSearch).toEqual({
+      url: '/Patient/_search',
+      form: { identifier: 'https://shoppers.example/customer|1', _count: '1000' },
+    })
+    // The listings run concurrently, so their order is not pinned.
+    expect(listings).toHaveLength(2)
+    expect(listings).toEqual(
+      expect.arrayContaining([
+        { url: '/Patient/_search', form: { _count: '1000' } },
+        { url: '/Practitioner/_search', form: { _count: '1000' } },
+      ])
+    )
     expect(result.map(candidateRefs)).toEqual([
       ['Patient/p-1 certain by identifier'],
       [

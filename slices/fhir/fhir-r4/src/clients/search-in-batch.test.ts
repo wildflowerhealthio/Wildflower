@@ -204,6 +204,10 @@ describe('searchInBatch', () => {
       resource: searchset([{ resource: { resourceType: 'Patient' } }]),
     },
     { reason: 'no searchset at all', resource: undefined },
+    {
+      reason: 'a Bundle of another type',
+      resource: { resourceType: 'Bundle', type: 'collection', entry: [] },
+    },
   ])('should fail a search answered with $reason as undecodable', async ({ resource }) => {
     // Arrange
     const searches: readonly BatchSearch[] = [{ resourceType: 'Patient', urlParams: {} }]
