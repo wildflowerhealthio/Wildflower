@@ -95,36 +95,31 @@ const comparableNameFrom = (
 }
 
 /**
- * The family and given words of `text` written family first ("Schmitt, John
- * Jacob"): it has exactly one comma, and what follows it is not a
- * credential ("John Smith, MD"); `None` for any other text.
+ * The comma-separated parts of `text` as words, without the credentials
+ * that trail them after a comma ("John Smith, MD", "Smith, John, RPh"); a
+ * first part is always kept.
  */
-const familyFirstWordsOf = (
-  text: string
-): Option.Option<readonly [readonly string[], readonly string[]]> =>
-  Option.liftPredicate(text.split(','), (parts) => parts.length === 2).pipe(
-    Option.map(
-      ([familyPart = '', givenPart = '']) => [wordsOf(familyPart), wordsOf(givenPart)] as const
-    ),
-    Option.filter(([, givenWords]) => !isCredential(givenWords))
-  )
+const partsWithoutCredentialTail = (text: string): readonly (readonly string[])[] => {
+  const withoutTail = (parts: readonly (readonly string[])[]): readonly (readonly string[])[] =>
+    parts.length > 1 && isCredential(parts.at(-1) ?? []) ? withoutTail(parts.slice(0, -1)) : parts
+  return withoutTail(text.split(',').map(wordsOf))
+}
 
 /**
- * `text` as a comparable name: family first when it is written so
- * ({@link familyFirstWordsOf}), else given names then a family name, the last
- * word.
+ * `text` as a comparable name, its credential tail dropped first
+ * ({@link partsWithoutCredentialTail}): family first when exactly one comma
+ * is left ("Schmitt, John Jacob"), else given names then a family name, the
+ * last word, with any other commas read as spaces.
  */
-const comparableTextNameOf = (text: string): Option.Option<ComparableName> =>
-  Option.match(familyFirstWordsOf(text), {
-    onSome: ([familyWords, givenWords]) => comparableNameFrom(familyWords, givenWords),
-    onNone: () => {
-      const textWords = withoutLeadingTitle(wordsOf(text))
-      return Option.map(Array.last(textWords), (family) => ({
-        family,
-        given: textWords.slice(0, -1),
-      }))
-    },
-  })
+const comparableTextNameOf = (text: string): Option.Option<ComparableName> => {
+  const parts = partsWithoutCredentialTail(text)
+  if (parts.length === 2) return comparableNameFrom(parts[0] ?? [], parts[1] ?? [])
+  const textWords = withoutLeadingTitle(parts.flat())
+  return Option.map(Array.last(textWords), (family) => ({
+    family,
+    given: textWords.slice(0, -1),
+  }))
+}
 
 /**
  * `name` as it is compared: its `family` and `given` parts when it states
