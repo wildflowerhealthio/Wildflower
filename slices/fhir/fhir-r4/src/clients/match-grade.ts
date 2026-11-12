@@ -61,6 +61,12 @@ const CREDENTIALS: ReadonlySet<string> = new Set([
   'od',
 ])
 
+/**
+ * The generational suffixes written after a name ("John Smith Jr",
+ * "Schmitt, John, Jr"), compared once lower-cased and without dots.
+ */
+const GENERATIONAL_SUFFIXES: ReadonlySet<string> = new Set(['jr', 'sr', 'ii', 'iii', 'iv'])
+
 /** The words of `namePart`, lower-cased and without diacritics (decomposed, combining marks dropped). */
 const wordsOf = (namePart: string): readonly string[] =>
   namePart
@@ -78,10 +84,23 @@ const withoutLeadingTitle = (words: readonly string[]): readonly string[] =>
       DOCTOR_TITLES.has(Array.headNonEmpty(spoken)) ? Array.tailNonEmpty(spoken) : spoken,
   })
 
-/** Whether `words` are a credential: at least one word, every one of them in {@link CREDENTIALS}. */
-const isCredential = (words: readonly string[]): boolean =>
+/** Whether `word`, without its dots, is a generational suffix ({@link GENERATIONAL_SUFFIXES}). */
+const isGenerationalSuffix = (word: string): boolean =>
+  GENERATIONAL_SUFFIXES.has(word.replaceAll('.', ''))
+
+/**
+ * Whether `words` are a tail a name can drop: at least one word, every one
+ * of them a credential ({@link CREDENTIALS}) or a generational suffix.
+ */
+const isDroppableTail = (words: readonly string[]): boolean =>
   Array.isNonEmptyReadonlyArray(words) &&
-  words.every((word) => CREDENTIALS.has(word.replaceAll('.', '')))
+  words.every((word) => CREDENTIALS.has(word.replaceAll('.', '')) || isGenerationalSuffix(word))
+
+/** `words` without the generational suffixes trailing them; a first word is always kept. */
+const withoutTrailingSuffixes = (words: readonly string[]): readonly string[] =>
+  words.length > 1 && isGenerationalSuffix(words.at(-1) ?? '')
+    ? withoutTrailingSuffixes(words.slice(0, -1))
+    : words
 
 /** `family` and `given` words as a comparable name; `None` when no family name is left. */
 const comparableNameFrom = (
@@ -95,26 +114,30 @@ const comparableNameFrom = (
 }
 
 /**
- * The comma-separated parts of `text` as words, without the credentials
- * that trail them after a comma ("John Smith, MD", "Smith, John, RPh"); a
- * first part is always kept.
+ * The comma-separated parts of `text` as words, without the credentials and
+ * generational suffixes that trail them after a comma ("John Smith, MD",
+ * "John Smith, MD, PhD", "Smith, John, RPh", "Schmitt, John, Jr"); a first
+ * part is always kept.
  */
-const partsWithoutCredentialTail = (text: string): readonly (readonly string[])[] => {
+const partsWithoutDroppableTail = (text: string): readonly (readonly string[])[] => {
   const withoutTail = (parts: readonly (readonly string[])[]): readonly (readonly string[])[] =>
-    parts.length > 1 && isCredential(parts.at(-1) ?? []) ? withoutTail(parts.slice(0, -1)) : parts
+    parts.length > 1 && isDroppableTail(parts.at(-1) ?? [])
+      ? withoutTail(parts.slice(0, -1))
+      : parts
   return withoutTail(text.split(',').map(wordsOf))
 }
 
 /**
- * `text` as a comparable name, its credential tail dropped first
- * ({@link partsWithoutCredentialTail}): family first when exactly one comma
+ * `text` as a comparable name, its credential and suffix tail dropped first
+ * ({@link partsWithoutDroppableTail}): family first when exactly one comma
  * is left ("Schmitt, John Jacob"), else given names then a family name, the
- * last word, with any other commas read as spaces.
+ * last word once trailing generational suffixes are dropped ("John Smith
+ * Jr"), with any other commas read as spaces.
  */
 const comparableTextNameOf = (text: string): Option.Option<ComparableName> => {
-  const parts = partsWithoutCredentialTail(text)
+  const parts = partsWithoutDroppableTail(text)
   if (parts.length === 2) return comparableNameFrom(parts[0] ?? [], parts[1] ?? [])
-  const textWords = withoutLeadingTitle(parts.flat())
+  const textWords = withoutTrailingSuffixes(withoutLeadingTitle(parts.flat()))
   return Option.map(Array.last(textWords), (family) => ({
     family,
     given: textWords.slice(0, -1),
