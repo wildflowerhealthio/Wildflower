@@ -239,15 +239,15 @@ interface Demographics {
   readonly birthDate: Option.Option<typeof TimelessDateFromString.Type>
 }
 
+/** Whether `name` states a family or a given name, the parts demographics are read from. */
+const hasNameParts = (name: typeof HumanName.Schema.Type): boolean =>
+  name.family !== null || name.given.length > 0
+
 /**
  * The {@link Demographics} of `patient`: what a review compares two records
  * of one person by. Which name is current is judged at the clock's now, so
  * an Effect.
  */
-/** Whether `name` states a family or a given name, the parts demographics are read from. */
-const hasNameParts = (name: typeof HumanName.Schema.Type): boolean =>
-  name.family !== null || name.given.length > 0
-
 const demographics = (patient: Type): Effect.Effect<Demographics> =>
   Effect.map(DateTime.now, (now) => {
     const currentName = HumanName.currentName(patient.name.filter(hasNameParts), now)

@@ -6,11 +6,11 @@
  * A file has many mentions and the identity map has one referent per
  * identity, which is what the reviewer makes a `LinkChoice` for. A referent
  * answers to every identifier its record brings, so a mention by one of them
- * that no other referent answers to is that referent. Every referent has a record: a reference to a
- * record the import never saw implies that record at decode
- * (`DecodedFileSet.adopt`). Today a referent is a patient or a provider; the
- * model does not say so, and a lab requisition or a location fits it the same
- * way.
+ * that no other referent answers to is that referent. Every referent has a
+ * record: a reference to a record the import never saw implies that record
+ * at decode (`DecodedFileSet.adopt`). Today a referent is a patient or a
+ * provider; the model does not say so, and a lab requisition or a location
+ * fits it the same way.
  *
  * @packageDocumentation
  */

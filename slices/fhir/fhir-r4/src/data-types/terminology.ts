@@ -11,9 +11,10 @@
  *
  * Every stored Wildflower URL no single package owns is defined here or built
  * from a base defined here: the extensions and code systems below, and the
- * canonical urls of definitional resources. A URL one package owns lives with it and is exported from there for its
- * readers: the system a source keys its own ids under (`…/fhir/sid/<source>`),
- * a source's practitioner-name system, and `web-trace-core`'s codec systems.
+ * canonical urls of definitional resources. A URL one package owns lives
+ * with it and is exported from there for its readers: the system a source
+ * keys its own ids under (`…/fhir/sid/<source>`), a source's
+ * practitioner-name system, and `web-trace-core`'s codec systems.
  */
 
 /**
