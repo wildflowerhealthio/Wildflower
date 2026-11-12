@@ -2,9 +2,9 @@ import { Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { Patient, Practitioner } from '../resources/index.ts'
-import { MatchGrade, MatchQuery } from './index.ts'
+import { MatchGrade } from './index.ts'
 
-describe('MatchGrade.demographicGradeOf for a Patient', () => {
+describe('MatchGrade.patientGradeOf', () => {
   it.each([
     {
       rule: 'family, every given and birth date equal is probable',
@@ -17,9 +17,19 @@ describe('MatchGrade.demographicGradeOf for a Patient', () => {
       grade: Option.some('possible'),
     },
     {
-      rule: 'a family that only starts with the query family is no match',
-      stored: patient([{ family: 'Browning', given: ['Ann'] }], '1980-02-03'),
+      rule: 'a family that only starts with the query family, sharing no given, is no match',
+      stored: patient([{ family: 'Browning', given: ['Beth'] }], '1980-02-03'),
       grade: Option.none(),
+    },
+    {
+      rule: 'another family sharing a given name and the birth date is possible',
+      stored: patient([{ family: 'Smith', given: ['Beth', 'Ann'] }], '1980-02-03'),
+      grade: Option.some('possible'),
+    },
+    {
+      rule: 'a text name written family first is read so',
+      stored: patient([{ text: 'Brown, Ann Marie' }], '1980-02-03'),
+      grade: Option.some('probable'),
     },
     {
       rule: 'another birth date is no match',
@@ -55,14 +65,21 @@ describe('MatchGrade.demographicGradeOf for a Patient', () => {
   ])('$rule', ({ stored, grade }) => {
     const query = patient([{ family: 'Brown', given: ['Ann'] }], '1980-02-03')
 
-    expect(MatchGrade.demographicGradeOf(query, stored)).toEqual(grade)
+    expect(MatchGrade.patientGradeOf(query, stored)).toEqual(grade)
+  })
+
+  it('should grade a query with a family and no given name possible, not probable', () => {
+    const query = patient([{ family: 'Brown' }], '1980-02-03')
+    const stored = patient([{ family: 'Brown', given: ['Ann'] }], '1980-02-03')
+
+    expect(MatchGrade.patientGradeOf(query, stored)).toEqual(Option.some('possible'))
   })
 
   it('should grade nothing for a query with no birth date', () => {
     const query = patient([{ family: 'Brown', given: ['Ann'] }], null)
     const stored = patient([{ family: 'Brown', given: ['Ann'] }], null)
 
-    expect(MatchGrade.demographicGradeOf(query, stored)).toEqual(Option.none())
+    expect(MatchGrade.patientGradeOf(query, stored)).toEqual(Option.none())
   })
 
   it('should take the best grade any query name takes', () => {
@@ -75,18 +92,11 @@ describe('MatchGrade.demographicGradeOf for a Patient', () => {
     )
     const stored = patient([{ family: 'Brown', given: ['Ann'] }], '1980-02-03')
 
-    expect(MatchGrade.demographicGradeOf(query, stored)).toEqual(Option.some('probable'))
-  })
-
-  it('should grade nothing against a stored record of another type', () => {
-    const query = patient([{ family: 'Brown', given: ['Ann'] }], '1980-02-03')
-    const stored = practitioner([{ family: 'Brown', given: ['Ann'] }])
-
-    expect(MatchGrade.demographicGradeOf(query, stored)).toEqual(Option.none())
+    expect(MatchGrade.patientGradeOf(query, stored)).toEqual(Option.some('probable'))
   })
 })
 
-describe('MatchGrade.demographicGradeOf for a Practitioner', () => {
+describe('MatchGrade.practitionerGradeOf', () => {
   it.each([
     {
       rule: 'family and every given equal is probable',
@@ -125,24 +135,31 @@ describe('MatchGrade.demographicGradeOf for a Practitioner', () => {
       grade: Option.some('probable'),
     },
     {
+      rule: 'a family with no given name ("Dr. Brown") is possible, not probable',
+      query: [{ text: 'Dr. Brown' }],
+      stored: [{ family: 'Brown', given: ['Jonathan'] }],
+      grade: Option.some('possible'),
+    },
+    {
+      rule: 'a text name written family first, a title leading its given names, is read so',
+      query: [{ text: 'Brown, Dr. Jonathan' }],
+      stored: [{ family: 'Brown', given: ['Jonathan'] }],
+      grade: Option.some('probable'),
+    },
+    {
+      rule: 'another family is no match, even sharing a given name',
+      query: [{ family: 'Smith', given: ['Jonathan'] }],
+      stored: [{ family: 'Brown', given: ['Jonathan'] }],
+      grade: Option.none(),
+    },
+    {
       rule: 'a "Dr" title leading the family is ignored, as is one in prefix',
       query: [{ family: 'Dr Brown', given: ['Jonathan'] }],
       stored: [{ prefix: ['Dr.'], family: 'Brown', given: ['Jonathan'] }],
       grade: Option.some('probable'),
     },
   ])('$rule', ({ query, stored, grade }) => {
-    expect(MatchGrade.demographicGradeOf(practitioner(query), practitioner(stored))).toEqual(grade)
-  })
-})
-
-describe('MatchGrade.demographicGradeOf for any other record', () => {
-  it('should grade nothing, even with the names and birth date of a probable Patient', () => {
-    const goal: MatchQuery.Type = {
-      ...patient([{ family: 'Brown', given: ['Ann'] }], '1980-02-03'),
-      resourceType: 'Goal',
-    }
-
-    expect(MatchGrade.demographicGradeOf(goal, goal)).toEqual(Option.none())
+    expect(MatchGrade.practitionerGradeOf(practitioner(query), practitioner(stored))).toEqual(grade)
   })
 })
 
@@ -154,20 +171,48 @@ describe('MatchGrade.comparableNamesOf', () => {
       { family: 'brown', given: ['ann', 'marie'] },
     ])
   })
+
+  it.each([
+    {
+      form: 'one comma: family first',
+      text: 'Schmitt, John Jacob',
+      name: { family: 'schmitt', given: ['john', 'jacob'] },
+    },
+    {
+      form: 'one comma, a title leading the given names: family first, the title dropped',
+      text: 'Schmitt, Dr. John',
+      name: { family: 'schmitt', given: ['john'] },
+    },
+    {
+      form: 'one comma before a credential: given names then family, as without a comma',
+      text: 'John Schmitt, MD',
+      name: { family: 'md', given: ['john', 'schmitt,'] },
+    },
+    {
+      form: 'one comma before a dotted credential: given names then family',
+      text: 'Schmitt, M.D.',
+      name: { family: 'm.d.', given: ['schmitt,'] },
+    },
+    {
+      form: 'two commas: given names then family',
+      text: 'Schmitt, John, Jr',
+      name: { family: 'jr', given: ['schmitt,', 'john,'] },
+    },
+  ])('should read a text-only name with $form', ({ text, name }) => {
+    const { name: names } = practitioner([{ text }])
+
+    expect(MatchGrade.comparableNamesOf(names)).toEqual([name])
+  })
 })
 
 // Helpers
 
-const patient = (name: readonly object[], birthDate: string | null): MatchQuery.Type =>
-  MatchQuery.fromResource(
-    Schema.decodeUnknownSync(Patient.Schema)({
-      resourceType: 'Patient',
-      name,
-      ...(birthDate === null ? {} : { birthDate }),
-    })
-  )
+const patient = (name: readonly object[], birthDate: string | null): Patient.Type =>
+  Schema.decodeUnknownSync(Patient.Schema)({
+    resourceType: 'Patient',
+    name,
+    ...(birthDate === null ? {} : { birthDate }),
+  })
 
-const practitioner = (name: readonly object[]): MatchQuery.Type =>
-  MatchQuery.fromResource(
-    Schema.decodeUnknownSync(Practitioner.Schema)({ resourceType: 'Practitioner', name })
-  )
+const practitioner = (name: readonly object[]): Practitioner.Type =>
+  Schema.decodeUnknownSync(Practitioner.Schema)({ resourceType: 'Practitioner', name })
