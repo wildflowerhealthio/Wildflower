@@ -13,7 +13,7 @@ const RUNS = numRunsFor({ base: 50 })
 const CERTAIN_ONLY: ResourceMatch.Options = { onlyCertainMatches: true, count: Option.none() }
 const EVERY_GRADE: ResourceMatch.Options = { onlyCertainMatches: false, count: Option.none() }
 
-describe('ResourceMatch.matchAll: certain matches', () => {
+describe('ResourceMatch.matchAll: the identifier stage', () => {
   it('should search each type once, every identifier of every query of it, and nothing for a type with none', async () => {
     // Arrange
     const queries = [
@@ -40,18 +40,23 @@ describe('ResourceMatch.matchAll: certain matches', () => {
     expect(requests).toEqual([
       {
         url: '/Patient/_search',
-        body: [
-          'https://shoppers.example/customer|1,https://rexall.example/uid|9,https://shoppers.example/customer|2',
-        ],
+        form: {
+          identifier:
+            'https://shoppers.example/customer|1,https://rexall.example/uid|9,https://shoppers.example/customer|2',
+          _count: '1000',
+        },
       },
-      { url: '/Practitioner/_search', body: ['https://cpso.example/licence|7'] },
+      {
+        url: '/Practitioner/_search',
+        form: { identifier: 'https://cpso.example/licence|7', _count: '1000' },
+      },
     ])
     expect(result.map(candidateRefs)).toEqual([
-      ['Patient/p-1 certain'],
-      ['Patient/p-2 certain'],
+      ['Patient/p-1 certain by identifier'],
+      ['Patient/p-2 certain by identifier'],
       [],
-      ['Practitioner/d-7 certain'],
-      ['Practitioner/d-7 certain'],
+      ['Practitioner/d-7 certain by identifier'],
+      ['Practitioner/d-7 certain by identifier'],
       [],
     ])
   })
@@ -81,14 +86,41 @@ describe('ResourceMatch.matchAll: certain matches', () => {
 
     // Assert
     expect(result.map(candidateRefs)).toEqual([
-      ['Patient/shared certain'],
-      ['Patient/shared certain'],
+      ['Patient/shared certain by identifier'],
+      ['Patient/shared certain by identifier'],
     ])
+  })
+
+  it('should demote every candidate of a query whose identifiers name several stored records to probable, before count', async () => {
+    // Arrange
+    const query = queryOf(patientWire({ identifier: [SHOPPERS_1, SHOPPERS_2] }))
+    const server = inMemoryServer([
+      patientWire({ id: 'p-1', identifier: [SHOPPERS_1] }),
+      patientWire({ id: 'p-2', identifier: [SHOPPERS_2] }),
+    ])
+
+    // Act
+    const every = await runWith(ResourceMatch.matchAll([query], EVERY_GRADE), server)
+    const one = await runWith(
+      ResourceMatch.matchAll([query], { ...EVERY_GRADE, count: Option.some(1) }),
+      server
+    )
+
+    // Assert: still found by identifier, so no name stage
+    expect({
+      every: every.result.map(candidateRefs),
+      one: one.result.map(candidateRefs),
+      urls: [...every.requests, ...one.requests].map(({ url }) => url),
+    }).toEqual({
+      every: [['Patient/p-1 probable by identifier', 'Patient/p-2 probable by identifier']],
+      one: [['Patient/p-1 probable by identifier']],
+      urls: ['/Patient/_search', '/Patient/_search'],
+    })
   })
 })
 
-describe('ResourceMatch.matchAll: probable and possible matches', () => {
-  it('should send one batch per person type, only for queries with no certain match, each search once', async () => {
+describe('ResourceMatch.matchAll: the name stage', () => {
+  it('should list each person type once, every record of it, only for queries nothing was found for by identifier', async () => {
     // Arrange
     const queries = [
       queryOf(patientWire({ identifier: [SHOPPERS_1], name: [ANN_BROWN], birthDate: BORN })),
@@ -106,6 +138,7 @@ describe('ResourceMatch.matchAll: probable and possible matches', () => {
         name: [{ family: 'Browning', given: ['Ann'] }],
         birthDate: BORN,
       }),
+      patientWire({ id: 'p-older', name: [ANN_BROWN], birthDate: '1950-01-01' }),
       practitionerWire({ id: 'd-jon', name: [{ family: 'Brown', given: ['Jonathan'] }] }),
     ])
 
@@ -114,30 +147,95 @@ describe('ResourceMatch.matchAll: probable and possible matches', () => {
 
     // Assert
     expect(requests).toEqual([
-      { url: '/Patient/_search', body: ['https://shoppers.example/customer|1'] },
-      { url: '/', body: ['Patient?_count=1000&family=brown&birthdate=1980-02-03'] },
-      { url: '/', body: ['Practitioner?_count=1000&family=brown'] },
+      {
+        url: '/Patient/_search',
+        form: { identifier: 'https://shoppers.example/customer|1', _count: '1000' },
+      },
+      { url: '/Patient/_search', form: { _count: '1000' } },
+      { url: '/Practitioner/_search', form: { _count: '1000' } },
     ])
     expect(result.map(candidateRefs)).toEqual([
-      ['Patient/p-1 certain'],
-      ['Patient/p-1 probable', 'Patient/p-ann probable'],
-      ['Patient/p-1 possible', 'Patient/p-ann possible'],
+      ['Patient/p-1 certain by identifier'],
+      [
+        'Patient/p-1 probable by name',
+        'Patient/p-ann probable by name',
+        'Patient/p-browning possible by name',
+      ],
+      ['Patient/p-1 possible by name', 'Patient/p-ann possible by name'],
       [],
-      ['Practitioner/d-jon possible'],
-      ['Practitioner/d-jon probable'],
+      ['Practitioner/d-jon possible by name'],
+      ['Practitioner/d-jon probable by name'],
     ])
   })
 
-  it('should escape the characters search reserves in a family name', async () => {
-    const query = queryOf(practitionerWire({ name: [{ family: 'Smith, Jr | $5\\' }] }))
+  it("should read every page of a type's records", async () => {
+    // Arrange: one record a page, the match on the last
+    const query = queryOf(patientWire({ name: [ANN_BROWN], birthDate: BORN }))
+    const server = inMemoryServer(
+      [
+        patientWire({ id: 'p-0', name: [{ family: 'Smith', given: ['Zoe'] }], birthDate: BORN }),
+        patientWire({ id: 'p-1', name: [{ family: 'Jones', given: ['Liz'] }], birthDate: BORN }),
+        patientWire({ id: 'p-ann', name: [ANN_BROWN], birthDate: BORN }),
+      ],
+      { pageSize: 1 }
+    )
+
+    // Act
+    const { requests, result } = await runWith(ResourceMatch.matchAll([query], EVERY_GRADE), server)
+
+    // Assert
+    expect({ forms: requests.map(({ form }) => form), result: result.map(candidateRefs) }).toEqual({
+      forms: [
+        { _count: '1000' },
+        { _count: '1000', _cursor: '1' },
+        { _count: '1000', _cursor: '2' },
+      ],
+      result: [['Patient/p-ann probable by name']],
+    })
+  })
+
+  it('should list nothing when every query was found by identifier', async () => {
+    const query = queryOf(
+      patientWire({ identifier: [SHOPPERS_1], name: [ANN_BROWN], birthDate: BORN })
+    )
+    const server = inMemoryServer([patientWire({ id: 'p-1', identifier: [SHOPPERS_1] })])
+
+    const { requests } = await runWith(ResourceMatch.matchAll([query], EVERY_GRADE), server)
+
+    expect(requests.map(({ form }) => form)).toEqual([
+      { identifier: 'https://shoppers.example/customer|1', _count: '1000' },
+    ])
+  })
+
+  it('should list nothing when only certain matches are asked for', async () => {
+    const query = queryOf(
+      patientWire({ identifier: [SHOPPERS_1], name: [ANN_BROWN], birthDate: BORN })
+    )
+    const server = inMemoryServer([
+      patientWire({ id: 'p-ann', name: [ANN_BROWN], birthDate: BORN }),
+    ])
+
+    const { requests, result } = await runWith(
+      ResourceMatch.matchAll([query], CERTAIN_ONLY),
+      server
+    )
+
+    expect({ forms: requests.map(({ form }) => form), result }).toEqual({
+      forms: [{ identifier: 'https://shoppers.example/customer|1', _count: '1000' }],
+      result: [[]],
+    })
+  })
+
+  it('should list nothing for a logical reference, which carries no record', async () => {
+    const query = MatchQuery.fromLogicalReference(logicalReference('Patient', SHOPPERS_1))
 
     const { requests } = await runWith(
       ResourceMatch.matchAll([query], EVERY_GRADE),
-      inMemoryServer([])
+      inMemoryServer([patientWire({ id: 'p-ann', name: [ANN_BROWN], birthDate: BORN })])
     )
 
-    expect(requests).toEqual([
-      { url: '/', body: ['Practitioner?_count=1000&family=smith%5C%2C+jr+%5C%7C+%5C%245%5C%5C'] },
+    expect(requests.map(({ form }) => form)).toEqual([
+      { identifier: 'https://shoppers.example/customer|1', _count: '1000' },
     ])
   })
 
@@ -158,27 +256,13 @@ describe('ResourceMatch.matchAll: probable and possible matches', () => {
 
     // Assert
     expect([every.result.map(candidateRefs), best.result.map(candidateRefs)]).toEqual([
-      [['Patient/p-ann probable', 'Patient/p-beth possible']],
-      [['Patient/p-ann probable']],
+      [['Patient/p-ann probable by name', 'Patient/p-beth possible by name']],
+      [['Patient/p-ann probable by name']],
     ])
   })
 })
 
 describe('ResourceMatch.matchAll: failures', () => {
-  const personQuery = queryOf(patientWire({ name: [ANN_BROWN], birthDate: BORN }))
-
-  it('should fail with the batch entry a server rejected, not find no match', async () => {
-    const outcome = await failureOf(ResourceMatch.matchAll([personQuery], EVERY_GRADE), () =>
-      batchResponse([{ response: { status: '400 Bad Request' } }])
-    )
-
-    expect(outcome).toMatchObject({
-      _tag: 'BatchSearchRejected',
-      resourceType: 'Patient',
-      status: '400 Bad Request',
-    })
-  })
-
   it('should fail with a failed identifier search, not find no match', async () => {
     const query = MatchQuery.fromLogicalReference(logicalReference('Patient', SHOPPERS_1))
 
@@ -190,21 +274,15 @@ describe('ResourceMatch.matchAll: failures', () => {
     expect(outcome).toMatchObject({ _tag: 'ServiceUnavailable' })
   })
 
-  it('should fail a search by name whose answer continues past its first page, naming the search', async () => {
-    const firstPage = {
-      ...searchsetOf([patientWire({ id: 'p-0', name: [ANN_BROWN], birthDate: BORN })]),
-      link: [{ relation: 'next', url: 'Patient?family=brown&_cursor=abc' }],
-    }
+  it("should fail with a failed listing of a type's records, not find no match", async () => {
+    const query = queryOf(patientWire({ name: [ANN_BROWN], birthDate: BORN }))
 
-    const outcome = await failureOf(ResourceMatch.matchAll([personQuery], EVERY_GRADE), () =>
-      batchResponse([{ response: { status: '200 OK' }, resource: firstPage }])
+    const outcome = await failureOf(
+      ResourceMatch.matchAll([query], EVERY_GRADE),
+      () => new Response('', { status: 503 })
     )
 
-    expect(outcome).toMatchObject({
-      _tag: 'DemographicSearchPageFull',
-      search: { resourceType: 'Patient', family: 'brown', birthDate: BORN },
-      pageSize: 1000,
-    })
+    expect(outcome).toMatchObject({ _tag: 'ServiceUnavailable' })
   })
 })
 
@@ -280,14 +358,14 @@ const logicalReference = (
 }
 
 const candidateRefs = (candidates: readonly ResourceMatch.Candidate[]): readonly string[] =>
-  candidates.map(({ resource, grade }) => `${literalReferenceOf(resource)} ${grade}`)
+  candidates.map(({ resource, grade, by }) => `${literalReferenceOf(resource)} ${grade} by ${by}`)
 
-// The in-memory server: identifier search and the person searches, as HFS answers them
+// The in-memory server: a type's _search, by identifier or every record, as HFS answers it
 
 interface RecordedRequest {
   readonly url: string
-  /** An identifier search's `identifier`, or a batch's entry URLs. */
-  readonly body: readonly string[]
+  /** The search's form parameters. */
+  readonly form: Readonly<Record<string, string>>
 }
 
 type Server = (request: { readonly url: string; readonly body: string }) => Response
@@ -314,54 +392,31 @@ const tokensOf = (value: string): readonly string[] => {
 const carriesAnyOf = (stored: Wire, tokens: readonly string[]): boolean =>
   (stored.identifier ?? []).some(({ system, value }) => tokens.includes(`${system}|${value}`))
 
-const familyStartsWith = (stored: Wire, family: string): boolean =>
-  (stored.name ?? []).some((name) => name.family?.toLowerCase().startsWith(family.toLowerCase()))
-
-const answersSearch = (stored: Wire, params: URLSearchParams): boolean => {
-  const family = params.get('family')
-  const birthdate = params.get('birthdate')
-  return (
-    (family === null || familyStartsWith(stored, family)) &&
-    (birthdate === null || stored.birthDate === birthdate)
-  )
-}
-
+/**
+ * A server holding `stored`: a search with `identifier` answers with the
+ * records carrying any of its tokens, one without with every record of the
+ * type, `pageSize` to a page (every match on one page by default), a `next`
+ * link carrying the offset as `_cursor`.
+ */
 const inMemoryServer =
-  (stored: readonly Wire[]): Server =>
+  (stored: readonly Wire[], { pageSize = Number.POSITIVE_INFINITY } = {}): Server =>
   ({ url, body }) => {
-    const identifierSearch = /^\/(\w+)\/_search$/u.exec(url)
-    if (identifierSearch !== null) {
-      const tokens = tokensOf(new URLSearchParams(body).get('identifier') ?? '')
-      return searchset(
-        stored.filter(
-          (resource) =>
-            resource.resourceType === identifierSearch[1] && carriesAnyOf(resource, tokens)
-        )
-      )
-    }
-    return batchResponse(
-      requestBundleOf(body).entry.map(({ request }) => {
-        const [resourceType, query] = request.url.split('?')
-        const params = new URLSearchParams(query)
-        return searchsetEntry(
-          stored.filter(
-            (resource) => resource.resourceType === resourceType && answersSearch(resource, params)
-          )
-        )
-      })
+    const [, resourceType = ''] = /^\/(\w+)\/_search$/u.exec(url) ?? []
+    const form = new URLSearchParams(body)
+    const identifier = form.get('identifier')
+    const matches = stored.filter(
+      (resource) =>
+        resource.resourceType === resourceType &&
+        (identifier === null || carriesAnyOf(resource, tokensOf(identifier)))
     )
+    const offset = Number(form.get('_cursor') ?? '0')
+    const end = offset + pageSize
+    return fhirJson({
+      ...searchsetOf(matches.slice(offset, end)),
+      link:
+        end < matches.length ? [{ relation: 'next', url: `${resourceType}?_cursor=${end}` }] : [],
+    })
   }
-
-interface RequestBundle {
-  readonly entry: readonly { readonly request: { readonly url: string } }[]
-}
-
-/** The request's body as the bundle it was sent as; the test sends nothing else to `/`. */
-const requestBundleOf = (raw: string): RequestBundle => {
-  // oxlint-disable-next-line typescript/no-unsafe-assignment -- the body this suite's own requests carry
-  const parsed: RequestBundle = JSON.parse(raw)
-  return parsed
-}
 
 const searchsetOf = (resources: readonly object[]): object => ({
   resourceType: 'Bundle',
@@ -376,14 +431,6 @@ const fhirJson = (body: object): Response =>
   })
 
 const searchset = (resources: readonly object[]): Response => fhirJson(searchsetOf(resources))
-
-const searchsetEntry = (resources: readonly object[]): object => ({
-  response: { status: '200 OK' },
-  resource: searchsetOf(resources),
-})
-
-const batchResponse = (entries: readonly object[]): Response =>
-  fhirJson({ resourceType: 'Bundle', type: 'batch-response', entry: entries })
 
 const TEST_ORIGIN = 'http://fhir-r4.test'
 
@@ -400,13 +447,7 @@ const clientLayer = (
             const body =
               request.body._tag === 'Uint8Array' ? new TextDecoder().decode(request.body.body) : ''
             const url = request.url.slice(TEST_ORIGIN.length)
-            records.push({
-              url,
-              body:
-                url === '/'
-                  ? requestBundleOf(body).entry.map((entry) => entry.request.url)
-                  : [new URLSearchParams(body).get('identifier') ?? ''],
-            })
+            records.push({ url, form: Object.fromEntries(new URLSearchParams(body)) })
             return Effect.succeed(HttpClientResponse.fromWeb(request, server({ url, body })))
           }),
           HttpClientRequest.prependUrl(TEST_ORIGIN)

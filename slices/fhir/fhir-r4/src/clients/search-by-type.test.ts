@@ -121,31 +121,29 @@ describe('searchByIdentifiers', () => {
 })
 
 describe('searchAllOfType', () => {
-  it('should ask for pages of the given size and stop at the page limit, saying pages were left unread', async () => {
-    // Arrange: every page continues to another
+  it('should ask for pages of the given size and read every one, following each next link', async () => {
+    // Arrange: three pages, each continuing to the next
     const pageSize = 2
 
     // Act
-    const { requests, result } = await runWith(
-      searchAllOfType('Patient', { pageSize, pageLimit: 2 }),
-      (form) => {
-        const pageToken = form['_cursor'] ?? '0'
-        return searchset([storedPatient(`p-${pageToken}`)], `${pageToken}-next`)
-      }
-    )
+    const { requests, result } = await runWith(searchAllOfType('Patient', { pageSize }), (form) => {
+      const pageToken = form['_cursor'] ?? '0'
+      return searchset(
+        [storedPatient(`p-${pageToken}`)],
+        pageToken === '0-next-next' ? null : `${pageToken}-next`
+      )
+    })
 
     // Assert
-    expect({ ids: result.matches.map(({ id }) => id), truncated: result.truncated }).toEqual({
-      ids: ['p-0', 'p-0-next'],
-      truncated: true,
-    })
+    expect(result.map(({ id }) => id)).toEqual(['p-0', 'p-0-next', 'p-0-next-next'])
     expect(requests.map(({ url, form }) => ({ url, form }))).toEqual([
       { url: `${TEST_ORIGIN}/Patient/_search`, form: { _count: '2' } },
       { url: `${TEST_ORIGIN}/Patient/_search`, form: { _count: '2', _cursor: '0-next' } },
+      { url: `${TEST_ORIGIN}/Patient/_search`, form: { _count: '2', _cursor: '0-next-next' } },
     ])
   })
 
-  it('should continue past the first page with the _cursor an HFS next link carries, and say the list is whole', async () => {
+  it('should continue past the first page with the _cursor an HFS next link carries', async () => {
     // Arrange: HFS repeats the search in its next link and adds an opaque,
     // percent-encoded `_cursor`
     const cursor = 'eyJwb3MiOjJ9+/='
@@ -153,7 +151,7 @@ describe('searchAllOfType', () => {
 
     // Act
     const { requests, result } = await runWith(
-      searchAllOfType('Patient', { pageSize: 2, pageLimit: 10 }),
+      searchAllOfType('Patient', { pageSize: 2 }),
       (form) =>
         form['_cursor'] === cursor
           ? searchset([storedPatient('p-3')], null)
@@ -161,10 +159,7 @@ describe('searchAllOfType', () => {
     )
 
     // Assert
-    expect({ ids: result.matches.map(({ id }) => id), truncated: result.truncated }).toEqual({
-      ids: ['p-1', 'p-2', 'p-3'],
-      truncated: false,
-    })
+    expect(result.map(({ id }) => id)).toEqual(['p-1', 'p-2', 'p-3'])
     expect(requests.map(({ form }) => form)).toEqual([
       { _count: '2' },
       { _count: '2', _cursor: cursor },
