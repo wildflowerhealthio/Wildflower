@@ -81,9 +81,14 @@ type BatchSubmitFailure = Effect.Effect.Error<
  * `Schema.Any` (see `http-api-definition/bundle.ts`). The entries' resources
  * stay unknown until `matchesIn` has dropped the `outcome` entries, whose
  * OperationOutcome is no stored resource; each match is then decoded by
- * {@link StoredResourceSchema}.
+ * {@link StoredResourceSchema}. A Bundle of any other `type` is no answer
+ * to a search, so it fails the decode.
  */
-const SearchsetSchema = Bundle.Schema(Schema.Unknown)
+const SearchsetSchema = Bundle.Schema(Schema.Unknown).pipe(
+  Schema.filter((bundle) => bundle.type === 'searchset', {
+    message: () => 'a search answers with a searchset Bundle',
+  })
+)
 
 /**
  * `search` as a batch entry's `request.url`: `<Type>?<query>`, the query its

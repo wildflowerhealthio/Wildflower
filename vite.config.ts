@@ -204,7 +204,7 @@ export default defineConfig({
       'import/namespace': 'off',
 
       // Configured rules
-      'eslint/no-underscore-dangle': ['error', { allow: ['_tag', '_count', '_pageToken'] }],
+      'eslint/no-underscore-dangle': ['error', { allow: ['_tag', '_count', '_cursor'] }],
       // Render props (`fallback={(error) => ...}`, `errorComponent={...}`) are
       // invoked by the receiving component, not mounted as component types, so
       // they don't remount on every render; only inline definitions used AS

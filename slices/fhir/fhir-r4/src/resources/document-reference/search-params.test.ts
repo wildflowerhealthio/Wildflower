@@ -10,7 +10,7 @@ describe('DocumentReferenceSearchParams', () => {
     // Arrange
     const query = {
       _count: '20',
-      _pageToken: 'opaque-server-token',
+      _cursor: 'opaque-server-token',
       _id: 'docref-42',
       identifier: 'urn:wildflower:web-trace|session-42',
       category: 'http://terminology.hl7.org/CodeSystem/document-category|clinical-note',
@@ -26,7 +26,7 @@ describe('DocumentReferenceSearchParams', () => {
     // literal kept verbatim.
     expect(decoded).toSchemaEqual(SearchParams, {
       _count: 20,
-      _pageToken: 'opaque-server-token',
+      _cursor: 'opaque-server-token',
       _id: 'docref-42',
       identifier: 'urn:wildflower:web-trace|session-42',
       category: 'http://terminology.hl7.org/CodeSystem/document-category|clinical-note',
@@ -161,7 +161,7 @@ const decodeQuery = (query: Record<string, string | undefined>): SearchParamsTyp
 const canonicalWireQueryArb: fc.Arbitrary<Record<string, string>> = fc.record(
   {
     _count: fc.integer({ min: 0, max: 1000 }).map(String),
-    _pageToken: fc.string(),
+    _cursor: fc.string(),
     _id: fc.string(),
     identifier: fc.string(),
     category: fc.string(),

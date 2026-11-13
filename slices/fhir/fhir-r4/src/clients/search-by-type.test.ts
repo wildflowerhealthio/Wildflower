@@ -9,7 +9,7 @@ import {
   type SearchableResourceType,
   searchByIdentifiers,
 } from './index.ts'
-import { IDENTIFIER_CHUNK_SIZE } from './search-by-type.ts'
+import { OR_VALUES_PER_SEARCH } from './search-by-type.ts'
 
 describe('searchByIdentifiers', () => {
   it('should send one POST <Type>/_search with the identifiers as one escaped token value and a full page', async () => {
@@ -39,10 +39,10 @@ describe('searchByIdentifiers', () => {
 
   it('should search the identifiers a chunk at a time, giving a resource two chunks match once', async () => {
     // Arrange: one identifier more than a chunk holds
-    const identifiers = Array.makeBy(IDENTIFIER_CHUNK_SIZE + 1, (index) =>
+    const identifiers = Array.makeBy(OR_VALUES_PER_SEARCH + 1, (index) =>
       qualified('https://shoppers.example/customer', `${index}`)
     )
-    const lastIdentifier = `https://shoppers.example/customer|${IDENTIFIER_CHUNK_SIZE}`
+    const lastIdentifier = `https://shoppers.example/customer|${OR_VALUES_PER_SEARCH}`
 
     // Act
     const { requests, result } = await runWith(
@@ -55,7 +55,7 @@ describe('searchByIdentifiers', () => {
 
     // Assert
     expect(requests.map(({ form }) => form['identifier']?.split(',').length)).toEqual([
-      IDENTIFIER_CHUNK_SIZE,
+      OR_VALUES_PER_SEARCH,
       1,
     ])
     expect(result.map(({ id }) => id)).toEqual(['p-1', 'p-both', 'p-2'])
@@ -73,15 +73,15 @@ describe('searchByIdentifiers', () => {
     // Act
     const { requests, result } = await runWith(
       searchByIdentifiers('Practitioner', identifiers),
-      (form) => pages.get(form['_pageToken']) ?? searchset([], null)
+      (form) => pages.get(form['_cursor']) ?? searchset([], null)
     )
 
     // Assert
     expect(result.map(({ id }) => id)).toEqual(['d-1', 'd-2', 'd-3'])
     expect(requests.map(({ form }) => form)).toEqual([
       { identifier: 'https://cpso.example/licence|A1234', _count: '1000' },
-      { identifier: 'https://cpso.example/licence|A1234', _count: '1000', _pageToken: 'page-2' },
-      { identifier: 'https://cpso.example/licence|A1234', _count: '1000', _pageToken: 'page-3' },
+      { identifier: 'https://cpso.example/licence|A1234', _count: '1000', _cursor: 'page-2' },
+      { identifier: 'https://cpso.example/licence|A1234', _count: '1000', _cursor: 'page-3' },
     ])
   })
 
@@ -121,27 +121,48 @@ describe('searchByIdentifiers', () => {
 })
 
 describe('searchAllOfType', () => {
-  it('should ask for pages of the given size and stop at the page limit, saying pages were left unread', async () => {
-    // Arrange: every page continues to another
+  it('should ask for pages of the given size and read every one, following each next link', async () => {
+    // Arrange: three pages, each continuing to the next
     const pageSize = 2
 
     // Act
+    const { requests, result } = await runWith(searchAllOfType('Patient', { pageSize }), (form) => {
+      const pageToken = form['_cursor'] ?? '0'
+      return searchset(
+        [storedPatient(`p-${pageToken}`)],
+        pageToken === '0-next-next' ? null : `${pageToken}-next`
+      )
+    })
+
+    // Assert
+    expect(result.map(({ id }) => id)).toEqual(['p-0', 'p-0-next', 'p-0-next-next'])
+    expect(requests.map(({ url, form }) => ({ url, form }))).toEqual([
+      { url: `${TEST_ORIGIN}/Patient/_search`, form: { _count: '2' } },
+      { url: `${TEST_ORIGIN}/Patient/_search`, form: { _count: '2', _cursor: '0-next' } },
+      { url: `${TEST_ORIGIN}/Patient/_search`, form: { _count: '2', _cursor: '0-next-next' } },
+    ])
+  })
+
+  it('should continue past the first page with the _cursor an HFS next link carries', async () => {
+    // Arrange: HFS repeats the search in its next link and adds an opaque,
+    // percent-encoded `_cursor`
+    const cursor = 'eyJwb3MiOjJ9+/='
+    const hfsNextLink = `${TEST_ORIGIN}/Patient?_count=2&_cursor=${encodeURIComponent(cursor)}`
+
+    // Act
     const { requests, result } = await runWith(
-      searchAllOfType('Patient', { pageSize, pageLimit: 2 }),
-      (form) => {
-        const pageToken = form['_pageToken'] ?? '0'
-        return searchset([storedPatient(`p-${pageToken}`)], `${pageToken}-next`)
-      }
+      searchAllOfType('Patient', { pageSize: 2 }),
+      (form) =>
+        form['_cursor'] === cursor
+          ? searchset([storedPatient('p-3')], null)
+          : searchsetLinkingTo([storedPatient('p-1'), storedPatient('p-2')], hfsNextLink)
     )
 
     // Assert
-    expect({ ids: result.matches.map(({ id }) => id), truncated: result.truncated }).toEqual({
-      ids: ['p-0', 'p-0-next'],
-      truncated: true,
-    })
-    expect(requests.map(({ url, form }) => ({ url, form }))).toEqual([
-      { url: `${TEST_ORIGIN}/Patient/_search`, form: { _count: '2' } },
-      { url: `${TEST_ORIGIN}/Patient/_search`, form: { _count: '2', _pageToken: '0-next' } },
+    expect(result.map(({ id }) => id)).toEqual(['p-1', 'p-2', 'p-3'])
+    expect(requests.map(({ form }) => form)).toEqual([
+      { _count: '2' },
+      { _count: '2', _cursor: cursor },
     ])
   })
 })
@@ -200,7 +221,7 @@ const searchsetOf = (entries: readonly object[], nextPageToken: string | null): 
       link:
         nextPageToken === null
           ? []
-          : [{ relation: 'next', url: `${TEST_ORIGIN}/X?_pageToken=${nextPageToken}` }],
+          : [{ relation: 'next', url: `${TEST_ORIGIN}/X?_cursor=${nextPageToken}` }],
     }),
     { status: 200, headers: { 'content-type': 'application/fhir+json' } }
   )
@@ -209,6 +230,18 @@ const searchset = (resources: readonly object[], nextPageToken: string | null): 
   searchsetOf(
     resources.map((resource) => ({ resource, search: { mode: 'match' } })),
     nextPageToken
+  )
+
+/** A searchset of `resources` whose `next` link is `nextUrl` exactly, as the server wrote it. */
+const searchsetLinkingTo = (resources: readonly object[], nextUrl: string): Response =>
+  new Response(
+    JSON.stringify({
+      resourceType: 'Bundle',
+      type: 'searchset',
+      entry: resources.map((resource) => ({ resource, search: { mode: 'match' } })),
+      link: [{ relation: 'next', url: nextUrl }],
+    }),
+    { status: 200, headers: { 'content-type': 'application/fhir+json' } }
   )
 
 const clientLayer = (

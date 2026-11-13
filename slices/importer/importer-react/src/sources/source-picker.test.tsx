@@ -241,8 +241,8 @@ describe('SourcePicker', () => {
     await waitFor(() => {
       expect(screen.getByRole('checkbox', { name: 'Select second.har' })).toBeDefined()
     })
-    expect(paramsOf(0)['_pageToken']).toBeUndefined()
-    expect(paramsOf(1)['_pageToken']).toBe('cursor-2')
+    expect(paramsOf(0)['_cursor']).toBeUndefined()
+    expect(paramsOf(1)['_cursor']).toBe('cursor-2')
   })
 
   it('should expose the drop zone as a labeled button and the file input as a named control', () => {
@@ -466,7 +466,7 @@ const searchset = (resources: readonly unknown[], nextCursor?: string): unknown 
       : [
           {
             relation: 'next',
-            url: `${SERVER_URL}/DocumentReference?category=har-archive&_pageToken=${nextCursor}`,
+            url: `${SERVER_URL}/DocumentReference?category=har-archive&_cursor=${nextCursor}`,
           },
         ],
 })
@@ -497,7 +497,7 @@ interface ArchivePageSpec {
 /**
  * Serves the source file search and the per-id fetch off one stateless routing rule:
  * a request with a `category` param is a search (answered by page, keyed by
- * `_pageToken` → page index), anything else is a GetById (answered by id). The
+ * `_cursor` → page index), anything else is a GetById (answered by id). The
  * runner carries the bearer token so the wire can be asserted.
  */
 const serveArchives = (config: {
@@ -513,7 +513,7 @@ const serveArchives = (config: {
       sentRequests.push(request)
       const params = Object.fromEntries(new URL(request.url).searchParams)
       if (params['category'] !== undefined) {
-        const page = config.pages[pageIndexOf(params['_pageToken'])]
+        const page = config.pages[pageIndexOf(params['_cursor'])]
         const wires = (page?.sourceFiles ?? []).map((one) => sourceFileWire(one))
         return Effect.succeed(
           HttpClientResponse.fromWeb(request, jsonResponse(searchset(wires, page?.nextCursor)))

@@ -65,12 +65,12 @@ const labeled = (resource: LinkableResource.WithId): Effect.Effect<StoredResourc
 /** The request for one page of a stored list: `pageToken` continues it, `None` asks for the first. */
 const pageRequest = (
   pageToken: Option.Option<string>
-): { readonly urlParams: { readonly _count: number; readonly _pageToken?: string } } => ({
+): { readonly urlParams: { readonly _count: number; readonly _cursor?: string } } => ({
   urlParams: {
     _count: STORED_PAGE_SIZE,
     ...Option.match(pageToken, {
       onNone: () => ({}),
-      onSome: (_pageToken) => ({ _pageToken }),
+      onSome: (_cursor) => ({ _cursor }),
     }),
   },
 })

@@ -440,7 +440,7 @@ describe('GoalSearchParams', () => {
     // Arrange
     const query = {
       _count: '20',
-      _pageToken: 'opaque-server-token',
+      _cursor: 'opaque-server-token',
       _id: 'goal-1',
       identifier: 'https://clinic.example/goal|g-7',
       'lifecycle-status': 'active',

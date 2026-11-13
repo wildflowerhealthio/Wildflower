@@ -425,7 +425,7 @@ describe('ProcedureSearchParams', () => {
     // Arrange
     const query = {
       _count: '20',
-      _pageToken: 'opaque-server-token',
+      _cursor: 'opaque-server-token',
       _id: 'workout-1',
       identifier: 'http://example.com/workouts|w-1',
       status: 'completed',

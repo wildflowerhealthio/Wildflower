@@ -264,7 +264,7 @@ describe('ServiceRequestSearchParams', () => {
     // Arrange
     const query = {
       _count: '20',
-      _pageToken: 'opaque-server-token',
+      _cursor: 'opaque-server-token',
       _id: 'sr-1',
       identifier: 'http://example.com/orders|sr-1',
       status: 'active',

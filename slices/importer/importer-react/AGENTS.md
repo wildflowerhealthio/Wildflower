@@ -495,7 +495,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   picker accepted whose bytes are malformed lands in the preview as its own
   unreadable row rather than a batch-wide error.
 - **`fhir-r4/clients`' `nextPageToken` reads a present-but-empty
-  `_pageToken=` as token-less.** `''` is not `null`, so TanStack Query would
+  `_cursor=` as token-less.** `''` is not `null`, so TanStack Query would
   take it for a real cursor and re-request page one forever.
 - **The list carries rows, not source files.** A source file's bytes are the whole
   file, potentially megabytes (a multi-MB HAR, a PDF); `SourceFileRow` holds

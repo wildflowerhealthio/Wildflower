@@ -178,3 +178,23 @@ describe('DateSearchParam', () => {
     )
   })
 })
+
+describe('DateSearchParam.AnyOf', () => {
+  const decodeAnyOf = Schema.decodeUnknownEither(DateSearchParam.AnyOf)
+  const encodeAnyOf = Schema.encodeSync(DateSearchParam.AnyOf)
+
+  it('should decode each comma-joined value and re-emit the list exactly as it arrived', () => {
+    // Act
+    const decoded = Either.getOrThrow(decodeAnyOf('1980-02-03,ge1990-05'))
+
+    // Assert
+    expect({
+      values: decoded.map(({ value }) => value),
+      wire: encodeAnyOf(decoded),
+    }).toEqual({ values: ['1980-02-03', '1990-05'], wire: '1980-02-03,ge1990-05' })
+  })
+
+  it('should reject a list with a value that is not a date', () => {
+    expect(Either.isLeft(decodeAnyOf('1980-02-03,yesterday'))).toBe(true)
+  })
+})

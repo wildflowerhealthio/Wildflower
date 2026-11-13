@@ -474,7 +474,7 @@ describe('ObservationSearchParams', () => {
     // Arrange
     const query = {
       _count: '20',
-      _pageToken: 'opaque-server-token',
+      _cursor: 'opaque-server-token',
       _id: 'obs-1',
       identifier: 'http://example.com/observations|o-1',
       status: 'final',

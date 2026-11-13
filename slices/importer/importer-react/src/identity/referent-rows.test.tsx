@@ -450,7 +450,7 @@ const serverHolding = ({
         entry: resources.map((resource) => ({ resource })),
         link:
           listContinues && identifier === undefined
-            ? [{ relation: 'next', url: `/Patient?_count=50&_pageToken=page-${++pagesServed}` }]
+            ? [{ relation: 'next', url: `/Patient?_count=50&_cursor=page-${++pagesServed}` }]
             : [],
       }),
       { headers: { 'content-type': 'application/json' } }

@@ -35,7 +35,7 @@ const Search = {
     Offset: 'fhir.search.offset',
     /** Whether a `where` filter was built from the search params. */
     HasWhere: 'fhir.search.has_where',
-    /** Whether the request carried an opaque `_pageToken` cursor. */
+    /** Whether the request carried an opaque `_cursor`. */
     HasPageToken: 'fhir.search.has_page_token',
     /** Client-requested `_count` (or the default) before paging is applied. */
     RequestedCount: 'fhir.search.requested_count',
