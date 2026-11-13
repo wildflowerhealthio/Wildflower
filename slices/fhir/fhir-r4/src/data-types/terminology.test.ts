@@ -4,7 +4,6 @@ import {
   CanadianCodingSystem,
   WILDFLOWER_CODE_SYSTEM_BASE,
   WILDFLOWER_EXTENSION_BASE,
-  WILDFLOWER_IDENTIFIER_SYSTEM_BASE,
   WildflowerCodeSystem,
   WildflowerExtension,
 } from './terminology.ts'
@@ -36,10 +35,6 @@ describe('terminology', () => {
     ]) {
       expect(new URL(url).href).toBe(url)
     }
-  })
-
-  it('should spell the identifier system base as stored identifiers carry it', () => {
-    expect(WILDFLOWER_IDENTIFIER_SYSTEM_BASE).toBe('https://wildflowerhealth.io/fhir/identifier')
   })
 
   it('should spell the training plan definition day code system as the lifting slice writes it', () => {

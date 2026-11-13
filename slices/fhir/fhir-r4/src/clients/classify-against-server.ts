@@ -14,15 +14,21 @@ import { diffJson, setAtPath, type FieldDiff } from './field-diff.ts'
 import { statusOk } from './persist-batch-bundle.ts'
 
 /**
- * Pre-fetching the FHIR store to say, per resource in a would-be write, whether
- * the id is `new` (absent), `unchanged` (present + wire-equal after dropping
- * server-managed fields), or `changed` (present + differs) — so a preview can
- * badge each row and a caller (the importer's confirmed batch) can opt-out
- * `unchanged` resources by default rather than blind-overwriting them. A
- * `changed` result also carries the leaf-level {@link FieldDiff}s (server value
- * → incoming value) so the badge can show *what* differs, and the server's
- * normalized copy so a reviewer can reset any leaf back to it
- * ({@link resetFieldToServer}).
+ * Comparing a resource in a would-be write with the stored copy it matches,
+ * to say whether it is `new` (no stored copy), `unchanged` (wire-equal once
+ * the `id` and server-managed fields are dropped), or `changed` (differs) —
+ * so a preview can badge each row and a caller (the importer's confirmed
+ * batch) can opt-out `unchanged` resources by default rather than
+ * blind-overwriting them. A `changed` result also carries the leaf-level
+ * {@link FieldDiff}s (server value → incoming value) so the badge can show
+ * *what* differs, and the server's normalized copy so a reviewer can reset any
+ * leaf back to it ({@link resetFieldToServer}).
+ *
+ * @remarks
+ * The stored copy is the caller's to find: a matched copy
+ * ({@link compareWithStoredCopy}, the copy `ResourceMatch` found by
+ * identifier, whatever its id), or the copy under the resource's own id
+ * ({@link classifyAgainstServer}, one `POST /` batch of GETs).
  *
  * @packageDocumentation
  */
@@ -31,13 +37,13 @@ import { statusOk } from './persist-batch-bundle.ts'
  * One resource's status relative to the server.
  *
  * @remarks
- * `new` — the server does not hold this id (`404`), so writing creates a
- *   fresh resource. `unchanged` — the server holds this id and its stored
- *   wire shape matches the would-be write, minus fields the server manages
- *   ({@link SERVER_MANAGED_META_FIELDS}). `changed` — the server holds this
- *   id but its stored wire shape differs. A caller (the importer's preview)
- *   defaults `unchanged` rows to excluded so a re-import does not silently
- *   overwrite an equivalent stored resource.
+ * `new` — the server holds no stored copy of it, so writing creates a fresh
+ *   resource. `unchanged` — the stored copy's wire shape matches the
+ *   would-be write, minus its `id` and the fields the server manages
+ *   ({@link SERVER_MANAGED_META_FIELDS}). `changed` — the stored copy's wire
+ *   shape differs. A caller (the importer's preview) defaults `unchanged`
+ *   rows to excluded so a re-import does not silently overwrite an
+ *   equivalent stored resource.
  */
 type DiffStatus = 'new' | 'unchanged' | 'changed'
 
@@ -102,20 +108,28 @@ const withoutServerManagedMeta = (encoded: unknown): unknown => {
   return { ...encoded, meta: filtered }
 }
 
+/** A wire-form resource without its `id`: anything else is returned as it is. */
+const withoutId = (encoded: unknown): unknown => {
+  if (!isRecord(encoded)) return encoded
+  const { id: _id, ...rest } = encoded
+  return rest
+}
+
 const encodeResource = Schema.encodeUnknownEither(FhirResourceSchema)
 const decodeResource = Schema.decodeUnknownEither(FhirResourceSchema)
 
 /**
- * Encode a resource through its schema and drop the server-managed meta
- * fields — the wire object the content compare and the field diff both work
- * over. `Option.none` on an encode failure: a resource that cannot be encoded
- * is treated as `changed` (safer than `unchanged`, which would silently skip
- * it).
+ * Encode a resource through its schema and drop its `id` and the
+ * server-managed meta fields — the wire object the content compare and the
+ * field diff both work over, so a resource and a matched copy stored under
+ * another id compare by content alone. `Option.none` on an encode failure: a
+ * resource that cannot be encoded is treated as `changed` (safer than
+ * `unchanged`, which would silently skip it).
  */
 const normalizedEncode = (resource: unknown): Option.Option<unknown> => {
   const encoded = encodeResource(resource)
   if (encoded._tag !== 'Right') return Option.none()
-  return Option.some(withoutServerManagedMeta(encoded.right))
+  return Option.some(withoutId(withoutServerManagedMeta(encoded.right)))
 }
 
 /**
@@ -154,10 +168,48 @@ const asFhirResource = (serverCopy: unknown): Option.Option<FhirResource> => {
   return decoded._tag === 'Right' ? Option.some(decoded.right) : Option.none()
 }
 
+/** No stored copy: writing creates a fresh resource. */
+const AS_NEW: ServerComparison = { status: 'new', fields: [] }
+
 /**
- * Classify each resource against the server's current copy: `new` (absent),
- * `unchanged` (present + wire-equal after dropping server-managed meta), or
- * `changed` (present + differs).
+ * A `changed` that could not be opened up to leaf detail — no field list, no
+ * server copy to reset against.
+ */
+const OPAQUE_CHANGE: ServerComparison = { status: 'changed', fields: [] }
+
+/**
+ * `resource` compared with `storedCopy`, the stored copy it matches, by
+ * content: `unchanged` when the two are wire-equal once each drops its `id`
+ * and the server-managed meta ({@link normalizedEncode}), else `changed` with
+ * the leaves that differ. Either failing to encode is an opaque `changed`.
+ *
+ * @param resource - The resource a caller is about to write
+ * @param storedCopy - The stored copy it matches, under its own id or another
+ * @returns The comparison, carrying the stored copy as normalized
+ */
+const compareWithStoredCopy = (
+  resource: FhirResource,
+  storedCopy: FhirResource
+): ServerComparison => {
+  const incoming = normalizedEncode(resource)
+  const existing = normalizedEncode(storedCopy)
+  if (incoming._tag !== 'Some' || existing._tag !== 'Some') return OPAQUE_CHANGE
+  // Carry the server copy even when nothing differs now, so an edit to this
+  // resource can be diffed against it (see ServerComparison).
+  return JSON.stringify(incoming.value) === JSON.stringify(existing.value)
+    ? { status: 'unchanged', fields: [], server: existing.value }
+    : {
+        status: 'changed',
+        fields: diffJson(existing.value, incoming.value),
+        server: existing.value,
+      }
+}
+
+/**
+ * Classify each resource against the server's copy under its own id: `new`
+ * (absent), `unchanged` (present + wire-equal after dropping server-managed
+ * meta), or `changed` (present + differs) — {@link compareWithStoredCopy}
+ * over a by-id read, for a resource no match can find a copy of.
  *
  * @param resources - The resources a caller (the importer's preview) is about
  *   to write, each under the id it would be written to
@@ -184,62 +236,34 @@ const classifyAgainstServer = (
     )
 
     const classifications = new Map<string, ServerComparison>()
-    const asNew: ServerComparison = { status: 'new', fields: [] }
-    // A `changed` we could not open up to leaf detail — no field list, no
-    // server copy to reset against. Distinct object per use is unnecessary; it
-    // carries no mutable state.
-    const opaqueChange: ServerComparison = { status: 'changed', fields: [] }
 
     if (submission._tag === 'failed') {
-      for (const resource of resources) classifications.set(literalReferenceOf(resource), asNew)
+      for (const resource of resources) classifications.set(literalReferenceOf(resource), AS_NEW)
       return classifications
     }
 
     for (const [resource, entry] of Arr.zip(resources, submission.response.entry ?? [])) {
       const key = literalReferenceOf(resource)
       const status = entry.response?.status
-      if (status === undefined) {
-        classifications.set(key, asNew)
+      if (status === undefined || !statusOk(status)) {
+        // No status, `404 Not Found` and any other non-2xx (`410 Gone`
+        // included) — the server does not present a stored copy at this id,
+        // so a caller's write will create fresh.
+        classifications.set(key, AS_NEW)
         continue
       }
-      if (!statusOk(status)) {
-        // `404 Not Found` and any other non-2xx (`410 Gone` included) — the
-        // server does not present a stored copy at this id, so a caller's
-        // write will create fresh.
-        classifications.set(key, asNew)
-        continue
-      }
-      const serverCopy: unknown = entry.resource
-      if (serverCopy === null || serverCopy === undefined) {
-        // 2xx with no entry.resource is a shape a spec-compliant server won't
-        // send for a GET, but a real server can (an OperationOutcome, a
-        // stripped body). Treat it as `changed` so we don't silently
-        // overwrite an equivalent server copy we couldn't verify.
-        classifications.set(key, opaqueChange)
-        continue
-      }
-      const decoded = asFhirResource(serverCopy)
-      if (decoded._tag !== 'Some') {
-        classifications.set(key, opaqueChange)
-        continue
-      }
-      const incoming = normalizedEncode(resource)
-      const existing = normalizedEncode(decoded.value)
-      if (incoming._tag !== 'Some' || existing._tag !== 'Some') {
-        classifications.set(key, opaqueChange)
-        continue
-      }
-      if (JSON.stringify(incoming.value) === JSON.stringify(existing.value)) {
-        // Carry the server copy even though nothing differs now, so an edit
-        // to this resource can be diffed against it (see ServerComparison).
-        classifications.set(key, { status: 'unchanged', fields: [], server: existing.value })
-        continue
-      }
-      classifications.set(key, {
-        status: 'changed',
-        fields: diffJson(existing.value, incoming.value),
-        server: existing.value,
-      })
+      // 2xx with no entry.resource is a shape a spec-compliant server won't
+      // send for a GET, but a real server can (an OperationOutcome, a
+      // stripped body); like a copy that would not decode, it is `changed`
+      // so we don't silently overwrite an equivalent server copy we couldn't
+      // verify.
+      classifications.set(
+        key,
+        Option.match(asFhirResource(entry.resource), {
+          onNone: () => OPAQUE_CHANGE,
+          onSome: (storedCopy) => compareWithStoredCopy(resource, storedCopy),
+        })
+      )
     }
 
     // Any resources missing a matched response entry (a truncated response)
@@ -247,7 +271,7 @@ const classifyAgainstServer = (
     // report itself as a persist failure.
     for (const resource of resources) {
       const key = literalReferenceOf(resource)
-      if (!classifications.has(key)) classifications.set(key, asNew)
+      if (!classifications.has(key)) classifications.set(key, AS_NEW)
     }
 
     return classifications
@@ -261,6 +285,7 @@ const classifyAgainstServer = (
 
 export {
   classifyAgainstServer,
+  compareWithStoredCopy,
   normalizedEncode,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,

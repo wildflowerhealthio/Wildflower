@@ -1,7 +1,7 @@
 /**
- * The reviewer's own link choices for a picked batch, on top of the searched
- * defaults, their choices for single mentions, and the referents the default
- * search reads.
+ * The reviewer's own link choices for a picked batch, on top of the matched
+ * defaults, their choices for single mentions, and the first decode the
+ * match reads.
  *
  * @remarks
  * The choices are keyed by `Referent.key` and survive a settings re-decode: a
@@ -20,26 +20,27 @@ import { useCallback, useState } from 'react'
 import {
   type LinkChoice,
   MentionLinkChoiceSet,
-  type Referent,
   ReferentLinkChoiceSet,
 } from '@wildflowerhealthio/importer-fundamentals'
+
+import type { FirstDecode } from './use-import-match.ts'
 
 /** What the hook holds per picked batch, reset when the batch id changes. */
 interface PerBatch {
   readonly batchId: number
-  /** The referents of the batch's first decode: the ones the default search reads. */
-  readonly searched: readonly Referent.Type[]
+  /** The batch's first decode: what the match reads. */
+  readonly matched: FirstDecode
   readonly chosen: ReferentLinkChoiceSet.Type
   readonly byMention: MentionLinkChoiceSet.Type
 }
 
-/** No referents to search for, held once so the effects keyed on it do not re-run. */
-const NO_REFERENTS: readonly Referent.Type[] = []
+/** Nothing to match, held once so the effects keyed on it do not re-run. */
+const NOTHING_DECODED: FirstDecode = { referents: [], records: [] }
 
-/** The reviewer's choices for the batch in hand, the referents its search reads, and the actions that set a choice. */
+/** The reviewer's choices for the batch in hand, the first decode its match reads, and the actions that set a choice. */
 interface ReviewerLinkChoices {
-  /** The referents of the batch's first decode while a batch is in hand, else none. */
-  readonly searched: readonly Referent.Type[]
+  /** The batch's first decode while a batch is in hand, else nothing. */
+  readonly matched: FirstDecode
   /** The reviewer's own choices, by `Referent.key`. */
   readonly chosen: ReferentLinkChoiceSet.Type
   /** The reviewer's link choice set by mention, by `MentionLinkChoiceSet.key`. */
@@ -60,32 +61,32 @@ interface ReviewerLinkChoices {
  *
  * @param batchId - The picked batch's id: stable across a settings re-decode,
  *   new for a fresh pick
- * @param referents - The batch's referents, undefined while no batch is in
- *   hand or the batch cannot be resolved
- * @returns The searched referents, the reviewer's choices, `choose` and
+ * @param decoded - The batch's referents and records, undefined while no
+ *   batch is in hand or the batch cannot be resolved
+ * @returns The matched first decode, the reviewer's choices, `choose` and
  *   `chooseMention`
  */
 const useReviewerLinkChoices = (
   batchId: number,
-  referents: readonly Referent.Type[] | undefined
+  decoded: FirstDecode | undefined
 ): ReviewerLinkChoices => {
   // Captured on the batch's first decode and adjusted during render off the
   // changed batch id (the "derive from a changed prop" pattern), so a
-  // re-decode neither re-searches nor drops the reviewer's choices.
+  // re-decode neither re-matches nor drops the reviewer's choices.
   const [perBatch, setPerBatch] = useState<PerBatch | undefined>(undefined)
   let current = perBatch
-  if (referents !== undefined && current?.batchId !== batchId) {
+  if (decoded !== undefined && current?.batchId !== batchId) {
     current = {
       batchId,
-      searched: referents,
+      matched: decoded,
       chosen: ReferentLinkChoiceSet.empty,
       byMention: MentionLinkChoiceSet.empty,
     }
     setPerBatch(current)
   }
   // Only while a batch is in hand: after a start-over or during the next
-  // pick's read, the previous batch's referents must not be searched again.
-  const searched = referents === undefined ? NO_REFERENTS : (current?.searched ?? NO_REFERENTS)
+  // pick's read, the previous batch's records must not be matched again.
+  const matched = decoded === undefined ? NOTHING_DECODED : (current?.matched ?? NOTHING_DECODED)
 
   const choose = useCallback((referentKey: LogicalReference.Key, choice: LinkChoice.Type): void => {
     setPerBatch((perBatchBefore) =>
@@ -115,7 +116,7 @@ const useReviewerLinkChoices = (
   )
 
   return {
-    searched,
+    matched,
     chosen: current?.chosen ?? ReferentLinkChoiceSet.empty,
     byMention: current?.byMention ?? MentionLinkChoiceSet.empty,
     choose,

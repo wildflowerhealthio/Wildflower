@@ -34,8 +34,9 @@ import { useLinkChoiceReview } from './use-link-choice-review.ts'
 /**
  * The referent rows over the identity map hook, on a hand-built batch and a
  * stub server whose `Patient?identifier=` search answers with the stored
- * Patients given and whose paged list answers with the ones listed, so a
- * default, a pick and the resolved batch read back.
+ * Patients given, and whose paged list and name-stage searches
+ * (`Patient?birthdate=`, `Practitioner?name=`) answer with the ones listed,
+ * so a default, a pick and the resolved batch read back.
  */
 
 vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
@@ -83,6 +84,20 @@ describe('ReferentRows', () => {
     expect(select.value).toBe('stored:Patient/s-1')
     expect(screen.queryByText(/different/)).toBeNull()
     expect(subjectOfRequest()).toBeNull()
+  })
+
+  it('should pre-select the one stored Patient her name and birth date match, found by no identifier', async () => {
+    await renderRows(BATCH, { listed: [patientWire('s-1', SERVER)] })
+
+    const select = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    expect(select.value).toBe('stored:Patient/s-1')
+  })
+
+  it('should pick no default when two stored Patients match her name and birth date', async () => {
+    await renderRows(BATCH, { listed: [patientWire('s-1', SERVER), patientWire('s-2', SERVER)] })
+
+    const select = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    expect(select.selectedOptions[0]?.textContent).toBe(NEW_LABEL)
   })
 
   it('should offer the server’s stored people under their own group, labelled by name', async () => {
@@ -197,7 +212,9 @@ describe('ReferentRows', () => {
   })
 
   it('should resolve the batch on a changed select', async () => {
-    await renderRows(BATCH, { listed: [practitionerWire('42', 'Dr. A Smith')] })
+    // A provider the match cannot grade against the prescriber: a family name
+    // and no given name to compare, so it is offered, not chosen.
+    await renderRows(BATCH, { listed: [practitionerWire('42', 'Dr. Smith')] })
 
     // Tyra's own record and the prescriber's are the import's new records.
     expect(screen.getByRole('status').textContent).toBe(
@@ -220,7 +237,12 @@ describe('ReferentRows', () => {
   })
 
   it('should say when the server’s list could not be read, and still offer the search’s hits', async () => {
-    await renderRows(BATCH, { found: [patientWire('s-1', SERVER)], listFails: true })
+    // The list fails; both referents are found by identifier, so the match
+    // sends no name-stage search either way.
+    await renderRows(BATCH, {
+      found: [patientWire('s-1', SERVER), practitionerWire('43', 'Dr. A Smith')],
+      listFails: true,
+    })
 
     await screen.findByText(STORED_LIST_ERROR_MESSAGE)
     const select = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
@@ -404,26 +426,96 @@ const BATCH = batchOf([
 /**
  * What the stub server holds: `found` is what the searches for Tyra (`p-1`)
  * and for the prescriber find, `accountFound` what the account's (`c-9`)
- * finds, `listed` the paged list, which fails outright when `listFails`.
+ * finds, `listed` the paged list, which fails outright when `listFails`, and
+ * what the name stage's `birthdate` and `name` searches pick from.
  */
 interface Holdings {
   readonly found?: readonly object[]
   readonly accountFound?: readonly object[]
   readonly listed?: readonly object[]
   readonly listFails?: boolean
-  /** Whether every page of the list continues to another, so the page limit cuts it off. */
+  /** Whether every page of the list names a next one, so the stored list's page limit cuts it off. */
   readonly listContinues?: boolean
 }
 
 /** The `resourceType` a wire resource states. */
 const resourceTypeOf = Schema.decodeUnknownSync(Schema.Struct({ resourceType: Schema.String }))
 
+/** Just enough of a wire resource to search it by birth date and name. */
+const SearchedWire = Schema.Struct({
+  birthDate: Schema.optional(Schema.String),
+  name: Schema.optionalWith(
+    Schema.Array(
+      Schema.Struct({
+        family: Schema.optional(Schema.String),
+        given: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+        text: Schema.optional(Schema.String),
+      })
+    ),
+    { default: () => [] }
+  ),
+})
+
+/** `text` as HFS indexes a name part: lower-cased, without diacritics. */
+const folded = (text: string): string =>
+  text.normalize('NFD').replaceAll(/\p{M}/gu, '').toLowerCase()
+
+/** Whether `resource` is born on any of the comma-joined `birthdate` dates, as HFS compares them. */
+const bornOnAnyOf = (resource: object, birthdate: string): boolean => {
+  const { birthDate } = Schema.decodeUnknownSync(SearchedWire)(resource)
+  return birthDate !== undefined && birthdate.split(',').includes(birthDate)
+}
+
+/**
+ * Whether any of the comma-joined `name` values starts a name part of
+ * `resource` as HFS indexes them: its family, each given name and its text,
+ * each a value of its own, case and accents folded.
+ */
+const nameStartsWithAnyOf = (resource: object, name: string): boolean =>
+  Schema.decodeUnknownSync(SearchedWire)(resource)
+    .name.flatMap(({ family, given, text }) => [family, ...given, text])
+    .filter((part) => part !== undefined)
+    .some((part) => name.split(',').some((value) => folded(part).startsWith(folded(value))))
+
+/** Just enough of a wire resource to add an identifier to it. */
+const IdentifiedWire = Schema.Struct({
+  resourceType: Schema.String,
+  identifier: Schema.optionalWith(
+    Schema.Array(Schema.Struct({ system: Schema.String, value: Schema.String })),
+    { default: () => [] }
+  ),
+})
+
+/**
+ * `resources`, each also carrying the identifier `byType` gives its type,
+ * unless it carries it already.
+ */
+const carrying = (
+  resources: readonly object[],
+  byType: Readonly<Record<string, { readonly system: string; readonly value: string }>>
+): readonly object[] =>
+  resources.map((resource) => {
+    const { resourceType, identifier } = Schema.decodeUnknownSync(IdentifiedWire)(resource)
+    const added = byType[resourceType]
+    return added === undefined ||
+      identifier.some(({ system, value }) => system === added.system && value === added.value)
+      ? resource
+      : { ...resource, identifier: [...identifier, added] }
+  })
+
 /**
  * A server whose searches answer with the holdings of the searched type: the
  * searches for Tyra and the prescriber with `found`, the account's with
- * `accountFound`, every other identifier search with nothing, and the paged
- * list with `listed`, or a 503 when `listFails`.
+ * `accountFound`, every other identifier search with nothing, a `birthdate`
+ * or `name` search with the `listed` records it finds as HFS would, and the
+ * paged list with `listed`, or a 503 when `listFails`.
  */
+/** Whether a search with `params` is the paged list: it names no identifier, birth date or name. */
+const isListing = (params: Readonly<Record<string, string>>): boolean =>
+  params['identifier'] === undefined &&
+  params['birthdate'] === undefined &&
+  params['name'] === undefined
+
 const serverHolding = ({
   found = [],
   accountFound = [],
@@ -431,46 +523,68 @@ const serverHolding = ({
   listFails = false,
   listContinues = false,
 }: Holdings): RunAuthed => {
-  /** What a search with `identifier` finds. */
-  const heldFor = (identifier: string | undefined): readonly object[] => {
+  /**
+   * What a search with `params` finds: by `identifier`, each record carrying
+   * the identifier it was found by, as a stored record a search finds does;
+   * by `birthdate` or `name`, the listed records it finds; by neither, the
+   * list.
+   */
+  const heldFor = (params: Readonly<Record<string, string>>): readonly object[] => {
+    const { identifier, birthdate, name } = params
+    if (birthdate !== undefined)
+      return listed.filter((resource) => bornOnAnyOf(resource, birthdate))
+    if (name !== undefined) return listed.filter((resource) => nameStartsWithAnyOf(resource, name))
     if (identifier === undefined) return listed
-    if (identifier.includes(`${CUSTOMER}|c-9`)) return accountFound
+    if (identifier.includes(`${CUSTOMER}|c-9`)) {
+      return carrying(accountFound, { Patient: { system: CUSTOMER, value: 'c-9' } })
+    }
     return identifier.includes(`${SOURCE}|p-1`) ||
       identifier.includes(`${PRACTITIONER_NAME}|Dr. A Smith`)
-      ? found
+      ? carrying(found, {
+          Patient: { system: SOURCE, value: 'p-1' },
+          Practitioner: { system: PRACTITIONER_NAME, value: 'Dr. A Smith' },
+        })
       : []
   }
-  // Each page of a list that continues names a fresh next page, so the page limit is what ends it.
-  let pagesServed = 0
-  const searchset = (resources: readonly object[], identifier: string | undefined): Response =>
-    new Response(
+  // Each page of a list that continues names the next page.
+  const searchset = (
+    resources: readonly object[],
+    params: Readonly<Record<string, string>>
+  ): Response => {
+    const page = Number(params['_cursor'] ?? '0')
+    return new Response(
       JSON.stringify({
         resourceType: 'Bundle',
         type: 'searchset',
         entry: resources.map((resource) => ({ resource })),
         link:
-          listContinues && identifier === undefined
-            ? [{ relation: 'next', url: `/Patient?_count=50&_cursor=page-${++pagesServed}` }]
+          listContinues && isListing(params)
+            ? [{ relation: 'next', url: `/Patient?_count=50&_cursor=${page + 1}` }]
             : [],
       }),
       { headers: { 'content-type': 'application/json' } }
     )
+  }
   const httpLayer = Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) => {
-      const params = Object.fromEntries(request.urlParams)
-      if (listFails && params['identifier'] === undefined) {
+      // The typed client's searches are `POST <Type>/_search`, their parameters a form body.
+      const body =
+        request.body._tag === 'Uint8Array' ? new TextDecoder().decode(request.body.body) : ''
+      const params: Readonly<Record<string, string>> = {
+        ...Object.fromEntries(request.urlParams),
+        ...Object.fromEntries(new URLSearchParams(body)),
+      }
+      if (listFails && isListing(params)) {
         return Effect.succeed(
           HttpClientResponse.fromWeb(request, new Response('', { status: 503 }))
         )
       }
-      const searchedType = request.url.split('/').at(-1)
-      const hits = heldFor(params['identifier']).filter(
+      const searchedType = request.url.split('/').at(-2)
+      const hits = heldFor(params).filter(
         (resource) => resourceTypeOf(resource).resourceType === searchedType
       )
-      return Effect.succeed(
-        HttpClientResponse.fromWeb(request, searchset(hits, params['identifier']))
-      )
+      return Effect.succeed(HttpClientResponse.fromWeb(request, searchset(hits, params)))
     })
   )
   return <A, E>(

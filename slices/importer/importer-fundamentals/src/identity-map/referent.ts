@@ -5,13 +5,12 @@
  * @remarks
  * A file has many mentions and the identity map has one referent per
  * identity, which is what the reviewer makes a `LinkChoice` for. A referent
- * answers to every identifier it brings, its record's own and the one its
- * demographics derive, so a mention by one of them that no other referent
- * answers to is that referent. Every referent has a record: a reference to a
- * record the import never saw implies that record at decode
- * (`DecodedFileSet.adopt`). Today a referent is a patient or a provider; the
- * model does not say so, and a lab requisition or a location fits it the same
- * way.
+ * answers to every identifier its record brings, so a mention by one of them
+ * that no other referent answers to is that referent. Every referent has a
+ * record: a reference to a record the import never saw implies that record
+ * at decode (`DecodedFileSet.adopt`). Today a referent is a patient or a
+ * provider; the model does not say so, and a lab requisition or a location
+ * fits it the same way.
  *
  * @packageDocumentation
  */
@@ -30,13 +29,8 @@ import * as LinkableResource from './linkable-resource.ts'
  */
 interface Type {
   readonly logicalReference: LinkableLogicalReference.Type
-  /**
-   * Every identifier a search for this referent tries: the record's own,
-   * then the one its demographics derive, when they allow one.
-   */
+  /** Every qualified identifier the record carries, once each: what the referent answers to. */
   readonly identifiers: readonly IdentifierAndReference.IdentifierType[]
-  /** The identifier the record's demographics derive, when they allow one: the last of `identifiers`. */
-  readonly derivedIdentifier: Option.Option<IdentifierAndReference.IdentifierType>
   readonly resource: LinkableResource.WithId
   /** The review key of the record's row. */
   readonly reviewKey: string
@@ -63,46 +57,17 @@ const key = (referent: Type): LogicalReference.Key =>
   LogicalReference.key(referent.logicalReference)
 
 /**
- * The logical references `referent`'s own identifiers make, its key's first:
- * the ones a source gave it, not one demographics derive
- * (`LinkableResource.isDerivedIdentifier`), which a resolved resource carries
- * too.
+ * Every logical reference `referent` answers to: one per qualified
+ * identifier its record carries, its key's first.
  */
-const ownLogicalReferencesOf = ({
+const logicalReferencesOf = ({
   logicalReference,
   resource,
 }: Type): readonly LinkableLogicalReference.Type[] =>
-  pipe(
-    resource.identifier,
-    Array.filter((identifier) => !LinkableResource.isDerivedIdentifier(identifier)),
-    Array.filterMap((identifier) =>
-      LogicalReference.tryFromIdentifier(logicalReference.resourceType, identifier)
-    )
-  )
-
-/**
- * The logical reference `referent`'s demographics derive, when they allow one
- * (`LinkableResource.maybeDerivedIdentifier`).
- */
-const maybeDerivedLogicalReferenceOf = ({
-  logicalReference,
-  derivedIdentifier,
-}: Type): Option.Option<LinkableLogicalReference.Type> =>
-  Option.flatMap(derivedIdentifier, (identifier) =>
-    LogicalReference.tryFromIdentifier(logicalReference.resourceType, identifier)
-  )
-
-/**
- * Every logical reference `referent` answers to: its own
- * ({@link ownLogicalReferencesOf}), then the derived one
- * ({@link maybeDerivedLogicalReferenceOf}), once each.
- */
-const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.Type[] =>
   Array.dedupeWith(
-    [
-      ...ownLogicalReferencesOf(referent),
-      ...Option.toArray(maybeDerivedLogicalReferenceOf(referent)),
-    ],
+    Array.filterMap(resource.identifier, (identifier) =>
+      LogicalReference.tryFromIdentifier(logicalReference.resourceType, identifier)
+    ),
     LogicalReference.equivalence
   )
 
@@ -121,23 +86,20 @@ const tryFromDecodedResource = (row: ReviewRow.Type): Effect.Effect<Option.Optio
       }))
     ),
     Effect.transposeMapOption(({ resource, logicalReference }) =>
-      Effect.all({
-        derivedIdentifier: LinkableResource.maybeDerivedIdentifier(resource),
-        label: LinkableResource.labelOf(resource, logicalReference.identifier[0].value),
-      }).pipe(
-        Effect.map(({ derivedIdentifier, label }): Type => ({
+      Effect.map(
+        LinkableResource.labelOf(resource, logicalReference.identifier[0].value),
+        (label): Type => ({
           logicalReference,
           identifiers: pipe(
-            [...resource.identifier, ...Option.toArray(derivedIdentifier)],
+            resource.identifier,
             Array.filter(IdentifierAndReference.isQualifiedIdentifier),
             Array.dedupeWith(IdentifierAndReference.identifierEquivalence)
           ),
-          derivedIdentifier,
           resource,
           reviewKey: row.reviewKey,
           isImplied: row.isImplied,
           label,
-        }))
+        })
       )
     )
   )
@@ -193,13 +155,5 @@ const discover = (
     )
   })
 
-export {
-  byKey,
-  discover,
-  DuplicateReferent,
-  key,
-  logicalReferencesOf,
-  maybeDerivedLogicalReferenceOf,
-  ownLogicalReferencesOf,
-}
+export { byKey, discover, DuplicateReferent, key, logicalReferencesOf }
 export type { Type }

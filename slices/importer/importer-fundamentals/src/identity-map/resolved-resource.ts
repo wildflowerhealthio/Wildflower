@@ -58,8 +58,8 @@ interface Type {
  *
  * @remarks
  * On a re-import a decoded resource and its stored copy share a literal
- * reference: the referent's own search finds the copy under the decoded id
- * (`ReferentSearch.defaultChoice` then updates it with the decode), while a
+ * reference: the referent's own match finds the copy under the decoded id
+ * (`ReferentMatch.defaultChoice` then updates it with the decode), while a
  * mention the copy answers to links to it as stored. The decode is the newer,
  * so it is the one written. Should two referents carry different stored
  * copies of one resource, the last one's is written.
@@ -103,8 +103,7 @@ const ownerReferentOf = (
  * batch writes where they were decoded.
  *
  * @remarks
- * The copy written ({@link writtenLinkOf}) assumes, once, its own derived
- * identifier (so a name-and-birth-date match finds it next time), then the
+ * The copy written ({@link writtenLinkOf}) assumes, once each, the
  * identifiers of every other copy of the resource the links carry: a stored
  * copy another referent links to, and the stored copy a re-import's decode updates
  * (`LinkTarget.Decoded`'s `storedCopy`), so what the copy assumed before is
@@ -118,11 +117,8 @@ const make = (
 ): Effect.Effect<Type> => {
   const writtenLink = writtenLinkOf(linkedResources)
   const resource = writtenLink.target.resource
-  return Effect.all({
-    derivedIdentifier: LinkableResource.maybeDerivedIdentifier(resource),
-    label: LinkableResource.labelOf(resource, resolvedLiteralReference),
-  }).pipe(
-    Effect.map(({ derivedIdentifier, label }) => {
+  return LinkableResource.labelOf(resource, resolvedLiteralReference).pipe(
+    Effect.map((label) => {
       const otherCopies = [
         ...linkedResources.flatMap(({ target }) =>
           target.resource === resource ? [] : [target.resource]
@@ -130,7 +126,6 @@ const make = (
         ...storedCopiesUpdatedBy(linkedResources),
       ]
       const identifiersToAssume = [
-        ...Option.toArray(derivedIdentifier),
         ...otherCopies.flatMap((copy) => copy.identifier),
         ...linkedResources.flatMap(({ referent }) => referent.identifiers),
       ]

@@ -136,7 +136,11 @@ const ImporterScreen = (): JSX.Element => {
   )
   // The resolved batch: what the diff classifies, the preview shows and the confirm writes.
   const batch = shown?.resolved
-  const diff = useServerDiff(batch, batchId)
+  const diff = useServerDiff(
+    batch,
+    batchId,
+    Option.flatMap(Option.fromNullable(shown), ({ importMatch }) => importMatch)
+  )
 
   const selectionFor = useCallback(
     (format: FormatKind): StagedImport.Selection => selections.get(format) ?? UNTOUCHED,
@@ -251,8 +255,8 @@ const ImporterScreen = (): JSX.Element => {
         </p>
       )
     }
-    // Block the first paint on the identity map's default search, so every
-    // referent paints with its search hit already chosen.
+    // Block the first paint on the batch's match, so every referent paints
+    // with its default already chosen.
     if (identityState._tag === 'loading') {
       return (
         <p role="status" className={styles.status}>
@@ -295,7 +299,9 @@ const ImporterScreen = (): JSX.Element => {
             {`${duplicateReferentMessage(identityState.failure)} ${REFUSED_OVER_PREVIOUS_HINT}`}
           </p>
         )}
-        {identityState._tag === 'error' && (
+        {/* The match covers every record, so it can fail for a batch that
+            names no one; the alert speaks of people and providers only. */}
+        {identityState._tag === 'error' && identityState.referents.length > 0 && (
           <p role="alert" className={styles.error}>
             {SEARCH_ERROR_MESSAGE}
           </p>

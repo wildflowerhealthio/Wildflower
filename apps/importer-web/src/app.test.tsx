@@ -517,6 +517,20 @@ const recordingServer = (
         }
       }
 
+      // A `POST <Type>/_search` is the typed client's search, its parameters
+      // a form body: the import's match and the stored lists. The server
+      // holds nothing, so it finds nothing. Recorded as a search, not a write.
+      if (request.method === 'POST' && request.url.endsWith('/_search')) {
+        recorded.push({
+          method: 'SEARCH',
+          url: request.url,
+          urlParams: Object.fromEntries(new URLSearchParams(body)),
+          authorization,
+          body: '',
+        })
+        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchsetOf())))
+      }
+
       // Recorded split, as a batch entry is: the source list carries its
       // search in its URL, the typed client its own as `urlParams`.
       const [path = '', query = ''] = request.url.split('?', 2)

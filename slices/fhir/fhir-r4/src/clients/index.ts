@@ -1,5 +1,6 @@
 export {
   classifyAgainstServer,
+  compareWithStoredCopy,
   type DiffStatus,
   normalizedEncode,
   resetFieldToServer,
@@ -33,11 +34,14 @@ export {
   type SearchsetPage,
 } from './search-pages.ts'
 export {
+  distinctByReference,
+  isSearchableResourceType,
   searchAllOfType,
   type SearchableResource,
   type SearchableResourceType,
   searchByIdentifiers,
   type SearchFailure,
+  searchPagesOfType,
   type SearchParamsByType,
 } from './search-by-type.ts'
 export {

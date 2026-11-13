@@ -24,14 +24,14 @@ const GROUP_HEADINGS: Readonly<Record<LinkableLogicalReference.ResourceType, str
   Practitioner: 'Providers',
 }
 
-/** The status line while the default search is in flight. */
+/** The status line while the batch's match is in flight. */
 const SEARCHING_SERVER_MESSAGE = 'Looking for these people and providers on the server…'
 
-/** The alert when the default search failed. */
+/** The alert when the batch's match failed. */
 const SEARCH_ERROR_MESSAGE =
   'Could not search the server for these people and providers. Each starts as new.'
 
-/** The alert under a group whose stored list could not be read: only the search's hits are offered. */
+/** The alert under a group whose stored list could not be read: only the defaults' records are offered. */
 const STORED_LIST_ERROR_MESSAGE =
   'Could not list the records on the server. Only the ones the search found are offered.'
 

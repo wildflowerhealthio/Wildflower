@@ -37,7 +37,7 @@ interface ReferentGroupLines {
  * it was built from has not changed, which `ReferentRow`'s memo compares.
  *
  * @param resourceType - The group's resource type
- * @param props - The referent block's referents, choices and search hits
+ * @param props - The referent block's referents, choices and the stored resources the defaults link to
  * @returns The group's lines and its stored list
  */
 const useReferentGroupLines = (
@@ -47,7 +47,7 @@ const useReferentGroupLines = (
     readonly referents: readonly Referent.Type[]
     /** The choices the batch is resolved on, by `Referent.key`. */
     readonly linkChoices: ReferentLinkChoiceSet.Type
-    /** The stored resources the default search found. */
+    /** The stored resources the defaults link to or update. */
     readonly found: readonly StoredResource[]
   }
 ): ReferentGroupLines => {

@@ -21,7 +21,6 @@ import {
   DomainResource,
   HumanName,
   IdentifierAndReference,
-  WILDFLOWER_IDENTIFIER_SYSTEM_BASE,
 } from '../../data-types/index.ts'
 import * as PatientCommunication from './patient-communication.ts'
 import * as PatientContact from './patient-contact.ts'
@@ -219,15 +218,9 @@ const PatientSchema: Schema.Schema<typeof PatientStruct.Type, FhirR4.Patient, ne
 type Type = typeof PatientSchema.Type
 
 /**
- * The Wildflower identifier system for a person's name and birth date, under
- * which {@link nameBirthDateIdentifier} mints its identifier.
- */
-const NAME_BIRTH_DATE_IDENTIFIER_SYSTEM = `${WILDFLOWER_IDENTIFIER_SYSTEM_BASE}/patient-name-birth-date`
-
-/**
  * A name part in Unicode NFC, lower-cased, trimmed, and with every run of
  * whitespace collapsed to one space, so an accented letter spelled as one code
- * point or as a letter plus a combining mark mints the same identifier.
+ * point or as a letter plus a combining mark reads as the same part.
  */
 const normalizeNamePart = (namePart: string): string =>
   namePart.normalize('NFC').trim().replaceAll(/\s+/g, ' ').toLowerCase()
@@ -246,16 +239,15 @@ interface Demographics {
   readonly birthDate: Option.Option<typeof TimelessDateFromString.Type>
 }
 
-/**
- * The {@link Demographics} of `patient`: what {@link nameBirthDateIdentifier}
- * is minted from, and what a review compares two records of one person by,
- * so both read the same normalised parts. Which name is current is judged at
- * the clock's now, so an Effect.
- */
 /** Whether `name` states a family or a given name, the parts demographics are read from. */
 const hasNameParts = (name: typeof HumanName.Schema.Type): boolean =>
   name.family !== null || name.given.length > 0
 
+/**
+ * The {@link Demographics} of `patient`: what a review compares two records
+ * of one person by. Which name is current is judged at the clock's now, so
+ * an Effect.
+ */
 const demographics = (patient: Type): Effect.Effect<Demographics> =>
   Effect.map(DateTime.now, (now) => {
     const currentName = HumanName.currentName(patient.name.filter(hasNameParts), now)
@@ -273,44 +265,5 @@ const demographics = (patient: Type): Effect.Effect<Demographics> =>
     }
   })
 
-/**
- * The identifier a patient's current name and birth date mint under
- * {@link NAME_BIRTH_DATE_IDENTIFIER_SYSTEM}: `family;given…;YYYY-MM-DD`, the
- * given names joined by a space, in NFC, lower-cased with whitespace collapsed;
- * an Effect, since which name is current is judged at the clock's now.
- *
- * @remarks
- * A person is identified by name and birth date so the same person from two
- * sources is one identity for the importer's identity map. A name change
- * mints a different identifier, and the person keeps both. `None` unless the
- * current name's family, at least one given name, and `birthDate` are all
- * present ({@link demographics}), so a partial match never links two people.
- * The parts are joined by `;` rather than `|`, which a FHIR token search reads
- * as the system separator, so the value is searched as
- * `system|family;given;date` with nothing to escape.
- */
-const nameBirthDateIdentifier = (
-  patient: Type
-): Effect.Effect<Option.Option<IdentifierAndReference.IdentifierType>> =>
-  Effect.map(demographics(patient), ({ family, given, birthDate }) =>
-    Option.all([family, given, birthDate]).pipe(
-      Option.map((valueParts): IdentifierAndReference.IdentifierType => ({
-        id: null,
-        extension: [],
-        assigner: null,
-        period: null,
-        system: new URL(NAME_BIRTH_DATE_IDENTIFIER_SYSTEM),
-        type: null,
-        use: null,
-        value: valueParts.join(';'),
-      }))
-    )
-  )
-
-export {
-  demographics,
-  NAME_BIRTH_DATE_IDENTIFIER_SYSTEM,
-  nameBirthDateIdentifier,
-  PatientSchema as Schema,
-}
+export { demographics, PatientSchema as Schema }
 export type { Demographics, Type }

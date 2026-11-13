@@ -74,20 +74,14 @@ describe('Referent.discover', () => {
     ])
   })
 
-  it('gives a referent its own identifiers and the one its demographics derive', () => {
+  it('gives a referent its own qualified identifiers, and derives none from its demographics', () => {
     const [patientReferent, practitionerReferent] = discoverOnTestClock(
       fileOf(patient({ id: 'p-1' }), practitioner('pr-1', '  Dr.  B   Jones '))
     )
 
     const systemsAndValues = (referent: Referent.Type | undefined): readonly unknown[] =>
       (referent?.identifiers ?? []).map((identifier) => [identifier.system?.href, identifier.value])
-    expect(systemsAndValues(patientReferent)).toEqual([
-      [SOURCE_PATIENT, 'p-1'],
-      [
-        'https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date',
-        'banks;tyra;1990-01-02',
-      ],
-    ])
+    expect(systemsAndValues(patientReferent)).toEqual([[SOURCE_PATIENT, 'p-1']])
     expect(systemsAndValues(practitionerReferent)).toEqual([[SOURCE_PRACTITIONER, 'pr-1']])
     expect(practitionerReferent?.label).toBe('Dr.  B   Jones')
   })

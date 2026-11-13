@@ -1,27 +1,48 @@
 import { useQuery } from '@tanstack/react-query'
+import { Effect, Option } from 'effect'
 import { useMemo, useState } from 'react'
 
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
-import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
+import {
+  classifyAgainstServer,
+  compareWithStoredCopy,
+  type FhirR4ResourcesHttpApiClient,
+  type ServerComparison,
+} from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import type { LinkPlan, ReviewRow, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import {
+  ImportMatch,
+  type LinkPlan,
+  type ReviewRow,
+  type StagedImport,
+} from '@wildflowerhealthio/importer-fundamentals'
 
 import type { FormatKind, ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { keysWithoutPatientOf, ReviewGroup } from '@wildflowerhealthio/importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
 /**
- * Pre-fetch the server's copy for every previewed resource in a batch and
- * classify each as `new` / `unchanged` / `changed` — the diff badge the
+ * Compare every previewed resource in a batch with its matched stored copy
+ * and classify each as `new` / `unchanged` / `changed` — the diff badge the
  * preview row shows the reviewer, and what the "opt out of a re-import"
  * default reads (an `unchanged` row is out unless the reviewer ticks it).
  *
  * @remarks
+ * A resource's matched copy is the stored record its identifiers name, read
+ * off the batch's match (`ImportMatch.matchedCopyOf`, found once per batch
+ * by `useImportMatch`), whatever its id: the compare drops the `id`
+ * (`compareWithStoredCopy`), while the write still goes to the resource's own
+ * id. A resource with no matched copy, whether the match found none or
+ * cannot speak for it (a `Binary`, a record with no qualified identifier, one
+ * carrying an identifier the match did not search), is compared with the
+ * copy under its own id instead, so a stored copy whose identifiers were
+ * edited still reads as `changed`. All of them go in one `POST /` batch of GET
+ * entries (`classifyAgainstServer`), sent only when there is one; so a
+ * classification is at most one round trip.
+ *
  * The classification is a TanStack Query, so the shell can **block on it**
  * (the `loading` state gates the preview) rather than paint the panel first
- * and let badges pop in a second later. One `POST /` batch of GET entries
- * fetches every id at once, so a review across two dozen files is still one
- * round trip.
+ * and let badges pop in a second later.
  *
  * `loading` means "nothing worth showing yet", which is narrower than "a
  * request is in flight". A settings change or a link choice changes the
@@ -125,6 +146,50 @@ const byGroupAndKey = (
 }
 
 /**
+ * Each of `resources` classified against its matched copy in `importMatch`
+ * (`ImportMatch.matchedCopyOf`) when the match found one, and every other
+ * resource (the match found none, did not search for it, or there is no
+ * match) against the copy under its own id, in one batch.
+ *
+ * @returns The verdicts by `Type/id`; never fails, as `classifyAgainstServer`
+ *   does not
+ */
+const classifyAgainstMatches = (
+  resources: readonly FhirResourceWithId[],
+  importMatch: Option.Option<ImportMatch.Type>
+): Effect.Effect<ReadonlyMap<string, ServerComparison>, never, FhirR4ResourcesHttpApiClient> => {
+  const matched = resources.map(
+    (resource) =>
+      [
+        resource,
+        Option.match(importMatch, {
+          onNone: () => ImportMatch.MatchedCopy.NotSearched(),
+          onSome: (batchMatch) => ImportMatch.matchedCopyOf(batchMatch, resource),
+        }),
+      ] as const
+  )
+  const byId = matched.flatMap(([resource, matchedCopy]) =>
+    ImportMatch.MatchedCopy.$is('Found')(matchedCopy) ? [] : [resource]
+  )
+  return Effect.map(
+    classifyAgainstServer(byId),
+    (byOwnId) =>
+      new Map([
+        ...byOwnId,
+        ...matched.flatMap(([resource, matchedCopy]) =>
+          ImportMatch.MatchedCopy.$match(matchedCopy, {
+            Found: ({ copy }) => [
+              [literalReferenceOf(resource), compareWithStoredCopy(resource, copy)] as const,
+            ],
+            NotFound: () => [],
+            NotSearched: () => [],
+          })
+        ),
+      ])
+  )
+}
+
+/**
  * Every previewed resource across a batch's groups, in review order, paired
  * with its group and labeled key — the flat list one classifier round trip
  * probes.
@@ -150,9 +215,16 @@ const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] =>
  *   re-decode or a link choice over the same files, different for a fresh
  *   pick. It is what decides whether the verdicts the batch last settled on
  *   may stay on screen while the next ones load.
+ * @param importMatch - The batch's match, which names each resource's
+ *   matched copy; `None` when the match failed, so every resource is
+ *   compared with the copy under its own id
  * @returns `loading` until this batch has verdicts worth showing, then `ready`
  */
-const useServerDiff = (batch: ResolvedBatch | undefined, batchId: number): ServerDiffState => {
+const useServerDiff = (
+  batch: ResolvedBatch | undefined,
+  batchId: number,
+  importMatch: Option.Option<ImportMatch.Type>
+): ServerDiffState => {
   const runAuthed = useRunAuthed()
 
   // Every resource across every format, paired with its format and labeled
@@ -182,7 +254,12 @@ const useServerDiff = (batch: ResolvedBatch | undefined, batchId: number): Serve
   const query = useQuery({
     queryKey: [...IMPORTER_QUERY_KEY, 'server-diff', batchId, token] as const,
     queryFn: (): Promise<ReadonlyMap<string, ServerComparison>> =>
-      runAuthed(classifyAgainstServer((rows ?? []).map((row) => row.resource))),
+      runAuthed(
+        classifyAgainstMatches(
+          (rows ?? []).map((row) => row.resource),
+          importMatch
+        )
+      ),
     enabled,
     // A batch's server comparison does not drift under the reviewer, and the
     // batch identity is ephemeral, so never restale and do not retain it.
