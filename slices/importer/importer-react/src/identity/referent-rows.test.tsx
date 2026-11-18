@@ -70,6 +70,48 @@ describe('ReferentRows', () => {
     expect(people.compareDocumentPosition(providers)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 
+  it('should start the stored lists while the match is in flight, before the rows mount', async () => {
+    // Arrange: a server that answers the paged lists and never the match's searches
+    const listedTypes: string[] = []
+    const httpLayer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        const body =
+          request.body._tag === 'Uint8Array' ? new TextDecoder().decode(request.body.body) : ''
+        if (!isListing(Object.fromEntries(new URLSearchParams(body)))) return Effect.never
+        listedTypes.push(request.url.split('/').at(-2) ?? '')
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            new Response(JSON.stringify({ resourceType: 'Bundle', type: 'searchset' }), {
+              headers: { 'content-type': 'application/json' },
+            })
+          )
+        )
+      })
+    )
+    currentRunAuthed = <A, E>(
+      effect: Effect.Effect<A, E, HttpClient.HttpClient | FhirR4ResourcesHttpApiClient>
+    ): Promise<A> =>
+      Effect.runPromise(
+        effect.pipe(
+          Effect.provide(
+            FhirR4ResourcesRouterContext.sliceRuntimeLayer.pipe(Layer.provideMerge(httpLayer))
+          ),
+          Effect.scoped
+        )
+      )
+
+    // Act
+    renderHarness(BATCH)
+
+    // Assert
+    await waitFor(() => {
+      expect(listedTypes.toSorted()).toEqual(['Patient', 'Practitioner'])
+    })
+    expect(screen.getByText('Loading')).toBeDefined()
+  })
+
   it('should default a Patient the search does not find to New', async () => {
     await renderRows(BATCH, {})
 
@@ -93,7 +135,7 @@ describe('ReferentRows', () => {
     expect(select.value).toBe('stored:Patient/s-1')
   })
 
-  it('should pick no default when two stored Patients match her name and birth date', async () => {
+  it('should default a Patient to New when two stored Patients match her name and birth date', async () => {
     await renderRows(BATCH, { listed: [patientWire('s-1', SERVER), patientWire('s-2', SERVER)] })
 
     const select = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
@@ -244,7 +286,8 @@ describe('ReferentRows', () => {
       listFails: true,
     })
 
-    await screen.findByText(STORED_LIST_ERROR_MESSAGE)
+    const people = await screen.findByRole('region', { name: GROUP_HEADINGS.Patient })
+    await within(people).findByText(STORED_LIST_ERROR_MESSAGE)
     const select = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
     expect(select.value).toBe('stored:Patient/s-1')
     expect(

@@ -2,7 +2,7 @@ import type { MatchGrade, ResourceMatch } from '@wildflowerhealthio/fhir-r4/clie
 import { FastCheck as fc, HashMap, Match } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import * as ImportMatch from '../import-match.ts'
+import type * as StoredCandidates from '../stored-candidates.ts'
 import {
   discoverOnTestClock,
   fileOf,
@@ -60,29 +60,29 @@ const defaultOf = (
 ): string => describeChoice(ReferentMatch.defaultChoice(referent, candidates))
 
 describe('ReferentMatch.defaultChoice', () => {
-  it('should give New when nothing matched', () => {
+  it('should take CreateResource when nothing matched', () => {
     expect(defaultOf(TYRA)).toBe('CreateResource')
   })
 
-  it('should link to the one stored record the referent’s identifiers name', () => {
+  it('should link to the one stored resource the referent’s identifiers name', () => {
     expect(defaultOf(TYRA, candidate(STORED_TYRA, 'certain'))).toBe(
       'LinkToStoredResource Patient/s-1'
     )
   })
 
-  it('should link to the one stored record graded probable by name and birth date', () => {
+  it('should link to the one stored resource graded probable by name and birth date', () => {
     expect(defaultOf(TYRA, candidate(STORED_TYRA, 'probable'))).toBe(
       'LinkToStoredResource Patient/s-1'
     )
   })
 
-  it('should link to the one probable record whatever possible ones matched beside it', () => {
+  it('should link to the one probable resource whatever possible ones matched beside it', () => {
     expect(
       defaultOf(TYRA, candidate(STORED_TYRA, 'probable'), candidate(OTHER_TYRA, 'possible'))
     ).toBe('LinkToStoredResource Patient/s-1')
   })
 
-  it('should pick no default when two records are probable, as several found by identifier are', () => {
+  it('should take CreateResource when two stored resources are probable, as several found by identifier are', () => {
     expect(
       defaultOf(
         TYRA,
@@ -92,7 +92,7 @@ describe('ReferentMatch.defaultChoice', () => {
     ).toBe('CreateResource')
   })
 
-  it('should pick no default when every record is only possible', () => {
+  it('should take CreateResource when every candidate is only possible', () => {
     expect(defaultOf(TYRA, candidate(STORED_TYRA, 'possible'))).toBe('CreateResource')
   })
 
@@ -110,7 +110,7 @@ describe('ReferentMatch.defaultChoice', () => {
     ).toBe('UpdateStoredResource Patient/p-1')
   })
 
-  it('should keep the stored copy of a record the import implied, rather than write the name alone over it', () => {
+  it('should keep the stored copy of a resource the import implied, rather than write the name alone over it', () => {
     // Arrange
     const implied: Referent.Type = { ...TYRA, isImplied: true }
 
@@ -156,16 +156,16 @@ describe('ReferentMatch.defaultChoice', () => {
 })
 
 describe('ReferentMatch.defaultChoices', () => {
-  it('should give every referent the default its own record’s candidates give, keyed by referent', () => {
+  it('should give every referent the default its own resource’s candidates give, keyed by referent', () => {
     // Arrange
     const referents = referentsOf(patient({ id: 'p-1' }), practitioner('r-1', 'Dr. Jan Smith'))
-    const importMatch: ImportMatch.Type = {
-      ...ImportMatch.empty,
-      candidatesByRecord: HashMap.make(['Patient/p-1', [candidate(STORED_TYRA, 'certain')]]),
-    }
+    const storedCandidates: StoredCandidates.Type = HashMap.make([
+      'Patient/p-1',
+      { matchedBy: [], candidates: [candidate(STORED_TYRA, 'certain')] },
+    ])
 
     // Act
-    const choices = ReferentMatch.defaultChoices(referents, importMatch)
+    const choices = ReferentMatch.defaultChoices(referents, storedCandidates)
 
     // Assert
     expect(

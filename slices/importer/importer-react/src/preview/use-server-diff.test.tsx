@@ -5,17 +5,22 @@ import { FhirR4ResourcesRouterContext, type RunAuthed } from '@wildflowerhealthi
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
 import {
   type FhirR4ResourcesHttpApiClient,
-  ResourceMatch,
+  MatchQuery,
+  type ResourceMatch,
 } from '@wildflowerhealthio/fhir-r4/clients'
-import { IdentifierAndReference, withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   type FhirResourceWithId,
-  LogicalReference,
+  literalReferenceOf,
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import { ImportMatch, LinkPlan, SectionedList } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, HashSet, Layer, Option, Schema } from 'effect'
+import {
+  LinkPlan,
+  SectionedList,
+  StoredCandidates,
+} from '@wildflowerhealthio/importer-fundamentals'
+import { Effect, HashMap, Layer, Option, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -57,7 +62,7 @@ let bundlesAnswered = 0
 /** The `Type/id` of every GET entry the stub server has answered. */
 let entriesAnswered: string[] = []
 
-/** The records the stub server holds, by `Type/id`; reset by each test that uses it. */
+/** The resources the stub server holds, by `Type/id`; reset by each test that uses it. */
 let storedOnServer: ReadonlyMap<string, FhirResourceWithId> = new Map()
 
 /** A HAR group holding `resources`, the other formats claiming nothing. */
@@ -148,7 +153,7 @@ const runAuthedWith = (fates: readonly ('answer' | 'reject')[]): RunAuthed => {
 const renderDiff = (
   batch: ResolvedBatch,
   batchId: number,
-  importMatch: Option.Option<ImportMatch.Type> = Option.none()
+  storedCandidates: Option.Option<StoredCandidates.Type> = Option.none()
 ): RenderHookResult<ServerDiffState, { batch: ResolvedBatch; batchId: number }> => {
   const queryClient = new QueryClient()
   const withQueryClient = ({ children }: { readonly children: ReactNode }): JSX.Element => (
@@ -156,17 +161,31 @@ const renderDiff = (
   )
   return renderHook(
     ({ batch: current, batchId: id }: { batch: ResolvedBatch; batchId: number }) =>
-      useServerDiff(current, id, importMatch),
+      useServerDiff(current, id, storedCandidates),
     { initialProps: { batch, batchId }, wrapper: withQueryClient }
   )
 }
 
-/** The searched key of a Patient `identifier`, as the match records it. */
-const searchedKey = (identifier: object): LogicalReference.Key => {
-  const qualified = Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)(identifier)
-  if (!IdentifierAndReference.isQualifiedIdentifier(qualified)) throw new Error('unreachable')
-  return LogicalReference.key(LogicalReference.make('Patient', qualified))
-}
+/**
+ * Stored candidates holding each matched resource with the stored resources
+ * its identifiers found: `certain` when it found one, `probable` when several.
+ */
+const storedCandidatesOf = (
+  ...matched: readonly (readonly [FhirResourceWithId, readonly FhirResourceWithId[]])[]
+): StoredCandidates.Type =>
+  HashMap.fromIterable(
+    matched.map(([resource, found]) => [
+      literalReferenceOf(resource),
+      {
+        matchedBy: MatchQuery.qualifiedIdentifiersOf(resource),
+        candidates: found.map((stored): ResourceMatch.Candidate => ({
+          resource: stored,
+          grade: found.length > 1 ? 'probable' : 'certain',
+          by: 'identifier',
+        })),
+      },
+    ])
+  )
 
 const statusesOf = (state: ServerDiffState): readonly string[] =>
   state._tag === 'loading'
@@ -227,24 +246,16 @@ describe('useServerDiff', () => {
     })
   })
 
-  it('should compare a record with its matched copy under another id, and read nothing by id', async () => {
-    // Arrange: the match searched the record's identifier and found one copy, stored elsewhere
+  it('should compare a resource with its stored copy under another id, and read nothing by id', async () => {
+    // Arrange: the match found one stored copy of the resource, stored elsewhere
     bundlesAnswered = 0
     currentRunAuthed = runAuthedWith([])
     const identifier = { system: 'https://source.example/id', value: 'p-1' }
     const imported = patient('p-1', [identifier])
-    const qualified = Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)(identifier)
-    if (!IdentifierAndReference.isQualifiedIdentifier(qualified)) throw new Error('unreachable')
-    const importMatch: ImportMatch.Type = {
-      ...ImportMatch.empty,
-      foundByIdentifier: ResourceMatch.indexByIdentifier([patient('stored-9', [identifier])]),
-      searchedIdentifiers: HashSet.make(
-        LogicalReference.key(LogicalReference.make('Patient', qualified))
-      ),
-    }
+    const storedCandidates = storedCandidatesOf([imported, [patient('stored-9', [identifier])]])
 
     // Act
-    const { result } = renderDiff(batchOf([imported]), 1, Option.some(importMatch))
+    const { result } = renderDiff(batchOf([imported]), 1, Option.some(storedCandidates))
 
     // Assert
     await waitFor(() => {
@@ -254,13 +265,13 @@ describe('useServerDiff', () => {
     expect(bundlesAnswered).toBe(0)
   })
 
-  it('should read by id only the records the match did not search', async () => {
-    // Arrange: a match that searched nothing
+  it('should read by id a resource that was not matched', async () => {
+    // Arrange
     bundlesAnswered = 0
     currentRunAuthed = runAuthedWith([])
 
     // Act
-    const { result } = renderDiff(batchOf([patient('p-1')]), 1, Option.some(ImportMatch.empty))
+    const { result } = renderDiff(batchOf([patient('p-1')]), 1, Option.some(StoredCandidates.empty))
 
     // Assert
     await waitFor(() => {
@@ -269,21 +280,21 @@ describe('useServerDiff', () => {
     expect(statusesOf(result.current)).toEqual(['new'])
     expect(bundlesAnswered).toBe(1)
   })
-  it('should read by id a record whose identifiers the match searched and found nothing for', async () => {
-    // Arrange: the match searched the record's identifier and found nothing,
-    // while a copy whose identifiers were edited is stored under its own id
+
+  it('should read by id a resource whose identifiers found nothing stored', async () => {
+    // Arrange: the match found nothing for the resource's identifier, while a
+    // copy whose identifiers were edited is stored under its own id
     bundlesAnswered = 0
     currentRunAuthed = runAuthedWith([])
-    const identifier = { system: 'https://source.example/id', value: 'p-1' }
-    const imported = patient('p-1', [identifier])
+    const imported = patient('p-1', [{ system: 'https://source.example/id', value: 'p-1' }])
     storedOnServer = new Map([['Patient/p-1', patient('p-1')]])
-    const importMatch: ImportMatch.Type = {
-      ...ImportMatch.empty,
-      searchedIdentifiers: HashSet.make(searchedKey(identifier)),
-    }
 
     // Act
-    const { result } = renderDiff(batchOf([imported]), 1, Option.some(importMatch))
+    const { result } = renderDiff(
+      batchOf([imported]),
+      1,
+      Option.some(storedCandidatesOf([imported, []]))
+    )
 
     // Assert
     await waitFor(() => {
@@ -293,30 +304,47 @@ describe('useServerDiff', () => {
     expect(bundlesAnswered).toBe(1)
   })
 
-  it('should read every record without a matched copy in one batch, and none with one', async () => {
-    // Arrange: one record matched, one searched and not found, one not searched
+  it('should read by id a resource that carries identifiers it was not matched by', async () => {
+    // Arrange: matched by one identifier, the resource now carries a second
+    bundlesAnswered = 0
+    currentRunAuthed = runAuthedWith([])
+    const identifier = { system: 'https://source.example/id', value: 'p-1' }
+    const assumed = { system: 'https://device.example/id', value: 's-1' }
+    const asMatched = patient('p-1', [identifier])
+    const storedCandidates = storedCandidatesOf([asMatched, [patient('stored-9', [identifier])]])
+
+    // Act
+    const { result } = renderDiff(
+      batchOf([patient('p-1', [identifier, assumed])]),
+      1,
+      Option.some(storedCandidates)
+    )
+
+    // Assert
+    await waitFor(() => {
+      expect(result.current).toMatchObject({ _tag: 'ready', refreshing: false })
+    })
+    expect(statusesOf(result.current)).toEqual(['new'])
+    expect(entriesAnswered).toEqual(['Patient/p-1'])
+  })
+
+  it('should read every resource without a stored copy in one batch, and none with one', async () => {
+    // Arrange: one resource with a stored copy, one whose identifier found
+    // nothing, one not matched
     bundlesAnswered = 0
     currentRunAuthed = runAuthedWith([])
     const matchedIdentifier = { system: 'https://source.example/id', value: 'p-1' }
     const unmatchedIdentifier = { system: 'https://source.example/id', value: 'p-2' }
-    const importMatch: ImportMatch.Type = {
-      ...ImportMatch.empty,
-      foundByIdentifier: ResourceMatch.indexByIdentifier([
-        patient('stored-9', [matchedIdentifier]),
-      ]),
-      searchedIdentifiers: HashSet.make(
-        searchedKey(matchedIdentifier),
-        searchedKey(unmatchedIdentifier)
-      ),
-    }
-    const batch = batchOf([
-      patient('p-1', [matchedIdentifier]),
-      patient('p-2', [unmatchedIdentifier]),
-      patient('p-3'),
-    ])
+    const withCopy = patient('p-1', [matchedIdentifier])
+    const withoutCopy = patient('p-2', [unmatchedIdentifier])
+    const storedCandidates = storedCandidatesOf(
+      [withCopy, [patient('stored-9', [matchedIdentifier])]],
+      [withoutCopy, []]
+    )
+    const batch = batchOf([withCopy, withoutCopy, patient('p-3')])
 
     // Act
-    const { result } = renderDiff(batch, 1, Option.some(importMatch))
+    const { result } = renderDiff(batch, 1, Option.some(storedCandidates))
 
     // Assert
     await waitFor(() => {
