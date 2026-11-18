@@ -352,6 +352,16 @@ describe('partsOfText', () => {
       parts: Option.some({ family: 'Roy', given: ['Anne', 'Marie'] }),
     },
     {
+      form: 'dotted initials spelling a title: a given name, not a title',
+      text: 'D.R. SMITH',
+      parts: Option.some({ family: 'SMITH', given: ['D.R.'] }),
+    },
+    {
+      form: 'dotted initials spelling a title among the words: no split',
+      text: 'Dr. J. D.R. Smith',
+      parts: Option.some({ family: 'Smith', given: ['J.', 'D.R.'] }),
+    },
+    {
       form: 'a title alone: no family name',
       text: 'Dr.',
       parts: Option.none(),

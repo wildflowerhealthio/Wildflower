@@ -6,8 +6,8 @@ import type { Displayable } from './human-name-display.ts'
  * A name's family name and given names read out of how it is written, apart
  * from the `HumanName` schema as `human-name-display.ts` is: the words keep
  * their casing and diacritics, so the parts can be written on a resource, and
- * a reader comparing names normalises them itself. `HumanName.partsOf`
- * re-exports it.
+ * a reader comparing names folds them itself, a word at a time
+ * (`comparableWordOf`). `HumanName.partsOf` re-exports it.
  */
 
 /**
@@ -19,7 +19,10 @@ interface Parts {
   readonly given: readonly string[]
 }
 
-/** The words a doctor's title is written as, compared as {@link keyOf} reads a word. */
+/**
+ * The words a doctor's title is written as, compared as
+ * {@link comparableWordOf} reads a word, without the dots ending it.
+ */
 const DOCTOR_TITLES: ReadonlySet<string> = new Set(['dr', 'doctor'])
 
 /**
@@ -44,12 +47,20 @@ const CREDENTIALS: ReadonlySet<string> = new Set([
  */
 const GENERATIONAL_SUFFIXES: ReadonlySet<string> = new Set(['jr', 'sr', 'ii', 'iii', 'iv'])
 
-/** `word` as the title, credential and suffix sets hold it: lower-cased, without diacritics or dots. */
-const keyOf = (word: string): string =>
-  word.normalize('NFD').replaceAll(/\p{M}/gu, '').toLowerCase().replaceAll('.', '')
+/** `word` as two words are compared: lower-cased and without diacritics (decomposed, combining marks dropped). */
+const comparableWordOf = (word: string): string =>
+  word.normalize('NFD').replaceAll(/\p{M}/gu, '').toLowerCase()
 
-/** Whether `word` is a doctor's title ({@link DOCTOR_TITLES}). */
-const isDoctorTitle = (word: string): boolean => DOCTOR_TITLES.has(keyOf(word))
+/** `word` as the credential and suffix sets hold it: as compared ({@link comparableWordOf}), without its dots. */
+const keyOf = (word: string): string => comparableWordOf(word).replaceAll('.', '')
+
+/**
+ * Whether `word` is a doctor's title ({@link DOCTOR_TITLES}), with or without
+ * the dots ending it ("Dr", "DR."). A word with a dot inside it is not one,
+ * so the initials "D.R." stay a name.
+ */
+const isDoctorTitle = (word: string): boolean =>
+  DOCTOR_TITLES.has(comparableWordOf(word).replace(/\.+$/u, ''))
 
 /** Whether `word` is a generational suffix ({@link GENERATIONAL_SUFFIXES}). */
 const isGenerationalSuffix = (word: string): boolean => GENERATIONAL_SUFFIXES.has(keyOf(word))
@@ -131,8 +142,9 @@ const partsOfWords = (words: readonly string[]): Option.Option<Parts> => {
  *
  * @remarks
  * A doctor's title, a credential or a generational suffix is recognised
- * whatever its case and dots ("Dr", "DR.", "M.D.") and dropped, not moved
- * to `prefix` or `suffix`. The reading runs in three steps:
+ * whatever its case, a title with or without the dot ending it ("Dr", "DR.")
+ * and a credential or a suffix whatever its dots ("M.D."), and dropped, not
+ * moved to `prefix` or `suffix`. The reading runs in three steps:
  *
  * 1. Credentials and generational suffixes trailing the text after a comma
  *    are dropped ("John Smith, MD", "Schmitt, John, Jr"), as is an empty
@@ -167,5 +179,5 @@ const partsOf = (name: Pick<Displayable, 'family' | 'given' | 'text'>): Option.O
     ? partsFrom(wordsOf(name.family ?? ''), (name.given ?? []).flatMap(wordsOf))
     : partsOfText(name.text ?? '')
 
-export { isTitleCredentialOrSuffix, partsOf, partsOfText }
+export { comparableWordOf, isTitleCredentialOrSuffix, partsOf, partsOfText }
 export type { Parts }
