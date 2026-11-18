@@ -5,7 +5,7 @@ import type * as Patient from '../resources/patient/patient.ts'
 import type * as Practitioner from '../resources/practitioner/practitioner.ts'
 
 /**
- * How well a stored record matches a query, graded as FHIR's `$match` grades
+ * How well a stored resource matches a query, graded as FHIR's `$match` grades
  * a candidate (the `match-grade` extension's value set), and the grading of
  * Patients and Practitioners by name (and a Patient's birth date).
  *
@@ -13,7 +13,7 @@ import type * as Practitioner from '../resources/practitioner/practitioner.ts'
  */
 
 /**
- * A candidate's grade: `certain` (the one stored record carrying any of
+ * A candidate's grade: `certain` (the one stored resource carrying any of
  * the query's identifiers), `probable` and `possible` (it agrees with the
  * query, more or less), and `certainly-not`, which the value set holds and
  * nothing here gives.
@@ -165,7 +165,7 @@ const comparableNameOf = (name: typeof HumanName.Schema.Type): Option.Option<Com
     ? comparableNameFrom(wordsOf(name.family ?? ''), name.given.flatMap(wordsOf))
     : comparableTextNameOf(name.text ?? '')
 
-/** Every name of `names` that can be compared ({@link comparableNameOf}), in record order. */
+/** Every name of `names` that can be compared ({@link comparableNameOf}), in the order of `names`. */
 const comparableNamesOf = (
   names: readonly (typeof HumanName.Schema.Type)[]
 ): readonly ComparableName[] => Array.filterMap(names, comparableNameOf)
@@ -190,7 +190,7 @@ const isSearchableWord = (word: string): boolean => {
  * The words of the family names of `names`, as {@link comparableNamesOf}
  * reads them (lower-cased, without diacritics), each once, without the words
  * that cannot find a name ({@link isSearchableWord}): what a `name` search
- * for the records `names` can grade against is sent with.
+ * for the resources `names` can grade against is sent with.
  */
 const familySearchWordsOf = (names: readonly (typeof HumanName.Schema.Type)[]): readonly string[] =>
   Array.dedupe(
@@ -286,7 +286,7 @@ const canGradePractitioner = (query: Practitioner.Type): boolean =>
  *
  * @remarks
  * Names compare as {@link comparableNameOf} reads them, any name of the
- * query against any name of the stored record, the best grade winning. The
+ * query against any name of the stored resource, the best grade winning. The
  * comparison is exact once normalised: no phonetic or fuzzy matching.
  */
 const patientGradeOf = (query: Patient.Type, stored: Patient.Type): Option.Option<Type> =>
