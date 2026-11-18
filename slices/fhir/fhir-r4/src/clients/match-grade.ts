@@ -47,13 +47,9 @@ interface ComparableName {
   readonly given: readonly string[]
 }
 
-/** `word` lower-cased and without diacritics (decomposed, combining marks dropped). */
-const comparableWordOf = (word: string): string =>
-  word.normalize('NFD').replaceAll(/\p{M}/gu, '').toLowerCase()
-
-/** `words` as compared ({@link comparableWordOf}), without a word that leaves nothing. */
+/** `words` as compared ({@link HumanName.comparableWordOf}), without a word that leaves nothing. */
 const comparableWordsOf = (words: readonly string[]): readonly string[] =>
-  words.map(comparableWordOf).filter(Str.isNonEmpty)
+  words.map(HumanName.comparableWordOf).filter(Str.isNonEmpty)
 
 /**
  * `name` as it is compared: its parts ({@link HumanName.partsOf}), each word
