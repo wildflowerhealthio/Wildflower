@@ -180,7 +180,7 @@ catalog:
   # `tsc` build step. pnpm links the higher version into node_modules/.bin/tsc
   # when two packages named `typescript` both ship it, so `tsc` is this copy.
   typescript-7: npm:typescript@7.0.2
-  vite: npm:@voidzero-dev/vite-plus-core@1.5.0
+  vite: npm:@voidzero-dev/vite-plus-core@1.6.0
   vite-plus: 1.6.0
   web-tree-sitter: 0.27.2
 catalogMode: prefer
