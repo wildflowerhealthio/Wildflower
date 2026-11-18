@@ -22,7 +22,7 @@ A vite-plus bump moves two distinct version strings:
 
 The `vite@*: 'catalog:'` override in [pnpm-workspace.yaml](../../pnpm-workspace.yaml) follows row 2, so it needs no edit.
 
-The bootstrap scripts that install a global `vp` ([.claude/hooks/session-start.sh](../../.claude/hooks/session-start.sh), [.devcontainer/postCreateCommand.sh](../../.devcontainer/postCreateCommand.sh), [.devcontainer/cloud-setup-script.sh](../../.devcontainer/cloud-setup-script.sh)) hold no version. A global `pnpm install -g` cannot reference the catalog, so they ask [.devcontainer/global-tool-specs.sh](../../.devcontainer/global-tool-specs.sh), which reads the version `pnpm-lock.yaml` resolves for the catalog entry.
+The bootstrap scripts that install a global `vp` ([.claude/hooks/session-start.sh](../../.claude/hooks/session-start.sh), [.devcontainer/postCreateCommand.sh](../../.devcontainer/postCreateCommand.sh), [.devcontainer/cloud-setup-script.sh](../../.devcontainer/cloud-setup-script.sh)) hold no version. A global `pnpm install -g` cannot reference the catalog, so each runs [.devcontainer/install-global-tools.sh](../../.devcontainer/install-global-tools.sh), which reads the version `pnpm-lock.yaml` resolves for each catalog entry and installs the globals at those versions. It skips the install only when the global `vp --version` already reports the lockfile's vite-plus, so a cached container picks up a bump on its next session.
 
 ## Steps
 
@@ -50,7 +50,7 @@ The bootstrap scripts that install a global `vp` ([.claude/hooks/session-start.s
 ## Related, but versioned independently
 
 - **`voidzero-dev/setup-vp@vX.Y.Z`** in the [CI workflows](../../.github/workflows/) installs `vp` on the runners. It tracks its own release line (Dependabot bumps it separately) and is not the vite-plus version — it only needs to be new enough to run the pinned vite-plus. No manual sync with the rows above.
-- **`typescript` 7 and `@tsdown/css`** are installed globally beside vite-plus by the same bootstrap scripts but are separate tools with their own catalog entries (`typescript-7`, `@tsdown/css` in [pnpm-workspace.yaml](../../pnpm-workspace.yaml)). The catalog may carry a range; [global-tool-specs.sh](../../.devcontainer/global-tool-specs.sh) gives the scripts the exact version `pnpm-lock.yaml` resolves, so the globals move with the lockfile.
+- **`typescript` 7 and `@tsdown/css`** are installed globally beside vite-plus by the same bootstrap scripts but are separate tools with their own catalog entries (`typescript-7`, `@tsdown/css` in [pnpm-workspace.yaml](../../pnpm-workspace.yaml)). The catalog may carry a range; [install-global-tools.sh](../../.devcontainer/install-global-tools.sh) installs the exact version `pnpm-lock.yaml` resolves. Its skip check looks only at vite-plus, so a container that already has the current global `vp` keeps its global `typescript` and `@tsdown/css` until the next vite-plus bump.
 
 ## See Also
 
