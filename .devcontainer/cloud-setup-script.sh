@@ -26,21 +26,8 @@ if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 26 ? 0
   pnpm env use --global 26
 fi
 
-# 2. Global `vp` + the helpers the devcontainer installs alongside it. Pin
-#    every one to the version the workspace resolves so the bootstrap toolchain
-#    can't drift ahead of it — unpinned, `vite-plus` drifts to the newest
-#    release (a box once pulled 0.3.1 while the workspace held 0.3.0) and
-#    peer-warns. Re-sync on every bump; the full list of places a vite-plus
-#    version is recorded is in docs/Dependencies/Bumping vite-plus How-To.md.
-if ! command -v vp >/dev/null 2>&1; then
-  pnpm install -g vite-plus@1.5.0 typescript@7.0.2 @tsdown/css@0.23.7
-fi
-
-# 3. Warm the workspace install so node_modules + the pnpm store land in the
-#    snapshot. The repo's SessionStart hook still runs `vp install` per session
-#    to reconcile the cloned branch's actual lockfile (fast when cache is
-#    current). Locate the checkout first — the setup CWD is not reliably the
-#    repo root, and the repo may not even be cloned yet at provision time.
+# 2. Locate the checkout. The setup CWD is not reliably the repo root, and the
+#    repo may not even be cloned yet at provision time.
 workspace=""
 for candidate in "${CLAUDE_PROJECT_DIR:-}" "$PWD" "$HOME"/*; do
   if [ -n "$candidate" ] && [ -f "$candidate/pnpm-workspace.yaml" ]; then
@@ -49,10 +36,33 @@ for candidate in "${CLAUDE_PROJECT_DIR:-}" "$PWD" "$HOME"/*; do
   fi
 done
 
-if [ -n "$workspace" ]; then
-  cd "$workspace"
-  vp install
-  echo "setup-script: node $(node --version), vp $(vp --version), workspace warmed at $workspace"
-else
-  echo "setup-script: no pnpm-workspace.yaml found at provision time — skipping the warm install; the SessionStart hook runs 'vp install' after the branch is cloned" >&2
+if [ -z "$workspace" ]; then
+  echo "setup-script: no pnpm-workspace.yaml found at provision time — skipping the toolchain and the warm install; the SessionStart hook installs both after the branch is cloned" >&2
+  exit 0
 fi
+cd "$workspace"
+
+# 3. Global `vp` + the helpers the devcontainer installs alongside it, each at
+#    the version the checkout's pnpm-lock.yaml resolves so the bootstrap
+#    toolchain can't drift ahead of the workspace — unpinned, `vite-plus`
+#    drifts to the newest release (a box once pulled 0.3.1 while the workspace
+#    held 0.3.0) and peer-warns. The checkout's global-tool-specs.sh reads the
+#    versions from the lockfile, so this pasted copy carries no versions. A
+#    checkout from before that script existed leaves the install to its own
+#    SessionStart hook.
+if ! command -v vp >/dev/null 2>&1; then
+  if [ ! -f .devcontainer/global-tool-specs.sh ]; then
+    echo "setup-script: $workspace has no .devcontainer/global-tool-specs.sh — skipping the toolchain and the warm install; the SessionStart hook installs both" >&2
+    exit 0
+  fi
+  global_tool_specs="$(bash .devcontainer/global-tool-specs.sh)"
+  read -ra global_tools <<< "$global_tool_specs"
+  pnpm install -g "${global_tools[@]}"
+fi
+
+# 4. Warm the workspace install so node_modules + the pnpm store land in the
+#    snapshot. The repo's SessionStart hook still runs `vp install` per session
+#    to reconcile the cloned branch's actual lockfile (fast when cache is
+#    current).
+vp install
+echo "setup-script: node $(node --version), vp $(vp --version), workspace warmed at $workspace"

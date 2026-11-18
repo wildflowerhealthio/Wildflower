@@ -29,15 +29,16 @@ if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 26 ? 0
   pnpm env use --global 26
 fi
 
-# 2. Global vp + the helpers postCreateCommand.sh installs alongside it. Pin
-#    every one to the version the workspace resolves so the bootstrap toolchain
-#    can't drift ahead of it — an unpinned `vite-plus` once pulled 0.3.1 while
-#    the workspace held 0.3.0, and its bundled vitest peer-warned against the
-#    aliased vite. These pins must be re-synced on every bump; the full list of
-#    places a vite-plus version is recorded is in
-#    docs/Dependencies/Bumping vite-plus How-To.md.
+# 2. Global vp + the helpers postCreateCommand.sh installs alongside it, each
+#    at the version pnpm-lock.yaml resolves so the bootstrap toolchain can't
+#    drift ahead of the workspace — an unpinned `vite-plus` once pulled 0.3.1
+#    while the workspace held 0.3.0, and its bundled vitest peer-warned against
+#    the aliased vite. global-tool-specs.sh reads the versions from the
+#    lockfile.
 if ! command -v vp >/dev/null 2>&1; then
-  pnpm install -g vite-plus@1.5.0 typescript@7.0.2 @tsdown/css@0.23.7
+  global_tool_specs="$(bash .devcontainer/global-tool-specs.sh)"
+  read -ra global_tools <<< "$global_tool_specs"
+  pnpm install -g "${global_tools[@]}"
 fi
 
 # 3. Workspace dependencies (idempotent; fast when node_modules is current).

@@ -44,14 +44,15 @@ esac
 BASHRC_EOF
 fi
 
-# Pin every global to the version the workspace resolves so the bootstrap vp
-# matches the workspace-local vp — unpinned, `vite-plus` drifts to newer
-# releases and its bundled vitest peer-warns against the aliased vite. These
-# pins must be re-synced on every bump; the full list of places a vite-plus
-# version is recorded is in docs/Dependencies/Bumping vite-plus How-To.md.
-pnpm install -g vite-plus@1.5.0
-pnpm install -g typescript@7.0.2
-pnpm install -g @tsdown/css@0.23.7
+# Install every global at the version pnpm-lock.yaml resolves so the bootstrap
+# vp matches the workspace-local vp — unpinned, `vite-plus` drifts to newer
+# releases and its bundled vitest peer-warns against the aliased vite.
+# global-tool-specs.sh reads the versions from the lockfile; with no versions
+# it prints why and nothing is installed.
+if global_tool_specs="$(bash "$(dirname "${BASH_SOURCE[0]}")/global-tool-specs.sh")"; then
+  read -ra global_tools <<< "$global_tool_specs"
+  pnpm install -g "${global_tools[@]}"
+fi
 vp install
 
 
