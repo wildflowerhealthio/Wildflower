@@ -14,7 +14,7 @@ const RUNS = numRunsFor({ base: 50 })
 const CERTAIN_ONLY: ResourceMatch.Options = { onlyCertainMatches: true, count: Option.none() }
 const EVERY_GRADE: ResourceMatch.Options = { onlyCertainMatches: false, count: Option.none() }
 
-describe('ResourceMatch.matchAll: the identifier stage', () => {
+describe('ResourceMatch.findCandidates: the identifier stage', () => {
   it('should search each type once, every identifier of every query of it, and nothing for a type with none', async () => {
     // Arrange
     const queries = [
@@ -33,7 +33,7 @@ describe('ResourceMatch.matchAll: the identifier stage', () => {
 
     // Act
     const { requests, result } = await runWith(
-      ResourceMatch.matchAll(queries, CERTAIN_ONLY),
+      ResourceMatch.findCandidates(queries, CERTAIN_ONLY),
       server
     )
 
@@ -68,7 +68,7 @@ describe('ResourceMatch.matchAll: the identifier stage', () => {
 
   it('should send nothing for no query with an identifier', async () => {
     const { requests, result } = await runWith(
-      ResourceMatch.matchAll([queryOf(patientWire({}))], CERTAIN_ONLY),
+      ResourceMatch.findCandidates([queryOf(patientWire({}))], CERTAIN_ONLY),
       inMemoryServer([])
     )
 
@@ -85,7 +85,7 @@ describe('ResourceMatch.matchAll: the identifier stage', () => {
     const unrelated = patientWire({ id: 'unrelated', identifier: [SHOPPERS_2] })
 
     // Act
-    const { result } = await runWith(ResourceMatch.matchAll(queries, CERTAIN_ONLY), () =>
+    const { result } = await runWith(ResourceMatch.findCandidates(queries, CERTAIN_ONLY), () =>
       searchset([shared, unrelated])
     )
 
@@ -105,9 +105,9 @@ describe('ResourceMatch.matchAll: the identifier stage', () => {
     ])
 
     // Act
-    const every = await runWith(ResourceMatch.matchAll([query], EVERY_GRADE), server)
+    const every = await runWith(ResourceMatch.findCandidates([query], EVERY_GRADE), server)
     const one = await runWith(
-      ResourceMatch.matchAll([query], { ...EVERY_GRADE, count: Option.some(1) }),
+      ResourceMatch.findCandidates([query], { ...EVERY_GRADE, count: Option.some(1) }),
       server
     )
 
@@ -124,7 +124,7 @@ describe('ResourceMatch.matchAll: the identifier stage', () => {
   })
 })
 
-describe('ResourceMatch.matchAll: the name stage', () => {
+describe('ResourceMatch.findCandidates: the name stage', () => {
   it('should search each person type once, by the queries nothing was found for by identifier', async () => {
     // Arrange
     const queries = [
@@ -152,7 +152,10 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     ])
 
     // Act
-    const { requests, result } = await runWith(ResourceMatch.matchAll(queries, EVERY_GRADE), server)
+    const { requests, result } = await runWith(
+      ResourceMatch.findCandidates(queries, EVERY_GRADE),
+      server
+    )
 
     // Assert
     const [identifierSearch, ...nameSearches] = requests
@@ -195,7 +198,10 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     )
 
     // Act
-    const { requests, result } = await runWith(ResourceMatch.matchAll([query], EVERY_GRADE), server)
+    const { requests, result } = await runWith(
+      ResourceMatch.findCandidates([query], EVERY_GRADE),
+      server
+    )
 
     // Assert
     expect({ forms: requests.map(({ form }) => form), result: result.map(candidateRefs) }).toEqual({
@@ -218,7 +224,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
 
     // Act
     const { requests } = await runWith(
-      ResourceMatch.matchAll(queries, EVERY_GRADE),
+      ResourceMatch.findCandidates(queries, EVERY_GRADE),
       inMemoryServer([])
     )
 
@@ -243,7 +249,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
 
     // Act
     const { requests } = await runWith(
-      ResourceMatch.matchAll(queries, EVERY_GRADE),
+      ResourceMatch.findCandidates(queries, EVERY_GRADE),
       inMemoryServer([])
     )
 
@@ -260,7 +266,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     const query = queryOf(practitionerWire({ name: [{ family: 'J', given: ['Liz'] }] }))
 
     const { requests, result } = await runWith(
-      ResourceMatch.matchAll([query], EVERY_GRADE),
+      ResourceMatch.findCandidates([query], EVERY_GRADE),
       inMemoryServer([practitionerWire({ id: 'd-j', name: [{ family: 'J', given: ['Liz'] }] })])
     )
 
@@ -279,8 +285,9 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     const ann = patientWire({ id: 'p-ann', name: [ANN_BROWN], birthDate: lastBirthDate })
 
     // Act: the server finds p-ann in both chunks
-    const { requests, result } = await runWith(ResourceMatch.matchAll(queries, EVERY_GRADE), () =>
-      searchset([ann])
+    const { requests, result } = await runWith(
+      ResourceMatch.findCandidates(queries, EVERY_GRADE),
+      () => searchset([ann])
     )
 
     // Assert
@@ -301,7 +308,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     )
     const server = inMemoryServer([patientWire({ id: 'p-1', identifier: [SHOPPERS_1] })])
 
-    const { requests } = await runWith(ResourceMatch.matchAll([query], EVERY_GRADE), server)
+    const { requests } = await runWith(ResourceMatch.findCandidates([query], EVERY_GRADE), server)
 
     expect(requests.map(({ form }) => form)).toEqual([
       { identifier: 'https://shoppers.example/customer|1', _count: '1000' },
@@ -317,7 +324,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     ])
 
     const { requests, result } = await runWith(
-      ResourceMatch.matchAll([query], CERTAIN_ONLY),
+      ResourceMatch.findCandidates([query], CERTAIN_ONLY),
       server
     )
 
@@ -335,7 +342,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     ]
 
     const { requests, result } = await runWith(
-      ResourceMatch.matchAll(queries, EVERY_GRADE),
+      ResourceMatch.findCandidates(queries, EVERY_GRADE),
       inMemoryServer([patientWire({ id: 'p-ann', name: [ANN_BROWN], birthDate: BORN })])
     )
 
@@ -346,7 +353,7 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     const query = MatchQuery.fromLogicalReference(logicalReference('Patient', SHOPPERS_1))
 
     const { requests } = await runWith(
-      ResourceMatch.matchAll([query], EVERY_GRADE),
+      ResourceMatch.findCandidates([query], EVERY_GRADE),
       inMemoryServer([patientWire({ id: 'p-ann', name: [ANN_BROWN], birthDate: BORN })])
     )
 
@@ -364,9 +371,9 @@ describe('ResourceMatch.matchAll: the name stage', () => {
     ])
 
     // Act
-    const every = await runWith(ResourceMatch.matchAll([query], EVERY_GRADE), server)
+    const every = await runWith(ResourceMatch.findCandidates([query], EVERY_GRADE), server)
     const best = await runWith(
-      ResourceMatch.matchAll([query], { ...EVERY_GRADE, count: Option.some(1) }),
+      ResourceMatch.findCandidates([query], { ...EVERY_GRADE, count: Option.some(1) }),
       server
     )
 
@@ -378,12 +385,12 @@ describe('ResourceMatch.matchAll: the name stage', () => {
   })
 })
 
-describe('ResourceMatch.matchAll: failures', () => {
+describe('ResourceMatch.findCandidates: failures', () => {
   it('should fail with a failed identifier search, not find no match', async () => {
     const query = MatchQuery.fromLogicalReference(logicalReference('Patient', SHOPPERS_1))
 
     const outcome = await failureOf(
-      ResourceMatch.matchAll([query], CERTAIN_ONLY),
+      ResourceMatch.findCandidates([query], CERTAIN_ONLY),
       () => new Response('', { status: 503 })
     )
 
@@ -394,7 +401,7 @@ describe('ResourceMatch.matchAll: failures', () => {
     const query = queryOf(patientWire({ name: [ANN_BROWN], birthDate: BORN }))
 
     const outcome = await failureOf(
-      ResourceMatch.matchAll([query], EVERY_GRADE),
+      ResourceMatch.findCandidates([query], EVERY_GRADE),
       () => new Response('', { status: 503 })
     )
 
@@ -402,7 +409,7 @@ describe('ResourceMatch.matchAll: failures', () => {
   })
 })
 
-describe('ResourceMatch.matchAll: batching', () => {
+describe('ResourceMatch.findCandidates: batching', () => {
   it('property: matching a batch gives each query what matching it alone gives', async () => {
     await fc.assert(
       fc.asyncProperty(
@@ -414,9 +421,9 @@ describe('ResourceMatch.matchAll: batching', () => {
             storedWithoutIds.map((stored, index) => ({ ...stored, id: `s-${index}` }))
           )
 
-          const batched = await runWith(ResourceMatch.matchAll(queries, options), server)
+          const batched = await runWith(ResourceMatch.findCandidates(queries, options), server)
           const alone = await Promise.all(
-            queries.map((query) => runWith(ResourceMatch.matchAll([query], options), server))
+            queries.map((query) => runWith(ResourceMatch.findCandidates([query], options), server))
           )
 
           expect(batched.result.map(candidateRefs)).toEqual(

@@ -665,11 +665,6 @@
           ],
           "system": "https://fhir.infoway-inforoute.ca/NamingSystem/ca-on-patient-hcn",
           "value": "3648223849"
-        },
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date",
-          "value": "okafor;avery;1974-09-21"
         }
       ],
       "link": [],

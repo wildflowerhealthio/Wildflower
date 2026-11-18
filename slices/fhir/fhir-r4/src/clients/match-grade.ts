@@ -31,6 +31,14 @@ const RANK: { readonly [Grade in Type]: number } = {
 const bestFirst: Order.Order<Type> = Order.mapInput(Order.number, (grade: Type) => RANK[grade])
 
 /**
+ * Whether `grade` is `certain` or `probable`. In FHIR's match-grade value
+ * set these are the grades whose definitions leave additional review
+ * optional, where a `possible` match is one to review.
+ */
+const mayNotNeedAdditionalReview = (grade: Type): boolean =>
+  grade === 'certain' || grade === 'probable'
+
+/**
  * A name as two names are compared: a family name, and the given names, each
  * part's words lower-cased, without diacritics and single-spaced, with a
  * leading doctor's title dropped.
@@ -302,6 +310,7 @@ export {
   canGradePractitioner,
   comparableNamesOf,
   familySearchWordsOf,
+  mayNotNeedAdditionalReview,
   patientGradeOf,
   practitionerGradeOf,
 }

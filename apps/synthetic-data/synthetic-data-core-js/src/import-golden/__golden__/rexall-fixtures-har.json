@@ -727,11 +727,6 @@
           "extension": [],
           "system": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Patient",
           "value": "uid-abc-123"
-        },
-        {
-          "extension": [],
-          "system": "https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date",
-          "value": "rivera;jordan;1985-07-14"
         }
       ],
       "link": [],

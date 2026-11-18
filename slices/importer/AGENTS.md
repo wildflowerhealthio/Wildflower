@@ -59,8 +59,11 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   pick as a source file and reads it back, the `FormatDetector` seam
   the picker sniffs with, the pure per-resource `StagedImport` model, and the
   **identity map**: the referents a batch names, the `LinkChoice` per referent
-  and the `MentionLinkChoiceSet` for single mentions, `ReferentSearch` (the one
-  identifier search that defaults each referent), and the pure phases that
+  and the `MentionLinkChoiceSet` for single mentions, `StoredCandidates` (the
+  stored candidates of a batch's resources, from one match against the store,
+  which each referent's default reads through `ReferentMatch`), `StoredCopy`
+  (a resource's stored copy, which the server diff compares it with), and the
+  pure phases that
   resolve a batch's decoded rows on those choices (`LinkPlan`,
   `FileResolution`). There is no `persist` sink: the write is the shell's one
   `persistTransactionBundle`.

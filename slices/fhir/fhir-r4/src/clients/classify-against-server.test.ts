@@ -1,4 +1,5 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Effect, FastCheck as fc, Layer, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -10,6 +11,8 @@ import {
 } from '../resources/index.ts'
 import {
   classifyAgainstServer,
+  compareWithStoredCopy,
+  normalizedEncode,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
   type DiffStatus,
@@ -141,6 +144,54 @@ describe('classifyAgainstServer', () => {
     expect(request?.body.type).toBe('batch')
     expect(request?.body.entry?.[0]?.request?.method).toBe('GET')
     expect(request?.body.entry?.[0]?.request?.url).toBe('Patient/probe-1')
+  })
+})
+
+describe('compareWithStoredCopy', () => {
+  it('should find a resource unchanged against a wire-equal copy stored under another id', () => {
+    // Arrange
+    const patient = makePatient('imported-1')
+    const storedCopy = { ...patient, id: 'stored-9' }
+
+    // Act
+    const comparison = compareWithStoredCopy(patient, storedCopy)
+
+    // Assert
+    expect(comparison.status).toBe<DiffStatus>('unchanged')
+    expect(comparison.fields).toEqual([])
+  })
+
+  it('should name only the content leaves that differ, never the id', () => {
+    // Arrange
+    const patient = makePatient('imported-2')
+    const serverGender = patient.gender === 'female' ? 'male' : 'female'
+    const storedCopy = { ...patient, id: 'stored-8', gender: serverGender } as const
+
+    // Act
+    const comparison = compareWithStoredCopy(patient, storedCopy)
+
+    // Assert
+    expect(comparison.status).toBe<DiffStatus>('changed')
+    expect(comparison.fields.map(({ path }) => formatPath(path))).toEqual(['gender'])
+  })
+
+  it('property: should find every resource unchanged against itself under any id', () => {
+    fc.assert(
+      fc.property(Arbitrary.make(Patient.Schema), fc.string({ minLength: 1 }), (patient, id) => {
+        expect(compareWithStoredCopy(patient, { ...patient, id }).status).toBe<DiffStatus>(
+          'unchanged'
+        )
+      }),
+      { numRuns: numRunsFor({ base: 20 }) }
+    )
+  })
+})
+
+describe('normalizedEncode', () => {
+  it('should drop the id, so a server copy carries none', () => {
+    const encoded = Option.getOrThrow(normalizedEncode(makePatient('dropped-1')))
+
+    expect(encoded).not.toHaveProperty('id')
   })
 })
 

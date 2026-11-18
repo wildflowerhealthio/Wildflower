@@ -32,6 +32,7 @@
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
+import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
 import { Array, Effect, HashMap, Match, Option, pipe } from 'effect'
 
 import type * as ReviewRow from '../review-row.ts'
@@ -275,8 +276,7 @@ const linkIfNamedBy = (
   Option.orElse(HashMap.get(plan.linksByReferent, logicalReferenceKey), () =>
     pipe(
       HashMap.get(plan.linksByLogicalReference, logicalReferenceKey),
-      Option.filter((answering) => answering.length === 1),
-      Option.map(Array.headNonEmpty)
+      Option.flatMap(onlyElement)
     )
   )
 

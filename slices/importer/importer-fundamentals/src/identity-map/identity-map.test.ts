@@ -89,7 +89,6 @@ afterAll(() => {
 const RUNS = numRunsFor({ base: 50 })
 
 const PERSON = keyOf('Patient', SOURCE_PATIENT, 'p-1')
-const NAME_BIRTH_DATE = 'https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date'
 
 const at = (file: AdoptedFileSet.Type, key: string): FhirResourceWithId | undefined =>
   SectionedList.rows(file.sectionedList).find((row) => row.reviewKey === key)?.resource
@@ -211,11 +210,7 @@ describe('the identity map on one file', () => {
       resolved.sectionedList.sections.map((section) => section.rows.map((row) => row.reviewKey))
     ).toEqual([['k-0', 'k-1', 'k-2', 'k-3']])
     expect(at(resolved, 'k-0')?.id).toBe('s-1')
-    expect(identifiersOf(at(resolved, 'k-0'))).toEqual([
-      `${DEVICE}|s-1`,
-      `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`,
-      `${SOURCE_PATIENT}|p-1`,
-    ])
+    expect(identifiersOf(at(resolved, 'k-0'))).toEqual([`${DEVICE}|s-1`, `${SOURCE_PATIENT}|p-1`])
     const { subject } = subjectAndRequesterOf(at(resolved, 'k-1'))
     expect([subject?.reference, subject?.display, subject?.identifier?.value]).toEqual([
       'Patient/s-1',
@@ -226,16 +221,14 @@ describe('the identity map on one file', () => {
     expect(subjectAndRequesterOf(at(resolved, 'k-3')).subject?.reference).toBe(null)
   })
 
-  it('writes a new person as it is plus its derived identifier, and leaves unlinked references alone', () => {
+  it('writes a new person as it is, and leaves unlinked references alone', () => {
+    const person = patient({ id: 'p-1' })
     const unlinked = request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith'))
-    const file = fileOf(patient({ id: 'p-1' }), unlinked)
+    const file = fileOf(person, unlinked)
 
     const resolved = resolveOnTestClock(file, HashMap.empty())
 
-    expect(identifiersOf(at(resolved, 'k-0'))).toEqual([
-      `${SOURCE_PATIENT}|p-1`,
-      `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`,
-    ])
+    expect(at(resolved, 'k-0')).toBe(person)
     expect(at(resolved, 'k-1')).toBe(unlinked)
   })
 
@@ -394,9 +387,9 @@ describe('the identity map on a re-import', () => {
     decodedAgain,
     request('rx-2', { type: 'Patient', identifier: { system: SOURCE_PATIENT, value: 'p-1' } })
   )
-  // The decode's own identifiers, its derived one, then those only the stored copy carries.
-  const assumedAll = [0, 3, 1, 2].flatMap((index) => storedCopy.identifier.slice(index, index + 1))
-  // What `ReferentSearch.defaultChoices` gives: the search finds the stored copy.
+  // The decode's own identifier, then those only the stored copy carries.
+  const assumedAll = storedCopy.identifier
+  // What `ReferentMatch.defaultChoices` gives: the match finds the stored copy.
   const defaultChoices: ReferentLinkChoiceSet.Type = HashMap.make([
     PERSON,
     LinkChoice.UpdateStoredResource({ resource: storedCopy }),
@@ -409,7 +402,6 @@ describe('the identity map on a re-import', () => {
       `${SOURCE_PATIENT}|p-1`,
       `${CUSTOMER}|c-9`,
       `${CUSTOMER}|c-8`,
-      `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`,
     ])
     expect(referents.map(Referent.key)).toEqual([PERSON])
     expect(linkTargetFor(defaultChoices, referents, PERSON)).toBe('Decoded')
@@ -442,10 +434,7 @@ describe('the identity map on a re-import', () => {
       HashMap.make([PERSON, LinkChoice.CreateResource()])
     )
 
-    expect(identifiersOf(resourceAt(resolved, 'k-0'))).toEqual([
-      `${SOURCE_PATIENT}|p-1`,
-      `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`,
-    ])
+    expect(identifiersOf(resourceAt(resolved, 'k-0'))).toEqual([`${SOURCE_PATIENT}|p-1`])
   })
 
   it('writes the stored copy when the reviewer links the person to it too', () => {
@@ -883,17 +872,6 @@ describe('the identity map and the clock', () => {
         return Array.headNonEmpty(resolvedFiles)
       }).pipe(Effect.provide(TestContext.TestContext))
     )
-
-  it('derives a person’s name and birth date identifier from the name current at the clock’s now', async () => {
-    expect(identifiersOf(at(await appliedAt('2026-10-30T12:00:00Z'), 'k-0'))).toEqual([
-      `${SOURCE_PATIENT}|p-1`,
-      `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`,
-    ])
-    expect(identifiersOf(at(await appliedAt('2026-11-02T12:00:00Z'), 'k-0'))).toEqual([
-      `${SOURCE_PATIENT}|p-1`,
-      `${NAME_BIRTH_DATE}|jones;tyra;1990-01-02`,
-    ])
-  })
 
   it('resolves a file the same way twice at one instant', async () => {
     expect(fileWireOf(await appliedAt('2026-11-02T12:00:00Z'))).toBe(

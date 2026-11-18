@@ -501,25 +501,16 @@ physician all do. DICOM builds the name from the parsed PN, given names first
 and then family, because the PN text prints the family name first and would
 not read as a prescription's "Jane Smith".
 
-### Name-and-birth-date and practitioner-name identifiers
+### Matching by name, and practitioner-name identifiers
 
-The name-and-birth-date system is Wildflower's, not any source's, so the same
-person from two sources derives one identifier. It sits under
-`terminology.ts`'s `WILDFLOWER_IDENTIFIER_SYSTEM_BASE` and is persisted wire
-format:
-
-- `Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM`: `family;given;YYYY-MM-DD` from
-  the name shown for the person (`HumanName.displayName`'s pick) and
-  `birthDate`, the given names joined by a space, in NFC, lower-cased,
-  whitespace collapsed, the three parts joined on `;` because `|` is the FHIR
-  token separator. None unless all three parts are present, so a partial
-  match never links two people, and a name change alone never matches.
-
-Every Patient referent carries its derived identifier beside its own once
-resolved, and the identifier is written with the resource. A
-name-and-birth-date match is therefore an ordinary identifier match, and a
-person whose name changed keeps both spellings on the device. A Practitioner
-derives none: a name alone identifies no one across sources.
+No identifier is minted from a person's name and birth date. A record with
+no identifier the store already holds is matched by name instead
+(`fhir-r4/clients`' `ResourceMatch`, FHIR `$match`'s grades): a stored
+Patient with the same birth date, family name and every given name is
+`probable`, one sharing less of the name `possible`; a stored Practitioner
+with the same family name and given names is `probable`. The review links a
+referent to the one `probable` record by default and leaves the rest to the
+reviewer.
 
 A practitioner-name system is each source's own, persisted wire format like
 any key: `ShoppersIdentifierSystem.PractitionerName`,
@@ -535,18 +526,20 @@ from two sources is two Practitioners until the reviewer links them.
 The reviewer makes one **link choice** per referent:
 
 - **Create** the resource: the referent's own record is written and becomes
-  the person or provider. The default when the search finds nothing.
+  the person or provider. The default when the match finds nothing to link.
 - **Update the stored resource**: the referent's own record is written over
   the stored copy under its own literal reference, keeping every identifier
   the copy assumed. What a re-import does.
 - **Link to a stored resource**: a resource of that type already on the
   device.
 
-Each referent's default comes from one identifier search
-(`GET <Type>?identifier=`) over the identifiers its source gave it, then the
-derived one: a hit that is the stored copy of its own resource is an update,
-one hit is a link to it, two hits are ambiguous and no hit falls back to
-Create. The reviewer always sees every referent and can change it.
+Each referent's default comes from the batch's one match against the store
+(one identifier search per type, then a name match for a Patient or
+Practitioner nothing carried its identifiers): a candidate that is the
+stored copy of its own resource is an update, one `certain` or `probable`
+candidate is a link to it, and anything else (several, or only `possible`
+ones, or none) falls back to Create. The reviewer always sees every
+referent and can change it.
 
 A choice resolves to a **link target**: a stored resource or the referent's
 own decoded resource. Every mention of the referent, literal or logical, is

@@ -42,6 +42,7 @@ export {
 } from './plan-write.ts'
 export * as ReviewGroup from './review-group.ts'
 export {
+  decodedRowsOf,
   discoverReferents,
   isSourceFileOf,
   resolveMentions,

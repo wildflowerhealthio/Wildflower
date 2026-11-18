@@ -210,5 +210,11 @@ const resolveMentionsWithFallback = (
   )
 }
 
-export { discoverReferents, isSourceFileOf, resolveMentions, resolveMentionsWithFallback }
+export {
+  decodedRowsOf,
+  discoverReferents,
+  isSourceFileOf,
+  resolveMentions,
+  resolveMentionsWithFallback,
+}
 export type { ResolvedBatch }

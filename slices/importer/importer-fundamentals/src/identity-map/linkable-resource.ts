@@ -7,11 +7,11 @@
 
 import { HumanName, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
+  type Patient,
   type Practitioner,
   type FhirResourceWithId,
   literalReferenceOf,
   LogicalReference,
-  Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, DateTime, Effect, Match, Option, pipe } from 'effect'
 
@@ -63,29 +63,6 @@ const maybeBirthDate: (resource: Type) => Option.Option<string> = Match.type<Typ
 )
 
 /**
- * Whether `identifier` is one demographics derive, under a Wildflower system
- * ({@link maybeDerivedIdentifier}'s), rather than one a source gave: what a
- * resolved resource carries after assuming its own, and what a search by the
- * source's identifiers leaves out.
- */
-const isDerivedIdentifier = (identifier: IdentifierAndReference.IdentifierType): boolean =>
-  identifier.system?.href === Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM
-
-/**
- * The identifier `resource`'s own demographics derive, under a Wildflower
- * system: name and birth date for a Patient. `None` when they do not allow
- * one, and always for a Practitioner, whose name alone identifies no one
- * across sources.
- */
-const maybeDerivedIdentifier: (
-  resource: Type
-) => Effect.Effect<Option.Option<IdentifierAndReference.IdentifierType>> = Match.type<Type>().pipe(
-  matchResourceType('Patient', (patient) => Patient.nameBirthDateIdentifier(patient)),
-  matchResourceType('Practitioner', () => Effect.succeedNone),
-  Match.exhaustive
-)
-
-/**
  * What a review shows for `resource`: its displayed name, plus the birth date
  * for a Patient, or `fallback` when it has neither.
  */
@@ -124,10 +101,8 @@ const assumesIdentifiers = <TResource extends Type>(
 export {
   assumesIdentifiers,
   is,
-  isDerivedIdentifier,
   labelOf,
   literalReferenceOf,
-  maybeDerivedIdentifier,
   maybeDisplayName,
   sameRecord,
   tryIntoLogicalReference,

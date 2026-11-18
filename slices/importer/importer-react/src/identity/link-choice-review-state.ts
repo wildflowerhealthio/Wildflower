@@ -13,6 +13,7 @@ import type {
   LinkChoice,
   Referent,
   ReferentLinkChoiceSet,
+  StoredCandidates,
 } from '@wildflowerhealthio/importer-fundamentals'
 import type { Option } from 'effect'
 
@@ -25,8 +26,10 @@ interface MappedIdentityMap {
   readonly referents: readonly Referent.Type[]
   /** The choices the batch is resolved on: the defaults, under the reviewer's own, less any that cannot be resolved. */
   readonly linkChoices: ReferentLinkChoiceSet.Type
-  /** The stored resources the default search found, linked to or updated, labelled, for the reviewer to pick again. */
+  /** The stored resources the defaults link to or update, labelled. */
   readonly found: readonly StoredResource[]
+  /** The stored candidates of the batch's first decode, which the server diff reads; `None` when the match failed. */
+  readonly storedCandidates: Option.Option<StoredCandidates.Type>
   /** The batch resolved on {@link MappedIdentityMap.linkChoices}: what the diff, the preview and the confirm see. */
   readonly resolved: ResolvedBatch
   /** What the rows' mention selects offer under the resolved batch's plan: each resolved resource, labelled. */
@@ -34,12 +37,13 @@ interface MappedIdentityMap {
 }
 
 /**
- * `loading` while the default search for this batch is in flight (the screen
- * paints a status line instead of the preview), `ready` once the defaults are
- * in, `error` when the search failed and every referent took its kind's
- * default, `refused` when the batch cannot be resolved at all, with the last
- * resolving of this batch that could be, when a re-decode is what refused it,
- * so the screen can keep that review up while the reviewer undoes the change.
+ * The review's states. `loading` while the batch's match is in flight, when
+ * the screen paints a status line instead of the preview. `ready` once the
+ * defaults are in. `error` when the match failed and every referent took
+ * `CreateResource`. `refused` when the batch cannot be resolved at all. It
+ * carries the last resolving of this batch that could be, when a re-decode
+ * is what refused it, so the screen can keep that review up while the
+ * reviewer undoes the change.
  */
 type LinkChoiceReviewState =
   | { readonly _tag: 'loading' }

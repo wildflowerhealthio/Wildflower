@@ -8,6 +8,7 @@ import {
   searchAllOfType,
   type SearchableResourceType,
   searchByIdentifiers,
+  searchPagesOfType,
 } from './index.ts'
 import { OR_VALUES_PER_SEARCH } from './search-by-type.ts'
 
@@ -164,6 +165,41 @@ describe('searchAllOfType', () => {
       { _count: '2' },
       { _count: '2', _cursor: cursor },
     ])
+  })
+})
+
+describe('searchPagesOfType', () => {
+  it('should read pages of the given size up to the limit, and say the limit cut the list off', async () => {
+    // Arrange: every page continues to another
+    const pageSize = 2
+
+    // Act
+    const { requests, result } = await runWith(
+      searchPagesOfType('Practitioner', { pageSize, pageLimit: 2 }),
+      (form) => {
+        const pageToken = form['_cursor'] ?? '0'
+        return searchset([storedPractitioner(`r-${pageToken}`)], `${pageToken}-next`)
+      }
+    )
+
+    // Assert
+    expect(result.matches.map(({ id }) => id)).toEqual(['r-0', 'r-0-next'])
+    expect(result.truncated).toBe(true)
+    expect(requests.map(({ url, form }) => ({ url, form }))).toEqual([
+      { url: `${TEST_ORIGIN}/Practitioner/_search`, form: { _count: '2' } },
+      { url: `${TEST_ORIGIN}/Practitioner/_search`, form: { _count: '2', _cursor: '0-next' } },
+    ])
+  })
+
+  it('should not call a list cut off when its last page continues nowhere', async () => {
+    // Act
+    const { result } = await runWith(
+      searchPagesOfType('Patient', { pageSize: 2, pageLimit: 2 }),
+      () => searchset([storedPatient('p-1')], null)
+    )
+
+    // Assert
+    expect(result).toEqual({ matches: [expect.objectContaining({ id: 'p-1' })], truncated: false })
   })
 })
 

@@ -433,7 +433,7 @@ const bestCandidates = <TResourceType extends ResourceType.Type>(
  * @returns Each query's candidates, best grade first, then cut to `count`,
  *   in the order of `queries`
  */
-const matchAll = <TResourceType extends ResourceType.Type>(
+const findCandidates = <TResourceType extends ResourceType.Type>(
   queries: readonly MatchQuery.Type<TResourceType>[],
   options: Options
 ): Effect.Effect<
@@ -470,5 +470,5 @@ const matchAll = <TResourceType extends ResourceType.Type>(
     )
   })
 
-export { matchAll }
+export { findCandidates }
 export type { Candidate, Evidence, Failure, Options }

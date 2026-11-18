@@ -139,8 +139,9 @@ const importWithDefaults = (
     ]
     if (unread.length > 0) return yield* Effect.fail(`Not read: ${unread.join(', ')}`)
 
-    // On a device that holds nothing, `ReferentSearch.defaultChoices` finds
-    // no record, so every referent takes its kind's default: no choice made.
+    // On a device that holds nothing, the batch's match finds no stored
+    // candidate (`StoredCandidates.find`), so every referent takes
+    // `CreateResource` (`ReferentMatch.defaultChoices`). No choice is made.
     const batch = yield* resolveMentions(decodedBatch, LinkChoiceSet.empty)
     // The screen's default with no row on the server: every row left
     // without a patient is out.

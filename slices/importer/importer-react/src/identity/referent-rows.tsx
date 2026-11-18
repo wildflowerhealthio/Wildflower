@@ -42,7 +42,7 @@ interface ReferentRowsProps {
   readonly linkChoices: ReferentLinkChoiceSet.Type
   /** The plan the batch was resolved on under `linkChoices`: each referent's link target. */
   readonly plan: LinkPlan.Type
-  /** The stored resources the default search found. */
+  /** The stored resources the defaults link to or update. */
   readonly found: readonly StoredResource[]
   /** Whether the selects take no choice: while the batch is refused, a choice could not be resolved or shown. */
   readonly disabled: boolean

@@ -4,6 +4,17 @@ import { describe, expect, it } from 'vite-plus/test'
 import { Patient, Practitioner } from '../resources/index.ts'
 import { MatchGrade } from './index.ts'
 
+describe('MatchGrade.mayNotNeedAdditionalReview', () => {
+  it.each([
+    { grade: 'certain', expected: true },
+    { grade: 'probable', expected: true },
+    { grade: 'possible', expected: false },
+    { grade: 'certainly-not', expected: false },
+  ] as const)('should give $expected for $grade', ({ grade, expected }) => {
+    expect(MatchGrade.mayNotNeedAdditionalReview(grade)).toBe(expected)
+  })
+})
+
 describe('MatchGrade.patientGradeOf', () => {
   it.each([
     {

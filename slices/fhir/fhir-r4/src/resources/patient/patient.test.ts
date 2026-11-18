@@ -28,11 +28,6 @@ import * as Patient from './patient.ts'
 const runOnTestClock = <A>(effect: Effect.Effect<A>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
-const mintOnTestClock = (
-  patient: typeof Patient.Schema.Type
-): Option.Option<IdentifierAndReference.IdentifierType> =>
-  runOnTestClock(Patient.nameBirthDateIdentifier(patient))
-
 const demographicsOnTestClock = (patient: typeof Patient.Schema.Type): Patient.Demographics =>
   runOnTestClock(Patient.demographics(patient))
 
@@ -295,7 +290,7 @@ describe('FhirR4Patient', () => {
   })
 })
 
-describe('Patient.nameBirthDateIdentifier', () => {
+describe('Patient.demographics', () => {
   const humanName = ({
     family,
     given,
@@ -363,139 +358,6 @@ describe('Patient.nameBirthDateIdentifier', () => {
       )
       .map(([words, trailingWhitespace]) => `${words.join('')}${trailingWhitespace}`)
 
-  test('mints family;given…;birth date under the Wildflower system, lower-cased', () => {
-    // Arrange
-    const patient = patientNamed({
-      names: [humanName({ family: 'Smith', given: ['Tyra', 'Jane'] })],
-      birthDate: '1990-04-02',
-    })
-
-    // Act
-    const identifier = mintOnTestClock(patient)
-
-    // Assert
-    expect(Option.getOrNull(identifier)).toSchemaEqual(IdentifierAndReference.IdentifierSchema, {
-      id: null,
-      extension: [],
-      assigner: null,
-      period: null,
-      system: new URL('https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date'),
-      type: null,
-      use: null,
-      value: 'smith;tyra jane;1990-04-02',
-    })
-    expect(Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM).toBe(
-      'https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date'
-    )
-  })
-
-  test('mints the same identifier for a name in composed and decomposed Unicode', () => {
-    // Arrange
-    const patientWithFamily = (family: string): typeof Patient.Schema.Type =>
-      patientNamed({
-        names: [humanName({ family, given: ['Tyra'] })],
-        birthDate: '1990-04-02',
-      })
-
-    // Act
-    const composed = mintOnTestClock(patientWithFamily('Jos\u00e9'))
-    const decomposed = mintOnTestClock(patientWithFamily('Jose\u0301'))
-
-    // Assert
-    expect(decomposed).toEqual(composed)
-  })
-
-  test.each([
-    { reason: 'no name', names: [], birthDate: '1990-04-02' },
-    {
-      reason: 'a first name with no family',
-      names: [
-        humanName({ family: null, given: ['Tyra'] }),
-        humanName({ family: 'Smith', given: ['Tyra'] }),
-      ],
-      birthDate: '1990-04-02',
-    },
-    {
-      reason: 'a first name with a blank family',
-      names: [humanName({ family: '  ', given: ['Tyra'] })],
-      birthDate: '1990-04-02',
-    },
-    {
-      reason: 'a first name with no given name',
-      names: [humanName({ family: 'Smith', given: [] })],
-      birthDate: '1990-04-02',
-    },
-    {
-      reason: 'a first name whose given names are blank',
-      names: [humanName({ family: 'Smith', given: [' ', '\t'] })],
-      birthDate: '1990-04-02',
-    },
-    {
-      reason: 'no birth date',
-      names: [humanName({ family: 'Smith', given: ['Tyra'] })],
-      birthDate: null,
-    },
-  ])('mints nothing for a patient with $reason', ({ names, birthDate }) => {
-    expect(mintOnTestClock(patientNamed({ names, birthDate }))).toEqual(Option.none())
-  })
-
-  test('property: mints the same identifier whatever the case and whitespace of the name', () => {
-    const fullNameWithRespellingArb = fullNameArb.chain((fullName) =>
-      fc.record({
-        fullName: fc.constant(fullName),
-        respelledFamily: respelledArb(fullName.family),
-        respelledGiven: fc.tuple(...fullName.given.map(respelledArb)),
-      })
-    )
-    fc.assert(
-      fc.property(fullNameWithRespellingArb, ({ fullName, respelledFamily, respelledGiven }) => {
-        // Arrange
-        const birthDate = Schema.encodeSync(TimelessDateFromString)(fullName.birthDate)
-        const plain = patientNamed({
-          names: [humanName({ family: fullName.family, given: fullName.given })],
-          birthDate,
-        })
-        const respelled = patientNamed({
-          names: [humanName({ family: respelledFamily, given: respelledGiven })],
-          birthDate,
-        })
-
-        // Act / Assert
-        expect(Option.map(mintOnTestClock(respelled), ({ value }) => value)).toEqual(
-          Option.some(`${fullName.family};${fullName.given.join(' ')};${birthDate}`.toLowerCase())
-        )
-        expect(mintOnTestClock(respelled)).toEqual(mintOnTestClock(plain))
-      }),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
-
-  test('property: a patient named by its own identifier mints that identifier again', () => {
-    fc.assert(
-      fc.property(fullNameArb, (fullName) => {
-        // Arrange
-        const minted = mintOnTestClock(
-          patientNamed({
-            names: [humanName({ family: fullName.family, given: fullName.given })],
-            birthDate: Schema.encodeSync(TimelessDateFromString)(fullName.birthDate),
-          })
-        ).pipe(Option.getOrThrow)
-        const [family = '', given = '', birthDate = ''] = (minted.value ?? '').split(';')
-
-        // Act
-        const remintedFromOwnParts = mintOnTestClock(
-          patientNamed({ names: [humanName({ family, given: [given] })], birthDate })
-        )
-
-        // Assert
-        expect(remintedFromOwnParts).toEqual(Option.some(minted))
-      }),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
-})
-
-describe('Patient.demographics', () => {
   const patientOf = (wire: object): typeof Patient.Schema.Type =>
     Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', ...wire })
 
@@ -548,9 +410,6 @@ describe('Patient.demographics', () => {
       given: Option.some('jo'),
       birthDate: Option.some('1990-01-02'),
     })
-    expect(Option.map(mintOnTestClock(renamed), ({ value }) => value)).toEqual(
-      Option.some('doe;tyra;1990-01-02')
-    )
     // At the test clock's start the first name's period has not ended.
     expect(demographicsOnTestClock(endedName).family).toEqual(Option.some('banks'))
     const familyAfterTheEnd = await Effect.runPromise(
@@ -575,30 +434,49 @@ describe('Patient.demographics', () => {
     })
   })
 
-  test('should always be what the name-and-birth-date identifier is minted from, joined by ;', () => {
-    const nameWordArb = fc.stringMatching(/^[A-Za-zéÉ]{1,8}$/)
+  test('should read a name in composed and decomposed Unicode as the same parts', () => {
+    // Arrange
+    const patientWithFamily = (family: string): typeof Patient.Schema.Type =>
+      patientNamed({
+        names: [humanName({ family, given: ['Tyra'] })],
+        birthDate: '1990-04-02',
+      })
+
+    // Act
+    const composed = demographicsOnTestClock(patientWithFamily('Jos\u00e9'))
+    const decomposed = demographicsOnTestClock(patientWithFamily('Jose\u0301'))
+
+    // Assert
+    expect(decomposed).toEqual(composed)
+  })
+
+  test('property: should read the same parts whatever the case and whitespace of the name', () => {
+    const fullNameWithRespellingArb = fullNameArb.chain((fullName) =>
+      fc.record({
+        fullName: fc.constant(fullName),
+        respelledFamily: respelledArb(fullName.family),
+        respelledGiven: fc.tuple(...fullName.given.map(respelledArb)),
+      })
+    )
     fc.assert(
-      fc.property(
-        nameWordArb,
-        fc.array(nameWordArb, { minLength: 1 }),
-        Arbitrary.make(TimelessDateFromString),
-        (family, given, birthDate) => {
-          // Arrange
-          const patient = patientOf({ name: [{ family, given }], birthDate })
+      fc.property(fullNameWithRespellingArb, ({ fullName, respelledFamily, respelledGiven }) => {
+        // Arrange
+        const birthDate = Schema.encodeSync(TimelessDateFromString)(fullName.birthDate)
+        const respelled = patientNamed({
+          names: [humanName({ family: respelledFamily, given: respelledGiven })],
+          birthDate,
+        })
 
-          // Act
-          const demographics = demographicsOnTestClock(patient)
-          const identifier = mintOnTestClock(patient)
+        // Act
+        const demographics = demographicsOnTestClock(respelled)
 
-          // Assert
-          expect(Option.map(identifier, ({ value }) => value)).toEqual(
-            Option.map(
-              Option.all([demographics.family, demographics.given, demographics.birthDate]),
-              (parts) => parts.join(';')
-            )
-          )
-        }
-      ),
+        // Assert
+        expect(demographics).toEqual({
+          family: Option.some(fullName.family.toLowerCase()),
+          given: Option.some(fullName.given.join(' ').toLowerCase()),
+          birthDate: Option.some(birthDate),
+        })
+      }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })

@@ -257,6 +257,34 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   their local keys, because `importer-core`'s import stage builds each set's
   source files and review keys and sets its records' `meta.source`.
 
+- `src/stored-candidates.ts` — the **`StoredCandidates`** namespace: the
+  stored candidates of an import's resources, found once per import. A
+  `HashMap` from each matched resource's literal reference to its **`Entry`**:
+  `matchedBy`, the qualified identifiers it carried when it was matched, and
+  `candidates`, the stored resources it matched, best grade first.
+  **`find(resources)`** is one `fhir-r4/clients` `ResourceMatch.findCandidates`
+  over every resource, every grade. Each literal reference is matched once,
+  the first resource under it. The match sends one identifier search per
+  type. Then, for the Patients and Practitioners nothing was found for by
+  identifier, it sends one name-stage search per type: Patients by any of
+  their birth dates, Practitioners by any of their family name words. It
+  never lists every stored resource. A failed search fails it.
+  **`of(storedCandidates, resource)`** is one resource's candidates, what
+  `ReferentMatch` reads; an empty list when it was not matched. **`empty`**
+  holds no resource.
+- `src/stored-copy.ts` — the **`StoredCopy`** namespace.
+  **`of(storedCandidates, resource)`** is the stored copy the server diff
+  compares a resource with, an `Option` read off its stored candidates
+  without a request. It is the only candidate found by identifier. When
+  several were found, it is the one under the resource's own literal
+  reference. The grade is not read. It is `None` when the resource
+  was not matched, or when the qualified identifiers it carries now differ
+  from `matchedBy`, compared as a set of search tokens. A resolved referent
+  that assumed a stored copy's identifiers is one. It is `None` too when no
+  candidate was found by identifier, as for a resource with no qualified
+  identifier, a `Binary` or a namesake found by name. The diff reads every
+  resource whose stored copy is `None` by id.
+
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two
   axes: `includedByReviewer` (their own include/exclude choices, `true` or
@@ -313,12 +341,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     referent can have a resource for: `is` (a decoded resource as one, its
     `id` already set), `tryIntoLogicalReference` (its `identifier[0]`), `maybeDisplayName`
     (`HumanName.displayName`'s pick among its names, judged at the clock's
-    `DateTime.now`, so an Effect), `maybeDerivedIdentifier` (an exhaustive
-    match: `Patient.nameBirthDateIdentifier` for a Patient, none for a
-    Practitioner, whose name alone identifies no one across sources) and
-    `labelOf`, both Effects for the same reason, `isDerivedIdentifier`
-    (whether an identifier is under that Wildflower system rather than a
-    source's), `literalReferenceOf`, `sameRecord` (whether two are copies of
+    `DateTime.now`, so an Effect) and `labelOf`, an Effect for the same
+    reason, `literalReferenceOf`, `sameRecord` (whether two are copies of
     one record: the same `Type/<id>`), and
     **`assumesIdentifiers`**, which appends the qualified identifiers a
     resource does not already carry, assumed as one assumes an identity, and
@@ -348,15 +372,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   - **`Referent`** — a Patient or Practitioner the import holds a record
     of, which may already exist on the device, once per identity: its
     decoded `resource` (keyed by its `identifier[0]`), carrying every
-    identifier a search tries, its own and the derived one, its row's
+    qualified identifier that resource carries (`identifiers`), its row's
     `reviewKey` and whether it `isImplied`, and its `label`. Every referent
     has a record: a reference to one the import never saw implies it at
-    decode (`DecodedFileSet.adopt`). `ownLogicalReferencesOf` is the logical
-    references a referent's source-given identifiers make (a derived
-    identifier a resolved resource carries is not among them),
-    `maybeDerivedLogicalReferenceOf` the one its demographics derive,
-    `logicalReferencesOf` both: every logical reference a referent answers
-    to. A logical reference names the referent it is the key of, else the one
+    decode (`DecodedFileSet.adopt`). `logicalReferencesOf` is every logical
+    reference a referent answers to, one per qualified identifier of its
+    resource. A logical reference names the referent it is the key of, else the one
     referent that answers to it, so a health card number a decoded Patient
     also carries is that Patient. **`discover(decodedRows)`** finds them over
     a batch's decoded rows, once per identity (a record two file sets imply
@@ -398,6 +419,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     or **`DontLink`**. **`InvalidLinkChoice`** is a referent's choice the
     stage cannot follow, with its `reason`: a stored resource of another
     type, or a stored copy to update under another id than the referent's.
+    **`storedResourceOf(choice)`** is the stored resource a referent's choice
+    links to or writes over, `None` for `CreateResource`.
   - **`LinkTarget`** — the resource a referent or a mention is linked to,
     named for where it comes from: **`Stored`**, **`Decoded`** (carrying the
     `storedCopy` it is written over when the choice named one), or, for a
@@ -417,8 +440,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `resolvedLiteralReference`, the copy written (the decoded one when a link
     is redirected to it, so a re-import's newer decode wins over the stored
     copy a mention links to; else the last link's) having assumed its
-    `identifiersToAssume` (its own derived identifier, then those every other
-    copy of it the links carry, a stored copy a mention links to or the one a
+    `identifiersToAssume` (those every other copy of it the links carry, a stored copy a mention links to or the one a
     `Decoded` target updates, then those of every referent linked to it: the
     one place a copy's identifiers are carried forward), whether the
     `resourceExistsInBatch` (a resolved row writes it where a decoded
@@ -505,24 +527,20 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     every type the importer handles), and every **`Dangling`** mention (a
     linkable logical reference, in any field, that no link redirects), matched with `UnlinkedMention.match`. Only the
     plan's links are read, so a mention link leaves a row listed.
-  - **`ReferentSearch`** — the identity map's one server read, over
-    `fhir-r4/clients`' `FhirR4ResourcesHttpApiClient`: **`defaultChoice`** is
-    a `GET <Type>?identifier=&_count=2` with the referent's own logical
-    references (`Referent.ownLogicalReferencesOf`) as `TokenSearchParam`
-    tokens and, only when that names nothing, a second with the derived one
-    (`maybeDerivedLogicalReferenceOf`), so a record this source wrote is
-    found ahead of a namesake; a hit that is the stored copy of the
-    referent's own decoded resource (same literal reference: a re-import) is
-    `UpdateStoredResource`, whatever else was found, or `LinkToStoredResource`
-    for a referent that `isImplied`, which would write only what a
-    reference said over the copy; otherwise the one hit is
-    `LinkToStoredResource`, two hits are ambiguous and no hit is
-    `ReferentLinkChoiceSet.DEFAULT_CHOICE`, so the reviewer chooses; the hits are the
-    searchset's matches (an `outcome` entry is not one), a match without its
-    resource fails the read as **`MatchWithoutResource`**, and a failed
-    search fails the read. **`defaultChoices`** runs it per
-    referent, a few at a time, into the `ReferentLinkChoiceSet` a review
-    starts from (#1431 is one search per type).
+  - **`ReferentMatch`** — a referent's default link choice, pure, read off
+    its resource's stored candidates (`StoredCandidates.of`).
+    **`defaultChoice`** is `ownStoredCopyChoice` first: over the candidate
+    stored under the referent's own literal reference (a re-import), whatever
+    else matched, `UpdateStoredResource`, or `LinkToStoredResource` for a
+    referent that `isImplied`, whose resource holds only what a reference
+    said. Else it is `LinkToStoredResource` to
+    `singleCandidateNotNeedingAdditionalReview`, the one candidate graded
+    `certain` or `probable` (`MatchGrade.mayNotNeedAdditionalReview`). Else it
+    is `CreateResource` (`ReferentLinkChoiceSet.DEFAULT_CHOICE`). So two
+    candidates graded `certain` or `probable` take `CreateResource`, as several stored resources
+    carrying its identifiers (each graded `probable`) or two namesakes do. So
+    do candidates graded only `possible`. **`defaultChoices`** gives every
+    referent its own, by `Referent.key`.
   - **`DifferingDemographics`** — **`between(decoded, stored)`**: the
     demographics (a **`Demographic`**, `FamilyName | GivenName | BirthDate`)
     a decoded resource and the stored resource it is linked to both state and
@@ -585,9 +603,9 @@ abstract over; a reviewed resource always has the id it is written under), for t
 `IdentifierAndReference` and `HumanName`, `fhir-r4/identity` for the shared id
 derivation, and `fhir`'s wire types. Hosting the source file codec is what widened
 `fhir-r4` from a type-only import to the `DocumentReference` runtime schema
-(it builds and decodes the resource). `ReferentSearch` reads through
-`fhir-r4/clients`' `FhirR4ResourcesHttpApiClient` as an Effect requirement; the
-shell provides the layer. No `persistResources`: the write sink stays at the
+(it builds and decodes the resource). `StoredCandidates.find` reads through
+`fhir-r4/clients`' `FhirR4ResourcesHttpApiClient` as an Effect requirement
+(`ResourceMatch.findCandidates`); the shell provides the layer. No `persistResources`: the write sink stays at the
 shell (`fhir-r4/clients`' `persistBatchBundle`). It deliberately does **not** depend
 on `web-trace-core`: the digest helper (`sha256.ts`) and `meta-source.ts` are
 both verbatim-in-spirit copies of web-trace's, for the same reason — standard,
@@ -670,17 +688,17 @@ but `fhir-r4-adoption`.
   one resource answers to each of those mentions. A referent's mentions are
   redirected to its link target: a decoded resource linked to a stored
   resource is replaced by it **under the same review key**, titled by its
-  label, the stored resource assuming the referent's identifiers and its own
-  derived one and keeping its demographics byte for byte; every mention of
+  label, the stored resource assuming the referent's identifiers and keeping
+  its demographics byte for byte; every mention of
   the referent, a literal `Type/<decoded id>` or a logical reference, is
   redirected by the row's reference rewrite (`ReferenceRewrite.apply`),
   keeping its `display` and `identifier`; a resolved resource no resolved file holds (a decoded record
   whose id a stored one stands in for under another key) is one of the
   batch's **linked records**, held once for the batch and in no file, so the
   review shows it and the identifiers it assumed; a decoded resource that is its referent's link target is
-  written as decoded plus its derived identifier and those of the referents
-  linked to it. On a re-import the referent's own search finds the stored
-  copy under the decoded id and defaults to `UpdateStoredResource`, which
+  written as decoded plus the identifiers of the referents linked to it. On
+  a re-import the referent's stored candidates hold the stored
+  copy under the decoded id, and its default is `UpdateStoredResource`, which
   resolves the decoded resource having assumed every identifier the stored
   copy carries, whether or not a mention links to that copy, so what it
   assumed in earlier imports is written again; `CreateResource` on such a
