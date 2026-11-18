@@ -1,4 +1,5 @@
 import type { MatchGrade, ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { FastCheck as fc, HashMap, Match } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -150,7 +151,8 @@ describe('ReferentMatch.defaultChoice', () => {
             ? `LinkToStoredResource Patient/${linkable[0]?.resource.id ?? ''}`
             : 'CreateResource'
         )
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

@@ -1,4 +1,5 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Effect, FastCheck as fc, Layer, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -181,7 +182,7 @@ describe('compareWithStoredCopy', () => {
           'unchanged'
         )
       }),
-      { numRuns: 20 }
+      { numRuns: numRunsFor({ base: 20 }) }
     )
   })
 })
