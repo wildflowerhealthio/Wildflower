@@ -43,6 +43,7 @@ export {
   searchPagesOfType,
   type SearchParamsByType,
 } from './search-by-type.ts'
+export { BatchReadRejected, readInBatch } from './read-in-batch.ts'
 export {
   type BatchSearch,
   type BatchSearchFailure,
