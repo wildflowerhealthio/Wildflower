@@ -46,19 +46,15 @@ cd "$workspace"
 #    the version the checkout's pnpm-lock.yaml resolves so the bootstrap
 #    toolchain can't drift ahead of the workspace — unpinned, `vite-plus`
 #    drifts to the newest release (a box once pulled 0.3.1 while the workspace
-#    held 0.3.0) and peer-warns. The checkout's global-tool-specs.sh reads the
-#    versions from the lockfile, so this pasted copy carries no versions. A
-#    checkout from before that script existed leaves the install to its own
+#    held 0.3.0) and peer-warns. The checkout's install-global-tools.sh reads
+#    the versions from the lockfile, so this pasted copy carries no versions.
+#    A checkout from before that script existed leaves the install to its own
 #    SessionStart hook.
-if ! command -v vp >/dev/null 2>&1; then
-  if [ ! -f .devcontainer/global-tool-specs.sh ]; then
-    echo "setup-script: $workspace has no .devcontainer/global-tool-specs.sh — skipping the toolchain and the warm install; the SessionStart hook installs both" >&2
-    exit 0
-  fi
-  global_tool_specs="$(bash .devcontainer/global-tool-specs.sh)"
-  read -ra global_tools <<< "$global_tool_specs"
-  pnpm install -g "${global_tools[@]}"
+if [ ! -f .devcontainer/install-global-tools.sh ]; then
+  echo "setup-script: $workspace has no .devcontainer/install-global-tools.sh — skipping the toolchain and the warm install; the SessionStart hook installs both" >&2
+  exit 0
 fi
+bash .devcontainer/install-global-tools.sh
 
 # 4. Warm the workspace install so node_modules + the pnpm store land in the
 #    snapshot. The repo's SessionStart hook still runs `vp install` per session

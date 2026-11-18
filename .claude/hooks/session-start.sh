@@ -33,13 +33,9 @@ fi
 #    at the version pnpm-lock.yaml resolves so the bootstrap toolchain can't
 #    drift ahead of the workspace — an unpinned `vite-plus` once pulled 0.3.1
 #    while the workspace held 0.3.0, and its bundled vitest peer-warned against
-#    the aliased vite. global-tool-specs.sh reads the versions from the
-#    lockfile.
-if ! command -v vp >/dev/null 2>&1; then
-  global_tool_specs="$(bash .devcontainer/global-tool-specs.sh)"
-  read -ra global_tools <<< "$global_tool_specs"
-  pnpm install -g "${global_tools[@]}"
-fi
+#    the aliased vite. install-global-tools.sh reads the versions from the
+#    lockfile and skips the install when the global vp already matches.
+bash .devcontainer/install-global-tools.sh
 
 # 3. Workspace dependencies (idempotent; fast when node_modules is current).
 vp install

@@ -47,11 +47,10 @@ fi
 # Install every global at the version pnpm-lock.yaml resolves so the bootstrap
 # vp matches the workspace-local vp — unpinned, `vite-plus` drifts to newer
 # releases and its bundled vitest peer-warns against the aliased vite.
-# global-tool-specs.sh reads the versions from the lockfile; with no versions
-# it prints why and nothing is installed.
-if global_tool_specs="$(bash "$(dirname "${BASH_SOURCE[0]}")/global-tool-specs.sh")"; then
-  read -ra global_tools <<< "$global_tool_specs"
-  pnpm install -g "${global_tools[@]}"
+# install-global-tools.sh reads the versions from the lockfile. A failure is
+# logged and the rest of the container setup carries on.
+if ! bash "$(dirname "${BASH_SOURCE[0]}")/install-global-tools.sh"; then
+  echo "postCreateCommand: installing the global toolchain failed (see above) — run .devcontainer/install-global-tools.sh by hand" >&2
 fi
 vp install
 
