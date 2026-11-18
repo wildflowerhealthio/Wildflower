@@ -85,7 +85,7 @@ When recursively walking Effect Schema-generated values, native built-in objects
 
 ### Run `vp test` through the workspace-local `vp` in web sessions
 
-Claude-on-the-web containers bootstrap a _global_ `vp` (`pnpm install -g vite-plus`, unpinned) that differs from the workspace's pinned `vite-plus`. `vp check`/`vp build` work under the global one, but `vp test` for a `jsdom` package fails with `Cannot find package 'jsdom'` — the global vp's bundled vitest resolves test-env deps from the global store, where workspace deps don't exist. Run tests via `node_modules/.bin/vp test` (put `<repo>/node_modules/.bin` first on PATH). Run `vp install` after editing any `package.json` so the lockfile and per-package `node_modules` links exist.
+Claude-on-the-web containers bootstrap a _global_ `vp` (`pnpm install -g vite-plus@…`, at the lockfile's version) beside the workspace's own `vite-plus`. `vp check`/`vp build` work under the global one, but `vp test` for a `jsdom` package fails with `Cannot find package 'jsdom'` — the global vp's bundled vitest resolves test-env deps from the global store, where workspace deps don't exist. Run tests via `node_modules/.bin/vp test` (put `<repo>/node_modules/.bin` first on PATH). Run `vp install` after editing any `package.json` so the lockfile and per-package `node_modules` links exist.
 
 ### `vp pack` self-reference imports need `platform: 'neutral'`
 

@@ -28,7 +28,7 @@ The workspace installs two TypeScripts from the catalog in [pnpm-workspace.yaml]
 ## Updating
 
 - Dependabot ignores `typescript` majors ([.github/dependabot.yml](../../.github/dependabot.yml)), so bare `typescript` stays on 5.x until the JS-API tools above support something newer.
-- `typescript-7` takes minor and patch updates. The global `pnpm install -g typescript@…` pins in the bootstrap scripts follow it (see [Bumping vite-plus How-To](../Dependencies/Bumping%20vite-plus%20How-To.md)).
+- `typescript-7` takes minor and patch updates. The bootstrap scripts install the global `typescript` at the version `pnpm-lock.yaml` resolves for it (see [Bumping vite-plus How-To](../Dependencies/Bumping%20vite-plus%20How-To.md)).
 - After moving either entry, run `vp run pack` and compare a few packages' `dist/*.d.ts` against the previous build.
 
 ## See Also
