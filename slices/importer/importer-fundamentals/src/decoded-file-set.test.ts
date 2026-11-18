@@ -449,6 +449,38 @@ describe("DecodedFileSet.adopt, a dispense's subject and its prescription's", ()
       reference: `Patient/${localResourceId(`${BASE_URL}/Patient`, 'Patient', 'pat-8')}`,
     })
   })
+
+  it('files the dispense on its prescription’s subject before adoption, every record still detached', () => {
+    // Arrange
+    const prescription = prescriptionFor('rx-7', 'pat-7')
+    const records = [patient('pat-7'), prescription, dispenseOf(null, ['rx-7'])]
+
+    // Act
+    const placed = SectionedList.rows(
+      Effect.runSync(
+        DecodedFileSet.placedRecordsOf(
+          SectionedList.make([sectionOf('records', records)]),
+          countingMinter()
+        )
+      )
+    )
+
+    // Assert
+    expect(
+      placed.map(({ record: { resource } }) => ({
+        id: resource.id,
+        subject:
+          resource.resourceType === 'MedicationDispense' ? resource.subject : 'not a dispense',
+      }))
+    ).toEqual([
+      { id: null, subject: 'not a dispense' },
+      { id: null, subject: 'not a dispense' },
+      {
+        id: null,
+        subject: prescription.resourceType === 'MedicationRequest' ? prescription.subject : null,
+      },
+    ])
+  })
 })
 
 describe('DecodedFileSet.adopt, the records its references imply', () => {
@@ -712,6 +744,26 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
     )
 
     expect(adopted.sectionedList.sections.map(({ title }) => title)).toEqual(['people'])
+  })
+
+  it('places the implied records before adoption, detached and implied, in their own section last', () => {
+    // Arrange
+    const sections = [sectionOf('prescriptions', [prescriptionBy('rx-1', byName('Dr. A Smith'))])]
+
+    // Act
+    const placed = Effect.runSync(
+      DecodedFileSet.placedRecordsOf(SectionedList.make(sections), countingMinter())
+    )
+
+    // Assert
+    expect(
+      placed.sections.flatMap(({ title, rows }) =>
+        rows.map(({ record, isImplied }) => [title, isImplied, record.resource.id])
+      )
+    ).toEqual([
+      ['prescriptions', false, null],
+      ['Implied records', true, null],
+    ])
   })
 
   it('property: implies one record per distinct provider named, and resolves every reference to one', () => {
