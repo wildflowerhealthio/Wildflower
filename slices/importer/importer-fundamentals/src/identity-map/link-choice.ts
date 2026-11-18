@@ -17,7 +17,7 @@
  */
 
 import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
-import { Data } from 'effect'
+import { Data, Match, Option } from 'effect'
 
 import type * as LinkableResource from './linkable-resource.ts'
 
@@ -76,6 +76,14 @@ const {
   $match: match,
 } = Data.taggedEnum<Type | MentionLinkChoice>()
 
+/** The stored resource `choice` links to or writes over; `None` for `CreateResource`. */
+const storedResourceOf = (choice: Type): Option.Option<LinkableResource.WithId> =>
+  Match.valueTags(choice, {
+    CreateResource: () => Option.none(),
+    UpdateStoredResource: ({ resource }) => Option.some(resource),
+    LinkToStoredResource: ({ resource }) => Option.some(resource),
+  })
+
 /**
  * Why a referent's choice cannot be followed: a stored resource of another
  * type, or a stored resource to update that is not under the referent's own
@@ -99,6 +107,7 @@ export {
   LinkToDecodedReferent,
   LinkToStoredResource,
   match,
+  storedResourceOf,
   UpdateStoredResource,
 }
 export type {

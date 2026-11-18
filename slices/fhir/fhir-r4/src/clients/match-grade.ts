@@ -30,6 +30,9 @@ const RANK: { readonly [Grade in Type]: number } = {
 /** Grades best first: `certain`, `probable`, `possible`, `certainly-not`. */
 const bestFirst: Order.Order<Type> = Order.mapInput(Order.number, (grade: Type) => RANK[grade])
 
+/** Whether `grade` is a strong one: `certain` or `probable`, not `possible` or `certainly-not`. */
+const isStrong = (grade: Type): boolean => grade === 'certain' || grade === 'probable'
+
 /**
  * A name as two names are compared: a family name, and the given names, each
  * part's words lower-cased, without diacritics and single-spaced, with a
@@ -302,6 +305,7 @@ export {
   canGradePractitioner,
   comparableNamesOf,
   familySearchWordsOf,
+  isStrong,
   patientGradeOf,
   practitionerGradeOf,
 }
