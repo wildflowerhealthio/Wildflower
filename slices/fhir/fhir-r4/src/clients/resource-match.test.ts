@@ -96,7 +96,7 @@ describe('ResourceMatch.findCandidates: the identifier stage', () => {
     ])
   })
 
-  it('should demote every candidate of a query whose identifiers name several stored records to probable, before count', async () => {
+  it('should demote every candidate of a query whose identifiers name several stored resources to probable, before count', async () => {
     // Arrange
     const query = queryOf(patientWire({ identifier: [SHOPPERS_1, SHOPPERS_2] }))
     const server = inMemoryServer([
@@ -186,7 +186,7 @@ describe('ResourceMatch.findCandidates: the name stage', () => {
   })
 
   it('should read every page of a search', async () => {
-    // Arrange: one record a page, the match on the last
+    // Arrange: one resource a page, the match on the last
     const query = queryOf(patientWire({ name: [ANN_BROWN], birthDate: BORN }))
     const server = inMemoryServer(
       [
@@ -273,7 +273,7 @@ describe('ResourceMatch.findCandidates: the name stage', () => {
     expect({ requests, result }).toEqual({ requests: [], result: [[]] })
   })
 
-  it('should search a chunk of values at a time, giving a record two chunks find once', async () => {
+  it('should search a chunk of values at a time, giving a resource two chunks find once', async () => {
     // Arrange: one birth date more than a chunk holds, each its own query
     const birthDates = Array.makeBy(OR_VALUES_PER_SEARCH + 1, (day) =>
       new Date(Date.UTC(1900, 0, 1 + day)).toISOString().slice(0, 10)
@@ -334,7 +334,7 @@ describe('ResourceMatch.findCandidates: the name stage', () => {
     })
   })
 
-  it('should search nothing by name for a record its rule cannot grade by: a Patient with no birth date, a person with no family name', async () => {
+  it('should search nothing by name for a resource its rule cannot grade by: a Patient with no birth date, a person with no family name', async () => {
     const queries = [
       queryOf(patientWire({ name: [ANN_BROWN] })),
       queryOf(patientWire({ name: [{ given: ['Ann'] }], birthDate: BORN })),
@@ -349,7 +349,7 @@ describe('ResourceMatch.findCandidates: the name stage', () => {
     expect({ requests, result }).toEqual({ requests: [], result: [[], [], []] })
   })
 
-  it('should search nothing by name for a logical reference, which carries no record', async () => {
+  it('should search nothing by name for a logical reference, which carries no resource', async () => {
     const query = MatchQuery.fromLogicalReference(logicalReference('Patient', SHOPPERS_1))
 
     const { requests } = await runWith(
@@ -544,7 +544,7 @@ const passes = (
 }
 
 /**
- * A server holding `stored`: a search answers with the records of its type
+ * A server holding `stored`: a search answers with the resources of its type
  * passing each filter it carries (`identifier`: carrying any of its tokens;
  * `birthdate`: born on any of its dates; `name`: a name part starting with
  * any of its values), `pageSize` to a page (every match on one page by
@@ -628,7 +628,7 @@ const failureOf = async <A, E>(
   return Either.getLeft(outcome).pipe(Option.getOrNull)
 }
 
-// Arbitraries: few systems, values and names, so queries and stored records collide
+// Arbitraries: few systems, values and names, so queries and stored resources collide
 
 const identifierArbitrary = fc.record({
   system: fc.constantFrom('https://a.example/id', 'https://b.example/id'),
@@ -661,9 +661,9 @@ const wireArbitrary = (
   )
 
 /**
- * Stored records with structured names only: HFS does not find a
+ * Stored resources with structured names only: HFS does not find a
  * Practitioner by a name written only as text, so a batch whose other
- * queries find such a record by another of its names grades it where the
+ * queries find such a resource by another of its names grades it where the
  * query alone does not.
  */
 const storedWireArbitrary: fc.Arbitrary<Wire> = wireArbitrary(structuredNameArbitrary)
