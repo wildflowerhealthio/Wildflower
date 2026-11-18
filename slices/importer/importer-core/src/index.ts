@@ -40,6 +40,12 @@ export {
   skipReasonFor,
   type WriteDecision,
 } from './plan-write.ts'
+export {
+  fileCopiesOf,
+  findStoredMatch,
+  planImport,
+  type StoredMatchFailure,
+} from './plan-import.ts'
 export * as ReviewGroup from './review-group.ts'
 export {
   decodedRowsOf,

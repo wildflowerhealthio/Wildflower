@@ -173,5 +173,5 @@ const importDecoded = <TFormat extends string>(
     Effect.provideService(PickedFile.Format, importer.sourceFileFormat)
   )
 
-export { importDecoded }
+export { importDecoded, sourceFileKey, sourceFileOf }
 export type { ImportingFormat }
