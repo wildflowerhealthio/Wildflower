@@ -139,7 +139,7 @@ const ImporterScreen = (): JSX.Element => {
   const diff = useServerDiff(
     batch,
     batchId,
-    Option.flatMap(Option.fromNullable(shown), ({ importMatch }) => importMatch)
+    Option.flatMap(Option.fromNullable(shown), ({ storedCandidates }) => storedCandidates)
   )
 
   const selectionFor = useCallback(
@@ -299,8 +299,9 @@ const ImporterScreen = (): JSX.Element => {
             {`${duplicateReferentMessage(identityState.failure)} ${REFUSED_OVER_PREVIOUS_HINT}`}
           </p>
         )}
-        {/* The match covers every record, so it can fail for a batch that
-            names no one; the alert speaks of people and providers only. */}
+        {/* The match covers every resource, so it can fail for a batch with
+            no referent. The alert speaks of people and providers, so it shows
+            only when the batch has some. */}
         {identityState._tag === 'error' && identityState.referents.length > 0 && (
           <p role="alert" className={styles.error}>
             {SEARCH_ERROR_MESSAGE}

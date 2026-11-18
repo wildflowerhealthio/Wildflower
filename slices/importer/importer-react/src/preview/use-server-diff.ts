@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Effect, Option } from 'effect'
+import { Array, Effect, Either, Option, pipe } from 'effect'
 import { useMemo, useState } from 'react'
 
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
@@ -11,10 +11,11 @@ import {
 } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  ImportMatch,
   type LinkPlan,
   type ReviewRow,
   type StagedImport,
+  type StoredCandidates,
+  StoredCopy,
 } from '@wildflowerhealthio/importer-fundamentals'
 
 import type { FormatKind, ResolvedBatch } from '@wildflowerhealthio/importer-core'
@@ -22,23 +23,20 @@ import { keysWithoutPatientOf, ReviewGroup } from '@wildflowerhealthio/importer-
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
 /**
- * Compare every previewed resource in a batch with its matched stored copy
- * and classify each as `new` / `unchanged` / `changed` — the diff badge the
+ * Compare every previewed resource in a batch with its stored copy and
+ * classify each as `new` / `unchanged` / `changed` — the diff badge the
  * preview row shows the reviewer, and what the "opt out of a re-import"
  * default reads (an `unchanged` row is out unless the reviewer ticks it).
  *
  * @remarks
- * A resource's matched copy is the stored record its identifiers name, read
- * off the batch's match (`ImportMatch.matchedCopyOf`, found once per batch
- * by `useImportMatch`), whatever its id: the compare drops the `id`
- * (`compareWithStoredCopy`), while the write still goes to the resource's own
- * id. A resource with no matched copy, whether the match found none or
- * cannot speak for it (a `Binary`, a record with no qualified identifier, one
- * carrying an identifier the match did not search), is compared with the
- * copy under its own id instead, so a stored copy whose identifiers were
- * edited still reads as `changed`. All of them go in one `POST /` batch of GET
- * entries (`classifyAgainstServer`), sent only when there is one; so a
- * classification is at most one round trip.
+ * A resource's stored copy is the stored resource its identifiers name,
+ * whatever its id (`StoredCopy.of`, read off the batch's stored candidates).
+ * The compare drops the `id` (`compareWithStoredCopy`), and the write still
+ * goes to the resource's own id. A resource with no stored copy there is
+ * compared with the copy under its own id instead. So a stored copy whose
+ * identifiers were edited still reads as `changed`. Those reads go in one
+ * `POST /` batch of GET entries (`classifyAgainstServer`), sent only when
+ * there is one, so a classification is at most one round trip.
  *
  * The classification is a TanStack Query, so the shell can **block on it**
  * (the `loading` state gates the preview) rather than paint the panel first
@@ -146,44 +144,35 @@ const byGroupAndKey = (
 }
 
 /**
- * Each of `resources` classified against its matched copy in `importMatch`
- * (`ImportMatch.matchedCopyOf`) when the match found one, and every other
- * resource (the match found none, did not search for it, or there is no
- * match) against the copy under its own id, in one batch.
+ * Each of `resources` classified against its stored copy in
+ * `storedCandidates` ({@link StoredCopy.of}), and every resource without one
+ * against the copy under its own id, in one batch.
  *
+ * @param storedCandidates - The batch's stored candidates; `None` when the
+ *   match failed, so every resource is read by id
  * @returns The verdicts by `Type/id`; never fails, as `classifyAgainstServer`
  *   does not
  */
-const classifyAgainstMatches = (
+const classifyAgainstStoredCopies = (
   resources: readonly FhirResourceWithId[],
-  importMatch: Option.Option<ImportMatch.Type>
+  storedCandidates: Option.Option<StoredCandidates.Type>
 ): Effect.Effect<ReadonlyMap<string, ServerComparison>, never, FhirR4ResourcesHttpApiClient> => {
-  const matched = resources.map(
-    (resource) =>
-      [
-        resource,
-        Option.match(importMatch, {
-          onNone: () => ImportMatch.MatchedCopy.NotSearched(),
-          onSome: (batchMatch) => ImportMatch.matchedCopyOf(batchMatch, resource),
-        }),
-      ] as const
-  )
-  const byId = matched.flatMap(([resource, matchedCopy]) =>
-    ImportMatch.MatchedCopy.$is('Found')(matchedCopy) ? [] : [resource]
+  const [withoutStoredCopy, withStoredCopy] = Array.partitionMap(resources, (resource) =>
+    pipe(
+      storedCandidates,
+      Option.flatMap((candidates) => StoredCopy.of(candidates, resource)),
+      Either.fromOption(() => resource),
+      Either.map((storedCopy) => [resource, storedCopy] as const)
+    )
   )
   return Effect.map(
-    classifyAgainstServer(byId),
+    classifyAgainstServer(withoutStoredCopy),
     (byOwnId) =>
       new Map([
         ...byOwnId,
-        ...matched.flatMap(([resource, matchedCopy]) =>
-          ImportMatch.MatchedCopy.$match(matchedCopy, {
-            Found: ({ copy }) => [
-              [literalReferenceOf(resource), compareWithStoredCopy(resource, copy)] as const,
-            ],
-            NotFound: () => [],
-            NotSearched: () => [],
-          })
+        ...withStoredCopy.map(
+          ([resource, storedCopy]) =>
+            [literalReferenceOf(resource), compareWithStoredCopy(resource, storedCopy)] as const
         ),
       ])
   )
@@ -215,15 +204,15 @@ const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] =>
  *   re-decode or a link choice over the same files, different for a fresh
  *   pick. It is what decides whether the verdicts the batch last settled on
  *   may stay on screen while the next ones load.
- * @param importMatch - The batch's match, which names each resource's
- *   matched copy; `None` when the match failed, so every resource is
- *   compared with the copy under its own id
+ * @param storedCandidates - The batch's stored candidates; `None` when the
+ *   match failed, so every resource is compared with the copy under its own
+ *   id
  * @returns `loading` until this batch has verdicts worth showing, then `ready`
  */
 const useServerDiff = (
   batch: ResolvedBatch | undefined,
   batchId: number,
-  importMatch: Option.Option<ImportMatch.Type>
+  storedCandidates: Option.Option<StoredCandidates.Type>
 ): ServerDiffState => {
   const runAuthed = useRunAuthed()
 
@@ -255,9 +244,9 @@ const useServerDiff = (
     queryKey: [...IMPORTER_QUERY_KEY, 'server-diff', batchId, token] as const,
     queryFn: (): Promise<ReadonlyMap<string, ServerComparison>> =>
       runAuthed(
-        classifyAgainstMatches(
+        classifyAgainstStoredCopies(
           (rows ?? []).map((row) => row.resource),
-          importMatch
+          storedCandidates
         )
       ),
     enabled,

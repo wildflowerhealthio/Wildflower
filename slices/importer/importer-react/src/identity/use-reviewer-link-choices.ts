@@ -13,17 +13,22 @@
  * @packageDocumentation
  */
 
-import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId, LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { HashMap } from 'effect'
 import { useCallback, useState } from 'react'
 
 import {
   type LinkChoice,
   MentionLinkChoiceSet,
+  type Referent,
   ReferentLinkChoiceSet,
 } from '@wildflowerhealthio/importer-fundamentals'
 
-import type { FirstDecode } from './use-import-match.ts'
+/** The first decode of a batch: its referents and the resource of every decoded row. */
+interface FirstDecode {
+  readonly referents: readonly Referent.Type[]
+  readonly resources: readonly FhirResourceWithId[]
+}
 
 /** What the hook holds per picked batch, reset when the batch id changes. */
 interface PerBatch {
@@ -34,12 +39,12 @@ interface PerBatch {
   readonly byMention: MentionLinkChoiceSet.Type
 }
 
-/** Nothing to match, held once so the effects keyed on it do not re-run. */
-const NOTHING_DECODED: FirstDecode = { referents: [], records: [] }
+/** An empty first decode, held once so the memos keyed on it keep their values. */
+const NOTHING_DECODED: FirstDecode = { referents: [], resources: [] }
 
 /** The reviewer's choices for the batch in hand, the first decode its match reads, and the actions that set a choice. */
 interface ReviewerLinkChoices {
-  /** The batch's first decode while a batch is in hand, else nothing. */
+  /** The batch's first decode while a batch is in hand, else an empty one. */
   readonly matched: FirstDecode
   /** The reviewer's own choices, by `Referent.key`. */
   readonly chosen: ReferentLinkChoiceSet.Type
@@ -61,7 +66,7 @@ interface ReviewerLinkChoices {
  *
  * @param batchId - The picked batch's id: stable across a settings re-decode,
  *   new for a fresh pick
- * @param decoded - The batch's referents and records, undefined while no
+ * @param decoded - The batch's referents and resources, undefined while no
  *   batch is in hand or the batch cannot be resolved
  * @returns The matched first decode, the reviewer's choices, `choose` and
  *   `chooseMention`
@@ -85,7 +90,7 @@ const useReviewerLinkChoices = (
     setPerBatch(current)
   }
   // Only while a batch is in hand: after a start-over or during the next
-  // pick's read, the previous batch's records must not be matched again.
+  // pick's read, the previous batch's resources must not be matched again.
   const matched = decoded === undefined ? NOTHING_DECODED : (current?.matched ?? NOTHING_DECODED)
 
   const choose = useCallback((referentKey: LogicalReference.Key, choice: LinkChoice.Type): void => {
@@ -124,4 +129,4 @@ const useReviewerLinkChoices = (
   }
 }
 
-export { useReviewerLinkChoices }
+export { type FirstDecode, useReviewerLinkChoices }

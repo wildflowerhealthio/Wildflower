@@ -1,5 +1,5 @@
-import { useQuery, type UseQueryOptions } from '@tanstack/react-query'
-import { Effect } from 'effect'
+import { useQueries, useQuery, type UseQueryOptions } from '@tanstack/react-query'
+import { Array, Effect } from 'effect'
 import { useMemo } from 'react'
 
 import { type RunAuthed, useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
@@ -14,6 +14,7 @@ import {
 import {
   type LinkableLogicalReference,
   LinkableResource,
+  type Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
 
 import { STORED_RESOURCES_QUERY_KEY } from '../queries/keys.ts'
@@ -21,7 +22,7 @@ import { STORED_RESOURCES_QUERY_KEY } from '../queries/keys.ts'
 /**
  * The server's stored Patients or Practitioners: what a referent's select
  * offers besides its default, so the reviewer can link it to another
- * record.
+ * stored resource.
  *
  * @remarks
  * Every page of `POST <Type>/_search` with `_count` through the typed client
@@ -31,9 +32,8 @@ import { STORED_RESOURCES_QUERY_KEY } from '../queries/keys.ts'
  * worth of people and their providers, not a hospital's, so the whole list is
  * read up front and offered at once. Each resource arrives with the label the
  * review shows it by, read on the clock the read runs on. The read starts as
- * soon as the batch's referents are known (`useImportMatch`
- * prefetches it, through {@link storedResourcesQuery}) rather than when the
- * rows mount.
+ * soon as the batch's referents are known ({@link usePrefetchStoredResources})
+ * rather than when the rows mount.
  *
  * @packageDocumentation
  */
@@ -107,6 +107,24 @@ const storedResourcesQuery = (
 })
 
 /**
+ * Starts the stored list of every resource type among `referents`, before
+ * the rows that read it mount.
+ *
+ * @remarks
+ * A list that fails is reported by the rows' own read of the same query.
+ */
+const usePrefetchStoredResources = (referents: readonly Referent.Type[]): void => {
+  const runAuthed = useRunAuthed()
+  const resourceTypes = useMemo(
+    () => Array.dedupe(referents.map(({ logicalReference }) => logicalReference.resourceType)),
+    [referents]
+  )
+  useQueries({
+    queries: resourceTypes.map((resourceType) => storedResourcesQuery(resourceType, runAuthed)),
+  })
+}
+
+/**
  * The stored list as the rows read it: `loading` until the pages are in,
  * `ready` with every resource labelled and whether the page limit cut the
  * list off, `error` when a page failed; the rows say either of the last two
@@ -154,5 +172,6 @@ export {
   type StoredResources,
   storedResourcesQuery,
   type StoredResourcesState,
+  usePrefetchStoredResources,
   useStoredResourcesOfType,
 }
