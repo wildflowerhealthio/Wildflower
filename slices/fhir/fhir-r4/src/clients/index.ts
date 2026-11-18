@@ -35,7 +35,6 @@ export {
 } from './search-pages.ts'
 export {
   distinctByReference,
-  isSearchableResourceType,
   searchAllOfType,
   type SearchableResource,
   type SearchableResourceType,

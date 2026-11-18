@@ -1,6 +1,6 @@
 /**
  * A referent's default link choice, read off the stored records its record
- * matches (`ImportMatch`): the stored copy of its own record, else the one
+ * matches (`StoredCandidates`): the stored copy of its own record, else the one
  * stored record it matches `certain` or `probable`.
  *
  * @remarks
@@ -13,7 +13,7 @@
 import type { ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import { Array, HashMap, Option, pipe } from 'effect'
 
-import * as ImportMatch from '../import-match.ts'
+import * as StoredCandidates from '../stored-candidates.ts'
 import * as LinkChoice from './link-choice.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as ReferentLinkChoiceSet from './referent-link-choice-set.ts'
@@ -77,19 +77,19 @@ const defaultChoice = (
 
 /**
  * {@link defaultChoice} for every referent of `referents`, each over its own
- * record's candidates in `importMatch`, as the referent link choices a
+ * record's candidates in `storedCandidates`, as the referent link choices a
  * review starts from.
  */
 const defaultChoices = (
   referents: readonly Referent.Type[],
-  importMatch: ImportMatch.Type
+  storedCandidates: StoredCandidates.Type
 ): ReferentLinkChoiceSet.Type =>
   HashMap.fromIterable(
     referents.map(
       (referent) =>
         [
           Referent.key(referent),
-          defaultChoice(referent, ImportMatch.candidatesOf(importMatch, referent.resource)),
+          defaultChoice(referent, StoredCandidates.of(storedCandidates, referent.resource)),
         ] as const
     )
   )
