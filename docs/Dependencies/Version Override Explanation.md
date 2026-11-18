@@ -32,7 +32,7 @@ These overrides are what allow `vp test` from the workspace root to load all pac
 
 ## What a vite-plus bump needs from the overrides
 
-For the full checklist of every file that records a vite-plus version — the catalog and the three global-bootstrap scripts — see the [Bumping vite-plus How-To](./Bumping%20vite-plus%20How-To.md). This section covers only why the overrides themselves need no edit.
+For the full checklist of every place that records a vite-plus version, and how the global-bootstrap scripts get theirs from the lockfile, see the [Bumping vite-plus How-To](./Bumping%20vite-plus%20How-To.md). This section covers only why the overrides themselves need no edit.
 
 The `vite@*` override points at `catalog:`, so it follows the catalog's `vite` alias. The alias must match the `@voidzero-dev/vite-plus-core` that the catalog's `vite-plus` itself depends on, **not** the newest core on npm. Get that wrong (or let a Dependabot bump move `vite-plus` without the alias) and `vite-plus@<new>` installs its own core next to the one the alias holds; the two `UserConfig` types then make every `defineConfig` call fail to typecheck with `TS2321: Excessive stack depth comparing types … and 'UserConfig'` (plus a companion `TS2769: No overload matches this call`).
 
