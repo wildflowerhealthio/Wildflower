@@ -4,7 +4,7 @@
  * resource, else a link to the one stored resource it matches strongly.
  *
  * @remarks
- * Pure. The import is matched once, every resource in one `matchAll`, and
+ * Pure. The import is matched once, every resource in one `findCandidates`, and
  * each referent reads its own resource's candidates here.
  *
  * @packageDocumentation

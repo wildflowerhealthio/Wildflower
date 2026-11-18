@@ -222,7 +222,7 @@ Each later page is the same `POST` with the `_cursor` the previous page's `next`
 
 ## Record matching (`$match`, client side)
 
-HFS has no `$match` operation, so `fhir-r4/clients`' `ResourceMatch.matchAll(queries, options)` implements one behind the same shape, for every searchable type rather than Patient alone: queries in (`MatchQuery`: a record's type, its qualified identifiers, and the record itself when the query is built from a decoded resource rather than a logical reference), and for each query, in the order given, every candidate found for it, each a stored resource with a grade from the `match-grade` extension's value set and what found it (`by: 'identifier'` or `'name'`). Candidates come best grade first; `count` (the operation's own parameter) then cuts each query's list. `onlyCertainMatches` stops the match after the identifier stage.
+HFS has no `$match` operation, so `fhir-r4/clients`' `ResourceMatch.findCandidates(queries, options)` implements one behind the same shape, for every searchable type rather than Patient alone: queries in (`MatchQuery`: a record's type, its qualified identifiers, and the record itself when the query is built from a decoded resource rather than a logical reference), and for each query, in the order given, every candidate found for it, each a stored resource with a grade from the `match-grade` extension's value set and what found it (`by: 'identifier'` or `'name'`). Candidates come best grade first; `count` (the operation's own parameter) then cuts each query's list. `onlyCertainMatches` stops the match after the identifier stage.
 
 A match runs in two stages:
 

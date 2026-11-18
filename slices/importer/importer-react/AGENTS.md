@@ -147,7 +147,7 @@ The importer has no HTTP wire union to derive, so there is no separate
     row's subject by.
   - `use-stored-candidates.ts` — `useStoredCandidates(batchId, resources)`
     finds the stored candidates of the batch's first decode once per batch
-    (`StoredCandidates.find`, one `ResourceMatch.matchAll`). It is a TanStack
+    (`StoredCandidates.find`, one `ResourceMatch.findCandidates`). It is a TanStack
     query keyed by the batch id, and gives them as an `Option`, `None` until
     they are in and when the match failed. `useLinkChoiceReview` passes each
     referent's own resource first, then every decoded row's resource. It

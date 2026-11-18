@@ -262,7 +262,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `HashMap` from each matched resource's literal reference to its **`Entry`**:
   `matchedBy`, the qualified identifiers it carried when it was matched, and
   `candidates`, the stored resources it matched, best grade first.
-  **`find(resources)`** is one `fhir-r4/clients` `ResourceMatch.matchAll`
+  **`find(resources)`** is one `fhir-r4/clients` `ResourceMatch.findCandidates`
   over every resource, every grade. Each literal reference is matched once,
   the first resource under it. The match sends one identifier search per
   type. Then, for the Patients and Practitioners nothing was found for by
@@ -604,7 +604,7 @@ derivation, and `fhir`'s wire types. Hosting the source file codec is what widen
 `fhir-r4` from a type-only import to the `DocumentReference` runtime schema
 (it builds and decodes the resource). `StoredCandidates.find` reads through
 `fhir-r4/clients`' `FhirR4ResourcesHttpApiClient` as an Effect requirement
-(`ResourceMatch.matchAll`); the shell provides the layer. No `persistResources`: the write sink stays at the
+(`ResourceMatch.findCandidates`); the shell provides the layer. No `persistResources`: the write sink stays at the
 shell (`fhir-r4/clients`' `persistBatchBundle`). It deliberately does **not** depend
 on `web-trace-core`: the digest helper (`sha256.ts`) and `meta-source.ts` are
 both verbatim-in-spirit copies of web-trace's, for the same reason — standard,

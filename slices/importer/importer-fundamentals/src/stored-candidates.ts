@@ -1,10 +1,10 @@
 /**
  * The stored candidates of an import's resources: for each resource, the
- * stored resources `ResourceMatch.matchAll` grades as copies of the same
+ * stored resources `ResourceMatch.findCandidates` grades as copies of the same
  * record, and the identifiers it was matched by.
  *
  * @remarks
- * An import is matched once, every resource in one `matchAll`, so the
+ * An import is matched once, every resource in one `findCandidates`, so the
  * referents' default link choices (`ReferentMatch`) and the server diff
  * (`StoredCopy`) read the same candidates.
  *
@@ -37,7 +37,7 @@ const empty: Type = HashMap.empty()
 
 /**
  * The stored candidates of `resources`, every grade, from one
- * `ResourceMatch.matchAll`.
+ * `ResourceMatch.findCandidates`.
  *
  * @remarks
  * A literal reference is matched once. When several of `resources` share
@@ -53,7 +53,7 @@ const find = (
   const matched = distinctByReference(resources)
   const queries: readonly MatchQuery.Type[] = matched.map(MatchQuery.fromResource)
   return Effect.map(
-    ResourceMatch.matchAll(queries, {
+    ResourceMatch.findCandidates(queries, {
       onlyCertainMatches: false,
       count: Option.none(),
     }),

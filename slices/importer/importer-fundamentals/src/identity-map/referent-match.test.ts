@@ -18,7 +18,7 @@ import * as ReferentMatch from './referent-match.ts'
 import type * as Referent from './referent.ts'
 
 /**
- * Drives `ReferentMatch` over candidates as `ResourceMatch.matchAll` grades
+ * Drives `ReferentMatch` over candidates as `ResourceMatch.findCandidates` grades
  * them: a referent's default is read off its own candidates, with no request.
  */
 
