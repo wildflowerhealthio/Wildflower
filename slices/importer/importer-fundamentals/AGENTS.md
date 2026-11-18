@@ -257,27 +257,33 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   their local keys, because `importer-core`'s import stage builds each set's
   source files and review keys and sets its records' `meta.source`.
 
-- `src/import-match.ts` — the **`ImportMatch`** namespace: the stored records
-  an import's records match, found once per import. **`find(records)`** is one
-  `fhir-r4/clients` `ResourceMatch.matchAll` over every record (each literal
-  reference once, the first copy given matched), every grade: one identifier
-  search per type, then, for the Patients and Practitioners nothing was found
-  for by identifier, the name stage's one search per type by what they can
-  be graded by (Patients by `birthdate`, any of their birth dates;
-  Practitioners by `name`, any of their family name words), not a listing of
-  every stored record; a failed search fails it. It holds each record's candidates
-  (**`candidatesOf`**, what `ReferentMatch` reads), the stored records found
-  by identifier, indexed by identifier (`ResourceMatch.indexByIdentifier`),
-  and the identifiers searched. **`matchedCopyOf(importMatch, record)`** is
-  what the server diff compares a record with, read again without a request
-  (`ResourceMatch.identifierCandidatesOf`): **`MatchedCopy.Found`**, the one
-  stored record carrying its identifiers (a `certain` candidate), else, when
-  they name several, the one under the record's own literal reference;
-  `NotFound`; or `NotSearched` unless every qualified identifier of the
-  record was searched (a record with none, a `Binary`, a resolved referent
-  carrying an identifier it assumed from a stored copy). The diff reads a
-  `NotFound` or `NotSearched` record by id. A namesake found by name is never a matched copy. **`empty`**
-  is nothing matched.
+- `src/stored-candidates.ts` — the **`StoredCandidates`** namespace: the
+  stored candidates of an import's resources, found once per import. A
+  `HashMap` from each matched resource's literal reference to its **`Entry`**:
+  `matchedBy`, the qualified identifiers it carried when it was matched, and
+  `candidates`, the stored resources it matched, best grade first.
+  **`find(resources)`** is one `fhir-r4/clients` `ResourceMatch.matchAll`
+  over every resource, every grade. Each literal reference is matched once,
+  the first resource under it. The match sends one identifier search per
+  type. Then, for the Patients and Practitioners nothing was found for by
+  identifier, it sends one name-stage search per type: Patients by any of
+  their birth dates, Practitioners by any of their family name words. It
+  never lists every stored resource. A failed search fails it.
+  **`of(storedCandidates, resource)`** is one resource's candidates, what
+  `ReferentMatch` reads; an empty list when it was not matched. **`empty`**
+  holds no resource.
+- `src/stored-copy.ts` — the **`StoredCopy`** namespace.
+  **`of(storedCandidates, resource)`** is the stored copy the server diff
+  compares a resource with, an `Option` read off its stored candidates
+  without a request. It is the one candidate found by identifier (graded
+  `certain`). When several were found (each graded `probable`), it is the one
+  under the resource's own literal reference. It is `None` when the resource
+  was not matched, or when the qualified identifiers it carries now differ
+  from `matchedBy`, compared as a set of search tokens. A resolved referent
+  that assumed a stored copy's identifiers is one. It is `None` too when no
+  candidate was found by identifier, as for a resource with no qualified
+  identifier, a `Binary` or a namesake found by name. The diff reads every
+  resource whose stored copy is `None` by id.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two
@@ -413,6 +419,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     or **`DontLink`**. **`InvalidLinkChoice`** is a referent's choice the
     stage cannot follow, with its `reason`: a stored resource of another
     type, or a stored copy to update under another id than the referent's.
+    **`storedResourceOf(choice)`** is the stored resource a referent's choice
+    links to or writes over, `None` for `CreateResource`.
   - **`LinkTarget`** — the resource a referent or a mention is linked to,
     named for where it comes from: **`Stored`**, **`Decoded`** (carrying the
     `storedCopy` it is written over when the choice named one), or, for a
@@ -520,19 +528,18 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     linkable logical reference, in any field, that no link redirects), matched with `UnlinkedMention.match`. Only the
     plan's links are read, so a mention link leaves a row listed.
   - **`ReferentMatch`** — a referent's default link choice, pure, read off
-    its record's candidates in the import's match (`ImportMatch`):
-    **`defaultChoice`** is `UpdateStoredResource` over a candidate that is
-    the stored copy of the referent's own decoded resource (same literal
-    reference: a re-import), whatever else matched, or
-    `LinkToStoredResource` for a referent that `isImplied`, which would
-    write only what a reference said over the copy; otherwise
-    `LinkToStoredResource` to the one candidate graded `certain` or
-    `probable`; two such candidates (several stored records carrying its
-    identifiers, which the matcher grades `probable`, or two namesakes), and
-    candidates graded only `possible`, pick no default
-    (`ReferentLinkChoiceSet.DEFAULT_CHOICE`), so the reviewer chooses.
-    **`defaultChoices`** gives every referent its own, into the
-    `ReferentLinkChoiceSet` a review starts from.
+    its resource's stored candidates (`StoredCandidates.of`).
+    **`defaultChoice`** is `ownStoredCopyChoice` first: over the candidate
+    stored under the referent's own literal reference (a re-import), whatever
+    else matched, `UpdateStoredResource`, or `LinkToStoredResource` for a
+    referent that `isImplied`, whose resource holds only what a reference
+    said. Else it is `soleStrongCandidateChoice`: `LinkToStoredResource` to
+    the one candidate graded `certain` or `probable` (`MatchGrade.isStrong`).
+    Else it is `CreateResource` (`ReferentLinkChoiceSet.DEFAULT_CHOICE`). So
+    two strong candidates take `CreateResource`, as several stored resources
+    carrying its identifiers (each graded `probable`) or two namesakes do. So
+    do candidates graded only `possible`. **`defaultChoices`** gives every
+    referent its own, by `Referent.key`.
   - **`DifferingDemographics`** — **`between(decoded, stored)`**: the
     demographics (a **`Demographic`**, `FamilyName | GivenName | BirthDate`)
     a decoded resource and the stored resource it is linked to both state and
@@ -595,7 +602,7 @@ abstract over; a reviewed resource always has the id it is written under), for t
 `IdentifierAndReference` and `HumanName`, `fhir-r4/identity` for the shared id
 derivation, and `fhir`'s wire types. Hosting the source file codec is what widened
 `fhir-r4` from a type-only import to the `DocumentReference` runtime schema
-(it builds and decodes the resource). `ImportMatch.find` reads through
+(it builds and decodes the resource). `StoredCandidates.find` reads through
 `fhir-r4/clients`' `FhirR4ResourcesHttpApiClient` as an Effect requirement
 (`ResourceMatch.matchAll`); the shell provides the layer. No `persistResources`: the write sink stays at the
 shell (`fhir-r4/clients`' `persistBatchBundle`). It deliberately does **not** depend

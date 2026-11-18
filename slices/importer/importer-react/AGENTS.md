@@ -124,13 +124,13 @@ The importer has no HTTP wire union to derive, so there is no separate
     choice that cannot be resolved after a re-decode (`InvalidLinkChoice`)
     falls back, the reviewer's own to its matched default, a default to
     `New`. The screen blocks its first paint on the batch's match, as it
-    does on the server diff, and hands the resolved batch, and the match, to
-    `useServerDiff`, and the resolved batch to `PreviewPanel` and the
+    does on the server diff, and hands the resolved batch and its stored
+    candidates to `useServerDiff`, and the resolved batch to `PreviewPanel` and the
     confirm, which take a `ResolvedBatch` and so see what gets written; a
     failed match shows an alert and leaves every referent on `New`.
   - `link-choice-review-state.ts` — the `LinkChoiceReviewState` types: the
-    `Mapped` batch (referents, choices, the stored records the defaults link
-    to, the batch's `ImportMatch`, the resolved batch with its plan, and the `mentionLinkOptions` the rows' mention selects offer), the
+    `Mapped` batch (referents, choices, the stored resources the defaults link
+    to, the batch's `storedCandidates`, the resolved batch with its plan, and the `mentionLinkOptions` the rows' mention selects offer), the
     `Type` of states (`loading`, `ready`, `error`, `refused`) and the hook's
     `Review` surface: `choose` for a referent, `chooseMention` for one
     mention of one resource.
@@ -145,12 +145,16 @@ The importer has no HTTP wire union to derive, so there is no separate
     referent owns, which no referent's later choice moves), plus each
     record's label by literal reference, which `describeResource` names a
     row's subject by.
-  - `use-import-match.ts` — `useImportMatch` matches every record of the
-    batch's first decode once per batch (`ImportMatch.find`, one
-    `ResourceMatch.matchAll`, a TanStack query keyed by the batch id), reads
-    each referent's default off it (`ReferentMatch.defaultChoices`), labels
-    the stored resources the defaults link to, and starts the stored lists
-    the rows offer beside it.
+  - `use-stored-candidates.ts` — `useStoredCandidates(batchId, resources)`
+    finds the stored candidates of the batch's first decode once per batch
+    (`StoredCandidates.find`, one `ResourceMatch.matchAll`). It is a TanStack
+    query keyed by the batch id, and gives them as an `Option`, `None` until
+    they are in and when the match failed. `useLinkChoiceReview` passes each
+    referent's own resource first, then every decoded row's resource. It
+    derives each referent's default beside the query
+    (`ReferentMatch.defaultChoices`, over no candidates until they are in),
+    and labels the stored resources the defaults link to or update
+    (`LinkChoice.storedResourceOf`).
   - `use-reviewer-link-choices.ts` — `useReviewerLinkChoices` keeps the
     reviewer's choices on top of the defaults by `Referent.key` across a
     settings re-decode in a `ReferentLinkChoiceSet`, their link choice set
@@ -198,10 +202,10 @@ The importer has no HTTP wire union to derive, so there is no separate
     ten pages: a select has no room for a load-more action, and a personal
     server holds a household, not a hospital), each labelled on the way in
     since `LinkableResource.labelOf` reads the clock. The read starts beside
-    the batch's match (`useImportMatch` starts the same query,
-    `storedResourcesQuery`, as soon as the batch's referents are known) and
-    is never stale on its own: a confirm invalidates it, the one thing that
-    changes it.
+    the batch's match: `usePrefetchStoredResources` observes the same query,
+    `storedResourcesQuery`, for each referent type through `useQueries`, as
+    soon as the batch's referents are known. It is never stale on its own. A
+    confirm invalidates it, the one thing that changes it.
   - `referent-text.ts` — the block's strings, which say "server", never
     "device": the importer can be pointed at any FHIR server.
 
@@ -223,24 +227,23 @@ The importer has no HTTP wire union to derive, so there is no separate
   and folding outcomes all happen in the core.
 - **`src/preview/`** — the review view and the state it needs.
   `use-server-diff.ts` pre-classifies every previewed resource against its
-  matched stored copy (`new` / `unchanged` / `changed`) for the row badges and the "already
+  stored copy (`new` / `unchanged` / `changed`) for the row badges and the "already
   there, so out by default" rule (`unchangedKeysOf`), keyed **by review group and then by resource
   key** (`GroupComparisons`, over `importer-core`'s `ReviewGroup`) — two
   formats can carry the same resource key, so
   a flat map would let one format's verdict overwrite another's. Within one
   format the keys are already distinct, because the import stage
   (`DecodedFileSet.adopt`) namespaces each file set's keys by its first picked
-  file's slot in the batch. A resource's matched copy is the stored record its
-  identifiers name, read off the batch's match (`ImportMatch.matchedCopyOf`)
-  without a request, and compared by content with its `id` dropped
-  (`compareWithStoredCopy`), so a copy stored under another id still reads
-  `unchanged`; the write still goes to the resource's own id. A resource
-  with no matched copy (the match found none, or cannot speak for it: no
-  qualified identifier, a `Binary`, an identifier the match did not search,
-  or no match at all when it failed) is compared with the copy under its own
-  id, so a stored copy whose identifiers were edited reads `changed`, not
-  `new`; every such resource goes in one `POST /` batch of GETs
-  (`classifyAgainstServer`), sent only when there is one. The screen blocks the
+  file's slot in the batch. A resource's stored copy is the stored resource
+  its identifiers name, read off the batch's stored candidates
+  (`StoredCopy.of`) without a request. It is compared by content with its
+  `id` dropped (`compareWithStoredCopy`), so a copy stored under another id
+  still reads `unchanged`. The write still goes to the resource's own id. A
+  resource whose stored copy is `None` is compared with the copy under its
+  own id, and so is every resource when the match failed. So a stored copy
+  whose identifiers were edited reads `changed`, not `new`. Every such
+  resource goes in one `POST /` batch of GETs (`classifyAgainstServer`),
+  sent only when there is one. The screen blocks the
   first paint on it but **not** on the re-classification a settings change or
   a link choice triggers, since unmounting the panel mid-review would drop the
   focus of whatever control the reviewer is using; the verdicts the batch last
