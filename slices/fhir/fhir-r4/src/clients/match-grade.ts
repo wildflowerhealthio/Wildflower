@@ -1,6 +1,6 @@
 import { Array, Option, Order, String as Str } from 'effect'
 
-import type { HumanName } from '../data-types/index.ts'
+import { HumanName } from '../data-types/index.ts'
 import type * as Patient from '../resources/patient/patient.ts'
 import type * as Practitioner from '../resources/practitioner/practitioner.ts'
 
@@ -39,131 +39,35 @@ const mayNotNeedAdditionalReview = (grade: Type): boolean =>
   grade === 'certain' || grade === 'probable'
 
 /**
- * A name as two names are compared: a family name, and the given names, each
- * part's words lower-cased, without diacritics and single-spaced, with a
- * leading doctor's title dropped.
+ * A name as two names are compared: its parts as {@link HumanName.partsOf}
+ * reads them, each word lower-cased and without diacritics.
  */
 interface ComparableName {
   readonly family: string
   readonly given: readonly string[]
 }
 
-/** The words a doctor's title is written as, compared once lower-cased. */
-const DOCTOR_TITLES: ReadonlySet<string> = new Set(['dr', 'dr.', 'doctor'])
+/** `word` lower-cased and without diacritics (decomposed, combining marks dropped). */
+const comparableWordOf = (word: string): string =>
+  word.normalize('NFD').replaceAll(/\p{M}/gu, '').toLowerCase()
+
+/** `words` as compared ({@link comparableWordOf}), without a word that leaves nothing. */
+const comparableWordsOf = (words: readonly string[]): readonly string[] =>
+  words.map(comparableWordOf).filter(Str.isNonEmpty)
 
 /**
- * The words a credential is written as after a name ("John Smith, MD"),
- * compared once lower-cased and without dots. Credentials that are also
- * names ("Do", "Pa", "Od") are left out, so "Nguyen, Do" keeps its given name.
- */
-const CREDENTIALS: ReadonlySet<string> = new Set([
-  'md',
-  'np',
-  'rn',
-  'rph',
-  'pharmd',
-  'phd',
-  'dds',
-  'dmd',
-])
-
-/**
- * The generational suffixes written after a name ("John Smith Jr",
- * "Schmitt, John, Jr"), compared once lower-cased and without dots.
- */
-const GENERATIONAL_SUFFIXES: ReadonlySet<string> = new Set(['jr', 'sr', 'ii', 'iii', 'iv'])
-
-/** The words of `namePart`, lower-cased and without diacritics (decomposed, combining marks dropped). */
-const wordsOf = (namePart: string): readonly string[] =>
-  namePart
-    .normalize('NFD')
-    .replaceAll(/\p{M}/gu, '')
-    .toLowerCase()
-    .split(/\s+/u)
-    .filter(Str.isNonEmpty)
-
-/** `words` without a doctor's title leading them. */
-const withoutLeadingTitle = (words: readonly string[]): readonly string[] =>
-  Array.match(words, {
-    onEmpty: () => words,
-    onNonEmpty: (spoken) =>
-      DOCTOR_TITLES.has(Array.headNonEmpty(spoken)) ? Array.tailNonEmpty(spoken) : spoken,
-  })
-
-/** Whether `word`, without its dots, is a generational suffix ({@link GENERATIONAL_SUFFIXES}). */
-const isGenerationalSuffix = (word: string): boolean =>
-  GENERATIONAL_SUFFIXES.has(word.replaceAll('.', ''))
-
-/**
- * Whether `words` are a tail a name can drop: at least one word, every one
- * of them a credential ({@link CREDENTIALS}) or a generational suffix.
- */
-const isDroppableTail = (words: readonly string[]): boolean =>
-  Array.isNonEmptyReadonlyArray(words) &&
-  words.every((word) => CREDENTIALS.has(word.replaceAll('.', '')) || isGenerationalSuffix(word))
-
-/** `words` without the generational suffixes trailing them; a first word is always kept. */
-const withoutTrailingSuffixes = (words: readonly string[]): readonly string[] =>
-  words.length > 1 && isGenerationalSuffix(words.at(-1) ?? '')
-    ? withoutTrailingSuffixes(words.slice(0, -1))
-    : words
-
-/** `family` and `given` words as a comparable name; `None` when no family name is left. */
-const comparableNameFrom = (
-  familyWords: readonly string[],
-  givenWords: readonly string[]
-): Option.Option<ComparableName> => {
-  const family = withoutLeadingTitle(familyWords).join(' ')
-  return Option.liftPredicate({ family, given: withoutLeadingTitle(givenWords) }, () =>
-    Str.isNonEmpty(family)
-  )
-}
-
-/**
- * The comma-separated parts of `text` as words, without an empty part ("John
- * Smith,") and without the credentials and generational suffixes that trail
- * them after a comma ("John Smith, MD", "John Smith, MD, PhD", "Smith, John,
- * RPh", "Schmitt, John, Jr"); a first part is always kept.
- */
-const partsWithoutDroppableTail = (text: string): readonly (readonly string[])[] => {
-  const withoutTail = (parts: readonly (readonly string[])[]): readonly (readonly string[])[] =>
-    parts.length > 1 && isDroppableTail(parts.at(-1) ?? [])
-      ? withoutTail(parts.slice(0, -1))
-      : parts
-  return withoutTail(text.split(',').map(wordsOf).filter(Array.isNonEmptyReadonlyArray))
-}
-
-/**
- * `text` as a comparable name, its credential and suffix tail dropped first
- * ({@link partsWithoutDroppableTail}): family first when exactly one comma
- * is left ("Schmitt, John Jacob"), the given names without the generational
- * suffixes trailing them ("Schmitt, John Jr"), else given names then a
- * family name, the last word once trailing generational suffixes are dropped
- * ("John Smith Jr"), with any other commas read as spaces.
- */
-const comparableTextNameOf = (text: string): Option.Option<ComparableName> => {
-  const parts = partsWithoutDroppableTail(text)
-  if (parts.length === 2) {
-    return comparableNameFrom(parts[0] ?? [], withoutTrailingSuffixes(parts[1] ?? []))
-  }
-  const textWords = withoutTrailingSuffixes(withoutLeadingTitle(parts.flat()))
-  return Option.map(Array.last(textWords), (family) => ({
-    family,
-    given: textWords.slice(0, -1),
-  }))
-}
-
-/**
- * `name` as it is compared: its `family` and `given` parts when it states
- * either, else its `text` ({@link comparableTextNameOf}); `None` when no
- * family name is left, so a name without one is not compared. `prefix` and
- * `suffix` are not compared, so a title written there is ignored as one
- * written leading the text, the family or the given names is.
+ * `name` as it is compared: its parts ({@link HumanName.partsOf}), each word
+ * lower-cased and without diacritics; `None` when no family name is left, so
+ * a name without one is not compared.
  */
 const comparableNameOf = (name: typeof HumanName.Schema.Type): Option.Option<ComparableName> =>
-  name.family !== null || name.given.length > 0
-    ? comparableNameFrom(wordsOf(name.family ?? ''), name.given.flatMap(wordsOf))
-    : comparableTextNameOf(name.text ?? '')
+  HumanName.partsOf(name).pipe(
+    Option.map(({ family, given }): ComparableName => ({
+      family: comparableWordsOf(family.split(' ')).join(' '),
+      given: comparableWordsOf(given),
+    })),
+    Option.filter(({ family }) => Str.isNonEmpty(family))
+  )
 
 /** Every name of `names` that can be compared ({@link comparableNameOf}), in the order of `names`. */
 const comparableNamesOf = (
@@ -171,20 +75,12 @@ const comparableNamesOf = (
 ): readonly ComparableName[] => Array.filterMap(names, comparableNameOf)
 
 /**
- * Whether `word` can find the names it is part of: not a doctor's title
- * ({@link DOCTOR_TITLES}), a credential ({@link CREDENTIALS}) or a
- * generational suffix, and more than one letter once its dots are dropped,
- * so not an initial.
+ * Whether `word` can find the names it is part of: not a doctor's title, a
+ * credential or a generational suffix ({@link HumanName.isTitleCredentialOrSuffix}),
+ * and more than one letter once its dots are dropped, so not an initial.
  */
-const isSearchableWord = (word: string): boolean => {
-  const withoutDots = word.replaceAll('.', '')
-  return (
-    withoutDots.length > 1 &&
-    !DOCTOR_TITLES.has(word) &&
-    !CREDENTIALS.has(withoutDots) &&
-    !GENERATIONAL_SUFFIXES.has(withoutDots)
-  )
-}
+const isSearchableWord = (word: string): boolean =>
+  word.replaceAll('.', '').length > 1 && !HumanName.isTitleCredentialOrSuffix(word)
 
 /**
  * The words of the family names of `names`, as {@link comparableNamesOf}

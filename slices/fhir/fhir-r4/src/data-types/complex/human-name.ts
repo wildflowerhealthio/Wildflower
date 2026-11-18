@@ -49,4 +49,6 @@ registerDatatypeSchema('HumanName', HumanNameSchema)
 
 export { currentName, displayName } from './human-name-display.ts'
 export type { Displayable } from './human-name-display.ts'
+export { isTitleCredentialOrSuffix, partsOf, partsOfText } from './human-name-parts.ts'
+export type { Parts } from './human-name-parts.ts'
 export { HumanNameSchema as Schema }
