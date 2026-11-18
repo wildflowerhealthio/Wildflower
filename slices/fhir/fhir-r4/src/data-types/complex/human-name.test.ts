@@ -1,5 +1,5 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Arbitrary, DateTime, Schema } from 'effect'
+import { Arbitrary, DateTime, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it, test } from 'vite-plus/test'
 
@@ -289,6 +289,158 @@ describe('displayName', () => {
   })
 })
 
+describe('partsOfText', () => {
+  it.each([
+    {
+      form: 'given names then a family, a leading title dropped, casing kept',
+      text: 'DR J BROWN',
+      parts: Option.some({ family: 'BROWN', given: ['J'] }),
+    },
+    {
+      form: 'a dotted title leading the text, diacritics kept',
+      text: 'Dr. Zoë  Nguyễn',
+      parts: Option.some({ family: 'Nguyễn', given: ['Zoë'] }),
+    },
+    {
+      form: 'a title alone before the family',
+      text: 'DR SMITH',
+      parts: Option.some({ family: 'SMITH', given: [] }),
+    },
+    {
+      form: 'a title after the first word: family before it, given names after it',
+      text: 'OSEI DR. KWAME',
+      parts: Option.some({ family: 'OSEI', given: ['KWAME'] }),
+    },
+    {
+      form: 'a title after a family of several words',
+      text: 'VAN DER BERG DR JAN PIETER',
+      parts: Option.some({ family: 'VAN DER BERG', given: ['JAN', 'PIETER'] }),
+    },
+    {
+      form: 'a title ending the words: all before it the family, no given names',
+      text: 'OSEI DR.',
+      parts: Option.some({ family: 'OSEI', given: [] }),
+    },
+    {
+      form: 'a title after the first word, a credential after a comma dropped first',
+      text: 'OSEI DR. KWAME, MD',
+      parts: Option.some({ family: 'OSEI', given: ['KWAME'] }),
+    },
+    {
+      form: 'a title after the first word, a generational suffix trailing dropped',
+      text: 'OSEI DR. KWAME JR.',
+      parts: Option.some({ family: 'OSEI', given: ['KWAME'] }),
+    },
+    {
+      form: 'a title both leading and after the first word',
+      text: 'Dr. Osei Dr. Kwame',
+      parts: Option.some({ family: 'Osei', given: ['Kwame'] }),
+    },
+    {
+      form: 'one comma: the comma, not a title after it, ends the family',
+      text: 'Brown, Dr. Jonathan',
+      parts: Option.some({ family: 'Brown', given: ['Jonathan'] }),
+    },
+    {
+      form: 'one comma, a title leading the family dropped',
+      text: 'Dr. Brown, Jonathan',
+      parts: Option.some({ family: 'Brown', given: ['Jonathan'] }),
+    },
+    {
+      form: 'three commas: read as spaces, so a title among the words splits',
+      text: 'Roy, Dr., Anne, Marie',
+      parts: Option.some({ family: 'Roy', given: ['Anne', 'Marie'] }),
+    },
+    {
+      form: 'a title alone: no family name',
+      text: 'Dr.',
+      parts: Option.none(),
+    },
+    {
+      form: 'blank text: no family name',
+      text: ' , ',
+      parts: Option.none(),
+    },
+  ])('should read $form', ({ text, parts }) => {
+    expect(HumanName.partsOfText(text)).toEqual(parts)
+  })
+
+  it('should read given names then a family name as written', () => {
+    fc.assert(
+      fc.property(fc.array(nameWordArb, { maxLength: 3 }), nameWordArb, (given, family) => {
+        expect(HumanName.partsOfText([...given, family].join(' '))).toEqual(
+          Option.some({ family, given })
+        )
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should read a family name before one comma, given names after it, as written', () => {
+    fc.assert(
+      fc.property(
+        fc.array(nameWordArb, { minLength: 1, maxLength: 3 }),
+        fc.array(nameWordArb, { minLength: 1, maxLength: 3 }),
+        (family, given) => {
+          expect(HumanName.partsOfText(`${family.join(' ')}, ${given.join(' ')}`)).toEqual(
+            Option.some({ family: family.join(' '), given })
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should split a name at a title after its first word, whatever its case and dots', () => {
+    fc.assert(
+      fc.property(
+        fc.array(nameWordArb, { minLength: 1, maxLength: 3 }),
+        titleArb,
+        fc.array(nameWordArb, { maxLength: 3 }),
+        (family, title, given) => {
+          expect(HumanName.partsOfText([...family, title, ...given].join(' '))).toEqual(
+            Option.some({ family: family.join(' '), given })
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should read a name with a leading title as it reads the name without it', () => {
+    fc.assert(
+      fc.property(
+        titleArb,
+        fc.array(nameWordArb, { minLength: 1, maxLength: 4 }),
+        (title, words) => {
+          expect(HumanName.partsOfText(`${title} ${words.join(' ')}`)).toEqual(
+            HumanName.partsOfText(words.join(' '))
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('partsOf', () => {
+  it('should read the family and given names a name states, a leading title dropped', () => {
+    expect(
+      HumanName.partsOf({ family: ' Dr  Van  Berg ', given: ['Ann Marie'], text: 'ignored' })
+    ).toEqual(Option.some({ family: 'Van Berg', given: ['Ann', 'Marie'] }))
+  })
+
+  it('should read the text of a name that states neither', () => {
+    expect(HumanName.partsOf({ given: [], text: 'OSEI DR. KWAME' })).toEqual(
+      Option.some({ family: 'OSEI', given: ['KWAME'] })
+    )
+  })
+
+  it('should read no family name from given names alone', () => {
+    expect(HumanName.partsOf({ given: ['Solo'], text: 'Solo Smith' })).toEqual(Option.none())
+  })
+})
+
 // Helpers
 
 /** `iso` as a `DateTime`, failing the test when it does not parse. */
@@ -318,3 +470,16 @@ const namesArb = fc.array(
     { requiredKeys: [] }
   )
 )
+
+/** A word of a name that is not a title, a credential or a generational suffix, cased any way. */
+const nameWordArb = fc
+  .stringMatching(/^[A-Za-zÀ-ÿ'-]{1,10}$/u)
+  .filter((word) => !HumanName.isTitleCredentialOrSuffix(word))
+
+/** A doctor's title, cased any way, with or without its dot. */
+const titleArb = fc
+  .tuple(fc.constantFrom('dr', 'doctor'), fc.boolean(), fc.boolean())
+  .map(
+    ([title, upperCased, dotted]) =>
+      `${upperCased ? title.toUpperCase() : title}${dotted ? '.' : ''}`
+  )
