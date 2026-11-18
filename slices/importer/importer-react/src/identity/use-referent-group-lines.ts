@@ -37,7 +37,7 @@ interface ReferentGroupLines {
  * it was built from has not changed, which `ReferentRow`'s memo compares.
  *
  * @param resourceType - The group's resource type
- * @param props - The referent block's referents, choices and the stored resources the defaults link to
+ * @param props - The referent block's referents, choices and the stored resources the defaults link to or update
  * @returns The group's lines and its stored list
  */
 const useReferentGroupLines = (

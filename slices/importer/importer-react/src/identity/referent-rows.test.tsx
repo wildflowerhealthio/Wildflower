@@ -550,7 +550,7 @@ const carrying = (
  * A server whose searches answer with the holdings of the searched type: the
  * searches for Tyra and the prescriber with `found`, the account's with
  * `accountFound`, every other identifier search with nothing, a `birthdate`
- * or `name` search with the `listed` records it finds as HFS would, and the
+ * or `name` search with the `listed` resources it finds as HFS would, and the
  * paged list with `listed`, or a 503 when `listFails`.
  */
 /** Whether a search with `params` is the paged list: it names no identifier, birth date or name. */
@@ -567,9 +567,9 @@ const serverHolding = ({
   listContinues = false,
 }: Holdings): RunAuthed => {
   /**
-   * What a search with `params` finds: by `identifier`, each record carrying
-   * the identifier it was found by, as a stored record a search finds does;
-   * by `birthdate` or `name`, the listed records it finds; by neither, the
+   * What a search with `params` finds: by `identifier`, each resource carrying
+   * the identifier it was found by, as a stored resource a search finds does;
+   * by `birthdate` or `name`, the listed resources it finds; by neither, the
    * list.
    */
   const heldFor = (params: Readonly<Record<string, string>>): readonly object[] => {

@@ -5,10 +5,10 @@
  * @remarks
  * A file has many mentions and the identity map has one referent per
  * identity, which is what the reviewer makes a `LinkChoice` for. A referent
- * answers to every identifier its record brings, so a mention by one of them
- * that no other referent answers to is that referent. Every referent has a
- * record: a reference to a record the import never saw implies that record
- * at decode (`DecodedFileSet.adopt`). Today a referent is a patient or a
+ * answers to every identifier its resource carries, so a mention by one of
+ * them that no other referent answers to is that referent. Every referent
+ * has a resource. A reference to a resource the import never saw implies
+ * that resource at decode (`DecodedFileSet.adopt`). Today a referent is a patient or a
  * provider; the model does not say so, and a lab requisition or a location
  * fits it the same way.
  *
@@ -29,7 +29,7 @@ import * as LinkableResource from './linkable-resource.ts'
  */
 interface Type {
   readonly logicalReference: LinkableLogicalReference.Type
-  /** Every qualified identifier the record carries, once each: what the referent answers to. */
+  /** Every qualified identifier the resource carries, once each, which the referent answers to. */
   readonly identifiers: readonly IdentifierAndReference.IdentifierType[]
   readonly resource: LinkableResource.WithId
   /** The review key of the record's row. */
@@ -58,7 +58,7 @@ const key = (referent: Type): LogicalReference.Key =>
 
 /**
  * Every logical reference `referent` answers to: one per qualified
- * identifier its record carries, its key's first.
+ * identifier its resource carries, its key's first.
  */
 const logicalReferencesOf = ({
   logicalReference,

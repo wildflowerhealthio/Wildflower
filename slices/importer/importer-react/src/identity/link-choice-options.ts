@@ -6,7 +6,7 @@
  * A referent offers `New` (its own record is written), or, when a stored
  * resource under its own id is known (a re-import), an update of that copy in
  * its place, and a stored resource. The stored resources offered are the
- * defaults' records and the server's own, read up front. `valueOf` also
+ * ones the defaults link to or update, and the server's own, read up front. `valueOf` also
  * values a mention's choices, which its own select offers
  * (`MentionLinkOptions`).
  *
@@ -69,7 +69,7 @@ const sameValue = (left: LinkChoiceOption, right: LinkChoiceOption): boolean =>
 
 /** Everything the options of one referent are read from. */
 interface LinkChoiceOptionInputs {
-  /** The stored resources of the referent's type: the defaults' records, then the server's own. */
+  /** The stored resources of the referent's type: the ones the defaults link to or update, then the server's own. */
   readonly storedOfType: readonly StoredResource[]
   /** {@link LinkChoiceOptionInputs.storedOfType} as options, built once per group. */
   readonly onServer: readonly LinkChoiceOption[]

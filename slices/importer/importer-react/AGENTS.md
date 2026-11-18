@@ -152,7 +152,8 @@ The importer has no HTTP wire union to derive, so there is no separate
     they are in and when the match failed. `useLinkChoiceReview` passes each
     referent's own resource first, then every decoded row's resource. It
     derives each referent's default beside the query
-    (`ReferentMatch.defaultChoices`, over no candidates until they are in),
+    (`ReferentMatch.defaultChoices`, over `StoredCandidates.empty` until they
+    are in, so every referent takes `CreateResource`),
     and labels the stored resources the defaults link to or update
     (`LinkChoice.storedResourceOf`).
   - `use-reviewer-link-choices.ts` — `useReviewerLinkChoices` keeps the
@@ -160,7 +161,8 @@ The importer has no HTTP wire union to derive, so there is no separate
     settings re-decode in a `ReferentLinkChoiceSet`, their link choice set
     by mention beside it in a `MentionLinkChoiceSet` (by
     `MentionLinkChoiceSet.key`, set by `chooseMention`), and the referents and
-    records of the batch's first decode the match reads; a fresh pick starts over.
+    resources of the batch's first decode (`FirstDecode`), which the match
+    reads. A fresh pick starts over.
   - `use-last-resolved-batch.ts` — `useLastResolvedBatch`, the batch's last
     resolving that succeeded, which a refusal is shown over.
 

@@ -529,8 +529,8 @@ describe('ImporterScreen', () => {
 
     // Assert — no writes; the reads are the picker's source list, the
     // match's one identifier search per type, one by-id bundle reading every
-    // row without a matched copy (the source file it cannot search, and the
-    // Patient and Observations it found nothing for), and, once the review
+    // row without a stored copy (the source file, which carries no
+    // identifier, and the Patient and Observations nothing was found for), and, once the review
     // has painted, the first page of stored Patients its select offers. The
     // Patient states no birth date, so the match sends no birth date search
     // to grade it by name.
@@ -552,7 +552,7 @@ describe('ImporterScreen', () => {
     )
   })
 
-  it('links the Patient to the one stored record her name and birth date match: the stored one is written, with every subject pointing at it', async () => {
+  it('links the Patient to the one stored resource her name and birth date match: the stored one is written, with every subject pointing at it', async () => {
     // Arrange — the device already holds Tyra, under its own id and
     // identifier, with her name and birth date
     currentRunAuthed = routingServer({ stored: [STORED_TYRA] })
@@ -651,7 +651,7 @@ describe('ImporterScreen', () => {
   })
 
   it("drops an edit made on a Patient's row when the Patient is linked to another record", async () => {
-    // Arrange — the device holds a record the match grades only possible,
+    // Arrange — the device holds a resource the match grades only possible,
     // so the Patient starts as new and the stored one is offered, not chosen
     currentRunAuthed = routingServer({ stored: [POSSIBLE_TYRA] })
     render(<ImporterScreen />, { wrapper: withQueryClient })
@@ -756,7 +756,7 @@ describe('ImporterScreen', () => {
   })
 
   it('redirects a subject picked onto the Patient to the stored record the Patient is later linked to', async () => {
-    // Arrange — the device holds a record the match grades only possible,
+    // Arrange — the device holds a resource the match grades only possible,
     // so the Patient starts as new and the stored one is offered, not chosen
     currentRunAuthed = routingServer({ stored: [POSSIBLE_TYRA] })
     render(<ImporterScreen />, { wrapper: withQueryClient })
@@ -858,9 +858,9 @@ const STORED_TYRA = {
 }
 
 /**
- * A stored record that may be Tyra: her family name and birth date with only
+ * A stored resource that may be Tyra: her family name and birth date with only
  * an initial for a given name, under no identifier the import carries, so the
- * match grades it `possible` and picks no default.
+ * match grades it `possible` and the referent defaults to New.
  */
 const POSSIBLE_TYRA = {
   resourceType: 'Patient',

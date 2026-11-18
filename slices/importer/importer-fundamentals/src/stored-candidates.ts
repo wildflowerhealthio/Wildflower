@@ -4,10 +4,9 @@
  * record, and the identifiers it was matched by.
  *
  * @remarks
- * An import is matched once, every resource in one `matchAll`. Each
- * referent's default link choice reads its own resource's candidates
- * (`ReferentMatch`), and the server diff reads a resource's stored copy from
- * them (`StoredCopy`).
+ * An import is matched once, every resource in one `matchAll`, so the
+ * referents' default link choices (`ReferentMatch`) and the server diff
+ * (`StoredCopy`) read the same candidates.
  *
  * @packageDocumentation
  */

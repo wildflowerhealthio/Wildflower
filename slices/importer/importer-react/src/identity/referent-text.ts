@@ -31,7 +31,7 @@ const SEARCHING_SERVER_MESSAGE = 'Looking for these people and providers on the 
 const SEARCH_ERROR_MESSAGE =
   'Could not search the server for these people and providers. Each starts as new.'
 
-/** The alert under a group whose stored list could not be read: only the defaults' records are offered. */
+/** The alert under a group whose stored list could not be read, when only the stored resources the defaults link to or update are offered. */
 const STORED_LIST_ERROR_MESSAGE =
   'Could not list the records on the server. Only the ones the search found are offered.'
 

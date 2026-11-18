@@ -372,12 +372,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   - **`Referent`** — a Patient or Practitioner the import holds a record
     of, which may already exist on the device, once per identity: its
     decoded `resource` (keyed by its `identifier[0]`), carrying every
-    qualified identifier its record carries (`identifiers`), its row's
+    qualified identifier that resource carries (`identifiers`), its row's
     `reviewKey` and whether it `isImplied`, and its `label`. Every referent
     has a record: a reference to one the import never saw implies it at
     decode (`DecodedFileSet.adopt`). `logicalReferencesOf` is every logical
     reference a referent answers to, one per qualified identifier of its
-    record. A logical reference names the referent it is the key of, else the one
+    resource. A logical reference names the referent it is the key of, else the one
     referent that answers to it, so a health card number a decoded Patient
     also carries is that Patient. **`discover(decodedRows)`** finds them over
     a batch's decoded rows, once per identity (a record two file sets imply
@@ -696,8 +696,8 @@ but `fhir-r4-adoption`.
   batch's **linked records**, held once for the batch and in no file, so the
   review shows it and the identifiers it assumed; a decoded resource that is its referent's link target is
   written as decoded plus the identifiers of the referents linked to it. On
-  a re-import the referent's own match finds the stored
-  copy under the decoded id and defaults to `UpdateStoredResource`, which
+  a re-import the referent's stored candidates hold the stored
+  copy under the decoded id, and its default is `UpdateStoredResource`, which
   resolves the decoded resource having assumed every identifier the stored
   copy carries, whether or not a mention links to that copy, so what it
   assumed in earlier imports is written again; `CreateResource` on such a

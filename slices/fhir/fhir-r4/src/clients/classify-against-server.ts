@@ -25,9 +25,9 @@ import { statusOk } from './persist-batch-bundle.ts'
  * leaf back to it ({@link resetFieldToServer}).
  *
  * @remarks
- * The stored copy is the caller's to find: a matched copy
- * ({@link compareWithStoredCopy}, the copy `ResourceMatch` found by
- * identifier, whatever its id), or the copy under the resource's own id
+ * The stored copy is the caller's to find. It is either the copy
+ * `ResourceMatch` found by identifier, whatever its id
+ * ({@link compareWithStoredCopy}), or the copy under the resource's own id
  * ({@link classifyAgainstServer}, one `POST /` batch of GETs).
  *
  * @packageDocumentation
@@ -121,8 +121,8 @@ const decodeResource = Schema.decodeUnknownEither(FhirResourceSchema)
 /**
  * Encode a resource through its schema and drop its `id` and the
  * server-managed meta fields — the wire object the content compare and the
- * field diff both work over, so a resource and a matched copy stored under
- * another id compare by content alone. `Option.none` on an encode failure: a
+ * field diff both work over, so a resource and a stored copy under another
+ * id compare by content alone. `Option.none` on an encode failure: a
  * resource that cannot be encoded is treated as `changed` (safer than
  * `unchanged`, which would silently skip it).
  */
@@ -209,7 +209,7 @@ const compareWithStoredCopy = (
  * Classify each resource against the server's copy under its own id: `new`
  * (absent), `unchanged` (present + wire-equal after dropping server-managed
  * meta), or `changed` (present + differs) — {@link compareWithStoredCopy}
- * over a by-id read, for a resource no match can find a copy of.
+ * over a by-id read, for a resource with no stored copy found by identifier.
  *
  * @param resources - The resources a caller (the importer's preview) is about
  *   to write, each under the id it would be written to

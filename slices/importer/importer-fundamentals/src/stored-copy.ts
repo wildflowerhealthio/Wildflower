@@ -5,10 +5,9 @@
  * @remarks
  * Read off the import's stored candidates (`StoredCandidates`), so it takes
  * no request. The candidates were found by the identifiers the resource
- * carried when it was matched. A resource the review has since given other
- * identifiers has no stored copy here, and neither has one the candidates
- * cannot name one for. The diff reads the copy under the resource's own id
- * for those.
+ * carried when it was matched. So a resource the review has since given
+ * other identifiers has no stored copy here. The diff reads the copy under
+ * the resource's own id for a resource without one, which is always safe.
  *
  * @packageDocumentation
  */

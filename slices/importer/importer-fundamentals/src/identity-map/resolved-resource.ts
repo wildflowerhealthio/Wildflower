@@ -58,9 +58,9 @@ interface Type {
  *
  * @remarks
  * On a re-import a decoded resource and its stored copy share a literal
- * reference: the referent's own match finds the copy under the decoded id
- * (`ReferentMatch.defaultChoice` then updates it with the decode), while a
- * mention the copy answers to links to it as stored. The decode is the newer,
+ * reference. The copy under the decoded id is among the referent's stored
+ * candidates, and `ReferentMatch.defaultChoice` updates it with the decode.
+ * A mention the copy answers to links to it as stored. The decode is the newer,
  * so it is the one written. Should two referents carry different stored
  * copies of one resource, the last one's is written.
  */
