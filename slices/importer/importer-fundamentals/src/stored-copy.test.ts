@@ -1,5 +1,6 @@
+import { MatchQuery, type ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import { Option } from 'effect'
+import { HashMap, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -129,6 +130,24 @@ describe('StoredCopy.of', () => {
     expect(searches).toEqual([])
     expect(StoredCopy.of(storedCandidates, keyless)).toEqual(Option.none())
     expect(StoredCopy.of(storedCandidates, binary)).toEqual(Option.none())
+  })
+
+  it('should take the only candidate found by identifier, whatever its grade', () => {
+    // Arrange
+    const imported = observation('o-1', 'o-1')
+    const candidates: readonly ResourceMatch.Candidate[] = [
+      { resource: observation('elsewhere', 'o-1'), grade: 'probable', by: 'identifier' },
+      { resource: observation('namesake', 'o-9'), grade: 'possible', by: 'name' },
+    ]
+    const storedCandidates: StoredCandidates.Type = HashMap.make([
+      'Observation/o-1',
+      { matchedBy: MatchQuery.qualifiedIdentifiersOf(imported), candidates },
+    ])
+
+    // Act / Assert
+    expect(referenceOf(StoredCopy.of(storedCandidates, imported))).toEqual(
+      Option.some('Observation/elsewhere')
+    )
   })
 
   it('should find none for a resource that was not matched', () => {

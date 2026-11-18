@@ -19,6 +19,7 @@ import {
   literalReferenceOf,
   TokenSearchParam,
 } from '@wildflowerhealthio/fhir-r4/resources'
+import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
 import { Array, Equal, HashMap, HashSet, Option, pipe } from 'effect'
 
 import type * as StoredCandidates from './stored-candidates.ts'
@@ -37,24 +38,26 @@ const carriesMatchedIdentifiers = (
   Equal.equals(tokenSetOf(MatchQuery.qualifiedIdentifiersOf(resource)), tokenSetOf(entry.matchedBy))
 
 /**
- * The stored copy among `candidates` found by identifier: the one graded
- * `certain`. When several were found, each is graded `probable`, and the
- * copy is the one stored under `resource`'s own literal reference.
+ * The stored copy among `candidates`: the only one found by identifier; when
+ * several were found, the one stored under `resource`'s own literal
+ * reference.
  */
 const copyFoundByIdentifier = (
   resource: FhirResourceWithId,
   candidates: readonly ResourceMatch.Candidate[]
 ): Option.Option<FhirResourceWithId> => {
-  const byIdentifier = candidates.filter(({ by }) => by === 'identifier')
+  const foundByIdentifier = candidates
+    .filter(({ by }) => by === 'identifier')
+    .map((candidate) => candidate.resource)
   return pipe(
-    Array.findFirst(byIdentifier, ({ grade }) => grade === 'certain'),
+    onlyElement(foundByIdentifier),
+    // The match gives a stored resource once per query, so at most one shares the reference.
     Option.orElse(() =>
       Array.findFirst(
-        byIdentifier,
-        (candidate) => literalReferenceOf(candidate.resource) === literalReferenceOf(resource)
+        foundByIdentifier,
+        (stored) => literalReferenceOf(stored) === literalReferenceOf(resource)
       )
-    ),
-    Option.map((candidate) => candidate.resource)
+    )
   )
 }
 

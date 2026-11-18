@@ -1,7 +1,8 @@
 /**
  * A referent's default link choice, read off its resource's stored
  * candidates (`StoredCandidates`): the choice over the stored copy of its own
- * resource, else a link to the one stored resource it matches strongly.
+ * resource, else a link to the one stored resource it matches graded
+ * `certain` or `probable`.
  *
  * @remarks
  * Pure. The import is matched once, every resource in one `findCandidates`, and
@@ -11,6 +12,7 @@
  */
 
 import { MatchGrade, type ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
+import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
 import { Array, HashMap, Option, pipe } from 'effect'
 
 import * as StoredCandidates from '../stored-candidates.ts'
@@ -60,16 +62,11 @@ const ownStoredCopyChoice = (
     )
   )
 
-/** `LinkToStoredResource` to the one candidate graded `certain` or `probable`, when there is exactly one. */
-const soleStrongCandidateChoice = (
+/** The one candidate graded `certain` or `probable`, when there is exactly one. */
+const singleCandidateNotNeedingAdditionalReview = (
   candidates: readonly LinkableCandidate[]
-): Option.Option<LinkChoice.Type> =>
-  pipe(
-    candidates.filter(({ grade }) => MatchGrade.isStrong(grade)),
-    Option.liftPredicate((strong) => strong.length === 1),
-    Option.flatMap(Array.head),
-    Option.map(({ resource }) => LinkChoice.LinkToStoredResource({ resource }))
-  )
+): Option.Option<LinkableCandidate> =>
+  onlyElement(candidates.filter(({ grade }) => MatchGrade.mayNotNeedAdditionalReview(grade)))
 
 /**
  * The link choice `referent` takes before the reviewer makes one, given its
@@ -79,10 +76,11 @@ const soleStrongCandidateChoice = (
  * The choice over the stored copy of its own resource comes first
  * ({@link ownStoredCopyChoice}), whatever else matched. Else the referent
  * links to the one candidate graded `certain` or `probable`
- * ({@link soleStrongCandidateChoice}). Else it takes `CreateResource`
- * (`ReferentLinkChoiceSet.DEFAULT_CHOICE`). So two strong candidates give
- * `CreateResource`, as do candidates graded only `possible`. The reviewer
- * then chooses from the stored list.
+ * ({@link singleCandidateNotNeedingAdditionalReview}). Else it takes
+ * `CreateResource` (`ReferentLinkChoiceSet.DEFAULT_CHOICE`). So two
+ * candidates graded `certain` or `probable` give `CreateResource`, as do
+ * candidates graded only `possible`. The reviewer then chooses from the
+ * stored list.
  */
 const defaultChoice = (
   referent: Referent.Type,
@@ -91,7 +89,12 @@ const defaultChoice = (
   const linkable = linkableOf(candidates)
   return pipe(
     ownStoredCopyChoice(referent, linkable),
-    Option.orElse(() => soleStrongCandidateChoice(linkable)),
+    Option.orElse(() =>
+      Option.map(
+        singleCandidateNotNeedingAdditionalReview(linkable),
+        ({ resource }): LinkChoice.Type => LinkChoice.LinkToStoredResource({ resource })
+      )
+    ),
     Option.getOrElse(() => ReferentLinkChoiceSet.DEFAULT_CHOICE)
   )
 }

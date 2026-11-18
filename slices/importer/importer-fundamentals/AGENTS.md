@@ -275,9 +275,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 - `src/stored-copy.ts` — the **`StoredCopy`** namespace.
   **`of(storedCandidates, resource)`** is the stored copy the server diff
   compares a resource with, an `Option` read off its stored candidates
-  without a request. It is the one candidate found by identifier (graded
-  `certain`). When several were found (each graded `probable`), it is the one
-  under the resource's own literal reference. It is `None` when the resource
+  without a request. It is the only candidate found by identifier. When
+  several were found, it is the one under the resource's own literal
+  reference. The grade is not read. It is `None` when the resource
   was not matched, or when the qualified identifiers it carries now differ
   from `matchedBy`, compared as a set of search tokens. A resolved referent
   that assumed a stored copy's identifiers is one. It is `None` too when no
@@ -533,10 +533,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     stored under the referent's own literal reference (a re-import), whatever
     else matched, `UpdateStoredResource`, or `LinkToStoredResource` for a
     referent that `isImplied`, whose resource holds only what a reference
-    said. Else it is `soleStrongCandidateChoice`: `LinkToStoredResource` to
-    the one candidate graded `certain` or `probable` (`MatchGrade.isStrong`).
-    Else it is `CreateResource` (`ReferentLinkChoiceSet.DEFAULT_CHOICE`). So
-    two strong candidates take `CreateResource`, as several stored resources
+    said. Else it is `LinkToStoredResource` to
+    `singleCandidateNotNeedingAdditionalReview`, the one candidate graded
+    `certain` or `probable` (`MatchGrade.mayNotNeedAdditionalReview`). Else it
+    is `CreateResource` (`ReferentLinkChoiceSet.DEFAULT_CHOICE`). So two
+    candidates graded `certain` or `probable` take `CreateResource`, as several stored resources
     carrying its identifiers (each graded `probable`) or two namesakes do. So
     do candidates graded only `possible`. **`defaultChoices`** gives every
     referent its own, by `Referent.key`.

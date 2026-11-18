@@ -4,14 +4,14 @@ import { describe, expect, it } from 'vite-plus/test'
 import { Patient, Practitioner } from '../resources/index.ts'
 import { MatchGrade } from './index.ts'
 
-describe('MatchGrade.isStrong', () => {
+describe('MatchGrade.mayNotNeedAdditionalReview', () => {
   it.each([
-    { grade: 'certain', strong: true },
-    { grade: 'probable', strong: true },
-    { grade: 'possible', strong: false },
-    { grade: 'certainly-not', strong: false },
-  ] as const)('should hold $grade strong: $strong', ({ grade, strong }) => {
-    expect(MatchGrade.isStrong(grade)).toBe(strong)
+    { grade: 'certain', expected: true },
+    { grade: 'probable', expected: true },
+    { grade: 'possible', expected: false },
+    { grade: 'certainly-not', expected: false },
+  ] as const)('should give $expected for $grade', ({ grade, expected }) => {
+    expect(MatchGrade.mayNotNeedAdditionalReview(grade)).toBe(expected)
   })
 })
 
