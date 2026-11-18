@@ -714,7 +714,10 @@
       "name": [
         {
           "extension": [],
-          "given": [],
+          "family": "OSEI",
+          "given": [
+            "KWAME"
+          ],
           "prefix": [],
           "suffix": [],
           "text": "OSEI DR. KWAME"
@@ -748,7 +751,10 @@
       "name": [
         {
           "extension": [],
-          "given": [],
+          "family": "ROY",
+          "given": [
+            "ANNE"
+          ],
           "prefix": [],
           "suffix": [],
           "text": "ROY DR. ANNE"

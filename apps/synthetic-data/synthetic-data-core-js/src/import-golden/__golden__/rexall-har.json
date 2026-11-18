@@ -1336,7 +1336,10 @@
       "name": [
         {
           "extension": [],
-          "given": [],
+          "family": "Nguyen",
+          "given": [
+            "Lee"
+          ],
           "prefix": [],
           "suffix": [],
           "text": "Dr. Lee Nguyen"
