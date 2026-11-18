@@ -4,6 +4,7 @@ export { FNV_1A_64_OFFSET_BASIS, FNV_64_PRIME, fnv1a64, MASK64 } from './fnv1a.t
 export { fmix64 } from './fmix64.ts'
 export { formatBytes } from './format-bytes.ts'
 export { formatRelativeTime } from './format-relative-time.ts'
+export { onlyElement } from './only-element.ts'
 export { pad2 } from './pad2.ts'
 export { partitionPoint } from './partition-point.ts'
 export { sentenceJoin } from './sentence-join.ts'
