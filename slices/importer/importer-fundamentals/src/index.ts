@@ -32,6 +32,16 @@ export * as UnlinkedMention from './identity-map/unlinked-mention.ts'
 export * as ReferentMatch from './identity-map/referent-match.ts'
 export * as DifferingDemographics from './identity-map/differing-demographics.ts'
 export * as ReferentTally from './identity-map/referent-tally.ts'
+export * as RecordKey from './import-plan/record-key.ts'
+export * as RecordChoice from './import-plan/record-choice.ts'
+export * as OfferedFields from './import-plan/offered-fields.ts'
+export * as Suggestion from './import-plan/suggestion.ts'
+export * as FileCopy from './import-plan/file-copy.ts'
+export * as RecordReferences from './import-plan/record-references.ts'
+export * as StoredMatch from './import-plan/stored-match.ts'
+export * as PlannedRecord from './import-plan/planned-record.ts'
+export * as ImportPlan from './import-plan/import-plan.ts'
+export * as PlanTotals from './import-plan/plan-totals.ts'
 // Namespaced symbols are reached through their namespace above — a flat
 // re-export here would give each one a second spelling. Only modules that are
 // not namespaces export flat.
