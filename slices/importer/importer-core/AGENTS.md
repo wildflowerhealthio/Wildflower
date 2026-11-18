@@ -218,6 +218,24 @@ package alone and a layer that provides those.
   its decode yielded no resources and some file was unreadable, else
   `nothing`.
 
+- `src/plan-import.ts` — the import plan's stage work.
+  **`fileCopiesOf(importer, decoded)`** reads one format's decode as
+  `FileCopy`s, file set by file set: each picked file's source file (minted
+  as the import stage mints it, detached, its review key the import stage's
+  and its content-derived id its `derivedId`), then the set's placed records
+  (`DecodedFileSet.placedRecordsOf`: implied records added, dispenses
+  filed), each keyed by the set's key prefix before its local key; a set
+  whose source file cannot be minted, or whose implied record its schema
+  rejects, fails it. **`findStoredMatch(records, unresolved)`** is a
+  `StoredMatch`: one `ResourceMatch.findCandidates` over every record, by its
+  first copy, and every logical reference no record of the import resolves
+  (`MatchQuery.fromLogicalReference`), every grade; then one `readInBatch` of
+  the derived ids of the records with a `derivedId` and no candidate found
+  by identifier. A failed search or read fails it
+  (**`StoredMatchFailure`**). **`planImport(copies)`** groups the copies by
+  record, finds their stored match, and builds the plan with
+  `ImportPlan.make`.
+
 ## Layering
 
 Depends on `importer-fundamentals` (the contract, `PickedFile`, `StagedImport`,

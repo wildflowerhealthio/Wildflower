@@ -144,11 +144,13 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   file set's records the device's own: given the set's `sectionedList` and
   `notes` and the prefix every review key of the set starts with, an Effect
   of an `AdoptedFileSet` failing with the `ParseError` an implied record's
-  schema rejects it with, in five named steps. It plans every record
-  (`planRecords`: `ResourcePlan.make`, each plan kept beside its record in a
-  `PlannedRecord` `{ record, plan, isImplied }`, none implied). It implies
+  schema rejects it with. It first places the set's records
+  (**`placedRecordsOf(sectionedList, mintId)`**, each a **`PlacedRecord`**
+  `{ record, plan, isImplied }`, the step the import plan reads a set's
+  records through too). Placing plans every record (`planRecords`:
+  `ResourcePlan.make`, none implied). It implies
   the records the set's references name and no record of the set is
-  (`impliedSectionOf`, a pipeline over the planned records' references,
+  (`impliedSectionOf`, a pipeline over the placed records' references,
   `ResourceReferences.collect`: each logical reference,
   `LogicalReference.tryFromReference`, that has a `display` and whose target
   no record of the set holds by any identifier, `ReferencePlan.holds`,
@@ -186,9 +188,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   source's absolute URL for its target. Since the set holds every record it
   implies, a provider a source names only by a printed name, or a Rexall prescriber carebook names as
   `Practitioner/<id>` and never serves, is a row of its own, and every
-  reference to it resolves to it. Before adopting, a
-  `MedicationDispense` with no `subject` (`takeSubjectFromPrescription`) takes its authorizing
-  prescriptions' `subject`, as they spell it, when they agree: every
+  reference to it resolves to it. The last step of placing, with the
+  reference plan over every record in force (`fileDispenses`), files each
+  `MedicationDispense` with no `subject` (`takeSubjectFromPrescription`): it
+  takes its authorizing prescriptions' `subject`, as they spell it, when
+  they agree: every
   `authorizingPrescription` resolving (`ReferencePlan.literalReferenceIfResolved`)
   to a keyed `MedicationRequest` of the set has a copy whose `subject` names a
   Patient of the set (copies naming none are skipped), and every copy that
@@ -284,6 +288,73 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   candidate was found by identifier, as for a resource with no qualified
   identifier, a `Binary` or a namesake found by name. The diff reads every
   resource whose stored copy is `None` by id.
+
+- `src/import-plan/` — the **import plan**: one choice per record of an
+  import, over every file that brought it, suggested from what the store
+  holds and changed by the reviewer. Pure; `importer-core`'s `planImport`
+  builds one. A **resource** is a FHIR value in hand and a **record** the
+  identity several resources are copies of, so the plan is about records.
+  One namespace per file:
+  - **`RecordKey`** — what the plan addresses a record by: **`Keyed`** by its
+    `LogicalReference.Key` (its `identifier[0]` under its type), so one key
+    covers every file's copy and survives a settings re-decode, or
+    **`Keyless`** by its review key. A `Data` tagged enum, so it keys a
+    `HashMap`. **`make(resource, reviewKey)`**, **`fromLogicalReference`**.
+  - **`RecordChoice`** — **`UseExistingRecord`** `{ existing, fieldsTaken }`
+    (the top-level fields taken from the import; none taken links),
+    **`SaveAsNewRecord`** or **`DontAdd`**; **`takesNothing`** and an
+    **`equivalence`** (one stored record by literal reference, the same
+    fields). Undecided is the absence of a choice.
+  - **`OfferedFields`** — the gap rule. **`compare(resource, existing,
+    takenEarlier)`** gives the top-level fields the import offers an existing
+    record (it has a value there that differs from the existing record's),
+    split into **`gapFilling`** (the existing record has none) and
+    **`overwriting`**, beside the qualified identifiers to add. `identifier`
+    is never offered, and `id`, `meta` and what `normalizedEncode` drops are
+    not fields. `takenEarlier` lays the fields earlier import resources take
+    over the existing record first. **`offersNoField`** is "same as
+    existing".
+  - **`Suggestion`** — **`Type`** `{ choice, reason }`, the choice `None`
+    when the record is left undecided; **`Reason`**, a closed tagged enum
+    (`IdentifierMatchSameAsExisting`, `IdentifierMatchFieldsDiffer`,
+    `NoMatch`, `NotReferenced`, `NameMatchReferenced`,
+    `SeveralIdentifierMatches`); **`needsDecision(reason)`** (the last two).
+    **`forRecord(facts)`** reads as the rule list: several stored records
+    found by identifier leave it undecided; one found by identifier, or else
+    one stored under the id its key derives, is used, taking the gap-filling
+    fields; no name match graded `MatchGrade.mayNotNeedAdditionalReview` saves
+    it as new (a `possible` match never counts); name matches on a record
+    another imported record references pre-select the one match, or leave
+    several undecided; name matches on one nothing references save it as
+    new. **`noneFoundByIdentifier`** says which records the derived-id read
+    is for.
+  - **`FileCopy`** — one copy of a record from one file set: its format, the
+    set's picked files, review key, title, `isImplied`, the detached
+    resource, `sourceUrl` and **`derivedId`** (a keyed record's id from its
+    key, a source file's from its content, `None` for a keyless decoded
+    record). **`groupByRecord`** gives each record's **`RecordCopies`** in
+    plan order, the first copy the record; **`recordKeyOf`**.
+  - **`RecordReferences`** — **`of(records)`**: the records another record
+    references by a logical reference, by any identifier of a keyed record,
+    and the distinct logical references that name no record of the import.
+  - **`StoredMatch`** — what the store holds: each record's candidates, the
+    stored record under a record's derived id, and each unresolved
+    reference's candidates. **`empty`**.
+  - **`PlannedRecord`** — **`Type`** `{ key, copies, candidates, suggestion,
+    chosen, edit }`; **`effectiveChoice`** (the reviewer's, else the
+    suggestion's), **`labelOf`** (a **`Label`**: `Create`, `Update` (a field
+    taken or an edit), `LinkToExisting`, `DontAdd`, `Open`),
+    **`needsDecision`**, **`isChanged`** (a choice that differs from the
+    suggestion's).
+  - **`ImportPlan`** — **`Type`** `{ records, unresolvedReferences }`, the
+    records in plan order. **`make(copies, storedMatch)`** suggests every
+    record in plan order, so a record using a stored record an earlier one
+    uses has its gaps measured after the earlier one's taken fields.
+    **`get`**, **`choose(plan, keys, choice)`**, **`reset(plan, keys)`** and
+    **`setEdit`**.
+  - **`PlanTotals`** — **`of(plan)`**: `records`, `create`, `update`,
+    `linkToExisting`, `needsDecision` and `open`, overall and per file set; a
+    record two sets bring counts in each set's line.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two
