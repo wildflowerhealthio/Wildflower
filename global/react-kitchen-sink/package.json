@@ -37,7 +37,7 @@
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "jsdom": "^31.0.1",
+    "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "typescript": "catalog:",
