@@ -1,6 +1,7 @@
 /**
  * An import's stored match: its records and its unresolved references
- * matched against the store, once, for the plan's suggestions.
+ * matched against the store, once, for the plan's suggestions, or matched
+ * against no store at all.
  *
  * @packageDocumentation
  */
@@ -22,6 +23,19 @@ type StoredMatchFailure =
   | BatchSubmitFailure
   | BatchReadRejected
   | ParseResult.ParseError
+
+/**
+ * How an import finds what the store holds of its records and of the
+ * logical references that name none of them: {@link findStoredMatch} against
+ * the FHIR server, or {@link noStore}.
+ */
+type FindStoredMatch<E, R> = (
+  records: readonly ImportedRecord.Type[],
+  unresolved: readonly LogicalReference.Type[]
+) => Effect.Effect<StoredMatch.Type, E, R>
+
+/** There is no store: nothing stored matches, and nothing is sent. */
+const noStore: FindStoredMatch<never, never> = () => Effect.succeed(StoredMatch.empty)
 
 /**
  * The stored record under each of `records`' derived stage ids
@@ -70,10 +84,10 @@ const storedUnderDerivedIdsOf = (
  * The searches answer in the order they were asked, records first, so the
  * answers split at the number of records.
  */
-const findStoredMatch = (
-  records: readonly ImportedRecord.Type[],
-  unresolved: readonly LogicalReference.Type[]
-): Effect.Effect<StoredMatch.Type, StoredMatchFailure, FhirR4ResourcesHttpApiClient> =>
+const findStoredMatch: FindStoredMatch<StoredMatchFailure, FhirR4ResourcesHttpApiClient> = (
+  records,
+  unresolved
+) =>
   Effect.gen(function* () {
     const queries: readonly MatchQuery.Type[] = [
       ...records.map((record) => MatchQuery.fromResource(ImportedRecord.resourceOf(record))),
@@ -96,5 +110,5 @@ const findStoredMatch = (
     })
   })
 
-export { findStoredMatch }
-export type { StoredMatchFailure }
+export { findStoredMatch, noStore }
+export type { FindStoredMatch, StoredMatchFailure }
