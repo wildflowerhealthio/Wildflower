@@ -13,14 +13,14 @@ import {
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Equal, HashMap, HashSet, Option } from 'effect'
 
+import type * as OfferedFields from '../operations/compare-to-stored/compare-to-stored.ts'
+import * as Suggestion from '../operations/suggest-record.ts'
 import * as FileCopy from './file-copy.ts'
-import type * as OfferedFields from './offered-fields.ts'
 import type * as PlannedRecord from './planned-record.ts'
 import * as RecordChoice from './record-choice.ts'
 import type * as RecordKey from './record-key.ts'
 import * as RecordReferences from './record-references.ts'
 import type * as StoredMatch from './stored-match.ts'
-import * as Suggestion from './suggestion.ts'
 
 /**
  * Every record of an import, in plan order, and the stored candidates of

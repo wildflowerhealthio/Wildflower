@@ -6,6 +6,7 @@ import { Equal, HashMap, HashSet, Option } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as PlanTotals from '../operations/count-totals.ts'
 import * as FileCopy from './file-copy.ts'
 import {
   candidate,
@@ -20,7 +21,6 @@ import {
   tyraWire,
 } from './import-plan.test-helpers.ts'
 import * as ImportPlan from './import-plan.ts'
-import * as PlanTotals from './plan-totals.ts'
 import * as PlannedRecord from './planned-record.ts'
 import * as RecordChoice from './record-choice.ts'
 import * as RecordKey from './record-key.ts'

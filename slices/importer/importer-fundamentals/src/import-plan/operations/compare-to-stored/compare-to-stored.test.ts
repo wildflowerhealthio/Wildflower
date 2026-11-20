@@ -1,8 +1,13 @@
 import { HashSet } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { detached, OTHER_SOURCE, stored, tyraWire } from './import-plan.test-helpers.ts'
-import * as OfferedFields from './offered-fields.ts'
+import {
+  detached,
+  OTHER_SOURCE,
+  stored,
+  tyraWire,
+} from '../../entities/import-plan.test-helpers.ts'
+import * as OfferedFields from './compare-to-stored.ts'
 
 /** The fields and identifier values `offered` gives, for a whole-value assertion. */
 /** What an offer says, its identifiers by value. */

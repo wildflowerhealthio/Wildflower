@@ -3,9 +3,15 @@ import { type FhirResource, literalReferenceOf } from '@wildflowerhealthio/fhir-
 import { HashMap, HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { candidate, detached, drBrownWire, stored, tyraWire } from './import-plan.test-helpers.ts'
-import * as RecordChoice from './record-choice.ts'
-import * as Suggestion from './suggestion.ts'
+import {
+  candidate,
+  detached,
+  drBrownWire,
+  stored,
+  tyraWire,
+} from '../entities/import-plan.test-helpers.ts'
+import * as RecordChoice from '../entities/record-choice.ts'
+import * as Suggestion from './suggest-record.ts'
 
 /** The facts of `resource` with `candidates`, nothing under its derived id, nothing taken earlier. */
 const factsFor = (

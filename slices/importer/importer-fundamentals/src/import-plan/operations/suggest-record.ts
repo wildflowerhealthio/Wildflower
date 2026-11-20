@@ -12,8 +12,8 @@ import {
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
 import { Data, HashMap, HashSet, Option } from 'effect'
 
-import * as OfferedFields from './offered-fields.ts'
-import * as RecordChoice from './record-choice.ts'
+import * as RecordChoice from '../entities/record-choice.ts'
+import * as OfferedFields from './compare-to-stored/compare-to-stored.ts'
 
 /**
  * Why a record is suggested what it is.

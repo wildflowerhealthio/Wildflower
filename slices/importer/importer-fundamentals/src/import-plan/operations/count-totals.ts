@@ -6,9 +6,9 @@
  */
 import { Array as Arr } from 'effect'
 
-import type * as PickedFile from '../picked-file.ts'
-import type * as ImportPlan from './import-plan.ts'
-import * as PlannedRecord from './planned-record.ts'
+import type * as PickedFile from '../../picked-file.ts'
+import type * as ImportPlan from '../entities/import-plan.ts'
+import * as PlannedRecord from '../entities/planned-record.ts'
 
 /**
  * Counts over some records of a plan.

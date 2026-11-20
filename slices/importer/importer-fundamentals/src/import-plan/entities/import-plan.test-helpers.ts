@@ -3,8 +3,8 @@ import type { MatchGrade, ResourceMatch } from '@wildflowerhealthio/fhir-r4/clie
 import { FhirResourceSchema, type FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Either, Option } from 'effect'
 
-import type * as PickedFile from '../picked-file.ts'
-import { decoded } from '../stored-candidates.test-helpers.ts'
+import type * as PickedFile from '../../picked-file.ts'
+import { decoded } from '../../stored-candidates.test-helpers.ts'
 import type * as FileCopy from './file-copy.ts'
 
 /**

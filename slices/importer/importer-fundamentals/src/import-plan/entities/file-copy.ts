@@ -6,7 +6,7 @@
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { Array as Arr, HashMap, Option } from 'effect'
 
-import type * as PickedFile from '../picked-file.ts'
+import type * as PickedFile from '../../picked-file.ts'
 import * as RecordKey from './record-key.ts'
 
 /**
