@@ -13,11 +13,13 @@ import {
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
 import { HashMap, HashSet, Option } from 'effect'
 
+import * as ChangedStoredRecord from '../entities/changed-stored-record.ts'
 import * as OfferedFields from '../entities/offered-fields.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
-import { compareToStored, type TakenFields } from './compare-to-stored/compare-to-stored.ts'
+import type * as ComparableReferences from './compare-to-stored/comparable-references.ts'
+import { compareToStored } from './compare-to-stored/compare-to-stored.ts'
 
 /** The facts a record's suggestion is read from. */
 interface SuggestionFacts {
@@ -28,10 +30,12 @@ interface SuggestionFacts {
   /** Whether another imported record references it. */
   readonly isReferenced: boolean
   /**
-   * The fields each stored record takes from records ahead of this one in
-   * plan order, by the stored record's literal reference.
+   * Each stored record the records ahead of this one in plan order use, with
+   * their changes, by the stored record's literal reference.
    */
-  readonly takenEarlier: HashMap.HashMap<string, readonly TakenFields[]>
+  readonly changedSoFar: HashMap.HashMap<string, ChangedStoredRecord.Type>
+  /** How the import's and the stored records' references are compared. */
+  readonly comparableReferences: ComparableReferences.Type
 }
 
 /**
@@ -46,15 +50,20 @@ const countedNameMatches = (
     .filter(({ by, grade }) => by === 'name' && MatchGrade.mayNotNeedAdditionalReview(grade))
     .map(({ resource }) => resource)
 
-/** What `facts.resource` offers `existing`, after the records ahead of it take theirs. */
+/**
+ * What `facts.resource` offers `existing` as it stands once the records ahead
+ * of it changed it (`ChangedStoredRecord.asItStands`).
+ */
 const offeredFieldsFor = (
   facts: SuggestionFacts,
   existing: FhirResourceWithId
 ): OfferedFields.Type =>
   compareToStored(
     facts.resource,
-    existing,
-    HashMap.get(facts.takenEarlier, literalReferenceOf(existing)).pipe(Option.getOrElse(() => []))
+    HashMap.get(facts.changedSoFar, literalReferenceOf(existing)).pipe(
+      Option.match({ onNone: () => existing, onSome: ChangedStoredRecord.asItStands })
+    ),
+    facts.comparableReferences
   )
 
 /** Use `existing`, taking the fields that fill one of its gaps. */

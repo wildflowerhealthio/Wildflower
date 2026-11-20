@@ -7,46 +7,53 @@
 import { literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, HashMap, Option } from 'effect'
 
+import * as ChangedStoredRecord from '../entities/changed-stored-record.ts'
 import * as ImportPlan from '../entities/import-plan.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as RecordReferences from '../entities/record-references.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
-import type { TakenFields } from './compare-to-stored/compare-to-stored.ts'
+import * as ComparableReferences from './compare-to-stored/comparable-references.ts'
 import { suggestRecord } from './suggest-record.ts'
 
-/** The fields each stored record takes from the records suggested so far, by its literal reference. */
-type TakenEarlier = HashMap.HashMap<string, readonly TakenFields[]>
+/** Each stored record with the changes of the records suggested so far, by its literal reference. */
+type ChangedSoFar = HashMap.HashMap<string, ChangedStoredRecord.Type>
 
-/** `takenEarlier` with the fields `planned`'s suggestion takes from it added, when it uses a stored record. */
-const withTakenBy = (takenEarlier: TakenEarlier, planned: PlannedRecord.Type): TakenEarlier =>
+/** `changedSoFar` with `planned`'s suggested change made, when its suggestion uses a stored record. */
+const withSuggestedChange = (
+  changedSoFar: ChangedSoFar,
+  planned: PlannedRecord.Type
+): ChangedSoFar =>
   Option.match(
     Option.flatMap(
       planned.suggestion.choice,
       Option.liftPredicate(RecordChoice.is('UseExistingRecord'))
     ),
     {
-      onNone: () => takenEarlier,
+      onNone: () => changedSoFar,
       onSome: ({ existing, fieldsTaken }) =>
-        HashMap.modifyAt(takenEarlier, literalReferenceOf(existing), (earlier) =>
-          Option.some([
-            ...Option.getOrElse(earlier, () => []),
-            { resource: ImportedRecord.resourceOf(planned.record), fields: fieldsTaken },
-          ])
+        HashMap.modifyAt(changedSoFar, literalReferenceOf(existing), (changed) =>
+          Option.some(
+            ChangedStoredRecord.withChange(
+              Option.getOrElse(changed, () => ChangedStoredRecord.of(existing)),
+              { resource: ImportedRecord.resourceOf(planned.record), fieldsTaken }
+            )
+          )
         ),
     }
   )
 
 /**
  * One record of the plan: what the store holds of it and its suggestion, its
- * offered fields measured after `takenEarlier`, nothing chosen and nothing
- * edited.
+ * offered fields measured against the stored records as the records ahead
+ * of it changed them (`changedSoFar`), nothing chosen and nothing edited.
  */
 const planRecord = (
   storedMatch: StoredMatch.Type,
   recordReferences: RecordReferences.Type,
-  takenEarlier: TakenEarlier,
+  comparableReferences: ComparableReferences.Type,
+  changedSoFar: ChangedSoFar,
   record: ImportedRecord.Type
 ): PlannedRecord.Type => {
   const recordMatch = StoredMatch.ofRecord(storedMatch, record.key)
@@ -57,7 +64,8 @@ const planRecord = (
       resource: ImportedRecord.resourceOf(record),
       storedMatch: recordMatch,
       isReferenced: RecordReferences.isReferenced(recordReferences, record.key),
-      takenEarlier,
+      changedSoFar,
+      comparableReferences,
     }),
   })
 }
@@ -74,20 +82,29 @@ const planRecord = (
  * @remarks
  * Records are suggested in plan order. A record suggested to use a stored
  * record an earlier one is suggested to use has its offered fields measured
- * after the earlier one's taken fields are in place, so two suggestions never
- * take one field twice.
+ * against that stored record as the earlier one's change leaves it
+ * (`ChangedStoredRecord.asItStands`), so two suggestions never take one
+ * field twice. References compare by what they name
+ * (`ComparableReferences`), not by their literal.
  */
 const suggestPlan = (
   records: readonly ImportedRecord.Type[],
   recordReferences: RecordReferences.Type,
   storedMatch: StoredMatch.Type
 ): ImportPlan.Type => {
+  const comparableReferences = ComparableReferences.of(records, storedMatch)
   const [, planned] = Arr.mapAccum(
     records,
-    HashMap.empty<string, readonly TakenFields[]>(),
-    (takenEarlier, record): [TakenEarlier, PlannedRecord.Type] => {
-      const plannedRecord = planRecord(storedMatch, recordReferences, takenEarlier, record)
-      return [withTakenBy(takenEarlier, plannedRecord), plannedRecord]
+    HashMap.empty<string, ChangedStoredRecord.Type>(),
+    (changedSoFar, record): [ChangedSoFar, PlannedRecord.Type] => {
+      const plannedRecord = planRecord(
+        storedMatch,
+        recordReferences,
+        comparableReferences,
+        changedSoFar,
+        record
+      )
+      return [withSuggestedChange(changedSoFar, plannedRecord), plannedRecord]
     }
   )
   return ImportPlan.make(planned, storedMatch)

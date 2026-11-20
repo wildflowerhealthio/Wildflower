@@ -71,15 +71,24 @@ const recordCopyOf = ({ copies }: Type): ImportedCopy.Type =>
   )
 
 /**
- * The literal reference a stored copy of the record from an earlier import
- * sits under, `<Type>/<id>`, when its record copy's stage id is `Derived`.
+ * The literal reference the import stage gives the record, `<Type>/<id>`
+ * under its record copy's stage id: how a format's hooks name it.
  */
-const literalReferenceIfDerived = (record: Type): Option.Option<string> => {
+const stageLiteralOf = (record: Type): string => {
   const { stageId, resource } = recordCopyOf(record)
-  return stageId._tag === 'Derived'
-    ? Option.some(`${resource.resourceType}/${stageId.id}`)
-    : Option.none()
+  return `${resource.resourceType}/${stageId.id}`
 }
+
+/**
+ * The literal reference a stored copy of the record from an earlier import
+ * sits under ({@link stageLiteralOf}), when its record copy's stage id is
+ * `Derived`.
+ */
+const literalReferenceIfDerived = (record: Type): Option.Option<string> =>
+  Option.liftPredicate(
+    stageLiteralOf(record),
+    () => recordCopyOf(record).stageId._tag === 'Derived'
+  )
 
 /**
  * The record's resource: its record copy's ({@link recordCopyOf}), carrying
@@ -99,5 +108,5 @@ const resourceOf = (record: Type): DetachedResource.Type => {
     : resource
 }
 
-export { fromCopies, literalReferenceIfDerived, resourceOf }
+export { fromCopies, literalReferenceIfDerived, resourceOf, stageLiteralOf }
 export type { Type }
