@@ -30,12 +30,6 @@ type StoredMatchFailure =
 const noneFoundByIdentifier = (candidates: readonly ResourceMatch.Candidate[]): boolean =>
   !candidates.some(({ by }) => by === 'identifier')
 
-/** The literal reference `record` is stored under from an earlier import, `None` with no derived id. */
-const derivedReferenceOf = (record: ImportedRecord.Type): Option.Option<string> => {
-  const { derivedId, resource } = ImportedRecord.recordCopyOf(record)
-  return Option.map(derivedId, (id) => `${resource.resourceType}/${id}`)
-}
-
 /**
  * The stored record under each derived id of `records` that no candidate was
  * found by identifier for: one batch of reads, sent only when there is one.
@@ -50,7 +44,10 @@ const storedUnderDerivedIdOf = (
 > => {
   const reads = Arr.filterMap(Arr.zip(records, candidatesByRecord), ([record, candidates]) =>
     noneFoundByIdentifier(candidates)
-      ? Option.map(derivedReferenceOf(record), (reference) => [record.key, reference] as const)
+      ? Option.map(
+          ImportedRecord.literalReferenceIfDerived(record),
+          (reference) => [record.key, reference] as const
+        )
       : Option.none()
   )
   return Effect.map(readInBatch(reads.map(([, reference]) => reference)), (stored) =>

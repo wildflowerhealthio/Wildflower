@@ -5,24 +5,38 @@
  * @packageDocumentation
  */
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import { Option } from 'effect'
+import { Data, Option } from 'effect'
 
-import * as DecodedFileSet from '../../decoded-file-set.ts'
+import type * as DecodedFileSet from '../../decoded-file-set.ts'
+import type * as FileImporter from '../../file-importer.ts'
 import * as FormatDecode from '../../format-decode.ts'
-import type * as PickedFile from '../../picked-file.ts'
 import * as ResourcePlan from '../../resource-plan.ts'
-import * as FileSetOrigin from './file-set-origin.ts'
+import type * as FileSetOrigin from './file-set-origin.ts'
 import * as RecordKey from './record-key.ts'
 
 /**
- * One copy of a record, from one file set: the record as that set holds it,
- * detached, beside where it came from and how the plan shows it.
+ * The id the import stage gave a copy: `Derived`, the same on every import,
+ * from a keyed record's key or a source file's content, so a stored copy of
+ * the record from an earlier import sits under it; or `Minted` for a keyless
+ * decoded record, new on every import.
  *
  * @remarks
- * `derivedId` is the id a stored copy of the record from an earlier import
- * sits under: a keyed record's id derived from its key, or a source file's id
- * derived from its content. `None` for a keyless decoded record, whose id is
- * minted anew on every import.
+ * Not `ResourcePlan.Type`: a source file's id is derived from its content and
+ * has no key identifier to make a `ResourcePlan.Derived` of, yet it is as
+ * stable across imports as a keyed record's.
+ */
+type StageId = Data.TaggedEnum<{
+  Derived: { readonly id: string }
+  Minted: { readonly id: string }
+}>
+
+const { Derived, Minted } = Data.taggedEnum<StageId>()
+
+/**
+ * One copy of a record, from one file set: the record as the import stage
+ * finished it (placed, linked to its source files and stamped, its
+ * references as decoded), detached, beside where it came from, how the plan
+ * shows it, and the id the stage gave it.
  */
 interface Type {
   /** The file set the copy came from. */
@@ -36,59 +50,51 @@ interface Type {
   readonly resource: DetachedResource.Type
   /** The URL a source served the record at (`FileSetRecord.Type`'s `sourceUrl`). */
   readonly sourceUrl: Option.Option<URL>
-  readonly derivedId: Option.Option<string>
+  readonly stageId: StageId
 }
 
 /**
- * The copy of a record the import stage placed in the set `origin` names
- * (`DecodedFileSet.placedRecordsOf`), keyed by the set's key prefix before
- * the record's local key and titled as the import stage titles its row.
- *
- * @remarks
- * The id placing minted for a keyless record is not kept: a copy holds its
- * record detached.
+ * The copy of a record of the set `origin` names, from its row as the import
+ * stage finished it: keyed, titled and given its id as placing decided
+ * (`DecodedFileSet.placedRowsOf`), then linked and stamped.
  */
-const fromPlacedRecord = (
+const fromPlacedRow = (
   origin: FileSetOrigin.Type,
-  { record, plan, isImplied }: DecodedFileSet.PlacedRecord
-): Type => {
-  const reviewKey = `${FileSetOrigin.keyPrefixOf(origin)}${record.localKey}`
-  return {
-    origin,
-    reviewKey,
-    title: DecodedFileSet.writtenReferenceTitle(plan, reviewKey),
-    isImplied,
-    resource: record.resource,
-    sourceUrl: record.sourceUrl,
-    derivedId: ResourcePlan.match(plan, {
-      Derived: ({ id }) => Option.some(id),
-      Minted: () => Option.none(),
-    }),
-  }
-}
+  { reviewKey, title, isImplied, resource, placed }: DecodedFileSet.PlacedRow
+): Type => ({
+  origin,
+  reviewKey,
+  title,
+  isImplied,
+  resource: { ...resource, id: null },
+  sourceUrl: placed.record.sourceUrl,
+  stageId: ResourcePlan.match(placed.plan, {
+    Derived: ({ id }) => Derived({ id }),
+    Minted: ({ id }) => Minted({ id }),
+  }),
+})
 
 /**
  * The copy of the source file one picked file of the set `origin` names is
- * stored as: `sourceFile` as the import stage mints it, carrying what the
- * file identified itself as, detached, its content-derived id kept as its
- * derived id.
+ * stored as, as the import stage finished it (minted, carrying what the file
+ * identified itself as, linked to the set's records), its content-derived id
+ * its stage id.
  */
 const fromSourceFile = (
   origin: FileSetOrigin.Type,
-  { pickedFile, identifiedAs }: DecodedFileSet.PickedFileIdentity,
-  sourceFile: PickedFile.SourceFile
+  { pickedFile, sourceFile }: FileImporter.PickedSourceFile
 ): Type => ({
   origin,
   reviewKey: FormatDecode.sourceFileKey(pickedFile),
   title: pickedFile.fileName,
   isImplied: false,
-  resource: { ...sourceFile, id: null, masterIdentifier: Option.getOrNull(identifiedAs) },
+  resource: { ...sourceFile, id: null },
   sourceUrl: Option.none(),
-  derivedId: Option.some(sourceFile.id),
+  stageId: Derived({ id: sourceFile.id }),
 })
 
 /** The key of the record `copy` is a copy of (`RecordKey.make`). */
 const recordKeyOf = (copy: Type): RecordKey.Type => RecordKey.make(copy.resource, copy.reviewKey)
 
-export { fromPlacedRecord, fromSourceFile, recordKeyOf }
-export type { Type }
+export { fromPlacedRow, fromSourceFile, recordKeyOf }
+export type { StageId, Type }

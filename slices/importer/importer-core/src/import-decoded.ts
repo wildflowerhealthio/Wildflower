@@ -50,21 +50,85 @@ const SOURCE_FILES_SECTION_TITLE = 'Source files'
 const sourceFileOf = Schema.encode(PickedFile.FromDocumentReference)
 
 /**
- * Import one file set: mint its picked files' source files, adopt its records,
- * let the format link each source file to the records and each record to the
- * source files, stamp, and lead with the source files it is about to store.
+ * The source file each picked file of `fileSet` is stored as, minted
+ * (`PickedFile.FromDocumentReference`'s encode), carrying what the picked
+ * file identified itself as (`DecodedFileSet.PickedFileIdentity`) as its
+ * `masterIdentifier`, which is what a format's `linkToSourceFiles` matches a
+ * record's own identifiers against.
+ */
+const mintSourceFiles = (
+  fileSet: DecodedFileSet.Type
+): Effect.Effect<
+  Arr.NonEmptyReadonlyArray<FileImporter.PickedSourceFile>,
+  ParseResult.ParseError,
+  PickedFile.Format
+> =>
+  Effect.all(
+    Arr.map(fileSet.pickedFiles, ({ pickedFile, identifiedAs }) =>
+      Effect.map(sourceFileOf(pickedFile), (sourceFile) => ({
+        pickedFile,
+        sourceFile: { ...sourceFile, masterIdentifier: Option.getOrNull(identifiedAs) },
+      }))
+    ),
+    { concurrency: 'unbounded' }
+  )
+
+/** A set's source files, each linked to its records, beside its records, each linked to its source files and stamped. */
+interface LinkedFileSet<TRow extends ReviewRow.Type> {
+  readonly sourceFiles: Arr.NonEmptyReadonlyArray<FileImporter.PickedSourceFile>
+  readonly records: AdoptedFileSet.Type<TRow>
+}
+
+/**
+ * Link and stamp one set: the format's `linkSourceFile` over each of its
+ * source files with its records, then its `linkToSourceFiles` over every
+ * record with each picked file and its linked source file, then every
+ * record's `meta.source` stamped with the set's representative.
+ *
+ * @param importer - The format's importer, whose hooks run
+ * @param sourceFiles - The set's source files, as {@link mintSourceFiles} minted them
+ * @param records - The set's records under the ids they are written under,
+ *   their references resolved or as decoded, as the caller decides
  *
  * @remarks
- * A source file carries what its picked file identified itself as
- * (`DecodedFileSet.PickedFileIdentity`) as its `masterIdentifier`, which is
- * what a format's `linkToSourceFiles` matches a record's own identifiers
- * against.
- *
  * `meta.source` names the set's representative: the picked file whose source
  * file id is lexicographically smallest. A source file's id is a content hash
  * of the file's bytes and name, so the smallest of them is a fact about the set
  * and not about the order it was picked in, which is what makes the same study,
  * picked any way round, import identical resources.
+ */
+const linkAndStamp = <TRow extends ReviewRow.Type>(
+  importer: ImportingFormat,
+  sourceFiles: Arr.NonEmptyReadonlyArray<FileImporter.PickedSourceFile>,
+  records: AdoptedFileSet.Type<TRow>
+): Effect.Effect<LinkedFileSet<TRow>, FileImporter.SourceFileNotFound> =>
+  Effect.gen(function* () {
+    const linkSourceFile = importer.linkSourceFile ?? Function.identity
+    const linked = Arr.map(sourceFiles, ({ pickedFile, sourceFile }) => ({
+      pickedFile,
+      sourceFile: linkSourceFile(sourceFile, records),
+    }))
+
+    const linkToSourceFiles = importer.linkToSourceFiles ?? Effect.succeed
+    const linkedToSourceFiles = yield* SectionedList.forEach(records.sectionedList, (row) =>
+      Effect.map(linkToSourceFiles(row.resource, linked), (resource) => ({ ...row, resource }))
+    )
+    const stamped = MetaSource.stampAdopted(
+      { sectionedList: linkedToSourceFiles, notes: records.notes },
+      MetaSource.makeReference(
+        Arr.min(
+          Arr.map(linked, ({ sourceFile }) => sourceFile.id),
+          Order.string
+        )
+      )
+    )
+    return { sourceFiles: linked, records: stamped }
+  })
+
+/**
+ * Import one file set: mint its picked files' source files, adopt its records,
+ * link and stamp ({@link linkAndStamp}), and lead with the source files it is
+ * about to store.
  */
 const importFileSet = (
   importer: ImportingFormat,
@@ -75,38 +139,15 @@ const importFileSet = (
   PickedFile.Format
 > =>
   Effect.gen(function* () {
-    const sourceFiles = yield* Effect.all(
-      Arr.map(fileSet.pickedFiles, ({ pickedFile, identifiedAs }) =>
-        Effect.map(sourceFileOf(pickedFile), (sourceFile) => ({
-          pickedFile,
-          sourceFile: { ...sourceFile, masterIdentifier: Option.getOrNull(identifiedAs) },
-        }))
-      ),
-      { concurrency: 'unbounded' }
-    )
+    const sourceFiles = yield* mintSourceFiles(fileSet)
     const adopted = yield* DecodedFileSet.adopt(
       fileSet,
       FormatDecode.keyPrefix(fileSet.pickedFiles[0].pickedFile)
     )
-
-    const linkSourceFile = importer.linkSourceFile ?? Function.identity
-    const linked = Arr.map(sourceFiles, ({ pickedFile, sourceFile }) => ({
-      pickedFile,
-      sourceFile: linkSourceFile(sourceFile, adopted),
-    }))
-
-    const linkToSourceFiles = importer.linkToSourceFiles ?? Effect.succeed
-    const linkedToSourceFiles = yield* SectionedList.forEach(adopted.sectionedList, (row) =>
-      Effect.map(linkToSourceFiles(row.resource, linked), (resource) => ({ ...row, resource }))
-    )
-    const stamped = MetaSource.stampAdopted(
-      { sectionedList: linkedToSourceFiles, notes: adopted.notes },
-      MetaSource.makeReference(
-        Arr.min(
-          Arr.map(linked, ({ sourceFile }) => sourceFile.id),
-          Order.string
-        )
-      )
+    const { sourceFiles: linked, records: stamped } = yield* linkAndStamp(
+      importer,
+      sourceFiles,
+      adopted
     )
 
     const sourceFileRows = linked.map(({ pickedFile, sourceFile }): ReviewRow.Type => ({
@@ -169,5 +210,5 @@ const importDecoded = <TFormat extends string>(
     Effect.provideService(PickedFile.Format, importer.sourceFileFormat)
   )
 
-export { importDecoded, sourceFileOf }
+export { importDecoded, linkAndStamp, mintSourceFiles }
 export type { ImportingFormat }

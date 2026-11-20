@@ -71,6 +71,17 @@ const recordCopyOf = ({ copies }: Type): ImportedCopy.Type =>
   )
 
 /**
+ * The literal reference a stored copy of the record from an earlier import
+ * sits under, `<Type>/<id>`, when its record copy's stage id is `Derived`.
+ */
+const literalReferenceIfDerived = (record: Type): Option.Option<string> => {
+  const { stageId, resource } = recordCopyOf(record)
+  return stageId._tag === 'Derived'
+    ? Option.some(`${resource.resourceType}/${stageId.id}`)
+    : Option.none()
+}
+
+/**
  * The record's resource: its record copy's ({@link recordCopyOf}), carrying
  * as well every qualified identifier another decoded copy carries and it
  * lacks, after its own (`IdentifierUnion.union`).
@@ -88,5 +99,5 @@ const resourceOf = (record: Type): DetachedResource.Type => {
     : resource
 }
 
-export { fromCopies, recordCopyOf, resourceOf }
+export { fromCopies, literalReferenceIfDerived, resourceOf }
 export type { Type }

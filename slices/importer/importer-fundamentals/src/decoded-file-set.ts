@@ -12,7 +12,11 @@ import {
   ReferencePlan,
 } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
-import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResourceWithId,
+  LogicalReference,
+  ResourceReferences,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Effect, Either, Option, type ParseResult, pipe } from 'effect'
 
 import type * as AdoptedFileSet from './adopted-file-set.ts'
@@ -434,24 +438,55 @@ const placedRecordsOf = (
   })
 
 /**
+ * The review row of `placed` holding `resource`: keyed by its review key (the
+ * set's `keyPrefix` and its local key), titled by {@link writtenReferenceTitle}
+ * and saying whether it is implied.
+ */
+const rowOf = (
+  keyPrefix: string,
+  { record, plan, isImplied }: PlacedRecord,
+  resource: FhirResourceWithId
+): ReviewRow.Type => {
+  const reviewKey = `${keyPrefix}${record.localKey}`
+  return { reviewKey, title: writtenReferenceTitle(plan, reviewKey), isImplied, resource }
+}
+
+/**
  * Adopt: each placed record of `allPlaced` given its plan's id, its logical
- * references the reference plan in force resolves made literal, its row
- * keyed by its review key (the set's `keyPrefix` and its local key), titled
- * by {@link writtenReferenceTitle} and saying whether it is implied.
+ * references the reference plan in force resolves made literal, in its
+ * review row ({@link rowOf}).
  */
 const adoptRecords = (
   allPlaced: SectionedList.Type<PlacedRecord>,
   keyPrefix: string
 ): Effect.Effect<SectionedList.Type<ReviewRow.Type>, never, ReferencePlan.InForce> =>
-  SectionedList.forEach(allPlaced, ({ record, plan, isImplied }) => {
-    const reviewKey = `${keyPrefix}${record.localKey}`
-    return Effect.map(adoptRecord(record.resource, plan.id), (resource): ReviewRow.Type => ({
-      reviewKey,
-      title: writtenReferenceTitle(plan, reviewKey),
-      isImplied,
-      resource,
-    }))
-  })
+  SectionedList.forEach(allPlaced, (placed) =>
+    Effect.map(adoptRecord(placed.record.resource, placed.plan.id), (resource) =>
+      rowOf(keyPrefix, placed, resource)
+    )
+  )
+
+/**
+ * A placed record in its review row, under the id its plan decided and with
+ * its references as decoded: what a format's hooks are given when the import
+ * plan, not the set, decides where each reference lands.
+ */
+interface PlacedRow extends ReviewRow.Type {
+  readonly placed: PlacedRecord
+}
+
+/**
+ * Each placed record of `allPlaced` in its review row ({@link rowOf}), its
+ * record given its plan's id and nothing else: no reference is resolved.
+ */
+const placedRowsOf = (
+  allPlaced: SectionedList.Type<PlacedRecord>,
+  keyPrefix: string
+): SectionedList.Type<PlacedRow> =>
+  SectionedList.map(allPlaced, (placed) => ({
+    ...rowOf(keyPrefix, placed, { ...placed.record.resource, id: placed.plan.id }),
+    placed,
+  }))
 
 /**
  * A file set's records adopted beside its notes: how the import stage makes a
@@ -498,5 +533,5 @@ const adopt = (
     return { sectionedList, notes: decoded.notes }
   })
 
-export { adopt, placedRecordsOf, unidentified, writtenReferenceTitle }
-export type { PickedFileIdentity, PlacedRecord, Type }
+export { adopt, placedRecordsOf, placedRowsOf, unidentified, writtenReferenceTitle }
+export type { PickedFileIdentity, PlacedRecord, PlacedRow, Type }
