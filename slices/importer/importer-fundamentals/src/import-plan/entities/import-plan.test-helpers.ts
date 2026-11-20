@@ -5,7 +5,7 @@ import { Either, Option } from 'effect'
 
 import type * as PickedFile from '../../picked-file.ts'
 import { decoded } from '../../stored-candidates.test-helpers.ts'
-import type * as FileCopy from './file-copy.ts'
+import type * as FileCopy from './imported-copy.ts'
 
 /**
  * Builders for the import plan's tests: detached and stored resources, the

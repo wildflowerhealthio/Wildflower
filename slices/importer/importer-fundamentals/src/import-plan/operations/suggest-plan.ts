@@ -7,7 +7,7 @@
 import { literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, HashMap, Option } from 'effect'
 
-import * as FileCopy from '../entities/file-copy.ts'
+import * as FileCopy from '../entities/imported-copy.ts'
 import * as ImportPlan from '../entities/import-plan.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import * as RecordChoice from '../entities/record-choice.ts'

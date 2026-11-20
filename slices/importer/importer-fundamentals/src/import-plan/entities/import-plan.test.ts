@@ -7,7 +7,7 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as PlanTotals from '../operations/count-totals.ts'
-import * as FileCopy from './file-copy.ts'
+import * as FileCopy from './imported-copy.ts'
 import {
   candidate,
   copyOf,

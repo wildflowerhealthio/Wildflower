@@ -9,7 +9,7 @@ import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Array as Arr } from 'effect'
 import { Match, Option } from 'effect'
 
-import type * as FileCopy from './file-copy.ts'
+import type * as FileCopy from './imported-copy.ts'
 import * as RecordChoice from './record-choice.ts'
 import type * as RecordKey from './record-key.ts'
 import * as Suggestion from './suggestion.ts'

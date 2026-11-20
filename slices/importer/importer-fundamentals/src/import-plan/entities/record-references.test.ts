@@ -3,7 +3,7 @@ import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import * as FileCopy from './file-copy.ts'
+import * as FileCopy from './imported-copy.ts'
 import {
   copyOf,
   detached,
