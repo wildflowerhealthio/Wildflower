@@ -462,12 +462,13 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
   pattern.
 - **Import golden pin** — `synthetic-data-core-js`'s
   `src/import-golden/import-golden.test.ts` imports a fixed file of every source
-  kind, and one batch of several, headless through `importer-core` with every
-  default accepted onto an empty device. It compares what the confirm would
-  write — every resource's JSON, and that of every row the review leaves
-  out, the review rows with their keys and dispositions, the decode notes,
-  and the id each written source file mints when it is picked again — byte
-  for byte with its golden under `src/import-golden/__golden__/`. Add a case
+  kind, and one batch of several, headless through `importer-core`'s
+  `importWithSuggestions` onto an empty store, every suggestion taken, and
+  compares the result byte for byte with its golden under
+  `src/import-golden/__golden__/`: every resource the transaction writes, as
+  JSON, the plan's records with their review keys, suggestion reasons and
+  labels, the decode notes, and the id each written source file mints when it
+  is picked again. Add a case
   for a new format. A golden that changes is a change to what an import
   writes, so a refactor's diff carries none; when a change is meant to alter
   the output, regenerate with `vp test -u` in that package and review the
