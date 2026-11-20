@@ -1,5 +1,6 @@
 /**
- * A suggestion: the choice the import plan defaults one record to, and why.
+ * Suggest a record: the five rules that choose the suggestion one record of
+ * an import plan defaults to.
  *
  * @packageDocumentation
  */
@@ -10,65 +11,15 @@ import {
   literalReferenceOf,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
-import { Data, HashMap, HashSet, Option } from 'effect'
+import { HashMap, HashSet, Option } from 'effect'
 
+import * as OfferedFields from '../entities/offered-fields.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
-import * as OfferedFields from './compare-to-stored/compare-to-stored.ts'
-
-/**
- * Why a record is suggested what it is.
- *
- * @remarks
- * - `IdentifierMatchSameAsExisting`: one stored record is the record, and
- *   the import offers it no field.
- * - `IdentifierMatchFieldsDiffer`: one stored record is the record, and the
- *   import offers it fields.
- * - `NoMatch`: nothing stored is the record, or only `possible` matches by
- *   name are.
- * - `NotReferenced`: stored records match it by name, and no other imported
- *   record references it.
- * - `NameMatchReferenced`: stored records match it by name, and other
- *   imported records reference it.
- * - `SeveralIdentifierMatches`: several stored records carry its identifiers.
- *
- * Both identifier-match reasons carry what the import offers the stored
- * record. A stored record is the record when it is the only one found by
- * identifier, or, when none is, the one stored under the id its key derives.
- */
-type Reason = Data.TaggedEnum<{
-  IdentifierMatchSameAsExisting: { readonly offeredFields: OfferedFields.Type }
-  IdentifierMatchFieldsDiffer: { readonly offeredFields: OfferedFields.Type }
-  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
-  NoMatch: Record<never, never>
-  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
-  NotReferenced: Record<never, never>
-  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
-  NameMatchReferenced: Record<never, never>
-  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
-  SeveralIdentifierMatches: Record<never, never>
-}>
-
-const {
-  IdentifierMatchSameAsExisting,
-  IdentifierMatchFieldsDiffer,
-  NoMatch,
-  NotReferenced,
-  NameMatchReferenced,
-  SeveralIdentifierMatches,
-} = Data.taggedEnum<Reason>()
-
-/** The choice a record defaults to, `None` when it is left undecided, and why. */
-interface Type {
-  readonly choice: Option.Option<RecordChoice.Type>
-  readonly reason: Reason
-}
-
-/** Whether a record suggested for `reason` is listed under Needs a decision. */
-const needsDecision = (reason: Reason): boolean =>
-  reason._tag === 'NameMatchReferenced' || reason._tag === 'SeveralIdentifierMatches'
+import * as Suggestion from '../entities/suggestion.ts'
+import { compareToStored, type TakenFields } from './compare-to-stored/compare-to-stored.ts'
 
 /** The facts a record's suggestion is read from. */
-interface Facts {
+interface SuggestionFacts {
   /** The record, its first copy in plan order. */
   readonly resource: FhirResource
   /** Its stored candidates, best grade first. */
@@ -81,7 +32,7 @@ interface Facts {
    * The fields each stored record takes from records ahead of this one in
    * plan order, by the stored record's literal reference.
    */
-  readonly takenEarlier: HashMap.HashMap<string, readonly OfferedFields.TakenFields[]>
+  readonly takenEarlier: HashMap.HashMap<string, readonly TakenFields[]>
 }
 
 /** The stored resources of `candidates` found `by` identifier or by name. */
@@ -104,8 +55,11 @@ const countedNameMatches = (
     .map(({ resource }) => resource)
 
 /** What `facts.resource` offers `existing`, after the records ahead of it take theirs. */
-const offeredFieldsFor = (facts: Facts, existing: FhirResourceWithId): OfferedFields.Type =>
-  OfferedFields.compare(
+const offeredFieldsFor = (
+  facts: SuggestionFacts,
+  existing: FhirResourceWithId
+): OfferedFields.Type =>
+  compareToStored(
     facts.resource,
     existing,
     HashMap.get(facts.takenEarlier, literalReferenceOf(existing)).pipe(Option.getOrElse(() => []))
@@ -122,29 +76,32 @@ const gapFillingChoice = (
   })
 
 /** Use `existing`, the stored record that is the record, taking only the fields that fill a gap. */
-const suggestIdentifierMatch = (facts: Facts, existing: FhirResourceWithId): Type => {
+const suggestIdentifierMatch = (
+  facts: SuggestionFacts,
+  existing: FhirResourceWithId
+): Suggestion.Type => {
   const offeredFields = offeredFieldsFor(facts, existing)
   return {
     choice: Option.some(gapFillingChoice(existing, offeredFields)),
     reason: OfferedFields.offersNoField(offeredFields)
-      ? IdentifierMatchSameAsExisting({ offeredFields })
-      : IdentifierMatchFieldsDiffer({ offeredFields }),
+      ? Suggestion.IdentifierMatchSameAsExisting({ offeredFields })
+      : Suggestion.IdentifierMatchFieldsDiffer({ offeredFields }),
   }
 }
 
 /** Needs a decision: the one name match pre-selected, taking only gap-filling fields; several leave it undecided. */
 const suggestNameMatchReferenced = (
-  facts: Facts,
+  facts: SuggestionFacts,
   nameMatches: readonly FhirResourceWithId[]
-): Type => ({
+): Suggestion.Type => ({
   choice: Option.map(onlyElement(nameMatches), (existing) =>
     gapFillingChoice(existing, offeredFieldsFor(facts, existing))
   ),
-  reason: NameMatchReferenced(),
+  reason: Suggestion.NameMatchReferenced(),
 })
 
 /** Save the record as a new one, for `reason`. */
-const saveAsNew = (reason: Reason): Type => ({
+const saveAsNew = (reason: Suggestion.Reason): Suggestion.Type => ({
   choice: Option.some(RecordChoice.SaveAsNewRecord()),
   reason,
 })
@@ -163,26 +120,19 @@ const saveAsNew = (reason: Reason): Type => ({
  *    decision, the one match pre-selected, undecided when there are several.
  * 5. Name matches, and nothing references it: save as new (not referenced).
  */
-const forRecord = (facts: Facts): Type => {
+const suggestRecord = (facts: SuggestionFacts): Suggestion.Type => {
   const identifierMatches = foundBy(facts.candidates, 'identifier')
   if (identifierMatches.length > 1) {
-    return { choice: Option.none(), reason: SeveralIdentifierMatches() }
+    return { choice: Option.none(), reason: Suggestion.SeveralIdentifierMatches() }
   }
   const existing = Option.orElse(onlyElement(identifierMatches), () => facts.storedUnderDerivedId)
   if (Option.isSome(existing)) return suggestIdentifierMatch(facts, existing.value)
   const nameMatches = countedNameMatches(facts.candidates)
-  if (nameMatches.length === 0) return saveAsNew(NoMatch())
+  if (nameMatches.length === 0) return saveAsNew(Suggestion.NoMatch())
   return facts.isReferenced
     ? suggestNameMatchReferenced(facts, nameMatches)
-    : saveAsNew(NotReferenced())
+    : saveAsNew(Suggestion.NotReferenced())
 }
 
-/**
- * Whether `candidates` hold no stored record found by identifier: the
- * records whose stored record under their derived id the plan reads.
- */
-const noneFoundByIdentifier = (candidates: readonly ResourceMatch.Candidate[]): boolean =>
-  foundBy(candidates, 'identifier').length === 0
-
-export { forRecord, needsDecision, noneFoundByIdentifier }
-export type { Facts, Reason, Type }
+export { suggestRecord }
+export type { SuggestionFacts }

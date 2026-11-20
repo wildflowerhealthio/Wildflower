@@ -9,10 +9,10 @@ import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Array as Arr } from 'effect'
 import { Match, Option } from 'effect'
 
-import * as Suggestion from '../operations/suggest-record.ts'
 import type * as FileCopy from './file-copy.ts'
 import * as RecordChoice from './record-choice.ts'
 import type * as RecordKey from './record-key.ts'
+import * as Suggestion from './suggestion.ts'
 
 /**
  * One record of the plan.
@@ -38,6 +38,21 @@ interface Type {
  * `LinkToExisting`, `DontAdd` (not counted) or `Open` (no choice yet).
  */
 type Label = 'Create' | 'Update' | 'LinkToExisting' | 'DontAdd' | 'Open'
+
+/** A record of the plan as suggested: nothing chosen and nothing edited. */
+const make = ({
+  key,
+  copies,
+  candidates,
+  suggestion,
+}: Pick<Type, 'key' | 'copies' | 'candidates' | 'suggestion'>): Type => ({
+  key,
+  copies,
+  candidates,
+  suggestion,
+  chosen: Option.none(),
+  edit: Option.none(),
+})
 
 /** The choice the import makes for `planned`: the reviewer's, else the suggestion's. */
 const effectiveChoice = (planned: Type): Option.Option<RecordChoice.Type> =>
@@ -78,5 +93,5 @@ const isChanged = (planned: Type): boolean =>
       )
   )
 
-export { effectiveChoice, isChanged, labelOf, needsDecision }
+export { effectiveChoice, isChanged, labelOf, make, needsDecision }
 export type { Label, Type }

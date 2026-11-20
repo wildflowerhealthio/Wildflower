@@ -1,6 +1,6 @@
 /**
- * Plan totals: how many records an import plan creates, updates and links,
- * and how many need a decision, overall and per file set.
+ * Count totals: what counts where in an import plan's totals, overall and per
+ * file set.
  *
  * @packageDocumentation
  */
@@ -8,40 +8,11 @@ import { Array as Arr } from 'effect'
 
 import type * as PickedFile from '../../picked-file.ts'
 import type * as ImportPlan from '../entities/import-plan.ts'
+import type * as PlanTotals from '../entities/plan-totals.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 
-/**
- * Counts over some records of a plan.
- *
- * @remarks
- * `records` counts every record, one per key. `needsDecision` counts the
- * records listed under Needs a decision, and `open` those of them with no
- * choice yet. A record that is not added counts in `records` alone.
- */
-interface Counts {
-  readonly records: number
-  readonly create: number
-  readonly update: number
-  readonly linkToExisting: number
-  readonly needsDecision: number
-  readonly open: number
-}
-
-/** The counts of the records one file set brought. */
-interface FileSetCounts {
-  /** The file set's picked files, in pick order. */
-  readonly pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>
-  readonly counts: Counts
-}
-
-/** A plan's counts overall, and per file set in the order the sets first bring a record. */
-interface Type {
-  readonly overall: Counts
-  readonly fileSets: readonly FileSetCounts[]
-}
-
 /** No record. */
-const NO_RECORDS: Counts = {
+const NO_RECORDS: PlanTotals.Counts = {
   records: 0,
   create: 0,
   update: 0,
@@ -51,7 +22,7 @@ const NO_RECORDS: Counts = {
 }
 
 /** `counts` with `planned` counted. */
-const withRecord = (counts: Counts, planned: PlannedRecord.Type): Counts => {
+const withRecord = (counts: PlanTotals.Counts, planned: PlannedRecord.Type): PlanTotals.Counts => {
   const label = PlannedRecord.labelOf(planned)
   return {
     records: counts.records + 1,
@@ -64,7 +35,7 @@ const withRecord = (counts: Counts, planned: PlannedRecord.Type): Counts => {
 }
 
 /** The counts of `records`. */
-const countsOf = (records: readonly PlannedRecord.Type[]): Counts =>
+const countsOf = (records: readonly PlannedRecord.Type[]): PlanTotals.Counts =>
   records.reduce(withRecord, NO_RECORDS)
 
 /** The id a file set is told apart by: its first picked file's. */
@@ -79,7 +50,7 @@ const broughtBy = (planned: PlannedRecord.Type, fileSetId: string): boolean =>
  * `plan`'s counts: overall, and for each file set the records it brought a
  * copy of, so a record two sets bring counts in each set's line.
  */
-const of = (plan: ImportPlan.Type): Type => ({
+const countTotals = (plan: ImportPlan.Type): PlanTotals.Type => ({
   overall: countsOf(plan.records),
   fileSets: Arr.dedupeWith(
     plan.records.flatMap(({ copies }) => copies.map(({ pickedFiles }) => pickedFiles)),
@@ -92,5 +63,4 @@ const of = (plan: ImportPlan.Type): Type => ({
   })),
 })
 
-export { of }
-export type { Counts, FileSetCounts, Type }
+export { countTotals }
