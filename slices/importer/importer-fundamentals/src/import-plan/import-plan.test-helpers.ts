@@ -1,3 +1,4 @@
+// oxlint-disable import/max-dependencies -- builds the import plan's entities, each its own module
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { MatchGrade, ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import { FhirResourceSchema, type FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
@@ -9,6 +10,7 @@ import { decoded } from '../stored-candidates.test-helpers.ts'
 import * as ImportPlan from './entities/import-plan.ts'
 import * as ImportedCopy from './entities/imported-copy.ts'
 import * as ImportedRecord from './entities/imported-record.ts'
+import * as OfferedFields from './entities/offered-fields.ts'
 import * as PlannedRecord from './entities/planned-record.ts'
 import * as RecordChoice from './entities/record-choice.ts'
 import type * as RecordKey from './entities/record-key.ts'
@@ -160,27 +162,37 @@ const plannedOf = (
 const samplePlan = (): ImportPlan.Type =>
   ImportPlan.make(
     [
-      plannedOf([tyraA, tyraB], {
-        choice: Option.some(
-          RecordChoice.UseExistingRecord({
-            existing: storedTyra,
-            fieldsTaken: HashSet.make('gender'),
+      plannedOf(
+        [tyraA, tyraB],
+        Suggestion.make(
+          Option.some(
+            RecordChoice.UseExistingRecord({
+              existing: storedTyra,
+              fieldsTaken: HashSet.make('gender'),
+            })
+          ),
+          Suggestion.IdentifierMatchFieldsDiffer({
+            offeredFields: OfferedFields.make({
+              gapFilling: ['gender'],
+              overwriting: [],
+              identifiersToAdd: [],
+            }),
           })
-        ),
-        reason: Suggestion.IdentifierMatchFieldsDiffer({
-          offeredFields: { gapFilling: ['gender'], overwriting: [], identifiersToAdd: [] },
-        }),
-      }),
-      plannedOf([prescription], {
-        choice: Option.some(RecordChoice.SaveAsNewRecord()),
-        reason: Suggestion.NoMatch(),
-      }),
-      plannedOf([drBrown], {
-        choice: Option.some(
-          RecordChoice.UseExistingRecord({ existing: storedBrown, fieldsTaken: HashSet.empty() })
-        ),
-        reason: Suggestion.NameMatchReferenced(),
-      }),
+        )
+      ),
+      plannedOf(
+        [prescription],
+        Suggestion.make(Option.some(RecordChoice.SaveAsNewRecord()), Suggestion.NoMatch())
+      ),
+      plannedOf(
+        [drBrown],
+        Suggestion.make(
+          Option.some(
+            RecordChoice.UseExistingRecord({ existing: storedBrown, fieldsTaken: HashSet.empty() })
+          ),
+          Suggestion.NameMatchReferenced()
+        )
+      ),
     ],
     sampleMatch()
   )

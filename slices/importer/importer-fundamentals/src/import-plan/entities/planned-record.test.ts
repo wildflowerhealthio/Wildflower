@@ -54,10 +54,10 @@ describe('PlannedRecord.labelOf', () => {
 
   it('should label a record whose choice is undecided Open', () => {
     // Arrange
-    const undecided = plannedOf([drBrown], {
-      choice: Option.none(),
-      reason: Suggestion.NameMatchReferenced(),
-    })
+    const undecided = plannedOf(
+      [drBrown],
+      Suggestion.make(Option.none(), Suggestion.NameMatchReferenced())
+    )
 
     // Act
     const label = PlannedRecord.labelOf(undecided)
@@ -96,5 +96,38 @@ describe('PlannedRecord.isChanged', () => {
 
     // Assert
     expect(PlannedRecord.isChanged(recordOf(chosen, drBrownKey))).toBe(false)
+  })
+})
+
+describe('PlannedRecord.withChoice, withChoiceCleared and withEdit', () => {
+  it('should set the reviewer’s choice over the suggestion, and clear it back to the suggestion', () => {
+    // Arrange
+    const suggested = recordOf(samplePlan(), prescriptionKey)
+
+    // Act
+    const chosen = PlannedRecord.withChoice(suggested, RecordChoice.DontAdd())
+    const cleared = PlannedRecord.withChoiceCleared(chosen)
+
+    // Assert
+    expect([PlannedRecord.effectiveChoice(chosen), PlannedRecord.effectiveChoice(cleared)]).toEqual(
+      [Option.some(RecordChoice.DontAdd()), suggested.suggestion.choice]
+    )
+    expect(cleared).toEqual(suggested)
+  })
+
+  it('should set the reviewer’s edit, and clear it by none, leaving the choice alone', () => {
+    // Arrange
+    const chosen = PlannedRecord.withChoice(
+      recordOf(samplePlan(), drBrownKey),
+      RecordChoice.SaveAsNewRecord()
+    )
+
+    // Act
+    const edited = PlannedRecord.withEdit(chosen, Option.some(drBrown.resource))
+    const unedited = PlannedRecord.withEdit(edited, Option.none())
+
+    // Assert
+    expect([edited.edit, edited.chosen]).toEqual([Option.some(drBrown.resource), chosen.chosen])
+    expect(unedited).toEqual(chosen)
   })
 })

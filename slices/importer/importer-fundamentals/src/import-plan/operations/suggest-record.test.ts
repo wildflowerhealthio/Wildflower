@@ -4,11 +4,10 @@ import {
   type FhirResourceWithId,
   literalReferenceOf,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { HashMap, HashSet, Option } from 'effect'
+import { HashMap, HashSet, Match, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ChangedStoredRecord from '../entities/changed-stored-record.ts'
-import * as RecordChoice from '../entities/record-choice.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
 import { candidate, detached, drBrownWire, stored, tyraWire } from '../import-plan.test-helpers.ts'
@@ -39,14 +38,16 @@ const summaryOf = (suggestion: Suggestion.Type): unknown => ({
   reason: suggestion.reason._tag,
   needsDecision: Suggestion.needsDecision(suggestion.reason),
   choice: Option.map(suggestion.choice, (choice) =>
-    RecordChoice.match(choice, {
-      UseExistingRecord: ({ existing, fieldsTaken }) => ({
-        use: literalReferenceOf(existing),
-        fieldsTaken: [...HashSet.values(fieldsTaken)].toSorted(),
-      }),
-      SaveAsNewRecord: () => 'save as new',
-      DontAdd: () => "don't add",
-    })
+    Match.value(choice).pipe(
+      Match.tagsExhaustive({
+        UseExistingRecord: ({ existing, fieldsTaken }) => ({
+          use: literalReferenceOf(existing),
+          fieldsTaken: [...HashSet.values(fieldsTaken)].toSorted(),
+        }),
+        SaveAsNewRecord: () => 'save as new',
+        DontAdd: () => "don't add",
+      })
+    )
   ),
 })
 

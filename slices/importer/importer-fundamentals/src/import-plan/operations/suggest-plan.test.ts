@@ -1,6 +1,6 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
-import { HashSet, Option } from 'effect'
+import { HashSet, Match, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type * as ImportPlan from '../entities/import-plan.ts'
@@ -60,7 +60,9 @@ describe('suggestPlan', () => {
     // Assert
     expect(
       plan.records.map(({ record: { key, copies } }) => ({
-        key: RecordKey.match(key, { Keyed: () => 'keyed', Keyless: ({ reviewKey }) => reviewKey }),
+        key: Match.value(key).pipe(
+          Match.tagsExhaustive({ Keyed: () => 'keyed', Keyless: ({ reviewKey }) => reviewKey })
+        ),
         copies: copies.map(({ reviewKey }) => reviewKey),
       }))
     ).toEqual([
