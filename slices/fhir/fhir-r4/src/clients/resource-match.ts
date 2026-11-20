@@ -1,7 +1,7 @@
 import { Array, Effect, Equivalence, HashMap, Option, pipe, Record, Schema } from 'effect'
 
 import type { IdentifierAndReference } from '../data-types/index.ts'
-import { type FhirResourceWithId, literalReferenceOf } from '../resources/fhir-resource-with-id.ts'
+import { type FhirResourceWithId, sameStoredResource } from '../resources/fhir-resource-with-id.ts'
 import type { FhirResource } from '../resources/fhir-resource.ts'
 import * as LogicalReference from '../resources/logical-reference.ts'
 import type * as ResourceType from '../resources/resource-type.ts'
@@ -177,12 +177,6 @@ const isOfType =
     resource: TResource
   ): resource is Extract<TResource, { readonly resourceType: TResourceType }> =>
     resource.resourceType === resourceType
-
-/** Two stored resources are one when they have one literal reference. */
-const sameStoredResource: Equivalence.Equivalence<FhirResourceWithId> = Equivalence.mapInput(
-  Equivalence.string,
-  literalReferenceOf
-)
 
 /** The key a resource of `resourceType` carrying `identifier` is found under. */
 const identifierKey = (

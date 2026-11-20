@@ -16,6 +16,7 @@
 import type { Meta } from '@wildflowerhealthio/fhir-r4/data-types'
 
 import type * as AdoptedFileSet from './adopted-file-set.ts'
+import type * as ReviewRow from './review-row.ts'
 import * as SectionedList from './sectioned-list.ts'
 
 const REFERENCE_PREFIX = 'DocumentReference/'
@@ -49,7 +50,10 @@ const stamp = <TResource extends Sourceable>(
   },
 })
 
-const stampAdopted = (adopted: AdoptedFileSet.Type, source: Reference): AdoptedFileSet.Type => ({
+const stampAdopted = <TRow extends ReviewRow.Type>(
+  adopted: AdoptedFileSet.Type<TRow>,
+  source: Reference
+): AdoptedFileSet.Type<TRow> => ({
   ...adopted,
   sectionedList: SectionedList.map(adopted.sectionedList, (row) => ({
     ...row,

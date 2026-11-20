@@ -32,6 +32,7 @@ export * as UnlinkedMention from './identity-map/unlinked-mention.ts'
 export * as ReferentMatch from './identity-map/referent-match.ts'
 export * as DifferingDemographics from './identity-map/differing-demographics.ts'
 export * as ReferentTally from './identity-map/referent-tally.ts'
+export * from './import-plan/index.ts'
 // Namespaced symbols are reached through their namespace above — a flat
 // re-export here would give each one a second spelling. Only modules that are
 // not namespaces export flat.

@@ -15,8 +15,10 @@ import type * as ReviewGroup from './review-group.ts'
 
 /**
  * The import stage: one format's decode, file set by file set, made the
- * device's own. The one place a record is adopted, a source file is minted
- * and `meta.source` is stamped.
+ * device's own. The one place a record is adopted. Its other steps (minting
+ * source files, linking and stamping `meta.source`, and reading a set it
+ * cannot finish as unreadable rows) are shared with the import plan's copies
+ * (`fileCopiesOf`).
  *
  * @remarks
  * Per set, {@link importFileSet} mints a source file for every picked file
@@ -46,29 +48,89 @@ const SOURCE_FILE_SECTION_TITLE = 'Source file'
 /** The section title several source files read together are reviewed under. */
 const SOURCE_FILES_SECTION_TITLE = 'Source files'
 
-/** The review key of a source file row, stable across a settings re-decode. */
-const sourceFileKey = (file: PickedFile.Type): string =>
-  `${FormatDecode.keyPrefix(file)}source-file/${file.fileName}`
-
 /** A picked file's source file, as `PickedFile.FromDocumentReference` stores it. */
 const sourceFileOf = Schema.encode(PickedFile.FromDocumentReference)
 
 /**
- * Import one file set: mint its picked files' source files, adopt its records,
- * let the format link each source file to the records and each record to the
- * source files, stamp, and lead with the source files it is about to store.
+ * The source file each picked file of `fileSet` is stored as, minted
+ * (`PickedFile.FromDocumentReference`'s encode), carrying what the picked
+ * file identified itself as (`DecodedFileSet.PickedFileIdentity`) as its
+ * `masterIdentifier`, which is what a format's `linkToSourceFiles` matches a
+ * record's own identifiers against.
+ */
+const mintSourceFiles = (
+  fileSet: DecodedFileSet.Type
+): Effect.Effect<
+  Arr.NonEmptyReadonlyArray<FileImporter.PickedSourceFile>,
+  ParseResult.ParseError,
+  PickedFile.Format
+> =>
+  Effect.all(
+    Arr.map(fileSet.pickedFiles, ({ pickedFile, identifiedAs }) =>
+      Effect.map(sourceFileOf(pickedFile), (sourceFile) => ({
+        pickedFile,
+        sourceFile: { ...sourceFile, masterIdentifier: Option.getOrNull(identifiedAs) },
+      }))
+    ),
+    { concurrency: 'unbounded' }
+  )
+
+/** A set's source files, each linked to its records, beside its records, each linked to its source files and stamped. */
+interface LinkedFileSet<TRow extends ReviewRow.Type> {
+  readonly sourceFiles: Arr.NonEmptyReadonlyArray<FileImporter.PickedSourceFile>
+  readonly records: AdoptedFileSet.Type<TRow>
+}
+
+/**
+ * Link and stamp one set: the format's `linkSourceFile` over each of its
+ * source files with its records, then its `linkToSourceFiles` over every
+ * record with each picked file and its linked source file, then every
+ * record's `meta.source` stamped with the set's representative.
+ *
+ * @param importer - The format's importer, whose hooks run
+ * @param sourceFiles - The set's source files, as {@link mintSourceFiles} minted them
+ * @param records - The set's records under the ids they are written under,
+ *   their references resolved or as decoded, as the caller decides
  *
  * @remarks
- * A source file carries what its picked file identified itself as
- * (`DecodedFileSet.PickedFileIdentity`) as its `masterIdentifier`, which is
- * what a format's `linkToSourceFiles` matches a record's own identifiers
- * against.
- *
  * `meta.source` names the set's representative: the picked file whose source
  * file id is lexicographically smallest. A source file's id is a content hash
  * of the file's bytes and name, so the smallest of them is a fact about the set
  * and not about the order it was picked in, which is what makes the same study,
  * picked any way round, import identical resources.
+ */
+const linkAndStamp = <TRow extends ReviewRow.Type>(
+  importer: ImportingFormat,
+  sourceFiles: Arr.NonEmptyReadonlyArray<FileImporter.PickedSourceFile>,
+  records: AdoptedFileSet.Type<TRow>
+): Effect.Effect<LinkedFileSet<TRow>, FileImporter.SourceFileNotFound> =>
+  Effect.gen(function* () {
+    const linkSourceFile = importer.linkSourceFile ?? Function.identity
+    const linked = Arr.map(sourceFiles, ({ pickedFile, sourceFile }) => ({
+      pickedFile,
+      sourceFile: linkSourceFile(sourceFile, records),
+    }))
+
+    const linkToSourceFiles = importer.linkToSourceFiles ?? Effect.succeed
+    const linkedToSourceFiles = yield* SectionedList.forEach(records.sectionedList, (row) =>
+      Effect.map(linkToSourceFiles(row.resource, linked), (resource) => ({ ...row, resource }))
+    )
+    const stamped = MetaSource.stampAdopted(
+      { sectionedList: linkedToSourceFiles, notes: records.notes },
+      MetaSource.makeReference(
+        Arr.min(
+          Arr.map(linked, ({ sourceFile }) => sourceFile.id),
+          Order.string
+        )
+      )
+    )
+    return { sourceFiles: linked, records: stamped }
+  })
+
+/**
+ * Import one file set: mint its picked files' source files, adopt its records,
+ * link and stamp ({@link linkAndStamp}), and lead with the source files it is
+ * about to store.
  */
 const importFileSet = (
   importer: ImportingFormat,
@@ -79,42 +141,19 @@ const importFileSet = (
   PickedFile.Format
 > =>
   Effect.gen(function* () {
-    const sourceFiles = yield* Effect.all(
-      Arr.map(fileSet.pickedFiles, ({ pickedFile, identifiedAs }) =>
-        Effect.map(sourceFileOf(pickedFile), (sourceFile) => ({
-          pickedFile,
-          sourceFile: { ...sourceFile, masterIdentifier: Option.getOrNull(identifiedAs) },
-        }))
-      ),
-      { concurrency: 'unbounded' }
-    )
+    const sourceFiles = yield* mintSourceFiles(fileSet)
     const adopted = yield* DecodedFileSet.adopt(
       fileSet,
       FormatDecode.keyPrefix(fileSet.pickedFiles[0].pickedFile)
     )
-
-    const linkSourceFile = importer.linkSourceFile ?? Function.identity
-    const linked = Arr.map(sourceFiles, ({ pickedFile, sourceFile }) => ({
-      pickedFile,
-      sourceFile: linkSourceFile(sourceFile, adopted),
-    }))
-
-    const linkToSourceFiles = importer.linkToSourceFiles ?? Effect.succeed
-    const linkedToSourceFiles = yield* SectionedList.forEach(adopted.sectionedList, (row) =>
-      Effect.map(linkToSourceFiles(row.resource, linked), (resource) => ({ ...row, resource }))
-    )
-    const stamped = MetaSource.stampAdopted(
-      { sectionedList: linkedToSourceFiles, notes: adopted.notes },
-      MetaSource.makeReference(
-        Arr.min(
-          Arr.map(linked, ({ sourceFile }) => sourceFile.id),
-          Order.string
-        )
-      )
+    const { sourceFiles: linked, records: stamped } = yield* linkAndStamp(
+      importer,
+      sourceFiles,
+      adopted
     )
 
     const sourceFileRows = linked.map(({ pickedFile, sourceFile }): ReviewRow.Type => ({
-      reviewKey: sourceFileKey(pickedFile),
+      reviewKey: FormatDecode.sourceFileKey(pickedFile),
       title: pickedFile.fileName,
       isImplied: false,
       resource: sourceFile,
@@ -133,6 +172,58 @@ const importFileSet = (
   })
 
 /**
+ * The file sets of one format's decode the import stage finished, and a row
+ * per picked file it could not read.
+ */
+interface FinishedFileSets<TFinished> {
+  /** What `finishFileSet` made of each set it finished, in decode order. */
+  readonly finished: readonly TFinished[]
+  /** The rows the decode reported, then a row per picked file of each set it could not finish. */
+  readonly unreadableFiles: readonly FormatDecode.UnreadableFile[]
+}
+
+/**
+ * Finish every file set of one format's decode with `finishFileSet`,
+ * concurrently and each on its own.
+ *
+ * @param importer - The format's importer, whose `sourceFileFormat` is the
+ *   `PickedFile.Format` provided to `finishFileSet`
+ * @param decoded - The format's decode, as its `decode` returned it
+ * @param finishFileSet - What the import stage makes of one set
+ * @returns The sets finished, never failing: a set `finishFileSet` fails on
+ *   (a source file that cannot be built, a record naming a file none of its
+ *   picked files identifies as) is an `unreadableFiles` row per picked file,
+ *   after the rows the decode already reported, while the rest are finished
+ */
+const finishEachFileSet = <TFormat extends string, TFinished>(
+  importer: ImportingFormat,
+  decoded: FormatDecode.Decoded<TFormat>,
+  finishFileSet: (
+    fileSet: DecodedFileSet.Type
+  ) => Effect.Effect<
+    TFinished,
+    ParseResult.ParseError | FileImporter.SourceFileNotFound,
+    PickedFile.Format
+  >
+): Effect.Effect<FinishedFileSets<TFinished>> =>
+  Effect.partition(
+    decoded.fileSets,
+    (fileSet) =>
+      Effect.mapError(finishFileSet(fileSet), (error) =>
+        fileSet.pickedFiles.map(({ pickedFile }) =>
+          FormatDecode.makeUnreadableFile(decoded.format, pickedFile, error)
+        )
+      ),
+    { concurrency: 'unbounded' }
+  ).pipe(
+    Effect.map(([rejected, finished]): FinishedFileSets<TFinished> => ({
+      finished,
+      unreadableFiles: [...decoded.unreadableFiles, ...rejected.flat()],
+    })),
+    Effect.provideService(PickedFile.Format, importer.sourceFileFormat)
+  )
+
+/**
  * Import one format's decode: every file set through {@link importFileSet},
  * merged into the format's one review group, which holds the picks the
  * format's decode read (`decoded.files`).
@@ -143,35 +234,21 @@ const importFileSet = (
  * @returns The format's review group, never failing
  *
  * @remarks
- * Sets are imported concurrently and each is independent: one whose source file
- * cannot be built, or whose records name a file none of its picked files
- * identifies as (`FileImporter.SourceFileNotFound`), yields an
- * `unreadableFiles` row per picked file, after the
- * rows the decode already reported, while the rest stay reviewable. It provides
- * the `PickedFile.Format` service from the importer's `sourceFileFormat`
- * internally, so nothing it returns carries a requirement.
+ * Sets are imported as {@link finishEachFileSet} finishes them: a set that
+ * cannot be imported is unreadable rows, while the rest stay reviewable.
  */
 const importDecoded = <TFormat extends string>(
   importer: ImportingFormat,
   decoded: FormatDecode.Decoded<TFormat>
 ): Effect.Effect<ReviewGroup.Type> =>
-  Effect.partition(
-    decoded.fileSets,
-    (fileSet) =>
-      Effect.mapError(importFileSet(importer, fileSet), (error) =>
-        fileSet.pickedFiles.map(({ pickedFile }) =>
-          FormatDecode.makeUnreadableFile(decoded.format, pickedFile, error)
-        )
-      ),
-    { concurrency: 'unbounded' }
-  ).pipe(
-    Effect.map(([rejected, imported]): ReviewGroup.Type => ({
-      ...AdoptedFileSet.concatenateAll(imported),
-      unreadableFiles: [...decoded.unreadableFiles, ...rejected.flat()],
+  Effect.map(
+    finishEachFileSet(importer, decoded, (fileSet) => importFileSet(importer, fileSet)),
+    ({ finished, unreadableFiles }): ReviewGroup.Type => ({
+      ...AdoptedFileSet.concatenateAll(finished),
+      unreadableFiles,
       files: decoded.files,
-    })),
-    Effect.provideService(PickedFile.Format, importer.sourceFileFormat)
+    })
   )
 
-export { importDecoded }
+export { finishEachFileSet, importDecoded, linkAndStamp, mintSourceFiles }
 export type { ImportingFormat }

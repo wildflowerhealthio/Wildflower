@@ -2,7 +2,9 @@ export {
   classifyAgainstServer,
   compareWithStoredCopy,
   type DiffStatus,
+  encodedFieldsOf,
   normalizedEncode,
+  normalizedFieldsOf,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
   type ServerComparison,
@@ -43,6 +45,7 @@ export {
   searchPagesOfType,
   type SearchParamsByType,
 } from './search-by-type.ts'
+export { BatchReadRejected, readInBatch } from './read-in-batch.ts'
 export {
   type BatchSearch,
   type BatchSearchFailure,
@@ -75,5 +78,6 @@ export {
 } from './persist-resources.ts'
 export { upsertResource, UnsupportedFhirResourceTypeError } from './upsert-resource.ts'
 export * as MatchGrade from './match-grade.ts'
+export * as IdentifierUnion from './identifier-union.ts'
 export * as MatchQuery from './match-query.ts'
 export * as ResourceMatch from './resource-match.ts'
