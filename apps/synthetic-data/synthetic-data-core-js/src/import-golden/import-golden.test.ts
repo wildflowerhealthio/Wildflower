@@ -13,11 +13,11 @@ import {
   rexallPick,
   shoppersPick,
 } from './generated-picks.ts'
-import { goldenTextOf, importWithDefaults } from './import-with-defaults.ts'
+import { goldenTextOf, importOntoEmptyStore } from './import-onto-empty-store.ts'
 
 /**
  * The import golden pin: every source kind `importer-core` reads, imported
- * with every default accepted, written as JSON and compared byte for byte
+ * with every suggestion taken onto an empty store, written as JSON and compared byte for byte
  * with its committed golden under `__golden__/`. A golden that changes is a
  * change to what an import writes. `vp test -u` rewrites them.
  */
@@ -61,7 +61,7 @@ const CASES: readonly GoldenCase[] = [
 ]
 
 /**
- * `picks` imported with every default accepted, the clock at the as-of and
+ * `picks` imported with every suggestion taken onto an empty store, the clock at the as-of and
  * the extractor reading the printed text.
  */
 const goldenTextFor = (
@@ -70,11 +70,11 @@ const goldenTextFor = (
   Effect.runPromise(
     Effect.gen(function* () {
       yield* TestClock.setTime(AS_OF.epochMillis)
-      return goldenTextOf(yield* importWithDefaults(yield* picks))
+      return goldenTextOf(yield* importOntoEmptyStore(yield* picks))
     }).pipe(Effect.provide(extractorReadingPrintedText), Effect.provide(TestContext.TestContext))
   )
 
-describe('an import with every default accepted', () => {
+describe('an import with every suggestion taken onto an empty store', () => {
   // A keyless record's id is a random UUID outside tests. Each case mints
   // them in order from one, so its golden is the same on every run.
   beforeEach(() => {

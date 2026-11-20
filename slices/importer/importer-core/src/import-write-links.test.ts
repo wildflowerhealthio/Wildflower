@@ -16,6 +16,7 @@ import { Array as Arr, Effect, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { fileCopiesOf } from './file-copies-of.ts'
+import { findStoredMatch } from './find-stored-match.ts'
 import {
   detached,
   observationWire,
@@ -80,7 +81,7 @@ const importOnto = async (
 }> => {
   const { copies } = await Effect.runPromise(fileCopiesOf({ sourceFileFormat }, decoded))
   const { result: resolution } = await runAgainst(
-    Effect.flatMap(planImport(copies), (plan) => resolvePlan(choose(plan))),
+    Effect.flatMap(planImport(copies, findStoredMatch), (plan) => resolvePlan(choose(plan))),
     stored
   )
   return {
