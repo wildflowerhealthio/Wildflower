@@ -9,7 +9,7 @@ import { diffJson, IdentifierUnion, normalizedFieldsOf } from '@wildflowerhealth
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, HashSet, Option, type Record } from 'effect'
 
-import type * as OfferedFields from '../../entities/offered-fields.ts'
+import * as OfferedFields from '../../entities/offered-fields.ts'
 import * as ComparableReferences from './comparable-references.ts'
 
 /** The top-level wire keys that are no field a reviewer takes. */
@@ -62,14 +62,14 @@ const compareToStored = (
     ),
     (field) => hasValue(existing[field])
   )
-  return {
+  return OfferedFields.make({
     gapFilling,
     overwriting,
     identifiersToAdd: IdentifierUnion.missingFrom(
       DetachedResource.hasIdentifier(stored) ? stored.identifier : [],
       resource
     ),
-  }
+  })
 }
 
 export { compareToStored }

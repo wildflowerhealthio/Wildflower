@@ -6,9 +6,9 @@
  * @packageDocumentation
  */
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Equal, HashSet, Option } from 'effect'
+import { Array as Arr, Equal, HashSet, type Option } from 'effect'
 
-import type * as PlannedRecord from './planned-record.ts'
+import * as PlannedRecord from './planned-record.ts'
 import type * as RecordChoice from './record-choice.ts'
 import type * as RecordKey from './record-key.ts'
 import type * as StoredMatch from './stored-match.ts'
@@ -53,15 +53,15 @@ const modifyRecords = (
 
 /** `plan` with the reviewer's `choice` for every record under one of `keys`. */
 const choose = (plan: Type, keys: Iterable<RecordKey.Type>, choice: RecordChoice.Type): Type =>
-  modifyRecords(plan, keys, (planned) => ({ ...planned, chosen: Option.some(choice) }))
+  modifyRecords(plan, keys, (planned) => PlannedRecord.withChoice(planned, choice))
 
 /** `plan` with the reviewer's choice cleared for every record under one of `keys`, back to its suggestion. */
 const reset = (plan: Type, keys: Iterable<RecordKey.Type>): Type =>
-  modifyRecords(plan, keys, (planned) => ({ ...planned, chosen: Option.none() }))
+  modifyRecords(plan, keys, PlannedRecord.withChoiceCleared)
 
 /** `plan` with the record under `key` edited to `edit`, or its edit cleared by `None`. */
 const setEdit = (plan: Type, key: RecordKey.Type, edit: Option.Option<FhirResource>): Type =>
-  modifyRecords(plan, [key], (planned) => ({ ...planned, edit }))
+  modifyRecords(plan, [key], (planned) => PlannedRecord.withEdit(planned, edit))
 
 export { choose, get, make, reset, setEdit }
 export type { Type }

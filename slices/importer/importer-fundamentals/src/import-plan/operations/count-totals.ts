@@ -34,15 +34,18 @@ const broughtBy = (planned: PlannedRecord.Type, origin: FileSetOrigin.Type): boo
  * `plan`'s counts: overall, and for each file set the records it brought a
  * copy of, so a record two sets bring counts in each set's line.
  */
-const countTotals = (plan: ImportPlan.Type): PlanTotals.Type => ({
-  overall: countsOf(plan.records),
-  fileSets: Arr.dedupeWith(
-    plan.records.flatMap(({ record }) => record.copies.map(({ origin }) => origin)),
-    FileSetOrigin.equivalence
-  ).map((origin) => ({
-    origin,
-    counts: countsOf(plan.records.filter((planned) => broughtBy(planned, origin))),
-  })),
-})
+const countTotals = (plan: ImportPlan.Type): PlanTotals.Type =>
+  PlanTotals.make(
+    countsOf(plan.records),
+    Arr.dedupeWith(
+      plan.records.flatMap(({ record }) => record.copies.map(({ origin }) => origin)),
+      FileSetOrigin.equivalence
+    ).map((origin) =>
+      PlanTotals.makeFileSetCounts(
+        origin,
+        countsOf(plan.records.filter((planned) => broughtBy(planned, origin)))
+      )
+    )
+  )
 
 export { countTotals }

@@ -54,6 +54,18 @@ const make = ({
   edit: Option.none(),
 })
 
+/** `planned` with the reviewer's `choice`. */
+const withChoice = (planned: Type, choice: RecordChoice.Type): Type => ({
+  ...planned,
+  chosen: Option.some(choice),
+})
+
+/** `planned` with the reviewer's choice cleared, back to its suggestion. */
+const withChoiceCleared = (planned: Type): Type => ({ ...planned, chosen: Option.none() })
+
+/** `planned` edited to `edit`, or with its edit cleared by `None`. */
+const withEdit = (planned: Type, edit: Option.Option<FhirResource>): Type => ({ ...planned, edit })
+
 /** The choice the import makes for `planned`: the reviewer's, else the suggestion's. */
 const effectiveChoice = (planned: Type): Option.Option<RecordChoice.Type> =>
   Option.orElse(planned.chosen, () => planned.suggestion.choice)
@@ -93,5 +105,16 @@ const isChanged = (planned: Type): boolean =>
       )
   )
 
-export { effectiveChoice, isChanged, LabelSchema, labelOf, labels, make, needsDecision }
+export {
+  effectiveChoice,
+  isChanged,
+  LabelSchema,
+  labelOf,
+  labels,
+  make,
+  needsDecision,
+  withChoice,
+  withChoiceCleared,
+  withEdit,
+}
 export type { Label, Type }

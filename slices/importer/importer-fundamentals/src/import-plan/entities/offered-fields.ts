@@ -26,9 +26,16 @@ interface Type {
   readonly identifiersToAdd: readonly IdentifierAndReference.QualifiedIdentifierType[]
 }
 
+/** The offered fields of `gapFilling` and `overwriting` fields, adding `identifiersToAdd`. */
+const make = ({ gapFilling, overwriting, identifiersToAdd }: Type): Type => ({
+  gapFilling,
+  overwriting,
+  identifiersToAdd,
+})
+
 /** Whether `offeredFields` offers no field: the import is the same as the existing record. */
 const offersNoField = (offeredFields: Type): boolean =>
   offeredFields.gapFilling.length === 0 && offeredFields.overwriting.length === 0
 
-export { offersNoField }
+export { make, offersNoField }
 export type { Type }

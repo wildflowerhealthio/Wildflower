@@ -59,6 +59,12 @@ interface Type {
   readonly reason: Reason
 }
 
+/** The suggestion of `choice`, `None` to leave the record undecided, for `reason`. */
+const make = (choice: Option.Option<RecordChoice.Type>, reason: Reason): Type => ({
+  choice,
+  reason,
+})
+
 /** Whether a record suggested for `reason` is listed under Needs a decision. */
 const needsDecision = (reason: Reason): boolean =>
   reason._tag === 'NameMatchReferenced' || reason._tag === 'SeveralIdentifierMatches'
@@ -66,6 +72,7 @@ const needsDecision = (reason: Reason): boolean =>
 export {
   IdentifierMatchFieldsDiffer,
   IdentifierMatchSameAsExisting,
+  make,
   NameMatchReferenced,
   needsDecision,
   NoMatch,

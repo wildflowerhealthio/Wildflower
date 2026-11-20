@@ -63,9 +63,18 @@ const makeCounts = (
   needsDecision,
 })
 
+/** The counts of the records the file set `origin` names brought. */
+const makeFileSetCounts = (origin: FileSetOrigin.Type, counts: Counts): FileSetCounts => ({
+  origin,
+  counts,
+})
+
+/** A plan's counts: `overall`, and `fileSets` in the order the sets first bring a record. */
+const make = (overall: Counts, fileSets: readonly FileSetCounts[]): Type => ({ overall, fileSets })
+
 /** How many records `counts` counts, one per key: every record has one label. */
 const recordsOf = (counts: Counts): number =>
   Arr.reduce(Record.values(counts.byLabel), 0, (sum, n) => sum + n)
 
-export { makeCounts, recordsOf }
+export { make, makeCounts, makeFileSetCounts, recordsOf }
 export type { Counts, FileSetCounts, Type }

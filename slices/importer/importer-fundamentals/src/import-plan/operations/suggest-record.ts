@@ -82,30 +82,29 @@ const suggestIdentifierMatch = (
   existing: FhirResourceWithId
 ): Suggestion.Type => {
   const offeredFields = offeredFieldsFor(facts, existing)
-  return {
-    choice: Option.some(gapFillingChoice(existing, offeredFields)),
-    reason: OfferedFields.offersNoField(offeredFields)
+  return Suggestion.make(
+    Option.some(gapFillingChoice(existing, offeredFields)),
+    OfferedFields.offersNoField(offeredFields)
       ? Suggestion.IdentifierMatchSameAsExisting({ offeredFields })
-      : Suggestion.IdentifierMatchFieldsDiffer({ offeredFields }),
-  }
+      : Suggestion.IdentifierMatchFieldsDiffer({ offeredFields })
+  )
 }
 
 /** Needs a decision: the one name match pre-selected, taking only gap-filling fields; several leave it undecided. */
 const suggestNameMatchReferenced = (
   facts: SuggestionFacts,
   nameMatches: readonly FhirResourceWithId[]
-): Suggestion.Type => ({
-  choice: Option.map(onlyElement(nameMatches), (existing) =>
-    gapFillingChoice(existing, offeredFieldsFor(facts, existing))
-  ),
-  reason: Suggestion.NameMatchReferenced(),
-})
+): Suggestion.Type =>
+  Suggestion.make(
+    Option.map(onlyElement(nameMatches), (existing) =>
+      gapFillingChoice(existing, offeredFieldsFor(facts, existing))
+    ),
+    Suggestion.NameMatchReferenced()
+  )
 
 /** Save the record as a new one, for `reason`. */
-const saveAsNew = (reason: Suggestion.Reason): Suggestion.Type => ({
-  choice: Option.some(RecordChoice.SaveAsNewRecord()),
-  reason,
-})
+const saveAsNew = (reason: Suggestion.Reason): Suggestion.Type =>
+  Suggestion.make(Option.some(RecordChoice.SaveAsNewRecord()), reason)
 
 /**
  * The suggestion for one record, from its stored copies
@@ -126,7 +125,7 @@ const saveAsNew = (reason: Suggestion.Reason): Suggestion.Type => ({
 const suggestRecord = (facts: SuggestionFacts): Suggestion.Type => {
   const storedCopies = StoredMatch.storedCopiesOf(facts.storedMatch)
   if (storedCopies.length > 1) {
-    return { choice: Option.none(), reason: Suggestion.SeveralIdentifierMatches() }
+    return Suggestion.make(Option.none(), Suggestion.SeveralIdentifierMatches())
   }
   const storedCopy = onlyElement(storedCopies)
   if (Option.isSome(storedCopy)) return suggestIdentifierMatch(facts, storedCopy.value)
