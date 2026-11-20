@@ -22,11 +22,14 @@ import type * as RecordChoice from './record-choice.ts'
  *   record references it.
  * - `NameMatchReferenced`: stored records match it by name, and other
  *   imported records reference it.
- * - `SeveralIdentifierMatches`: several stored records carry its identifiers.
+ * - `SeveralIdentifierMatches`: several stored records are the record:
+ *   several carry its identifiers, or one does and another sits under the id
+ *   the import stage derived for it.
  *
  * Both identifier-match reasons carry what the import offers the stored
- * record. A stored record is the record when it is the only one found by
- * identifier, or, when none is, the one stored under the id its key derives.
+ * record. A stored record is the record when it is one of its stored copies
+ * (`StoredMatch.storedCopiesOf`): found by identifier, or under the id the
+ * import stage derived for it.
  */
 type Reason = Data.TaggedEnum<{
   IdentifierMatchSameAsExisting: { readonly offeredFields: OfferedFields.Type }

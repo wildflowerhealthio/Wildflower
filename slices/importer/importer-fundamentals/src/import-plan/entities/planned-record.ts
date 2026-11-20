@@ -4,12 +4,12 @@
  *
  * @packageDocumentation
  */
-import type { ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { Match, Option } from 'effect'
 
 import type * as ImportedRecord from './imported-record.ts'
 import * as RecordChoice from './record-choice.ts'
+import type * as StoredMatch from './stored-match.ts'
 import * as Suggestion from './suggestion.ts'
 
 /**
@@ -23,8 +23,8 @@ import * as Suggestion from './suggestion.ts'
  */
 interface Type {
   readonly record: ImportedRecord.Type
-  /** The stored records matching it, best grade first. */
-  readonly candidates: readonly ResourceMatch.Candidate[]
+  /** What the store holds of it. */
+  readonly storedMatch: StoredMatch.Entry
   readonly suggestion: Suggestion.Type
   readonly chosen: Option.Option<RecordChoice.Type>
   readonly edit: Option.Option<FhirResource>
@@ -39,11 +39,11 @@ type Label = 'Create' | 'Update' | 'LinkToExisting' | 'DontAdd' | 'Open'
 /** A record of the plan as suggested: nothing chosen and nothing edited. */
 const make = ({
   record,
-  candidates,
+  storedMatch,
   suggestion,
-}: Pick<Type, 'record' | 'candidates' | 'suggestion'>): Type => ({
+}: Pick<Type, 'record' | 'storedMatch' | 'suggestion'>): Type => ({
   record,
-  candidates,
+  storedMatch,
   suggestion,
   chosen: Option.none(),
   edit: Option.none(),

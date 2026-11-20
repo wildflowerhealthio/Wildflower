@@ -5,38 +5,32 @@
  *
  * @packageDocumentation
  */
-import type { ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
-import type { FhirResource, LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Equal, type HashMap, HashSet, Option } from 'effect'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { Array as Arr, Equal, HashSet, Option } from 'effect'
 
 import type * as PlannedRecord from './planned-record.ts'
 import type * as RecordChoice from './record-choice.ts'
 import type * as RecordKey from './record-key.ts'
+import type * as StoredMatch from './stored-match.ts'
 
 /**
- * Every record of an import, in plan order, and the stored candidates of
- * each logical reference that names no record of the import.
+ * Every record of an import, in plan order, and what the store holds of the
+ * import: of each record, and of each logical reference that names no record
+ * of the import (`StoredMatch.ofReference`).
  *
  * @remarks
  * Plan order is the order the records' first copies came in.
  */
 interface Type {
   readonly records: readonly PlannedRecord.Type[]
-  /** Each unresolved logical reference's candidates, best grade first, by `LogicalReference.key`. */
-  readonly unresolvedReferences: HashMap.HashMap<
-    LogicalReference.Key,
-    readonly ResourceMatch.Candidate[]
-  >
+  readonly storedMatch: StoredMatch.Type
 }
 
-/**
- * The plan of `records`, in plan order, beside the stored candidates of each
- * logical reference that names no record of the import.
- */
-const make = (
-  records: readonly PlannedRecord.Type[],
-  unresolvedReferences: Type['unresolvedReferences']
-): Type => ({ records, unresolvedReferences })
+/** The plan of `records`, in plan order, beside the import's `storedMatch`. */
+const make = (records: readonly PlannedRecord.Type[], storedMatch: StoredMatch.Type): Type => ({
+  records,
+  storedMatch,
+})
 
 /** The record of `plan` under `key`. */
 const get = (plan: Type, key: RecordKey.Type): Option.Option<PlannedRecord.Type> =>

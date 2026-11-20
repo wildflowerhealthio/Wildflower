@@ -12,7 +12,7 @@ import * as ImportedRecord from '../entities/imported-record.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as RecordReferences from '../entities/record-references.ts'
-import type * as StoredMatch from '../entities/stored-match.ts'
+import * as StoredMatch from '../entities/stored-match.ts'
 import type { TakenFields } from './compare-to-stored/compare-to-stored.ts'
 import { suggestRecord } from './suggest-record.ts'
 
@@ -39,7 +39,7 @@ const withTakenBy = (takenEarlier: TakenEarlier, planned: PlannedRecord.Type): T
   )
 
 /**
- * One record of the plan: its stored candidates and its suggestion, its
+ * One record of the plan: what the store holds of it and its suggestion, its
  * offered fields measured after `takenEarlier`, nothing chosen and nothing
  * edited.
  */
@@ -49,18 +49,14 @@ const planRecord = (
   takenEarlier: TakenEarlier,
   record: ImportedRecord.Type
 ): PlannedRecord.Type => {
-  const { key } = record
-  const candidates = HashMap.get(storedMatch.candidatesByRecord, key).pipe(
-    Option.getOrElse(() => [])
-  )
+  const recordMatch = StoredMatch.ofRecord(storedMatch, record.key)
   return PlannedRecord.make({
     record,
-    candidates,
+    storedMatch: recordMatch,
     suggestion: suggestRecord({
       resource: ImportedRecord.resourceOf(record),
-      candidates,
-      storedUnderDerivedId: HashMap.get(storedMatch.storedUnderDerivedIdByRecord, key),
-      isReferenced: RecordReferences.isReferenced(recordReferences, key),
+      storedMatch: recordMatch,
+      isReferenced: RecordReferences.isReferenced(recordReferences, record.key),
       takenEarlier,
     }),
   })
@@ -94,7 +90,7 @@ const suggestPlan = (
       return [withTakenBy(takenEarlier, plannedRecord), plannedRecord]
     }
   )
-  return ImportPlan.make(planned, storedMatch.candidatesByUnresolvedReference)
+  return ImportPlan.make(planned, storedMatch)
 }
 
 export { suggestPlan }

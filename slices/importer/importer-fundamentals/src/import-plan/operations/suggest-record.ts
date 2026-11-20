@@ -15,6 +15,7 @@ import { HashMap, HashSet, Option } from 'effect'
 
 import * as OfferedFields from '../entities/offered-fields.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
+import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
 import { compareToStored, type TakenFields } from './compare-to-stored/compare-to-stored.ts'
 
@@ -22,10 +23,8 @@ import { compareToStored, type TakenFields } from './compare-to-stored/compare-t
 interface SuggestionFacts {
   /** The record's resource (`ImportedRecord.resourceOf`). */
   readonly resource: FhirResource
-  /** Its stored candidates, best grade first. */
-  readonly candidates: readonly ResourceMatch.Candidate[]
-  /** The stored record under the id its key derives, read when no candidate was found by identifier. */
-  readonly storedUnderDerivedId: Option.Option<FhirResourceWithId>
+  /** What the store holds of it. */
+  readonly storedMatch: StoredMatch.Entry
   /** Whether another imported record references it. */
   readonly isReferenced: boolean
   /**
@@ -34,13 +33,6 @@ interface SuggestionFacts {
    */
   readonly takenEarlier: HashMap.HashMap<string, readonly TakenFields[]>
 }
-
-/** The stored resources of `candidates` found `by` identifier or by name. */
-const foundBy = (
-  candidates: readonly ResourceMatch.Candidate[],
-  by: ResourceMatch.Evidence
-): readonly FhirResourceWithId[] =>
-  candidates.filter((candidate) => candidate.by === by).map(({ resource }) => resource)
 
 /**
  * The stored records matching by name with a grade that may not need more
@@ -107,13 +99,15 @@ const saveAsNew = (reason: Suggestion.Reason): Suggestion.Type => ({
 })
 
 /**
- * The suggestion for one record:
+ * The suggestion for one record, from its stored copies
+ * (`StoredMatch.storedCopiesOf`):
  *
- * 1. Several stored records found by identifier: Needs a decision,
- *    undecided, whether or not anything references it.
- * 2. One stored record found by identifier, or, when none is, one stored
- *    under the id its key derives: use it, taking the fields that fill a gap
- *    (none when the import offers no field).
+ * 1. Several stored copies: Needs a decision, undecided, whether or not
+ *    anything references it. That is several stored records found by
+ *    identifier, or one found by identifier and another under the id the
+ *    import stage derived for it.
+ * 2. One stored copy: use it, taking the fields that fill a gap (none when
+ *    the import offers no field).
  * 3. No name match that may not need more review: save as new (no match).
  *    Only `possible` matches count as none.
  * 4. Name matches, and another imported record references it: Needs a
@@ -121,13 +115,13 @@ const saveAsNew = (reason: Suggestion.Reason): Suggestion.Type => ({
  * 5. Name matches, and nothing references it: save as new (not referenced).
  */
 const suggestRecord = (facts: SuggestionFacts): Suggestion.Type => {
-  const identifierMatches = foundBy(facts.candidates, 'identifier')
-  if (identifierMatches.length > 1) {
+  const storedCopies = StoredMatch.storedCopiesOf(facts.storedMatch)
+  if (storedCopies.length > 1) {
     return { choice: Option.none(), reason: Suggestion.SeveralIdentifierMatches() }
   }
-  const existing = Option.orElse(onlyElement(identifierMatches), () => facts.storedUnderDerivedId)
-  if (Option.isSome(existing)) return suggestIdentifierMatch(facts, existing.value)
-  const nameMatches = countedNameMatches(facts.candidates)
+  const storedCopy = onlyElement(storedCopies)
+  if (Option.isSome(storedCopy)) return suggestIdentifierMatch(facts, storedCopy.value)
+  const nameMatches = countedNameMatches(facts.storedMatch.candidates)
   if (nameMatches.length === 0) return saveAsNew(Suggestion.NoMatch())
   return facts.isReferenced
     ? suggestNameMatchReferenced(facts, nameMatches)
