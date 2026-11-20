@@ -1,36 +1,47 @@
 {
-  "excluded": [],
   "notes": {
     "dicom": []
   },
-  "review": [
+  "plan": [
     {
-      "disposition": "Included",
-      "group": "dicom",
-      "key": "0:chest-x-ray.dcm/source-file/chest-x-ray.dcm",
-      "resource": "DocumentReference/wf-11213b67ef664dc2deed2557c3585185",
-      "title": "chest-x-ray.dcm"
+      "isImplied": false,
+      "keys": [
+        "0:chest-x-ray.dcm/source-file/chest-x-ray.dcm"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "chest-x-ray.dcm",
+      "written": "DocumentReference/wf-11213b67ef664dc2deed2557c3585185"
     },
     {
-      "disposition": "Included",
-      "group": "dicom",
-      "key": "0:chest-x-ray.dcm/patient",
-      "resource": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524",
-      "title": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524"
+      "isImplied": false,
+      "keys": [
+        "0:chest-x-ray.dcm/patient"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524",
+      "written": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524"
     },
     {
-      "disposition": "Included",
-      "group": "dicom",
-      "key": "0:chest-x-ray.dcm/service-request",
-      "resource": "ServiceRequest/wf-b00c3a0ae723d30921e15d659e32746a",
-      "title": "ServiceRequest/wf-b00c3a0ae723d30921e15d659e32746a"
+      "isImplied": false,
+      "keys": [
+        "0:chest-x-ray.dcm/service-request"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "ServiceRequest/wf-b00c3a0ae723d30921e15d659e32746a",
+      "written": "ServiceRequest/wf-b00c3a0ae723d30921e15d659e32746a"
     },
     {
-      "disposition": "Included",
-      "group": "dicom",
-      "key": "0:chest-x-ray.dcm/imaging-study",
-      "resource": "ImagingStudy/wf-f3ba3c309dbf22d6a316d589b1e9968b",
-      "title": "ImagingStudy/wf-f3ba3c309dbf22d6a316d589b1e9968b"
+      "isImplied": false,
+      "keys": [
+        "0:chest-x-ray.dcm/imaging-study"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "ImagingStudy/wf-f3ba3c309dbf22d6a316d589b1e9968b",
+      "written": "ImagingStudy/wf-f3ba3c309dbf22d6a316d589b1e9968b"
     }
   ],
   "sourceFileRePicks": [
