@@ -2612,7 +2612,9 @@
           "given": [
             "KWAME"
           ],
-          "prefix": [],
+          "prefix": [
+            "DR."
+          ],
           "suffix": [],
           "text": "OSEI DR. KWAME"
         }
@@ -2649,7 +2651,9 @@
           "given": [
             "ANNE"
           ],
-          "prefix": [],
+          "prefix": [
+            "DR."
+          ],
           "suffix": [],
           "text": "ROY DR. ANNE"
         }
@@ -2686,7 +2690,9 @@
           "given": [
             "Lee"
           ],
-          "prefix": [],
+          "prefix": [
+            "Dr."
+          ],
           "suffix": [],
           "text": "Dr. Lee Nguyen"
         }

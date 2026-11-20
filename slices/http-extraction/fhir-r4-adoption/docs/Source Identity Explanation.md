@@ -343,9 +343,9 @@ before it builds the reference plan, the import stage implies that record
 - `importer-fundamentals`' `ImpliedRecord.tryFromLogicalReference` reads an
   exhaustive per-type table of `ImpliedRecordMaker`s: a `Patient` or
   `Practitioner` is the reference's identifier and one `name` whose `text` is
-  the display, a `Practitioner`'s name with the `family` and `given` the
-  display reads as (`HumanName.partsOfText`; "OSEI DR. KWAME" is family
-  `OSEI`, given `KWAME`), so the matcher's `name` search for its family finds
+  the display, a `Practitioner`'s name with the `family`, `given`, `prefix`
+  and `suffix` the display reads as (`HumanName.partsOfText`; "OSEI DR.
+  KWAME MD" is family `OSEI`, given `KWAME`, prefix `DR.`, suffix `MD`), so the matcher's `name` search for its family finds
   it once stored; every other type has none,
   since R4 requires elements a reference cannot carry (a
   `MedicationRequest`'s `subject`, `status`, `intent` and `medication[x]`,

@@ -37,22 +37,34 @@ describe('ImpliedRecord.tryFromLogicalReference', () => {
     {
       resourceType: 'Patient',
       display: 'DR A SMITH',
-      name: { text: 'DR A SMITH', family: null, given: [] },
+      name: { text: 'DR A SMITH', family: null, given: [], prefix: [], suffix: [] },
     },
     {
       resourceType: 'Practitioner',
-      display: 'DR A SMITH',
-      name: { text: 'DR A SMITH', family: 'SMITH', given: ['A'] },
+      display: 'DR A SMITH MD',
+      name: {
+        text: 'DR A SMITH MD',
+        family: 'SMITH',
+        given: ['A'],
+        prefix: ['DR'],
+        suffix: ['MD'],
+      },
     },
     {
       resourceType: 'Practitioner',
       display: 'OSEI DR. KWAME',
-      name: { text: 'OSEI DR. KWAME', family: 'OSEI', given: ['KWAME'] },
+      name: {
+        text: 'OSEI DR. KWAME',
+        family: 'OSEI',
+        given: ['KWAME'],
+        prefix: ['DR.'],
+        suffix: [],
+      },
     },
     {
       resourceType: 'Practitioner',
       display: 'Dr.',
-      name: { text: 'Dr.', family: null, given: [] },
+      name: { text: 'Dr.', family: null, given: [], prefix: [], suffix: [] },
     },
   ] as const)(
     'implies a $resourceType keyed by the identifier, named $name.text with family $name.family',
@@ -84,7 +96,7 @@ describe('ImpliedRecord.tryFromLogicalReference', () => {
           resourceType,
           id: null,
           identifier: [[SYSTEM, 'Dr. A Smith']],
-          name: [{ ...name, prefix: [], suffix: [] }],
+          name: [name],
         })
       )
     }

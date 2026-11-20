@@ -43,14 +43,20 @@ const namedRecordWire = (
 
 /**
  * A provider's name as a reference's `display` prints it: `text` the display
- * as printed, with the `family` and `given` it reads as
+ * as printed, with the `family`, `given`, `prefix` and `suffix` it reads as
  * ({@link HumanName.partsOfText}), so a `name` search for a family name finds
  * it, or `text` alone when no family name can be read.
  */
 const practitionerNameOf = (display: string): FhirR4.HumanName =>
   Option.match(HumanName.partsOfText(display), {
     onNone: () => ({ text: display }),
-    onSome: ({ family, given }) => ({ text: display, family, given: [...given] }),
+    onSome: ({ family, given, prefix, suffix }) => ({
+      text: display,
+      family,
+      given: [...given],
+      prefix: [...prefix],
+      suffix: [...suffix],
+    }),
   })
 
 const decodePatient = DetachedResource.decodeUnknownEither(Patient.Schema)

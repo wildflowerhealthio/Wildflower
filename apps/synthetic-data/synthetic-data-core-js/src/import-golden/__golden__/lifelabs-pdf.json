@@ -718,7 +718,9 @@
           "given": [
             "KWAME"
           ],
-          "prefix": [],
+          "prefix": [
+            "DR."
+          ],
           "suffix": [],
           "text": "OSEI DR. KWAME"
         }
@@ -755,7 +757,9 @@
           "given": [
             "ANNE"
           ],
-          "prefix": [],
+          "prefix": [
+            "DR."
+          ],
           "suffix": [],
           "text": "ROY DR. ANNE"
         }

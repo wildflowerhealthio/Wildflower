@@ -1456,7 +1456,9 @@
           "given": [
             "Lee"
           ],
-          "prefix": [],
+          "prefix": [
+            "Dr."
+          ],
           "suffix": [],
           "text": "Dr. Lee Nguyen"
         }

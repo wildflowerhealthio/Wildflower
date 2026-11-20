@@ -204,9 +204,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   exhaustive table over `fhir-r4`'s `FhirResource` of an `Option` of an
   **`ImpliedRecordMaker`** per type: a `Patient` or `Practitioner`'s maker
   builds its `identifier` and one `name` whose `text` is the display; a
-  `Practitioner`'s name also carries the `family` and `given` the display
-  reads as (`HumanName.partsOfText`, titles dropped, casing as printed: "DR J
-  BROWN" is family `BROWN`, given `J`), so a `name` search for its family
+  `Practitioner`'s name also carries the `family`, `given`, `prefix` and
+  `suffix` the display reads as (`HumanName.partsOfText`, casing as printed:
+  "DR J BROWN MD" is family `BROWN`, given `J`, prefix `DR`, suffix `MD`), so a `name` search for its family
   finds it, and stays text-only when no family name can be read; each is
   decoded detached (`DetachedResource.decodeUnknownEither`), so it gives the
   record or the `ParseError` its schema rejects it with; every other type
