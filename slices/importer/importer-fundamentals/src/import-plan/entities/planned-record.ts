@@ -5,7 +5,7 @@
  * @packageDocumentation
  */
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { Match, Option } from 'effect'
+import { Match, Option, Schema } from 'effect'
 
 import type * as ImportedRecord from './imported-record.ts'
 import * as RecordChoice from './record-choice.ts'
@@ -32,9 +32,14 @@ interface Type {
 
 /**
  * How the plan counts a record by its choice: `Create`, `Update`,
- * `LinkToExisting`, `DontAdd` (not counted) or `Open` (no choice yet).
+ * `LinkToExisting`, `DontAdd` or `Open` (no choice yet).
  */
-type Label = 'Create' | 'Update' | 'LinkToExisting' | 'DontAdd' | 'Open'
+const LabelSchema = Schema.Literal('Create', 'Update', 'LinkToExisting', 'DontAdd', 'Open')
+
+type Label = typeof LabelSchema.Type
+
+/** Every {@link Label}, in the order the plan's totals list them. */
+const labels: readonly Label[] = LabelSchema.literals
 
 /** A record of the plan as suggested: nothing chosen and nothing edited. */
 const make = ({
@@ -88,5 +93,5 @@ const isChanged = (planned: Type): boolean =>
       )
   )
 
-export { effectiveChoice, isChanged, labelOf, make, needsDecision }
+export { effectiveChoice, isChanged, LabelSchema, labelOf, labels, make, needsDecision }
 export type { Label, Type }

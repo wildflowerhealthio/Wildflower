@@ -4,31 +4,34 @@
  *
  * @packageDocumentation
  */
-import type { Array as Arr } from 'effect'
+import { Array as Arr, Record, Schema } from 'effect'
 
-import type * as PickedFile from '../../picked-file.ts'
+import type * as FileSetOrigin from './file-set-origin.ts'
+import * as PlannedRecord from './planned-record.ts'
+
+/** How many records carry each label, every label present. */
+const CountsByLabelSchema = Schema.Record({
+  key: PlannedRecord.LabelSchema,
+  value: Schema.NonNegativeInt,
+})
 
 /**
  * Counts over some records of a plan.
  *
  * @remarks
- * `records` counts every record, one per key. `needsDecision` counts the
- * records listed under Needs a decision, and `open` those of them with no
- * choice yet. A record that is not added counts in `records` alone.
+ * `byLabel` counts the records under each label (`PlannedRecord.labelOf`),
+ * every label present, so the records under `Open` are those with no choice
+ * yet. `needsDecision` counts the records listed under Needs a decision,
+ * whatever their label; every `Open` record is one of them.
  */
 interface Counts {
-  readonly records: number
-  readonly create: number
-  readonly update: number
-  readonly linkToExisting: number
+  readonly byLabel: typeof CountsByLabelSchema.Type
   readonly needsDecision: number
-  readonly open: number
 }
 
 /** The counts of the records one file set brought. */
 interface FileSetCounts {
-  /** The file set's picked files, in pick order. */
-  readonly pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>
+  readonly origin: FileSetOrigin.Type
   readonly counts: Counts
 }
 
@@ -38,4 +41,31 @@ interface Type {
   readonly fileSets: readonly FileSetCounts[]
 }
 
+const decodeCountsByLabel = Schema.decodeUnknownSync(CountsByLabelSchema)
+
+/**
+ * The counts of some records: `recordsLabelled(label)` under each label of
+ * `PlannedRecord.labels`, every label present, and `needsDecision`.
+ *
+ * @throws When a count is not a non-negative integer, a defect, since
+ *   every count is a number of records.
+ */
+const makeCounts = (
+  recordsLabelled: (label: PlannedRecord.Label) => number,
+  needsDecision: number
+): Counts => ({
+  byLabel: decodeCountsByLabel(
+    Record.fromIterableWith(
+      PlannedRecord.labels,
+      (label) => [label, recordsLabelled(label)] as const
+    )
+  ),
+  needsDecision,
+})
+
+/** How many records `counts` counts, one per key: every record has one label. */
+const recordsOf = (counts: Counts): number =>
+  Arr.reduce(Record.values(counts.byLabel), 0, (sum, n) => sum + n)
+
+export { makeCounts, recordsOf }
 export type { Counts, FileSetCounts, Type }
