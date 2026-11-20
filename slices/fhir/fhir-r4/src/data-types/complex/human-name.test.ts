@@ -292,74 +292,119 @@ describe('displayName', () => {
 describe('partsOfText', () => {
   it.each([
     {
-      form: 'given names then a family, a leading title dropped, casing kept',
+      form: 'given names then a family, a leading title in prefix, casing kept',
       text: 'DR J BROWN',
-      parts: Option.some({ family: 'BROWN', given: ['J'] }),
+      parts: parts('BROWN', ['J'], { prefix: ['DR'] }),
     },
     {
       form: 'a dotted title leading the text, diacritics kept',
       text: 'Dr. Zoë  Nguyễn',
-      parts: Option.some({ family: 'Nguyễn', given: ['Zoë'] }),
+      parts: parts('Nguyễn', ['Zoë'], { prefix: ['Dr.'] }),
     },
     {
       form: 'a title alone before the family',
       text: 'DR SMITH',
-      parts: Option.some({ family: 'SMITH', given: [] }),
+      parts: parts('SMITH', [], { prefix: ['DR'] }),
     },
     {
       form: 'a title after the first word: family before it, given names after it',
       text: 'OSEI DR. KWAME',
-      parts: Option.some({ family: 'OSEI', given: ['KWAME'] }),
+      parts: parts('OSEI', ['KWAME'], { prefix: ['DR.'] }),
     },
     {
       form: 'a title after a family of several words',
       text: 'VAN DER BERG DR JAN PIETER',
-      parts: Option.some({ family: 'VAN DER BERG', given: ['JAN', 'PIETER'] }),
+      parts: parts('VAN DER BERG', ['JAN', 'PIETER'], { prefix: ['DR'] }),
     },
     {
-      form: 'a title ending the words: all before it the family, no given names',
+      form: 'a title ending the words of one word: the family, no given names',
       text: 'OSEI DR.',
-      parts: Option.some({ family: 'OSEI', given: [] }),
+      parts: parts('OSEI', [], { prefix: ['DR.'] }),
     },
     {
-      form: 'a title after the first word, a credential after a comma dropped first',
+      form: 'a title ending the words: read around the name, not splitting it',
+      text: 'John Smith Dr',
+      parts: parts('Smith', ['John'], { prefix: ['Dr'] }),
+    },
+    {
+      form: 'a title after a comma: read around the name',
+      text: 'John Smith, Dr.',
+      parts: parts('Smith', ['John'], { prefix: ['Dr.'] }),
+    },
+    {
+      form: 'one comma, a title trailing the given names: read around the name',
+      text: 'Smith, John Dr.',
+      parts: parts('Smith', ['John'], { prefix: ['Dr.'] }),
+    },
+    {
+      form: 'a credential ending the words without a comma',
+      text: 'DR J BROWN MD',
+      parts: parts('BROWN', ['J'], { prefix: ['DR'], suffix: ['MD'] }),
+    },
+    {
+      form: 'a dotted credential ending the words without a comma',
+      text: 'John Smith M.D.',
+      parts: parts('Smith', ['John'], { suffix: ['M.D.'] }),
+    },
+    {
+      form: 'a title after the first word, a credential ending the words',
+      text: 'OSEI DR. KWAME MD',
+      parts: parts('OSEI', ['KWAME'], { prefix: ['DR.'], suffix: ['MD'] }),
+    },
+    {
+      form: 'a title after the first word, a credential after a comma',
       text: 'OSEI DR. KWAME, MD',
-      parts: Option.some({ family: 'OSEI', given: ['KWAME'] }),
+      parts: parts('OSEI', ['KWAME'], { prefix: ['DR.'], suffix: ['MD'] }),
     },
     {
-      form: 'a title after the first word, a generational suffix trailing dropped',
+      form: 'a title after the first word, a generational suffix trailing',
       text: 'OSEI DR. KWAME JR.',
-      parts: Option.some({ family: 'OSEI', given: ['KWAME'] }),
+      parts: parts('OSEI', ['KWAME'], { prefix: ['DR.'], suffix: ['JR.'] }),
+    },
+    {
+      form: 'credentials and suffixes after commas and without, in the order written',
+      text: 'DR J BROWN JR, MD, PhD',
+      parts: parts('BROWN', ['J'], { prefix: ['DR'], suffix: ['JR', 'MD', 'PhD'] }),
+    },
+    {
+      form: 'one comma, a credential and a suffix trailing the given names',
+      text: 'Schmitt, John Jr MD',
+      parts: parts('Schmitt', ['John'], { suffix: ['Jr', 'MD'] }),
     },
     {
       form: 'a title both leading and after the first word',
       text: 'Dr. Osei Dr. Kwame',
-      parts: Option.some({ family: 'Osei', given: ['Kwame'] }),
+      parts: parts('Osei', ['Kwame'], { prefix: ['Dr.', 'Dr.'] }),
     },
     {
       form: 'one comma: the comma, not a title after it, ends the family',
       text: 'Brown, Dr. Jonathan',
-      parts: Option.some({ family: 'Brown', given: ['Jonathan'] }),
+      parts: parts('Brown', ['Jonathan'], { prefix: ['Dr.'] }),
     },
     {
-      form: 'one comma, a title leading the family dropped',
+      form: 'one comma, a title leading the family',
       text: 'Dr. Brown, Jonathan',
-      parts: Option.some({ family: 'Brown', given: ['Jonathan'] }),
+      parts: parts('Brown', ['Jonathan'], { prefix: ['Dr.'] }),
     },
     {
       form: 'three commas: read as spaces, so a title among the words splits',
       text: 'Roy, Dr., Anne, Marie',
-      parts: Option.some({ family: 'Roy', given: ['Anne', 'Marie'] }),
+      parts: parts('Roy', ['Anne', 'Marie'], { prefix: ['Dr.'] }),
+    },
+    {
+      form: 'a credential that is also a name: kept as a name',
+      text: 'Nguyen, Do',
+      parts: parts('Nguyen', ['Do']),
     },
     {
       form: 'dotted initials spelling a title: a given name, not a title',
       text: 'D.R. SMITH',
-      parts: Option.some({ family: 'SMITH', given: ['D.R.'] }),
+      parts: parts('SMITH', ['D.R.']),
     },
     {
       form: 'dotted initials spelling a title among the words: no split',
       text: 'Dr. J. D.R. Smith',
-      parts: Option.some({ family: 'Smith', given: ['J.', 'D.R.'] }),
+      parts: parts('Smith', ['J.', 'D.R.'], { prefix: ['Dr.'] }),
     },
     {
       form: 'a title alone: no family name',
@@ -367,20 +412,23 @@ describe('partsOfText', () => {
       parts: Option.none(),
     },
     {
+      form: 'credentials alone: no family name',
+      text: 'MD, PhD',
+      parts: Option.none(),
+    },
+    {
       form: 'blank text: no family name',
       text: ' , ',
       parts: Option.none(),
     },
-  ])('should read $form', ({ text, parts }) => {
-    expect(HumanName.partsOfText(text)).toEqual(parts)
+  ])('should read $form', ({ text, parts: expected }) => {
+    expect(HumanName.partsOfText(text)).toEqual(expected)
   })
 
   it('should read given names then a family name as written', () => {
     fc.assert(
       fc.property(fc.array(nameWordArb, { maxLength: 3 }), nameWordArb, (given, family) => {
-        expect(HumanName.partsOfText([...given, family].join(' '))).toEqual(
-          Option.some({ family, given })
-        )
+        expect(HumanName.partsOfText([...given, family].join(' '))).toEqual(parts(family, given))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -393,7 +441,7 @@ describe('partsOfText', () => {
         fc.array(nameWordArb, { minLength: 1, maxLength: 3 }),
         (family, given) => {
           expect(HumanName.partsOfText(`${family.join(' ')}, ${given.join(' ')}`)).toEqual(
-            Option.some({ family: family.join(' '), given })
+            parts(family.join(' '), given)
           )
         }
       ),
@@ -401,15 +449,15 @@ describe('partsOfText', () => {
     )
   })
 
-  it('should split a name at a title after its first word, whatever its case and dots', () => {
+  it('should split a name at a title among its words, whatever its case and dots', () => {
     fc.assert(
       fc.property(
         fc.array(nameWordArb, { minLength: 1, maxLength: 3 }),
         titleArb,
-        fc.array(nameWordArb, { maxLength: 3 }),
+        fc.array(nameWordArb, { minLength: 1, maxLength: 3 }),
         (family, title, given) => {
           expect(HumanName.partsOfText([...family, title, ...given].join(' '))).toEqual(
-            Option.some({ family: family.join(' '), given })
+            parts(family.join(' '), given, { prefix: [title] })
           )
         }
       ),
@@ -417,14 +465,44 @@ describe('partsOfText', () => {
     )
   })
 
-  it('should read a name with a leading title as it reads the name without it', () => {
+  it('should read a leading title into prefix and the name as it reads without it', () => {
     fc.assert(
       fc.property(
         titleArb,
         fc.array(nameWordArb, { minLength: 1, maxLength: 4 }),
         (title, words) => {
           expect(HumanName.partsOfText(`${title} ${words.join(' ')}`)).toEqual(
-            HumanName.partsOfText(words.join(' '))
+            Option.map(HumanName.partsOfText(words.join(' ')), (read) => ({
+              ...read,
+              prefix: [title, ...read.prefix],
+            }))
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should read trailing titles, credentials and suffixes around the name, comma or not', () => {
+    fc.assert(
+      fc.property(
+        fc.array(nameWordArb, { minLength: 1, maxLength: 4 }),
+        fc.array(aroundWordArb, { minLength: 1, maxLength: 3 }),
+        fc.boolean(),
+        (words, trailing, withComma) => {
+          // Arrange
+          const text = `${words.join(' ')}${withComma ? ',' : ''} ${trailing.map(({ word }) => word).join(' ')}`
+
+          // Act
+          const read = HumanName.partsOfText(text)
+
+          // Assert
+          expect(read).toEqual(
+            Option.map(HumanName.partsOfText(words.join(' ')), (name) => ({
+              ...name,
+              prefix: trailing.filter(({ isTitle }) => isTitle).map(({ word }) => word),
+              suffix: trailing.filter(({ isTitle }) => !isTitle).map(({ word }) => word),
+            }))
           )
         }
       ),
@@ -434,15 +512,15 @@ describe('partsOfText', () => {
 })
 
 describe('partsOf', () => {
-  it('should read the family and given names a name states, a leading title dropped', () => {
+  it('should read the family and given names a name states, a leading title in prefix', () => {
     expect(
       HumanName.partsOf({ family: ' Dr  Van  Berg ', given: ['Ann Marie'], text: 'ignored' })
-    ).toEqual(Option.some({ family: 'Van Berg', given: ['Ann', 'Marie'] }))
+    ).toEqual(parts('Van Berg', ['Ann', 'Marie'], { prefix: ['Dr'] }))
   })
 
   it('should read the text of a name that states neither', () => {
     expect(HumanName.partsOf({ given: [], text: 'OSEI DR. KWAME' })).toEqual(
-      Option.some({ family: 'OSEI', given: ['KWAME'] })
+      parts('OSEI', ['KWAME'], { prefix: ['DR.'] })
     )
   })
 
@@ -486,6 +564,14 @@ const nameWordArb = fc
   .stringMatching(/^[A-Za-zÀ-ÿ'-]{1,10}$/u)
   .filter((word) => !HumanName.isTitleCredentialOrSuffix(word))
 
+/** The parts `partsOfText` reads, `prefix` and `suffix` empty unless given. */
+const parts = (
+  family: string,
+  given: readonly string[],
+  around: { readonly prefix?: readonly string[]; readonly suffix?: readonly string[] } = {}
+): Option.Option<HumanName.Parts> =>
+  Option.some({ family, given, prefix: around.prefix ?? [], suffix: around.suffix ?? [] })
+
 /** A doctor's title, cased any way, with or without its dot. */
 const titleArb = fc
   .tuple(fc.constantFrom('dr', 'doctor'), fc.boolean(), fc.boolean())
@@ -493,3 +579,14 @@ const titleArb = fc
     ([title, upperCased, dotted]) =>
       `${upperCased ? title.toUpperCase() : title}${dotted ? '.' : ''}`
   )
+
+/** A word written around a name: a title, or a credential or generational suffix cased any way. */
+const aroundWordArb = fc.oneof(
+  titleArb.map((word) => ({ word, isTitle: true })),
+  fc
+    .tuple(
+      fc.constantFrom('MD', 'M.D.', 'RPh', 'PharmD', 'PhD', 'Jr', 'Jr.', 'Sr', 'III'),
+      fc.boolean()
+    )
+    .map(([word, upperCased]) => ({ word: upperCased ? word.toUpperCase() : word, isTitle: false }))
+)

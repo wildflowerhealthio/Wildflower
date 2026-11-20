@@ -274,9 +274,14 @@ describe('MatchGrade.comparableNamesOf', () => {
       name: { family: 'roy', given: ['anne'] },
     },
     {
-      form: 'a title ending the text: family before it, no given names',
+      form: 'a title ending the text: dropped, given names then family',
       text: 'John Smith Dr',
-      name: { family: 'john smith', given: [] },
+      name: { family: 'smith', given: ['john'] },
+    },
+    {
+      form: 'a credential ending the text without a comma: dropped',
+      text: 'DR J BROWN MD',
+      name: { family: 'brown', given: ['j'] },
     },
     {
       form: 'three commas: given names then family, the commas read as spaces',
