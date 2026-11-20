@@ -122,10 +122,13 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `fileCopiesOf` reads a format's decode as copies of records, placed,
   linked and stamped by the import stage's own steps with no reference
   between a set's records resolved; `findStoredMatch` matches an import
-  once against the store; `planImport` builds its `ImportPlan`. No
-  DOM and no React; the one client it asks is the store's
-  (`FhirR4ResourcesHttpApiClient`), which `findStoredMatch` and `planImport`
-  require.
+  once against the store, `noStore` against none; `planImport` builds its
+  `ImportPlan`; `importWithSuggestions` imports a picked batch with no
+  reviewer, every suggestion taken, and gives back the resources of one
+  transaction for the caller to persist. No DOM and no React; the one
+  client it asks is the store's (`FhirR4ResourcesHttpApiClient`), which
+  `findStoredMatch` requires, and `planImport` and `importWithSuggestions`
+  when handed it.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
   the React half of the registry (each `importer-core` importer spread with

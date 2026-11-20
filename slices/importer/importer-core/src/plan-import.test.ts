@@ -3,6 +3,7 @@ import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { fileCopiesOf } from './file-copies-of.ts'
+import { findStoredMatch, noStore } from './find-stored-match.ts'
 import { importDecoded } from './import-decoded.ts'
 import {
   decodedOf,
@@ -18,7 +19,10 @@ import {
 import { planImport } from './plan-import.ts'
 import * as ReviewGroup from './review-group.ts'
 
-/** Covers building an import's plan: its copies grouped into records, matched once, and suggested. */
+/**
+ * Covers building an import's plan: its copies grouped into records, matched
+ * once against the store the caller names, and suggested.
+ */
 
 describe('planImport', () => {
   it('should find a re-imported source file and record the same as existing under their derived ids', async () => {
@@ -34,7 +38,10 @@ describe('planImport', () => {
     const storedTyra = stored({ ...tyraWire, identifier: [], id: derivedId('Patient', 'tyra') })
 
     // Act
-    const { result } = await runAgainst(planImport(copies), [storedSourceFile, storedTyra])
+    const { result } = await runAgainst(planImport(copies, findStoredMatch), [
+      storedSourceFile,
+      storedTyra,
+    ])
 
     // Assert
     expect(
@@ -59,7 +66,7 @@ describe('planImport', () => {
     const { copies } = await Effect.runPromise(fileCopiesOf({ sourceFileFormat }, decoded))
 
     // Act
-    const { result } = await runAgainst(planImport(copies), written)
+    const { result } = await runAgainst(planImport(copies, findStoredMatch), written)
 
     // Assert
     expect({
@@ -69,5 +76,27 @@ describe('planImport', () => {
       written: 4,
       reasons: Array.from({ length: 4 }, () => 'IdentifierMatchSameAsExisting'),
     })
+  })
+
+  it('should suggest saving every record as new with no store, sending nothing', async () => {
+    // Arrange
+    const { copies } = await Effect.runPromise(
+      fileCopiesOf(
+        { sourceFileFormat },
+        decodedOf([
+          ['tyra', detached(tyraWire)],
+          ['rx-1', detached(prescriptionWire)],
+        ])
+      )
+    )
+
+    // Act
+    const { result, requests } = await runAgainst(planImport(copies, noStore), [])
+
+    // Assert
+    expect({
+      requests,
+      reasons: result.records.map((planned) => planned.suggestion.reason._tag),
+    }).toEqual({ requests: [], reasons: Array.from({ length: 4 }, () => 'NoMatch') })
   })
 })

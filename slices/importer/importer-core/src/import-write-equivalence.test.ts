@@ -20,8 +20,8 @@ import { Effect, Either, Option, Order, Schema, TestContext } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { fileCopiesOf } from './file-copies-of.ts'
+import { noStore } from './find-stored-match.ts'
 import { importDecoded, type ImportingFormat } from './import-decoded.ts'
-import { runAgainst } from './plan-import.test-helpers.ts'
 import { planImport } from './plan-import.ts'
 import { planWrite } from './plan-write.ts'
 import { formatRegistry } from './registry.ts'
@@ -199,9 +199,8 @@ const reviewScreenWrite = (): Promise<readonly FhirResourceWithId[]> =>
 /** What the import plan writes onto an empty store, every suggestion taken. */
 const importPlanWrite = async (): Promise<readonly FhirResourceWithId[]> => {
   const { copies } = await Effect.runPromise(fileCopiesOf(importer, decoded))
-  const { result: resolution } = await runAgainst(
-    Effect.flatMap(planImport(copies), (plan) => resolvePlan(plan)),
-    []
+  const resolution = await Effect.runPromise(
+    Effect.flatMap(planImport(copies, noStore), (plan) => resolvePlan(plan))
   )
   return ImportWrite.match(ImportWrite.of(resolution), {
     Ready: ({ resources }) => resources,
