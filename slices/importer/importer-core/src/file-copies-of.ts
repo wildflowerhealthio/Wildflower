@@ -10,14 +10,19 @@ import {
   DecodedFileSet,
   type FileImporter,
   FileSetOrigin,
-  FormatDecode,
+  type FormatDecode,
   ImportedCopy,
-  PickedFile,
+  type PickedFile,
   SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, type ParseResult } from 'effect'
 
-import { type ImportingFormat, linkAndStamp, mintSourceFiles } from './import-decoded.ts'
+import {
+  finishEachFileSet,
+  type ImportingFormat,
+  linkAndStamp,
+  mintSourceFiles,
+} from './import-decoded.ts'
 
 /**
  * What one format's decode brings to an import: every copy of the file sets
@@ -77,33 +82,26 @@ const fileSetCopiesOf = (
  * @param importer - The format's importer, whose source-file format and
  *   hooks the import stage runs
  * @param decoded - The format's decode, as its `decode` returned it
- * @returns The format's copies, never failing: as `importDecoded` does, a
- *   set the import stage cannot finish (a source file that cannot be minted,
- *   an implied record its schema rejects, a record naming a file no picked
- *   file of the set identifies as) is an unreadable row per picked file of
- *   the set, after the rows the decode reported, while the other sets keep
- *   their copies and notes
+ * @returns The format's copies, never failing: as `importDecoded` does
+ *   (`finishEachFileSet`), a set the import stage cannot finish (a source
+ *   file that cannot be minted, an implied record its schema rejects, a
+ *   record naming a file no picked file of the set identifies as) is an
+ *   unreadable row per picked file of the set, after the rows the decode
+ *   reported, while the other sets keep their copies and notes
  */
 const fileCopiesOf = <TFormat extends string>(
   importer: ImportingFormat,
   decoded: FormatDecode.Decoded<TFormat>
 ): Effect.Effect<FormatCopies> =>
-  Effect.partition(
-    decoded.fileSets,
-    (fileSet) =>
-      Effect.mapError(fileSetCopiesOf(importer, decoded.format, fileSet), (error) =>
-        fileSet.pickedFiles.map(({ pickedFile }) =>
-          FormatDecode.makeUnreadableFile(decoded.format, pickedFile, error)
-        )
-      ),
-    { concurrency: 'unbounded' }
-  ).pipe(
-    Effect.map(([rejected, finished]): FormatCopies => ({
+  Effect.map(
+    finishEachFileSet(importer, decoded, (fileSet) =>
+      fileSetCopiesOf(importer, decoded.format, fileSet)
+    ),
+    ({ finished, unreadableFiles }): FormatCopies => ({
       copies: finished.flatMap(({ copies }) => copies),
       notes: finished.flatMap(({ notes }) => notes),
-      unreadableFiles: [...decoded.unreadableFiles, ...rejected.flat()],
-    })),
-    Effect.provideService(PickedFile.Format, importer.sourceFileFormat)
+      unreadableFiles,
+    })
   )
 
 export { fileCopiesOf }

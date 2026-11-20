@@ -15,8 +15,10 @@ import type * as ReviewGroup from './review-group.ts'
 
 /**
  * The import stage: one format's decode, file set by file set, made the
- * device's own. The one place a record is adopted, a source file is minted
- * and `meta.source` is stamped.
+ * device's own. The one place a record is adopted. Its other steps (minting
+ * source files, linking and stamping `meta.source`, and reading a set it
+ * cannot finish as unreadable rows) are shared with the import plan's copies
+ * (`fileCopiesOf`).
  *
  * @remarks
  * Per set, {@link importFileSet} mints a source file for every picked file
@@ -170,6 +172,58 @@ const importFileSet = (
   })
 
 /**
+ * The file sets of one format's decode the import stage finished, and a row
+ * per picked file it could not read.
+ */
+interface FinishedFileSets<TFinished> {
+  /** What `finishFileSet` made of each set it finished, in decode order. */
+  readonly finished: readonly TFinished[]
+  /** The rows the decode reported, then a row per picked file of each set it could not finish. */
+  readonly unreadableFiles: readonly FormatDecode.UnreadableFile[]
+}
+
+/**
+ * Finish every file set of one format's decode with `finishFileSet`,
+ * concurrently and each on its own.
+ *
+ * @param importer - The format's importer, whose `sourceFileFormat` is the
+ *   `PickedFile.Format` provided to `finishFileSet`
+ * @param decoded - The format's decode, as its `decode` returned it
+ * @param finishFileSet - What the import stage makes of one set
+ * @returns The sets finished, never failing: a set `finishFileSet` fails on
+ *   (a source file that cannot be built, a record naming a file none of its
+ *   picked files identifies as) is an `unreadableFiles` row per picked file,
+ *   after the rows the decode already reported, while the rest are finished
+ */
+const finishEachFileSet = <TFormat extends string, TFinished>(
+  importer: ImportingFormat,
+  decoded: FormatDecode.Decoded<TFormat>,
+  finishFileSet: (
+    fileSet: DecodedFileSet.Type
+  ) => Effect.Effect<
+    TFinished,
+    ParseResult.ParseError | FileImporter.SourceFileNotFound,
+    PickedFile.Format
+  >
+): Effect.Effect<FinishedFileSets<TFinished>> =>
+  Effect.partition(
+    decoded.fileSets,
+    (fileSet) =>
+      Effect.mapError(finishFileSet(fileSet), (error) =>
+        fileSet.pickedFiles.map(({ pickedFile }) =>
+          FormatDecode.makeUnreadableFile(decoded.format, pickedFile, error)
+        )
+      ),
+    { concurrency: 'unbounded' }
+  ).pipe(
+    Effect.map(([rejected, finished]): FinishedFileSets<TFinished> => ({
+      finished,
+      unreadableFiles: [...decoded.unreadableFiles, ...rejected.flat()],
+    })),
+    Effect.provideService(PickedFile.Format, importer.sourceFileFormat)
+  )
+
+/**
  * Import one format's decode: every file set through {@link importFileSet},
  * merged into the format's one review group, which holds the picks the
  * format's decode read (`decoded.files`).
@@ -180,35 +234,21 @@ const importFileSet = (
  * @returns The format's review group, never failing
  *
  * @remarks
- * Sets are imported concurrently and each is independent: one whose source file
- * cannot be built, or whose records name a file none of its picked files
- * identifies as (`FileImporter.SourceFileNotFound`), yields an
- * `unreadableFiles` row per picked file, after the
- * rows the decode already reported, while the rest stay reviewable. It provides
- * the `PickedFile.Format` service from the importer's `sourceFileFormat`
- * internally, so nothing it returns carries a requirement.
+ * Sets are imported as {@link finishEachFileSet} finishes them: a set that
+ * cannot be imported is unreadable rows, while the rest stay reviewable.
  */
 const importDecoded = <TFormat extends string>(
   importer: ImportingFormat,
   decoded: FormatDecode.Decoded<TFormat>
 ): Effect.Effect<ReviewGroup.Type> =>
-  Effect.partition(
-    decoded.fileSets,
-    (fileSet) =>
-      Effect.mapError(importFileSet(importer, fileSet), (error) =>
-        fileSet.pickedFiles.map(({ pickedFile }) =>
-          FormatDecode.makeUnreadableFile(decoded.format, pickedFile, error)
-        )
-      ),
-    { concurrency: 'unbounded' }
-  ).pipe(
-    Effect.map(([rejected, imported]): ReviewGroup.Type => ({
-      ...AdoptedFileSet.concatenateAll(imported),
-      unreadableFiles: [...decoded.unreadableFiles, ...rejected.flat()],
+  Effect.map(
+    finishEachFileSet(importer, decoded, (fileSet) => importFileSet(importer, fileSet)),
+    ({ finished, unreadableFiles }): ReviewGroup.Type => ({
+      ...AdoptedFileSet.concatenateAll(finished),
+      unreadableFiles,
       files: decoded.files,
-    })),
-    Effect.provideService(PickedFile.Format, importer.sourceFileFormat)
+    })
   )
 
-export { importDecoded, linkAndStamp, mintSourceFiles }
+export { finishEachFileSet, importDecoded, linkAndStamp, mintSourceFiles }
 export type { ImportingFormat }
