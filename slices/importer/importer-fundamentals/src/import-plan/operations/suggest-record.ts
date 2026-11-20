@@ -5,13 +5,9 @@
  * @packageDocumentation
  */
 import { MatchGrade, type ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
-import {
-  type FhirResource,
-  type FhirResourceWithId,
-  literalReferenceOf,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
-import { HashMap, HashSet, Option } from 'effect'
+import { HashSet, Option } from 'effect'
 
 import * as ChangedStoredRecord from '../entities/changed-stored-record.ts'
 import * as OfferedFields from '../entities/offered-fields.ts'
@@ -33,7 +29,7 @@ interface SuggestionFacts {
    * Each stored record the records ahead of this one in plan order use, with
    * their changes, by the stored record's literal reference.
    */
-  readonly changedSoFar: HashMap.HashMap<string, ChangedStoredRecord.Type>
+  readonly changedSoFar: ChangedStoredRecord.ByStoredRecord
   /** How the import's and the stored records' references are compared. */
   readonly comparableReferences: ComparableReferences.Type
 }
@@ -52,7 +48,7 @@ const countedNameMatches = (
 
 /**
  * What `facts.resource` offers `existing` as it stands once the records ahead
- * of it changed it (`ChangedStoredRecord.asItStands`).
+ * of it changed it (`ChangedStoredRecord.asItStandsIn`).
  */
 const offeredFieldsFor = (
   facts: SuggestionFacts,
@@ -60,9 +56,7 @@ const offeredFieldsFor = (
 ): OfferedFields.Type =>
   compareToStored(
     facts.resource,
-    HashMap.get(facts.changedSoFar, literalReferenceOf(existing)).pipe(
-      Option.match({ onNone: () => existing, onSome: ChangedStoredRecord.asItStands })
-    ),
+    ChangedStoredRecord.asItStandsIn(facts.changedSoFar, existing),
     facts.comparableReferences
   )
 
