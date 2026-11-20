@@ -4,10 +4,11 @@ import {
   type FhirResourceWithId,
   literalReferenceOf,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { HashMap, HashSet, Match, Option } from 'effect'
+import { HashSet, Match, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ChangedStoredRecord from '../entities/changed-stored-record.ts'
+import * as RecordChoice from '../entities/record-choice.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
 import { candidate, detached, drBrownWire, stored, tyraWire } from '../import-plan.test-helpers.ts'
@@ -28,7 +29,7 @@ const factsFor = (
   resource,
   storedMatch: StoredMatch.makeEntry(candidates, storedUnderDerivedId),
   isReferenced: false,
-  changedSoFar: HashMap.empty(),
+  changedSoFar: ChangedStoredRecord.noneChanged,
   comparableReferences: ComparableReferences.of([], StoredMatch.empty),
   ...overrides,
 })
@@ -264,13 +265,16 @@ describe('suggestRecord', () => {
   it('should leave the fields an earlier record takes out of the gaps it fills', () => {
     // Arrange
     const earlier = detached(tyraWire('tyra-copy', { gender: 'female' }))
-    const changedSoFar = HashMap.make([
-      literalReferenceOf(storedTyra),
-      ChangedStoredRecord.withChange(ChangedStoredRecord.of(storedTyra), {
-        resource: earlier,
-        fieldsTaken: HashSet.make('gender'),
-      }),
-    ] as const)
+    const changedSoFar = ChangedStoredRecord.withRecordChoice(
+      ChangedStoredRecord.noneChanged,
+      Option.some(
+        RecordChoice.UseExistingRecord({
+          existing: storedTyra,
+          fieldsTaken: HashSet.make('gender'),
+        })
+      ),
+      { resource: earlier, isEdit: false }
+    )
 
     // Act
     const suggestion = suggestRecord(

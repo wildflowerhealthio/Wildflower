@@ -30,7 +30,7 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Array as Arr, Effect, FastCheck as fc, Option, Schema, SchemaAST } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { adopt, adoptedReferenceOf, originalIdOf } from './adopt-resource.ts'
+import { adopt, adoptedReferenceOf, originalIdOf, resolveReferences } from './adopt-resource.ts'
 import * as DetachedResource from './detached-resource.ts'
 import * as ReferencePlan from './reference-plan.ts'
 
@@ -1633,5 +1633,38 @@ describe('originalIdOf', () => {
     expect(
       originalIdOf(SYSTEM, detachThenAdopt({ ...sample(Observation.Schema, 13), id: 'src-1' }))
     ).toBeNull()
+  })
+})
+
+describe('resolveReferences', () => {
+  test('resolves a record’s references as adopt does, the record kept detached', () => {
+    const patientSource = { ...sample(Patient.Schema, 12), id: 'pat-7' }
+    const detachedPatient = detachFhir(patientSource)
+    const observation: DetachedResource.Type = detachFhir({
+      ...sample(Observation.Schema, 13),
+      id: 'obs-1',
+      subject: reference({ reference: 'Patient/pat-7' }),
+    })
+    const referencePlan = ReferencePlan.of(
+      [
+        {
+          logicalReference: LogicalReference.make(
+            'Patient',
+            Option.getOrThrow(DetachedResource.keyIdentifierOf(detachedPatient))
+          ),
+          literalReference: 'Patient/p-1',
+        },
+      ],
+      []
+    )
+    const resolved = Effect.runSync(
+      resolveReferences(observation).pipe(
+        Effect.provideService(ReferencePlan.InForce, referencePlan)
+      )
+    )
+    expect({ id: resolved.id, subject: asObservation(resolved).subject?.reference }).toEqual({
+      id: null,
+      subject: 'Patient/p-1',
+    })
   })
 })

@@ -1,7 +1,7 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Schema } from 'effect'
+import { Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -93,5 +93,48 @@ describe('MetaSource.stampAdopted', () => {
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('MetaSource.sourceOf', () => {
+  it('property: reads back the source file a stamp names', () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1 }).map(MetaSource.makeReference), (source) => {
+        expect(MetaSource.sourceOf(MetaSource.stamp(marker('m'), source))).toEqual(
+          Option.some(source)
+        )
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should read nothing from a resource with no meta, no source, or a source naming no source file', () => {
+    // Arrange
+    const withSource = (source: string | null): Marker => ({
+      ...marker('m'),
+      meta: { lastUpdated: null, profile: [], security: [], tag: [], versionId: null, source },
+    })
+
+    // Act
+    const sources = [marker('m'), withSource(null), withSource('https://source.example/x')].map(
+      MetaSource.sourceOf
+    )
+
+    // Assert
+    expect(sources).toEqual([Option.none(), Option.none(), Option.none()])
+  })
+})
+
+describe('MetaSource.isReference', () => {
+  it('should hold a literal reference to a DocumentReference a reference, and nothing else', () => {
+    // Arrange / Act
+    const isReference = [
+      'DocumentReference/d',
+      'Patient/d',
+      'https://source.example/DocumentReference/d',
+    ].map(MetaSource.isReference)
+
+    // Assert
+    expect(isReference).toEqual([true, false, false])
   })
 })
