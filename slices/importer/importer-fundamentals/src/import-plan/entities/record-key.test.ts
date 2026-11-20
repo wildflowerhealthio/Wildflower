@@ -201,3 +201,21 @@ describe('RecordKey.isKeyedByIdentifier', () => {
     expect(keyedByIdentifier).toEqual([true, false, false])
   })
 })
+
+describe('RecordKey.logicalReferenceIfKeyedByIdentifier', () => {
+  it('should give the key identifier of a record keyed by identifier under its type, and nothing for one with no key identifier', () => {
+    // Arrange
+    const tyra = detached(tyraWire('tyra'))
+
+    // Act
+    const logicalReferences = [tyra, binary].map(RecordKey.logicalReferenceIfKeyedByIdentifier)
+
+    // Assert
+    expect(logicalReferences).toEqual([
+      Option.some(
+        LogicalReference.make('Patient', Option.getOrThrow(DetachedResource.keyIdentifierOf(tyra)))
+      ),
+      Option.none(),
+    ])
+  })
+})

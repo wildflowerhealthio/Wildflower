@@ -182,6 +182,36 @@ describe('locateReferences', () => {
     expect(references).toEqual({ referenced: [], notInImport: 0 })
   })
 
+  it('should name each record by every qualified identifier its copies carry, a shared one the record keyed by it', () => {
+    // Arrange
+    const tyra = copyOf(detached(tyraWire('tyra')), 'tyra')
+    const twin = copyOf(
+      detached(
+        tyraWire('twin', {
+          identifier: [
+            { system: OTHER_SOURCE, value: 'twin' },
+            { system: SOURCE, value: 'tyra' },
+          ],
+        })
+      ),
+      'twin'
+    )
+
+    // Act
+    const references = locateReferences(ImportedRecord.fromCopies([tyra, twin]))
+
+    // Assert
+    expect(
+      references.named.map(({ logicalReference, key }) => ({
+        value: logicalReference.identifier[0].value,
+        key,
+      }))
+    ).toEqual([
+      { value: 'tyra', key: ImportedCopy.recordKeyOf(tyra) },
+      { value: 'twin', key: ImportedCopy.recordKeyOf(twin) },
+    ])
+  })
+
   it('should not count a record naming itself as referenced', () => {
     // Arrange
     const selfNaming = copyOf(

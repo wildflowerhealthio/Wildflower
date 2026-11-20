@@ -88,3 +88,27 @@ describe('StoredMatch.storedCopiesOf', () => {
     })
   })
 })
+
+describe('StoredMatch.storedCopiesOfReference', () => {
+  it('should give the stored records found by identifier for a reference not in the import, and no name match', () => {
+    // Arrange
+    const match = StoredMatch.make({
+      records: [],
+      references: [
+        [
+          TYRA_REFERENCE,
+          [
+            candidate(storedTyra, 'certain', 'identifier'),
+            candidate(storedBrown, 'probable', 'name'),
+          ],
+        ],
+      ],
+    })
+
+    // Act
+    const storedCopies = StoredMatch.storedCopiesOfReference(match, TYRA_REFERENCE)
+
+    // Assert
+    expect(storedCopies.map(literalReferenceOf)).toEqual(['Patient/p-1'])
+  })
+})

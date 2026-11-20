@@ -1,8 +1,10 @@
+import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ImportedRecord from '../../entities/imported-record.ts'
 import * as KeptRecord from '../../entities/kept-record.ts'
+import * as RecordChoice from '../../entities/record-choice.ts'
 import * as StoredMatch from '../../entities/stored-match.ts'
 import {
   candidate,
@@ -23,6 +25,21 @@ interface DifferencesSummary {
   readonly gapFilling: readonly string[]
   readonly overwriting: readonly string[]
 }
+
+/** `existing` as merged once an earlier incoming record, `earlier`, merges `fieldsTaken` into it. */
+const asMergedAfter = (
+  existing: FhirResourceWithId,
+  earlier: FhirResource,
+  fieldsTaken: HashSet.HashSet<string>
+): FhirResourceWithId =>
+  KeptRecord.asMergedIn(
+    KeptRecord.withRecordChoice(
+      KeptRecord.noneMerged,
+      Option.some(RecordChoice.MergeIntoExistingRecord({ existing, fieldsTaken })),
+      { incoming: earlier, isEdit: false }
+    ),
+    existing
+  )
 
 /** No record of an import to compare references by: each compared as it is, or by its identifier. */
 const NO_RECORDS = ComparableReferences.of([], StoredMatch.empty)
@@ -109,12 +126,7 @@ describe('differencesOf', () => {
     // Act
     const differences = differencesOf(
       incoming,
-      KeptRecord.asMerged(
-        KeptRecord.withMerge(KeptRecord.of(kept), {
-          incoming: earlier,
-          fieldsTaken: HashSet.make('gender'),
-        })
-      ),
+      asMergedAfter(kept, earlier, HashSet.make('gender')),
       NO_RECORDS
     )
 
@@ -144,12 +156,7 @@ describe('differencesOf', () => {
     // Act
     const differences = differencesOf(
       incoming,
-      KeptRecord.asMerged(
-        KeptRecord.withMerge(KeptRecord.of(kept), {
-          incoming: earlier,
-          fieldsTaken: HashSet.make('gender'),
-        })
-      ),
+      asMergedAfter(kept, earlier, HashSet.make('gender')),
       NO_RECORDS
     )
 
