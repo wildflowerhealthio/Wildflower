@@ -7,7 +7,7 @@
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { Match, Option, Schema } from 'effect'
 
-import type * as ImportedRecord from './imported-record.ts'
+import * as ImportedRecord from './imported-record.ts'
 import * as RecordChoice from './record-choice.ts'
 import type * as StoredMatch from './stored-match.ts'
 import * as Suggestion from './suggestion.ts'
@@ -66,6 +66,10 @@ const withChoiceCleared = (planned: Type): Type => ({ ...planned, chosen: Option
 /** `planned` edited to `edit`, or with its edit cleared by `None`. */
 const withEdit = (planned: Type, edit: Option.Option<FhirResource>): Type => ({ ...planned, edit })
 
+/** `planned` as reviewed: the reviewer's edit, else its resource (`ImportedRecord.resourceOf`). */
+const reviewedResourceOf = (planned: Type): FhirResource =>
+  Option.getOrElse(planned.edit, () => ImportedRecord.resourceOf(planned.record))
+
 /** The choice the import makes for `planned`: the reviewer's, else the suggestion's. */
 const effectiveChoice = (planned: Type): Option.Option<RecordChoice.Type> =>
   Option.orElse(planned.chosen, () => planned.suggestion.choice)
@@ -113,6 +117,7 @@ export {
   labels,
   make,
   needsDecision,
+  reviewedResourceOf,
   withChoice,
   withChoiceCleared,
   withEdit,
