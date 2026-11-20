@@ -1,21 +1,33 @@
-import { HashSet } from 'effect'
+import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as ChangedStoredRecord from '../../entities/changed-stored-record.ts'
+import * as ImportedRecord from '../../entities/imported-record.ts'
+import * as OfferedFields from '../../entities/offered-fields.ts'
+import * as StoredMatch from '../../entities/stored-match.ts'
 import {
+  candidate,
+  copyOf,
   detached,
+  NAMES,
   OTHER_SOURCE,
+  prescriptionWire,
+  SOURCE,
   stored,
   tyraWire,
-} from '../../entities/import-plan.test-helpers.ts'
-import * as OfferedFields from './compare-to-stored.ts'
+} from '../../import-plan.test-helpers.ts'
+import * as ComparableReferences from './comparable-references.ts'
+import { compareToStored } from './compare-to-stored.ts'
 
-/** The fields and identifier values `offered` gives, for a whole-value assertion. */
-/** What an offer says, its identifiers by value. */
+/** What an offer says, its identifiers by value, for a whole-value assertion. */
 interface OfferSummary {
   readonly gapFilling: readonly string[]
   readonly overwriting: readonly string[]
   readonly identifiersToAdd: readonly string[]
 }
+
+/** No record of an import to compare references by: each compared as it is, or by its identifier. */
+const NO_RECORDS = ComparableReferences.of([], StoredMatch.empty)
 
 const summaryOf = (offered: OfferedFields.Type): OfferSummary => ({
   gapFilling: offered.gapFilling,
@@ -23,14 +35,14 @@ const summaryOf = (offered: OfferedFields.Type): OfferSummary => ({
   identifiersToAdd: offered.identifiersToAdd.map(({ value }) => value),
 })
 
-describe('OfferedFields.compare', () => {
+describe('compareToStored', () => {
   it('should offer a field the existing record has no value for as filling a gap', () => {
     // Arrange
     const imported = detached(tyraWire('tyra', { gender: 'female' }))
     const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = OfferedFields.compare(imported, existing, [])
+    const offered = compareToStored(imported, existing, NO_RECORDS)
 
     // Assert
     expect(summaryOf(offered)).toEqual({
@@ -46,7 +58,7 @@ describe('OfferedFields.compare', () => {
     const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = OfferedFields.compare(imported, existing, [])
+    const offered = compareToStored(imported, existing, NO_RECORDS)
 
     // Assert
     expect(summaryOf(offered)).toEqual({
@@ -62,7 +74,7 @@ describe('OfferedFields.compare', () => {
     const existing = stored({ ...tyraWire('tyra', { gender: 'female' }), id: 'p-1' })
 
     // Act
-    const offered = OfferedFields.compare(imported, existing, [])
+    const offered = compareToStored(imported, existing, NO_RECORDS)
 
     // Assert
     expect({ ...summaryOf(offered), offersNoField: OfferedFields.offersNoField(offered) }).toEqual({
@@ -86,7 +98,7 @@ describe('OfferedFields.compare', () => {
     const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = OfferedFields.compare(imported, existing, [])
+    const offered = compareToStored(imported, existing, NO_RECORDS)
 
     // Assert
     expect({ ...summaryOf(offered), offersNoField: OfferedFields.offersNoField(offered) }).toEqual({
@@ -97,16 +109,23 @@ describe('OfferedFields.compare', () => {
     })
   })
 
-  it('should measure a gap after the fields an earlier import resource takes are in place', () => {
+  it('should measure a gap against the stored record as an earlier import resource’s taken fields leave it', () => {
     // Arrange
     const earlier = detached(tyraWire('tyra', { gender: 'male' }))
     const imported = detached(tyraWire('tyra', { gender: 'female' }))
     const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = OfferedFields.compare(imported, existing, [
-      { resource: earlier, fields: HashSet.make('gender') },
-    ])
+    const offered = compareToStored(
+      imported,
+      ChangedStoredRecord.asItStands(
+        ChangedStoredRecord.withChange(ChangedStoredRecord.of(existing), {
+          resource: earlier,
+          fieldsTaken: HashSet.make('gender'),
+        })
+      ),
+      NO_RECORDS
+    )
 
     // Assert
     expect(summaryOf(offered)).toEqual({
@@ -116,7 +135,7 @@ describe('OfferedFields.compare', () => {
     })
   })
 
-  it('should offer nothing an earlier import resource already gives the existing record', () => {
+  it('should offer nothing an earlier import resource already gives the stored record as it stands', () => {
     // Arrange
     const earlier = detached(
       tyraWire('tyra', {
@@ -133,9 +152,104 @@ describe('OfferedFields.compare', () => {
     const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = OfferedFields.compare(imported, existing, [
-      { resource: earlier, fields: HashSet.make('gender') },
-    ])
+    const offered = compareToStored(
+      imported,
+      ChangedStoredRecord.asItStands(
+        ChangedStoredRecord.withChange(ChangedStoredRecord.of(existing), {
+          resource: earlier,
+          fieldsTaken: HashSet.make('gender'),
+        })
+      ),
+      NO_RECORDS
+    )
+
+    // Assert
+    expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
+  })
+
+  it('should find a stored reference, literal beside type and identifier, the same as the import’s logical reference to that record', () => {
+    // Arrange
+    const imported = detached(prescriptionWire('rx-1', { system: NAMES, value: 'Dr. Brown' }))
+    const existing = stored({
+      ...prescriptionWire('rx-1', { system: NAMES, value: 'Dr. Brown' }),
+      id: 'rx-stored',
+      subject: {
+        reference: 'Patient/p-1',
+        type: 'Patient',
+        identifier: { system: SOURCE, value: 'tyra' },
+      },
+      requester: {
+        reference: 'Practitioner/pr-1',
+        type: 'Practitioner',
+        identifier: { system: NAMES, value: 'Dr. Brown' },
+        display: 'Dr. Brown',
+      },
+    })
+
+    // Act
+    const offered = compareToStored(imported, existing, NO_RECORDS)
+
+    // Assert
+    expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
+  })
+
+  it('should find a literal reference to a record’s stage id the same as a stored literal to its stored copy', () => {
+    // Arrange
+    const tyra = copyOf(detached(tyraWire('tyra')), 'tyra', 'a.har', {
+      stageId: { _tag: 'Derived', id: 'p-derived' },
+    })
+    const storedTyra = stored({ ...tyraWire('tyra'), id: 'p-1' })
+    const records = ImportedRecord.fromCopies([tyra])
+    const comparable = ComparableReferences.of(
+      records,
+      StoredMatch.make({
+        records: records.map(
+          ({ key }) =>
+            [
+              key,
+              StoredMatch.makeEntry(
+                [candidate(storedTyra, 'certain', 'identifier')],
+                Option.none()
+              ),
+            ] as const
+        ),
+        references: [],
+      })
+    )
+    const observationWire = {
+      resourceType: 'Observation',
+      identifier: [{ system: SOURCE, value: 'a1c-1' }],
+      status: 'final',
+      code: { text: 'A1c' },
+    }
+    const imported = detached({ ...observationWire, subject: { reference: 'Patient/p-derived' } })
+    const existing = stored({
+      ...observationWire,
+      id: 'o-1',
+      subject: { reference: 'Patient/p-1' },
+    })
+
+    // Act
+    const offered = compareToStored(imported, existing, comparable)
+
+    // Assert
+    expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
+  })
+
+  it('should not depend on the order the resources’ keys were written in', () => {
+    // Arrange
+    const imported = detached(
+      tyraWire('tyra', { name: [{ given: ['Tyra'], family: 'Ashford' }], gender: 'female' })
+    )
+    const existing = stored({
+      id: 'p-1',
+      gender: 'female',
+      name: [{ family: 'Ashford', given: ['Tyra'] }],
+      ...tyraWire('tyra'),
+    })
+
+    // Act
+    const offered = compareToStored(imported, existing, NO_RECORDS)
 
     // Assert
     expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })

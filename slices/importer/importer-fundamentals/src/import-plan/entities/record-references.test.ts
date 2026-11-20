@@ -3,7 +3,6 @@ import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import * as FileCopy from './imported-copy.ts'
 import {
   copyOf,
   detached,
@@ -12,7 +11,9 @@ import {
   prescriptionWire,
   SOURCE,
   tyraWire,
-} from './import-plan.test-helpers.ts'
+} from '../import-plan.test-helpers.ts'
+import * as ImportedCopy from './imported-copy.ts'
+import * as ImportedRecord from './imported-record.ts'
 import * as RecordReferences from './record-references.ts'
 
 const prescription = copyOf(
@@ -24,7 +25,7 @@ const drBrown = copyOf(detached(drBrownWire), 'rx-1#implied', 'a.har', { isImpli
 describe('RecordReferences.of', () => {
   it('should find the records another record references and the references that name no record', () => {
     // Arrange
-    const records = FileCopy.groupByRecord([prescription, drBrown])
+    const records = ImportedRecord.fromCopies([prescription, drBrown])
     const tyraReference = LogicalReference.make(
       'Patient',
       Option.getOrThrow(DetachedResource.keyIdentifierOf(detached(tyraWire('tyra'))))
@@ -38,7 +39,7 @@ describe('RecordReferences.of', () => {
       referenced: [...HashSet.values(references.referenced)],
       unresolved: references.unresolved.map(LogicalReference.key),
     }).toEqual({
-      referenced: [FileCopy.recordKeyOf(drBrown)],
+      referenced: [ImportedCopy.recordKeyOf(drBrown)],
       unresolved: [LogicalReference.key(tyraReference)],
     })
   })
@@ -58,11 +59,11 @@ describe('RecordReferences.of', () => {
     )
 
     // Act
-    const references = RecordReferences.of(FileCopy.groupByRecord([byLicence, brownByLicence]))
+    const references = RecordReferences.of(ImportedRecord.fromCopies([byLicence, brownByLicence]))
 
     // Assert
     expect([...HashSet.values(references.referenced)]).toEqual([
-      FileCopy.recordKeyOf(brownByLicence),
+      ImportedCopy.recordKeyOf(brownByLicence),
     ])
   })
 
@@ -83,7 +84,7 @@ describe('RecordReferences.of', () => {
     )
 
     // Act
-    const references = RecordReferences.of(FileCopy.groupByRecord([selfNaming]))
+    const references = RecordReferences.of(ImportedRecord.fromCopies([selfNaming]))
 
     // Assert
     expect({

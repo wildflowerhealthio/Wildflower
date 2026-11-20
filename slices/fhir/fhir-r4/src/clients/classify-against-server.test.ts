@@ -12,7 +12,9 @@ import {
 import {
   classifyAgainstServer,
   compareWithStoredCopy,
+  encodedFieldsOf,
   normalizedEncode,
+  normalizedFieldsOf,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
   type DiffStatus,
@@ -192,6 +194,32 @@ describe('normalizedEncode', () => {
     const encoded = Option.getOrThrow(normalizedEncode(makePatient('dropped-1')))
 
     expect(encoded).not.toHaveProperty('id')
+  })
+})
+
+describe('normalizedFieldsOf', () => {
+  it('should give the top-level fields normalizedEncode writes, by name', () => {
+    // Arrange
+    const patient = makePatient('fields-1')
+
+    // Act
+    const fields = Option.getOrThrow(normalizedFieldsOf(patient))
+
+    // Assert
+    expect(fields).toEqual(Option.getOrThrow(normalizedEncode(patient)))
+  })
+})
+
+describe('encodedFieldsOf', () => {
+  it('should give every top-level field as the schema encodes it, its id included', () => {
+    // Arrange
+    const patient = makePatient('encoded-1')
+
+    // Act
+    const fields = Option.getOrThrow(encodedFieldsOf(patient))
+
+    // Assert
+    expect(fields).toEqual(encodePatient(patient))
   })
 })
 

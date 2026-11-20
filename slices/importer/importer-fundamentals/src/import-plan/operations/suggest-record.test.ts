@@ -1,29 +1,36 @@
 import type { ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
-import { type FhirResource, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResource,
+  type FhirResourceWithId,
+  literalReferenceOf,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { HashMap, HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import {
-  candidate,
-  detached,
-  drBrownWire,
-  stored,
-  tyraWire,
-} from '../entities/import-plan.test-helpers.ts'
+import * as ChangedStoredRecord from '../entities/changed-stored-record.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
-import * as Suggestion from './suggest-record.ts'
+import * as StoredMatch from '../entities/stored-match.ts'
+import * as Suggestion from '../entities/suggestion.ts'
+import { candidate, detached, drBrownWire, stored, tyraWire } from '../import-plan.test-helpers.ts'
+import * as ComparableReferences from './compare-to-stored/comparable-references.ts'
+import { type SuggestionFacts, suggestRecord } from './suggest-record.ts'
 
-/** The facts of `resource` with `candidates`, nothing under its derived id, nothing taken earlier. */
+/** The facts of `resource` with `candidates`, nothing under its derived id unless given, nothing taken earlier. */
 const factsFor = (
   resource: FhirResource,
   candidates: readonly ResourceMatch.Candidate[],
-  overrides: Partial<Suggestion.Facts> = {}
-): Suggestion.Facts => ({
+  {
+    storedUnderDerivedId = Option.none(),
+    ...overrides
+  }: Partial<Omit<SuggestionFacts, 'storedMatch'>> & {
+    readonly storedUnderDerivedId?: Option.Option<FhirResourceWithId>
+  } = {}
+): SuggestionFacts => ({
   resource,
-  candidates,
-  storedUnderDerivedId: Option.none(),
+  storedMatch: StoredMatch.makeEntry(candidates, storedUnderDerivedId),
   isReferenced: false,
-  takenEarlier: HashMap.empty(),
+  changedSoFar: HashMap.empty(),
+  comparableReferences: ComparableReferences.of([], StoredMatch.empty),
   ...overrides,
 })
 
@@ -46,13 +53,13 @@ const summaryOf = (suggestion: Suggestion.Type): unknown => ({
 const tyra = detached(tyraWire('tyra', { gender: 'female' }))
 const storedTyra = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
-describe('Suggestion.forRecord', () => {
+describe('suggestRecord', () => {
   it('should use the one stored record found by identifier, taking nothing, when it is the same as existing', () => {
     // Arrange
     const sameTyra = detached(tyraWire('tyra'))
 
     // Act
-    const suggestion = Suggestion.forRecord(
+    const suggestion = suggestRecord(
       factsFor(sameTyra, [candidate(storedTyra, 'certain', 'identifier')])
     )
 
@@ -69,7 +76,7 @@ describe('Suggestion.forRecord', () => {
     const differingTyra = detached(tyraWire('tyra', { gender: 'female', birthDate: '1990-01-03' }))
 
     // Act
-    const suggestion = Suggestion.forRecord(
+    const suggestion = suggestRecord(
       factsFor(differingTyra, [candidate(storedTyra, 'certain', 'identifier')])
     )
 
@@ -83,7 +90,7 @@ describe('Suggestion.forRecord', () => {
 
   it('should use the stored record under the derived id when nothing was found by identifier', () => {
     // Arrange / Act
-    const suggestion = Suggestion.forRecord(
+    const suggestion = suggestRecord(
       factsFor(tyra, [], { storedUnderDerivedId: Option.some(storedTyra) })
     )
 
@@ -97,7 +104,7 @@ describe('Suggestion.forRecord', () => {
 
   it('should save a record nothing stored matches as new', () => {
     // Arrange / Act
-    const suggestion = Suggestion.forRecord(factsFor(tyra, [], { isReferenced: true }))
+    const suggestion = suggestRecord(factsFor(tyra, [], { isReferenced: true }))
 
     // Assert
     expect(summaryOf(suggestion)).toEqual({
@@ -109,7 +116,7 @@ describe('Suggestion.forRecord', () => {
 
   it('should save a record with only possible matches as new, as though nothing matched', () => {
     // Arrange / Act
-    const suggestion = Suggestion.forRecord(
+    const suggestion = suggestRecord(
       factsFor(tyra, [candidate(storedTyra, 'possible', 'name')], { isReferenced: true })
     )
 
@@ -131,7 +138,7 @@ describe('Suggestion.forRecord', () => {
     })
 
     // Act
-    const suggestion = Suggestion.forRecord(
+    const suggestion = suggestRecord(
       factsFor(drBrown, [candidate(storedBrown, 'probable', 'name')], { isReferenced: true })
     )
 
@@ -152,7 +159,7 @@ describe('Suggestion.forRecord', () => {
     ]
 
     // Act
-    const suggestion = Suggestion.forRecord(factsFor(tyra, candidates, { isReferenced: true }))
+    const suggestion = suggestRecord(factsFor(tyra, candidates, { isReferenced: true }))
 
     // Assert
     expect(summaryOf(suggestion)).toEqual({
@@ -170,7 +177,7 @@ describe('Suggestion.forRecord', () => {
     ]
 
     // Act
-    const suggestion = Suggestion.forRecord(factsFor(tyra, candidates, { isReferenced: true }))
+    const suggestion = suggestRecord(factsFor(tyra, candidates, { isReferenced: true }))
 
     // Assert
     expect(summaryOf(suggestion)).toEqual({
@@ -182,9 +189,7 @@ describe('Suggestion.forRecord', () => {
 
   it('should save a record with only name matches that nothing references as new', () => {
     // Arrange / Act
-    const suggestion = Suggestion.forRecord(
-      factsFor(tyra, [candidate(storedTyra, 'probable', 'name')])
-    )
+    const suggestion = suggestRecord(factsFor(tyra, [candidate(storedTyra, 'probable', 'name')]))
 
     // Assert
     expect(summaryOf(suggestion)).toEqual({
@@ -204,7 +209,7 @@ describe('Suggestion.forRecord', () => {
       ]
 
       // Act
-      const suggestion = Suggestion.forRecord(
+      const suggestion = suggestRecord(
         factsFor(tyra, candidates, {
           isReferenced,
           storedUnderDerivedId: Option.some(storedTyra),
@@ -220,17 +225,55 @@ describe('Suggestion.forRecord', () => {
     }
   )
 
+  it('should leave a record undecided when one stored record carries its identifiers and another sits under its derived id', () => {
+    // Arrange
+    const underDerivedId = stored({ ...tyraWire('tyra'), identifier: [], id: 'p-derived' })
+
+    // Act
+    const suggestion = suggestRecord(
+      factsFor(tyra, [candidate(storedTyra, 'certain', 'identifier')], {
+        storedUnderDerivedId: Option.some(underDerivedId),
+      })
+    )
+
+    // Assert
+    expect(summaryOf(suggestion)).toEqual({
+      reason: 'SeveralIdentifierMatches',
+      needsDecision: true,
+      choice: Option.none(),
+    })
+  })
+
+  it('should use the stored record found by identifier that also sits under the derived id', () => {
+    // Arrange / Act
+    const suggestion = suggestRecord(
+      factsFor(tyra, [candidate(storedTyra, 'certain', 'identifier')], {
+        storedUnderDerivedId: Option.some(storedTyra),
+      })
+    )
+
+    // Assert
+    expect(summaryOf(suggestion)).toEqual({
+      reason: 'IdentifierMatchFieldsDiffer',
+      needsDecision: false,
+      choice: Option.some({ use: 'Patient/p-1', fieldsTaken: ['gender'] }),
+    })
+  })
+
   it('should leave the fields an earlier record takes out of the gaps it fills', () => {
     // Arrange
     const earlier = detached(tyraWire('tyra-copy', { gender: 'female' }))
-    const takenEarlier = HashMap.make([
+    const changedSoFar = HashMap.make([
       literalReferenceOf(storedTyra),
-      [{ resource: earlier, fields: HashSet.make('gender') }],
+      ChangedStoredRecord.withChange(ChangedStoredRecord.of(storedTyra), {
+        resource: earlier,
+        fieldsTaken: HashSet.make('gender'),
+      }),
     ] as const)
 
     // Act
-    const suggestion = Suggestion.forRecord(
-      factsFor(tyra, [candidate(storedTyra, 'certain', 'identifier')], { takenEarlier })
+    const suggestion = suggestRecord(
+      factsFor(tyra, [candidate(storedTyra, 'certain', 'identifier')], { changedSoFar })
     )
 
     // Assert
