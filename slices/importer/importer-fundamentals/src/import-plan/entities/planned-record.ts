@@ -31,15 +31,13 @@ interface Type {
 }
 
 /**
- * How the plan counts a record by its choice: `Create`, `Update`,
- * `LinkToExisting`, `DontAdd` or `Open` (no choice yet).
+ * A record's label by its choice: `Create`, `Update`, `LinkToExisting`,
+ * `DontAdd` or `Open` (no choice yet). The plan's totals count a resolved
+ * record by `PlanResolution.Label`, which adds what resolving alone knows.
  */
 const LabelSchema = Schema.Literal('Create', 'Update', 'LinkToExisting', 'DontAdd', 'Open')
 
 type Label = typeof LabelSchema.Type
-
-/** Every {@link Label}, in the order the plan's totals list them. */
-const labels: readonly Label[] = LabelSchema.literals
 
 /** A record of the plan as suggested: nothing chosen and nothing edited. */
 const make = ({
@@ -119,7 +117,6 @@ export {
   isChanged,
   LabelSchema,
   labelOf,
-  labels,
   make,
   needsDecision,
   reviewedResourceOf,

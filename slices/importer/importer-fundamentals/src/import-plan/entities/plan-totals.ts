@@ -7,11 +7,11 @@
 import { Number as Num, Record, Schema } from 'effect'
 
 import type * as FileSetOrigin from './file-set-origin.ts'
-import * as PlannedRecord from './planned-record.ts'
+import * as PlanResolution from './plan-resolution.ts'
 
 /** How many records carry each label, every label present. */
 const CountsByLabelSchema = Schema.Record({
-  key: PlannedRecord.LabelSchema,
+  key: PlanResolution.LabelSchema,
   value: Schema.NonNegativeInt,
 })
 
@@ -19,9 +19,11 @@ const CountsByLabelSchema = Schema.Record({
  * Counts over some records of a plan.
  *
  * @remarks
- * `byLabel` counts the records under each label (`PlannedRecord.labelOf`),
- * every label present, so the records under `Open` are those with no choice
- * yet. `needsDecision` counts the records listed under Needs a decision,
+ * `byLabel` counts the records under each label of their resolution
+ * (`PlanResolution.Label`), every label present, so the records under `Open`
+ * are those with no choice yet, and a record nothing is written for though
+ * its choice would write it counts under `Unneeded`, never `Create` or
+ * `Update`. `needsDecision` counts the records listed under Needs a decision,
  * whatever their label; every `Open` record is one of them.
  */
 interface Counts {
@@ -45,18 +47,18 @@ const decodeCountsByLabel = Schema.decodeUnknownSync(CountsByLabelSchema)
 
 /**
  * The counts of some records: `recordsLabelled(label)` under each label of
- * `PlannedRecord.labels`, every label present, and `needsDecision`.
+ * `PlanResolution.labels`, every label present, and `needsDecision`.
  *
  * @throws When a count is not a non-negative integer, a defect, since
  *   every count is a number of records.
  */
 const makeCounts = (
-  recordsLabelled: (label: PlannedRecord.Label) => number,
+  recordsLabelled: (label: PlanResolution.Label) => number,
   needsDecision: number
 ): Counts => ({
   byLabel: decodeCountsByLabel(
     Record.fromIterableWith(
-      PlannedRecord.labels,
+      PlanResolution.labels,
       (label) => [label, recordsLabelled(label)] as const
     )
   ),
