@@ -3,7 +3,7 @@
  *
  * @packageDocumentation
  */
-import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResourceWithId, sameStoredResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { Data, Equal, type Equivalence, HashSet } from 'effect'
 
 /**
@@ -38,7 +38,7 @@ const takesNothing = (choice: Type): boolean =>
  */
 const equivalence: Equivalence.Equivalence<Type> = (left, right) =>
   is('UseExistingRecord')(left) && is('UseExistingRecord')(right)
-    ? literalReferenceOf(left.existing) === literalReferenceOf(right.existing) &&
+    ? sameStoredResource(left.existing, right.existing) &&
       Equal.equals(left.fieldsTaken, right.fieldsTaken)
     : left._tag === right._tag
 

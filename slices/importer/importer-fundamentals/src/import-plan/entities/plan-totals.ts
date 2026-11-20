@@ -4,7 +4,7 @@
  *
  * @packageDocumentation
  */
-import { Array as Arr, Record, Schema } from 'effect'
+import { Number as Num, Record, Schema } from 'effect'
 
 import type * as FileSetOrigin from './file-set-origin.ts'
 import * as PlannedRecord from './planned-record.ts'
@@ -73,8 +73,7 @@ const makeFileSetCounts = (origin: FileSetOrigin.Type, counts: Counts): FileSetC
 const make = (overall: Counts, fileSets: readonly FileSetCounts[]): Type => ({ overall, fileSets })
 
 /** How many records `counts` counts, one per key: every record has one label. */
-const recordsOf = (counts: Counts): number =>
-  Arr.reduce(Record.values(counts.byLabel), 0, (sum, n) => sum + n)
+const recordsOf = (counts: Counts): number => Num.sumAll(Record.values(counts.byLabel))
 
 export { make, makeCounts, makeFileSetCounts, recordsOf }
 export type { Counts, FileSetCounts, Type }

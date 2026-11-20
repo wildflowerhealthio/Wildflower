@@ -9,9 +9,9 @@ import type { ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import {
   type FhirResourceWithId,
   LogicalReference,
-  literalReferenceOf,
+  sameStoredResource,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Equivalence, HashMap, Option } from 'effect'
+import { Array as Arr, HashMap, Option } from 'effect'
 
 import type * as RecordKey from './record-key.ts'
 
@@ -97,7 +97,7 @@ const storedCopiesOf = (entry: Entry): readonly FhirResourceWithId[] =>
       ...entry.candidates.filter(({ by }) => by === 'identifier').map(({ resource }) => resource),
       ...Option.toArray(entry.storedUnderDerivedId),
     ],
-    Equivalence.mapInput(Equivalence.string, literalReferenceOf)
+    sameStoredResource
   )
 
 export { empty, make, makeEntry, ofRecord, ofReference, storedCopiesOf }
