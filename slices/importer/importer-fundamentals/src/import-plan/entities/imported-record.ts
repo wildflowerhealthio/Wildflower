@@ -6,10 +6,11 @@
  */
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierUnion } from '@wildflowerhealthio/fhir-r4/clients'
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, HashMap, Option, Order, pipe } from 'effect'
 
 import * as ImportedCopy from './imported-copy.ts'
-import type * as RecordKey from './record-key.ts'
+import * as RecordKey from './record-key.ts'
 
 /** One record's key beside every copy of it, in plan order. */
 interface Type {
@@ -122,6 +123,14 @@ const literalReferenceIfDerived = (record: Type): Option.Option<string> =>
   )
 
 /**
+ * The logical reference the record is keyed by, when it is keyed by
+ * identifier: its record copy's (`RecordKey.logicalReferenceIfKeyedByIdentifier`);
+ * `None` when it has no key identifier.
+ */
+const logicalReferenceIfKeyedByIdentifier = (record: Type): Option.Option<LogicalReference.Type> =>
+  RecordKey.logicalReferenceIfKeyedByIdentifier(recordCopyOf(record).resource)
+
+/**
  * The record's resource: its record copy's ({@link recordCopyOf}), carrying
  * as well every qualified identifier another decoded copy carries and it
  * lacks, after its own (`IdentifierUnion.union`).
@@ -144,6 +153,7 @@ export {
   isImplied,
   literalReferenceIfDerived,
   literalReferenceUnder,
+  logicalReferenceIfKeyedByIdentifier,
   mergeOrder,
   resourceOf,
   sourceUrlOf,
