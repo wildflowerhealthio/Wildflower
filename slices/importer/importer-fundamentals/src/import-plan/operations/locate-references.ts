@@ -46,6 +46,16 @@ interface Held {
   readonly logicalReference: LogicalReference.Type
 }
 
+/**
+ * One identifier records of the import carry: the first logical reference
+ * that names it, and the key of the record it names, `None` when it names
+ * none ({@link namedRecordKeyOf}).
+ */
+interface Identified {
+  readonly logicalReference: LogicalReference.Type
+  readonly named: Option.Option<RecordKey.Type>
+}
+
 /** One distinct logical reference, beside the keys of every record holding it and where it points. */
 interface Located {
   readonly logicalReference: LogicalReference.Type
@@ -124,26 +134,33 @@ const heldBy = (record: ImportedRecord.Type): readonly Held[] =>
  *
  * @remarks
  * One pass, in four steps: decide once per identifier which record it names
- * ({@link namedRecordKeyOf}); group the references the records hold, so each
- * distinct one appears once, its first-seen value beside the keys of every
- * record holding it, in the order first held; give each its {@link Outcome}
- * by its identifier; and read the result off that list. A record is
- * referenced when any holder of a reference pointing at it is another
- * record, so a record that only names itself is not referenced.
+ * ({@link namedRecordKeyOf}), which gives `named`, each identifier that
+ * names a record by its first-seen logical reference, in the order the
+ * identifiers are first carried; group the references the records hold, so
+ * each distinct one appears once, its first-seen value beside the keys of
+ * every record holding it, in the order first held; give each its
+ * {@link Outcome} by its identifier; and read `referenced` and `notInImport`
+ * off that list. A record is referenced when any holder of a reference
+ * pointing at it is another record, so a record that only names itself is
+ * not referenced.
  */
 const locateReferences = (records: readonly ImportedRecord.Type[]): RecordReferences.Type => {
-  const namedByIdentifier = pipe(
+  const byIdentifier = pipe(
     records.flatMap(carriedBy),
     Arr.groupBy(({ logicalReference }) => LogicalReference.key(logicalReference)),
-    EffectRecord.map(namedRecordKeyOf)
+    EffectRecord.map((carrying): Identified => ({
+      logicalReference: Arr.headNonEmpty(carrying).logicalReference,
+      named: namedRecordKeyOf(carrying),
+    }))
   )
   const outcomeOf = (logicalReference: LogicalReference.Type): Outcome =>
-    Option.match(EffectRecord.get(namedByIdentifier, LogicalReference.key(logicalReference)), {
+    Option.match(EffectRecord.get(byIdentifier, LogicalReference.key(logicalReference)), {
       onNone: () => NotInImport(),
-      onSome: Option.match({
-        onNone: () => AmbiguousInImport(),
-        onSome: (key) => InImport({ key }),
-      }),
+      onSome: ({ named }) =>
+        Option.match(named, {
+          onNone: () => AmbiguousInImport(),
+          onSome: (key) => InImport({ key }),
+        }),
     })
   const located = pipe(
     records.flatMap(heldBy),
@@ -166,6 +183,9 @@ const locateReferences = (records: readonly ImportedRecord.Type[]): RecordRefere
           ? Option.some(outcome.key)
           : Option.none()
       )
+    ),
+    named: Arr.filterMap(EffectRecord.values(byIdentifier), ({ logicalReference, named }) =>
+      Option.map(named, (key): RecordReferences.NamedRecord => ({ logicalReference, key }))
     ),
     notInImport: located
       .filter(({ outcome }) => isOutcome('NotInImport')(outcome))

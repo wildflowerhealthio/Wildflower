@@ -70,6 +70,9 @@ const recordCopyOf = ({ copies }: Type): ImportedCopy.Type =>
     () => Arr.lastNonEmpty(copies)
   )
 
+/** The id the import stage gave the record: its record copy's ({@link recordCopyOf}). */
+const stageIdOf = (record: Type): ImportedCopy.StageId => recordCopyOf(record).stageId
+
 /** Whether every copy of the record is implied: no file decoded it, a reference only named it. */
 const isImplied = (record: Type): boolean => recordCopyOf(record).isImplied
 
@@ -87,9 +90,20 @@ const isImplied = (record: Type): boolean => recordCopyOf(record).isImplied
  */
 const mergeOrder: Order.Order<Type> = Order.mapInput(Order.boolean, isImplied)
 
+/** The title the plan shows the record under: its record copy's. */
+const titleOf = (record: Type): string => recordCopyOf(record).title
+
+/** The URL a source served the record at: its record copy's (`ImportedCopy.Type`'s `sourceUrl`). */
+const sourceUrlOf = (record: Type): Option.Option<URL> => recordCopyOf(record).sourceUrl
+
+/** The literal reference to the record under `id`: `<Type>/<id>`. */
+const literalReferenceUnder = (record: Type, id: string): string =>
+  `${recordCopyOf(record).resource.resourceType}/${id}`
+
 /**
  * The literal reference the import stage gives the record, `<Type>/<id>`
- * under its record copy's stage id: how a format's hooks name it.
+ * under its record copy's stage id ({@link stageIdOf}): how a format's hooks
+ * and `meta.source` name it.
  *
  * @remarks
  * The copies of a record keyed by its source URL each have the id minted in
@@ -125,5 +139,16 @@ const resourceOf = (record: Type): DetachedResource.Type => {
     : resource
 }
 
-export { fromCopies, isImplied, literalReferenceIfDerived, mergeOrder, resourceOf, stageLiteralOf }
+export {
+  fromCopies,
+  isImplied,
+  literalReferenceIfDerived,
+  literalReferenceUnder,
+  mergeOrder,
+  resourceOf,
+  sourceUrlOf,
+  stageIdOf,
+  stageLiteralOf,
+  titleOf,
+}
 export type { Type }

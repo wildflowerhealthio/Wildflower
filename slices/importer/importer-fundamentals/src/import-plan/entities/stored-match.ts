@@ -88,6 +88,12 @@ const ofReference = (
     Option.getOrElse(() => [])
   )
 
+/** The stored records among `candidates` found by identifier: each carries an identifier of the record. */
+const foundByIdentifier = (
+  candidates: readonly ResourceMatch.Candidate[]
+): readonly FhirResourceWithId[] =>
+  candidates.filter(({ by }) => by === 'identifier').map(({ resource }) => resource)
+
 /**
  * The stored records that are the record, its stored copies: the candidates
  * found by identifier and the one under its derived id, each once by literal
@@ -95,12 +101,18 @@ const ofReference = (
  */
 const storedCopiesOf = (entry: Entry): readonly FhirResourceWithId[] =>
   Arr.dedupeWith(
-    [
-      ...entry.candidates.filter(({ by }) => by === 'identifier').map(({ resource }) => resource),
-      ...Option.toArray(entry.storedUnderDerivedId),
-    ],
+    [...foundByIdentifier(entry.candidates), ...Option.toArray(entry.storedUnderDerivedId)],
     sameStoredResource
   )
 
-export { empty, make, makeEntry, ofRecord, ofReference, storedCopiesOf }
+/**
+ * The stored copies of the record `reference`, not in the import, names: its
+ * candidates found by identifier ({@link ofReference}).
+ */
+const storedCopiesOfReference = (
+  storedMatch: Type,
+  reference: LogicalReference.Type
+): readonly FhirResourceWithId[] => foundByIdentifier(ofReference(storedMatch, reference))
+
+export { empty, make, makeEntry, ofRecord, ofReference, storedCopiesOf, storedCopiesOfReference }
 export type { Entry, Type }
