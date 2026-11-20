@@ -6,7 +6,8 @@
  */
 import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import {
-  FileCopy,
+  type ImportedCopy,
+  ImportedRecord,
   type ImportPlan,
   RecordReferences,
   suggestPlan,
@@ -16,18 +17,19 @@ import { Effect } from 'effect'
 import { findStoredMatch, type StoredMatchFailure } from './find-stored-match.ts'
 
 /**
- * The import plan of `copies`: their records matched against the store
+ * The import plan of `copies`: their records (`ImportedRecord.fromCopies`)
+ * matched against the store
  * ({@link findStoredMatch}) and suggested from it ({@link suggestPlan}).
  *
  * @param copies - Every copy of every record of the import, in plan order
  */
 const planImport = (
-  copies: readonly FileCopy.Type[]
+  copies: readonly ImportedCopy.Type[]
 ): Effect.Effect<ImportPlan.Type, StoredMatchFailure, FhirR4ResourcesHttpApiClient> => {
-  const records = FileCopy.groupByRecord(copies)
-  return Effect.map(
-    findStoredMatch(records, RecordReferences.of(records).unresolved),
-    (storedMatch) => suggestPlan(copies, storedMatch)
+  const records = ImportedRecord.fromCopies(copies)
+  const recordReferences = RecordReferences.of(records)
+  return Effect.map(findStoredMatch(records, recordReferences.unresolved), (storedMatch) =>
+    suggestPlan(records, recordReferences, storedMatch)
   )
 }
 

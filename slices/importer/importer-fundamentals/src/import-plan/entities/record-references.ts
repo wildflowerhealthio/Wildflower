@@ -8,7 +8,7 @@ import { MatchQuery } from '@wildflowerhealthio/fhir-r4/clients'
 import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Equal, HashSet, Option, pipe, Record } from 'effect'
 
-import type * as FileCopy from './imported-copy.ts'
+import type * as ImportedRecord from './imported-record.ts'
 import type * as RecordKey from './record-key.ts'
 
 /**
@@ -32,9 +32,7 @@ type RecordKeysByReference = Record.ReadonlyRecord<LogicalReference.Key, readonl
  * conditional reference does and as `DecodedFileSet.adopt` resolves one. A
  * keyless record's identifiers name it nowhere.
  */
-const recordKeysByReferenceOf = (
-  records: readonly FileCopy.RecordCopies[]
-): RecordKeysByReference =>
+const recordKeysByReferenceOf = (records: readonly ImportedRecord.Type[]): RecordKeysByReference =>
   pipe(
     records.filter(({ key }) => key._tag === 'Keyed'),
     Arr.flatMap(({ key, copies }) =>
@@ -54,7 +52,7 @@ const recordKeysByReferenceOf = (
 
 /** Every logical reference the copies of `record` hold, at any depth, beside the record's key. */
 const logicalReferencesOf = (
-  record: FileCopy.RecordCopies
+  record: ImportedRecord.Type
 ): readonly (readonly [RecordKey.Type, LogicalReference.Type])[] =>
   record.copies.flatMap(({ resource }) =>
     Arr.filterMap(ResourceReferences.collect(resource), ({ reference }) =>
@@ -73,7 +71,7 @@ const logicalReferencesOf = (
  * A record naming itself does not reference it. A reference by an identifier
  * several records carry references each of them.
  */
-const of = (records: readonly FileCopy.RecordCopies[]): Type => {
+const of = (records: readonly ImportedRecord.Type[]): Type => {
   const recordKeysByReference = recordKeysByReferenceOf(records)
   const references = records.flatMap(logicalReferencesOf)
   const namedKeysOf = (logicalReference: LogicalReference.Type): readonly RecordKey.Type[] =>

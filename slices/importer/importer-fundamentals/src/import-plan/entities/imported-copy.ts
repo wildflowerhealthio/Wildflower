@@ -1,18 +1,22 @@
 /**
- * A file copy: one copy of a record, as one file set of an import brought it.
+ * An imported copy: one copy of a record, as one file set of an import brought
+ * it through the import stage, before anything is chosen.
  *
  * @packageDocumentation
  */
 import type { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import { Array as Arr, HashMap, Option } from 'effect'
+import { Option } from 'effect'
 
+import * as DecodedFileSet from '../../decoded-file-set.ts'
+import * as FormatDecode from '../../format-decode.ts'
 import type * as PickedFile from '../../picked-file.ts'
+import * as ResourcePlan from '../../resource-plan.ts'
+import * as FileSetOrigin from './file-set-origin.ts'
 import * as RecordKey from './record-key.ts'
 
 /**
- * One copy of a record, from one file set: the record as that set holds it
- * before anything is chosen, detached, beside where it came from and how the
- * plan shows it.
+ * One copy of a record, from one file set: the record as that set holds it,
+ * detached, beside where it came from and how the plan shows it.
  *
  * @remarks
  * `derivedId` is the id a stored copy of the record from an earlier import
@@ -21,10 +25,8 @@ import * as RecordKey from './record-key.ts'
  * minted anew on every import.
  */
 interface Type {
-  /** The format that decoded the file set. */
-  readonly format: string
-  /** The file set's picked files, in pick order. */
-  readonly pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>
+  /** The file set the copy came from. */
+  readonly origin: FileSetOrigin.Type
   /** The copy's review key, unique within its format. */
   readonly reviewKey: string
   /** The title the plan shows the copy under. */
@@ -37,47 +39,56 @@ interface Type {
   readonly derivedId: Option.Option<string>
 }
 
-/** One record's key beside every copy of it, in plan order: the first is the record. */
-interface RecordCopies {
-  readonly key: RecordKey.Type
-  readonly copies: Arr.NonEmptyReadonlyArray<Type>
+/**
+ * The copy of a record the import stage placed in the set `origin` names
+ * (`DecodedFileSet.placedRecordsOf`), keyed by the set's key prefix before
+ * the record's local key and titled as the import stage titles its row.
+ *
+ * @remarks
+ * The id placing minted for a keyless record is not kept: a copy holds its
+ * record detached.
+ */
+const fromPlacedRecord = (
+  origin: FileSetOrigin.Type,
+  { record, plan, isImplied }: DecodedFileSet.PlacedRecord
+): Type => {
+  const reviewKey = `${FileSetOrigin.keyPrefixOf(origin)}${record.localKey}`
+  return {
+    origin,
+    reviewKey,
+    title: DecodedFileSet.writtenReferenceTitle(plan, reviewKey),
+    isImplied,
+    resource: record.resource,
+    sourceUrl: record.sourceUrl,
+    derivedId: ResourcePlan.match(plan, {
+      Derived: ({ id }) => Option.some(id),
+      Minted: () => Option.none(),
+    }),
+  }
 }
+
+/**
+ * The copy of the source file one picked file of the set `origin` names is
+ * stored as: `sourceFile` as the import stage mints it, carrying what the
+ * file identified itself as, detached, its content-derived id kept as its
+ * derived id.
+ */
+const fromSourceFile = (
+  origin: FileSetOrigin.Type,
+  { pickedFile, identifiedAs }: DecodedFileSet.PickedFileIdentity,
+  sourceFile: PickedFile.SourceFile
+): Type => ({
+  origin,
+  reviewKey: FormatDecode.sourceFileKey(pickedFile),
+  title: pickedFile.fileName,
+  isImplied: false,
+  resource: { ...sourceFile, id: null, masterIdentifier: Option.getOrNull(identifiedAs) },
+  sourceUrl: Option.none(),
+  derivedId: Option.some(sourceFile.id),
+})
 
 /** The key of the record `copy` is a copy of (`RecordKey.make`). */
 const recordKeyOf = (copy: Type): RecordKey.Type => RecordKey.make(copy.resource, copy.reviewKey)
 
-/** One record's copies so far, beside the position of its first copy. */
-interface Group {
-  readonly firstPosition: number
-  readonly copies: Arr.NonEmptyReadonlyArray<Type>
-}
-
-/**
- * `copies` grouped by the record each is a copy of, each record where its
- * first copy is, each record's copies in the order of `copies`.
- */
-const groupByRecord = (copies: readonly Type[]): readonly RecordCopies[] => {
-  const keyed = copies.map((copy, position) => ({ key: recordKeyOf(copy), copy, position }))
-  const groups = Arr.reduce(
-    keyed,
-    HashMap.empty<RecordKey.Type, Group>(),
-    (grouped, { key, copy, position }) =>
-      HashMap.set(
-        grouped,
-        key,
-        Option.match(HashMap.get(grouped, key), {
-          onNone: (): Group => ({ firstPosition: position, copies: Arr.of(copy) }),
-          onSome: (group): Group => ({ ...group, copies: Arr.append(group.copies, copy) }),
-        })
-      )
-  )
-  return Arr.filterMap(keyed, ({ key, position }) =>
-    HashMap.get(groups, key).pipe(
-      Option.filter((group) => group.firstPosition === position),
-      Option.map((group) => ({ key, copies: group.copies }))
-    )
-  )
-}
-
-export { groupByRecord, recordKeyOf }
-export type { RecordCopies, Type }
+export { fromPlacedRecord, fromSourceFile, recordKeyOf }
+export type { Type }

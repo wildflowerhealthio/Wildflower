@@ -46,10 +46,6 @@ const SOURCE_FILE_SECTION_TITLE = 'Source file'
 /** The section title several source files read together are reviewed under. */
 const SOURCE_FILES_SECTION_TITLE = 'Source files'
 
-/** The review key of a source file row, stable across a settings re-decode. */
-const sourceFileKey = (file: PickedFile.Type): string =>
-  `${FormatDecode.keyPrefix(file)}source-file/${file.fileName}`
-
 /** A picked file's source file, as `PickedFile.FromDocumentReference` stores it. */
 const sourceFileOf = Schema.encode(PickedFile.FromDocumentReference)
 
@@ -114,7 +110,7 @@ const importFileSet = (
     )
 
     const sourceFileRows = linked.map(({ pickedFile, sourceFile }): ReviewRow.Type => ({
-      reviewKey: sourceFileKey(pickedFile),
+      reviewKey: FormatDecode.sourceFileKey(pickedFile),
       title: pickedFile.fileName,
       isImplied: false,
       resource: sourceFile,
@@ -173,5 +169,5 @@ const importDecoded = <TFormat extends string>(
     Effect.provideService(PickedFile.Format, importer.sourceFileFormat)
   )
 
-export { importDecoded, sourceFileKey, sourceFileOf }
+export { importDecoded, sourceFileOf }
 export type { ImportingFormat }

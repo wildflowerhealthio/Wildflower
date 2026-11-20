@@ -6,26 +6,23 @@
  */
 import type { ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import type { Array as Arr } from 'effect'
 import { Match, Option } from 'effect'
 
-import type * as FileCopy from './imported-copy.ts'
+import type * as ImportedRecord from './imported-record.ts'
 import * as RecordChoice from './record-choice.ts'
-import type * as RecordKey from './record-key.ts'
 import * as Suggestion from './suggestion.ts'
 
 /**
  * One record of the plan.
  *
  * @remarks
- * The first of `copies`, in plan order, is the record: the copy it is
- * matched, suggested and written by. `chosen` is the reviewer's choice, over
- * the suggestion's. `edit` is the reviewer's edit of the record, which
- * replaces it as it stands.
+ * `record` is the imported record whole, every copy of it, matched, suggested
+ * and written by its resource (`ImportedRecord.resourceOf`). `chosen` is the
+ * reviewer's choice, over the suggestion's. `edit` is the reviewer's edit of
+ * the record, which replaces it as it stands.
  */
 interface Type {
-  readonly key: RecordKey.Type
-  readonly copies: Arr.NonEmptyReadonlyArray<FileCopy.Type>
+  readonly record: ImportedRecord.Type
   /** The stored records matching it, best grade first. */
   readonly candidates: readonly ResourceMatch.Candidate[]
   readonly suggestion: Suggestion.Type
@@ -41,13 +38,11 @@ type Label = 'Create' | 'Update' | 'LinkToExisting' | 'DontAdd' | 'Open'
 
 /** A record of the plan as suggested: nothing chosen and nothing edited. */
 const make = ({
-  key,
-  copies,
+  record,
   candidates,
   suggestion,
-}: Pick<Type, 'key' | 'copies' | 'candidates' | 'suggestion'>): Type => ({
-  key,
-  copies,
+}: Pick<Type, 'record' | 'candidates' | 'suggestion'>): Type => ({
+  record,
   candidates,
   suggestion,
   chosen: Option.none(),

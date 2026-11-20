@@ -20,7 +20,7 @@ import { compareToStored, type TakenFields } from './compare-to-stored/compare-t
 
 /** The facts a record's suggestion is read from. */
 interface SuggestionFacts {
-  /** The record, its first copy in plan order. */
+  /** The record's resource (`ImportedRecord.resourceOf`). */
   readonly resource: FhirResource
   /** Its stored candidates, best grade first. */
   readonly candidates: readonly ResourceMatch.Candidate[]

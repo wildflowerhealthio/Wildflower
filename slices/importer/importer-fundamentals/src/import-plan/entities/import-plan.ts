@@ -40,7 +40,7 @@ const make = (
 
 /** The record of `plan` under `key`. */
 const get = (plan: Type, key: RecordKey.Type): Option.Option<PlannedRecord.Type> =>
-  Arr.findFirst(plan.records, (planned) => Equal.equals(planned.key, key))
+  Arr.findFirst(plan.records, (planned) => Equal.equals(planned.record.key, key))
 
 /** `plan` with `f` applied to each record under one of `keys`. */
 const modifyRecords = (
@@ -52,7 +52,7 @@ const modifyRecords = (
   return {
     ...plan,
     records: plan.records.map((planned) =>
-      HashSet.has(modified, planned.key) ? f(planned) : planned
+      HashSet.has(modified, planned.record.key) ? f(planned) : planned
     ),
   }
 }

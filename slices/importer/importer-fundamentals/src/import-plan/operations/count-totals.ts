@@ -6,7 +6,7 @@
  */
 import { Array as Arr } from 'effect'
 
-import type * as PickedFile from '../../picked-file.ts'
+import * as FileSetOrigin from '../entities/file-set-origin.ts'
 import type * as ImportPlan from '../entities/import-plan.ts'
 import type * as PlanTotals from '../entities/plan-totals.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
@@ -38,13 +38,9 @@ const withRecord = (counts: PlanTotals.Counts, planned: PlannedRecord.Type): Pla
 const countsOf = (records: readonly PlannedRecord.Type[]): PlanTotals.Counts =>
   records.reduce(withRecord, NO_RECORDS)
 
-/** The id a file set is told apart by: its first picked file's. */
-const fileSetIdOf = (pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>): string =>
-  pickedFiles[0].id
-
-/** Whether one of `planned`'s copies came from the file set told apart by `fileSetId`. */
-const broughtBy = (planned: PlannedRecord.Type, fileSetId: string): boolean =>
-  planned.copies.some(({ pickedFiles }) => fileSetIdOf(pickedFiles) === fileSetId)
+/** Whether one of `planned`'s copies came from the file set `origin` names. */
+const broughtBy = (planned: PlannedRecord.Type, origin: FileSetOrigin.Type): boolean =>
+  planned.record.copies.some((copy) => FileSetOrigin.equivalence(copy.origin, origin))
 
 /**
  * `plan`'s counts: overall, and for each file set the records it brought a
@@ -53,13 +49,11 @@ const broughtBy = (planned: PlannedRecord.Type, fileSetId: string): boolean =>
 const countTotals = (plan: ImportPlan.Type): PlanTotals.Type => ({
   overall: countsOf(plan.records),
   fileSets: Arr.dedupeWith(
-    plan.records.flatMap(({ copies }) => copies.map(({ pickedFiles }) => pickedFiles)),
-    (left, right) => fileSetIdOf(left) === fileSetIdOf(right)
-  ).map((pickedFiles) => ({
-    pickedFiles,
-    counts: countsOf(
-      plan.records.filter((planned) => broughtBy(planned, fileSetIdOf(pickedFiles)))
-    ),
+    plan.records.flatMap(({ record }) => record.copies.map(({ origin }) => origin)),
+    FileSetOrigin.equivalence
+  ).map((origin) => ({
+    pickedFiles: origin.pickedFiles,
+    counts: countsOf(plan.records.filter((planned) => broughtBy(planned, origin))),
   })),
 })
 

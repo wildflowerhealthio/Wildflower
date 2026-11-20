@@ -13,7 +13,7 @@ import {
   ResourceMatch,
 } from '@wildflowerhealthio/fhir-r4/clients'
 import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
-import type { FileCopy, StoredMatch } from '@wildflowerhealthio/importer-fundamentals'
+import { ImportedRecord, type StoredMatch } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Effect, HashMap, Option, type ParseResult } from 'effect'
 
 /** What finding an import's stored match can fail with: any failed search or read. */
@@ -31,15 +31,17 @@ const noneFoundByIdentifier = (candidates: readonly ResourceMatch.Candidate[]): 
   !candidates.some(({ by }) => by === 'identifier')
 
 /** The literal reference `record` is stored under from an earlier import, `None` with no derived id. */
-const derivedReferenceOf = ({ copies: [record] }: FileCopy.RecordCopies): Option.Option<string> =>
-  Option.map(record.derivedId, (id) => `${record.resource.resourceType}/${id}`)
+const derivedReferenceOf = (record: ImportedRecord.Type): Option.Option<string> => {
+  const { derivedId, resource } = ImportedRecord.recordCopyOf(record)
+  return Option.map(derivedId, (id) => `${resource.resourceType}/${id}`)
+}
 
 /**
  * The stored record under each derived id of `records` that no candidate was
  * found by identifier for: one batch of reads, sent only when there is one.
  */
 const storedUnderDerivedIdOf = (
-  records: readonly FileCopy.RecordCopies[],
+  records: readonly ImportedRecord.Type[],
   candidatesByRecord: readonly (readonly ResourceMatch.Candidate[])[]
 ): Effect.Effect<
   StoredMatch.Type['storedUnderDerivedIdByRecord'],
@@ -62,7 +64,8 @@ const storedUnderDerivedIdOf = (
 
 /**
  * What the store holds of `records` and of `unresolved`: one
- * `ResourceMatch.findCandidates` over every record, by its first copy, and
+ * `ResourceMatch.findCandidates` over every record, by its resource
+ * (`ImportedRecord.resourceOf`), and
  * every unresolved logical reference, every grade; then one batch of reads
  * for the stored records under the derived ids of the records nothing was
  * found for by identifier.
@@ -74,12 +77,12 @@ const storedUnderDerivedIdOf = (
  *   failed search is not "no match"
  */
 const findStoredMatch = (
-  records: readonly FileCopy.RecordCopies[],
+  records: readonly ImportedRecord.Type[],
   unresolved: readonly LogicalReference.Type[]
 ): Effect.Effect<StoredMatch.Type, StoredMatchFailure, FhirR4ResourcesHttpApiClient> =>
   Effect.gen(function* () {
     const queries: readonly MatchQuery.Type[] = [
-      ...records.map(({ copies: [record] }) => MatchQuery.fromResource(record.resource)),
+      ...records.map((record) => MatchQuery.fromResource(ImportedRecord.resourceOf(record))),
       ...unresolved.map(MatchQuery.fromLogicalReference),
     ]
     const candidates = yield* ResourceMatch.findCandidates(queries, {

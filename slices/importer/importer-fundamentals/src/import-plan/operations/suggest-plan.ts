@@ -7,8 +7,8 @@
 import { literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, HashMap, Option } from 'effect'
 
-import * as FileCopy from '../entities/imported-copy.ts'
 import * as ImportPlan from '../entities/import-plan.ts'
+import * as ImportedRecord from '../entities/imported-record.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as RecordReferences from '../entities/record-references.ts'
@@ -32,7 +32,7 @@ const withTakenBy = (takenEarlier: TakenEarlier, planned: PlannedRecord.Type): T
         HashMap.modifyAt(takenEarlier, literalReferenceOf(existing), (earlier) =>
           Option.some([
             ...Option.getOrElse(earlier, () => []),
-            { resource: planned.copies[0].resource, fields: fieldsTaken },
+            { resource: ImportedRecord.resourceOf(planned.record), fields: fieldsTaken },
           ])
         ),
     }
@@ -47,17 +47,17 @@ const planRecord = (
   storedMatch: StoredMatch.Type,
   recordReferences: RecordReferences.Type,
   takenEarlier: TakenEarlier,
-  { key, copies }: FileCopy.RecordCopies
+  record: ImportedRecord.Type
 ): PlannedRecord.Type => {
+  const { key } = record
   const candidates = HashMap.get(storedMatch.candidatesByRecord, key).pipe(
     Option.getOrElse(() => [])
   )
   return PlannedRecord.make({
-    key,
-    copies,
+    record,
     candidates,
     suggestion: suggestRecord({
-      resource: copies[0].resource,
+      resource: ImportedRecord.resourceOf(record),
       candidates,
       storedUnderDerivedId: HashMap.get(storedMatch.storedUnderDerivedIdByRecord, key),
       isReferenced: RecordReferences.isReferenced(recordReferences, key),
@@ -67,10 +67,11 @@ const planRecord = (
 }
 
 /**
- * The plan of `copies`, every record suggested from `storedMatch`, nothing
+ * The plan of `records`, every record suggested from `storedMatch`, nothing
  * chosen and nothing edited.
  *
- * @param copies - Every copy of every record of the import, in plan order
+ * @param records - The import's records, in plan order (`ImportedRecord.fromCopies`)
+ * @param recordReferences - The references between them (`RecordReferences.of`)
  * @param storedMatch - What the store holds of the import's records and its
  *   unresolved references
  *
@@ -81,11 +82,10 @@ const planRecord = (
  * take one field twice.
  */
 const suggestPlan = (
-  copies: readonly FileCopy.Type[],
+  records: readonly ImportedRecord.Type[],
+  recordReferences: RecordReferences.Type,
   storedMatch: StoredMatch.Type
 ): ImportPlan.Type => {
-  const records = FileCopy.groupByRecord(copies)
-  const recordReferences = RecordReferences.of(records)
   const [, planned] = Arr.mapAccum(
     records,
     HashMap.empty<string, readonly TakenFields[]>(),
