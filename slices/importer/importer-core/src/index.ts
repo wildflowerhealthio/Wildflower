@@ -6,7 +6,9 @@
  * decoded the device's own, re-decode one format under new settings, find
  * the batch's referents and resolve its mentions, say which rows the
  * referent links leave without a patient, and plan the batch's write from
- * its reviewed selections.
+ * its reviewed selections. With no reviewer, a batch is imported through its
+ * import plan, every suggestion taken, against the store the caller names
+ * ({@link importWithSuggestions}).
  *
  * @remarks
  * Sits between the format bindings (`har-importer-core`,
@@ -50,6 +52,13 @@ export {
   type StoredMatchFailure,
 } from './find-stored-match.ts'
 export { planImport } from './plan-import.ts'
+export {
+  type FormatRead,
+  importWithSuggestions,
+  type SuggestedImport,
+  type UndecidedRecord,
+  UndecidedRecords,
+} from './import-with-suggestions.ts'
 export * as ReviewGroup from './review-group.ts'
 export {
   decodedRowsOf,
