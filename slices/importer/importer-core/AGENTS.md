@@ -258,6 +258,14 @@ that provides those.
   records once (`ImportedRecord.fromCopies`), finds the references between
   them (`RecordReferences.of`), finds their stored match, and suggests the
   plan (`suggestPlan`).
+  `import-write-equivalence.test.ts` holds the plan's write
+  (`resolvePlan`, then `ImportWrite.of`) on an empty store, every suggestion
+  taken, to the review screen's import (`importDecoded`, `resolveMentions`
+  on its defaults, `planWrite`'s `Included`). Its batch steers clear of the
+  two places they differ: the review screen's import writes a Patient or
+  Practitioner from its first mention where the plan writes its last decoded
+  copy, and it leaves out a record that names no Patient where the plan
+  saves it as new.
 
 ## Layering
 

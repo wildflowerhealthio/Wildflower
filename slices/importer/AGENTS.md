@@ -64,8 +64,9 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   which each referent's default reads through `ReferentMatch`), `StoredCopy`
   (a resource's stored copy, which the server diff compares it with), the
   **import plan** (`ImportPlan`: one choice per record across files, each
-  suggested from what the store holds of it, and its `PlanTotals`; entities
-  and the operations over them, in two folders), and the
+  suggested from what the store holds of it, resolved by those choices into
+  a `PlanResolution` and written as one `ImportWrite`, and its `PlanTotals`;
+  entities and the operations over them, in two folders), and the
   pure phases that
   resolve a batch's decoded rows on those choices (`LinkPlan`,
   `FileResolution`). There is no `persist` sink: the write is the shell's one
