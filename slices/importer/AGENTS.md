@@ -64,7 +64,8 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   which each referent's default reads through `ReferentMatch`), `StoredCopy`
   (a resource's stored copy, which the server diff compares it with), the
   **import plan** (`ImportPlan`: one choice per record across files, each
-  suggested from its stored candidates, its `PlanTotals`), and the
+  suggested from what the store holds of it, and its `PlanTotals`; entities
+  and the operations over them, in two folders), and the
   pure phases that
   resolve a batch's decoded rows on those choices (`LinkPlan`,
   `FileResolution`). There is no `persist` sink: the write is the shell's one
@@ -117,9 +118,10 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   linked records'), and
   `planWrite` turns the batch's reviewed selections into a `WriteDecision` per
   reviewed resource, the `Included` ones exactly the resources to write.
-  `fileCopiesOf`, `findStoredMatch` and `planImport` read a format's decode as
-  copies of records, match an import once against the store, and build its
-  `ImportPlan`. No
+  `fileCopiesOf` reads a format's decode as copies of records, placed,
+  linked and stamped by the import stage's own steps with no reference
+  between a set's records resolved; `findStoredMatch` matches an import
+  once against the store; `planImport` builds its `ImportPlan`. No
   DOM, no React, no client.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus

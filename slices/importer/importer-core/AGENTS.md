@@ -44,27 +44,29 @@ package alone and a layer that provides those.
   `linkToSourceFiles`), and returns the format's `ReviewGroup` (every file
   set's adopted rows in sections, its notes, its unreadable files and the
   picks the decode read), never failing.
-  Per file set it mints a source file for **every** picked file
-  (`Schema.encode(PickedFile.FromDocumentReference)`), its `masterIdentifier`
-  what the picked file identified itself as; adopts its detached records with
-  `DecodedFileSet.adopt` under the key prefix of the set's first picked file
-  (`FormatDecode.keyPrefix`), so each row's review key is that prefix before
-  the record's local key (a keyed record under the id its key derives, a
-  keyless one under a random id, the records the set's references name and
-  none of its records is implied, each logical reference to a record of the
-  set resolved to a literal one, and each literal reference or
-  `Attachment.url` spelling a keyless record's source URL to that record);
-  runs `linkSourceFile` over each source file with the
-  set's adopted records, then `linkToSourceFiles` over every record with each
-  picked file and its linked source file; stamps every record's `meta.source`
-  with the set's **representative** — the picked file whose source file id is
-  lexicographically smallest, and a source file id is a content hash, so the
-  stamp is independent of the order the files were picked in
-  (`MetaSource.stampAdopted`) — and prepends the source files as the set's
-  **"Source file"** / **"Source files"** section. Nothing is de-duplicated
-  across sets or files: each set's records are kept and keyed as they are. A
-  set whose source file cannot be minted, or whose `linkToSourceFiles` fails
-  with `FileImporter.SourceFileNotFound`, becomes one `unreadableFiles` row per
+  Per file set (`importFileSet`) it mints a source file for **every**
+  picked file (`mintSourceFiles`: `Schema.encode(PickedFile.FromDocumentReference)`,
+  its `masterIdentifier` what the picked file identified itself as); adopts
+  its detached records with `DecodedFileSet.adopt` under the key prefix of
+  the set's first picked file (`FormatDecode.keyPrefix`), so each row's
+  review key is that prefix before the record's local key (a keyed record
+  under the id its key derives, a keyless one under a random id, the records
+  the set's references name and none of its records is implied, each
+  logical reference to a record of the set resolved to a literal one, and
+  each literal reference or `Attachment.url` spelling a keyless record's
+  source URL to that record); then links and stamps (`linkAndStamp`, which
+  `fileCopiesOf` shares): `linkSourceFile` over each source file with the
+  set's records, then `linkToSourceFiles` over every record with each picked
+  file and its linked source file, then every record's `meta.source`
+  stamped with the set's **representative**, the picked file whose source
+  file id is lexicographically smallest (a source file id is a content
+  hash, so the stamp is independent of the order the files were picked
+  in, `MetaSource.stampAdopted`); and prepends the source files as the
+  set's **"Source file"** / **"Source files"** section, each keyed by
+  `FormatDecode.sourceFileKey`. Nothing is de-duplicated across sets or
+  files: each set's records are kept and keyed as they are. A set whose
+  source file cannot be minted, or whose `linkToSourceFiles` fails with
+  `FileImporter.SourceFileNotFound`, becomes one `unreadableFiles` row per
   picked file, after the decode's own. It provides `PickedFile.Format`
   internally, so what it returns requires nothing.
 - `src/read-batch.ts` — the read half as pure functions over a
@@ -218,23 +220,37 @@ package alone and a layer that provides those.
   its decode yielded no resources and some file was unreadable, else
   `nothing`.
 
-- `src/plan-import.ts` — the import plan's stage work.
-  **`fileCopiesOf(importer, decoded)`** reads one format's decode as
-  `FileCopy`s, file set by file set: each picked file's source file (minted
-  as the import stage mints it, detached, its review key the import stage's
-  and its content-derived id its `derivedId`), then the set's placed records
-  (`DecodedFileSet.placedRecordsOf`: implied records added, dispenses
-  filed), each keyed by the set's key prefix before its local key; a set
-  whose source file cannot be minted, or whose implied record its schema
-  rejects, fails it. **`findStoredMatch(records, unresolved)`** is a
-  `StoredMatch`: one `ResourceMatch.findCandidates` over every record, by its
-  first copy, and every logical reference no record of the import resolves
-  (`MatchQuery.fromLogicalReference`), every grade; then one `readInBatch` of
-  the derived ids of the records with a `derivedId` and no candidate found
-  by identifier. A failed search or read fails it
-  (**`StoredMatchFailure`**). **`planImport(copies)`** groups the copies by
-  record, finds their stored match, and builds the plan with
-  `ImportPlan.make`.
+- `src/file-copies-of.ts` — **`fileCopiesOf(importer, decoded)`** reads one
+  format's decode as `ImportedCopy`s, file set by file set, through the
+  import stage's own steps but one: each set's source files minted
+  (`mintSourceFiles`), its records placed (`DecodedFileSet.placedRecordsOf`:
+  implied records added, dispenses filed) and put in their rows under the
+  ids placing decided with their references as decoded
+  (`DecodedFileSet.placedRowsOf`), then linked and stamped as
+  `importDecoded` does (`linkAndStamp`), so a format's hooks see the ids
+  they read and `meta.source` is the set's representative. No reference
+  between a set's records is resolved: where it lands is the reviewer's
+  choice of the record it names. The copies are each set's source files
+  (`ImportedCopy.fromSourceFile`), then its records
+  (`ImportedCopy.fromPlacedRow`). It never fails: its result,
+  **`FormatCopies`** `{ copies, notes, unreadableFiles }`, reports a set the
+  stage cannot finish (a source file that cannot be minted, an implied
+  record its schema rejects, `FileImporter.SourceFileNotFound` from a hook)
+  as an unreadable row per picked file of the set, after the decode's own,
+  and keeps the other sets' copies and notes.
+- `src/find-stored-match.ts` — **`findStoredMatch(records, unresolved)`** is
+  a `StoredMatch`: one `ResourceMatch.findCandidates` over every record, by
+  its resource (`ImportedRecord.resourceOf`), and every logical reference no
+  record of the import resolves (`MatchQuery.fromLogicalReference`), every
+  grade; then one `readInBatch` of the derived stage id of every record that
+  has one (`ImportedRecord.literalReferenceIfDerived`), whatever was found
+  by identifier. It knows only the order it asked in and builds the match
+  with `StoredMatch.make`. A failed search or read fails it
+  (**`StoredMatchFailure`**).
+- `src/plan-import.ts` — **`planImport(copies)`** groups the copies into
+  records once (`ImportedRecord.fromCopies`), finds the references between
+  them (`RecordReferences.of`), finds their stored match, and suggests the
+  plan (`suggestPlan`).
 
 ## Layering
 
