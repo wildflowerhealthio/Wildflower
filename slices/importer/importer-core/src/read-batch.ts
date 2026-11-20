@@ -6,7 +6,7 @@ import {
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Effect, Option, pipe, Record } from 'effect'
 
-import { importDecoded } from './import-decoded.ts'
+import { importDecoded, type ImportingFormat } from './import-decoded.ts'
 import { type FormatKind, formatKinds, type FormatSettings } from './registry.ts'
 import type * as ReviewGroup from './review-group.ts'
 
@@ -143,7 +143,8 @@ const claimPicks = (
 
 /**
  * Run one format's `decode` on its files under the format's current
- * settings, and import what it decoded into the format's review group.
+ * settings, and import what it decoded with `importStep`, which is handed
+ * the format's importer beside the decode.
  *
  * @typeParam K - The one format being decoded; generic so `registry[kind]`
  *   and `settings[kind]` stay correlated (see the module remarks)
@@ -151,18 +152,24 @@ const claimPicks = (
  * @param settings - Every format's current settings
  * @param kind - The format to decode with
  * @param files - The files that format claimed
- * @returns The format's review group, holding `files`, requiring what the
- *   registry's decodes require
+ * @param importStep - What the import stage makes of the decode: the
+ *   format's review group (`importDecoded`), or its copies of records
+ *   (`fileCopiesOf`)
+ * @returns What `importStep` made, requiring what the registry's decodes
+ *   require
  */
-// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- K correlates `registry[kind]` with `settings[kind]` (module remarks)
-const decodeFormat = <K extends FormatKind, R>(
+const decodeFormat = <K extends FormatKind, R, TImported>(
   registry: ReadRegistry<R>,
   settings: FormatSettings,
   kind: K,
-  files: readonly PickedFile.Type[]
-): Effect.Effect<ReviewGroup.Type, never, R> =>
+  files: readonly PickedFile.Type[],
+  importStep: (
+    importer: ImportingFormat,
+    decoded: FormatDecode.Decoded<K>
+  ) => Effect.Effect<TImported>
+): Effect.Effect<TImported, never, R> =>
   Effect.flatMap(registry[kind].decode(files, settings[kind]), (decoded) =>
-    importDecoded(registry[kind], decoded)
+    importStep(registry[kind], decoded)
   )
 
 /** Each format that claimed a pick, with its picks, in registry order. */
@@ -187,13 +194,20 @@ const decodeFormats = <R>(
       claimedEntries(claimed),
       ([kind, files]) =>
         Effect.map(
-          decodeFormat(registry, settings, kind, files),
+          decodeFormat(registry, settings, kind, files, importDecoded),
           (group) => [kind, group] as const
         ),
       { concurrency: 'unbounded' }
     ),
     Record.fromEntries
   )
+
+/** The row a pick no format claimed is reported as. */
+const unrecognizedFileOf = (pick: PickedFile.Type): UnrecognizedFile => ({
+  id: FormatDecode.makeFileId('unrecognized', pick),
+  title: pick.fileName,
+  files: [pick],
+})
 
 /**
  * Read a freshly picked batch: split it by the format that claims each pick,
@@ -220,11 +234,7 @@ const readBatch = <R>(
   const { claimed, unrecognized } = claimPicks(registry, picks)
   return Effect.map(decodeFormats(registry, settings, claimed), (groups): DecodedBatch => ({
     groups,
-    unrecognizedFiles: unrecognized.map((pick): UnrecognizedFile => ({
-      id: FormatDecode.makeFileId('unrecognized', pick),
-      title: pick.fileName,
-      files: [pick],
-    })),
+    unrecognizedFiles: unrecognized.map(unrecognizedFileOf),
   }))
 }
 
@@ -257,14 +267,18 @@ const redecodeFormat = <R>(
     Option.match({
       onNone: () => Effect.succeed(batch),
       onSome: ({ files }) =>
-        Effect.map(decodeFormat(registry, settings, kind, files), (group): DecodedBatch => ({
-          ...batch,
-          groups: { ...batch.groups, [kind]: group },
-        })),
+        Effect.map(
+          decodeFormat(registry, settings, kind, files, importDecoded),
+          (group): DecodedBatch => ({
+            ...batch,
+            groups: { ...batch.groups, [kind]: group },
+          })
+        ),
     })
   )
 
 export {
+  claimedEntries,
   claimPicks,
   type ClaimedPicks,
   type DecodedBatch,
@@ -274,4 +288,5 @@ export {
   type ReadRegistry,
   redecodeFormat,
   type UnrecognizedFile,
+  unrecognizedFileOf,
 }
