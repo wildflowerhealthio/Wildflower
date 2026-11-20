@@ -31,8 +31,20 @@ describe('displayName', () => {
     )
   })
 
-  it('should fall back to the name text when the name has no parts', () => {
-    expect(HumanName.displayName([{ text: ' Ada King ' }])).toBe('Ada King')
+  it('should show the name text, trimmed and single-spaced, when it has one', () => {
+    expect(HumanName.displayName([{ text: ' Ada  King ' }])).toBe('Ada King')
+  })
+
+  it('should show the name text over the given names and family it reads as', () => {
+    expect(
+      HumanName.displayName([{ text: 'OSEI DR. KWAME', family: 'OSEI', given: ['KWAME'] }])
+    ).toBe('OSEI DR. KWAME')
+  })
+
+  it('should join the given names and family when the text is blank', () => {
+    expect(HumanName.displayName([{ text: ' ', given: ['Ada'], family: 'Lovelace' }])).toBe(
+      'Ada Lovelace'
+    )
   })
 
   it('should skip a blank name for the next one on record', () => {

@@ -44,12 +44,19 @@ const useRank = (use: string | null | undefined): number => {
   return 3
 }
 
-/** `name` as `given family` (each part trimmed, blanks dropped), else its trimmed `text`. */
+/**
+ * `name` as its `text`, the best guess at how the name is shown, trimmed and
+ * single-spaced; else, when the text is blank, as `given family`, each part
+ * trimmed and blanks dropped.
+ */
 const renderName = (name: Displayable): string => {
-  const parts = [...(name.given ?? []), name.family ?? '']
-    .map((part) => part.trim())
-    .filter(Str.isNonEmpty)
-  return parts.length > 0 ? parts.join(' ') : (name.text ?? '').trim()
+  const text = (name.text ?? '').split(/\s+/u).filter(Str.isNonEmpty).join(' ')
+  return Str.isNonEmpty(text)
+    ? text
+    : [...(name.given ?? []), name.family ?? '']
+        .map((part) => part.trim())
+        .filter(Str.isNonEmpty)
+        .join(' ')
 }
 
 /**
@@ -123,7 +130,7 @@ const currentName = <TName extends Displayable>(
 
 /**
  * The text to show for a person with `names` — the name they go by now,
- * rendered as `given family` (else its `text`) — or `null` when no name
+ * rendered as its `text` (else `given family`) — or `null` when no name
  * renders to anything.
  *
  * @param names - The person's names in record order, e.g. `Patient.name`
@@ -135,9 +142,10 @@ const currentName = <TName extends Displayable>(
  * one to show: a record that kept a maiden name first would otherwise greet the
  * person by it. So the choice runs in three steps:
  *
- * 1. Every name is rendered — its non-blank `given` parts and `family`, each
- *    trimmed and joined by single spaces, else its trimmed `text` — and a name
- *    that renders blank is never chosen.
+ * 1. Every name is rendered — its `text`, the best guess at how the name is
+ *    shown, trimmed and single-spaced, else its non-blank `given` parts and
+ *    `family`, each trimmed and joined by single spaces — and a name that
+ *    renders blank is never chosen.
  * 2. Of the rest, a name still in use at `now` is preferred: not `old` or
  *    `maiden`, and without a `period.end` that has passed — an `end` counts to
  *    the end of the day, month or year it names, and one that does not parse

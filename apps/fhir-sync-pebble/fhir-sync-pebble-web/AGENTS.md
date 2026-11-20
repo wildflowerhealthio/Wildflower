@@ -94,7 +94,7 @@ parses — flat, with `null` for what the record lacks:
 confirmation on-device; `patientName` is the same string the settings page
 shows — `fhir-r4`'s `HumanName.displayName`, the name the patient goes by now
 (`official` over `usual`, former and ended names passed over), rendered
-`given family`, else the name's text. `patientBirthDate` is the string the
+as its text, else `given family`. `patientBirthDate` is the string the
 server wrote, partial dates (`1970`, `1970-05`) included. The settings are built
 in two steps because the facts arrive separately: the grant gives a
 `Connection` (token, server), and the save adds the patient the user picked

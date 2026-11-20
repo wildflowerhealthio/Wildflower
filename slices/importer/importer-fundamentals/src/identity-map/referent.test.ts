@@ -83,7 +83,7 @@ describe('Referent.discover', () => {
       (referent?.identifiers ?? []).map((identifier) => [identifier.system?.href, identifier.value])
     expect(systemsAndValues(patientReferent)).toEqual([[SOURCE_PATIENT, 'p-1']])
     expect(systemsAndValues(practitionerReferent)).toEqual([[SOURCE_PRACTITIONER, 'pr-1']])
-    expect(practitionerReferent?.label).toBe('Dr.  B   Jones')
+    expect(practitionerReferent?.label).toBe('Dr. B Jones')
   })
 
   it('makes no referent of a display-only performer, an organization, a literal, an untyped identifier, or a prior prescription number', () => {
