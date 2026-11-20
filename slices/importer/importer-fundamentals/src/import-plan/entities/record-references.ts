@@ -9,7 +9,7 @@ import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r
 import { Array as Arr, Equal, HashSet, Option, pipe, Record } from 'effect'
 
 import type * as ImportedRecord from './imported-record.ts'
-import type * as RecordKey from './record-key.ts'
+import * as RecordKey from './record-key.ts'
 
 /**
  * The records of an import that another of its records references, and the
@@ -34,7 +34,7 @@ type RecordKeysByReference = Record.ReadonlyRecord<LogicalReference.Key, readonl
  */
 const recordKeysByReferenceOf = (records: readonly ImportedRecord.Type[]): RecordKeysByReference =>
   pipe(
-    records.filter(({ key }) => key._tag === 'Keyed'),
+    records.filter(({ key }) => RecordKey.isKeyed(key)),
     Arr.flatMap(({ key, copies }) =>
       copies.flatMap(({ resource }) =>
         MatchQuery.qualifiedIdentifiersOf(resource).map(

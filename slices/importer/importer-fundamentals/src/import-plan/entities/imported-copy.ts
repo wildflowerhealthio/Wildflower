@@ -30,7 +30,7 @@ type StageId = Data.TaggedEnum<{
   Minted: { readonly id: string }
 }>
 
-const { Derived, Minted } = Data.taggedEnum<StageId>()
+const { Derived, Minted, $is: isStageId } = Data.taggedEnum<StageId>()
 
 /**
  * One copy of a record, from one file set: the record as the import stage
@@ -41,7 +41,7 @@ const { Derived, Minted } = Data.taggedEnum<StageId>()
 interface Type {
   /** The file set the copy came from. */
   readonly origin: FileSetOrigin.Type
-  /** The copy's review key, unique within its format. */
+  /** The copy's review key, unique within the batch. */
   readonly reviewKey: string
   /** The title the plan shows the copy under. */
   readonly title: string
@@ -93,8 +93,11 @@ const fromSourceFile = (
   stageId: Derived({ id: sourceFile.id }),
 })
 
+/** Whether the import stage derived `copy`'s id ({@link StageId}), so it is the same on every import. */
+const hasDerivedStageId = (copy: Type): boolean => isStageId('Derived')(copy.stageId)
+
 /** The key of the record `copy` is a copy of (`RecordKey.make`). */
 const recordKeyOf = (copy: Type): RecordKey.Type => RecordKey.make(copy.resource, copy.reviewKey)
 
-export { fromPlacedRow, fromSourceFile, recordKeyOf }
+export { fromPlacedRow, fromSourceFile, hasDerivedStageId, recordKeyOf }
 export type { StageId, Type }

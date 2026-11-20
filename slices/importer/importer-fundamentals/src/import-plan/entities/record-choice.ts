@@ -26,13 +26,7 @@ type Type = Data.TaggedEnum<{
   DontAdd: Record<never, never>
 }>
 
-const {
-  UseExistingRecord,
-  SaveAsNewRecord,
-  DontAdd,
-  $is: is,
-  $match: match,
-} = Data.taggedEnum<Type>()
+const { UseExistingRecord, SaveAsNewRecord, DontAdd, $is: is } = Data.taggedEnum<Type>()
 
 /** Whether `choice` uses an existing record and takes none of the import's fields. */
 const takesNothing = (choice: Type): boolean =>
@@ -48,5 +42,5 @@ const equivalence: Equivalence.Equivalence<Type> = (left, right) =>
       Equal.equals(left.fieldsTaken, right.fieldsTaken)
     : left._tag === right._tag
 
-export { DontAdd, equivalence, is, match, SaveAsNewRecord, takesNothing, UseExistingRecord }
+export { DontAdd, equivalence, is, SaveAsNewRecord, takesNothing, UseExistingRecord }
 export type { Type }

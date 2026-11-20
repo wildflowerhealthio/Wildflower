@@ -21,7 +21,10 @@ type Type = Data.TaggedEnum<{
   Keyless: { readonly reviewKey: string }
 }>
 
-const { Keyed, Keyless, $match: match } = Data.taggedEnum<Type>()
+const { Keyed, Keyless, $is: is } = Data.taggedEnum<Type>()
+
+/** Whether `key` is a keyed record's. */
+const isKeyed = is('Keyed')
 
 /** The key of the record a logical reference names. */
 const fromLogicalReference = (logicalReference: LogicalReference.Type): Type =>
@@ -42,5 +45,5 @@ const make = (resource: DetachedResource.Type, reviewKey: string): Type =>
     onNone: () => Keyless({ reviewKey }),
   })
 
-export { fromLogicalReference, Keyless, make, match }
+export { isKeyed, Keyless, make }
 export type { Type }

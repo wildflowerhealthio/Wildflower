@@ -85,9 +85,8 @@ const stageLiteralOf = (record: Type): string => {
  * `Derived`.
  */
 const literalReferenceIfDerived = (record: Type): Option.Option<string> =>
-  Option.liftPredicate(
-    stageLiteralOf(record),
-    () => recordCopyOf(record).stageId._tag === 'Derived'
+  Option.liftPredicate(stageLiteralOf(record), () =>
+    ImportedCopy.hasDerivedStageId(recordCopyOf(record))
   )
 
 /**
