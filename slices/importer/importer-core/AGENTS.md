@@ -261,6 +261,20 @@ that provides those.
   URL, plan it once), finds the references between
   them (`locateReferences`), finds their stored match, and suggests the
   plan (`suggestPlan`).
+  `import-write-equivalence.test.ts` holds the plan's write
+  (`resolvePlan`, then `ImportWrite.of`) on an empty store, every suggestion
+  taken, to the review screen's import (`importDecoded`, `resolveMentions`
+  on its defaults, `planWrite`'s `Included`). Its batch steers clear of the
+  two places they differ: the review screen's import writes a Patient or
+  Practitioner from its first mention where the plan writes its last decoded
+  copy, and it leaves out a record that names no Patient where the plan
+  saves it as new.
+  `import-write-links.test.ts` runs two imports through `fileCopiesOf`,
+  `planImport`, `resolvePlan` and `ImportWrite.of`, the second against the
+  store the first wrote: a stored record's reference the first left
+  unlinked (a stub for a record not added, or a reference to a record in no
+  file) is linked when the second brings its target, and the referrer reads
+  `Update`.
 
 ## Layering
 
