@@ -54,4 +54,4 @@ const union = (
     carried
   )
 
-export { union }
+export { missingFrom, union }
