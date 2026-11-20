@@ -5,13 +5,9 @@
  * @packageDocumentation
  */
 import { MatchGrade, type ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
-import {
-  type FhirResource,
-  type FhirResourceWithId,
-  literalReferenceOf,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
-import { HashMap, HashSet, Option } from 'effect'
+import { HashSet, Option } from 'effect'
 
 import * as KeptRecord from '../entities/kept-record.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
@@ -32,7 +28,7 @@ interface SuggestionFacts {
    * Each kept record the records ahead of this one in merge order merge
    * into, with their merges, by the kept record's literal reference.
    */
-  readonly mergedSoFar: HashMap.HashMap<string, KeptRecord.Type>
+  readonly mergedSoFar: KeptRecord.ByKeptRecord
   /** How the import's and the stored records' references are compared. */
   readonly comparableReferences: ComparableReferences.Type
 }
@@ -50,8 +46,8 @@ const countedNameMatches = (
     .map(({ resource }) => resource)
 
 /**
- * The differences of `facts.resource` from `existing` as it stands once the
- * records ahead of it merged into it (`KeptRecord.asMerged`).
+ * The differences of `facts.resource` from `existing` as merged once the
+ * records ahead of it merged into it (`KeptRecord.asMergedIn`).
  */
 const differencesFor = (
   facts: SuggestionFacts,
@@ -59,9 +55,7 @@ const differencesFor = (
 ): readonly Difference[] =>
   differencesOf(
     facts.resource,
-    HashMap.get(facts.mergedSoFar, literalReferenceOf(existing)).pipe(
-      Option.match({ onNone: () => existing, onSome: KeptRecord.asMerged })
-    ),
+    KeptRecord.asMergedIn(facts.mergedSoFar, existing),
     facts.comparableReferences
   )
 

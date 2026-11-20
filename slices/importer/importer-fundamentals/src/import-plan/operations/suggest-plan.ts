@@ -4,42 +4,26 @@
  *
  * @packageDocumentation
  */
-import { literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, HashMap, Option, Order } from 'effect'
+import { Array as Arr, Order } from 'effect'
 
 import * as ImportPlan from '../entities/import-plan.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
 import * as KeptRecord from '../entities/kept-record.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
-import * as RecordChoice from '../entities/record-choice.ts'
 import * as RecordReferences from '../entities/record-references.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as ComparableReferences from './differences-of/comparable-references.ts'
 import { suggestRecord } from './suggest-record.ts'
 
-/** Each kept record with the merges of the records suggested so far, by its literal reference. */
-type MergedSoFar = HashMap.HashMap<string, KeptRecord.Type>
-
 /** `mergedSoFar` with `planned`'s suggested merge made, when its suggestion merges into a stored record. */
-const withSuggestedMerge = (mergedSoFar: MergedSoFar, planned: PlannedRecord.Type): MergedSoFar =>
-  Option.match(
-    Option.flatMap(
-      planned.suggestion.choice,
-      Option.liftPredicate(RecordChoice.is('MergeIntoExistingRecord'))
-    ),
-    {
-      onNone: () => mergedSoFar,
-      onSome: ({ existing, fieldsTaken }) =>
-        HashMap.modifyAt(mergedSoFar, literalReferenceOf(existing), (keptRecord) =>
-          Option.some(
-            KeptRecord.withMerge(
-              Option.getOrElse(keptRecord, () => KeptRecord.of(existing)),
-              { incoming: ImportedRecord.resourceOf(planned.record), fieldsTaken }
-            )
-          )
-        ),
-    }
-  )
+const withSuggestedMerge = (
+  mergedSoFar: KeptRecord.ByKeptRecord,
+  planned: PlannedRecord.Type
+): KeptRecord.ByKeptRecord =>
+  KeptRecord.withRecordChoice(mergedSoFar, planned.suggestion.choice, {
+    incoming: ImportedRecord.resourceOf(planned.record),
+    isEdit: false,
+  })
 
 /**
  * One record of the plan: what the store holds of it and its suggestion, its
@@ -50,7 +34,7 @@ const planRecord = (
   storedMatch: StoredMatch.Type,
   recordReferences: RecordReferences.Type,
   comparableReferences: ComparableReferences.Type,
-  mergedSoFar: MergedSoFar,
+  mergedSoFar: KeptRecord.ByKeptRecord,
   record: ImportedRecord.Type
 ): PlannedRecord.Type => {
   const recordMatch = StoredMatch.ofRecord(storedMatch, record.key)
@@ -90,7 +74,7 @@ const byPosition = Order.mapInput(Order.number, ({ position }: PlacedInPlan<unkn
  * plan order, the sort being stable): decoded records first, implied ones
  * after. A record suggested to merge into a stored record a record ahead of
  * it is suggested to merge into has its differences measured against that
- * kept record as the earlier merge leaves it (`KeptRecord.asMerged`), so two
+ * kept record as the earlier merge leaves it (`KeptRecord.asMergedIn`), so two
  * suggestions never take one field twice, and a decoded record never leaves
  * a field to an implied record the write may drop. References compare by
  * what they name (`ComparableReferences`), not by their literal.
@@ -110,8 +94,11 @@ const suggestPlan = (
   )
   const [, planned] = Arr.mapAccum(
     inMergeOrder,
-    HashMap.empty<string, KeptRecord.Type>(),
-    (mergedSoFar, { position, value: record }): [MergedSoFar, PlacedInPlan<PlannedRecord.Type>] => {
+    KeptRecord.noneMerged,
+    (
+      mergedSoFar,
+      { position, value: record }
+    ): [KeptRecord.ByKeptRecord, PlacedInPlan<PlannedRecord.Type>] => {
       const plannedRecord = planRecord(
         storedMatch,
         recordReferences,
