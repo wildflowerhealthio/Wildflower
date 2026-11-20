@@ -37,7 +37,7 @@ type ResponseEntry = Bundle.BundleValue<unknown>['entry'][number]
  * the entry's resource decoded as a stored resource for a `2xx`, and
  * {@link BatchReadRejected} for any other status or no answer.
  */
-const storedOfEntry = (
+const storedResourceOfEntry = (
   literalReference: string,
   entry: ResponseEntry | undefined
 ): Effect.Effect<Option.Option<FhirResourceWithId>, BatchReadRejected | ParseResult.ParseError> => {
@@ -81,7 +81,7 @@ const readInBatch = (
         // FHIR R4 § 3.2.5.2: a batch-response holds one entry per request
         // entry, in the same order.
         return yield* Effect.forEach(read, (literalReference, index) =>
-          storedOfEntry(literalReference, response.entry[index])
+          storedResourceOfEntry(literalReference, response.entry[index])
         )
       }),
   })
