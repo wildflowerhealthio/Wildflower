@@ -6,7 +6,7 @@
  * @packageDocumentation
  */
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { HumanName, type IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   type FhirResource,
   type LogicalReference,
@@ -14,6 +14,8 @@ import {
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { type Either, Option, type ParseResult, Record } from 'effect'
+
+import type * as FhirR4 from 'fhir/r4.d.ts'
 
 /**
  * Makes the record a reference to one type implies, from the identifier and
@@ -27,24 +29,43 @@ type ImpliedRecordMaker = (
 
 /**
  * The wire of a record of `resourceType` keyed by `identifier`, its one name
- * `display` as printed: what a reference says of a person or a provider.
+ * `name`: what a reference says of a person or a provider.
  */
 const namedRecordWire = (
   resourceType: 'Patient' | 'Practitioner',
   { system, value }: IdentifierAndReference.QualifiedIdentifierType,
-  display: string
+  name: FhirR4.HumanName
 ): unknown => ({
   resourceType,
   identifier: [DetachedResource.keyIdentifierWire({ system: system.href, value })],
-  name: [{ text: display }],
+  name: [name],
 })
+
+/**
+ * A provider's name as a reference's `display` prints it: `text` the display
+ * as printed, with the `family`, `given`, `prefix` and `suffix` it reads as
+ * ({@link HumanName.partsOfText}), so a `name` search for a family name finds
+ * it, or `text` alone when no family name can be read.
+ */
+const practitionerNameOf = (display: string): FhirR4.HumanName =>
+  Option.match(HumanName.partsOfText(display), {
+    onNone: () => ({ text: display }),
+    onSome: ({ family, given, prefix, suffix }) => ({
+      text: display,
+      family,
+      given: [...given],
+      prefix: [...prefix],
+      suffix: [...suffix],
+    }),
+  })
 
 const decodePatient = DetachedResource.decodeUnknownEither(Patient.Schema)
 const decodePractitioner = DetachedResource.decodeUnknownEither(Practitioner.Schema)
 
 /**
  * The maker of the record a reference to each type `fhir-r4` models implies:
- * a Patient or a Practitioner named by its display, and none for a type
+ * a Patient named by its display, a Practitioner named by its display and
+ * the parts it reads as ({@link practitionerNameOf}), and none for a type
  * whose record needs more than a reference can say, each with the elements
  * R4 requires that a reference does not carry.
  *
@@ -56,10 +77,10 @@ const IMPLIED_RECORD_MAKERS: {
   readonly [TType in FhirResource['resourceType']]: Option.Option<ImpliedRecordMaker>
 } = {
   Patient: Option.some((identifier, display) =>
-    decodePatient(namedRecordWire('Patient', identifier, display))
+    decodePatient(namedRecordWire('Patient', identifier, { text: display }))
   ),
   Practitioner: Option.some((identifier, display) =>
-    decodePractitioner(namedRecordWire('Practitioner', identifier, display))
+    decodePractitioner(namedRecordWire('Practitioner', identifier, practitionerNameOf(display)))
   ),
   // No `identifier` element to key it by.
   Binary: Option.none(),

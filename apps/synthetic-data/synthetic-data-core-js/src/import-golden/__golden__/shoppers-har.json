@@ -1452,8 +1452,13 @@
       "name": [
         {
           "extension": [],
-          "given": [],
-          "prefix": [],
+          "family": "Nguyen",
+          "given": [
+            "Lee"
+          ],
+          "prefix": [
+            "Dr."
+          ],
           "suffix": [],
           "text": "Dr. Lee Nguyen"
         }

@@ -781,8 +781,11 @@
       "name": [
         {
           "extension": [],
+          "family": "SMITH",
           "given": [],
-          "prefix": [],
+          "prefix": [
+            "DR"
+          ],
           "suffix": [],
           "text": "DR SMITH"
         }
@@ -815,8 +818,11 @@
       "name": [
         {
           "extension": [],
+          "family": "PATEL",
           "given": [],
-          "prefix": [],
+          "prefix": [
+            "DR"
+          ],
           "suffix": [],
           "text": "DR PATEL"
         }

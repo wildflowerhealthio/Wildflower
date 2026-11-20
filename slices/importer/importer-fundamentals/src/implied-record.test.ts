@@ -33,12 +33,45 @@ const qualified = (
 const SMITH = qualified(SYSTEM, 'Dr. A Smith')
 
 describe('ImpliedRecord.tryFromLogicalReference', () => {
-  it.each(['Patient', 'Practitioner'] as const)(
-    'implies a %s keyed by the identifier and named by the display',
-    (resourceType) => {
+  it.each([
+    {
+      resourceType: 'Patient',
+      display: 'DR A SMITH',
+      name: { text: 'DR A SMITH', family: null, given: [], prefix: [], suffix: [] },
+    },
+    {
+      resourceType: 'Practitioner',
+      display: 'DR A SMITH MD',
+      name: {
+        text: 'DR A SMITH MD',
+        family: 'SMITH',
+        given: ['A'],
+        prefix: ['DR'],
+        suffix: ['MD'],
+      },
+    },
+    {
+      resourceType: 'Practitioner',
+      display: 'OSEI DR. KWAME',
+      name: {
+        text: 'OSEI DR. KWAME',
+        family: 'OSEI',
+        given: ['KWAME'],
+        prefix: ['DR.'],
+        suffix: [],
+      },
+    },
+    {
+      resourceType: 'Practitioner',
+      display: 'Dr.',
+      name: { text: 'Dr.', family: null, given: [], prefix: [], suffix: [] },
+    },
+  ] as const)(
+    'implies a $resourceType keyed by the identifier, named $name.text with family $name.family',
+    ({ resourceType, display, name }) => {
       const implied = ImpliedRecord.tryFromLogicalReference(
         LogicalReference.make(resourceType, SMITH),
-        'DR A SMITH'
+        display
       ).pipe(Option.map(Either.getOrThrow))
 
       expect(
@@ -48,7 +81,13 @@ describe('ImpliedRecord.tryFromLogicalReference', () => {
                 resourceType: record.resourceType,
                 id: record.id,
                 identifier: record.identifier.map(({ system, value }) => [system?.href, value]),
-                name: record.name.map(({ text }) => text),
+                name: record.name.map(({ text, family, given, prefix, suffix }) => ({
+                  text,
+                  family,
+                  given,
+                  prefix,
+                  suffix,
+                })),
               }
             : record
         )
@@ -57,7 +96,7 @@ describe('ImpliedRecord.tryFromLogicalReference', () => {
           resourceType,
           id: null,
           identifier: [[SYSTEM, 'Dr. A Smith']],
-          name: ['DR A SMITH'],
+          name: [name],
         })
       )
     }

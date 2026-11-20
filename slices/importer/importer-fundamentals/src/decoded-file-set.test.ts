@@ -512,11 +512,11 @@ describe('DecodedFileSet.adopt, the records its references imply', () => {
     expect({
       id: implied?.id,
       identifier: implied?.identifier.map(({ system, value }) => [system?.href, value]),
-      name: implied?.name.map(({ text }) => text),
+      name: implied?.name.map(({ text, family, given }) => ({ text, family, given })),
     }).toEqual({
       id: practitionerId,
       identifier: [[NAME_SYSTEM, 'Dr. A Smith']],
-      name: ['Dr. A Smith'],
+      name: [{ text: 'Dr. A Smith', family: 'Smith', given: ['A'] }],
     })
     const impliedRow = rows.find(({ resource }) => resource.resourceType === 'Practitioner')
     expect([impliedRow?.reviewKey, impliedRow?.title]).toEqual([

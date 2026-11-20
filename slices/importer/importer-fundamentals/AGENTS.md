@@ -203,7 +203,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   **`tryFromLogicalReference(logicalReference, display)`** reads an
   exhaustive table over `fhir-r4`'s `FhirResource` of an `Option` of an
   **`ImpliedRecordMaker`** per type: a `Patient` or `Practitioner`'s maker
-  builds its `identifier` and one `name` whose `text` is the display,
+  builds its `identifier` and one `name` whose `text` is the display; a
+  `Practitioner`'s name also carries the `family`, `given`, `prefix` and
+  `suffix` the display reads as (`HumanName.partsOfText`, casing as printed:
+  "DR J BROWN MD" is family `BROWN`, given `J`, prefix `DR`, suffix `MD`), so a `name` search for its family
+  finds it, and stays text-only when no family name can be read; each is
   decoded detached (`DetachedResource.decodeUnknownEither`), so it gives the
   record or the `ParseError` its schema rejects it with; every other type
   has none, its row stating the R4-required elements a reference cannot
@@ -600,7 +604,8 @@ it, not generic — every format binds it, so there is no `TParsed` left to
 abstract over; a reviewed resource always has the id it is written under), for the `Patient` and `Practitioner` schemas an implied record decodes through, and for the identity map's `Patient`, `Practitioner` and
 `ResourceReferences`, its one reference walk, `fhir-r4/data-types` for `Meta`
 (the slot `MetaSource.stamp` writes into) and the identity map's
-`IdentifierAndReference` and `HumanName`, `fhir-r4/identity` for the shared id
+`IdentifierAndReference` and `HumanName` (also the parts an implied
+Practitioner's name reads as), `fhir-r4/identity` for the shared id
 derivation, and `fhir`'s wire types. Hosting the source file codec is what widened
 `fhir-r4` from a type-only import to the `DocumentReference` runtime schema
 (it builds and decodes the resource). `StoredCandidates.find` reads through

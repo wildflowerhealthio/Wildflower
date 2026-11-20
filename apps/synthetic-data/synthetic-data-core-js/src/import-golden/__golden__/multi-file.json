@@ -2608,8 +2608,13 @@
       "name": [
         {
           "extension": [],
-          "given": [],
-          "prefix": [],
+          "family": "OSEI",
+          "given": [
+            "KWAME"
+          ],
+          "prefix": [
+            "DR."
+          ],
           "suffix": [],
           "text": "OSEI DR. KWAME"
         }
@@ -2642,8 +2647,13 @@
       "name": [
         {
           "extension": [],
-          "given": [],
-          "prefix": [],
+          "family": "ROY",
+          "given": [
+            "ANNE"
+          ],
+          "prefix": [
+            "DR."
+          ],
           "suffix": [],
           "text": "ROY DR. ANNE"
         }
@@ -2676,8 +2686,13 @@
       "name": [
         {
           "extension": [],
-          "given": [],
-          "prefix": [],
+          "family": "Nguyen",
+          "given": [
+            "Lee"
+          ],
+          "prefix": [
+            "Dr."
+          ],
           "suffix": [],
           "text": "Dr. Lee Nguyen"
         }

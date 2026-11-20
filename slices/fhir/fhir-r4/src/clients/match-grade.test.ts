@@ -1,6 +1,9 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option, Schema } from 'effect'
+import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { HumanName } from '../data-types/index.ts'
 import { Patient, Practitioner } from '../resources/index.ts'
 import { MatchGrade } from './index.ts'
 
@@ -164,6 +167,12 @@ describe('MatchGrade.practitionerGradeOf', () => {
       grade: Option.none(),
     },
     {
+      rule: 'a text name with a title after its family ("OSEI DR. KWAME") is read family first',
+      query: [{ text: 'OSEI DR. KWAME' }],
+      stored: [{ family: 'Osei', given: ['Kwame'] }],
+      grade: Option.some('probable'),
+    },
+    {
       rule: 'a "Dr" title leading the family is ignored, as is one in prefix',
       query: [{ family: 'Dr Brown', given: ['Jonathan'] }],
       stored: [{ prefix: ['Dr.'], family: 'Brown', given: ['Jonathan'] }],
@@ -171,6 +180,26 @@ describe('MatchGrade.practitionerGradeOf', () => {
     },
   ])('$rule', ({ query, stored, grade }) => {
     expect(MatchGrade.practitionerGradeOf(practitioner(query), practitioner(stored))).toEqual(grade)
+  })
+
+  it('should grade a text name against the parts it reads as probable, or possible with no given name', () => {
+    fc.assert(
+      fc.property(textNameArb, (text) => {
+        // Arrange
+        const parts = HumanName.partsOfText(text)
+        const query = practitioner([{ text }])
+        const stored = practitioner(Option.toArray(parts))
+
+        // Act
+        const grade = MatchGrade.practitionerGradeOf(query, stored)
+
+        // Assert
+        expect(grade).toEqual(
+          Option.map(parts, ({ given }) => (given.length > 0 ? 'probable' : 'possible'))
+        )
+      }),
+      { numRuns: numRunsFor({ base: 200 }) }
+    )
   })
 })
 
@@ -240,6 +269,21 @@ describe('MatchGrade.comparableNamesOf', () => {
       name: { family: 'smith', given: ['john'] },
     },
     {
+      form: 'a title after the first word: family before it, given names after it',
+      text: 'ROY DR. ANNE',
+      name: { family: 'roy', given: ['anne'] },
+    },
+    {
+      form: 'a title ending the text: dropped, given names then family',
+      text: 'John Smith Dr',
+      name: { family: 'smith', given: ['john'] },
+    },
+    {
+      form: 'a credential ending the text without a comma: dropped',
+      text: 'DR J BROWN MD',
+      name: { family: 'brown', given: ['j'] },
+    },
+    {
       form: 'three commas: given names then family, the commas read as spaces',
       text: 'Schmitt, John, Jacob, MD',
       name: { family: 'jacob', given: ['schmitt', 'john'] },
@@ -262,3 +306,14 @@ const patient = (name: readonly object[], birthDate: string | null): Patient.Typ
 
 const practitioner = (name: readonly object[]): Practitioner.Type =>
   Schema.decodeUnknownSync(Practitioner.Schema)({ resourceType: 'Practitioner', name })
+
+/** A name written as text from words, titles, credentials, suffixes and commas, cased any way. */
+const textNameArb = fc
+  .array(
+    fc.oneof(
+      fc.stringMatching(/^[A-Za-zÀ-ÿ]{1,8}$/u),
+      fc.constantFrom('Dr.', 'DR', 'doctor', 'MD', 'Jr', 'III', ',')
+    ),
+    { maxLength: 6 }
+  )
+  .map((words) => words.join(' '))
