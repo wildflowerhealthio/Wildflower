@@ -18,16 +18,19 @@
  * hooks. No DOM, no `fs`, no React. Every export is a value or an Effect whose only
  * requirement is what a registered format's decode needs to read its bytes
  * ({@link DecodeRequirements}), which the host provides, but for
- * `findStoredMatch` and `planImport`, which ask the store and so also
- * require the FHIR client (`FhirR4ResourcesHttpApiClient`).
+ * `findStoredMatch`, which asks the store and so also requires the FHIR
+ * client (`FhirR4ResourcesHttpApiClient`), and for `planImport` and
+ * {@link importWithSuggestions}, which also require what the
+ * `FindStoredMatch` they are handed requires (nothing for `noStore`).
  *
  * @packageDocumentation
  */
 export { defaultFormatSettings, formatKinds, formatRegistry } from './registry.ts'
 export type { BoundFormat, DecodeRequirements, FormatKind, FormatSettings } from './registry.ts'
-// `identifyPick`, `claimPicks` and `decodeFormat` are steps of `readBatch`,
-// not a surface: the shell drives the whole read, never a leg of it. They stay
-// module-level exports for `read-batch.test.ts` and are not re-exported here.
+// `identifyPick`, `claimPicks` and `decodeFormat` are steps of `readBatch`
+// and `importWithSuggestions`, not a surface: the shell drives the whole read,
+// never a leg of it. They stay module-level exports for those and for
+// `read-batch.test.ts` and are not re-exported here.
 export { importDecoded, type ImportingFormat } from './import-decoded.ts'
 export {
   type DecodedBatch,
