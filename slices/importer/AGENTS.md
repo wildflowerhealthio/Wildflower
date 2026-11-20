@@ -122,7 +122,9 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   linked and stamped by the import stage's own steps with no reference
   between a set's records resolved; `findStoredMatch` matches an import
   once against the store; `planImport` builds its `ImportPlan`. No
-  DOM, no React, no client.
+  DOM and no React; the one client it asks is the store's
+  (`FhirR4ResourcesHttpApiClient`), which `findStoredMatch` and `planImport`
+  require.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
   the React half of the registry (each `importer-core` importer spread with

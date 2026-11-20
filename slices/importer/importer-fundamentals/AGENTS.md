@@ -323,12 +323,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `LogicalReference.Key` (its `identifier[0]` under its type), so one key
     covers every file's copy and survives a settings re-decode, or
     **`Keyless`** by its review key. A `Data` tagged enum, so it keys a
-    `HashMap`. **`make(resource, reviewKey)`**, **`fromLogicalReference`**.
+    `HashMap`. **`make(resource, reviewKey)`**; **`isKeyed`**.
   - **`RecordChoice`** — **`UseExistingRecord`** `{ existing, fieldsTaken }`
     (the top-level fields taken from the import; none taken links),
     **`SaveAsNewRecord`** or **`DontAdd`**; **`takesNothing`** and an
-    **`equivalence`** (one stored record by literal reference, the same
-    fields). Undecided is the absence of a choice.
+    **`equivalence`** (one stored record by `fhir-r4`'s `sameStoredResource`,
+    the same fields). Undecided is the absence of a choice.
   - **`FileSetOrigin`** — `{ format, pickedFiles }`, the file set a copy came
     from. **`fromFileSet(format, fileSet)`**; **`equivalence`**, two origins
     being one set when `FormatDecode.makeId` gives their format and picked
@@ -343,7 +343,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     no key identifier yet is as stable as a keyed record's.
     **`fromPlacedRow(origin, row)`** (a `DecodedFileSet.PlacedRow`, linked
     and stamped) and **`fromSourceFile(origin, pickedSourceFile)`** build
-    one; **`recordKeyOf`**.
+    one, composing its review key, which is unique within the batch;
+    **`hasDerivedStageId`**; **`recordKeyOf`**.
   - **`ImportedRecord`** — `{ key, copies }`, one record beside every copy
     of it in plan order. **`fromCopies`** groups copies by record with one
     `HashMap.modifyAt` per copy and orders the records by their first copy.
@@ -367,17 +368,17 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     it, nothing found when there is no entry; **`empty`**.
     **`storedCopiesOf(entry)`** is the one answer to which stored records are
     the record: those found by identifier and the one under its derived id,
-    each once by literal reference.
+    each once (`sameStoredResource`).
   - **`OfferedFields`** — what an import resource offers a stored record:
     **`gapFilling`** and **`overwriting`** field names, in the import's field
-    order, and the **`identifiersToAdd`**; **`offersNoField`** is "same as
-    existing".
+    order, and the **`identifiersToAdd`**; **`make`**; **`offersNoField`** is
+    "same as existing".
   - **`Suggestion`** — **`Type`** `{ choice, reason }`, the choice `None`
     when the record is left undecided; **`Reason`**, a closed tagged enum
     (`IdentifierMatchSameAsExisting`, `IdentifierMatchFieldsDiffer`,
     `NoMatch`, `NotReferenced`, `NameMatchReferenced`,
-    `SeveralIdentifierMatches`) with its constructors;
-    **`needsDecision(reason)`** (the last two).
+    `SeveralIdentifierMatches`) with its constructors; **`make(choice,
+    reason)`**; **`needsDecision(reason)`** (the last two).
   - **`ChangedStoredRecord`** — a stored record beside the changes the
     import's records make to it, in plan order: **`of`**, **`withChange`**,
     and **`asItStands`**, its fields with each change's taken fields laid
@@ -390,20 +391,26 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `Create`, `Update` (a field taken or an edit), `LinkToExisting`,
     `DontAdd` or `Open`, defined once as **`LabelSchema`**, a
     `Schema.Literal`, whose literals are **`labels`**), **`needsDecision`**,
-    **`isChanged`** (a choice that differs from the suggestion's).
+    **`isChanged`** (a choice that differs from the suggestion's), and its
+    transitions **`withChoice`**, **`withChoiceCleared`** and
+    **`withEdit`**.
   - **`ImportPlan`** — **`Type`** `{ records, storedMatch }`, the records in
     plan order beside the import's whole stored match, which a reference's
     candidates are read off (`StoredMatch.ofReference`). **`make`**,
     **`get`**, **`choose(plan, keys, choice)`**, **`reset(plan, keys)`** and
-    **`setEdit`**.
+    **`setEdit`**, each making a planned record's own transition on the
+    records it names.
   - **`PlanTotals`** — **`Counts`** `{ byLabel, needsDecision }`: the records
     under each label, every label present, and those listed under Needs a
     decision; how many records there are is **`recordsOf`** (their sum) and
     how many are open the count under `Open`. **`makeCounts`** fills a label
-    no record has with zero. **`FileSetCounts`** `{ origin, counts }`;
-    **`Type`** `{ overall, fileSets }`.
+    no record has with zero. **`FileSetCounts`** `{ origin, counts }`, built
+    by **`makeFileSetCounts`**; **`Type`** `{ overall, fileSets }`, built by
+    **`make`**.
 
-  Operations:
+  Operations (`compareToStored` and `suggestRecord` take a
+  `ComparableReferences` only `suggestPlan` builds, so the folder's index
+  exports the other two):
   - **`compareToStored(resource, stored, comparable)`**
     (`operations/compare-to-stored/`) — the gap rule over two plain
     resources, the import's and the stored record as it stands; it knows

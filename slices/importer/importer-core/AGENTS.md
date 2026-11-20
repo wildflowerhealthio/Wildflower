@@ -7,11 +7,13 @@ the React shell (`importer-react`), which adds each format's `SettingsPicker`
 (for a format that has settings) to the registry here and runs these functions
 from its hooks.
 
-No DOM, no `fs`, no React, no client: every export is a value or an Effect
-whose only requirement is **`DecodeRequirements`**, what the registered
-formats' decodes need to read their bytes (LifeLabs' `PositionedTextExtractor`).
-A headless host could run an import to the point of a write plan with this
-package alone and a layer that provides those.
+No DOM, no `fs`, no React. Every export is a value or an Effect whose only
+requirement is **`DecodeRequirements`**, what the registered formats' decodes
+need to read their bytes (LifeLabs' `PositionedTextExtractor`), but for
+`findStoredMatch` and `planImport`, which ask the store and so also require
+the FHIR client, `FhirR4ResourcesHttpApiClient`. A headless host could run
+an import to the point of a write plan with this package alone and a layer
+that provides those.
 
 ## Shape
 
@@ -37,8 +39,10 @@ package alone and a layer that provides those.
   mapped or exhaustive types over `FormatKind`, so missing any of them is a
   compile error.
 - `src/import-decoded.ts` — **the import stage**, the one place a record is
-  made the device's own, a source file is minted and `meta.source` is
-  stamped. **`importDecoded(importer, decoded)`** takes one format's
+  made the device's own. Its other steps, minting source files
+  (`mintSourceFiles`), linking and stamping `meta.source` (`linkAndStamp`)
+  and finishing each file set (`finishEachFileSet`), are shared with
+  `fileCopiesOf`. **`importDecoded(importer, decoded)`** takes one format's
   `FormatDecode.Decoded` and the **`ImportingFormat`** it reads off the
   format's importer (`sourceFileFormat`, `linkSourceFile`,
   `linkToSourceFiles`), and returns the format's `ReviewGroup` (every file
@@ -64,11 +68,14 @@ package alone and a layer that provides those.
   in, `MetaSource.stampAdopted`); and prepends the source files as the
   set's **"Source file"** / **"Source files"** section, each keyed by
   `FormatDecode.sourceFileKey`. Nothing is de-duplicated across sets or
-  files: each set's records are kept and keyed as they are. A set whose
-  source file cannot be minted, or whose `linkToSourceFiles` fails with
+  files: each set's records are kept and keyed as they are. Every set goes
+  through **`finishEachFileSet(importer, decoded, finishFileSet)`**, which
+  runs one set's step over each set concurrently: a set whose source file
+  cannot be minted, or whose `linkToSourceFiles` fails with
   `FileImporter.SourceFileNotFound`, becomes one `unreadableFiles` row per
-  picked file, after the decode's own. It provides `PickedFile.Format`
-  internally, so what it returns requires nothing.
+  picked file, after the decode's own, while the rest are kept. It provides
+  `PickedFile.Format` from the importer's `sourceFileFormat`, so what it
+  returns requires nothing.
 - `src/read-batch.ts` — the read half as pure functions over a
   **`ReadRegistry<R>`** (`format`, `detect` and `decode` of each format's
   `FileImporter`, its decodes requiring `R`, and the `sourceFileFormat`,
@@ -234,7 +241,7 @@ package alone and a layer that provides those.
   (`ImportedCopy.fromSourceFile`), then its records
   (`ImportedCopy.fromPlacedRow`). It never fails: its result,
   **`FormatCopies`** `{ copies, notes, unreadableFiles }`, reports a set the
-  stage cannot finish (a source file that cannot be minted, an implied
+  stage cannot finish (`finishEachFileSet`, as `importDecoded` does) (a source file that cannot be minted, an implied
   record its schema rejects, `FileImporter.SourceFileNotFound` from a hook)
   as an unreadable row per picked file of the set, after the decode's own,
   and keeps the other sets' copies and notes.
