@@ -6,10 +6,11 @@
  */
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierUnion } from '@wildflowerhealthio/fhir-r4/clients'
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, HashMap, Option, Order, pipe } from 'effect'
 
 import * as ImportedCopy from './imported-copy.ts'
-import type * as RecordKey from './record-key.ts'
+import * as RecordKey from './record-key.ts'
 
 /** One record's key beside every copy of it, in plan order. */
 interface Type {
@@ -66,18 +67,31 @@ const fromCopies = (copies: readonly ImportedCopy.Type[]): readonly Type[] =>
  */
 const recordCopyOf = ({ copies }: Type): ImportedCopy.Type =>
   Option.getOrElse(
-    Arr.findLast(copies, ({ isImplied }) => !isImplied),
+    Arr.findLast(copies, (copy) => !copy.isImplied),
     () => Arr.lastNonEmpty(copies)
   )
 
+/** The id the import stage gave the record: its record copy's ({@link recordCopyOf}). */
+const stageIdOf = (record: Type): ImportedCopy.StageId => recordCopyOf(record).stageId
+
+/** Whether every copy of the record is implied: no file decoded it, a reference only named it. */
+const isImplied = (record: Type): boolean => recordCopyOf(record).isImplied
+
+/** The title the plan shows the record under: its record copy's. */
+const titleOf = (record: Type): string => recordCopyOf(record).title
+
+/** The URL a source served the record at: its record copy's (`ImportedCopy.Type`'s `sourceUrl`). */
+const sourceUrlOf = (record: Type): Option.Option<URL> => recordCopyOf(record).sourceUrl
+
+/** The literal reference to the record under `id`: `<Type>/<id>`. */
+const literalReferenceUnder = (record: Type, id: string): string =>
+  `${recordCopyOf(record).resource.resourceType}/${id}`
+
 /**
- * The literal reference the import stage gives the record, `<Type>/<id>`
- * under its record copy's stage id: how a format's hooks name it.
+ * The literal reference the import stage gives the record, under its stage
+ * id ({@link stageIdOf}): how a format's hooks and `meta.source` name it.
  */
-const stageLiteralOf = (record: Type): string => {
-  const { stageId, resource } = recordCopyOf(record)
-  return `${resource.resourceType}/${stageId.id}`
-}
+const stageLiteralOf = (record: Type): string => literalReferenceUnder(record, stageIdOf(record).id)
 
 /**
  * The literal reference a stored copy of the record from an earlier import
@@ -88,6 +102,13 @@ const literalReferenceIfDerived = (record: Type): Option.Option<string> =>
   Option.liftPredicate(stageLiteralOf(record), () =>
     ImportedCopy.hasDerivedStageId(recordCopyOf(record))
   )
+
+/**
+ * The logical reference the record is keyed by: its record copy's
+ * (`RecordKey.logicalReferenceIfKeyed`); `None` when it is keyless.
+ */
+const logicalReferenceIfKeyed = (record: Type): Option.Option<LogicalReference.Type> =>
+  RecordKey.logicalReferenceIfKeyed(recordCopyOf(record).resource)
 
 /**
  * The record's resource: its record copy's ({@link recordCopyOf}), carrying
@@ -101,11 +122,22 @@ const resourceOf = (record: Type): DetachedResource.Type => {
         ...resource,
         identifier: IdentifierUnion.union(
           resource.identifier,
-          record.copies.filter(({ isImplied }) => !isImplied).map((copy) => copy.resource)
+          record.copies.filter((copy) => !copy.isImplied).map((copy) => copy.resource)
         ),
       }
     : resource
 }
 
-export { fromCopies, literalReferenceIfDerived, resourceOf, stageLiteralOf }
+export {
+  fromCopies,
+  isImplied,
+  literalReferenceIfDerived,
+  literalReferenceUnder,
+  logicalReferenceIfKeyed,
+  resourceOf,
+  sourceUrlOf,
+  stageIdOf,
+  stageLiteralOf,
+  titleOf,
+}
 export type { Type }

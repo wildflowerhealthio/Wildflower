@@ -8,6 +8,7 @@ import {
   detached,
   drBrownWire,
   NAMES,
+  OTHER_SOURCE,
   prescriptionWire,
   SOURCE,
   tyraWire,
@@ -64,6 +65,36 @@ describe('RecordReferences.of', () => {
     // Assert
     expect([...HashSet.values(references.referenced)]).toEqual([
       ImportedCopy.recordKeyOf(brownByLicence),
+    ])
+  })
+
+  it('should name each record by every qualified identifier its copies carry, and a shared identifier both records', () => {
+    // Arrange
+    const tyra = copyOf(detached(tyraWire('tyra')), 'tyra')
+    const twin = copyOf(
+      detached(
+        tyraWire('twin', {
+          identifier: [
+            { system: OTHER_SOURCE, value: 'twin' },
+            { system: SOURCE, value: 'tyra' },
+          ],
+        })
+      ),
+      'twin'
+    )
+
+    // Act
+    const references = RecordReferences.of(ImportedRecord.fromCopies([tyra, twin]))
+
+    // Assert
+    expect(
+      references.named.map(({ logicalReference, keys }) => ({
+        value: logicalReference.identifier[0].value,
+        keys: keys.length,
+      }))
+    ).toEqual([
+      { value: 'tyra', keys: 2 },
+      { value: 'twin', keys: 1 },
     ])
   })
 

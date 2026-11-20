@@ -82,3 +82,21 @@ describe('RecordKey.isKeyed', () => {
     expect(keyed).toEqual([true, false])
   })
 })
+
+describe('RecordKey.logicalReferenceIfKeyed', () => {
+  it('should give a keyed record’s key identifier under its type, and nothing for a keyless one', () => {
+    // Arrange
+    const tyra = detached(tyraWire('tyra'))
+
+    // Act
+    const logicalReferences = [tyra, binary].map(RecordKey.logicalReferenceIfKeyed)
+
+    // Assert
+    expect(logicalReferences).toEqual([
+      Option.some(
+        LogicalReference.make('Patient', Option.getOrThrow(DetachedResource.keyIdentifierOf(tyra)))
+      ),
+      Option.none(),
+    ])
+  })
+})

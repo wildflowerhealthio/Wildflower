@@ -141,3 +141,37 @@ describe('ImportedRecord.stageLiteralOf and literalReferenceIfDerived', () => {
     })
   })
 })
+
+describe('ImportedRecord, what its record copy says of it', () => {
+  it('should read its stage id, title, source URL and whether it is implied off its record copy, and name it under any id', () => {
+    // Arrange
+    const sourceUrl = new URL('https://source.example/fhir/Patient/tyra')
+    const implied = copyOf(detached(tyraWire('tyra')), 'rx-1#implied', 'a.har', {
+      isImplied: true,
+      title: 'Tyra (implied)',
+      stageId: { _tag: 'Derived', id: 'p' },
+    })
+    const decoded = copyOf(detached(tyraWire('tyra')), 'tyra', 'b.pdf', {
+      title: 'Tyra Ashford',
+      sourceUrl: Option.some(sourceUrl),
+      stageId: { _tag: 'Derived', id: 'p' },
+    })
+    const record = recordOf([decoded, implied])
+    const onlyImplied = recordOf([implied])
+
+    // Act / Assert
+    expect({
+      stageId: ImportedRecord.stageIdOf(record),
+      title: ImportedRecord.titleOf(record),
+      sourceUrl: ImportedRecord.sourceUrlOf(record),
+      isImplied: [ImportedRecord.isImplied(record), ImportedRecord.isImplied(onlyImplied)],
+      under: ImportedRecord.literalReferenceUnder(record, 'p-1'),
+    }).toEqual({
+      stageId: { _tag: 'Derived', id: 'p' },
+      title: 'Tyra Ashford',
+      sourceUrl: Option.some(sourceUrl),
+      isImplied: [false, true],
+      under: 'Patient/p-1',
+    })
+  })
+})

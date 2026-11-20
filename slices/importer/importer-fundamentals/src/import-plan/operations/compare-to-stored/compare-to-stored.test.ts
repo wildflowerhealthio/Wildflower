@@ -1,9 +1,11 @@
+import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ChangedStoredRecord from '../../entities/changed-stored-record.ts'
 import * as ImportedRecord from '../../entities/imported-record.ts'
 import * as OfferedFields from '../../entities/offered-fields.ts'
+import * as RecordChoice from '../../entities/record-choice.ts'
 import * as StoredMatch from '../../entities/stored-match.ts'
 import {
   candidate,
@@ -25,6 +27,21 @@ interface OfferSummary {
   readonly overwriting: readonly string[]
   readonly identifiersToAdd: readonly string[]
 }
+
+/** `existing` as it stands once an earlier import resource, `earlier`, takes `fieldsTaken` into it. */
+const asItStandsAfter = (
+  existing: FhirResourceWithId,
+  earlier: FhirResource,
+  fieldsTaken: HashSet.HashSet<string>
+): FhirResourceWithId =>
+  ChangedStoredRecord.asItStandsIn(
+    ChangedStoredRecord.withRecordChoice(
+      ChangedStoredRecord.noneChanged,
+      Option.some(RecordChoice.UseExistingRecord({ existing, fieldsTaken })),
+      { resource: earlier, isEdit: false }
+    ),
+    existing
+  )
 
 /** No record of an import to compare references by: each compared as it is, or by its identifier. */
 const NO_RECORDS = ComparableReferences.of([], StoredMatch.empty)
@@ -118,12 +135,7 @@ describe('compareToStored', () => {
     // Act
     const offered = compareToStored(
       imported,
-      ChangedStoredRecord.asItStands(
-        ChangedStoredRecord.withChange(ChangedStoredRecord.of(existing), {
-          resource: earlier,
-          fieldsTaken: HashSet.make('gender'),
-        })
-      ),
+      asItStandsAfter(existing, earlier, HashSet.make('gender')),
       NO_RECORDS
     )
 
@@ -154,12 +166,7 @@ describe('compareToStored', () => {
     // Act
     const offered = compareToStored(
       imported,
-      ChangedStoredRecord.asItStands(
-        ChangedStoredRecord.withChange(ChangedStoredRecord.of(existing), {
-          resource: earlier,
-          fieldsTaken: HashSet.make('gender'),
-        })
-      ),
+      asItStandsAfter(existing, earlier, HashSet.make('gender')),
       NO_RECORDS
     )
 

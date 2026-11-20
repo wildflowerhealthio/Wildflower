@@ -323,7 +323,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `LogicalReference.Key` (its `identifier[0]` under its type), so one key
     covers every file's copy and survives a settings re-decode, or
     **`Keyless`** by its review key. A `Data` tagged enum, so it keys a
-    `HashMap`. **`make(resource, reviewKey)`**; **`isKeyed`**.
+    `HashMap`. **`make(resource, reviewKey)`**; **`isKeyed`**;
+    **`logicalReferenceIfKeyed(resource)`**, the logical reference a keyed
+    record is keyed by, `None` for a keyless one.
   - **`RecordChoice`** — **`UseExistingRecord`** `{ existing, fieldsTaken }`
     (the top-level fields taken from the import; none taken links),
     **`SaveAsNewRecord`** or **`DontAdd`**; **`takesNothing`** and an
@@ -354,11 +356,17 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     copy (`fhir-r4`'s `IdentifierUnion.union`); **`stageLiteralOf`** is
     `<Type>/<id>` under the record copy's stage id, how a format's hooks name
     it; **`literalReferenceIfDerived`** is that literal when the stage id is
-    `Derived`, where a stored copy from an earlier import sits.
+    `Derived`, where a stored copy from an earlier import sits. What the
+    record copy says of the record: **`stageIdOf`**, **`titleOf`**,
+    **`sourceUrlOf`**, **`isImplied`** (every copy implied) and
+    **`logicalReferenceIfKeyed`** (`RecordKey`'s, of its resource); and
+    **`literalReferenceUnder(record, id)`**, `<Type>/<id>`.
   - **`RecordReferences`** — **`of(records)`**: the records another record
-    references by a logical reference, by any identifier of a keyed record,
-    and the distinct logical references that name no record of the import;
-    **`isReferenced`**.
+    references by a logical reference, by any identifier of a keyed record;
+    `named`, each logical reference that names keyed records of the import
+    beside their keys (**`NamedRecords`**: one record, or several sharing an
+    identifier); and the distinct logical references that name no record of
+    the import; **`isReferenced`**.
   - **`StoredMatch`** — what the store holds of an import. An **`Entry`** per
     record: its `candidates`, best grade first, and the stored record
     `storedUnderDerivedId`, read for every record whose stage id is derived.
@@ -368,7 +376,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     it, nothing found when there is no entry; **`empty`**.
     **`storedCopiesOf(entry)`** is the one answer to which stored records are
     the record: those found by identifier and the one under its derived id,
-    each once (`sameStoredResource`).
+    each once (`sameStoredResource`); **`storedCopiesOfReference`** is the
+    same answer for an unresolved reference, its candidates found by
+    identifier.
   - **`OfferedFields`** — what an import resource offers a stored record:
     **`gapFilling`** and **`overwriting`** field names, in the import's field
     order, and the **`identifiersToAdd`**; **`make`**; **`offersNoField`** is
@@ -380,37 +390,86 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `SeveralIdentifierMatches`) with its constructors; **`make(choice,
     reason)`**; **`needsDecision(reason)`** (the last two).
   - **`ChangedStoredRecord`** — a stored record beside the changes the
-    import's records make to it, in plan order: **`of`**, **`withChange`**,
-    and **`asItStands`**, its fields with each change's taken fields laid
-    over them, later ones winning, and its identifiers joined with theirs,
-    under its own id.
+    import's records make to it, in plan order, each a **`Change`**
+    `{ resource, fieldsTaken, isEdit }`. **`ByStoredRecord`**, each stored
+    record the import's records use by its literal reference, holds the one
+    fold of "the records that use one stored record change it in plan
+    order": **`withRecordChoice(byStoredRecord, choice, { resource, isEdit })`**
+    adds a record's change when its choice uses a stored record and changes
+    nothing otherwise, from **`noneChanged`**. **`asItStandsIn`** reads one
+    stored record off it as it stands: the last edit's fields, else its own,
+    with each later change's taken fields laid over them, later ones
+    winning, and its identifiers joined with every change's, under its own
+    id. **`writtenIn`** is that record, or `None` when no change takes a
+    field, edits it or adds an identifier it lacks. `suggestPlan` folds each
+    suggestion through it and `resolvePlan` each effective choice.
   - **`PlannedRecord`** — **`Type`** `{ record, storedMatch, suggestion,
     chosen, edit }`: the `ImportedRecord` whole and its `StoredMatch.Entry`.
     **`make`** (nothing chosen or edited), **`effectiveChoice`** (the
-    reviewer's, else the suggestion's), **`labelOf`** (a **`Label`**,
-    `Create`, `Update` (a field taken or an edit), `LinkToExisting`,
-    `DontAdd` or `Open`, defined once as **`LabelSchema`**, a
-    `Schema.Literal`, whose literals are **`labels`**), **`needsDecision`**,
-    **`isChanged`** (a choice that differs from the suggestion's), and its
-    transitions **`withChoice`**, **`withChoiceCleared`** and
-    **`withEdit`**.
+    reviewer's, else the suggestion's), **`labelOf`** (a **`Label`**, the
+    label the choice alone gives: `Create`, `Update` (a field taken or an
+    edit), `LinkToExisting`, `DontAdd` or `Open`, defined once as
+    **`LabelSchema`**, a `Schema.Literal`), **`needsDecision`**,
+    **`isChanged`** (a choice that differs from the suggestion's),
+    **`reviewedResourceOf`** (the reviewer's edit, else the record's
+    resource), and its transitions **`withChoice`**, **`withChoiceCleared`**
+    and **`withEdit`**.
   - **`ImportPlan`** — **`Type`** `{ records, storedMatch }`, the records in
     plan order beside the import's whole stored match, which a reference's
     candidates are read off (`StoredMatch.ofReference`). **`make`**,
     **`get`**, **`choose(plan, keys, choice)`**, **`reset(plan, keys)`** and
     **`setEdit`**, each making a planned record's own transition on the
     records it names.
-  - **`PlanTotals`** — **`Counts`** `{ byLabel, needsDecision }`: the records
-    under each label, every label present, and those listed under Needs a
-    decision; how many records there are is **`recordsOf`** (their sum) and
-    how many are open the count under `Open`. **`makeCounts`** fills a label
-    no record has with zero. **`FileSetCounts`** `{ origin, counts }`, built
-    by **`makeFileSetCounts`**; **`Type`** `{ overall, fileSets }`, built by
-    **`make`**.
+  - **`ReferenceTable`** — where a reference to each record lands, by every
+    spelling the plan's copies name a record by. A **`Target`** is
+    **`Literal`** `{ literalReference }` or a name-only **`Stub`**
+    `{ display, keyedBy }` (its `type`, `identifier` and `display`, no
+    literal; `display` is `None` when there is nothing to show, and
+    `keyedBy` is the record's key as a logical reference, `None` for a
+    keyless record). **`make({ logicalReferences, stageLiterals,
+    sourceUrls })`** builds the table from each spelling beside its target,
+    the literal ones of logical references and source URLs as a
+    `fhir-r4-adoption` `ReferencePlan`. **`resolve(table, resource)`**: a
+    reference by a record's stage literal lands on the target's literal, or
+    becomes a stub by the record's key (a keyless record's keeps its
+    literal); a logical reference to a stub gets the stub's display, when
+    there is one, if it has none of its own; a logical reference, an
+    `Attachment.url` or a literal spelling a source URL with a literal target
+    is made literal (`resolveReferences`); `meta.source`, read and stamped
+    through `MetaSource` (`sourceOf`, `stamp`), follows its source file to a
+    literal; every other reference stays.
+  - **`PlanResolution`** — **`Type`** `{ records }`, one
+    **`ResolvedRecord`** per planned record, in plan order: its `planned`
+    record, its `label`, the `id` it is written under or links to (`None`
+    when not added or undecided), its `resolvedReferences` (every reference
+    of the record as reviewed, once resolved) and what is `written` for it
+    (records using one stored record share its one write). Totals and the
+    write map over that list; nothing joins it by key. Its **`Label`**
+    (**`LabelSchema`**, whose literals are **`labels`**) is
+    `PlannedRecord.Label` plus **`Unneeded`**: a record a reference only
+    implied, whose choice would write or link it, that nothing written names,
+    so nothing is written for it. **`makeRecord(facts, written)`** labels a
+    record by its choice, **`makeUnneededRecord(facts)`** labels it
+    `Unneeded` and writes nothing, each from a **`RecordFacts`**
+    `{ planned, id, resolved }`; **`make`**.
+  - **`ImportWrite`** — **`Ready`** `{ resources }`, one transaction, each
+    resource once in plan order, or **`Blocked`** `{ undecided }`, the keys
+    of the records with no choice, in plan order. **`of(resolution)`** is
+    the one way to build one; **`isNothingToImport`**, a ready write of
+    nothing; **`match`**.
+  - **`PlanTotals`** — **`Counts`** `{ byLabel, needsDecision }`: the
+    resolved records under each `PlanResolution.Label`, every label present,
+    and those listed under Needs a decision; how many records there are is
+    **`recordsOf`** (their sum) and how many are open the count under `Open`.
+    A record nothing is written for though its choice would write it counts
+    under `Unneeded`, never `Create` or `Update`. **`makeCounts`** fills a
+    label no record has with zero. **`FileSetCounts`** `{ origin, counts }`,
+    built by **`makeFileSetCounts`**; **`Type`** `{ overall, fileSets }`,
+    built by **`make`**.
 
-  Operations (`compareToStored` and `suggestRecord` take a
-  `ComparableReferences` only `suggestPlan` builds, so the folder's index
-  exports the other two):
+  Operations (the folder's index exports the verbs a caller outside it uses,
+  `suggestPlan`, `resolvePlan` and `countTotals`; `compareToStored`,
+  `suggestRecord` and `landReferences` are steps of those):
   - **`compareToStored(resource, stored, comparable)`**
     (`operations/compare-to-stored/`) — the gap rule over two plain
     resources, the import's and the stored record as it stands; it knows
@@ -436,13 +495,49 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     references pre-select the one match, or leave several undecided; name
     matches on one nothing references save it as new.
   - **`suggestPlan(records, recordReferences, storedMatch)`**
-    (`operations/suggest-plan.ts`) suggests every record in plan order. One
-    fold, a `HashMap.modifyAt` per suggestion that uses a stored record,
-    keeps each stored record's `ChangedStoredRecord`, so a record using a
-    stored record an earlier one uses is compared with it as it stands.
-  - **`countTotals(plan)`** (`operations/count-totals.ts`) — the counts
-    overall and per file set, grouping records by label; a record two sets
-    bring counts in each set's line.
+    (`operations/suggest-plan.ts`) suggests every record in plan order,
+    folding each suggestion through `ChangedStoredRecord.withRecordChoice`,
+    so a record using a stored record an earlier one uses is compared with it
+    as it stands.
+  - **`landReferences(plan, ids)`** (`operations/land-references.ts`) —
+    where a reference lands for each choice, as a `ReferenceTable`, reading
+    the clock. A record saved as new or using a stored record lands on a
+    literal to it under its id (`ids`); one not added on a stub, shown by the
+    reference's own display, else the person's name for a Patient or a
+    Practitioner (`fhir-r4`'s `PersonName.maybeDisplayName`), else with no
+    display (never the record's title, which for a keyed record is the
+    literal it would be written under); one with no choice nowhere, so its
+    references stay logical. A stub names the record by
+    `ImportedRecord.logicalReferenceIfKeyed`. Each record's target is reached by a logical reference naming it
+    alone of the import's records (`RecordReferences`' `named`; one several
+    records share lands nowhere), by its stage literal, and by the URL a
+    source served it at, so a `Binary` not added goes back to its source
+    URL. A logical reference naming no record of the import lands on the one
+    stored record found for it by identifier
+    (`StoredMatch.storedCopiesOfReference`).
+  - **`resolvePlan(plan, mintId?)`** (`operations/resolve-plan.ts`) — the
+    plan resolved, an Effect (it reads the clock for a stub's name). Which
+    id: a stored record's for use existing, the stage's for save as new,
+    minted (`randomResourceId` outside tests) when a stored record sits
+    under the stage's id. Each record as reviewed
+    (`PlannedRecord.reviewedResourceOf`), its edit or its resource, is
+    resolved by `landReferences`' table. What each choice writes: save as
+    new, the resolved resource under its id; use existing, the stored record
+    with every change of the records that use it folded in plan order
+    (`ChangedStoredRecord.writtenIn`), an edit replacing it whole, the
+    import's identifiers always added, nothing when nothing changes; don't
+    add, and no choice, nothing. A record a reference only implied is
+    written, and its change made, only when a decoded record's write names
+    it by literal reference; otherwise it is `Unneeded`.
+  - **`countTotals(resolution)`** (`operations/count-totals.ts`) — the counts
+    overall and per file set, grouping the resolved records by label; a
+    record two sets bring counts in each set's line.
+
+  Known gaps, each belonging to stored-record matching across imports: a
+  DICOM source file's `gridfsFileId` extension does not follow the source
+  file to another id; a keyless `Binary` is new on every import, so its
+  referrer reads as differing on a re-import; and a reference to a source
+  file that is not added dangles, as does a `meta.source` naming it.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` holds only what the reviewer did, on two
@@ -498,10 +593,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     Nothing about linking.
   - **`LinkableResource`** — a `Patient` or `Practitioner`, the types a
     referent can have a resource for: `is` (a decoded resource as one, its
-    `id` already set), `tryIntoLogicalReference` (its `identifier[0]`), `maybeDisplayName`
-    (`HumanName.displayName`'s pick among its names, judged at the clock's
-    `DateTime.now`, so an Effect) and `labelOf`, an Effect for the same
-    reason, `literalReferenceOf`, `sameRecord` (whether two are copies of
+    `id` already set), `tryIntoLogicalReference` (its `identifier[0]`),
+    `labelOf` (its name by `fhir-r4`'s `PersonName.maybeDisplayName`, judged
+    at the clock's `DateTime.now`, so an Effect), `literalReferenceOf`, `sameRecord` (whether two are copies of
     one record: the same `Type/<id>`), and
     **`assumesIdentifiers`**, which appends the qualified identifiers a
     resource does not already carry, assumed as one assumes an identity, and
@@ -749,17 +843,19 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 ## Layering
 
 Depends on `effect` (and `kitchen-sink` in tests), `fhir-r4-adoption` for
-`DetachedResource`, `ReferencePlan` and `adopt` alone (a
+`DetachedResource`, `ReferencePlan`, `adopt`, `resolveReferences` and
+`randomResourceId` alone (a
 `FileSetRecord`'s record, `ResourcePlan`'s keys,
-`DecodedFileSet.adopt` and the records `ImpliedRecord` builds; it depends on no importer package), plus `fhir-r4` for the
+`DecodedFileSet.adopt`, the records `ImpliedRecord` builds, and the import plan's `ReferenceTable` and `resolvePlan`; it depends on no importer package), plus `fhir-r4` for the
 `DocumentReference` schema and the `Identifier` a picked file identifies itself
 as, `fhir-r4/resources` for
 `FhirResourceWithId` (`review-row.ts` and `staged-import.ts` are concrete over
 it, not generic — every format binds it, so there is no `TParsed` left to
 abstract over; a reviewed resource always has the id it is written under), for the `Patient` and `Practitioner` schemas an implied record decodes through, and for the identity map's `Patient`, `Practitioner` and
-`ResourceReferences`, its one reference walk, `fhir-r4/data-types` for `Meta`
-(the slot `MetaSource.stamp` writes into) and the identity map's
-`IdentifierAndReference` and `HumanName`, `fhir-r4/identity` for the shared id
+`ResourceReferences`, its one reference walk, and for `PersonName`, the name
+the identity map's labels and the import plan's stubs show a person by,
+`fhir-r4/data-types` for `Meta` (the slot `MetaSource.stamp` writes into)
+and the identity map's `IdentifierAndReference`, `fhir-r4/identity` for the shared id
 derivation, and `fhir`'s wire types. Hosting the source file codec is what widened
 `fhir-r4` from a type-only import to the `DocumentReference` runtime schema
 (it builds and decodes the resource). `StoredCandidates.find` reads through

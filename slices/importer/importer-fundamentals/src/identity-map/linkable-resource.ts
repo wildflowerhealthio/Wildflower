@@ -5,15 +5,16 @@
  * @packageDocumentation
  */
 
-import { HumanName, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   type Patient,
   type Practitioner,
   type FhirResourceWithId,
   literalReferenceOf,
   LogicalReference,
+  PersonName,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, DateTime, Effect, Match, Option, pipe } from 'effect'
+import { Array, Effect, Match, Option, pipe } from 'effect'
 
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 
@@ -47,14 +48,6 @@ const tryIntoLogicalReference = (resource: Type): Option.Option<LinkableLogicalR
     )
   )
 
-/**
- * The name `resource` is shown by, `HumanName.displayName`'s pick among its
- * names (a current one first, by use, judged at the clock's now); `None` when
- * none renders.
- */
-const maybeDisplayName = (resource: Type): Effect.Effect<Option.Option<string>> =>
-  Effect.map(DateTime.now, (now) => Option.fromNullable(HumanName.displayName(resource.name, now)))
-
 /** A Patient's birth date; a Practitioner has none. */
 const maybeBirthDate: (resource: Type) => Option.Option<string> = Match.type<Type>().pipe(
   matchResourceType('Patient', (patient) => Option.fromNullable(patient.birthDate)),
@@ -63,11 +56,12 @@ const maybeBirthDate: (resource: Type) => Option.Option<string> = Match.type<Typ
 )
 
 /**
- * What a review shows for `resource`: its displayed name, plus the birth date
- * for a Patient, or `fallback` when it has neither.
+ * What a review shows for `resource`: its displayed name
+ * (`PersonName.maybeDisplayName`), plus the birth date for a Patient, or
+ * `fallback` when it has neither.
  */
 const labelOf = (resource: Type, fallback: string): Effect.Effect<string> =>
-  Effect.map(maybeDisplayName(resource), (displayName) => {
+  Effect.map(PersonName.maybeDisplayName(resource), (displayName) => {
     const parts = [displayName, maybeBirthDate(resource)].flatMap(Option.toArray)
     return parts.length === 0 ? fallback : parts.join(' · ')
   })
@@ -98,13 +92,5 @@ const assumesIdentifiers = <TResource extends Type>(
     : { ...resource, identifier: [...resource.identifier, ...newIdentifiersToAssume] }
 }
 
-export {
-  assumesIdentifiers,
-  is,
-  labelOf,
-  literalReferenceOf,
-  maybeDisplayName,
-  sameRecord,
-  tryIntoLogicalReference,
-}
+export { assumesIdentifiers, is, labelOf, literalReferenceOf, sameRecord, tryIntoLogicalReference }
 export type { Type, WithId }

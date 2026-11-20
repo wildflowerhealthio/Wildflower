@@ -31,19 +31,30 @@ const fromLogicalReference = (logicalReference: LogicalReference.Type): Type =>
   Keyed({ key: LogicalReference.key(logicalReference) })
 
 /**
- * The key of the record `resource` is a copy of: `Keyed` by its key
- * identifier (`DetachedResource.keyIdentifierOf`), else `Keyless` by
- * `reviewKey`.
+ * The logical reference the record `resource` is a copy of is keyed by: its
+ * key identifier (`DetachedResource.keyIdentifierOf`) under its type; `None`
+ * when it has none, so the record is keyless.
+ */
+const logicalReferenceIfKeyed = (
+  resource: DetachedResource.Type
+): Option.Option<LogicalReference.Type> =>
+  Option.map(DetachedResource.keyIdentifierOf(resource), (identifier) =>
+    LogicalReference.make(resource.resourceType, identifier)
+  )
+
+/**
+ * The key of the record `resource` is a copy of: `Keyed` by the logical
+ * reference it is keyed by ({@link logicalReferenceIfKeyed}), else `Keyless`
+ * by `reviewKey`.
  *
  * @param resource - The detached resource a file brought
  * @param reviewKey - The review key of that copy
  */
 const make = (resource: DetachedResource.Type, reviewKey: string): Type =>
-  Option.match(DetachedResource.keyIdentifierOf(resource), {
-    onSome: (identifier) =>
-      fromLogicalReference(LogicalReference.make(resource.resourceType, identifier)),
+  Option.match(logicalReferenceIfKeyed(resource), {
+    onSome: fromLogicalReference,
     onNone: () => Keyless({ reviewKey }),
   })
 
-export { isKeyed, Keyless, make }
+export { isKeyed, Keyless, logicalReferenceIfKeyed, make }
 export type { Type }

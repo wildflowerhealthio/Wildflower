@@ -4,27 +4,27 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { tyraA } from '../import-plan.test-helpers.ts'
+import * as PlanResolution from './plan-resolution.ts'
 import * as PlanTotals from './plan-totals.ts'
-import * as PlannedRecord from './planned-record.ts'
 
 /** Covers how plan totals hold their counts: every label present, and how many records they count. */
 
 /** A count for each label, as a test draws them. */
 const countsByLabelArbitrary = fc.record(
-  Record.fromIterableWith(PlannedRecord.labels, (label) => [label, fc.nat({ max: 50 })] as const)
+  Record.fromIterableWith(PlanResolution.labels, (label) => [label, fc.nat({ max: 50 })] as const)
 )
 
 describe('PlanTotals.makeCounts', () => {
   it('should hold every label’s count, in label order, beside how many need a decision', () => {
     // Arrange
-    const created = { Create: 3, Update: 2, LinkToExisting: 0, DontAdd: 1, Open: 4 }
+    const created = { Create: 3, Update: 2, LinkToExisting: 0, DontAdd: 1, Open: 4, Unneeded: 1 }
 
     // Act
     const counts = PlanTotals.makeCounts((label) => created[label], 5)
 
     // Assert
     expect(counts).toEqual({ byLabel: created, needsDecision: 5 })
-    expect(Object.keys(counts.byLabel)).toEqual([...PlannedRecord.labels])
+    expect(Object.keys(counts.byLabel)).toEqual([...PlanResolution.labels])
   })
 
   it('should treat a count that is no number of records as a defect', () => {
@@ -44,7 +44,7 @@ describe('PlanTotals.recordsOf', () => {
         const records = PlanTotals.recordsOf(counts)
 
         // Assert
-        expect(records).toBe(PlannedRecord.labels.reduce((sum, label) => sum + byLabel[label], 0))
+        expect(records).toBe(PlanResolution.labels.reduce((sum, label) => sum + byLabel[label], 0))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )

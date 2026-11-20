@@ -7,6 +7,12 @@
  *
  * @packageDocumentation
  */
-export { adopt, adoptedReferenceOf, originalIdOf, randomResourceId } from './adopt-resource.ts'
+export {
+  adopt,
+  adoptedReferenceOf,
+  originalIdOf,
+  randomResourceId,
+  resolveReferences,
+} from './adopt-resource.ts'
 export * as DetachedResource from './detached-resource.ts'
 export * as ReferencePlan from './reference-plan.ts'
