@@ -17,9 +17,11 @@ import * as RecordChoice from './record-choice.ts'
 
 /**
  * How the plan counts a resolved record: its choice's label
- * (`PlannedRecord.Label`), or `Unneeded` for a record whose choice would
- * write or link it but that nothing written names, so nothing is written for
- * it.
+ * (`PlannedRecord.Label`), or `Unneeded` for a record a reference only
+ * implied whose choice would write something (save it as new, or add a
+ * field, an edit, an identifier or a link to the stored record it merges
+ * into) but
+ * that nothing written names, so nothing is written for it.
  */
 const LabelSchema = Schema.Literal(...PlannedRecord.LabelSchema.literals, 'Unneeded')
 
@@ -93,7 +95,7 @@ const makeRecord = (
   written,
 })
 
-/** `planned` resolved as unneeded: nothing written names it, so nothing is written for it. */
+/** `planned` resolved as unneeded: its choice would write something, but nothing written names it, so nothing is written for it. */
 const makeUnneededRecord = ({ planned, id, resolved }: RecordFacts): ResolvedRecord => ({
   planned,
   label: 'Unneeded',

@@ -122,11 +122,12 @@ const literalReferencesWrittenBy = (
 }
 
 /**
- * Whether `record` is unneeded: a record a reference only implied
+ * Whether `record` is left out: a record a reference only implied
  * (`ImportedRecord.isImplied`), written or linked under an id, that no
- * decoded record's write names by literal reference among `named`.
+ * decoded record's write names by literal reference among `named`. Nothing
+ * is written for it and its merge is not made.
  */
-const isUnneeded = (
+const isLeftOut = (
   { planned, id }: PlanResolution.RecordFacts,
   named: HashSet.HashSet<string>
 ): boolean =>
@@ -134,6 +135,32 @@ const isUnneeded = (
   Option.exists(
     id,
     (written) => !HashSet.has(named, ImportedRecord.literalReferenceUnder(planned.record, written))
+  )
+
+/**
+ * Whether `record`'s choice, made alone, writes something: it is saved as
+ * new, or it merges into a stored record and has a field, an edit, an identifier or
+ * a link to add to it.
+ */
+const writesAlone = (
+  record: PlanResolution.RecordFacts,
+  table: ReferenceTable.Type
+): Effect.Effect<boolean> =>
+  Effect.map(writtenOf(record, keptRecordsOf([record]), table), Option.isSome)
+
+/**
+ * `record` resolved when it is left out ({@link isLeftOut}): `Unneeded` when
+ * its choice would otherwise have written something ({@link writesAlone}),
+ * else labelled by its choice, writing nothing either way.
+ */
+const leftOutRecordOf = (
+  record: PlanResolution.RecordFacts,
+  table: ReferenceTable.Type
+): Effect.Effect<PlanResolution.ResolvedRecord> =>
+  Effect.map(writesAlone(record, table), (writes) =>
+    writes
+      ? PlanResolution.makeUnneededRecord(record)
+      : PlanResolution.makeRecord(record, Option.none())
   )
 
 /**
@@ -162,8 +189,9 @@ const isUnneeded = (
  * - don't add, and no choice: nothing.
  *
  * A record a reference only implied is written, or its merge made, only
- * when a decoded record's write names it; otherwise it is unneeded
- * (`PlanResolution.makeUnneededRecord`) and nothing is written for it.
+ * when a decoded record's write names it; otherwise nothing is written for
+ * it, and it is unneeded (`PlanResolution.makeUnneededRecord`) when its
+ * choice would have written something, else labelled by its choice.
  */
 const resolvePlan = (
   plan: ImportPlan.Type,
@@ -186,10 +214,10 @@ const resolvePlan = (
       records.filter(({ planned }) => !ImportedRecord.isImplied(planned.record)),
       referenceTable
     )
-    const keptRecords = keptRecordsOf(records.filter((record) => !isUnneeded(record, named)))
+    const keptRecords = keptRecordsOf(records.filter((record) => !isLeftOut(record, named)))
     const resolved = yield* Effect.forEach(records, (record) =>
-      isUnneeded(record, named)
-        ? Effect.succeed(PlanResolution.makeUnneededRecord(record))
+      isLeftOut(record, named)
+        ? leftOutRecordOf(record, referenceTable)
         : Effect.map(writtenOf(record, keptRecords, referenceTable), (written) =>
             PlanResolution.makeRecord(record, written)
           )
