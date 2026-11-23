@@ -1,74 +1,100 @@
 {
-  "excluded": [],
   "notes": {
     "har": [
       "Matched no importer: https://letsbewell.ca/sign-in",
       "Matched no importer: https://app.letsbewell.ca/health/prescriptions"
     ]
   },
-  "review": [
+  "plan": [
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:rexall.har/source-file/rexall.har",
-      "resource": "DocumentReference/wf-6f43dede19e181c370562894bdb79370",
-      "title": "rexall.har"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/source-file/rexall.har"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "rexall.har",
+      "written": "DocumentReference/wf-6f43dede19e181c370562894bdb79370"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-2:0",
-      "resource": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
-      "title": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-2:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
+      "written": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:0",
-      "resource": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6",
-      "title": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6",
+      "written": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:1",
-      "resource": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7",
-      "title": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:1"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7",
+      "written": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:2",
-      "resource": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5",
-      "title": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:2"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5",
+      "written": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:3",
-      "resource": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c",
-      "title": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:3"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c",
+      "written": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:4",
-      "resource": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d",
-      "title": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:4"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d",
+      "written": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:5",
-      "resource": "MedicationDispense/wf-42402150c21db460736ca3b9469713db",
-      "title": "MedicationDispense/wf-42402150c21db460736ca3b9469713db"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:5"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-42402150c21db460736ca3b9469713db",
+      "written": "MedicationDispense/wf-42402150c21db460736ca3b9469713db"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:0#implied:Practitioner|https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner|257ba733-6479-4c16-ac63-40dab75b75c5",
-      "resource": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b",
-      "title": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b"
+      "isImplied": true,
+      "keys": [
+        "0:rexall.har/har-entry-3:0#implied:Practitioner|https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner|257ba733-6479-4c16-ac63-40dab75b75c5"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b",
+      "written": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b"
     }
   ],
   "sourceFileRePicks": [
