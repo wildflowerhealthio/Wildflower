@@ -1,4 +1,4 @@
-import { Array as Arr, Effect, Option, Schema } from 'effect'
+import { Array as Arr, Effect, Either, Option, Predicate, type Record, Schema } from 'effect'
 
 import {
   FhirResourceSchema,
@@ -131,6 +131,26 @@ const normalizedEncode = (resource: unknown): Option.Option<unknown> => {
   if (encoded._tag !== 'Right') return Option.none()
   return Option.some(withoutId(withoutServerManagedMeta(encoded.right)))
 }
+
+/**
+ * A resource's top-level fields as {@link normalizedEncode} writes them, by
+ * name: no `id` and no server-managed `meta`. `Option.none` when it does not
+ * encode to an object.
+ */
+const normalizedFieldsOf = (
+  resource: FhirResource
+): Option.Option<Record.ReadonlyRecord<string, unknown>> =>
+  Option.filter(normalizedEncode(resource), Predicate.isRecord)
+
+/**
+ * A resource's every top-level field as its schema encodes it, by name, its
+ * `id` and `meta` included. `Option.none` when it does not encode to an
+ * object.
+ */
+const encodedFieldsOf = (
+  resource: FhirResource
+): Option.Option<Record.ReadonlyRecord<string, unknown>> =>
+  Option.filter(Either.getRight(encodeResource(resource)), Predicate.isRecord)
 
 /**
  * Reset one leaf of a resource back to the server's value: encode the
@@ -286,7 +306,9 @@ const classifyAgainstServer = (
 export {
   classifyAgainstServer,
   compareWithStoredCopy,
+  encodedFieldsOf,
   normalizedEncode,
+  normalizedFieldsOf,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
   withoutServerManagedMeta,
