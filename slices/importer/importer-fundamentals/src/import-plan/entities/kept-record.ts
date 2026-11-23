@@ -6,16 +6,19 @@
  */
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { encodedFieldsOf, IdentifierUnion } from '@wildflowerhealthio/fhir-r4/clients'
-import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   type FhirResource,
   type FhirResourceWithId,
   literalReferenceOf,
+  LogicalReference,
+  ResourceReferences,
   StoredResourceSchema,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, HashMap, HashSet, Option, Record, Schema } from 'effect'
+import { Array as Arr, Effect, HashMap, HashSet, Option, pipe, Record, Schema } from 'effect'
 
 import * as RecordChoice from './record-choice.ts'
+import * as ReferenceTable from './reference-table.ts'
 
 /**
  * One merge into the kept record: the incoming record's resource, the
@@ -131,12 +134,70 @@ const writesSomething = (keptRecord: Type): boolean =>
   keptRecord.merges.some(({ isEdit, fieldsTaken }) => isEdit || HashSet.size(fieldsTaken) > 0) ||
   identifiersOf(keptRecord).length > ownIdentifiersOf(keptRecord).length
 
+/** Whether `reference` names its target by a type and a qualified identifier alone, with no literal. */
+const isUnlinked = (reference: ReferenceType): boolean =>
+  Option.isSome(LogicalReference.tryFromReference(reference))
+
+/**
+ * `stored` with each of its unlinked references ({@link isUnlinked}) given
+ * the literal `table` lands it on (`ReferenceTable.resolve`), keeping its
+ * `type`, `identifier` and `display`; every other reference, and a reference
+ * the table lands on a stub or nowhere, as it is. So the links are completed
+ * and nothing the stored record says is replaced.
+ */
+const withLinksLanded = (
+  table: ReferenceTable.Type,
+  stored: FhirResourceWithId
+): Effect.Effect<FhirResourceWithId> =>
+  Effect.map(ReferenceTable.resolve(table, stored), (resolved) => {
+    const resolvedByPath = new Map(
+      ResourceReferences.collect(resolved).map(({ path, reference }) => [path, reference] as const)
+    )
+    return ResourceReferences.mapReferences(stored, (reference, path) =>
+      isUnlinked(reference)
+        ? pipe(
+            Option.fromNullable(resolvedByPath.get(path)?.reference),
+            Option.match({
+              onNone: () => reference,
+              onSome: (literal) => ({ ...reference, reference: literal }),
+            })
+          )
+        : reference
+    )
+  })
+
+/** Whether `linked` gained a link `stored` lacks: a reference at some path that is unlinked in `stored` and literal in `linked`. */
+const gainsLink = (stored: FhirResourceWithId, linked: FhirResourceWithId): boolean => {
+  const unlinkedPaths = new Set(
+    ResourceReferences.collect(stored)
+      .filter(({ reference }) => isUnlinked(reference))
+      .map(({ path }) => path)
+  )
+  return ResourceReferences.collect(linked).some(
+    ({ path, reference }) => unlinkedPaths.has(path) && reference.reference !== null
+  )
+}
+
 /**
  * What is written for the kept record: the record as merged
- * ({@link asMerged}); `None` when no merge writes anything into it.
+ * ({@link asMerged}) with its links landed by `table`
+ * ({@link withLinksLanded}); `None` when no merge writes anything into it
+ * and no reference gains its link.
+ *
+ * @remarks
+ * Links are always added, as identifiers are: whatever fields its merges
+ * take, a kept record is linked to the records and stored records its
+ * unlinked references land on. A display alone writes nothing.
  */
-const writtenOf = (keptRecord: Type): Option.Option<FhirResourceWithId> =>
-  Option.map(Option.liftPredicate(keptRecord, writesSomething), asMerged)
+const writtenOf = (
+  table: ReferenceTable.Type,
+  keptRecord: Type
+): Effect.Effect<Option.Option<FhirResourceWithId>> => {
+  const standing = asMerged(keptRecord)
+  return Effect.map(withLinksLanded(table, standing), (linked) =>
+    Option.liftPredicate(linked, () => writesSomething(keptRecord) || gainsLink(standing, linked))
+  )
+}
 
 /**
  * Each stored record the import's records merge into, as a kept record with
@@ -185,12 +246,20 @@ const asMergedIn = (byKeptRecord: ByKeptRecord, existing: FhirResourceWithId): F
     onSome: asMerged,
   })
 
-/** What is written for `existing` once the records of `byKeptRecord` that merge into it have ({@link writtenOf}). */
+/**
+ * What is written for `existing` once the records of `byKeptRecord` that
+ * merge into it have, its links landed by `table` ({@link writtenOf}); `None`
+ * when no record merges into it or nothing is written.
+ */
 const writtenIn = (
   byKeptRecord: ByKeptRecord,
-  existing: FhirResourceWithId
-): Option.Option<FhirResourceWithId> =>
-  Option.flatMap(HashMap.get(byKeptRecord, literalReferenceOf(existing)), writtenOf)
+  existing: FhirResourceWithId,
+  table: ReferenceTable.Type
+): Effect.Effect<Option.Option<FhirResourceWithId>> =>
+  Option.match(HashMap.get(byKeptRecord, literalReferenceOf(existing)), {
+    onNone: () => Effect.succeed(Option.none()),
+    onSome: (keptRecord) => writtenOf(table, keptRecord),
+  })
 
 export { asMergedIn, noneMerged, withRecordChoice, writtenIn }
 export type { ByKeptRecord, Merge, Type }

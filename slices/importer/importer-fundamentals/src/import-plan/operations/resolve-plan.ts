@@ -78,37 +78,46 @@ const keptRecordsOf = (records: readonly PlanResolution.RecordFacts[]): KeptReco
 /**
  * What is written for `record`, by its effective choice: save as new writes
  * its resolved resource under its id; merge into existing writes the kept
- * record with the merges `keptRecords` holds for it (`KeptRecord.writtenIn`);
- * don't add, or no choice, writes nothing.
+ * record with the merges `keptRecords` holds for it and its links landed by
+ * `table` (`KeptRecord.writtenIn`); don't add, or no choice, writes nothing.
  */
 const writtenOf = (
   { planned, id, resolved }: PlanResolution.RecordFacts,
-  keptRecords: KeptRecord.ByKeptRecord
-): Option.Option<FhirResourceWithId> =>
-  Option.flatMap(PlannedRecord.effectiveChoice(planned), (choice) =>
-    Match.value(choice).pipe(
-      Match.tagsExhaustive({
-        SaveAsNewRecord: () =>
-          Option.map(id, (writtenId): FhirResourceWithId => ({ ...resolved, id: writtenId })),
-        MergeIntoExistingRecord: ({ existing }) => KeptRecord.writtenIn(keptRecords, existing),
-        DontAdd: () => Option.none(),
-      })
-    )
-  )
+  keptRecords: KeptRecord.ByKeptRecord,
+  table: ReferenceTable.Type
+): Effect.Effect<Option.Option<FhirResourceWithId>> =>
+  Option.match(PlannedRecord.effectiveChoice(planned), {
+    onNone: () => Effect.succeed(Option.none()),
+    onSome: (choice) =>
+      Match.value(choice).pipe(
+        Match.tagsExhaustive({
+          SaveAsNewRecord: () =>
+            Effect.succeed(
+              Option.map(id, (writtenId): FhirResourceWithId => ({ ...resolved, id: writtenId }))
+            ),
+          MergeIntoExistingRecord: ({ existing }) =>
+            KeptRecord.writtenIn(keptRecords, existing, table),
+          DontAdd: () => Effect.succeed(Option.none()),
+        })
+      ),
+  })
 
 /** The literal references `records`' writes hold, at any depth. */
 const literalReferencesWrittenBy = (
-  records: readonly PlanResolution.RecordFacts[]
-): HashSet.HashSet<string> => {
+  records: readonly PlanResolution.RecordFacts[],
+  table: ReferenceTable.Type
+): Effect.Effect<HashSet.HashSet<string>> => {
   const keptRecords = keptRecordsOf(records)
-  return HashSet.fromIterable(
-    Arr.flatMap(records, (record) =>
-      Arr.flatMap(Option.toArray(writtenOf(record, keptRecords)), (written) =>
-        Arr.filterMap(ResourceReferences.collect(written), ({ reference }) =>
-          Option.fromNullable(reference.reference)
+  return Effect.map(
+    Effect.forEach(records, (record) => writtenOf(record, keptRecords, table)),
+    (writes) =>
+      HashSet.fromIterable(
+        Arr.flatMap(Arr.getSomes(writes), (written) =>
+          Arr.filterMap(ResourceReferences.collect(written), ({ reference }) =>
+            Option.fromNullable(reference.reference)
+          )
         )
       )
-    )
   )
 }
 
@@ -146,9 +155,10 @@ const isUnneeded = (
  * - merge into existing: the kept record with the taken fields of every
  *   record that merges into it laid over it in merge order (decoded records
  *   before implied ones, each in plan order), later winning, an edit
- *   replacing its content whole, and every identifier they carry added; nothing when
- *   none of them takes a field, edits it or adds an identifier
- *   (`KeptRecord`);
+ *   replacing its content whole, every identifier they carry added, and each
+ *   of its unlinked references linked where the table lands it on a literal;
+ *   nothing when none of them takes a field, edits it or adds an identifier
+ *   and no reference gains its link (`KeptRecord`);
  * - don't add, and no choice: nothing.
  *
  * A record a reference only implied is written, or its merge made, only
@@ -172,17 +182,19 @@ const resolvePlan = (
         })
       )
     )
-    const named = literalReferencesWrittenBy(
-      records.filter(({ planned }) => !ImportedRecord.isImplied(planned.record))
+    const named = yield* literalReferencesWrittenBy(
+      records.filter(({ planned }) => !ImportedRecord.isImplied(planned.record)),
+      referenceTable
     )
     const keptRecords = keptRecordsOf(records.filter((record) => !isUnneeded(record, named)))
-    return PlanResolution.make(
-      records.map((record) =>
-        isUnneeded(record, named)
-          ? PlanResolution.makeUnneededRecord(record)
-          : PlanResolution.makeRecord(record, writtenOf(record, keptRecords))
-      )
+    const resolved = yield* Effect.forEach(records, (record) =>
+      isUnneeded(record, named)
+        ? Effect.succeed(PlanResolution.makeUnneededRecord(record))
+        : Effect.map(writtenOf(record, keptRecords, referenceTable), (written) =>
+            PlanResolution.makeRecord(record, written)
+          )
     )
+    return PlanResolution.make(resolved)
   })
 
 export { resolvePlan }

@@ -13,6 +13,7 @@ import {
 import { Option, Schema } from 'effect'
 
 import * as PlannedRecord from './planned-record.ts'
+import * as RecordChoice from './record-choice.ts'
 
 /**
  * How the plan counts a resolved record: its choice's label
@@ -58,13 +59,35 @@ interface RecordFacts {
   readonly resolved: FhirResource
 }
 
-/** `planned` resolved, labelled by its choice (`PlannedRecord.labelOf`), `written` written for it. */
+/**
+ * How a record whose choice writes or links it is counted, `written` written
+ * for it: a record that merges into a stored record is `Update` when something is
+ * written for that stored record (a taken field, an edit, an identifier or a
+ * link it gains) and `LinkToExisting` when nothing is; any other by its
+ * choice (`PlannedRecord.labelOf`).
+ */
+const labelOf = (
+  planned: PlannedRecord.Type,
+  written: Option.Option<FhirResourceWithId>
+): Label => {
+  if (
+    !Option.exists(
+      PlannedRecord.effectiveChoice(planned),
+      RecordChoice.is('MergeIntoExistingRecord')
+    )
+  ) {
+    return PlannedRecord.labelOf(planned)
+  }
+  return Option.isSome(written) ? 'Update' : 'LinkToExisting'
+}
+
+/** `planned` resolved, labelled by what happens to it ({@link labelOf}), `written` written for it. */
 const makeRecord = (
   { planned, id, resolved }: RecordFacts,
   written: Option.Option<FhirResourceWithId>
 ): ResolvedRecord => ({
   planned,
-  label: PlannedRecord.labelOf(planned),
+  label: labelOf(planned, written),
   id,
   resolvedReferences: ResourceReferences.collect(resolved),
   written,
