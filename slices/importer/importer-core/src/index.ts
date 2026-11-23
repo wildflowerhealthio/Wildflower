@@ -13,9 +13,11 @@
  * `lifelabs-pdf-importer-core`, `dicom-importer-core`) and the React shell
  * (`importer-react`), which adds each format's `SettingsPicker` (for a format
  * that has settings) to the registry here and runs these functions from its
- * hooks. No DOM, no `fs`, no React, no client: every export is a value or an Effect whose only
+ * hooks. No DOM, no `fs`, no React. Every export is a value or an Effect whose only
  * requirement is what a registered format's decode needs to read its bytes
- * ({@link DecodeRequirements}), which the host provides.
+ * ({@link DecodeRequirements}), which the host provides, but for
+ * `findStoredMatch` and `planImport`, which ask the store and so also
+ * require the FHIR client (`FhirR4ResourcesHttpApiClient`).
  *
  * @packageDocumentation
  */
@@ -40,6 +42,9 @@ export {
   skipReasonFor,
   type WriteDecision,
 } from './plan-write.ts'
+export { fileCopiesOf, type FormatCopies } from './file-copies-of.ts'
+export { findStoredMatch, type StoredMatchFailure } from './find-stored-match.ts'
+export { planImport } from './plan-import.ts'
 export * as ReviewGroup from './review-group.ts'
 export {
   decodedRowsOf,
