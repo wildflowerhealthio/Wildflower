@@ -1328,9 +1328,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "bytes"
-version = "1.12.1"
+version = "1.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
+checksum = "776dfebd015e2d8732c684a2c71003674ccb49457b539b9e82151ba38e96dd7c"
 dependencies = [
  "serde",
 ]
@@ -2891,9 +2891,9 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -3474,9 +3474,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "helios-audit"
-version = "0.2.8"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "019b008e144940524a66aef7a239e4aee710b7a7aa3983de77fb51383de611ec"
+checksum = "1330ffad17f168a2db4cbea2b7b21160fff0d59d858db83d79730f32694bf887"
 dependencies = [
  "async-trait",
  "axum",
@@ -3493,9 +3493,9 @@ dependencies = [
 
 [[package]]
 name = "helios-auth"
-version = "0.2.8"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70f19f85b3fbb4f2c93502e2eb67e6b5a1c75b9fb3e6502c33625731c7f7b2ea"
+checksum = "149140b313445f00d16d93d69d46a8c770cdbb025a2ace6d0709c4b83f7f1e2f"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3516,9 +3516,9 @@ dependencies = [
 
 [[package]]
 name = "helios-fhir"
-version = "0.2.8"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "269c8ce1d9592ccdf514d4fb4e4f1f6b763feee0234f2f0d608c9952a9a5ae8d"
+checksum = "b5b5f7282b89e2408872036c8c0d0402bb9812b8139acb93a8929d972106a150"
 dependencies = [
  "chrono",
  "clap",
@@ -3530,7 +3530,6 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
- "time",
  "tracing",
  "zip",
 ]
@@ -3549,9 +3548,9 @@ dependencies = [
 
 [[package]]
 name = "helios-fhir-validator"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4faf23f21f72f1219391d0a1e168c3d8e0a496a3d98ac13021de37dc553d9aef"
+checksum = "abbcf271988128b86f7b650aee67de01ed5531be4bab75bfc203572ba4bbf0e3"
 dependencies = [
  "async-trait",
  "flate2",
@@ -3565,9 +3564,9 @@ dependencies = [
 
 [[package]]
 name = "helios-fhirpath"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b82faeee298148e918ad37717a7ae7d87a749c8bc3c88b8a6e1b3dadcddf9f62"
+checksum = "2caf70808b460d3b635124f3091b203e08f1bc3847f27155900739ef13bb0f3a"
 dependencies = [
  "arc-swap",
  "axum",
@@ -3611,9 +3610,9 @@ dependencies = [
 
 [[package]]
 name = "helios-observability"
-version = "0.2.7"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7f1e2f9aa7021507e8c68043a49772fc07471056abe98034e3074a843fbe854"
+checksum = "332fffc0501758b574f9203c09b0241df624f093fe29af95537131094ac28e0a"
 dependencies = [
  "async-trait",
  "axum",
@@ -3628,9 +3627,9 @@ dependencies = [
 
 [[package]]
 name = "helios-persistence"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccba1dde18a56973b96080ca929d83785e5e273585ba71695ec2c529e8ebc78e"
+checksum = "550778890a587f9fbfa271e7f39f6022624e3a510b912bf6c9ed469d3f10c044"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3748,9 +3747,9 @@ dependencies = [
 
 [[package]]
 name = "helios-sof"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42d50781a56fd722f4ad675db2a0558125856436c61429e471c138f3716b85c5"
+checksum = "54d8c01e0deae361c5ed9fba27bf7afb5546971357f92702b77bc2820ae486ac"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -3815,9 +3814,9 @@ dependencies = [
 
 [[package]]
 name = "helios-ui"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3845848fafd5496656b4f6d4bbbde3b3c7d11d0bd21f65b9554714817a914d1"
+checksum = "7688885fe69325006c5b1bb4f94d8f0bd65dc5e9d2c08239d457bacdadee8c4e"
 dependencies = [
  "askama",
  "async-stream",
@@ -3857,9 +3856,9 @@ dependencies = [
 
 [[package]]
 name = "helios-ui-chrome"
-version = "0.2.7"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f18527981f2b56d47ff0e26abd5cd65c78b0381f1f2c880e77053d8b344392d"
+checksum = "2e1b0bc697b23fecece92b31af5154d21aea26275d04a12064e2aa0004f105af"
 dependencies = [
  "askama",
  "fluent-bundle",
@@ -6413,7 +6412,7 @@ dependencies = [
  "bytes",
  "getrandom 0.4.3",
  "lru-slab",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rand_pcg",
  "ring",
  "rustc-hash",
@@ -6518,9 +6517,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.3"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
+checksum = "8f6fa277c67e6ea590466f04c3fe82cb509f0864fe470643e5570de9514a9b11"
 dependencies = [
  "chacha20 0.10.2",
  "getrandom 0.4.3",
@@ -8331,9 +8330,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin"
-version = "2.7.2"
+version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67fb21a77e8f94e8beb3325e583102488659365af0a3948b7ea244c5b779c291"
+checksum = "6c18076d9b04211cb4899387aab97497e8edd0d02cd21710623afcdde27145d1"
 dependencies = [
  "anyhow",
  "glob",
@@ -8532,9 +8531,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-utils"
-version = "2.10.2"
+version = "2.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "362ab21cd4cc713f2a02b1a9b5688198b1541cfb6907c4281e9190e0f0ef4aa3"
+checksum = "28d1d33d4453c5df0bf1672dbc7ada69d8ed74f56a4316d964a4aa73d4ecd3ad"
 dependencies = [
  "anyhow",
  "brotli 9.0.0",
@@ -9250,9 +9249,9 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",
@@ -9323,13 +9322,13 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.29.2"
+version = "1.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bed99139f7dac9b5cfe5f17be4d66dc7079a34dee1d74bcc77217119240e267c"
+checksum = "3c14b15dffa2f4bd712103e857140aa04a4f2ff6e955c77d7eb8e53ee02a3b64"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
- "rand 0.10.3",
+ "rand 0.10.4",
  "serde_core",
  "wasm-bindgen",
 ]
@@ -9680,7 +9679,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "http-body-util",
- "rand 0.10.3",
+ "rand 0.10.4",
  "serde",
  "serde_json",
  "tokio",
@@ -9715,7 +9714,7 @@ dependencies = [
  "parking_lot 0.13.0",
  "percent-encoding",
  "proptest",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rand_core 0.6.4",
  "rsa",
  "rusqlite",
@@ -9906,7 +9905,7 @@ dependencies = [
  "include_dir",
  "ppp",
  "proptest",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rathole",
  "rcgen 0.14.10",
  "rustls",
@@ -9987,7 +9986,7 @@ dependencies = [
  "hmac 0.12.1",
  "parking_lot 0.13.0",
  "proptest",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rcgen 0.13.2",
  "reqwest 0.12.28",
  "rustls",
@@ -10092,7 +10091,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "parking_lot 0.13.0",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rathole",
  "serde",
  "serde_json",
@@ -10904,9 +10903,9 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.9.1"
+version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
+checksum = "85ccff8a4805aba1eaa4cd4afcd49f7557dd2cf5fd79ffc37f8959466effc5aa"
 dependencies = [
  "zeroize_derive",
 ]
