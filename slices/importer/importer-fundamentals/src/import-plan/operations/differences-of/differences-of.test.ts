@@ -16,7 +16,7 @@ import {
   tyraWire,
 } from '../../import-plan.test-helpers.ts'
 import * as ComparableReferences from './comparable-references.ts'
-import { type Difference, differencesOf } from './differences-of.ts'
+import { type Difference, differencesOf, FillsGap, Overwrites } from './differences-of.ts'
 
 /** The differences' fields, those that fill a gap and those that overwrite one, for a whole-value assertion. */
 interface DifferencesSummary {
@@ -315,5 +315,41 @@ describe('differencesOf', () => {
 
     // Assert
     expect(summaryOf(differences)).toEqual({ gapFilling: [], overwriting: [] })
+  })
+})
+
+describe('differencesOf, as one list', () => {
+  it('should list every difference once, in the incoming record’s field order as normalized, each filling a gap or overwriting', () => {
+    // Arrange
+    const incoming = detached(
+      tyraWire('tyra', {
+        name: [{ family: 'Ashford-Lee', given: ['Tyra'] }],
+        gender: 'female',
+        birthDate: '1990-01-03',
+      })
+    )
+    const kept = stored({ ...tyraWire('tyra'), id: 'p-1' })
+
+    // Act
+    const differences = differencesOf(incoming, kept, NO_RECORDS)
+
+    // Assert
+    expect(differences).toEqual([
+      Overwrites({ field: 'birthDate' }),
+      FillsGap({ field: 'gender' }),
+      Overwrites({ field: 'name' }),
+    ])
+  })
+
+  it('should list nothing for an incoming record that says nothing the kept record does not', () => {
+    // Arrange
+    const incoming = detached(tyraWire('tyra'))
+    const kept = stored({ ...tyraWire('tyra', { gender: 'female' }), id: 'p-1' })
+
+    // Act
+    const differences = differencesOf(incoming, kept, NO_RECORDS)
+
+    // Assert
+    expect(differences).toEqual([])
   })
 })

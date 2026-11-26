@@ -208,3 +208,101 @@ describe('locateReferences', () => {
     }).toEqual({ referenced: 0, notInImport: 0 })
   })
 })
+
+/** An Observation keyed by `value`, its `subject` the Patient keyed by `subject` under the source's system. */
+const observationAbout = (value: string, subject: object, fileName = 'a.har'): ImportedCopy.Type =>
+  copyOf(
+    detached({
+      resourceType: 'Observation',
+      identifier: [{ system: SOURCE, value }],
+      status: 'final',
+      code: { text: 'A1c' },
+      subject: { type: 'Patient', identifier: subject },
+    }),
+    value,
+    fileName
+  )
+
+describe('locateReferences, by outcome', () => {
+  it('should link a reference in the import, leave an ambiguous one alone, and ask about one not in the import', () => {
+    // Arrange
+    const pharmacyTyra = tyraCarrying(
+      [{ system: OTHER_SOURCE, value: 'tyra' }, hcn],
+      'tyra',
+      'pharmacy.har'
+    )
+    const copies = [
+      ehrTyra,
+      pharmacyTyra,
+      observationAbout('in-import', { system: SOURCE, value: 'tyra' }),
+      observationAbout('ambiguous', hcn),
+      observationAbout('not-in-import', { system: SOURCE, value: 'someone-else' }),
+    ]
+
+    // Act
+    const references = locateReferences(ImportedRecord.fromCopies(copies))
+
+    // Assert
+    expect({
+      referenced: [...HashSet.values(references.referenced)],
+      notInImport: references.notInImport.map(({ identifier: [{ value }] }) => value),
+    }).toEqual({ referenced: [ImportedCopy.recordKeyOf(ehrTyra)], notInImport: ['someone-else'] })
+  })
+})
+
+describe('locateReferences, its rules', () => {
+  it('should list each reference not in the import once, in record order of its first holder', () => {
+    // Arrange
+    const copies = [
+      observationAbout('first', { system: SOURCE, value: 'b' }),
+      observationAbout('second', { system: SOURCE, value: 'a' }),
+      observationAbout('third', { system: SOURCE, value: 'b' }),
+    ]
+
+    // Act
+    const { notInImport } = locateReferences(ImportedRecord.fromCopies(copies))
+
+    // Assert
+    expect(notInImport.map(({ identifier: [{ value }] }) => value)).toEqual(['b', 'a'])
+  })
+
+  it('should count a record named by itself and by another record as referenced', () => {
+    // Arrange
+    const selfNaming = copyOf(
+      detached(
+        tyraWire('tyra', {
+          link: [
+            {
+              type: 'seealso',
+              other: { type: 'Patient', identifier: { system: SOURCE, value: 'tyra' } },
+            },
+          ],
+        })
+      ),
+      'tyra'
+    )
+    const copies = [selfNaming, observationAbout('a1c-1', { system: SOURCE, value: 'tyra' })]
+
+    // Act
+    const references = referencesOf(copies)
+
+    // Assert
+    expect(references).toEqual({ referenced: ['a.har/tyra'], notInImport: 0 })
+  })
+
+  it('should keep the first-seen value of a reference several records hold', () => {
+    // Arrange
+    const copies = [
+      observationAbout('first', { system: SOURCE, value: 'someone', use: 'official' }),
+      observationAbout('second', { system: SOURCE, value: 'someone', use: 'secondary' }),
+    ]
+
+    // Act
+    const { notInImport } = locateReferences(ImportedRecord.fromCopies(copies))
+
+    // Assert
+    expect(notInImport.map(({ identifier: [{ value, use }] }) => ({ value, use }))).toEqual([
+      { value: 'someone', use: 'official' },
+    ])
+  })
+})

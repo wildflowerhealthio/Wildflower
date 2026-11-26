@@ -55,7 +55,7 @@ const tyra = detached(tyraWire('tyra', { gender: 'female' }))
 const storedTyra = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
 describe('suggestRecord', () => {
-  it('should use the one stored record found by identifier, taking nothing, when it is the same as existing', () => {
+  it('should merge into the one stored record found by identifier, taking no field, when nothing differs', () => {
     // Arrange
     const sameTyra = detached(tyraWire('tyra'))
 
@@ -72,7 +72,7 @@ describe('suggestRecord', () => {
     })
   })
 
-  it('should default an identifier match whose fields differ to merge into existing with only gap-filling fields taken', () => {
+  it('should merge an identifier match whose fields differ into the stored record, taking only the fields that fill a gap', () => {
     // Arrange
     const differingTyra = detached(tyraWire('tyra', { gender: 'female', birthDate: '1990-01-03' }))
 
@@ -89,7 +89,7 @@ describe('suggestRecord', () => {
     })
   })
 
-  it('should use the stored record under the derived id when nothing was found by identifier', () => {
+  it('should merge into the stored record under the derived id when nothing was found by identifier', () => {
     // Arrange / Act
     const suggestion = suggestRecord(
       factsFor(tyra, [], { storedUnderDerivedId: Option.some(storedTyra) })
@@ -245,7 +245,7 @@ describe('suggestRecord', () => {
     })
   })
 
-  it('should use the stored record found by identifier that also sits under the derived id', () => {
+  it('should merge into the stored record found by identifier that also sits under the derived id', () => {
     // Arrange / Act
     const suggestion = suggestRecord(
       factsFor(tyra, [candidate(storedTyra, 'certain', 'identifier')], {
@@ -283,5 +283,74 @@ describe('suggestRecord', () => {
       needsDecision: false,
       choice: Option.some({ use: 'Patient/p-1', fieldsTaken: [] }),
     })
+  })
+})
+
+describe('suggestRecord, one reason per rule', () => {
+  const nameMatch = candidate(storedTyra, 'probable', 'name')
+
+  it('should give rule 1, several stored copies, the reason SeveralIdentifierMatches', () => {
+    // Arrange
+    const facts = factsFor(tyra, [candidate(storedTyra, 'certain', 'identifier')], {
+      storedUnderDerivedId: Option.some(stored({ ...tyraWire('tyra'), id: 'p-derived' })),
+    })
+
+    // Act
+    const { reason } = suggestRecord(facts)
+
+    // Assert
+    expect(reason).toEqual(Suggestion.SeveralIdentifierMatches())
+  })
+
+  it.each([
+    ['nothing differs', detached(tyraWire('tyra'))],
+    ['fields differ', detached(tyraWire('tyra', { gender: 'female', birthDate: '1990-01-03' }))],
+  ])(
+    'should give rule 2, one stored copy, the reason OneIdentifierMatch when %s',
+    (_, resource) => {
+      // Arrange
+      const facts = factsFor(resource, [candidate(storedTyra, 'certain', 'identifier')])
+
+      // Act
+      const { reason } = suggestRecord(facts)
+
+      // Assert
+      expect(reason).toEqual(Suggestion.OneIdentifierMatch())
+    }
+  )
+
+  it('should give rule 3, no name match that counts, the reason NoMatch', () => {
+    // Arrange
+    const facts = factsFor(tyra, [candidate(storedTyra, 'possible', 'name')], {
+      isReferenced: true,
+    })
+
+    // Act
+    const { reason } = suggestRecord(facts)
+
+    // Assert
+    expect(reason).toEqual(Suggestion.NoMatch())
+  })
+
+  it('should give rule 4, a name match on a referenced record, the reason NameMatchReferenced', () => {
+    // Arrange
+    const facts = factsFor(tyra, [nameMatch], { isReferenced: true })
+
+    // Act
+    const { reason } = suggestRecord(facts)
+
+    // Assert
+    expect(reason).toEqual(Suggestion.NameMatchReferenced())
+  })
+
+  it('should give rule 5, a name match on a record nothing references, the reason NameMatchNotReferenced', () => {
+    // Arrange
+    const facts = factsFor(tyra, [nameMatch], { isReferenced: false })
+
+    // Act
+    const { reason } = suggestRecord(facts)
+
+    // Assert
+    expect(reason).toEqual(Suggestion.NameMatchNotReferenced())
   })
 })
