@@ -211,9 +211,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.104"
+version = "1.0.105"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+checksum = "2cb931c189b85683d69a5cfad41d4d418671e1ac413dd209f3f2fc31e3cfd902"
 
 [[package]]
 name = "ar_archive_writer"
@@ -3474,9 +3474,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "helios-audit"
-version = "0.2.8"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "019b008e144940524a66aef7a239e4aee710b7a7aa3983de77fb51383de611ec"
+checksum = "07ede523425e084fcbcf62dcb4488dd7c1cf51fdb438550289f3e42639f5989b"
 dependencies = [
  "async-trait",
  "axum",
@@ -3493,9 +3493,9 @@ dependencies = [
 
 [[package]]
 name = "helios-auth"
-version = "0.2.8"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70f19f85b3fbb4f2c93502e2eb67e6b5a1c75b9fb3e6502c33625731c7f7b2ea"
+checksum = "89ac6ebfbb88a2dd0f12088ebac95f49d9fb1d367f38cbba2f25996a0af76512"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3516,9 +3516,9 @@ dependencies = [
 
 [[package]]
 name = "helios-fhir"
-version = "0.2.8"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "269c8ce1d9592ccdf514d4fb4e4f1f6b763feee0234f2f0d608c9952a9a5ae8d"
+checksum = "0aca689ccd64135c04a9d0b2190bcf7dcfafae4dd9c9a0b9544d14e0210e9a63"
 dependencies = [
  "chrono",
  "clap",
@@ -3530,16 +3530,15 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
- "time",
  "tracing",
  "zip",
 ]
 
 [[package]]
 name = "helios-fhir-macro"
-version = "0.2.9"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32ef202ff5986a1335e7f250fcb9a17cf3a4f9763c4f7d5f61cd472a69fdda42"
+checksum = "f4642a8d79275e9c08f526a1e82f37cdcb314a7e396db99ff7f2a3eeed691c54"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -3602,9 +3601,9 @@ dependencies = [
 
 [[package]]
 name = "helios-fhirpath-support"
-version = "0.2.9"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37b5dc22fe16de1b5cc4ce5f571b8357da6d475169b5eac75a88d7b14b097b1b"
+checksum = "386d1cac0f907e6014aba04e83288c5b9bc066c730c6f0ffa5e870dad0ae809a"
 dependencies = [
  "rust_decimal",
 ]
@@ -3737,9 +3736,9 @@ dependencies = [
 
 [[package]]
 name = "helios-serde-support"
-version = "0.2.9"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2eea4f67f94dcf36acc48a21609f6690dc129c0b2cbf809f2d30ac1f7491f9d"
+checksum = "a8e2eabf77a809bcaddea941190586a7892e9be7948e33b0e2854749eea8a8b0"
 dependencies = [
  "erased-serde",
  "serde",
@@ -4043,9 +4042,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.12.0"
+version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c3e324da4c95177d6291d4c8730197c0d1822f8a9766814a4a44fa5ab797c9c"
+checksum = "229c6ff5584df4c6becbfe00567128bac768c8cd32ebc8a8366bd81ed072e8f3"
 dependencies = [
  "atomic-waker",
  "bytes",
