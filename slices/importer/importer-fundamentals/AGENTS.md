@@ -392,7 +392,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     records before implied ones, each group in plan order (a stable sort),
     since an implied record is written only when something written names it
     and no decoded record's merge may wait on it. Plan order itself does not
-    change. **`resourceOf`** is that
+    change. **`inMergeOrder(values, recordOf)`** sorts values by it, each
+    group keeping the order the values came in, so plan order within it; it
+    is the one way `suggestPlan` and `differencesInPlan` walk a plan in merge
+    order. **`resourceOf`** is that
     copy's resource carrying every qualified identifier of every decoded
     copy (`fhir-r4`'s `IdentifierUnion.union`); **`stageLiteralOf`** is
     `<Type>/<id>` under the record copy's stage id, how a format's hooks name
@@ -528,7 +531,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     built by **`make`**.
 
   Operations (the folder's index exports the verbs a caller outside it uses,
-  `locateReferences`, `suggestPlan`, `resolvePlan` and `countTotals`;
+  `locateReferences`, `suggestPlan`, `differencesInPlan`, `resolvePlan` and
+  `countTotals`;
   `differencesOf`, `suggestRecord` and `landReferences` are steps of those):
   - **`locateReferences(records)`** (`operations/locate-references.ts`) —
     the `RecordReferences` of an import, in one pass. It decides once per
@@ -579,12 +583,28 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     matches on one nothing references save it as new.
   - **`suggestPlan(records, recordReferences, storedMatch)`**
     (`operations/suggest-plan.ts`) suggests every record in merge order
-    (`ImportedRecord.mergeOrder`, then plan order) and returns the planned
+    (`ImportedRecord.inMergeOrder`: `mergeOrder`, then plan order) and returns the planned
     records in plan order, folding each suggestion through
     `KeptRecord.withRecordChoice`, so a record merging into a stored record
     one ahead of it merges into is compared with it as merged so far: a gap
     two records could fill is suggested to the decoded one, never to an
     implied one the write may drop.
+  - **`differencesInPlan(plan, planned, existing)`**
+    (`operations/differences-in-plan.ts`) — for one planned record and one
+    existing record it could merge into (a candidate, which need not be its
+    current choice), the differences given the choices made so far: the
+    record as reviewed (`PlannedRecord.reviewedResourceOf`) against
+    `existing` as the records ahead of it in merge order
+    (`ImportedRecord.inMergeOrder`) leave it, each merging by its effective
+    choice with its reviewed resource through `KeptRecord.withRecordChoice`;
+    the record itself and the records after it never contribute. References
+    compare through `ComparableReferences.of(the plan's records,
+    plan.storedMatch)`, as `suggestPlan` compares them. Pure; it returns
+    **`DifferencesInPlan`** `{ incoming, kept, differences }`, the two
+    records as they are, so the page reads field values, and the identifiers
+    the merge would add (`IdentifierUnion.missingFrom`), from them. It
+    rebuilds the comparable references on each call, so a caller showing
+    many rows caches.
   - **`landReferences(plan, ids)`** (`operations/land-references.ts`) —
     where a reference lands for each choice, as a `ReferenceTable`, reading
     the clock. A record saved as new or merged into a stored record lands on

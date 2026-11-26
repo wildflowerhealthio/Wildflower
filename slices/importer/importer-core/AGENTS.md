@@ -261,6 +261,9 @@ that provides those.
   URL, plan it once), finds the references between
   them (`locateReferences`), finds their stored match, and suggests the
   plan (`suggestPlan`).
+  Its tests pin that a re-import is the same as existing: every record's
+  reason is `OneIdentifierMatch` and `differencesInPlan` finds no
+  difference from the stored record it merges into.
   `import-write-equivalence.test.ts` holds the plan's write
   (`resolvePlan`, then `ImportWrite.of`) on an empty store, every suggestion
   taken, to the review screen's import (`importDecoded`, `resolveMentions`
