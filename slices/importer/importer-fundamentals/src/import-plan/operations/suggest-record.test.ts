@@ -66,7 +66,7 @@ describe('suggestRecord', () => {
 
     // Assert
     expect(summaryOf(suggestion)).toEqual({
-      reason: 'IdentifierMatchSameAsExisting',
+      reason: 'OneIdentifierMatch',
       needsDecision: false,
       choice: Option.some({ use: 'Patient/p-1', fieldsTaken: [] }),
     })
@@ -83,7 +83,7 @@ describe('suggestRecord', () => {
 
     // Assert
     expect(summaryOf(suggestion)).toEqual({
-      reason: 'IdentifierMatchFieldsDiffer',
+      reason: 'OneIdentifierMatch',
       needsDecision: false,
       choice: Option.some({ use: 'Patient/p-1', fieldsTaken: ['gender'] }),
     })
@@ -97,7 +97,7 @@ describe('suggestRecord', () => {
 
     // Assert
     expect(summaryOf(suggestion)).toEqual({
-      reason: 'IdentifierMatchFieldsDiffer',
+      reason: 'OneIdentifierMatch',
       needsDecision: false,
       choice: Option.some({ use: 'Patient/p-1', fieldsTaken: ['gender'] }),
     })
@@ -194,7 +194,7 @@ describe('suggestRecord', () => {
 
     // Assert
     expect(summaryOf(suggestion)).toEqual({
-      reason: 'NotReferenced',
+      reason: 'NameMatchNotReferenced',
       needsDecision: false,
       choice: Option.some('save as new'),
     })
@@ -255,7 +255,7 @@ describe('suggestRecord', () => {
 
     // Assert
     expect(summaryOf(suggestion)).toEqual({
-      reason: 'IdentifierMatchFieldsDiffer',
+      reason: 'OneIdentifierMatch',
       needsDecision: false,
       choice: Option.some({ use: 'Patient/p-1', fieldsTaken: ['gender'] }),
     })
@@ -279,7 +279,7 @@ describe('suggestRecord', () => {
 
     // Assert
     expect(summaryOf(suggestion)).toEqual({
-      reason: 'IdentifierMatchSameAsExisting',
+      reason: 'OneIdentifierMatch',
       needsDecision: false,
       choice: Option.some({ use: 'Patient/p-1', fieldsTaken: [] }),
     })

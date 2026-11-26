@@ -142,8 +142,8 @@ describe('planImport', () => {
         label: PlannedRecord.labelOf(planned),
       }))
     ).toEqual([
-      { reason: 'IdentifierMatchSameAsExisting', label: 'LinkToExisting' },
-      { reason: 'IdentifierMatchSameAsExisting', label: 'LinkToExisting' },
+      { reason: 'OneIdentifierMatch', label: 'LinkToExisting' },
+      { reason: 'OneIdentifierMatch', label: 'LinkToExisting' },
     ])
   })
 
@@ -215,7 +215,7 @@ describe('planImport', () => {
       reasons: result.records.map((planned) => planned.suggestion.reason._tag),
     }).toEqual({
       written: 4,
-      reasons: Array.from({ length: 4 }, () => 'IdentifierMatchSameAsExisting'),
+      reasons: Array.from({ length: 4 }, () => 'OneIdentifierMatch'),
     })
   })
 })

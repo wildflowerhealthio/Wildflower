@@ -1,19 +1,38 @@
 /**
- * Differences of: the gap rule, what an incoming record offers the record it
- * merges into, the kept one, top-level field by top-level field.
+ * Differences of: the top-level fields where an incoming record says
+ * something other than the record it merges into, the kept one.
  *
  * @packageDocumentation
  */
-import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import { diffJson, IdentifierUnion, normalizedFieldsOf } from '@wildflowerhealthio/fhir-r4/clients'
+import { diffJson, normalizedFieldsOf } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, HashSet, Option, type Record } from 'effect'
+import { Data, HashSet, Option, type Record } from 'effect'
 
-import * as OfferedFields from '../../entities/offered-fields.ts'
 import * as ComparableReferences from './comparable-references.ts'
 
-/** The top-level wire keys that are no field a reviewer takes. */
-const NOT_OFFERED: ReadonlySet<string> = new Set(['resourceType', 'id', 'meta', 'identifier'])
+/**
+ * One top-level field where the incoming record has a value that differs
+ * from the kept record's: it fills a gap when the kept record has no value
+ * for it, and overwrites one otherwise.
+ *
+ * @remarks
+ * A difference names its field and carries no value: callers read the
+ * values from the two records by field name.
+ */
+type Difference = Data.TaggedEnum<{
+  FillsGap: { readonly field: string }
+  Overwrites: { readonly field: string }
+}>
+
+const { FillsGap, Overwrites, $is: isDifference } = Data.taggedEnum<Difference>()
+
+/** The top-level wire keys that are never a difference: no field a reviewer takes. */
+const NEVER_A_DIFFERENCE: ReadonlySet<string> = new Set([
+  'resourceType',
+  'id',
+  'meta',
+  'identifier',
+])
 
 /**
  * `resource`'s top-level fields, as `normalizedEncode` writes them.
@@ -32,22 +51,26 @@ const hasValue = (value: unknown): boolean =>
   value !== undefined && value !== null && !(Array.isArray(value) && value.length === 0)
 
 /**
- * What `incoming` offers `kept`: the top-level fields that differ between
- * them (`diffJson`) and that the incoming record has a value for, in its
- * field order, each filling a gap when `kept` has no value for it and
- * overwriting one otherwise; and the incoming record's qualified identifiers
- * `kept` does not carry.
+ * The differences of `incoming` from `kept`: each top-level field that
+ * differs between them (`diffJson`) and that `incoming` has a value for, in
+ * `incoming`'s field order, filling a gap when `kept` has no value for it
+ * and overwriting one otherwise.
  *
  * @param incoming - The imported record merged in
  * @param kept - The record it merges into, as it stands
  * @param comparable - How the references of both are compared
  *   (`ComparableReferences`): by what they name, not by their literal
+ *
+ * @remarks
+ * `resourceType`, `id`, `meta` and `identifier` are never a difference. The
+ * identifiers a merge adds are those `kept` lacks
+ * (`IdentifierUnion.missingFrom`), whatever the differences are.
  */
 const differencesOf = (
   incoming: FhirResource,
   kept: FhirResource,
   comparable: ComparableReferences.Type
-): OfferedFields.Type => {
+): readonly Difference[] => {
   const incomingFields = fieldsOf(ComparableReferences.comparableResourceOf(comparable, incoming))
   const keptFields = fieldsOf(ComparableReferences.comparableResourceOf(comparable, kept))
   const differing = HashSet.fromIterable(
@@ -55,21 +78,15 @@ const differencesOf = (
       typeof field === 'string' ? [field] : []
     )
   )
-  const [gapFilling, overwriting] = Arr.partition(
-    Object.keys(incomingFields).filter(
+  return Object.keys(incomingFields)
+    .filter(
       (field) =>
-        HashSet.has(differing, field) && !NOT_OFFERED.has(field) && hasValue(incomingFields[field])
-    ),
-    (field) => hasValue(keptFields[field])
-  )
-  return OfferedFields.make({
-    gapFilling,
-    overwriting,
-    identifiersToAdd: IdentifierUnion.missingFrom(
-      DetachedResource.hasIdentifier(kept) ? kept.identifier : [],
-      incoming
-    ),
-  })
+        HashSet.has(differing, field) &&
+        !NEVER_A_DIFFERENCE.has(field) &&
+        hasValue(incomingFields[field])
+    )
+    .map((field) => (hasValue(keptFields[field]) ? Overwrites({ field }) : FillsGap({ field })))
 }
 
-export { differencesOf }
+export { differencesOf, FillsGap, isDifference, Overwrites }
+export type { Difference }

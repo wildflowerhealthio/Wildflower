@@ -7,7 +7,6 @@
  */
 export * as RecordKey from './entities/record-key.ts'
 export * as RecordChoice from './entities/record-choice.ts'
-export * as OfferedFields from './entities/offered-fields.ts'
 export * as Suggestion from './entities/suggestion.ts'
 export * as FileSetOrigin from './entities/file-set-origin.ts'
 export * as ImportedCopy from './entities/imported-copy.ts'

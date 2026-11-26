@@ -149,8 +149,8 @@ describe('suggestPlan', () => {
         ),
       }))
     ).toEqual([
-      { reason: 'IdentifierMatchFieldsDiffer', fieldsTaken: Option.some(['gender']) },
-      { reason: 'IdentifierMatchFieldsDiffer', fieldsTaken: Option.some([]) },
+      { reason: 'OneIdentifierMatch', fieldsTaken: Option.some(['gender']) },
+      { reason: 'OneIdentifierMatch', fieldsTaken: Option.some([]) },
     ])
   })
 
@@ -193,12 +193,12 @@ describe('suggestPlan', () => {
     ).toEqual([
       {
         reviewKey: 'a.har/rx-1#implied',
-        reason: 'IdentifierMatchSameAsExisting',
+        reason: 'OneIdentifierMatch',
         fieldsTaken: Option.some([]),
       },
       {
         reviewKey: 'b.pdf/brown',
-        reason: 'IdentifierMatchFieldsDiffer',
+        reason: 'OneIdentifierMatch',
         fieldsTaken: Option.some(['name']),
       },
     ])

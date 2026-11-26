@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import * as ImportedRecord from '../../entities/imported-record.ts'
 import * as KeptRecord from '../../entities/kept-record.ts'
-import * as OfferedFields from '../../entities/offered-fields.ts'
 import * as StoredMatch from '../../entities/stored-match.ts'
 import {
   candidate,
@@ -17,77 +16,71 @@ import {
   tyraWire,
 } from '../../import-plan.test-helpers.ts'
 import * as ComparableReferences from './comparable-references.ts'
-import { differencesOf } from './differences-of.ts'
+import { type Difference, differencesOf } from './differences-of.ts'
 
-/** What an offer says, its identifiers by value, for a whole-value assertion. */
-interface OfferSummary {
+/** The differences' fields, those that fill a gap and those that overwrite one, for a whole-value assertion. */
+interface DifferencesSummary {
   readonly gapFilling: readonly string[]
   readonly overwriting: readonly string[]
-  readonly identifiersToAdd: readonly string[]
 }
 
 /** No record of an import to compare references by: each compared as it is, or by its identifier. */
 const NO_RECORDS = ComparableReferences.of([], StoredMatch.empty)
 
-const summaryOf = (offered: OfferedFields.Type): OfferSummary => ({
-  gapFilling: offered.gapFilling,
-  overwriting: offered.overwriting,
-  identifiersToAdd: offered.identifiersToAdd.map(({ value }) => value),
+const summaryOf = (differences: readonly Difference[]): DifferencesSummary => ({
+  gapFilling: differences.filter(({ _tag }) => _tag === 'FillsGap').map(({ field }) => field),
+  overwriting: differences.filter(({ _tag }) => _tag === 'Overwrites').map(({ field }) => field),
 })
 
 describe('differencesOf', () => {
-  it('should offer a field the existing record has no value for as filling a gap', () => {
+  it('should count a field the kept record has no value for as a difference that fills a gap', () => {
     // Arrange
-    const imported = detached(tyraWire('tyra', { gender: 'female' }))
-    const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
+    const incoming = detached(tyraWire('tyra', { gender: 'female' }))
+    const kept = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = differencesOf(imported, existing, NO_RECORDS)
+    const differences = differencesOf(incoming, kept, NO_RECORDS)
 
     // Assert
-    expect(summaryOf(offered)).toEqual({
+    expect(summaryOf(differences)).toEqual({
       gapFilling: ['gender'],
       overwriting: [],
-      identifiersToAdd: [],
     })
   })
 
-  it('should offer a field the existing record has another value for as overwriting it', () => {
+  it('should count a field the kept record has another value for as a difference that overwrites it', () => {
     // Arrange
-    const imported = detached(tyraWire('tyra', { birthDate: '1990-01-03' }))
-    const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
+    const incoming = detached(tyraWire('tyra', { birthDate: '1990-01-03' }))
+    const kept = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = differencesOf(imported, existing, NO_RECORDS)
+    const differences = differencesOf(incoming, kept, NO_RECORDS)
 
     // Assert
-    expect(summaryOf(offered)).toEqual({
+    expect(summaryOf(differences)).toEqual({
       gapFilling: [],
       overwriting: ['birthDate'],
-      identifiersToAdd: [],
     })
   })
 
-  it('should not offer a field the import has no value for', () => {
+  it('should find no difference in a field the incoming record has no value for', () => {
     // Arrange
-    const imported = detached(tyraWire('tyra'))
-    const existing = stored({ ...tyraWire('tyra', { gender: 'female' }), id: 'p-1' })
+    const incoming = detached(tyraWire('tyra'))
+    const kept = stored({ ...tyraWire('tyra', { gender: 'female' }), id: 'p-1' })
 
     // Act
-    const offered = differencesOf(imported, existing, NO_RECORDS)
+    const differences = differencesOf(incoming, kept, NO_RECORDS)
 
     // Assert
-    expect({ ...summaryOf(offered), offersNoField: OfferedFields.offersNoField(offered) }).toEqual({
+    expect(summaryOf(differences)).toEqual({
       gapFilling: [],
       overwriting: [],
-      identifiersToAdd: [],
-      offersNoField: true,
     })
   })
 
-  it('should offer no field but add the identifiers the existing record lacks when only identifiers differ', () => {
+  it('should find no difference when only identifiers differ', () => {
     // Arrange
-    const imported = detached(
+    const incoming = detached(
       tyraWire('tyra', {
         identifier: [
           { system: 'https://source.example/id', value: 'tyra' },
@@ -95,31 +88,29 @@ describe('differencesOf', () => {
         ],
       })
     )
-    const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
+    const kept = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = differencesOf(imported, existing, NO_RECORDS)
+    const differences = differencesOf(incoming, kept, NO_RECORDS)
 
     // Assert
-    expect({ ...summaryOf(offered), offersNoField: OfferedFields.offersNoField(offered) }).toEqual({
+    expect(summaryOf(differences)).toEqual({
       gapFilling: [],
       overwriting: [],
-      identifiersToAdd: ['tyra-at-other'],
-      offersNoField: true,
     })
   })
 
-  it('should measure a gap against the stored record as an earlier import resource’s taken fields leave it', () => {
+  it('should measure a gap against the kept record as an earlier merge’s taken fields leave it', () => {
     // Arrange
     const earlier = detached(tyraWire('tyra', { gender: 'male' }))
-    const imported = detached(tyraWire('tyra', { gender: 'female' }))
-    const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
+    const incoming = detached(tyraWire('tyra', { gender: 'female' }))
+    const kept = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = differencesOf(
-      imported,
+    const differences = differencesOf(
+      incoming,
       KeptRecord.asMerged(
-        KeptRecord.withMerge(KeptRecord.of(existing), {
+        KeptRecord.withMerge(KeptRecord.of(kept), {
           incoming: earlier,
           fieldsTaken: HashSet.make('gender'),
         })
@@ -128,14 +119,13 @@ describe('differencesOf', () => {
     )
 
     // Assert
-    expect(summaryOf(offered)).toEqual({
+    expect(summaryOf(differences)).toEqual({
       gapFilling: [],
       overwriting: ['gender'],
-      identifiersToAdd: [],
     })
   })
 
-  it('should offer nothing an earlier import resource already gives the stored record as it stands', () => {
+  it('should find no difference in what an earlier merge already gives the kept record', () => {
     // Arrange
     const earlier = detached(
       tyraWire('tyra', {
@@ -143,19 +133,19 @@ describe('differencesOf', () => {
         identifier: [{ system: OTHER_SOURCE, value: 'tyra-at-other' }],
       })
     )
-    const imported = detached(
+    const incoming = detached(
       tyraWire('tyra', {
         gender: 'female',
         identifier: [{ system: OTHER_SOURCE, value: 'tyra-at-other' }],
       })
     )
-    const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
+    const kept = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = differencesOf(
-      imported,
+    const differences = differencesOf(
+      incoming,
       KeptRecord.asMerged(
-        KeptRecord.withMerge(KeptRecord.of(existing), {
+        KeptRecord.withMerge(KeptRecord.of(kept), {
           incoming: earlier,
           fieldsTaken: HashSet.make('gender'),
         })
@@ -164,13 +154,13 @@ describe('differencesOf', () => {
     )
 
     // Assert
-    expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
+    expect(summaryOf(differences)).toEqual({ gapFilling: [], overwriting: [] })
   })
 
   it('should find a stored reference, literal beside type and identifier, the same as the import’s logical reference to that record', () => {
     // Arrange
-    const imported = detached(prescriptionWire('rx-1', { system: NAMES, value: 'Dr. Brown' }))
-    const existing = stored({
+    const incoming = detached(prescriptionWire('rx-1', { system: NAMES, value: 'Dr. Brown' }))
+    const kept = stored({
       ...prescriptionWire('rx-1', { system: NAMES, value: 'Dr. Brown' }),
       id: 'rx-stored',
       subject: {
@@ -187,16 +177,16 @@ describe('differencesOf', () => {
     })
 
     // Act
-    const offered = differencesOf(imported, existing, NO_RECORDS)
+    const differences = differencesOf(incoming, kept, NO_RECORDS)
 
     // Assert
-    expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
+    expect(summaryOf(differences)).toEqual({ gapFilling: [], overwriting: [] })
   })
 
   it('should find a stored stub, its display added, the same as the import’s logical reference without one', () => {
     // Arrange
-    const imported = detached(prescriptionWire('rx-1', { system: NAMES, value: 'Dr. Brown' }))
-    const existing = stored({
+    const incoming = detached(prescriptionWire('rx-1', { system: NAMES, value: 'Dr. Brown' }))
+    const kept = stored({
       ...prescriptionWire('rx-1', { system: NAMES, value: 'Dr. Brown' }),
       id: 'rx-stored',
       subject: {
@@ -207,10 +197,10 @@ describe('differencesOf', () => {
     })
 
     // Act
-    const offered = differencesOf(imported, existing, NO_RECORDS)
+    const differences = differencesOf(incoming, kept, NO_RECORDS)
 
     // Assert
-    expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
+    expect(summaryOf(differences)).toEqual({ gapFilling: [], overwriting: [] })
   })
 
   it('should find a reference that is only a display different when its text differs', () => {
@@ -219,17 +209,16 @@ describe('differencesOf', () => {
       ...prescriptionWire('rx-1', { system: NAMES, value: 'Dr. Brown' }),
       requester: { display },
     })
-    const imported = detached(withRequester('Dr. Brown'))
-    const existing = stored({ ...withRequester('Dr. B. Brown'), id: 'rx-stored' })
+    const incoming = detached(withRequester('Dr. Brown'))
+    const kept = stored({ ...withRequester('Dr. B. Brown'), id: 'rx-stored' })
 
     // Act
-    const offered = differencesOf(imported, existing, NO_RECORDS)
+    const differences = differencesOf(incoming, kept, NO_RECORDS)
 
     // Assert
-    expect(summaryOf(offered)).toEqual({
+    expect(summaryOf(differences)).toEqual({
       gapFilling: [],
       overwriting: ['requester'],
-      identifiersToAdd: [],
     })
   })
 
@@ -262,18 +251,18 @@ describe('differencesOf', () => {
       status: 'final',
       code: { text: 'A1c' },
     }
-    const imported = detached({ ...observationWire, subject: { reference: 'Patient/p-derived' } })
-    const existing = stored({
+    const incoming = detached({ ...observationWire, subject: { reference: 'Patient/p-derived' } })
+    const kept = stored({
       ...observationWire,
       id: 'o-1',
       subject: { reference: 'Patient/p-1' },
     })
 
     // Act
-    const offered = differencesOf(imported, existing, comparable)
+    const differences = differencesOf(incoming, kept, comparable)
 
     // Assert
-    expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
+    expect(summaryOf(differences)).toEqual({ gapFilling: [], overwriting: [] })
   })
 
   it('should find a literal reference to any copy’s stage id of a record a source served at one URL the same as one to its record copy’s', () => {
@@ -292,29 +281,29 @@ describe('differencesOf', () => {
       status: 'final',
       code: { text: 'A1c' },
     }
-    const imported = detached({
+    const incoming = detached({
       ...observationWire,
       focus: [{ reference: 'Binary/minted/a.har/binary' }],
     })
-    const existing = stored({
+    const kept = stored({
       ...observationWire,
       id: 'o-1',
       focus: [{ reference: 'Binary/minted/b.har/binary' }],
     })
 
     // Act
-    const offered = differencesOf(imported, existing, comparable)
+    const differences = differencesOf(incoming, kept, comparable)
 
     // Assert
-    expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
+    expect(summaryOf(differences)).toEqual({ gapFilling: [], overwriting: [] })
   })
 
   it('should not depend on the order the resources’ keys were written in', () => {
     // Arrange
-    const imported = detached(
+    const incoming = detached(
       tyraWire('tyra', { name: [{ given: ['Tyra'], family: 'Ashford' }], gender: 'female' })
     )
-    const existing = stored({
+    const kept = stored({
       id: 'p-1',
       gender: 'female',
       name: [{ family: 'Ashford', given: ['Tyra'] }],
@@ -322,9 +311,9 @@ describe('differencesOf', () => {
     })
 
     // Act
-    const offered = differencesOf(imported, existing, NO_RECORDS)
+    const differences = differencesOf(incoming, kept, NO_RECORDS)
 
     // Assert
-    expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
+    expect(summaryOf(differences)).toEqual({ gapFilling: [], overwriting: [] })
   })
 })

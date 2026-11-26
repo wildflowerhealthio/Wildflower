@@ -43,8 +43,8 @@ const withSuggestedMerge = (mergedSoFar: MergedSoFar, planned: PlannedRecord.Typ
 
 /**
  * One record of the plan: what the store holds of it and its suggestion, its
- * offered fields measured against the kept records as the records ahead of
- * it merged into them (`mergedSoFar`), nothing chosen and nothing edited.
+ * differences measured against the kept records as the records ahead of it
+ * merged into them (`mergedSoFar`), nothing chosen and nothing edited.
  */
 const planRecord = (
   storedMatch: StoredMatch.Type,
@@ -89,7 +89,7 @@ const byPosition = Order.mapInput(Order.number, ({ position }: PlacedInPlan<unkn
  * Records are suggested in merge order (`ImportedRecord.mergeOrder`, then
  * plan order): decoded records first, implied ones after. A record suggested
  * to merge into a stored record a record ahead of it is suggested to merge
- * into has its offered fields measured against that kept record as the
+ * into has its differences measured against that kept record as the
  * earlier merge leaves it (`KeptRecord.asMerged`), so two suggestions
  * never take one field twice, and a decoded record never leaves a field to
  * an implied record the write may drop. References compare by what they

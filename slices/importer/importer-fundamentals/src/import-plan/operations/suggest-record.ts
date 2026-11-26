@@ -14,12 +14,11 @@ import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
 import { HashMap, HashSet, Option } from 'effect'
 
 import * as KeptRecord from '../entities/kept-record.ts'
-import * as OfferedFields from '../entities/offered-fields.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
 import type * as ComparableReferences from './differences-of/comparable-references.ts'
-import { differencesOf } from './differences-of/differences-of.ts'
+import { type Difference, differencesOf, isDifference } from './differences-of/differences-of.ts'
 
 /** The facts a record's suggestion is read from. */
 interface SuggestionFacts {
@@ -51,13 +50,13 @@ const countedNameMatches = (
     .map(({ resource }) => resource)
 
 /**
- * What `facts.resource` offers `existing` as it stands once the records ahead
- * of it merged into it (`KeptRecord.asMerged`).
+ * The differences of `facts.resource` from `existing` as it stands once the
+ * records ahead of it merged into it (`KeptRecord.asMerged`).
  */
-const offeredFieldsFor = (
+const differencesFor = (
   facts: SuggestionFacts,
   existing: FhirResourceWithId
-): OfferedFields.Type =>
+): readonly Difference[] =>
   differencesOf(
     facts.resource,
     HashMap.get(facts.mergedSoFar, literalReferenceOf(existing)).pipe(
@@ -66,29 +65,27 @@ const offeredFieldsFor = (
     facts.comparableReferences
   )
 
-/** Merge into `existing`, taking the fields that fill one of its gaps. */
+/** Merge into `existing`, taking the fields that fill one of its gaps (`differences`). */
 const gapFillingChoice = (
   existing: FhirResourceWithId,
-  offeredFields: OfferedFields.Type
+  differences: readonly Difference[]
 ): RecordChoice.Type =>
   RecordChoice.MergeIntoExistingRecord({
     existing,
-    fieldsTaken: HashSet.fromIterable(offeredFields.gapFilling),
+    fieldsTaken: HashSet.fromIterable(
+      differences.filter(isDifference('FillsGap')).map(({ field }) => field)
+    ),
   })
 
 /** Merge into `existing`, the stored record that is the record, taking only the fields that fill a gap. */
 const suggestIdentifierMatch = (
   facts: SuggestionFacts,
   existing: FhirResourceWithId
-): Suggestion.Type => {
-  const offeredFields = offeredFieldsFor(facts, existing)
-  return Suggestion.make(
-    Option.some(gapFillingChoice(existing, offeredFields)),
-    OfferedFields.offersNoField(offeredFields)
-      ? Suggestion.IdentifierMatchSameAsExisting({ offeredFields })
-      : Suggestion.IdentifierMatchFieldsDiffer({ offeredFields })
+): Suggestion.Type =>
+  Suggestion.make(
+    Option.some(gapFillingChoice(existing, differencesFor(facts, existing))),
+    Suggestion.OneIdentifierMatch()
   )
-}
 
 /** Needs a decision: the one name match pre-selected, taking only gap-filling fields; several leave it undecided. */
 const suggestNameMatchReferenced = (
@@ -97,7 +94,7 @@ const suggestNameMatchReferenced = (
 ): Suggestion.Type =>
   Suggestion.make(
     Option.map(onlyElement(nameMatches), (existing) =>
-      gapFillingChoice(existing, offeredFieldsFor(facts, existing))
+      gapFillingChoice(existing, differencesFor(facts, existing))
     ),
     Suggestion.NameMatchReferenced()
   )
@@ -115,12 +112,13 @@ const saveAsNew = (reason: Suggestion.Reason): Suggestion.Type =>
  *    identifier, or one found by identifier and another under the id the
  *    import stage derived for it.
  * 2. One stored copy: merge into it, taking the fields that fill a gap (none
- *    when the import offers no field).
+ *    when no difference fills one).
  * 3. No name match that may not need more review: save as new (no match).
  *    Only `possible` matches count as none.
  * 4. Name matches, and another imported record references it: Needs a
  *    decision, the one match pre-selected, undecided when there are several.
- * 5. Name matches, and nothing references it: save as new (not referenced).
+ * 5. Name matches, and nothing references it: save as new (name match not
+ *    referenced).
  */
 const suggestRecord = (facts: SuggestionFacts): Suggestion.Type => {
   const storedCopies = StoredMatch.storedCopiesOf(facts.storedMatch)
@@ -133,7 +131,7 @@ const suggestRecord = (facts: SuggestionFacts): Suggestion.Type => {
   if (nameMatches.length === 0) return saveAsNew(Suggestion.NoMatch())
   return facts.isReferenced
     ? suggestNameMatchReferenced(facts, nameMatches)
-    : saveAsNew(Suggestion.NotReferenced())
+    : saveAsNew(Suggestion.NameMatchNotReferenced())
 }
 
 export { suggestRecord }
