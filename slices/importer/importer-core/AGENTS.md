@@ -245,11 +245,12 @@ that provides those.
   record its schema rejects, `FileImporter.SourceFileNotFound` from a hook)
   as an unreadable row per picked file of the set, after the decode's own,
   and keeps the other sets' copies and notes.
-- `src/find-stored-match.ts` — **`findStoredMatch(records, unresolved)`** is
+- `src/find-stored-match.ts` — **`findStoredMatch(records, notInImport)`** is
   a `StoredMatch`: one `ResourceMatch.findCandidates` over every record, by
   its resource (`ImportedRecord.resourceOf`), and every logical reference no
-  record of the import resolves (`MatchQuery.fromLogicalReference`), every
-  grade; then one `readInBatch` of the derived stage id of every record that
+  record of the import carries the identifier of (`RecordReferences.Type`'s
+  `notInImport`, each by `MatchQuery.fromLogicalReference`), every grade;
+  then one `readInBatch` of the derived stage id of every record that
   has one (`ImportedRecord.literalReferenceIfDerived`), whatever was found
   by identifier. It knows only the order it asked in and builds the match
   with `StoredMatch.make`. A failed search or read fails it
@@ -258,7 +259,7 @@ that provides those.
   records once (`ImportedRecord.fromCopies`, by `RecordKey`: so two file sets
   bringing one record by its key identifier, or one `Binary` at one source
   URL, plan it once), finds the references between
-  them (`RecordReferences.of`), finds their stored match, and suggests the
+  them (`locateReferences`), finds their stored match, and suggests the
   plan (`suggestPlan`).
 
 ## Layering
