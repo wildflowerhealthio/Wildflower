@@ -1,0 +1,81 @@
+name: Dependabot vite-plus Fixup
+
+# Completes a Dependabot vite-plus bump. Dependabot moves the catalog
+# `vite-plus:` entry but not the `vite` core alias beside it, and every `vp`
+# run fails until the two agree. This job runs the new release's migrator on
+# the PR branch and pushes the result as one commit. The push uses a GitHub
+# App token, because a push made with GITHUB_TOKEN does not start the PR's CI
+# again. New Oxlint or Oxfmt findings that a release brings still need a hand
+# fix. See docs/Dependencies/Bumping vite-plus How-To.md.
+
+on:
+  pull_request:
+    paths:
+      - pnpm-workspace.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-vite-plus-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  align:
+    name: Align the vite core alias
+    # Dependabot's own pushes only. The fixup commit is pushed by the App, so
+    # it starts CI without running this job again, and a human push to the
+    # branch never does.
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      # The branch itself rather than the merge commit, so the fixup commit
+      # sits on Dependabot's commit.
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          cache: true
+
+      # Runs before the App token exists, so the migrator downloaded from npm
+      # never runs with write access.
+      - name: Align the vite alias with vite-plus
+        id: align
+        run: scripts/ci/align-vite-plus-core.sh
+
+      # The App and its secrets are stored as Dependabot secrets, because a
+      # Dependabot-triggered run gets no Actions secrets.
+      - name: Mint the push token
+        if: steps.align.outputs.changed == 'true'
+        id: token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.DEPS_FIXUP_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEPS_FIXUP_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      # Hooks are off, because `vp install` points core.hooksPath at the
+      # repository's hooks and those need a full workspace build.
+      - name: Commit and push
+        if: steps.align.outputs.changed == 'true'
+        env:
+          TOKEN: ${{ steps.token.outputs.token }}
+          APP_SLUG: ${{ steps.token.outputs.app-slug }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          vite_plus=$(sed -n 's/^  vite-plus: *//p' pnpm-workspace.yaml)
+          git add -A
+          git -c core.hooksPath=/dev/null \
+            -c user.name="${APP_SLUG}[bot]" \
+            -c user.email="${APP_SLUG}[bot]@users.noreply.github.com" \
+            commit -m "deps: move the vite core alias with vite-plus $vite_plus" \
+            -m "vp migrate from vite-plus $vite_plus, run by dependabot-vite-plus.yml."
+          git -c core.hooksPath=/dev/null push \
+            "https://x-access-token:$TOKEN@github.com/$REPOSITORY.git" \
+            "HEAD:refs/heads/$HEAD_REF"
