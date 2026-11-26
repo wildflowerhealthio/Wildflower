@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   afterSteps,
   drBrown,
+  keyByImporterAssignedKey,
   prescription,
   reviewerStepArbitrary,
   samplePlan,
@@ -15,7 +16,7 @@ import * as ImportPlan from './import-plan.ts'
 import * as ImportedCopy from './imported-copy.ts'
 import * as PlannedRecord from './planned-record.ts'
 import * as RecordChoice from './record-choice.ts'
-import * as RecordKey from './record-key.ts'
+import type * as RecordKey from './record-key.ts'
 
 /**
  * Covers the plan's own transitions: reading a record by its key, the
@@ -36,7 +37,7 @@ describe('ImportPlan.get', () => {
 
     // Act
     const found = ImportPlan.get(plan, ImportedCopy.recordKeyOf(tyraA))
-    const missing = ImportPlan.get(plan, RecordKey.ByImporterAssignedKey({ reviewKey: 'nowhere' }))
+    const missing = ImportPlan.get(plan, keyByImporterAssignedKey('nowhere'))
 
     // Assert
     expect({

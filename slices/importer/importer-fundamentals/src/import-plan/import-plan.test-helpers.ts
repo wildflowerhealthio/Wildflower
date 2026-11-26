@@ -11,7 +11,7 @@ import * as ImportedCopy from './entities/imported-copy.ts'
 import * as ImportedRecord from './entities/imported-record.ts'
 import * as PlannedRecord from './entities/planned-record.ts'
 import * as RecordChoice from './entities/record-choice.ts'
-import type * as RecordKey from './entities/record-key.ts'
+import * as RecordKey from './entities/record-key.ts'
 import * as StoredMatch from './entities/stored-match.ts'
 import * as Suggestion from './entities/suggestion.ts'
 
@@ -56,6 +56,17 @@ const copyOf = (
   stageId: { _tag: 'Minted', id: `minted/${fileName}/${reviewKey}` },
   ...overrides,
 })
+
+/**
+ * The key of a record with no key identifier or source URL that the importer
+ * assigned `importerAssignedKey`, for a record a test needs no copy of.
+ */
+const keyByImporterAssignedKey = (importerAssignedKey: string): RecordKey.Type =>
+  RecordKey.make({
+    resource: detached({ resourceType: 'Binary', contentType: 'text/plain' }),
+    sourceUrl: Option.none(),
+    importerAssignedKey,
+  })
 
 /** `resource` as a candidate of `grade`, found `by`. */
 const candidate = (
@@ -231,6 +242,7 @@ export {
   detached,
   drBrown,
   drBrownWire,
+  keyByImporterAssignedKey,
   matchOf,
   plannedOf,
   NAMES,

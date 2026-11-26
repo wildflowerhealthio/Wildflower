@@ -8,8 +8,7 @@ import * as RecordKey from './record-key.ts'
 
 /**
  * Covers what a record key is made of: a record's key identifier, else the
- * URL a source served it at, else its copy's review key, which the importer
- * assigns.
+ * URL a source served it at, else the key the importer assigned its copy.
  */
 
 const binary = detached({ resourceType: 'Binary', contentType: 'text/plain' })
@@ -24,28 +23,28 @@ describe('RecordKey.make', () => {
     const key = RecordKey.make({
       resource: tyra,
       sourceUrl: Option.none(),
-      reviewKey: 'a.har/tyra',
+      importerAssignedKey: 'a.har/tyra',
     })
 
     // Assert
     expect(key).toEqual({
       _tag: 'ByIdentifier',
-      key: LogicalReference.key(
+      logicalReferenceKey: LogicalReference.key(
         LogicalReference.make('Patient', Option.getOrThrow(DetachedResource.keyIdentifierOf(tyra)))
       ),
     })
   })
 
-  it('should key a record with no key identifier or source URL by its importer-assigned review key', () => {
+  it('should key a record with no key identifier or source URL by its importer-assigned key', () => {
     // Arrange / Act
     const key = RecordKey.make({
       resource: binary,
       sourceUrl: Option.none(),
-      reviewKey: 'a.har/binary',
+      importerAssignedKey: 'a.har/binary',
     })
 
     // Assert
-    expect(key).toEqual(RecordKey.ByImporterAssignedKey({ reviewKey: 'a.har/binary' }))
+    expect(key).toEqual({ _tag: 'ByImporterAssignedKey', importerAssignedKey: 'a.har/binary' })
   })
 
   it('should key a record with no key identifier that a source served at a URL by that URL', () => {
@@ -53,11 +52,11 @@ describe('RecordKey.make', () => {
     const key = RecordKey.make({
       resource: binary,
       sourceUrl: Option.some(binaryUrl),
-      reviewKey: 'a.har/binary',
+      importerAssignedKey: 'a.har/binary',
     })
 
     // Assert
-    expect(key).toEqual(RecordKey.BySourceUrl({ sourceUrl: binaryUrl.href }))
+    expect(key).toEqual({ _tag: 'BySourceUrl', sourceUrl: binaryUrl.href })
   })
 
   it('should key a record by its key identifier before its source URL', () => {
@@ -66,7 +65,8 @@ describe('RecordKey.make', () => {
 
     // Act
     const [withSourceUrl, withoutSourceUrl] = [Option.some(binaryUrl), Option.none()].map(
-      (sourceUrl) => RecordKey.make({ resource: tyra, sourceUrl, reviewKey: 'a.har/tyra' })
+      (sourceUrl) =>
+        RecordKey.make({ resource: tyra, sourceUrl, importerAssignedKey: 'a.har/tyra' })
     )
 
     // Assert
@@ -75,39 +75,39 @@ describe('RecordKey.make', () => {
 })
 
 describe('RecordKey equality', () => {
-  it('should hold two copies one record when their key identifiers agree, whatever their review keys and other fields', () => {
+  it('should hold two copies one record when their key identifiers agree, whatever their importer-assigned keys and other fields', () => {
     // Arrange
     const fromHar = RecordKey.make({
       resource: detached(tyraWire('tyra')),
       sourceUrl: Option.none(),
-      reviewKey: 'a.har/tyra',
+      importerAssignedKey: 'a.har/tyra',
     })
     const fromPdf = RecordKey.make({
       resource: detached(tyraWire('tyra', { gender: 'female' })),
       sourceUrl: Option.none(),
-      reviewKey: 'b.pdf/tyra',
+      importerAssignedKey: 'b.pdf/tyra',
     })
 
     // Act / Assert
     expect(Equal.equals(fromHar, fromPdf)).toBe(true)
   })
 
-  it('should hold two keyed records apart when their key identifiers differ in value or system', () => {
+  it('should hold two records keyed by identifier apart when their key identifiers differ in value or system', () => {
     // Arrange
     const tyra = RecordKey.make({
       resource: detached(tyraWire('tyra')),
       sourceUrl: Option.none(),
-      reviewKey: 'a.har/tyra',
+      importerAssignedKey: 'a.har/tyra',
     })
     const otherValue = RecordKey.make({
       resource: detached(tyraWire('other')),
       sourceUrl: Option.none(),
-      reviewKey: 'a.har/tyra',
+      importerAssignedKey: 'a.har/tyra',
     })
     const otherSystem = RecordKey.make({
       resource: detached(tyraWire('tyra', {}, OTHER_SOURCE)),
       sourceUrl: Option.none(),
-      reviewKey: 'a.har/tyra',
+      importerAssignedKey: 'a.har/tyra',
     })
 
     // Act / Assert
@@ -117,22 +117,22 @@ describe('RecordKey equality', () => {
     ])
   })
 
-  it('should hold two records keyed by the importer one only under one review key', () => {
+  it('should hold two records keyed by an importer-assigned key one only under one such key', () => {
     // Arrange
     const first = RecordKey.make({
       resource: binary,
       sourceUrl: Option.none(),
-      reviewKey: 'a.har/first',
+      importerAssignedKey: 'a.har/first',
     })
     const sameKey = RecordKey.make({
       resource: binary,
       sourceUrl: Option.none(),
-      reviewKey: 'a.har/first',
+      importerAssignedKey: 'a.har/first',
     })
     const second = RecordKey.make({
       resource: binary,
       sourceUrl: Option.none(),
-      reviewKey: 'a.har/second',
+      importerAssignedKey: 'a.har/second',
     })
 
     // Act / Assert
@@ -141,17 +141,17 @@ describe('RecordKey equality', () => {
 })
 
 describe('RecordKey equality by source URL', () => {
-  it('should hold two copies one record when a source served both at one URL, whatever their review keys', () => {
+  it('should hold two copies one record when a source served both at one URL, whatever their importer-assigned keys', () => {
     // Arrange
     const fromFirstCapture = RecordKey.make({
       resource: binary,
       sourceUrl: Option.some(binaryUrl),
-      reviewKey: 'a.har/binary',
+      importerAssignedKey: 'a.har/binary',
     })
     const fromSecondCapture = RecordKey.make({
       resource: detached({ resourceType: 'Binary', contentType: 'application/pdf' }),
       sourceUrl: Option.some(new URL(binaryUrl.href)),
-      reviewKey: 'b.har/binary',
+      importerAssignedKey: 'b.har/binary',
     })
 
     // Act / Assert
@@ -163,12 +163,12 @@ describe('RecordKey equality by source URL', () => {
     const first = RecordKey.make({
       resource: binary,
       sourceUrl: Option.some(binaryUrl),
-      reviewKey: 'a.har/binary',
+      importerAssignedKey: 'a.har/binary',
     })
     const other = RecordKey.make({
       resource: binary,
       sourceUrl: Option.some(new URL('https://fhir.example/r4/Binary/report-2')),
-      reviewKey: 'a.har/binary',
+      importerAssignedKey: 'a.har/binary',
     })
 
     // Act / Assert
@@ -176,20 +176,28 @@ describe('RecordKey equality by source URL', () => {
   })
 })
 
-describe('RecordKey.isKeyed', () => {
-  it('should tell a key identifier’s key from a source URL’s and a review key’s', () => {
+describe('RecordKey.isKeyedByIdentifier', () => {
+  it('should tell a key by identifier from one by source URL and one by an importer-assigned key', () => {
     // Arrange / Act
-    const keyed = [
+    const keyedByIdentifier = [
       RecordKey.make({
         resource: detached(tyraWire('tyra')),
         sourceUrl: Option.none(),
-        reviewKey: 'a.har/tyra',
+        importerAssignedKey: 'a.har/tyra',
       }),
-      RecordKey.make({ resource: binary, sourceUrl: Option.some(binaryUrl), reviewKey: 'a.har/b' }),
-      RecordKey.make({ resource: binary, sourceUrl: Option.none(), reviewKey: 'a.har/binary' }),
-    ].map(RecordKey.isKeyed)
+      RecordKey.make({
+        resource: binary,
+        sourceUrl: Option.some(binaryUrl),
+        importerAssignedKey: 'a.har/b',
+      }),
+      RecordKey.make({
+        resource: binary,
+        sourceUrl: Option.none(),
+        importerAssignedKey: 'a.har/binary',
+      }),
+    ].map(RecordKey.isKeyedByIdentifier)
 
     // Assert
-    expect(keyed).toEqual([true, false, false])
+    expect(keyedByIdentifier).toEqual([true, false, false])
   })
 })

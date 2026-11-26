@@ -16,14 +16,15 @@ import * as RecordKey from './record-key.ts'
 
 /**
  * The id the import stage gave a copy: `Derived`, the same on every import,
- * from a keyed record's key or a source file's content, so a stored copy of
- * the record from an earlier import sits under it; or `Minted` for a decoded
- * record with no key identifier, new on every import.
+ * from the key of a record keyed by identifier or from a source file's
+ * content, so a stored copy of the record from an earlier import sits under
+ * it; or `Minted` for a decoded record with no key identifier, new on every
+ * import.
  *
  * @remarks
  * Not `ResourcePlan.Type`: a source file's id is derived from its content and
  * has no key identifier to make a `ResourcePlan.Derived` of, yet it is as
- * stable across imports as a keyed record's.
+ * stable across imports as the id of a record keyed by identifier.
  */
 type StageId = Data.TaggedEnum<{
   Derived: { readonly id: string }
@@ -55,8 +56,8 @@ interface Type {
 
 /**
  * The copy of a record of the set `origin` names, from its row as the import
- * stage finished it: keyed, titled and given its id as placing decided
- * (`DecodedFileSet.placedRowsOf`), then linked and stamped.
+ * stage finished it: given its review key, titled and given its id as
+ * placing decided (`DecodedFileSet.placedRowsOf`), then linked and stamped.
  */
 const fromPlacedRow = (
   origin: FileSetOrigin.Type,
@@ -102,7 +103,7 @@ const stageLiteralOf = ({ resource, stageId }: Type): string =>
 
 /** The key of the record `copy` is a copy of (`RecordKey.make`). */
 const recordKeyOf = ({ resource, sourceUrl, reviewKey }: Type): RecordKey.Type =>
-  RecordKey.make({ resource, sourceUrl, reviewKey })
+  RecordKey.make({ resource, sourceUrl, importerAssignedKey: reviewKey })
 
 export { fromPlacedRow, fromSourceFile, hasDerivedStageId, recordKeyOf, stageLiteralOf }
 export type { StageId, Type }

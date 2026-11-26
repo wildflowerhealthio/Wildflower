@@ -6,13 +6,13 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   candidate,
   detached,
+  keyByImporterAssignedKey,
   storedBrown,
   storedTyra,
   tyraA,
   tyraWire,
 } from '../import-plan.test-helpers.ts'
 import * as ImportedCopy from './imported-copy.ts'
-import * as RecordKey from './record-key.ts'
 import * as StoredMatch from './stored-match.ts'
 
 /**
@@ -54,10 +54,7 @@ describe('StoredMatch.make, ofRecord and ofReference', () => {
     const match = StoredMatch.empty
 
     // Act
-    const record = StoredMatch.ofRecord(
-      match,
-      RecordKey.ByImporterAssignedKey({ reviewKey: 'a.har/binary' })
-    )
+    const record = StoredMatch.ofRecord(match, keyByImporterAssignedKey('a.har/binary'))
     const reference = StoredMatch.ofReference(match, TYRA_REFERENCE)
 
     // Assert

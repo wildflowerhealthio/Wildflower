@@ -8,7 +8,6 @@ import * as ImportedCopy from '../entities/imported-copy.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
-import * as RecordKey from '../entities/record-key.ts'
 import * as RecordReferences from '../entities/record-references.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import {
@@ -16,6 +15,7 @@ import {
   copyOf,
   detached,
   drBrownWire,
+  keyByImporterAssignedKey,
   matchOf,
   OTHER_SOURCE,
   prescription,
@@ -64,21 +64,21 @@ describe('suggestPlan', () => {
       plan.records.map(({ record: { key, copies } }) => ({
         key: Match.value(key).pipe(
           Match.tagsExhaustive({
-            ByIdentifier: () => 'keyed',
+            ByIdentifier: () => 'by identifier',
             BySourceUrl: ({ sourceUrl }) => sourceUrl,
-            ByImporterAssignedKey: ({ reviewKey }) => reviewKey,
+            ByImporterAssignedKey: ({ importerAssignedKey }) => importerAssignedKey,
           })
         ),
         copies: copies.map(({ reviewKey }) => reviewKey),
       }))
     ).toEqual([
-      { key: 'keyed', copies: ['a.har/tyra', 'b.pdf/tyra'] },
-      { key: 'keyed', copies: ['a.har/rx-1'] },
-      { key: 'keyed', copies: ['a.har/rx-1#implied'] },
+      { key: 'by identifier', copies: ['a.har/tyra', 'b.pdf/tyra'] },
+      { key: 'by identifier', copies: ['a.har/rx-1'] },
+      { key: 'by identifier', copies: ['a.har/rx-1#implied'] },
     ])
   })
 
-  it('should key each record with no key identifier or source URL by its importer-assigned review key', () => {
+  it('should key each record with no key identifier or source URL by an importer-assigned key', () => {
     // Arrange
     const binary = (reviewKey: string): ImportedCopy.Type =>
       copyOf(detached({ resourceType: 'Binary', contentType: 'text/plain' }), reviewKey)
@@ -88,8 +88,8 @@ describe('suggestPlan', () => {
 
     // Assert
     expect(plan.records.map(({ record }) => record.key)).toEqual([
-      RecordKey.ByImporterAssignedKey({ reviewKey: 'a.har/first' }),
-      RecordKey.ByImporterAssignedKey({ reviewKey: 'a.har/second' }),
+      keyByImporterAssignedKey('a.har/first'),
+      keyByImporterAssignedKey('a.har/second'),
     ])
   })
 

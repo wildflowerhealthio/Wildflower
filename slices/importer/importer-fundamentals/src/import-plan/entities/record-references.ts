@@ -39,13 +39,13 @@ type MatchingRecordsByReference = Record.ReadonlyRecord<
  * A logical reference matches a record by any of its identifiers, as a FHIR
  * conditional reference does and as `DecodedFileSet.adopt` resolves one. The
  * identifiers of a record with no key identifier match it nowhere, whether it
- * is keyed by its source URL or by its review key.
+ * is keyed by source URL or by an importer-assigned key.
  */
 const matchingRecordsByReferenceOf = (
   records: readonly ImportedRecord.Type[]
 ): MatchingRecordsByReference =>
   pipe(
-    records.filter(({ key }) => RecordKey.isKeyed(key)),
+    records.filter(({ key }) => RecordKey.isKeyedByIdentifier(key)),
     Arr.flatMap((record) =>
       record.copies.flatMap(({ resource }) =>
         MatchQuery.qualifiedIdentifiersOf(resource).map(
@@ -74,8 +74,9 @@ const matchingRecordsByReferenceOf = (
  * A decoded record beats an implied one: when any match has a decoded copy,
  * the matches whose every copy is implied are out (`ImportedRecord.isImplied`).
  * Among those left, the record keyed by the reference's own identifier wins;
- * else the one left is named. Several left, none keyed by it, name none: the
- * reference stays logical until two imported records can be merged (#1470).
+ * else the one left is named. Several left, none keyed by its identifier,
+ * name none: the reference stays logical until two imported records can be
+ * merged (#1470).
  */
 const recordKeyIfNamed = (
   matching: readonly ImportedRecord.Type[],
