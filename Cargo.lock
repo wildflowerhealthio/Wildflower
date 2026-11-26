@@ -1689,9 +1689,9 @@ dependencies = [
 
 [[package]]
 name = "cookie"
-version = "0.18.2"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a373e3602691c3cdea496d2f0ee5935151e6168fe87739483c463db1b2f2f87"
+checksum = "d55f2d6c30eeec7d5c6f98bd4395d4abb1895629eab97ee6522d340623615f8a"
 dependencies = [
  "time",
  "version_check",
@@ -3474,9 +3474,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "helios-audit"
-version = "0.2.9"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1330ffad17f168a2db4cbea2b7b21160fff0d59d858db83d79730f32694bf887"
+checksum = "019b008e144940524a66aef7a239e4aee710b7a7aa3983de77fb51383de611ec"
 dependencies = [
  "async-trait",
  "axum",
@@ -3493,9 +3493,9 @@ dependencies = [
 
 [[package]]
 name = "helios-auth"
-version = "0.2.9"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "149140b313445f00d16d93d69d46a8c770cdbb025a2ace6d0709c4b83f7f1e2f"
+checksum = "70f19f85b3fbb4f2c93502e2eb67e6b5a1c75b9fb3e6502c33625731c7f7b2ea"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3516,9 +3516,9 @@ dependencies = [
 
 [[package]]
 name = "helios-fhir"
-version = "0.2.9"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5b5f7282b89e2408872036c8c0d0402bb9812b8139acb93a8929d972106a150"
+checksum = "269c8ce1d9592ccdf514d4fb4e4f1f6b763feee0234f2f0d608c9952a9a5ae8d"
 dependencies = [
  "chrono",
  "clap",
@@ -3530,6 +3530,7 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "time",
  "tracing",
  "zip",
 ]
@@ -3667,9 +3668,9 @@ dependencies = [
 
 [[package]]
 name = "helios-rest"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3636a416bc69cf468232f207b9dc6acfc21f454c33e4f02e4427fdb2adf7d050"
+checksum = "402b739f2d53e269a4990bc6b55f6801708a3e101b41f51880ae37cb248b5bea"
 dependencies = [
  "aes 0.8.4",
  "aes-gcm",
@@ -3723,9 +3724,9 @@ dependencies = [
 
 [[package]]
 name = "helios-serde"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36f70688cdce6fc81a72f9fd195b554549867d0ae4d52965773568c6c2cb3afb"
+checksum = "c001d1c32171b0692853f53a26a56de6c549b71c97b10206d5c49604d6571827"
 dependencies = [
  "helios-fhir",
  "helios-serde-support",
@@ -3791,9 +3792,9 @@ dependencies = [
 
 [[package]]
 name = "helios-subscriptions"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3227b8b790fd7c2444478b5d9de99be2dc265df0d7bf8b4a1ad08db933ca20b3"
+checksum = "8ad22f1d6900e5f666854675b77a0f785f0a2a22d9cf94de93c58d14c4e68f5b"
 dependencies = [
  "async-trait",
  "chrono",
