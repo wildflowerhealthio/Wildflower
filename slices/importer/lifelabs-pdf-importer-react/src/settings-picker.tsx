@@ -4,7 +4,7 @@ import type { LifeLabsPdfSettings } from '@wildflowerhealthio/lifelabs-pdf-impor
 import { DateTime, Option } from 'effect'
 import { type JSX, useId } from 'react'
 
-const SUGGESTED_TIME_ZONES = ['America/Toronto', 'America/Vancouver'] as const
+import { SUGGESTED_TIME_ZONES } from './time-zones.ts'
 
 const UNKNOWN_ZONE_MESSAGE = 'Not an IANA time zone name (for example America/Toronto).'
 
@@ -76,4 +76,4 @@ const LifeLabsPdfSettingsPicker = ({
   )
 }
 
-export { LifeLabsPdfSettingsPicker, SUGGESTED_TIME_ZONES, UNKNOWN_ZONE_MESSAGE }
+export { LifeLabsPdfSettingsPicker, UNKNOWN_ZONE_MESSAGE }

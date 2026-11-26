@@ -8,8 +8,5 @@
  *
  * @packageDocumentation
  */
-export {
-  LifeLabsPdfSettingsPicker,
-  SUGGESTED_TIME_ZONES,
-  UNKNOWN_ZONE_MESSAGE,
-} from './settings-picker.tsx'
+export { LifeLabsPdfSettingsPicker, UNKNOWN_ZONE_MESSAGE } from './settings-picker.tsx'
+export { SUGGESTED_TIME_ZONES } from './time-zones.ts'
