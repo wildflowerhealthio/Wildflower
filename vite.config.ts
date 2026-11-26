@@ -223,6 +223,9 @@ export default defineConfig({
       'react/only-export-components': [
         'error',
         {
+          // Vite's fast refresh keeps a module that exports literal constants
+          // (the UI strings tests import) beside its components.
+          allowConstantExport: true,
           allowExportNames: [
             'loader',
             'clientLoader',

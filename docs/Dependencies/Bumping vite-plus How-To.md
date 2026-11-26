@@ -8,17 +8,17 @@ For _why_ the versions must agree — the pnpm variant-split mechanism, the `vit
 
 A vite-plus bump moves two distinct version strings:
 
-- **`vite-plus`** itself — the package that ships the `vp` binary (currently `1.6.0`).
+- **`vite-plus`** itself — the package that ships the `vp` binary (currently `1.7.0`).
 - **`@voidzero-dev/vite-plus-core`** — the `vite` alias vite-plus depends on. Must match the core that _this_ `vite-plus` depends on, **not** the newest core on npm (see the Explanation's "What a vite-plus bump needs from the overrides" section).
 
-`vitest` is not pinned anywhere: vite-plus depends on an exact `vitest` (`5.1.0` on 1.6.0), and `vp --version` reports it.
+`vitest` is not pinned anywhere: vite-plus depends on an exact `vitest` (`5.1.0` on 1.7.0), and `vp --version` reports it.
 
 ## Every place to edit
 
-| #   | File                                             | Key                  | Current value                            | Holds     |
-| --- | ------------------------------------------------ | -------------------- | ---------------------------------------- | --------- |
-| 1   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml) | catalog `vite-plus:` | `1.6.0`                                  | vite-plus |
-| 2   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml) | catalog `vite:`      | `npm:@voidzero-dev/vite-plus-core@1.6.0` | core      |
+| #   | File                                             | Key                  | Current value                               | Holds     |
+| --- | ------------------------------------------------ | -------------------- | ------------------------------------------- | --------- |
+| 1   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml) | catalog `vite-plus:` | `1.7.0`                                     | vite-plus |
+| 2   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml) | catalog `vite:`      | `npm:@voidzero-dev/vite-plus-core@8.3.8000` | core      |
 
 The `vite@*: 'catalog:'` override in [pnpm-workspace.yaml](../../pnpm-workspace.yaml) follows row 2, so it needs no edit.
 
