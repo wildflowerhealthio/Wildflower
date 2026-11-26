@@ -7,14 +7,14 @@
 import { literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, HashMap, Option, Order } from 'effect'
 
-import * as ChangedStoredRecord from '../entities/changed-stored-record.ts'
 import * as ImportPlan from '../entities/import-plan.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
+import * as ChangedStoredRecord from '../entities/kept-record.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as RecordReferences from '../entities/record-references.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
-import * as ComparableReferences from './compare-to-stored/comparable-references.ts'
+import * as ComparableReferences from './differences-of/comparable-references.ts'
 import { suggestRecord } from './suggest-record.ts'
 
 /** Each stored record with the changes of the records suggested so far, by its literal reference. */

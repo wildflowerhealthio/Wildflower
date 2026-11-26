@@ -1,8 +1,8 @@
 import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import * as ChangedStoredRecord from '../../entities/changed-stored-record.ts'
 import * as ImportedRecord from '../../entities/imported-record.ts'
+import * as ChangedStoredRecord from '../../entities/kept-record.ts'
 import * as OfferedFields from '../../entities/offered-fields.ts'
 import * as StoredMatch from '../../entities/stored-match.ts'
 import {
@@ -17,7 +17,7 @@ import {
   tyraWire,
 } from '../../import-plan.test-helpers.ts'
 import * as ComparableReferences from './comparable-references.ts'
-import { compareToStored } from './compare-to-stored.ts'
+import { compareToStored } from './differences-of.ts'
 
 /** What an offer says, its identifiers by value, for a whole-value assertion. */
 interface OfferSummary {

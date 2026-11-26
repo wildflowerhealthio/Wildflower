@@ -2,7 +2,7 @@ import { HashSet } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { detached, OTHER_SOURCE, SOURCE, stored, tyraWire } from '../import-plan.test-helpers.ts'
-import * as ChangedStoredRecord from './changed-stored-record.ts'
+import * as ChangedStoredRecord from './kept-record.ts'
 
 /** Covers a stored record as it stands once the import's records make their changes, in order. */
 

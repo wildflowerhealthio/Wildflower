@@ -13,13 +13,13 @@ import {
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
 import { HashMap, HashSet, Option } from 'effect'
 
-import * as ChangedStoredRecord from '../entities/changed-stored-record.ts'
+import * as ChangedStoredRecord from '../entities/kept-record.ts'
 import * as OfferedFields from '../entities/offered-fields.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
-import type * as ComparableReferences from './compare-to-stored/comparable-references.ts'
-import { compareToStored } from './compare-to-stored/compare-to-stored.ts'
+import type * as ComparableReferences from './differences-of/comparable-references.ts'
+import { compareToStored } from './differences-of/differences-of.ts'
 
 /** The facts a record's suggestion is read from. */
 interface SuggestionFacts {

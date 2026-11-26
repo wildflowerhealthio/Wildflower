@@ -7,11 +7,11 @@ import {
 import { HashMap, HashSet, Match, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import * as ChangedStoredRecord from '../entities/changed-stored-record.ts'
+import * as ChangedStoredRecord from '../entities/kept-record.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
 import { candidate, detached, drBrownWire, stored, tyraWire } from '../import-plan.test-helpers.ts'
-import * as ComparableReferences from './compare-to-stored/comparable-references.ts'
+import * as ComparableReferences from './differences-of/comparable-references.ts'
 import { type SuggestionFacts, suggestRecord } from './suggest-record.ts'
 
 /** The facts of `resource` with `candidates`, nothing under its derived id unless given, nothing taken earlier. */
