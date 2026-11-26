@@ -2,7 +2,7 @@ import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ImportedRecord from '../../entities/imported-record.ts'
-import * as ChangedStoredRecord from '../../entities/kept-record.ts'
+import * as KeptRecord from '../../entities/kept-record.ts'
 import * as OfferedFields from '../../entities/offered-fields.ts'
 import * as StoredMatch from '../../entities/stored-match.ts'
 import {
@@ -17,7 +17,7 @@ import {
   tyraWire,
 } from '../../import-plan.test-helpers.ts'
 import * as ComparableReferences from './comparable-references.ts'
-import { compareToStored } from './differences-of.ts'
+import { differencesOf } from './differences-of.ts'
 
 /** What an offer says, its identifiers by value, for a whole-value assertion. */
 interface OfferSummary {
@@ -35,14 +35,14 @@ const summaryOf = (offered: OfferedFields.Type): OfferSummary => ({
   identifiersToAdd: offered.identifiersToAdd.map(({ value }) => value),
 })
 
-describe('compareToStored', () => {
+describe('differencesOf', () => {
   it('should offer a field the existing record has no value for as filling a gap', () => {
     // Arrange
     const imported = detached(tyraWire('tyra', { gender: 'female' }))
     const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = compareToStored(imported, existing, NO_RECORDS)
+    const offered = differencesOf(imported, existing, NO_RECORDS)
 
     // Assert
     expect(summaryOf(offered)).toEqual({
@@ -58,7 +58,7 @@ describe('compareToStored', () => {
     const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = compareToStored(imported, existing, NO_RECORDS)
+    const offered = differencesOf(imported, existing, NO_RECORDS)
 
     // Assert
     expect(summaryOf(offered)).toEqual({
@@ -74,7 +74,7 @@ describe('compareToStored', () => {
     const existing = stored({ ...tyraWire('tyra', { gender: 'female' }), id: 'p-1' })
 
     // Act
-    const offered = compareToStored(imported, existing, NO_RECORDS)
+    const offered = differencesOf(imported, existing, NO_RECORDS)
 
     // Assert
     expect({ ...summaryOf(offered), offersNoField: OfferedFields.offersNoField(offered) }).toEqual({
@@ -98,7 +98,7 @@ describe('compareToStored', () => {
     const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = compareToStored(imported, existing, NO_RECORDS)
+    const offered = differencesOf(imported, existing, NO_RECORDS)
 
     // Assert
     expect({ ...summaryOf(offered), offersNoField: OfferedFields.offersNoField(offered) }).toEqual({
@@ -116,11 +116,11 @@ describe('compareToStored', () => {
     const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = compareToStored(
+    const offered = differencesOf(
       imported,
-      ChangedStoredRecord.asItStands(
-        ChangedStoredRecord.withChange(ChangedStoredRecord.of(existing), {
-          resource: earlier,
+      KeptRecord.asMerged(
+        KeptRecord.withMerge(KeptRecord.of(existing), {
+          incoming: earlier,
           fieldsTaken: HashSet.make('gender'),
         })
       ),
@@ -152,11 +152,11 @@ describe('compareToStored', () => {
     const existing = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
     // Act
-    const offered = compareToStored(
+    const offered = differencesOf(
       imported,
-      ChangedStoredRecord.asItStands(
-        ChangedStoredRecord.withChange(ChangedStoredRecord.of(existing), {
-          resource: earlier,
+      KeptRecord.asMerged(
+        KeptRecord.withMerge(KeptRecord.of(existing), {
+          incoming: earlier,
           fieldsTaken: HashSet.make('gender'),
         })
       ),
@@ -187,7 +187,7 @@ describe('compareToStored', () => {
     })
 
     // Act
-    const offered = compareToStored(imported, existing, NO_RECORDS)
+    const offered = differencesOf(imported, existing, NO_RECORDS)
 
     // Assert
     expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
@@ -207,7 +207,7 @@ describe('compareToStored', () => {
     })
 
     // Act
-    const offered = compareToStored(imported, existing, NO_RECORDS)
+    const offered = differencesOf(imported, existing, NO_RECORDS)
 
     // Assert
     expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
@@ -223,7 +223,7 @@ describe('compareToStored', () => {
     const existing = stored({ ...withRequester('Dr. B. Brown'), id: 'rx-stored' })
 
     // Act
-    const offered = compareToStored(imported, existing, NO_RECORDS)
+    const offered = differencesOf(imported, existing, NO_RECORDS)
 
     // Assert
     expect(summaryOf(offered)).toEqual({
@@ -270,7 +270,7 @@ describe('compareToStored', () => {
     })
 
     // Act
-    const offered = compareToStored(imported, existing, comparable)
+    const offered = differencesOf(imported, existing, comparable)
 
     // Assert
     expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
@@ -303,7 +303,7 @@ describe('compareToStored', () => {
     })
 
     // Act
-    const offered = compareToStored(imported, existing, comparable)
+    const offered = differencesOf(imported, existing, comparable)
 
     // Assert
     expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })
@@ -322,7 +322,7 @@ describe('compareToStored', () => {
     })
 
     // Act
-    const offered = compareToStored(imported, existing, NO_RECORDS)
+    const offered = differencesOf(imported, existing, NO_RECORDS)
 
     // Assert
     expect(summaryOf(offered)).toEqual({ gapFilling: [], overwriting: [], identifiersToAdd: [] })

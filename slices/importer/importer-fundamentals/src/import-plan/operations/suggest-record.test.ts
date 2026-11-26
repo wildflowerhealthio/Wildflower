@@ -7,7 +7,7 @@ import {
 import { HashMap, HashSet, Match, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import * as ChangedStoredRecord from '../entities/kept-record.ts'
+import * as KeptRecord from '../entities/kept-record.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
 import { candidate, detached, drBrownWire, stored, tyraWire } from '../import-plan.test-helpers.ts'
@@ -28,7 +28,7 @@ const factsFor = (
   resource,
   storedMatch: StoredMatch.makeEntry(candidates, storedUnderDerivedId),
   isReferenced: false,
-  changedSoFar: HashMap.empty(),
+  mergedSoFar: HashMap.empty(),
   comparableReferences: ComparableReferences.of([], StoredMatch.empty),
   ...overrides,
 })
@@ -40,7 +40,7 @@ const summaryOf = (suggestion: Suggestion.Type): unknown => ({
   choice: Option.map(suggestion.choice, (choice) =>
     Match.value(choice).pipe(
       Match.tagsExhaustive({
-        UseExistingRecord: ({ existing, fieldsTaken }) => ({
+        MergeIntoExistingRecord: ({ existing, fieldsTaken }) => ({
           use: literalReferenceOf(existing),
           fieldsTaken: [...HashSet.values(fieldsTaken)].toSorted(),
         }),
@@ -72,7 +72,7 @@ describe('suggestRecord', () => {
     })
   })
 
-  it('should default an identifier match whose fields differ to use existing with only gap-filling fields taken', () => {
+  it('should default an identifier match whose fields differ to merge into existing with only gap-filling fields taken', () => {
     // Arrange
     const differingTyra = detached(tyraWire('tyra', { gender: 'female', birthDate: '1990-01-03' }))
 
@@ -264,17 +264,17 @@ describe('suggestRecord', () => {
   it('should leave the fields an earlier record takes out of the gaps it fills', () => {
     // Arrange
     const earlier = detached(tyraWire('tyra-copy', { gender: 'female' }))
-    const changedSoFar = HashMap.make([
+    const mergedSoFar = HashMap.make([
       literalReferenceOf(storedTyra),
-      ChangedStoredRecord.withChange(ChangedStoredRecord.of(storedTyra), {
-        resource: earlier,
+      KeptRecord.withMerge(KeptRecord.of(storedTyra), {
+        incoming: earlier,
         fieldsTaken: HashSet.make('gender'),
       }),
     ] as const)
 
     // Act
     const suggestion = suggestRecord(
-      factsFor(tyra, [candidate(storedTyra, 'certain', 'identifier')], { changedSoFar })
+      factsFor(tyra, [candidate(storedTyra, 'certain', 'identifier')], { mergedSoFar })
     )
 
     // Assert

@@ -82,7 +82,7 @@ describe('ImportedRecord.fromCopies by source URL', () => {
   })
 })
 
-describe('ImportedRecord.changeOrder', () => {
+describe('ImportedRecord.mergeOrder', () => {
   it('should put decoded records before implied ones, each in plan order, a record with a decoded copy counting as decoded', () => {
     // Arrange
     const tyraAs = (
@@ -101,10 +101,10 @@ describe('ImportedRecord.changeOrder', () => {
     ])
 
     // Act
-    const inChangeOrder = Arr.sort(records, ImportedRecord.changeOrder)
+    const inMergeOrder = Arr.sort(records, ImportedRecord.mergeOrder)
 
     // Assert
-    expect(inChangeOrder.map(({ copies: [first] }) => first.reviewKey)).toEqual([
+    expect(inMergeOrder.map(({ copies: [first] }) => first.reviewKey)).toEqual([
       'a.har/decoded-1',
       'a.har/both',
       'a.har/decoded-2',

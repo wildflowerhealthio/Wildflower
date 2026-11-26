@@ -13,13 +13,13 @@ import {
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
 import { HashMap, HashSet, Option } from 'effect'
 
-import * as ChangedStoredRecord from '../entities/kept-record.ts'
+import * as KeptRecord from '../entities/kept-record.ts'
 import * as OfferedFields from '../entities/offered-fields.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
 import type * as ComparableReferences from './differences-of/comparable-references.ts'
-import { compareToStored } from './differences-of/differences-of.ts'
+import { differencesOf } from './differences-of/differences-of.ts'
 
 /** The facts a record's suggestion is read from. */
 interface SuggestionFacts {
@@ -30,10 +30,10 @@ interface SuggestionFacts {
   /** Whether another imported record references it. */
   readonly isReferenced: boolean
   /**
-   * Each stored record the records ahead of this one in change order use, with
-   * their changes, by the stored record's literal reference.
+   * Each kept record the records ahead of this one in merge order merge
+   * into, with their merges, by the kept record's literal reference.
    */
-  readonly changedSoFar: HashMap.HashMap<string, ChangedStoredRecord.Type>
+  readonly mergedSoFar: HashMap.HashMap<string, KeptRecord.Type>
   /** How the import's and the stored records' references are compared. */
   readonly comparableReferences: ComparableReferences.Type
 }
@@ -52,31 +52,31 @@ const countedNameMatches = (
 
 /**
  * What `facts.resource` offers `existing` as it stands once the records ahead
- * of it changed it (`ChangedStoredRecord.asItStands`).
+ * of it merged into it (`KeptRecord.asMerged`).
  */
 const offeredFieldsFor = (
   facts: SuggestionFacts,
   existing: FhirResourceWithId
 ): OfferedFields.Type =>
-  compareToStored(
+  differencesOf(
     facts.resource,
-    HashMap.get(facts.changedSoFar, literalReferenceOf(existing)).pipe(
-      Option.match({ onNone: () => existing, onSome: ChangedStoredRecord.asItStands })
+    HashMap.get(facts.mergedSoFar, literalReferenceOf(existing)).pipe(
+      Option.match({ onNone: () => existing, onSome: KeptRecord.asMerged })
     ),
     facts.comparableReferences
   )
 
-/** Use `existing`, taking the fields that fill one of its gaps. */
+/** Merge into `existing`, taking the fields that fill one of its gaps. */
 const gapFillingChoice = (
   existing: FhirResourceWithId,
   offeredFields: OfferedFields.Type
 ): RecordChoice.Type =>
-  RecordChoice.UseExistingRecord({
+  RecordChoice.MergeIntoExistingRecord({
     existing,
     fieldsTaken: HashSet.fromIterable(offeredFields.gapFilling),
   })
 
-/** Use `existing`, the stored record that is the record, taking only the fields that fill a gap. */
+/** Merge into `existing`, the stored record that is the record, taking only the fields that fill a gap. */
 const suggestIdentifierMatch = (
   facts: SuggestionFacts,
   existing: FhirResourceWithId
@@ -114,8 +114,8 @@ const saveAsNew = (reason: Suggestion.Reason): Suggestion.Type =>
  *    anything references it. That is several stored records found by
  *    identifier, or one found by identifier and another under the id the
  *    import stage derived for it.
- * 2. One stored copy: use it, taking the fields that fill a gap (none when
- *    the import offers no field).
+ * 2. One stored copy: merge into it, taking the fields that fill a gap (none
+ *    when the import offers no field).
  * 3. No name match that may not need more review: save as new (no match).
  *    Only `possible` matches count as none.
  * 4. Name matches, and another imported record references it: Needs a

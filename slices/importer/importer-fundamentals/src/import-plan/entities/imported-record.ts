@@ -74,18 +74,18 @@ const recordCopyOf = ({ copies }: Type): ImportedCopy.Type =>
 const isImplied = (record: Type): boolean => recordCopyOf(record).isImplied
 
 /**
- * The order records' changes to one stored record apply in: decoded records
+ * The order records merge into one kept record in: decoded records
  * ({@link isImplied} false) before implied ones, so a sort keeping equal
  * records in place (`Array.sort` is stable) leaves each group in plan order.
  *
  * @remarks
  * A decoded record says more than one a reference implied, as a decoded
  * copy does ({@link recordCopyOf}), and an implied record is written only
- * when something written names it, so no change a decoded record makes may
+ * when something written names it, so no merge a decoded record makes may
  * wait on one. Plan order itself does not change: only the order in which
- * the changes of the records using one stored record are made.
+ * the records merging into one kept record are merged.
  */
-const changeOrder: Order.Order<Type> = Order.mapInput(Order.boolean, isImplied)
+const mergeOrder: Order.Order<Type> = Order.mapInput(Order.boolean, isImplied)
 
 /**
  * The literal reference the import stage gives the record, `<Type>/<id>`
@@ -125,5 +125,5 @@ const resourceOf = (record: Type): DetachedResource.Type => {
     : resource
 }
 
-export { changeOrder, fromCopies, isImplied, literalReferenceIfDerived, resourceOf, stageLiteralOf }
+export { fromCopies, isImplied, literalReferenceIfDerived, mergeOrder, resourceOf, stageLiteralOf }
 export type { Type }

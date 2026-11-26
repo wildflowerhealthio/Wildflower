@@ -155,9 +155,9 @@ const plannedOf = (
 
 /**
  * The sample import's plan as `suggestPlan` suggests it, built from entities
- * alone: Tyra uses her stored record taking her gender, the prescription is
- * new, and Dr. Brown, referenced and matched by name, is in Needs a decision
- * with his one candidate.
+ * alone: Tyra merges into her stored record taking her gender, the
+ * prescription is new, and Dr. Brown, referenced and matched by name, is in
+ * Needs a decision with his one candidate.
  */
 const samplePlan = (): ImportPlan.Type =>
   ImportPlan.make(
@@ -166,7 +166,7 @@ const samplePlan = (): ImportPlan.Type =>
         [tyraA, tyraB],
         Suggestion.make(
           Option.some(
-            RecordChoice.UseExistingRecord({
+            RecordChoice.MergeIntoExistingRecord({
               existing: storedTyra,
               fieldsTaken: HashSet.make('gender'),
             })
@@ -188,7 +188,10 @@ const samplePlan = (): ImportPlan.Type =>
         [drBrown],
         Suggestion.make(
           Option.some(
-            RecordChoice.UseExistingRecord({ existing: storedBrown, fieldsTaken: HashSet.empty() })
+            RecordChoice.MergeIntoExistingRecord({
+              existing: storedBrown,
+              fieldsTaken: HashSet.empty(),
+            })
           ),
           Suggestion.NameMatchReferenced()
         )
@@ -210,8 +213,11 @@ const reviewerStepArbitrary: fc.Arbitrary<ReviewerStep> = fc.record({
     fc.constantFrom(
       RecordChoice.SaveAsNewRecord(),
       RecordChoice.DontAdd(),
-      RecordChoice.UseExistingRecord({ existing: storedTyra, fieldsTaken: HashSet.empty() }),
-      RecordChoice.UseExistingRecord({ existing: storedTyra, fieldsTaken: HashSet.make('gender') })
+      RecordChoice.MergeIntoExistingRecord({ existing: storedTyra, fieldsTaken: HashSet.empty() }),
+      RecordChoice.MergeIntoExistingRecord({
+        existing: storedTyra,
+        fieldsTaken: HashSet.make('gender'),
+      })
     ),
     { nil: null }
   ),

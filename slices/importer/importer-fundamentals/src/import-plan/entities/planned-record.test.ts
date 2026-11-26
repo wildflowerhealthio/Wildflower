@@ -91,7 +91,7 @@ describe('PlannedRecord.isChanged', () => {
     const chosen = ImportPlan.choose(
       samplePlan(),
       [drBrownKey],
-      RecordChoice.UseExistingRecord({ existing: storedBrown, fieldsTaken: HashSet.empty() })
+      RecordChoice.MergeIntoExistingRecord({ existing: storedBrown, fieldsTaken: HashSet.empty() })
     )
 
     // Assert

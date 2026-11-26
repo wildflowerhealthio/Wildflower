@@ -33,7 +33,7 @@ import { suggestPlan } from './suggest-plan.ts'
 /**
  * Covers suggesting a plan: every record suggested by its rule, decoded
  * records before implied ones and each in plan order, a stored record two
- * records use measured as the earlier one's change leaves it, the plan's
+ * records merge into measured as the earlier one's merge leaves it, the plan's
  * records in plan order.
  */
 
@@ -114,7 +114,7 @@ describe('suggestPlan', () => {
     )
   })
 
-  it('should measure a second record using one stored record after the first takes its fields', () => {
+  it('should measure a second record merging into one stored record after the first takes its fields', () => {
     // Arrange
     const sharedStored = stored({
       ...tyraWire('tyra'),
@@ -143,7 +143,7 @@ describe('suggestPlan', () => {
       plan.records.map(({ suggestion }) => ({
         reason: suggestion.reason._tag,
         fieldsTaken: Option.map(suggestion.choice, (choice) =>
-          RecordChoice.is('UseExistingRecord')(choice)
+          RecordChoice.is('MergeIntoExistingRecord')(choice)
             ? [...HashSet.values(choice.fieldsTaken)]
             : []
         ),
@@ -185,7 +185,7 @@ describe('suggestPlan', () => {
         reviewKey: record.copies[0].reviewKey,
         reason: suggestion.reason._tag,
         fieldsTaken: Option.map(suggestion.choice, (choice) =>
-          RecordChoice.is('UseExistingRecord')(choice)
+          RecordChoice.is('MergeIntoExistingRecord')(choice)
             ? [...HashSet.values(choice.fieldsTaken)]
             : []
         ),

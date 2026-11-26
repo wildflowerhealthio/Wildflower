@@ -1,6 +1,6 @@
 /**
- * Compare to stored: the gap rule, what an import resource offers a stored
- * record, top-level field by top-level field.
+ * Differences of: the gap rule, what an incoming record offers the record it
+ * merges into, the kept one, top-level field by top-level field.
  *
  * @packageDocumentation
  */
@@ -32,44 +32,44 @@ const hasValue = (value: unknown): boolean =>
   value !== undefined && value !== null && !(Array.isArray(value) && value.length === 0)
 
 /**
- * What `resource` offers `stored`: the top-level fields that differ between
- * them (`diffJson`) and that the import has a value for, in the import's
- * field order, each filling a gap when `stored` has no value for it and
- * overwriting one otherwise; and the import's qualified identifiers `stored`
- * does not carry.
+ * What `incoming` offers `kept`: the top-level fields that differ between
+ * them (`diffJson`) and that the incoming record has a value for, in its
+ * field order, each filling a gap when `kept` has no value for it and
+ * overwriting one otherwise; and the incoming record's qualified identifiers
+ * `kept` does not carry.
  *
- * @param resource - The import resource
- * @param stored - The stored record it would be written into, as it stands
+ * @param incoming - The imported record merged in
+ * @param kept - The record it merges into, as it stands
  * @param comparable - How the references of both are compared
  *   (`ComparableReferences`): by what they name, not by their literal
  */
-const compareToStored = (
-  resource: FhirResource,
-  stored: FhirResource,
+const differencesOf = (
+  incoming: FhirResource,
+  kept: FhirResource,
   comparable: ComparableReferences.Type
 ): OfferedFields.Type => {
-  const incoming = fieldsOf(ComparableReferences.comparableResourceOf(comparable, resource))
-  const existing = fieldsOf(ComparableReferences.comparableResourceOf(comparable, stored))
+  const incomingFields = fieldsOf(ComparableReferences.comparableResourceOf(comparable, incoming))
+  const keptFields = fieldsOf(ComparableReferences.comparableResourceOf(comparable, kept))
   const differing = HashSet.fromIterable(
-    diffJson(existing, incoming).flatMap(({ path: [field] }) =>
+    diffJson(keptFields, incomingFields).flatMap(({ path: [field] }) =>
       typeof field === 'string' ? [field] : []
     )
   )
   const [gapFilling, overwriting] = Arr.partition(
-    Object.keys(incoming).filter(
+    Object.keys(incomingFields).filter(
       (field) =>
-        HashSet.has(differing, field) && !NOT_OFFERED.has(field) && hasValue(incoming[field])
+        HashSet.has(differing, field) && !NOT_OFFERED.has(field) && hasValue(incomingFields[field])
     ),
-    (field) => hasValue(existing[field])
+    (field) => hasValue(keptFields[field])
   )
   return OfferedFields.make({
     gapFilling,
     overwriting,
     identifiersToAdd: IdentifierUnion.missingFrom(
-      DetachedResource.hasIdentifier(stored) ? stored.identifier : [],
-      resource
+      DetachedResource.hasIdentifier(kept) ? kept.identifier : [],
+      incoming
     ),
   })
 }
 
-export { compareToStored }
+export { differencesOf }

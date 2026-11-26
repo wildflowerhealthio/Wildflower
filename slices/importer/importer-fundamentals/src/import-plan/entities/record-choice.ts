@@ -7,16 +7,19 @@ import { type FhirResourceWithId, sameStoredResource } from '@wildflowerhealthio
 import { Data, Equal, type Equivalence, HashSet } from 'effect'
 
 /**
- * Use an existing record, taking `fieldsTaken` from the import, save the
- * record as a new one, or don't add it.
+ * Merge the record into an existing record, taking `fieldsTaken` from the
+ * import, save the record as a new one, or don't add it.
  *
  * @remarks
- * `fieldsTaken` holds top-level FHIR field names. The import's identifiers
- * are always added to the existing record's, so `identifier` is never one.
- * A use-existing choice that takes nothing links to the existing record.
+ * A merge is an imported record going into a record that is kept: the kept
+ * record keeps its id, the imported record's identifiers are added to it,
+ * and references to the imported record land on it. Identity always merges;
+ * content merges only by the fields taken. `fieldsTaken` holds top-level
+ * FHIR field names, so `identifier` is never one. A merge that takes no
+ * field links to the existing record, unless the reviewer edits the record.
  */
 type Type = Data.TaggedEnum<{
-  UseExistingRecord: {
+  MergeIntoExistingRecord: {
     readonly existing: FhirResourceWithId
     readonly fieldsTaken: HashSet.HashSet<string>
   }
@@ -26,21 +29,22 @@ type Type = Data.TaggedEnum<{
   DontAdd: Record<never, never>
 }>
 
-const { UseExistingRecord, SaveAsNewRecord, DontAdd, $is: is } = Data.taggedEnum<Type>()
+const { MergeIntoExistingRecord, SaveAsNewRecord, DontAdd, $is: is } = Data.taggedEnum<Type>()
 
-/** Whether `choice` uses an existing record and takes none of the import's fields. */
-const takesNothing = (choice: Type): boolean =>
-  is('UseExistingRecord')(choice) && HashSet.size(choice.fieldsTaken) === 0
+/** Whether `choice` merges into an existing record and takes none of the import's fields. */
+const takesNoField = (choice: Type): boolean =>
+  is('MergeIntoExistingRecord')(choice) && HashSet.size(choice.fieldsTaken) === 0
 
 /**
- * Two choices are one when they have one tag and, for a use-existing choice,
- * name one stored record (by literal reference) and take the same fields.
+ * Two choices are one when they have one tag and, for a merge into an
+ * existing record, name one stored record (by literal reference) and take
+ * the same fields.
  */
 const equivalence: Equivalence.Equivalence<Type> = (left, right) =>
-  is('UseExistingRecord')(left) && is('UseExistingRecord')(right)
+  is('MergeIntoExistingRecord')(left) && is('MergeIntoExistingRecord')(right)
     ? sameStoredResource(left.existing, right.existing) &&
       Equal.equals(left.fieldsTaken, right.fieldsTaken)
     : left._tag === right._tag
 
-export { DontAdd, equivalence, is, SaveAsNewRecord, takesNothing, UseExistingRecord }
+export { DontAdd, equivalence, is, MergeIntoExistingRecord, SaveAsNewRecord, takesNoField }
 export type { Type }

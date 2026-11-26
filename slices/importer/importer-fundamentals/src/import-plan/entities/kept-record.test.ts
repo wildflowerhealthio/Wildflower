@@ -2,22 +2,22 @@ import { HashSet } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { detached, OTHER_SOURCE, SOURCE, stored, tyraWire } from '../import-plan.test-helpers.ts'
-import * as ChangedStoredRecord from './kept-record.ts'
+import * as KeptRecord from './kept-record.ts'
 
-/** Covers a stored record as it stands once the import's records make their changes, in order. */
+/** Covers a kept record as it stands once the import's records merge into it, in order. */
 
 const storedTyra = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
-describe('ChangedStoredRecord.asItStands', () => {
-  it('should be the stored record itself while nothing changes it', () => {
+describe('KeptRecord.asMerged', () => {
+  it('should be the kept record itself while nothing merges into it', () => {
     // Arrange / Act
-    const asItStands = ChangedStoredRecord.asItStands(ChangedStoredRecord.of(storedTyra))
+    const asMerged = KeptRecord.asMerged(KeptRecord.of(storedTyra))
 
     // Assert
-    expect(asItStands).toBe(storedTyra)
+    expect(asMerged).toBe(storedTyra)
   })
 
-  it('should lay each change’s taken fields over the stored record, later ones winning, and join their identifiers', () => {
+  it('should lay each merge’s taken fields over the kept record, later ones winning, and join their identifiers', () => {
     // Arrange
     const first = detached(
       tyraWire('tyra', {
@@ -30,25 +30,25 @@ describe('ChangedStoredRecord.asItStands', () => {
       })
     )
     const second = detached(tyraWire('tyra', { gender: 'female' }))
-    const changed = ChangedStoredRecord.withChange(
-      ChangedStoredRecord.withChange(ChangedStoredRecord.of(storedTyra), {
-        resource: first,
+    const keptRecord = KeptRecord.withMerge(
+      KeptRecord.withMerge(KeptRecord.of(storedTyra), {
+        incoming: first,
         fieldsTaken: HashSet.make('gender'),
       }),
-      { resource: second, fieldsTaken: HashSet.make('gender') }
+      { incoming: second, fieldsTaken: HashSet.make('gender') }
     )
 
     // Act
-    const asItStands = ChangedStoredRecord.asItStands(changed)
+    const asMerged = KeptRecord.asMerged(keptRecord)
 
     // Assert
     expect(
-      asItStands.resourceType === 'Patient'
+      asMerged.resourceType === 'Patient'
         ? {
-            id: asItStands.id,
-            gender: asItStands.gender,
-            birthDate: asItStands.birthDate,
-            identifiers: asItStands.identifier.map(({ value }) => value),
+            id: asMerged.id,
+            gender: asMerged.gender,
+            birthDate: asMerged.birthDate,
+            identifiers: asMerged.identifier.map(({ value }) => value),
           }
         : null
     ).toEqual({

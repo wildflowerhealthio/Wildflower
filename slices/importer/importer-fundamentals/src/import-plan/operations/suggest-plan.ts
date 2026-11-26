@@ -1,6 +1,6 @@
 /**
- * Suggest a plan: every record of an import suggested in change order, so
- * that two records using one stored record never take one field twice.
+ * Suggest a plan: every record of an import suggested in merge order, so
+ * that two records merging into one kept record never take one field twice.
  *
  * @packageDocumentation
  */
@@ -9,7 +9,7 @@ import { Array as Arr, HashMap, Option, Order } from 'effect'
 
 import * as ImportPlan from '../entities/import-plan.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
-import * as ChangedStoredRecord from '../entities/kept-record.ts'
+import * as KeptRecord from '../entities/kept-record.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as RecordReferences from '../entities/record-references.ts'
@@ -17,27 +17,24 @@ import * as StoredMatch from '../entities/stored-match.ts'
 import * as ComparableReferences from './differences-of/comparable-references.ts'
 import { suggestRecord } from './suggest-record.ts'
 
-/** Each stored record with the changes of the records suggested so far, by its literal reference. */
-type ChangedSoFar = HashMap.HashMap<string, ChangedStoredRecord.Type>
+/** Each kept record with the merges of the records suggested so far, by its literal reference. */
+type MergedSoFar = HashMap.HashMap<string, KeptRecord.Type>
 
-/** `changedSoFar` with `planned`'s suggested change made, when its suggestion uses a stored record. */
-const withSuggestedChange = (
-  changedSoFar: ChangedSoFar,
-  planned: PlannedRecord.Type
-): ChangedSoFar =>
+/** `mergedSoFar` with `planned`'s suggested merge made, when its suggestion merges into a stored record. */
+const withSuggestedMerge = (mergedSoFar: MergedSoFar, planned: PlannedRecord.Type): MergedSoFar =>
   Option.match(
     Option.flatMap(
       planned.suggestion.choice,
-      Option.liftPredicate(RecordChoice.is('UseExistingRecord'))
+      Option.liftPredicate(RecordChoice.is('MergeIntoExistingRecord'))
     ),
     {
-      onNone: () => changedSoFar,
+      onNone: () => mergedSoFar,
       onSome: ({ existing, fieldsTaken }) =>
-        HashMap.modifyAt(changedSoFar, literalReferenceOf(existing), (changed) =>
+        HashMap.modifyAt(mergedSoFar, literalReferenceOf(existing), (keptRecord) =>
           Option.some(
-            ChangedStoredRecord.withChange(
-              Option.getOrElse(changed, () => ChangedStoredRecord.of(existing)),
-              { resource: ImportedRecord.resourceOf(planned.record), fieldsTaken }
+            KeptRecord.withMerge(
+              Option.getOrElse(keptRecord, () => KeptRecord.of(existing)),
+              { incoming: ImportedRecord.resourceOf(planned.record), fieldsTaken }
             )
           )
         ),
@@ -46,14 +43,14 @@ const withSuggestedChange = (
 
 /**
  * One record of the plan: what the store holds of it and its suggestion, its
- * offered fields measured against the stored records as the records ahead
- * of it changed them (`changedSoFar`), nothing chosen and nothing edited.
+ * offered fields measured against the kept records as the records ahead of
+ * it merged into them (`mergedSoFar`), nothing chosen and nothing edited.
  */
 const planRecord = (
   storedMatch: StoredMatch.Type,
   recordReferences: RecordReferences.Type,
   comparableReferences: ComparableReferences.Type,
-  changedSoFar: ChangedSoFar,
+  mergedSoFar: MergedSoFar,
   record: ImportedRecord.Type
 ): PlannedRecord.Type => {
   const recordMatch = StoredMatch.ofRecord(storedMatch, record.key)
@@ -64,7 +61,7 @@ const planRecord = (
       resource: ImportedRecord.resourceOf(record),
       storedMatch: recordMatch,
       isReferenced: RecordReferences.isReferenced(recordReferences, record.key),
-      changedSoFar,
+      mergedSoFar,
       comparableReferences,
     }),
   })
@@ -89,11 +86,11 @@ const byPosition = Order.mapInput(Order.number, ({ position }: PlacedInPlan<unkn
  *   unresolved references
  *
  * @remarks
- * Records are suggested in change order (`ImportedRecord.changeOrder`, then
+ * Records are suggested in merge order (`ImportedRecord.mergeOrder`, then
  * plan order): decoded records first, implied ones after. A record suggested
- * to use a stored record a record ahead of it is suggested to use has its
- * offered fields measured against that stored record as the earlier
- * change leaves it (`ChangedStoredRecord.asItStands`), so two suggestions
+ * to merge into a stored record a record ahead of it is suggested to merge
+ * into has its offered fields measured against that kept record as the
+ * earlier merge leaves it (`KeptRecord.asMerged`), so two suggestions
  * never take one field twice, and a decoded record never leaves a field to
  * an implied record the write may drop. References compare by what they
  * name (`ComparableReferences`), not by their literal.
@@ -104,31 +101,28 @@ const suggestPlan = (
   storedMatch: StoredMatch.Type
 ): ImportPlan.Type => {
   const comparableReferences = ComparableReferences.of(records, storedMatch)
-  const inChangeOrder = Arr.sort(
+  const inMergeOrder = Arr.sort(
     Arr.map(records, (value, position): PlacedInPlan<ImportedRecord.Type> => ({ position, value })),
     Order.combine(
       Order.mapInput(
-        ImportedRecord.changeOrder,
+        ImportedRecord.mergeOrder,
         ({ value }: PlacedInPlan<ImportedRecord.Type>) => value
       ),
       byPosition
     )
   )
   const [, planned] = Arr.mapAccum(
-    inChangeOrder,
-    HashMap.empty<string, ChangedStoredRecord.Type>(),
-    (
-      changedSoFar,
-      { position, value: record }
-    ): [ChangedSoFar, PlacedInPlan<PlannedRecord.Type>] => {
+    inMergeOrder,
+    HashMap.empty<string, KeptRecord.Type>(),
+    (mergedSoFar, { position, value: record }): [MergedSoFar, PlacedInPlan<PlannedRecord.Type>] => {
       const plannedRecord = planRecord(
         storedMatch,
         recordReferences,
         comparableReferences,
-        changedSoFar,
+        mergedSoFar,
         record
       )
-      return [withSuggestedChange(changedSoFar, plannedRecord), { position, value: plannedRecord }]
+      return [withSuggestedMerge(mergedSoFar, plannedRecord), { position, value: plannedRecord }]
     }
   )
   return ImportPlan.make(

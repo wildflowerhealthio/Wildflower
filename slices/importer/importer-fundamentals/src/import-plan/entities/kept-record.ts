@@ -1,7 +1,6 @@
 /**
- * A changed stored record: a stored record an import uses, with the changes
- * the import's records make to it, in the order they are made
- * (`ImportedRecord.changeOrder`).
+ * A kept record: a stored record an import merges its records into, with
+ * those merges in the order they are made (`ImportedRecord.mergeOrder`).
  *
  * @packageDocumentation
  */
@@ -15,25 +14,34 @@ import {
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { HashSet, Option, Record, Schema } from 'effect'
 
-/** One import record's change to a stored record it uses: its resource, and the top-level fields taken from it. */
-interface Change {
-  readonly resource: FhirResource
+/**
+ * One merge into the kept record: the incoming record's resource, and the
+ * top-level fields taken from it.
+ *
+ * @remarks
+ * A merge is an imported record, the incoming one, going into a record that
+ * is kept. The kept record keeps its id and gains the incoming record's
+ * identifiers whatever is taken; its content changes only by the fields
+ * taken.
+ */
+interface Merge {
+  readonly incoming: FhirResource
   readonly fieldsTaken: HashSet.HashSet<string>
 }
 
-/** A stored record beside the changes made to it, in the order they are made. */
+/** A kept record beside the merges into it, in the order they are made. */
 interface Type {
-  readonly existing: FhirResourceWithId
-  readonly changes: readonly Change[]
+  readonly kept: FhirResourceWithId
+  readonly merges: readonly Merge[]
 }
 
-/** `existing` with no change yet. */
-const of = (existing: FhirResourceWithId): Type => ({ existing, changes: [] })
+/** `kept` with nothing merged into it yet. */
+const of = (kept: FhirResourceWithId): Type => ({ kept, merges: [] })
 
-/** `changed` with `change` made after its changes. */
-const withChange = (changed: Type, change: Change): Type => ({
-  ...changed,
-  changes: [...changed.changes, change],
+/** `keptRecord` with `merge` made after its merges. */
+const withMerge = (keptRecord: Type, merge: Merge): Type => ({
+  ...keptRecord,
+  merges: [...keptRecord.merges, merge],
 })
 
 /**
@@ -52,35 +60,35 @@ const encodeIdentifier = Schema.encodeSync(IdentifierAndReference.IdentifierSche
 const decodeStored = Schema.decodeUnknownSync(StoredResourceSchema)
 
 /**
- * The stored record as it stands once its changes are made: its fields with
- * each change's taken fields laid over them in order, later ones winning, and
- * its identifiers joined with every qualified identifier a change's resource
+ * The kept record once its merges are made: its fields with each merge's
+ * taken fields laid over them in order, later ones winning, and its
+ * identifiers joined with every qualified identifier an incoming record
  * carries that it lacks (`IdentifierUnion.union`), under its own id.
  *
  * @throws When the result does not decode as a stored resource. It is built
  *   from decoded resources of one type, so that is a defect.
  */
-const asItStands = (changed: Type): FhirResourceWithId =>
-  changed.changes.length === 0
-    ? changed.existing
+const asMerged = (keptRecord: Type): FhirResourceWithId =>
+  keptRecord.merges.length === 0
+    ? keptRecord.kept
     : decodeStored({
-        ...changed.changes.reduce(
-          (fields, { resource, fieldsTaken }) => ({
+        ...keptRecord.merges.reduce(
+          (fields, { incoming, fieldsTaken }) => ({
             ...fields,
-            ...Record.filter(fieldsOf(resource), (_, field) => HashSet.has(fieldsTaken, field)),
+            ...Record.filter(fieldsOf(incoming), (_, field) => HashSet.has(fieldsTaken, field)),
           }),
-          fieldsOf(changed.existing)
+          fieldsOf(keptRecord.kept)
         ),
-        ...(DetachedResource.hasIdentifier(changed.existing)
+        ...(DetachedResource.hasIdentifier(keptRecord.kept)
           ? {
               identifier: IdentifierUnion.union(
-                changed.existing.identifier,
-                changed.changes.map(({ resource }) => resource)
+                keptRecord.kept.identifier,
+                keptRecord.merges.map(({ incoming }) => incoming)
               ).map((identifier) => encodeIdentifier(identifier)),
             }
           : {}),
-        id: changed.existing.id,
+        id: keptRecord.kept.id,
       })
 
-export { asItStands, of, withChange }
+export { asMerged, of, withMerge }
 export type { Type }

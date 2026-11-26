@@ -71,9 +71,14 @@ const effectiveChoice = (planned: Type): Option.Option<RecordChoice.Type> =>
   Option.orElse(planned.chosen, () => planned.suggestion.choice)
 
 /**
- * `planned`'s label, by its effective choice: save as new is `Create`; use
- * existing is `Update` when it takes a field or the record is edited, else
- * `LinkToExisting`; don't add is `DontAdd`; no choice is `Open`.
+ * `planned`'s label, by its effective choice: save as new is `Create`; merge
+ * into existing is `Update` when it takes a field or the record is edited,
+ * else `LinkToExisting`; don't add is `DontAdd`; no choice is `Open`.
+ *
+ * @remarks
+ * `Update` and `LinkToExisting` are both merges: the record's identity goes
+ * into the existing record either way, and the label says whether content
+ * is taken too.
  */
 const labelOf = (planned: Type): Label =>
   Option.match(effectiveChoice(planned), {
@@ -83,8 +88,8 @@ const labelOf = (planned: Type): Label =>
         Match.tagsExhaustive({
           SaveAsNewRecord: (): Label => 'Create',
           DontAdd: (): Label => 'DontAdd',
-          UseExistingRecord: (useExisting): Label =>
-            RecordChoice.takesNothing(useExisting) && Option.isNone(planned.edit)
+          MergeIntoExistingRecord: (merge): Label =>
+            RecordChoice.takesNoField(merge) && Option.isNone(planned.edit)
               ? 'LinkToExisting'
               : 'Update',
         })
