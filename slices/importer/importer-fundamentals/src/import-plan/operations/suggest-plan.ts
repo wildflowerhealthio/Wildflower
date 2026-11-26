@@ -87,7 +87,8 @@ const byPosition = Order.mapInput(Order.number, ({ position }: PlacedInPlan<unkn
  *
  * @remarks
  * Records are suggested in merge order (`ImportedRecord.mergeOrder`, then
- * plan order): decoded records first, implied ones after. A record suggested
+ * plan order, the sort being stable): decoded records first, implied ones
+ * after. A record suggested
  * to merge into a stored record a record ahead of it is suggested to merge
  * into has its differences measured against that kept record as the
  * earlier merge leaves it (`KeptRecord.asMerged`), so two suggestions
@@ -103,12 +104,9 @@ const suggestPlan = (
   const comparableReferences = ComparableReferences.of(records, storedMatch)
   const inMergeOrder = Arr.sort(
     Arr.map(records, (value, position): PlacedInPlan<ImportedRecord.Type> => ({ position, value })),
-    Order.combine(
-      Order.mapInput(
-        ImportedRecord.mergeOrder,
-        ({ value }: PlacedInPlan<ImportedRecord.Type>) => value
-      ),
-      byPosition
+    Order.mapInput(
+      ImportedRecord.mergeOrder,
+      ({ value }: PlacedInPlan<ImportedRecord.Type>) => value
     )
   )
   const [, planned] = Arr.mapAccum(

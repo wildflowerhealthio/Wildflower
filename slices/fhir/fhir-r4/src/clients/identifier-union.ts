@@ -20,22 +20,23 @@ const tokensOf = (identifiers: readonly IdentifierType[]): HashSet.HashSet<strin
       .map(TokenSearchParam.fromQualifiedIdentifier)
   )
 
+/** Whether `identifier`'s search token is none of `carriedTokens` ({@link tokensOf}). */
+const isNotCarried =
+  (carriedTokens: HashSet.HashSet<string>) =>
+  (identifier: IdentifierAndReference.QualifiedIdentifierType): boolean =>
+    !HashSet.has(carriedTokens, TokenSearchParam.fromQualifiedIdentifier(identifier))
+
 /** The qualified identifiers `resource` carries that `carried` lacks, each once, in `resource`'s order. */
 const missingFrom = (
   carried: readonly IdentifierType[],
   resource: FhirResource
-): readonly IdentifierAndReference.QualifiedIdentifierType[] => {
-  const carriedTokens = tokensOf(carried)
-  return Arr.dedupeWith(
-    qualifiedIdentifiersOf(resource).filter(
-      (identifier) =>
-        !HashSet.has(carriedTokens, TokenSearchParam.fromQualifiedIdentifier(identifier))
-    ),
+): readonly IdentifierAndReference.QualifiedIdentifierType[] =>
+  Arr.dedupeWith(
+    qualifiedIdentifiersOf(resource).filter(isNotCarried(tokensOf(carried))),
     (left, right) =>
       TokenSearchParam.fromQualifiedIdentifier(left) ===
       TokenSearchParam.fromQualifiedIdentifier(right)
   )
-}
 
 /**
  * `carried`, then each qualified identifier of each of `resources` it does
