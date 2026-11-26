@@ -1,6 +1,6 @@
 # Bumping vite-plus How-To
 
-The vite-plus version is recorded in two catalog values that must move **together**. A Dependabot bump moves only `vite-plus` and leaves the `vite` alias behind, which reintroduces the peer-tuple split that the alias exists to prevent (`Cannot read properties of undefined (reading 'config')` in `vp test`; `TS2321: Excessive stack depth … 'UserConfig'` in every vite config). This doc is the checklist of every place to edit.
+The vite-plus version is recorded in two catalog values that must move **together**. A Dependabot bump moves only `vite-plus` and leaves the `vite` alias behind, which reintroduces the peer-tuple split that the alias exists to prevent (`Failed to resolve pack command: … Expected @voidzero-dev/vite-plus-core@<version>` from every `vp run`; on older releases `Cannot read properties of undefined (reading 'config')` in `vp test` and `TS2321: Excessive stack depth … 'UserConfig'` in every vite config). This doc is the checklist of every place to edit.
 
 For _why_ the versions must agree — the pnpm variant-split mechanism, the `vite@*` override, and how to diagnose a split — see the [Version Override Explanation](./Version%20Override%20Explanation.md). This doc is only the "where to edit" list.
 
@@ -23,6 +23,14 @@ A vite-plus bump moves two distinct version strings:
 The `vite@*: 'catalog:'` override in [pnpm-workspace.yaml](../../pnpm-workspace.yaml) follows row 2, so it needs no edit.
 
 The bootstrap scripts that install a global `vp` ([.claude/hooks/session-start.sh](../../.claude/hooks/session-start.sh), [.devcontainer/postCreateCommand.sh](../../.devcontainer/postCreateCommand.sh), [.devcontainer/cloud-setup-script.sh](../../.devcontainer/cloud-setup-script.sh)) hold no version. A global `pnpm install -g` cannot reference the catalog, so each runs [.devcontainer/install-global-tools.sh](../../.devcontainer/install-global-tools.sh), which reads the version `pnpm-lock.yaml` resolves for each catalog entry and installs the globals at those versions. It skips the install only when the global `vp --version` already reports the lockfile's vite-plus, so a cached container picks up a bump on its next session.
+
+## On a Dependabot PR
+
+[dependabot-vite-plus.yml](../../.github/workflows/dependabot-vite-plus.yml) does step 1 for you. When Dependabot pushes a PR that changes [pnpm-workspace.yaml](../../pnpm-workspace.yaml), the workflow runs [scripts/ci/align-vite-plus-core.sh](../../scripts/ci/align-vite-plus-core.sh). The script looks up the core that the catalog's `vite-plus` release declares as its own `vite` dependency. If row 2 names a different core, it runs that release's migrator and pushes the result to the PR branch as one commit, and CI then runs again on it. Steps 2–3 are still yours. Oxlint and Oxfmt findings that a release brings need a hand fix, in their own commits on the same branch.
+
+The push uses a GitHub App token, because a push made with `GITHUB_TOKEN` does not start CI again. The App needs **Contents: read and write** on this repository. Its client ID and private key are stored as the **Dependabot** secrets `DEPS_FIXUP_APP_CLIENT_ID` and `DEPS_FIXUP_APP_PRIVATE_KEY` (Settings → Secrets and variables → Dependabot), because a Dependabot-triggered run gets no Actions secrets.
+
+To run the same alignment on any branch, run `scripts/ci/align-vite-plus-core.sh` from the repository root.
 
 ## Steps
 
