@@ -1,7 +1,7 @@
 /**
  * A stored match: what the store holds of an import's records and of the
- * logical references that name no record of the import, found before the
- * plan is built.
+ * logical references not in the import (no record of it carries their
+ * identifier), found before the plan is built.
  *
  * @packageDocumentation
  */
@@ -31,8 +31,9 @@ interface Entry {
 }
 
 /**
- * Each record's {@link Entry} by its key, and each unresolved logical
- * reference's stored candidates, best grade first, by `LogicalReference.key`.
+ * Each record's {@link Entry} by its key, and each logical reference not in
+ * the import beside its stored candidates, best grade first, by
+ * `LogicalReference.key`.
  */
 interface Type {
   readonly byRecord: HashMap.HashMap<RecordKey.Type, Entry>
@@ -53,7 +54,8 @@ const makeEntry = (
 
 /**
  * The stored match of `records`, each record's key beside its entry, and of
- * `references`, each unresolved logical reference beside its candidates.
+ * `references`, each logical reference not in the import beside its
+ * candidates.
  */
 const make = ({
   records,
@@ -77,7 +79,7 @@ const make = ({
 const ofRecord = (storedMatch: Type, key: RecordKey.Type): Entry =>
   HashMap.get(storedMatch.byRecord, key).pipe(Option.getOrElse(() => NOTHING_FOUND))
 
-/** The stored candidates of the unresolved `reference`, best grade first; none when it has no entry. */
+/** The stored candidates of `reference`, not in the import, best grade first; none when it has no entry. */
 const ofReference = (
   storedMatch: Type,
   reference: LogicalReference.Type

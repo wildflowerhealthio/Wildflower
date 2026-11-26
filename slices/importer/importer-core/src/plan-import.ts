@@ -9,7 +9,7 @@ import {
   type ImportedCopy,
   ImportedRecord,
   type ImportPlan,
-  RecordReferences,
+  locateReferences,
   suggestPlan,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect } from 'effect'
@@ -27,8 +27,8 @@ const planImport = (
   copies: readonly ImportedCopy.Type[]
 ): Effect.Effect<ImportPlan.Type, StoredMatchFailure, FhirR4ResourcesHttpApiClient> => {
   const records = ImportedRecord.fromCopies(copies)
-  const recordReferences = RecordReferences.of(records)
-  return Effect.map(findStoredMatch(records, recordReferences.unresolved), (storedMatch) =>
+  const recordReferences = locateReferences(records)
+  return Effect.map(findStoredMatch(records, recordReferences.notInImport), (storedMatch) =>
     suggestPlan(records, recordReferences, storedMatch)
   )
 }

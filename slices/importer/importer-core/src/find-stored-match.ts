@@ -1,6 +1,6 @@
 /**
- * An import's stored match: its records and its unresolved references
- * matched against the store, once, for the plan's suggestions.
+ * An import's stored match: its records and its references not in the
+ * import matched against the store, once, for the plan's suggestions.
  *
  * @packageDocumentation
  */
@@ -54,15 +54,15 @@ const storedUnderDerivedIdsOf = (
 }
 
 /**
- * What the store holds of `records` and of `unresolved`: one
+ * What the store holds of `records` and of `notInImport`: one
  * `ResourceMatch.findCandidates` over every record, by its resource
- * (`ImportedRecord.resourceOf`), and every unresolved logical reference,
+ * (`ImportedRecord.resourceOf`), and every logical reference not in the import,
  * every grade; then one batch of reads for the stored records under the
  * derived stage ids of every record that has one.
  *
  * @param records - The import's records, each with its copies
- * @param unresolved - The logical references that name no record of the
- *   import (`RecordReferences.Type`'s `unresolved`)
+ * @param notInImport - The logical references no record of the import
+ *   carries the identifier of (`RecordReferences.Type`'s `notInImport`)
  * @returns The stored match; fails when any search or read fails, since a
  *   failed search is not "no match"
  *
@@ -72,12 +72,12 @@ const storedUnderDerivedIdsOf = (
  */
 const findStoredMatch = (
   records: readonly ImportedRecord.Type[],
-  unresolved: readonly LogicalReference.Type[]
+  notInImport: readonly LogicalReference.Type[]
 ): Effect.Effect<StoredMatch.Type, StoredMatchFailure, FhirR4ResourcesHttpApiClient> =>
   Effect.gen(function* () {
     const queries: readonly MatchQuery.Type[] = [
       ...records.map((record) => MatchQuery.fromResource(ImportedRecord.resourceOf(record))),
-      ...unresolved.map(MatchQuery.fromLogicalReference),
+      ...notInImport.map(MatchQuery.fromLogicalReference),
     ]
     const candidates = yield* ResourceMatch.findCandidates(queries, {
       onlyCertainMatches: false,
@@ -92,7 +92,7 @@ const findStoredMatch = (
         ({ key }, [recordCandidates, storedUnderDerivedId]) =>
           [key, StoredMatch.makeEntry(recordCandidates, storedUnderDerivedId)] as const
       ),
-      references: Arr.zip(unresolved, candidatesOfReferences),
+      references: Arr.zip(notInImport, candidatesOfReferences),
     })
   })
 

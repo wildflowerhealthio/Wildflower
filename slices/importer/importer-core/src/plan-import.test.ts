@@ -3,6 +3,7 @@ import {
   type FileSetRecord,
   type FormatDecode,
   ImportedRecord,
+  locateReferences,
   PickedFile,
   PlannedRecord,
   RecordReferences,
@@ -182,7 +183,7 @@ describe('planImport', () => {
 
     // Assert
     const records = result.records.map(({ record }) => record)
-    const references = RecordReferences.of(records)
+    const references = locateReferences(records)
     expect(
       records
         .filter(({ copies: [first] }) => first.resource.resourceType === 'Patient')

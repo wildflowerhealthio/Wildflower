@@ -81,9 +81,9 @@ const byPosition = Order.mapInput(Order.number, ({ position }: PlacedInPlan<unkn
  * chosen and nothing edited, the records in plan order.
  *
  * @param records - The import's records, in plan order (`ImportedRecord.fromCopies`)
- * @param recordReferences - The references between them (`RecordReferences.of`)
- * @param storedMatch - What the store holds of the import's records and its
- *   unresolved references
+ * @param recordReferences - The references between them (`locateReferences`)
+ * @param storedMatch - What the store holds of the import's records and of
+ *   its references not in the import
  *
  * @remarks
  * Records are suggested in merge order (`ImportedRecord.mergeOrder`, then

@@ -1,7 +1,7 @@
 import { literalReferenceOf, type LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   ImportedRecord,
-  RecordReferences,
+  locateReferences,
   StoredMatch,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Option } from 'effect'
@@ -23,14 +23,14 @@ import {
 
 /**
  * Covers matching an import once against an in-memory server: one batch of
- * searches for its records and unresolved references, and one batch of reads
+ * searches for its records and its references not in the import, and one batch of reads
  * of its records' derived ids.
  */
 
-/** A stored match's entries for `records` and `unresolved`, in their order, as literal references, for a whole-value assertion. */
+/** A stored match's entries for `records` and `notInImport`, in their order, as literal references, for a whole-value assertion. */
 const summaryOf = (
   records: readonly ImportedRecord.Type[],
-  unresolved: readonly LogicalReference.Type[],
+  notInImport: readonly LogicalReference.Type[],
   storedMatch: StoredMatch.Type
 ): unknown => ({
   records: records.map(({ key }) => {
@@ -44,7 +44,7 @@ const summaryOf = (
       storedUnderDerivedId: Option.map(entry.storedUnderDerivedId, literalReferenceOf),
     }
   }),
-  references: unresolved.map((reference) =>
+  references: notInImport.map((reference) =>
     StoredMatch.ofReference(storedMatch, reference).map(({ resource }) =>
       literalReferenceOf(resource)
     )
@@ -52,7 +52,7 @@ const summaryOf = (
 })
 
 describe('findStoredMatch', () => {
-  it('should match every record and unresolved reference in one batch of searches, then read every derived id in one batch', async () => {
+  it('should match every record and every reference not in the import in one batch of searches, then read every derived id in one batch', async () => {
     // Arrange
     const records = ImportedRecord.fromCopies([
       copyOf(detached(tyraWire), 'tyra'),
@@ -69,18 +69,18 @@ describe('findStoredMatch', () => {
       }),
     ]
 
-    const { unresolved } = RecordReferences.of(records)
+    const { notInImport } = locateReferences(records)
 
     // Act
     const { result, requests } = await runAgainst(
-      findStoredMatch(records, unresolved),
+      findStoredMatch(records, notInImport),
       storedResources
     )
 
     // Assert
     expect({
       requests: [...requests].toSorted(),
-      match: summaryOf(records, unresolved, result),
+      match: summaryOf(records, notInImport, result),
     }).toEqual({
       requests: [
         `MedicationRequest ${SOURCE}|rx-1`,

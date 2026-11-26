@@ -3,6 +3,9 @@ import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as ImportedCopy from '../entities/imported-copy.ts'
+import * as ImportedRecord from '../entities/imported-record.ts'
+import * as RecordReferences from '../entities/record-references.ts'
 import {
   copyOf,
   detached,
@@ -13,9 +16,7 @@ import {
   SOURCE,
   tyraWire,
 } from '../import-plan.test-helpers.ts'
-import * as ImportedCopy from './imported-copy.ts'
-import * as ImportedRecord from './imported-record.ts'
-import * as RecordReferences from './record-references.ts'
+import { locateReferences } from './locate-references.ts'
 
 const prescription = copyOf(
   detached(prescriptionWire('rx-1', { system: NAMES, value: 'Dr. Brown' })),
@@ -51,21 +52,21 @@ const labObservation = copyOf(
 /** The EHR file's Tyra: keyed in the source's system, carrying her health card number too. */
 const ehrTyra = tyraCarrying([{ system: SOURCE, value: 'tyra' }, hcn], 'tyra', 'ehr.har')
 
-/** What `copies` reference: the review keys of the referenced records' first copies, and how many references are unresolved. */
+/** What `copies` reference: the review keys of the referenced records' first copies, and how many references are not in the import. */
 const referencesOf = (
   copies: readonly ImportedCopy.Type[]
-): { readonly referenced: readonly string[]; readonly unresolved: number } => {
+): { readonly referenced: readonly string[]; readonly notInImport: number } => {
   const records = ImportedRecord.fromCopies(copies)
-  const references = RecordReferences.of(records)
+  const references = locateReferences(records)
   return {
     referenced: records
       .filter(({ key }) => RecordReferences.isReferenced(references, key))
       .map(({ copies: [first] }) => first.reviewKey),
-    unresolved: references.unresolved.length,
+    notInImport: references.notInImport.length,
   }
 }
 
-describe('RecordReferences.of', () => {
+describe('locateReferences', () => {
   it('should find the records another record references and the references that name no record', () => {
     // Arrange
     const records = ImportedRecord.fromCopies([prescription, drBrown])
@@ -75,15 +76,15 @@ describe('RecordReferences.of', () => {
     )
 
     // Act
-    const references = RecordReferences.of(records)
+    const references = locateReferences(records)
 
     // Assert
     expect({
       referenced: [...HashSet.values(references.referenced)],
-      unresolved: references.unresolved.map(LogicalReference.key),
+      notInImport: references.notInImport.map(LogicalReference.key),
     }).toEqual({
       referenced: [ImportedCopy.recordKeyOf(drBrown)],
-      unresolved: [LogicalReference.key(tyraReference)],
+      notInImport: [LogicalReference.key(tyraReference)],
     })
   })
 
@@ -102,7 +103,7 @@ describe('RecordReferences.of', () => {
     )
 
     // Act
-    const references = RecordReferences.of(ImportedRecord.fromCopies([byLicence, brownByLicence]))
+    const references = locateReferences(ImportedRecord.fromCopies([byLicence, brownByLicence]))
 
     // Assert
     expect([...HashSet.values(references.referenced)]).toEqual([
@@ -118,7 +119,7 @@ describe('RecordReferences.of', () => {
     const references = referencesOf([ehrTyra, labTyra, labObservation])
 
     // Assert
-    expect(references).toEqual({ referenced: ['lab.pdf/patient'], unresolved: 0 })
+    expect(references).toEqual({ referenced: ['lab.pdf/patient'], notInImport: 0 })
   })
 
   it('should name the decoded record carrying a reference’s identifier over the record the reference implied', () => {
@@ -134,7 +135,7 @@ describe('RecordReferences.of', () => {
     const references = referencesOf([ehrTyra, labObservation, impliedTyra])
 
     // Assert
-    expect(references).toEqual({ referenced: ['ehr.har/tyra'], unresolved: 0 })
+    expect(references).toEqual({ referenced: ['ehr.har/tyra'], notInImport: 0 })
   })
 
   it('should name the record keyed by a reference’s identifier among several decoded records carrying it', () => {
@@ -150,10 +151,10 @@ describe('RecordReferences.of', () => {
     const references = referencesOf([ehrTyra, pharmacyTyra, labTyra, labObservation])
 
     // Assert
-    expect(references).toEqual({ referenced: ['lab.pdf/patient'], unresolved: 0 })
+    expect(references).toEqual({ referenced: ['lab.pdf/patient'], notInImport: 0 })
   })
 
-  it('should name none of several decoded records carrying an identifier that is no record’s key, and not leave it unresolved', () => {
+  it('should name none of several decoded records carrying an identifier that is no record’s key, and not count it as not in the import', () => {
     // Arrange
     const pharmacyTyra = tyraCarrying(
       [{ system: OTHER_SOURCE, value: 'tyra' }, hcn],
@@ -165,7 +166,7 @@ describe('RecordReferences.of', () => {
     const references = referencesOf([ehrTyra, pharmacyTyra, labObservation])
 
     // Assert
-    expect(references).toEqual({ referenced: [], unresolved: 0 })
+    expect(references).toEqual({ referenced: [], notInImport: 0 })
   })
 
   it('should not count a record as referenced by itself when the rule names it among several', () => {
@@ -178,7 +179,7 @@ describe('RecordReferences.of', () => {
     const references = referencesOf([ehrTyra, selfNamingLabTyra])
 
     // Assert
-    expect(references).toEqual({ referenced: [], unresolved: 0 })
+    expect(references).toEqual({ referenced: [], notInImport: 0 })
   })
 
   it('should not count a record naming itself as referenced', () => {
@@ -198,12 +199,12 @@ describe('RecordReferences.of', () => {
     )
 
     // Act
-    const references = RecordReferences.of(ImportedRecord.fromCopies([selfNaming]))
+    const references = locateReferences(ImportedRecord.fromCopies([selfNaming]))
 
     // Assert
     expect({
       referenced: HashSet.size(references.referenced),
-      unresolved: references.unresolved.length,
-    }).toEqual({ referenced: 0, unresolved: 0 })
+      notInImport: references.notInImport.length,
+    }).toEqual({ referenced: 0, notInImport: 0 })
   })
 })

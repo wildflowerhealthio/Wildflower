@@ -8,7 +8,6 @@ import * as ImportedCopy from '../entities/imported-copy.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
-import * as RecordReferences from '../entities/record-references.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import {
   candidate,
@@ -28,6 +27,7 @@ import {
   tyraA,
   tyraWire,
 } from '../import-plan.test-helpers.ts'
+import { locateReferences } from './locate-references.ts'
 import { suggestPlan } from './suggest-plan.ts'
 
 /**
@@ -43,7 +43,7 @@ const planOf = (
   storedMatch: StoredMatch.Type
 ): ImportPlan.Type => {
   const records = ImportedRecord.fromCopies(copies)
-  return suggestPlan(records, RecordReferences.of(records), storedMatch)
+  return suggestPlan(records, locateReferences(records), storedMatch)
 }
 
 /** A plan's records by what a reviewer sees of their suggestion. */
