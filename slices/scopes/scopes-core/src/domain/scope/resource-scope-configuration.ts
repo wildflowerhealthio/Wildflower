@@ -72,7 +72,7 @@ class ResourceScopeConfiguration<
     // oxlint-disable-next-line typescript/no-this-alias
     const scopeConfiguration = this
     this.Instance = class Instance extends (
-      BaseResourceScope<TContext, TResourceType, TInteraction, TId>
+      (BaseResourceScope<TContext, TResourceType, TInteraction, TId>)
     ) {
       kind: TId
       context: TContext
