@@ -53,8 +53,8 @@ const hasValue = (value: unknown): boolean =>
 /**
  * The differences of `incoming` from `kept`: each top-level field that
  * differs between them (`diffJson`) and that `incoming` has a value for, in
- * `incoming`'s field order, filling a gap when `kept` has no value for it
- * and overwriting one otherwise.
+ * the order `incoming`'s schema encodes its fields, filling a gap when
+ * `kept` has no value for it and overwriting one otherwise.
  *
  * @param incoming - The imported record merged in
  * @param kept - The record it merges into, as it stands

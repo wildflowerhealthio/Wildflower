@@ -88,13 +88,12 @@ const byPosition = Order.mapInput(Order.number, ({ position }: PlacedInPlan<unkn
  * @remarks
  * Records are suggested in merge order (`ImportedRecord.mergeOrder`, then
  * plan order, the sort being stable): decoded records first, implied ones
- * after. A record suggested
- * to merge into a stored record a record ahead of it is suggested to merge
- * into has its differences measured against that kept record as the
- * earlier merge leaves it (`KeptRecord.asMerged`), so two suggestions
- * never take one field twice, and a decoded record never leaves a field to
- * an implied record the write may drop. References compare by what they
- * name (`ComparableReferences`), not by their literal.
+ * after. A record suggested to merge into a stored record a record ahead of
+ * it is suggested to merge into has its differences measured against that
+ * kept record as the earlier merge leaves it (`KeptRecord.asMerged`), so two
+ * suggestions never take one field twice, and a decoded record never leaves
+ * a field to an implied record the write may drop. References compare by
+ * what they name (`ComparableReferences`), not by their literal.
  */
 const suggestPlan = (
   records: readonly ImportedRecord.Type[],
