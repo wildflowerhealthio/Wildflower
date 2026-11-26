@@ -70,9 +70,9 @@ const byPosition = Order.mapInput(Order.number, ({ position }: PlacedInPlan<unkn
  *   its references not in the import
  *
  * @remarks
- * Records are suggested in merge order (`ImportedRecord.mergeOrder`, then
- * plan order, the sort being stable): decoded records first, implied ones
- * after. A record suggested to merge into a stored record a record ahead of
+ * Records are suggested in merge order (`ImportedRecord.inMergeOrder`:
+ * `ImportedRecord.mergeOrder`, then plan order): decoded records first,
+ * implied ones after. A record suggested to merge into a stored record a record ahead of
  * it is suggested to merge into has its differences measured against that
  * kept record as the earlier merge leaves it (`KeptRecord.asMergedIn`), so two
  * suggestions never take one field twice, and a decoded record never leaves
@@ -85,12 +85,9 @@ const suggestPlan = (
   storedMatch: StoredMatch.Type
 ): ImportPlan.Type => {
   const comparableReferences = ComparableReferences.of(records, storedMatch)
-  const inMergeOrder = Arr.sort(
+  const inMergeOrder = ImportedRecord.inMergeOrder(
     Arr.map(records, (value, position): PlacedInPlan<ImportedRecord.Type> => ({ position, value })),
-    Order.mapInput(
-      ImportedRecord.mergeOrder,
-      ({ value }: PlacedInPlan<ImportedRecord.Type>) => value
-    )
+    ({ value }) => value
   )
   const [, planned] = Arr.mapAccum(
     inMergeOrder,

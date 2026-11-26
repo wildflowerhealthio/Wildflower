@@ -91,6 +91,14 @@ const isImplied = (record: Type): boolean => recordCopyOf(record).isImplied
  */
 const mergeOrder: Order.Order<Type> = Order.mapInput(Order.boolean, isImplied)
 
+/**
+ * `values` in merge order ({@link mergeOrder}), each read as its record by
+ * `recordOf`: decoded records first, implied ones after, each group in the
+ * order `values` came in, which for values in plan order is plan order.
+ */
+const inMergeOrder = <A>(values: readonly A[], recordOf: (value: A) => Type): readonly A[] =>
+  Arr.sort(values, Order.mapInput(mergeOrder, recordOf))
+
 /** The title the plan shows the record under: its record copy's. */
 const titleOf = (record: Type): string => recordCopyOf(record).title
 
@@ -150,6 +158,7 @@ const resourceOf = (record: Type): DetachedResource.Type => {
 
 export {
   fromCopies,
+  inMergeOrder,
   isImplied,
   literalReferenceIfDerived,
   literalReferenceUnder,
