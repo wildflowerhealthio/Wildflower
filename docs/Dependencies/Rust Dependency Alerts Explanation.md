@@ -14,7 +14,11 @@ The helios crates behind the FHIR server (`helios-rest`, `-persistence`, `-auth`
 
 The symptom: `cargo update -p <crate>` leaves the crate `Unchanged` although `--verbose` shows a newer version available. `cargo update -p <crate> --precise <version>` then names the pin in its conflict message.
 
-What unblocks it: a helios release that declares `serde = "1"`, or a `[patch.crates-io]` fork with the pins relaxed, as the workspace already does for `tauri-plugin-background-service`. #1072 weighs the two, because the same pin holds Tauri at 2.11 (`tauri` 2.12 → `tauri-build` 2.7 → `cargo_toml` 1.0 → `serde` ≥ 1.0.228). One such release clears every serde row below at once: bump the helios pins in lockstep, `cargo update`, and the alerts close as the lockfile moves.
+The pin also holds helios itself at 0.2.8. From 0.2.9, `helios-persistence` needs `rusqlite` 0.41, whose `libsqlite3-sys` 0.39 only `diesel` 2.4 accepts, and `diesel_migrations` 2.4 reads its config through `toml` 1, which needs `serde_core` ≥ 1.0.225.
+
+Helios pins serde for a reason ([hfs 893ed7940](https://github.com/HeliosSoftware/hfs/commit/893ed7940)): its `FhirSerde` derive names `serde::__private::ser::FlatMapSerializer`, which serde 1.0.225 moved to a version-suffixed module, and `serde_json` after 1.0.144 rewrites a decimal's `E` exponent as `e`, which breaks `DecimalElement`'s exact-string round trip. So relaxing the pins alone doesn't build. Helios has to change that code first.
+
+What unblocks it: a helios release that makes those changes and declares `serde = "1"`, or a `[patch.crates-io]` fork that makes them, as the workspace already does for `tauri-plugin-background-service`. #1072 weighs the two, because the same pin holds Tauri at 2.11 (`tauri` 2.12 → `tauri-build` 2.7 → `cargo_toml` 1.0 → `serde` ≥ 1.0.228). One such release clears every serde row below at once: bump the helios pins in lockstep, `cargo update`, and the alerts close as the lockfile moves.
 
 ## Open alerts that cannot move
 
