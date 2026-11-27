@@ -112,6 +112,31 @@ describe('differencesOf', () => {
     })
   })
 
+  it('should find no difference when only narratives differ, or only the incoming record has one', () => {
+    // Arrange
+    const narrative = (said: string): { readonly status: 'generated'; readonly div: string } => ({
+      status: 'generated',
+      div: `<div xmlns="http://www.w3.org/1999/xhtml">${said}</div>`,
+    })
+    const incoming = detached(tyraWire('tyra', { text: narrative('Tyra, as one server tells it') }))
+    const keptWithNarrative = stored({
+      ...tyraWire('tyra', { text: narrative('Tyra, as another server tells it') }),
+      id: 'p-1',
+    })
+    const keptWithout = stored({ ...tyraWire('tyra'), id: 'p-2' })
+
+    // Act
+    const differences = [keptWithNarrative, keptWithout].map((kept) =>
+      summaryOf(differencesOf(incoming, kept, NO_RECORDS))
+    )
+
+    // Assert
+    expect(differences).toEqual([
+      { gapFilling: [], overwriting: [] },
+      { gapFilling: [], overwriting: [] },
+    ])
+  })
+
   it('should measure a gap against the kept record as an earlier merge’s taken fields leave it', () => {
     // Arrange
     const earlier = detached(tyraWire('tyra', { gender: 'male' }))

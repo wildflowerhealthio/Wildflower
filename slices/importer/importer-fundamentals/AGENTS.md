@@ -607,8 +607,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `normalizedFieldsOf` writes it, of the top-level names in `diffJson`'s
     paths over both sides' normalized fields that the incoming record has a
     value for (an empty list is none).
-    `resourceType`, `id`, `meta` and `identifier` are never a difference; the
-    identifiers a merge adds are `IdentifierUnion.missingFrom`. Beside it,
+    `resourceType`, `id`, `meta`, `identifier` and `text` are never a
+    difference: a narrative describes the resource it was written for, so a
+    merge never takes one as a field. The identifiers a merge adds are
+    `IdentifierUnion.missingFrom`. Beside it,
     **`ComparableReferences`** makes references compare by what they name:
     one with a type and a qualified identifier drops its literal, and a
     literal naming a record of the import (any of its copies' stage literals,
