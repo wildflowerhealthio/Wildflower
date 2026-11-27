@@ -11,26 +11,31 @@ per-resource include/edit) covers it.
 ## Shape
 
 - `src/settings-picker.tsx` — **`LifeLabsPdfSettingsPicker`** against
-  `SettingsPickerProps<LifeLabsPdfSettings>`: a free-text IANA zone field with
-  the two LifeLabs provinces' zones (`America/Toronto`, `America/Vancouver`)
-  suggested through a `datalist`. Every change is reported up verbatim (the
-  shell owns the settings); a name the runtime does not know is flagged inline
-  (`aria-invalid`, an alert) with the same `DateTime.zoneMakeNamed` check the
-  import's `parse` makes, so the reviewer sees the problem before the import
-  fails on it. Beside it, a `<select>` of `fhir-ca-infoway`'s health card
-  provinces (`HealthCardProvince.all`: Ontario, British Columbia and "Other
-  province", labelled by `HealthCardProvince.names`), read back through
-  `HealthCardProvince.is`.
-- `src/index.ts` — the package barrel: `LifeLabsPdfSettingsPicker`, the
-  `SUGGESTED_TIME_ZONES` list and `UNKNOWN_ZONE_MESSAGE` sentence the picker
-  renders, and the `SettingsPickerProps` type re-exported from
-  `importer-fundamentals` (the format-agnostic settings-picker contract).
+  `SettingsPickerProps<LifeLabsPdfSettings>`: `react-tundraish`'s
+  `TimeZoneField` with the two LifeLabs provinces' zones (`America/Toronto`,
+  `America/Vancouver`) suggested. The field keeps what is typed as its own
+  draft and reports only a zone the runtime recognizes (the
+  `isKnownTimeZone` rule the import's `checkTimeZone` applies), 400ms after
+  the last keystroke (flushed on blur or Enter): each report re-reads every
+  LifeLabs file, and a half-typed zone would make each report unreadable,
+  dropping its records from the import plan and the reviewer's choices on
+  them. An unrecognized name is flagged inline instead, and the import keeps
+  the last zone that was recognized. A zone set from outside while the picker
+  is mounted replaces what it shows; its own report echoing back does not.
+  Beside it, a `<select>` (tundra's `input-3`, the field's size) of
+  `fhir-ca-infoway`'s health card provinces (`HealthCardProvince.all`:
+  Ontario, British Columbia and "Other province", labelled by
+  `HealthCardProvince.names`), read back through `HealthCardProvince.is` and
+  reported as soon as it is picked. The picker is a fragment of the two
+  fields, so the container it is placed in spaces them.
+- `src/index.ts` — the package barrel: `LifeLabsPdfSettingsPicker` and the
+  `SUGGESTED_TIME_ZONES` list it offers.
 
 ## Layering
 
 Depends on `lifelabs-pdf-importer-core` (the settings type), `fhir-ca-infoway`
-(`HealthCardProvince`),
-`importer-fundamentals` (`SettingsPickerProps`), `effect`, and `react`. Never
+(`HealthCardProvince`), `importer-fundamentals` (`SettingsPickerProps`),
+`react-tundraish` (`TimeZoneField`, `Field`), and `react`. Never
 imports `importer-react` or a sibling format's UI package.
 
 ## References

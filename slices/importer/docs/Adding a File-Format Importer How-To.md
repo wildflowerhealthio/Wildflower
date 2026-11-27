@@ -215,8 +215,10 @@ shell mounts the format's `SettingsPicker` above its sections in the preview, an
 a change re-runs `decode` on that format's files from their retained bytes.
 Anything the user should be able to change about _how_ a file decodes is a
 setting — the LifeLabs report time zone and health card province, and DICOM's
-equipment time zone, live here. There is no post-decode review state besides
-the shell's per-resource selection.
+equipment time zone, live here. A time-zone setting is `react-tundraish`'s
+`TimeZoneField`, which reports only a zone the runtime recognizes, a short wait
+after the last keystroke, so a half-typed zone never re-runs `decode`. There is
+no post-decode review state besides the shell's per-resource selection.
 
 A format with nothing to set (HAR) has `null` settings: its `TSettings` and
 `defaultSettings` are `null`, its `decodeFileSet` ignores the argument, it

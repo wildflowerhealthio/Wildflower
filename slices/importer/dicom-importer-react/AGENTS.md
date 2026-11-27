@@ -13,20 +13,17 @@ package's `src/fhir/dates.ts`.
 
 ## Shape
 
-- `src/settings-picker.tsx` — a free-text zone field with a `datalist` of
-  likely zones, so any IANA name can be typed and the common ones need no
-  typing. The field holds keystrokes locally and reports up through
-  `react-kitchen-sink`'s `useDebouncedCallback` on a 400ms debounce (flushed
+- `src/settings-picker.tsx` — `react-tundraish`'s `TimeZoneField` over
+  `suggestedTimeZones()`, so any IANA name can be typed and the common ones
+  need no typing. The field keeps what is typed as its own draft and reports
+  only a zone the runtime recognizes, 400ms after the last keystroke (flushed
   on blur or Enter), because each report re-decodes every DICOM file in the
-  batch and re-runs the server comparison. It reports only a zone the runtime
-  can resolve: every half-typed prefix of `America/Toronto` is itself a name
-  the runtime rejects, and committing those would flip each file to "could not
-  be read" and back on the way through. An unresolvable name is flagged inline
-  (`aria-invalid` plus a `role="alert"` message) instead, and the decode
-  carries on under the last zone that did resolve. The draft seeds from
-  `settings.timeZone` on mount and is not re-seeded, so a commit echoing back
-  as a prop cannot clobber keystrokes typed since; a caller that must force a
-  zone in remounts the picker under a React `key`.
+  batch and re-runs the server comparison: every half-typed prefix of
+  `America/Toronto` is itself a name the runtime rejects, and reporting those
+  would flip each file to "could not be read" and back on the way through. An
+  unrecognized name is flagged inline instead, and the decode carries on under
+  the last zone that was recognized. A zone set from outside while the picker
+  is mounted replaces what it shows; its own report echoing back does not.
 - `src/time-zones.ts` — `NORTH_AMERICAN_TIME_ZONES` (one name per distinct
   civil zone, east to west, plus `UTC`) and `suggestedTimeZones()`, which puts
   this runtime's own zone first and drops the duplicate when it is already in
@@ -41,9 +38,8 @@ package's `src/fhir/dates.ts`.
 
 - **Depends on**: `dicom-importer-core` (the `DicomSettings` type and
   `runtimeTimeZone`), `dicom-react` (`DicomFilePreview` re-export),
-  `importer-fundamentals` (`SettingsPickerProps`),
-  `react-kitchen-sink` (`useDebouncedCallback`), `effect`
-  (`DateTime.zoneMakeNamed`, to tell a known zone from a typo), `react`.
+  `importer-fundamentals` (`SettingsPickerProps`), `react-tundraish`
+  (`TimeZoneField`), `react`.
 - **Depended on by**: `importer-react` (registry entry).
 
 ## References
