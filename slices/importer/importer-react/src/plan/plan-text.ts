@@ -5,8 +5,11 @@
  *
  * @packageDocumentation
  */
+import type { DicomSettings } from '@wildflowerhealthio/dicom-importer-core'
+import { HealthCardProvince } from '@wildflowerhealthio/fhir-ca-infoway'
 import type { BatchEntryOutcome } from '@wildflowerhealthio/fhir-r4/clients'
 import { type ExistingRecord, PlanTotals } from '@wildflowerhealthio/importer-fundamentals'
+import type { LifeLabsPdfSettings } from '@wildflowerhealthio/lifelabs-pdf-importer-core'
 import { Array as Arr, Data, Match, Option } from 'effect'
 
 import * as WriteFailure from './write-failure.ts'
@@ -502,6 +505,64 @@ const NO_REFERENCES = 'No references'
 const referencesDetail = (parts: readonly string[]): string =>
   parts.length === 0 ? NO_REFERENCES : parts.join(' · ')
 
+/** The summary of a file's settings, which opens them. */
+const SETTINGS_LABEL = 'Settings'
+
+/** What a DICOM image's settings say: its equipment's time zone, "America/Toronto". */
+const dicomSettingsLine = ({ timeZone }: DicomSettings): string => timeZone
+
+/**
+ * What a LifeLabs report's settings say: its printed clock's time zone and
+ * the province of the health card it prints, "America/Toronto · Ontario
+ * health card".
+ */
+const lifeLabsSettingsLine = ({ timeZone, healthCardProvince }: LifeLabsPdfSettings): string =>
+  `${timeZone} · ${HealthCardProvince.names[healthCardProvince]} health card`
+
+/**
+ * The muted line beside Settings: what the settings say, then, when the
+ * format brings several file sets, that they are one format's, "America/Toronto
+ * · for every DICOM image in this import".
+ */
+const settingsSummaryLine = ({
+  statement,
+  formatTitle,
+  formatFileSets,
+}: {
+  /** What the settings say (`dicomSettingsLine`, `lifeLabsSettingsLine`). */
+  readonly statement: string
+  /** The format's display title, as each of its sections is headed. */
+  readonly formatTitle: string
+  /** How many file sets of the format the import holds. */
+  readonly formatFileSets: number
+}): string =>
+  formatFileSets > 1 ? `${statement} · for every ${formatTitle} in this import` : statement
+
+/** Said while the files are read again under changed settings: why Import waits. */
+const REREADING_MESSAGE = 'Reading the files again under the new settings…'
+
+/**
+ * Said, above the import bar, when the settings of the formats titled
+ * `formatTitles` were not applied: "The new DICOM image settings were not
+ * applied. The import plan shown was read under the settings before, and
+ * Import writes that plan."
+ */
+const settingsNotAppliedMessage = (formatTitles: readonly string[]): string =>
+  `The new ${formatTitles.join(' and ')} settings were not applied. The import plan shown was read under the settings before, and Import writes that plan.`
+
+/** The action that reads the files again under the settings that were not applied. */
+const TRY_AGAIN_LABEL = 'Try again'
+
+/**
+ * Said, above the import bar, of the reviewer's choices a read again could
+ * not keep: "2 choices were not kept: their records changed under the new
+ * settings."
+ */
+const choicesNotKeptLine = (choices: number): string =>
+  choices === 1
+    ? '1 choice was not kept: its record changed under the new settings.'
+    : `${choices} choices were not kept: their records changed under the new settings.`
+
 /** The line under the complete heading: "47 new, 2 updated, 65 linked." */
 const completeLine = (counts: PlanTotals.Counts): string => `${writtenCounts(counts)}.`
 
@@ -523,6 +584,7 @@ export {
   CANCEL_IMPORT_LABEL,
   CHANGED_CHIP,
   CHOOSE_OTHER_FILES_LABEL,
+  choicesNotKeptLine,
   COMPLETE_HEADING,
   completeLine,
   CountLabel,
@@ -536,6 +598,7 @@ export {
   DIFFERENCES_HEADING,
   DONT_ADD_ANY_LABEL,
   DONT_ADD_LABEL,
+  dicomSettingsLine,
   dontAddOutcome,
   existingKicker,
   fileSetLine,
@@ -549,6 +612,7 @@ export {
   importButtonLabel,
   IMPORTED_KICKER,
   KICKER_SEPARATOR,
+  lifeLabsSettingsLine,
   NEEDS_A_DECISION_LINE,
   NO_IDENTIFIER,
   NO_MATCH_TAG,
@@ -573,6 +637,7 @@ export {
   referencePart,
   referencesDetail,
   REFUSED_MESSAGE,
+  REREADING_MESSAGE,
   refusalMessagesOf,
   RESET_TO_SUGGESTED_LABEL,
   sameAsExistingLine,
@@ -582,9 +647,13 @@ export {
   selectRecordLead,
   selectRecordTitle,
   setEveryLabel,
+  SETTINGS_LABEL,
+  settingsNotAppliedMessage,
+  settingsSummaryLine,
   SHOW_LABEL,
   showMoreLabel,
   summaryTitle,
+  TRY_AGAIN_LABEL,
   UNANSWERED_MESSAGE,
   undecidedRecordLine,
   UNNEEDED_LINE,
