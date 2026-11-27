@@ -1,0 +1,101 @@
+/*
+ * One FHIR resource type's rows in a section: the heading, its status line
+ * and its menu on one line, then the rows in one card: the listed rows,
+ * "Show more", then the fold line over the rows it folds.
+ */
+.record-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.record-group__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.record-group__titles {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.record-group__title {
+  margin: 0;
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-neutral-4);
+}
+
+.record-group__line {
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}
+
+.record-group__rows {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--radius-4);
+  box-shadow: var(--card-box-shadow);
+}
+
+/* A divider between items, none at the card's edges. */
+.record-group__item + .record-group__item {
+  border-top: 1px solid var(--color-divider);
+}
+
+.record-group__more,
+.record-group__fold {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  width: 100%;
+  padding: var(--space-5) var(--space-6);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-3);
+  text-align: start;
+  justify-content: flex-start;
+  cursor: pointer;
+}
+
+.record-group__more {
+  color: var(--app-accent-text);
+  font-weight: var(--font-weight-2);
+}
+
+.record-group__fold {
+  background: var(--color-sunken);
+}
+
+.record-group__more:focus-visible,
+.record-group__fold:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: -2px;
+}
+
+.record-group__more:disabled,
+.record-group__fold:disabled {
+  cursor: default;
+}
+
+.record-group__fold-line {
+  flex: 1;
+  color: var(--color-neutral-3);
+}
+
+.record-group__fold-action {
+  font-weight: var(--font-weight-2);
+  color: var(--app-accent-text);
+}

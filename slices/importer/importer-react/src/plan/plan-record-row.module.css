@@ -1,0 +1,4 @@
+/* A record decided automatically: a react-tundraish RecordRow; a Practitioner's identifier detail is mono. */
+.plan-record-row__identifier {
+  font-family: var(--font-mono);
+}

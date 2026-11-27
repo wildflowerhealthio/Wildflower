@@ -21,7 +21,9 @@ import { groupInOrder } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Data, Number as Num, Option, Order } from 'effect'
 
 import * as PlanDifferences from './plan-differences.ts'
+import { personReasonLine, recordReasonLine } from './plan-text.ts'
 import * as ReasonTag from './reason-tag.ts'
+import * as RecordText from './record-text.ts'
 import * as RowText from './row-text.ts'
 import type { Review } from './use-import-plan-page.ts'
 
@@ -255,6 +257,24 @@ const recordCountOf = (sections: readonly Section[]): number =>
 const keysOf = (group: Group): readonly RecordKey.Type[] =>
   rowsOfGroup(group).map((row) => plannedOf(row).record.key)
 
+/**
+ * A row's last line in a section `sectionTag` names: its reason tag
+ * (`ReasonTag.reasonTagOf`), for a person also its file and how many records
+ * reference it, then whether it is not needed.
+ */
+const reasonLineOf = (sectionTag: Section['_tag'], row: Row): string => {
+  const tag = ReasonTag.reasonTagOf(row.reason, row.suggestedDifferences, row.label)
+  const isUnneeded = row.label === 'Unneeded'
+  return sectionTag === 'People'
+    ? personReasonLine({
+        fileTitle: RecordText.fileTitleOf(plannedOf(row).record),
+        tag,
+        referrers: row.referrers,
+        isUnneeded,
+      })
+    : recordReasonLine({ tag, isUnneeded })
+}
+
 /** The listed rows a group shows, and how many more its next "Show more" adds; 0 when none is left. */
 interface ListedPage {
   readonly rows: readonly Row[]
@@ -275,6 +295,7 @@ export {
   listedPageOf,
   PAGE_SIZE,
   recordCountOf,
+  reasonLineOf,
   rowOrder,
   rowsOfGroup,
   Section,
