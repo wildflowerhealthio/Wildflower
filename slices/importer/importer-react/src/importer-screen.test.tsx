@@ -12,20 +12,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { ImporterScreen } from './importer-screen.tsx'
 import {
   CANCEL_IMPORT_LABEL,
+  CHANGED_CHIP,
   CHOOSE_OTHER_FILES_LABEL,
   COMPLETE_HEADING,
+  createAllLabel,
+  DECIDED_AUTOMATICALLY_HEADING,
+  DONT_ADD_ANY_LABEL,
   DONT_ADD_LABEL,
   GO_TO_RECORD_LABEL,
+  identifierMatchTag,
   IMPORT_MORE_FILES_LABEL,
+  NO_MATCH_TAG,
   NO_RECORDS_READ_SENTENCE,
   NOT_RECOGNISED_LINE,
   NOTHING_TO_IMPORT_SENTENCE,
+  onImportLabel,
   READ_FAILED_MESSAGE,
   READING_MESSAGE,
   REFUSED_MESSAGE,
+  RESET_TO_SUGGESTED_LABEL,
+  sameAsExistingLine,
   SAVE_AS_NEW_LABEL,
+  setEveryLabel,
+  SHOW_LABEL,
   UNREADABLE_LINE,
   USE_EXISTING_LABEL,
+  useRecordLabel,
 } from './plan/plan-text.ts'
 import { formatRegistry } from './registry.ts'
 import {
@@ -734,6 +746,249 @@ describe('ImporterScreen', () => {
     expect(writes()).toHaveLength(0)
   })
 
+  describe('Decided automatically', () => {
+    it('folds every record of a capture already imported behind the same as existing line, and writes nothing', async () => {
+      // Arrange — import the capture once, then choose it again
+      currentRunAuthed = routingServer({})
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+      await userEvent.click(await findImportButton())
+      await userEvent.click(await screen.findByRole('button', { name: IMPORT_MORE_FILES_LABEL }))
+      const written = writes().length
+
+      // Act
+      await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+
+      // Assert — no row listed, each group folded
+      const decided = await screen.findByRole('region', { name: DECIDED_AUTOMATICALLY_HEADING })
+      expect(within(decided).queryAllByRole('combobox')).toEqual([])
+      const folds = within(decided).getAllByRole('button', { name: /same as existing/u })
+      expect(folds.map((fold) => fold.textContent)).toEqual([
+        sameAsExistingLine(1) + SHOW_LABEL,
+        sameAsExistingLine(1) + SHOW_LABEL,
+        sameAsExistingLine(2) + SHOW_LABEL,
+      ])
+
+      // Act
+      const [patientFold, sourceFileFold, observationsFold] = folds
+      await userEvent.click(patientFold ?? document.body)
+      await userEvent.click(sourceFileFold ?? document.body)
+      await userEvent.click(observationsFold ?? document.body)
+
+      // Assert — every record's row, each the same as its existing record
+      expect(
+        within(decided)
+          .getAllByRole('combobox')
+          .map((choice) => rowTextOf(choice)[2])
+      ).toEqual([
+        `portal-session.har · ${identifierMatchTag(0)} · referenced by 2 records`,
+        identifierMatchTag(0),
+        identifierMatchTag(0),
+        identifierMatchTag(0),
+      ])
+      expect(folds.map((fold) => fold.getAttribute('aria-expanded'))).toEqual([
+        'true',
+        'true',
+        'true',
+      ])
+      expect(screen.queryByRole('button', { name: /^Import ·/u })).toBeNull()
+      expect(writes()).toHaveLength(written)
+    })
+
+    it('marks a row changed to Don’t add, moves the counts, says its referrers keep the display only, and resets it', async () => {
+      // Arrange
+      currentRunAuthed = routingServer({})
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(
+        screen.getByLabelText('Import file'),
+        harOf(tyraBanksHar(SERVER_A), 'a.har')
+      )
+      const tyra = await findRowChoice('Tyra Banks')
+      expect(rowTextOf(tyra)).toEqual([
+        'Tyra Banks',
+        '1990-01-02',
+        `a.har · ${NO_MATCH_TAG} · referenced by 2 records`,
+      ])
+
+      // Act
+      await userEvent.selectOptions(tyra, DONT_ADD_LABEL)
+
+      // Assert — the row changed, the counts moved, the Observations name her by display only
+      expect(rowTextOf(tyra)[0]).toBe(`Tyra Banks${CHANGED_CHIP}`)
+      const summary = screen.getByRole('region', { name: 'Summary' })
+      expect(countsIn(summary)['Create']).toEqual(['3'])
+      expect(fileLinesIn(summary)).toEqual([['a.har', '4 records · 3 new · 1 not added']])
+      const observations = groupOf('Observation')
+      expect(
+        within(observations)
+          .getAllByText(/^subject:/u)
+          .map((detail) => detail.textContent)
+      ).toEqual(['subject: Tyra Banks (display only)', 'subject: Tyra Banks (display only)'])
+
+      // Act
+      await userEvent.click(within(rowOf(tyra)).getByRole('button', { name: 'Reset' }))
+
+      // Assert
+      expect(rowTextOf(tyra)[0]).toBe('Tyra Banks')
+      expect(within(rowOf(tyra)).queryByRole('button', { name: 'Reset' })).toBeNull()
+      expect(tyra.value).toBe('save-as-new')
+      expect(fileLinesIn(summary)).toEqual([['a.har', '4 records · 4 new']])
+      expect(
+        within(observations)
+          .getAllByText(/^subject:/u)
+          .map((detail) => detail.textContent)
+      ).toEqual(['subject: Tyra Banks', 'subject: Tyra Banks'])
+    })
+
+    it('adds none of a group with Don’t add any, resets it, and writes it anew with Create all', async () => {
+      // Arrange — the capture imported once, then chosen again
+      currentRunAuthed = routingServer({})
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+      await userEvent.click(await findImportButton())
+      await userEvent.click(await screen.findByRole('button', { name: IMPORT_MORE_FILES_LABEL }))
+      const storedObservations = resourceWrites('Observation').map(({ id }) => id)
+      await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+      await screen.findByRole('heading', { name: /^Observation ·/u })
+      const observations = groupOf('Observation')
+      const summary = screen.getByRole('region', { name: 'Summary' })
+
+      // Act
+      await chooseFromGroupMenu(observations, 'Observation', DONT_ADD_ANY_LABEL)
+
+      // Assert — both listed and changed, none folded
+      expect(fileLinesIn(summary)).toEqual([
+        ['portal-session.har', '4 records · 2 linked · 2 not added'],
+      ])
+      expect(
+        within(observations)
+          .getAllByRole<HTMLSelectElement>('combobox')
+          .map((choice) => choice.value)
+      ).toEqual(['dont-add', 'dont-add'])
+      expect(within(observations).getAllByText(CHANGED_CHIP)).toHaveLength(2)
+      expect(within(observations).queryByRole('button', { name: /same as existing/u })).toBeNull()
+
+      // Act
+      await chooseFromGroupMenu(observations, 'Observation', RESET_TO_SUGGESTED_LABEL)
+
+      // Assert — folded again
+      expect(fileLinesIn(summary)).toEqual([['portal-session.har', '4 records · 4 linked']])
+      expect(within(observations).queryAllByRole('combobox')).toEqual([])
+
+      // Act
+      await chooseFromGroupMenu(observations, 'Observation', createAllLabel(2))
+      await userEvent.click(importButton())
+      await screen.findByRole('heading', { name: COMPLETE_HEADING })
+
+      // Assert — two new Observations, neither under a stored one's id
+      expect(screen.getByRole('status').textContent).toBe(
+        `✓Success: 2 new, 0 updated, 2 linked. ${IMPORT_MORE_FILES_LABEL}`
+      )
+      const rewritten = resourceWrites('Observation').slice(storedObservations.length)
+      expect(rewritten).toHaveLength(2)
+      expect(rewritten.map(({ id }) => storedObservations.includes(id))).toEqual([false, false])
+    })
+
+    it('keeps focus on a folded row’s choice when it is changed, and moves it to the choice on Reset', async () => {
+      // Arrange — the capture imported once, then chosen again, its Observations unfolded
+      currentRunAuthed = routingServer({})
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+      await userEvent.click(await findImportButton())
+      await userEvent.click(await screen.findByRole('button', { name: IMPORT_MORE_FILES_LABEL }))
+      await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+      await screen.findByRole('heading', { name: /^Observation ·/u })
+      const observations = groupOf('Observation')
+      await userEvent.click(within(observations).getByRole('button', { name: /same as existing/u }))
+      const [, second] = within(observations).getAllByRole<HTMLSelectElement>('combobox')
+      if (second === undefined) throw new Error('Two Observation rows are shown')
+
+      // Act
+      await userEvent.selectOptions(second, DONT_ADD_LABEL)
+
+      // Assert — listed first now, changed, and still focused
+      expect(within(observations).getAllByRole('combobox')[0]).toBe(second)
+      expect(document.activeElement).toBe(second)
+
+      // Act
+      await userEvent.click(within(rowOf(second)).getByRole('button', { name: 'Reset' }))
+
+      // Assert
+      expect(second.value).toBe('existing-0')
+      expect(document.activeElement).toBe(second)
+    })
+
+    it('says an identifier match whose field differs, offers its update selected, and writes it', async () => {
+      // Arrange — a stored Tyra Banks carrying her identifier off server A,
+      // with no gender; the capture gives her one
+      currentRunAuthed = routingServer({
+        stored: [
+          {
+            ...namesake('s-1', '2026-06-02T14:00:00Z'),
+            identifier: [{ system: `${SERVER_A.baseUrl}/Patient`, value: SERVER_A.patientId }],
+          },
+        ],
+      })
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+
+      // Act
+      await userEvent.upload(
+        screen.getByLabelText('Import file'),
+        harOf(tyraBanksHar(SERVER_A, { gender: 'female' }), 'a.har')
+      )
+
+      // Assert
+      const tyra = await findRowChoice('Tyra Banks')
+      expect(rowTextOf(tyra)).toEqual([
+        'Tyra Banks',
+        '1990-01-02 · female',
+        `a.har · ${identifierMatchTag(1)} · referenced by 2 records`,
+      ])
+      expect(identifierMatchTag(1)).toBe('Identifier match · 1 field differs')
+      expect(tyra.selectedOptions[0]?.textContent).toBe(
+        useRecordLabel({ title: 'Tyra Banks', updates: true })
+      )
+
+      // Act
+      await userEvent.click(importButton())
+      await screen.findByRole('heading', { name: COMPLETE_HEADING })
+
+      // Assert — the stored Patient written with her gender
+      const patients = writes().filter((write) => write.url.includes('/Patient/'))
+      expect(patients.map((write) => write.url)).toEqual(['/Patient/s-1'])
+      expect(JSON.parse(patients[0]?.body ?? '')).toMatchObject({ id: 's-1', gender: 'female' })
+    })
+
+    it('disables every row and group menu while the transaction is in flight', async () => {
+      // Arrange — a server that holds the transaction until released
+      let release = (): void => {}
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      currentRunAuthed = routingServer({ transactionsHeldUntil: held })
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+      const decided = await screen.findByRole('region', { name: DECIDED_AUTOMATICALLY_HEADING })
+
+      // Act
+      await userEvent.click(importButton())
+
+      // Assert
+      const controls = [
+        ...within(decided).getAllByRole('combobox'),
+        ...within(decided).getAllByRole('button', { name: /^Set every/u }),
+      ]
+      expect(controls).toHaveLength(6)
+      expect(controls.every((control) => control.matches(':disabled'))).toBe(true)
+
+      // Act
+      release()
+
+      // Assert
+      await screen.findByRole('heading', { name: COMPLETE_HEADING })
+    })
+  })
+
   it('imports several files, a DICOM study among them, as one plan in one transaction', async () => {
     // Arrange — a capture, and three files of one study: two instances of one
     // series, one of another
@@ -817,6 +1072,41 @@ const namesake = (id: string, lastUpdated: string): Record<string, unknown> => (
   name: [{ family: 'Banks', given: ['Tyra'] }],
   birthDate: '1990-01-02',
 })
+
+/** The choice of the row of Decided automatically titled `title`, once the plan is up. */
+const findRowChoice = (title: string): Promise<HTMLSelectElement> =>
+  screen.findByRole<HTMLSelectElement>('combobox', { name: onImportLabel(title) })
+
+/** The group of Decided automatically of `resourceType`: its heading's nearest ancestor holding its rows. */
+const groupOf = (resourceType: string): HTMLElement => {
+  let group: HTMLElement | null = screen.getByRole('heading', {
+    name: new RegExp(`^${resourceType} ·`, 'u'),
+  })
+  while (group !== null && group.querySelector('ul') === null) group = group.parentElement
+  if (group === null) throw new Error(`A ${resourceType} group holds its rows in a list`)
+  return group
+}
+
+/** The list item of the row `choice` is the choice of. */
+const rowOf = (choice: HTMLElement): HTMLElement => {
+  const row = choice.closest('li')
+  if (row === null) throw new Error('A row’s choice sits in a list item')
+  return row
+}
+
+/** The three lines of the row `choice` is the choice of: title (with its chips), detail, reason. */
+const rowTextOf = (choice: HTMLElement): readonly (string | null)[] =>
+  [...(rowOf(choice).querySelector('div > div')?.children ?? [])].map((line) => line.textContent)
+
+/** Pick `item` off the menu of the group of `resourceType`, within `group`. */
+const chooseFromGroupMenu = async (
+  group: HTMLElement,
+  resourceType: string,
+  item: string
+): Promise<void> => {
+  await userEvent.click(within(group).getByRole('button', { name: setEveryLabel(resourceType) }))
+  await userEvent.click(within(group).getByRole('menuitem', { name: item }))
+}
 
 /** The Needs a decision card titled `title`, once the plan is up. */
 const findDecisionCard = (title: string): Promise<HTMLElement> =>

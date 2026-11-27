@@ -15,8 +15,8 @@ import {
 } from '@wildflowerhealthio/importer-core'
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
+import { describeResource } from '../plan/describe-resource.ts'
 import type { FormatSettingsPicker, FormatWithComponents, SettingsPickerSlot } from '../registry.ts'
-import { describeResource } from './describe-resource.ts'
 import { DiffBadge } from './diff-badge.tsx'
 import { type ChooseMention, FormatReviewBody } from './format-review-body.tsx'
 import {

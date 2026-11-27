@@ -13,12 +13,18 @@ import {
 import {
   type ImportedCopy,
   ImportedRecord,
+  type ImportPlan,
+  locateReferences,
   PlannedRecord,
   type RecordChoice,
+  resolvePlan,
   StoredMatch,
   Suggestion,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Array as Arr, Option, Schema } from 'effect'
+import { Array as Arr, DateTime, Effect, Option, Schema } from 'effect'
+
+import * as PlanDifferences from './plan-differences.ts'
+import type * as PlanSections from './plan-sections.ts'
 
 /** The one record the file `fileName` brings, a copy of the resource of the wire `fields`, titled `title`. */
 const importedRecordOf = (
@@ -79,4 +85,23 @@ const tyraWire = (fields: object = {}): object => ({
   ...fields,
 })
 
-export { importedRecordOf, needingDecision, probableMatch, storedOf, tyraWire }
+/** When the tests' plans are read: the instant a person's name in use is judged at. */
+const READ_AT = DateTime.unsafeMake('2026-11-27T12:00:00Z')
+
+/** `plan` resolved now and reviewed as the page hook reviews it, read at {@link READ_AT}. */
+const reviewedPlanOf = (plan: ImportPlan.Type): PlanSections.ReviewedPlan => ({
+  resolution: Effect.runSync(resolvePlan(plan)),
+  differences: PlanDifferences.ofPlan(plan),
+  recordReferences: locateReferences(plan.records.map(({ record }) => record)),
+  readAt: READ_AT,
+})
+
+export {
+  importedRecordOf,
+  needingDecision,
+  probableMatch,
+  READ_AT,
+  reviewedPlanOf,
+  storedOf,
+  tyraWire,
+}

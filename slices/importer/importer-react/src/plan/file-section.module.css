@@ -1,0 +1,29 @@
+/* One file set's records decided automatically: the format over the files' names, then one group per type. */
+.file-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.file-section__heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.file-section__title {
+  margin: 0;
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-3);
+  line-height: var(--line-height-3);
+}
+
+.file-section__files {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-4);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

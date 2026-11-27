@@ -21,7 +21,11 @@ import { type JSX, useMemo } from 'react'
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
 import { DONT_LINK_LABEL } from '../identity/referent-text.ts'
-import { describeResource, type ResourceDescription, resourceTypeOf } from './describe-resource.ts'
+import {
+  describeResource,
+  type ResourceDescription,
+  resourceTypeOf,
+} from '../plan/describe-resource.ts'
 import { DiffBadge } from './diff-badge.tsx'
 import {
   mentionLead,
