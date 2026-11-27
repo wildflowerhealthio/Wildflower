@@ -8,7 +8,6 @@ export {
   StoredResourceSchema,
 } from './fhir-resource-with-id.ts'
 export * as LogicalReference from './logical-reference.ts'
-export * as PersonName from './person-name.ts'
 export * as DateSearchParam from './search/date-search-param.ts'
 export * as StringSearchParam from './search/string-search-param.ts'
 export * as TokenSearchParam from './search/token-search-param.ts'

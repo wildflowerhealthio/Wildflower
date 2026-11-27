@@ -4,13 +4,10 @@
  *
  * @packageDocumentation
  */
-import {
-  type LogicalReference,
-  literalReferenceOf,
-  PersonName,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import { HumanName } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type LogicalReference, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
-import { Array as Arr, Effect, HashMap, Match, Option } from 'effect'
+import { Array as Arr, type DateTime, HashMap, Match, Option } from 'effect'
 
 import type * as ImportPlan from '../entities/import-plan.ts'
 import * as ImportedCopy from '../entities/imported-copy.ts'
@@ -24,14 +21,21 @@ import { locateReferences } from './locate-references.ts'
 
 /**
  * What a stub to `record` shows when the reference has no `display` of its
- * own: the person's name for a Patient or a Practitioner
- * (`PersonName.maybeDisplayName`, read at the clock's now); `None` for any
- * other record, or a person with no name. Never the record's title: the
- * title of a record keyed by identifier is the literal it would be written
- * under, and a record not added is never written there.
+ * own: for a Patient or a Practitioner, the name the person goes by at `now`
+ * (`HumanName.displayName`); `None` for any other record, or a person with
+ * no name. Never the record's title: the title of a record keyed by
+ * identifier is the literal it would be written under, and a record not
+ * added is never written there.
  */
-const stubDisplayOf = (record: ImportedRecord.Type): Effect.Effect<Option.Option<string>> =>
-  PersonName.maybeDisplayName(ImportedRecord.resourceOf(record))
+const stubDisplayOf = (
+  now: DateTime.DateTime,
+  record: ImportedRecord.Type
+): Option.Option<string> => {
+  const resource = ImportedRecord.resourceOf(record)
+  return resource.resourceType === 'Patient' || resource.resourceType === 'Practitioner'
+    ? Option.fromNullable(HumanName.displayName(resource.name, now))
+    : Option.none()
+}
 
 /**
  * Where a reference to `planned` lands, by its effective choice: a literal
@@ -39,34 +43,31 @@ const stubDisplayOf = (record: ImportedRecord.Type): Effect.Effect<Option.Option
  * existing), a stub when it is not added, nothing when it has no choice.
  */
 const targetOf = (
-  planned: PlannedRecord.Type,
-  ids: HashMap.HashMap<RecordKey.Type, string>
-): Effect.Effect<Option.Option<ReferenceTable.Target>> =>
-  Option.match(PlannedRecord.effectiveChoice(planned), {
-    onNone: () => Effect.succeed(Option.none()),
-    onSome: (choice) =>
+  now: DateTime.DateTime,
+  ids: HashMap.HashMap<RecordKey.Type, string>,
+  planned: PlannedRecord.Type
+): Option.Option<ReferenceTable.Target> =>
+  Option.flatMap(
+    PlannedRecord.effectiveChoice(planned),
+    (choice): Option.Option<ReferenceTable.Target> =>
       Match.value(choice).pipe(
         Match.tag('DontAdd', () =>
-          Effect.map(stubDisplayOf(planned.record), (display) =>
-            Option.some(
-              ReferenceTable.Stub({
-                display,
-                keyedBy: ImportedRecord.logicalReferenceIfKeyedByIdentifier(planned.record),
-              })
-            )
+          Option.some(
+            ReferenceTable.Stub({
+              display: stubDisplayOf(now, planned.record),
+              keyedBy: ImportedRecord.logicalReferenceIfKeyedByIdentifier(planned.record),
+            })
           )
         ),
         Match.orElse(() =>
-          Effect.succeed(
-            Option.map(HashMap.get(ids, planned.record.key), (id) =>
-              ReferenceTable.Literal({
-                literalReference: ImportedRecord.literalReferenceUnder(planned.record, id),
-              })
-            )
+          Option.map(HashMap.get(ids, planned.record.key), (id) =>
+            ReferenceTable.Literal({
+              literalReference: ImportedRecord.literalReferenceUnder(planned.record, id),
+            })
           )
         )
-      ),
-  })
+      )
+  )
 
 /** A record of the plan beside the target a reference to it lands on. */
 interface RecordTarget {
@@ -120,10 +121,10 @@ const notInImportTargetsOf = (
 /**
  * Where a reference to each record of `plan` lands, as a reference table.
  *
+ * @param now - The instant the name a stub shows a person by is judged at
  * @param plan - The plan, its choices made
  * @param ids - The id each record that is written or linked is written under
  *   or links to
- * @returns The table, reading the clock for the name a stub shows a person by
  *
  * @remarks
  * Each record's target ({@link targetOf}) is where a reference names it by:
@@ -138,32 +139,29 @@ const notInImportTargetsOf = (
  * found for it by identifier.
  */
 const landReferences = (
+  now: DateTime.DateTime,
   plan: ImportPlan.Type,
   ids: HashMap.HashMap<RecordKey.Type, string>
-): Effect.Effect<ReferenceTable.Type> =>
-  Effect.map(
-    Effect.forEach(plan.records, (planned) =>
-      Effect.map(
-        targetOf(planned, ids),
-        Option.map((target): RecordTarget => ({ record: planned.record, target }))
-      )
-    ),
-    (targets) => {
-      const recordTargets = Arr.getSomes(targets)
-      const recordReferences = locateReferences(plan.records.map(({ record }) => record))
-      return ReferenceTable.make({
-        logicalReferences: [
-          ...namedTargetsOf(recordReferences, recordTargets),
-          ...notInImportTargetsOf(recordReferences, plan.storedMatch),
-        ],
-        stageLiterals: recordTargets.flatMap(({ record, target }) =>
-          record.copies.map((copy) => ({ stageLiteral: ImportedCopy.stageLiteralOf(copy), target }))
-        ),
-        sourceUrls: Arr.filterMap(recordTargets, ({ record, target }) =>
-          Option.map(ImportedRecord.sourceUrlOf(record), (sourceUrl) => ({ sourceUrl, target }))
-        ),
-      })
-    }
+): ReferenceTable.Type => {
+  const recordTargets = Arr.filterMap(plan.records, (planned) =>
+    Option.map(targetOf(now, ids, planned), (target): RecordTarget => ({
+      record: planned.record,
+      target,
+    }))
   )
+  const recordReferences = locateReferences(plan.records.map(({ record }) => record))
+  return ReferenceTable.make({
+    logicalReferences: [
+      ...namedTargetsOf(recordReferences, recordTargets),
+      ...notInImportTargetsOf(recordReferences, plan.storedMatch),
+    ],
+    stageLiterals: recordTargets.flatMap(({ record, target }) =>
+      record.copies.map((copy) => ({ stageLiteral: ImportedCopy.stageLiteralOf(copy), target }))
+    ),
+    sourceUrls: Arr.filterMap(recordTargets, ({ record, target }) =>
+      Option.map(ImportedRecord.sourceUrlOf(record), (sourceUrl) => ({ sourceUrl, target }))
+    ),
+  })
+}
 
 export { landReferences }

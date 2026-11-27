@@ -1,7 +1,7 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, HashMap, HashSet, Option } from 'effect'
+import { DateTime, HashMap, HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type * as ImportPlan from '../entities/import-plan.ts'
@@ -31,6 +31,9 @@ import { planWith } from './resolve-plan.test-helpers.ts'
  * every spelling a copy names a record by, and what a stub shows.
  */
 
+/** The instant a stub's name for a person is judged at. */
+const NOW = DateTime.unsafeMake('2026-01-01T00:00:00Z')
+
 type Ids = readonly (readonly [ImportedCopy.Type, string])[]
 
 /** The ids `ids` gives each copy's record, by key. */
@@ -42,7 +45,7 @@ const resolvedBy = <TResource extends DetachedResource.Type>(
   plan: ImportPlan.Type,
   ids: Ids,
   resource: TResource
-): TResource => ReferenceTable.resolve(Effect.runSync(landReferences(plan, idsOf(ids))), resource)
+): TResource => ReferenceTable.resolve(landReferences(NOW, plan, idsOf(ids)), resource)
 
 /** The reference `resource` holds at `path` once resolved by the table `plan` lands. */
 const landedAt = (

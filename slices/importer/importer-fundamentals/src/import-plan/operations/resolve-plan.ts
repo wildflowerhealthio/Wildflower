@@ -7,7 +7,7 @@
  */
 import { randomResourceId } from '@wildflowerhealthio/fhir-r4-adoption'
 import { type FhirResourceWithId, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Effect, HashMap, HashSet, Match, Option, Order } from 'effect'
+import { Array as Arr, DateTime, Effect, HashMap, HashSet, Match, Option, Order } from 'effect'
 
 import type * as ImportPlan from '../entities/import-plan.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
@@ -158,9 +158,9 @@ const leftOutRecordOf = (
  * @param plan - The plan, the reviewer's choices made
  * @param mintId - Mints the id of a record saved as new over a stored record
  *   under the id the import stage gave it; random outside tests
- * @returns The resolution. It mints ids and reads the clock (for the name a
- *   stub shows a person by, `landReferences`), so one resolution is the one
- *   a preview shows and the write writes.
+ * @returns The resolution. It mints ids and reads the clock once (for the
+ *   name a stub shows a person by, `landReferences`), so one resolution is
+ *   the one a preview shows and the write writes.
  *
  * @remarks
  * Every record gets its id ({@link idsOf}), the plan's choices say where a
@@ -186,9 +186,9 @@ const resolvePlan = (
   plan: ImportPlan.Type,
   mintId: () => string = randomResourceId
 ): Effect.Effect<PlanResolution.Type> =>
-  Effect.gen(function* () {
+  Effect.map(DateTime.now, (now) => {
     const ids = idsOf(plan, mintId)
-    const referenceTable = yield* landReferences(plan, ids)
+    const referenceTable = landReferences(now, plan, ids)
     const records = plan.records.map((planned): PlanResolution.RecordFacts => ({
       planned,
       id: HashMap.get(ids, planned.record.key),
@@ -199,12 +199,13 @@ const resolvePlan = (
       referenceTable
     )
     const keptRecords = keptRecordsOf(records.filter((record) => !isLeftOut(record, named)))
-    const resolved = records.map((record) =>
-      isLeftOut(record, named)
-        ? leftOutRecordOf(record, referenceTable)
-        : PlanResolution.makeRecord(record, writtenOf(record, keptRecords, referenceTable))
+    return PlanResolution.make(
+      records.map((record) =>
+        isLeftOut(record, named)
+          ? leftOutRecordOf(record, referenceTable)
+          : PlanResolution.makeRecord(record, writtenOf(record, keptRecords, referenceTable))
+      )
     )
-    return PlanResolution.make(resolved)
   })
 
 export { resolvePlan }
