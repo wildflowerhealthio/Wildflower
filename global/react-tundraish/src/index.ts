@@ -71,4 +71,10 @@ export { SettingsIcon } from './settings-icon.tsx'
 export { SettingsLink, type SettingsLinkProps } from './settings-link.tsx'
 export { StatusBadge, type StatusBadgeProps, type StatusTone } from './status-badge.tsx'
 export { TextField, type TextFieldProps } from './text-field.tsx'
+export {
+  TIME_ZONE_COMMIT_DELAY_MS,
+  TimeZoneField,
+  UNKNOWN_TIME_ZONE_MESSAGE,
+  type TimeZoneFieldProps,
+} from './time-zone-field.tsx'
 export { ToggleSwitch, type ToggleSwitchProps } from './toggle-switch.tsx'
