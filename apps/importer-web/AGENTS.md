@@ -125,8 +125,9 @@ system/ImagingStudy.cruds
 
 SMART v2 letter granularity: `.cruds` (create + read + update + delete + search)
 on every handled type. The app searches for existing archives and reads one back
-by id (`DocumentReference`), searches and lists the server's `Patient`s and
-`Practitioner`s for the review's identity map (by `identifier`, and paged), and
+by id (`DocumentReference`), searches the server's records of every type the
+import plan matches against (by `identifier`, and Patients and Practitioners
+by name), and
 every write is a `PUT /{type}/{uuid}`
 update-as-create; `create` and `delete` are granted too even though the flow
 issues neither today, so a server that gates update-as-create on `create`
@@ -134,13 +135,12 @@ accepts the writes and the set has room to grow.
 
 - **Why writes at all.** Importing means persisting what a captured session
   contained. The auto-extracted write set is the archive `DocumentReference` the
-  confirm step uploads, plus the `Patient` and `Observation` resources the
+  import writes, plus the `Patient` and `Observation` resources the
   registered `fhir-r4` source extracts out of a capture. `Practitioner`,
   `DiagnosticReport`, `Medication`, `MedicationRequest`, `MedicationDispense`,
   `ServiceRequest`, and `ImagingStudy` are also granted (`0009`): the `fhir-r4`
-  source does not yet recognize those from HAR traffic, so today they reach the
-  store only through the preview's inline JSON editor — a resource the reviewer
-  hand-authors or edits into one of those types.
+  source does not recognize those from HAR traffic, but the pharmacy sources,
+  the LifeLabs reports and the DICOM studies decode to them.
 - **Why `system/` and not `patient/`.** A HAR archive carries no `subject` — it
   records a browsing session, not a clinical fact about a person — so it is
   unreachable through patient context and a `patient/` scope would match
@@ -188,7 +188,8 @@ accepts the writes and the set has room to grow.
   from `vp check`, which is CI's gate and resolves the same way the bundler does.
 - **The app owns no importing or anonymizing surface.** `ImporterScreen` takes
   no props; `AnonymizerScreen` takes only the `serverSource` slot. Each owns
-  every level below it (source pick → preview → confirm/download → results).
+  every level below it (source pick → import plan → import, or source pick →
+  preview → download).
   This app renders a heading, the Import | Anonymize tab strip, and the one
   screen the open tab's route mounts. Splitting a flow across that boundary opens
   two surfaces at once, and the accessibility tree hides it. Don't re-create any
@@ -198,7 +199,7 @@ accepts the writes and the set has room to grow.
   navigation inside it, never a rebuild. Don't key the router, or anything
   above it, on the open tab.
 - **The unselected tab is unmounted.** The two screens hold their own state
-  (`AnonymizerScreen`'s pick, `ImporterScreen`'s read/confirm), and switching
+  (`AnonymizerScreen`'s pick, `ImporterScreen`'s import plan), and switching
   tabs is a fresh mount of the other route, not a `display: none` swap — the
   accessibility tree only carries the surface the user is on, and a flip-back
   opens fresh at the picker. Do not lift screen state into the app to preserve
@@ -210,7 +211,7 @@ accepts the writes and the set has room to grow.
   stubbing the context here too.
 - **jsdom's `TextEncoder` returns a foreign-realm `Uint8Array`** that the source
   file codec's `Uint8ArrayFromSelf` schema rejects on `instanceof`. Any test that
-  drives the confirm step's local upload needs the `RealmSafeTextEncoder`
+  mints a source file from a local pick needs the `RealmSafeTextEncoder`
   `vi.stubGlobal` workaround (copied from `importer-screen.test.tsx`); it is a
   jsdom artifact, not a bug in the codec.
 - **`vp test` for this package needs the workspace-local binary**
@@ -297,8 +298,9 @@ workspace `source` condition at bundle time.
 - The auth wiring in isolation — prefix derivation, the relative/absolute split,
   and that an absent token sets no header — is
   [`fhir-r4-react`'s `smart-runtime.test.ts`](../../slices/fhir/fhir-r4-react/src/smart/smart-runtime.test.ts).
-- The import flow's own semantics — zero writes to reach a preview, `meta.source`
-  on every written resource, partial results, cancel — are
+- The import flow's own semantics — zero writes to reach the import plan,
+  one transaction, `meta.source` on every written resource, a refused
+  transaction keeping the plan, cancel — are
   [`importer-react`'s `importer-screen.test.tsx`](../../slices/importer/importer-react/src/importer-screen.test.tsx).
 - `app-root.test.tsx` — that `AppRoot` mounts the shared shell as the Importer
   (the landing `h1` is `APP_DESCRIPTIONS.importer.name`). The chrome gate itself
@@ -308,7 +310,7 @@ workspace `source` condition at bundle time.
 - `app.test.tsx` — the whole tree over a recording stub transport, through the
   real `buildSmartRouterContext`. It walks a synthesized HAR (built with
   `web-trace-core`'s `emitHar` + `test-helpers`, the established pattern —
-  don't reach into `har-importer-core`'s fixture) from pick to review to confirm,
+  don't reach into `har-importer-core`'s fixture) from pick to the import plan to Import,
   and asserts what only this layer can see: every read **and every write** is
   addressed to the FHIR base and carries `Bearer …`, and the resource types
   written are exactly the ones `config.ts`'s scope string covers. Also pins the
@@ -330,7 +332,7 @@ workspace `source` condition at bundle time.
 - [importer-react AGENTS.md](../../slices/importer/importer-react/AGENTS.md) —
   the screen this app mounts, and its traps.
 - [importer slice AGENTS.md](../../slices/importer/AGENTS.md) — the
-  preview-then-confirm opt-in seam.
+  opt-in seam between reading files and writing them.
 - [Apps Explanation](../../docs/Apps/Explanation.md) — how a first-party app is
   registered and launched from the published site, and how the debug-only `-dev`
   rows work.

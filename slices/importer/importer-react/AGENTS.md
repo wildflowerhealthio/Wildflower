@@ -1,22 +1,22 @@
 # AGENTS.md — slices/importer/importer-react
 
 The browser UI adapter of the importer slice, and its **shell**: the whole
-pick-review-confirm flow, plus the React half of the closed format registry.
-One surface a host app mounts, reading the authed runner out of router context:
+flow from choosing files to writing their import plan, plus the React half of
+the closed format registry. One surface a host app mounts, reading the authed
+runner out of router context:
 
-- **`ImporterScreen`** — pick one or more files (local files dropped or
-  chosen, or source files already on the device's FHIR server), review
-  exactly what every format would write in one combined, **generalized**
-  view — each format's decoded sections with per-resource include/edit, under
-  its own settings form when it has settings — confirm once to write the
-  reviewed, included resources across the batch (every file's source file among
-  them), and read the per-format results. Every source picks a **batch**:
-  several local files, several folder entries, several server rows.
+- **`ImporterScreen`** — choose one or more files (local files dropped or
+  chosen, or source files already on the FHIR server), read them into an
+  **import plan** against the existing records, review the plan on the
+  import plan page, and write it as one transaction. Every source picks a
+  **batch**: several local files, several folder entries, several server
+  rows.
 
-The whole read half — splitting a batch by the format that claims each pick, running each format's
-`decode`, re-decoding under new settings, and planning a format's write — is
-`importer-core`'s, and pure. This package is the React state, the views, and
-the two authed actions around it.
+The read and the plan — splitting a batch by the format that claims each
+pick, running each format's `decode`, matching the records against the store,
+suggesting a choice per record and resolving the plan — are `importer-core`'s
+and `importer-fundamentals`', and pure but for the store's searches. This
+package is the React state, the views, and the write around them.
 
 The anonymize surface is the anonymizer's shell
 ([anonymizer-react](../../anonymizer/anonymizer-react/AGENTS.md)), not part of
@@ -32,29 +32,28 @@ walkthrough itself is the host's.
 
 `importer-react` is an adapter and follows the rule in
 [slices/AGENTS.md](../../../slices/AGENTS.md): it depends on its sources, never the reverse.
-It depends on `importer-core` (the importer registry, `readBatch` /
-`redecodeFormat` / `planWrite`, and the
-`DecodedBatch` and `ReviewGroup` model), `importer-fundamentals` (the `PickedFile`
-vocabulary, the `FormatDecode`, `ReviewRow` and `SectionedList` shapes, the
-identity map, and the pure
-`StagedImport` model), each format's
-React package for its settings picker only (`lifelabs-pdf-importer-react`,
-`dicom-importer-react`; HAR has no settings and no React package), `fhir-r4`
-(the typed client, `persistTransactionBundle`, and the server-diff classifier),
-`fhir-r4-react` (the authed runner and the slice runtime layer),
+It depends on `importer-core` (the importer registry, `readBatchCopies`,
+`planImport` and `findStoredMatch`, and the `readBatch` / `redecodeFormat` /
+`planWrite` the unmounted review runs), `importer-fundamentals` (the
+`PickedFile` vocabulary, `FormatDecode`, and the import plan: `ImportPlan`,
+`resolvePlan`, `countTotals`, `PlanTotals`, `ImportWrite`, `ImportedRecord`),
+each format's React package for its settings picker only
+(`lifelabs-pdf-importer-react`, `dicom-importer-react`; HAR has no settings and
+no React package), `fhir-r4` (the typed client, `persistTransactionBundle`,
+`HumanName`), `fhir-r4-react` (the authed runner and the slice runtime layer),
 `positioned-text-web` (the pdfjs `PositionedTextExtractor` layer the read runs
 under), and `react-tundraish`. It names no format's core package and no
-`web-trace-core` at runtime — HAR fixtures in `importer-screen.test.tsx` are the
+`web-trace-core` at runtime — HAR fixtures in `screen-fixtures.ts` are the
 only place `http-archive` and `web-trace-core` appear at all.
 
 The seam between this package and a format is its **`FileImporter`** (reached
-through `importer-core`'s registry) and the `StagedImport` model: the read half
-runs `readBatch` (no writes) into one result per format — sections + notes —
-the review drives `StagedImport`'s pure per-resource transitions over the
-flattened sections, and the write half runs the resources `planWrite`
-includes, the batch's linked records among them, through one
-`persistTransactionBundle`. If a component needs more than those expose, widen them
-rather than reaching around them.
+through `importer-core`'s registry) and the import plan: the read runs
+`readBatchCopies` (no writes) into each claimed format's copies of records,
+`planImport` matches them against the store and suggests a choice per record,
+`resolvePlan` resolves it, and the write sends the resolution's
+`ImportWrite.Ready` resources through one `persistTransactionBundle`. If a
+component needs more than those expose, widen them rather than reaching around
+them.
 
 **Presentation and interaction only.** Nothing here parses a file, mints or
 encodes a source file, runs entities, or writes resources. The parsers, the
@@ -84,31 +83,72 @@ This module exports **only what it adds**: `defaultFormatSettings`,
 `formatKinds`, `FormatKind` and `FormatSettings` are `importer-core`'s and are
 imported from there directly, since re-exporting them here gave the package two
 routes to the same symbol and it used both. There is no format-specific review UI slot: the
-`PreviewPanel` renders every format the same way, from its decoded sections.
+import plan page shows every format the same way, from its records.
 The importer has no HTTP wire union to derive, so there is no separate
 `importer-registry` package.
 
 ## Module layout
 
-- **`src/importer-screen.tsx`** — the flow, top to bottom. Reads everything from
-  router context (no props): `SourcePicker` → `useImportRun` → `PreviewPanel` →
-  `useConfirmImport` → `ImportResults`. It holds each format's
-  `StagedImport.Selection`, keyed by format kind (absent = untouched), which
-  holds only what the reviewer did. What a row they never ticked or unticked
-  does is the default, derived afresh from the batch, its verdicts and the
-  edits on every change (`formatExcludedByDefault`): every `unchanged`
-  resource and every one left without a patient as it will be written (its
-  edit, else its resolved resource; `importer-core`'s
-  `keysWithoutPatientOf`) is out, so an untouched format imports
-  what its decode yielded that is new and has a patient, and a link that
-  gives a row its patient takes it back in. The panel and the confirm read
-  the same `excludedByDefaultFor`. A referent's link change reverts the edit
-  override on every row holding a copy of the referent's resource, in every
-  format, since that row now writes another record. A cancel or "import
-  another" discards the read, every review edit, and any confirm outcome, and
-  returns to the picker; the per-format settings persist across it.
+- **`src/importer-screen.tsx`** — the flow, top to bottom: one exhaustive
+  `Match` over the page hook's state (`useImportPlanPage`), one component per
+  case. Choosing files is the `SourcePicker`; reading is a status line; a
+  failed search is an alert with **Choose other files**; reviewing and
+  importing are the `ImportPlanPage`; imported is the `ImportCompleteNotice`.
+  It reads everything from router context (no props).
+- **`src/plan/`** — the import plan page.
+  - `use-import-plan-page.ts` — `useImportPlanPage`, the page's logic. Its
+    state is `ImportPlanPageState`, a `Data.TaggedEnum`: `ChoosingFiles`,
+    `Reading`, `ReadFailed`, `Reviewing { review, writeFailure }`,
+    `Importing { review }` and `Imported { review }`. A `Review` is the batch
+    as read (`BatchCopies`), its `plan`, the plan's `resolution` with its
+    `totals` (`countTotals`) and its `write` (`ImportWrite.of`), and `readAt`,
+    the instant the files were read, at which a person's name in use is
+    judged. `reviewOf` builds one from a plan and is the one way a plan
+    becomes a `Review`, so the hook owns the totals and the write and the
+    components only read them. `read(picks)` runs `readBatchCopies` under
+    the default format settings, `planImport` with `findStoredMatch`, and
+    `reviewOf`, through `useRunAuthed`. `importPlan()` writes the review's
+    `ImportWrite.Ready` resources as one `persistTransactionBundle`: every
+    outcome ok is `Imported`; otherwise it is `Reviewing` again with its
+    `writeFailure` (`write-failure.ts`: `Refused`, or `Unanswered` when an
+    outcome got no readable answer) and the plan untouched. `startOver()`
+    goes back to `ChoosingFiles`. The state lives in a ref beside the React
+    state, written together, so an action reads what the next action needs;
+    one ticket drops a stale read or write. Any failure of a run, a failed
+    search, a defect or the runner's own rejection, is logged
+    (`Effect.logError`): a read ends in `ReadFailed`, which holds nothing,
+    since nothing in a failure is worth showing a reviewer, and a write goes
+    back to `Reviewing` with `Unanswered`. A write that was sent invalidates
+    the source-file list and the stored records before the stale check,
+    since it may have landed either way.
+  - `write-failure.ts` — the `WriteFailure` namespace: why a write did not
+    end in an import, read off its outcomes (`fromOutcomes`).
+  - `import-plan-page.tsx` — the `Reviewing` / `Importing` view: one column
+    at most 720px wide holding the summary, the import bar and a centred
+    **Cancel import**, which is gone while the write is in flight.
+  - `summary-card.tsx` — the kicker, "N records from M files" (M counts every
+    picked file, those nothing was read from included), the four counts
+    (Create, Update, Link to existing, Needs a decision, the last
+    warning-coloured with "N open" while any record has no choice; two
+    columns below 768px, four from it), one line per file set, and one red
+    line per unreadable or unrecognised file.
+  - `import-bar.tsx` — the sticky bar: the sentence and the Import button
+    ("Import · 47 new, 2 updated, 65 linked", described by the sentence), or
+    a warning line naming the first record with no choice and the button
+    disabled, or, when nothing would be written, a sentence alone (one for a
+    plan whose records are all the same as existing ones, one for files no
+    record could be read from). Why the last write did not end in an import
+    is said above it. Below 768px the bar's own box goes (`display:
+    contents`), so the sentence scrolls with the page and only the action's
+    box sticks; the warning line sits inside the action, so it sticks with
+    the button it disables.
+  - `import-complete-notice.tsx` — the heading, one line of what was
+    created, updated and linked, and **Import more files**.
+  - `plan-text.ts` — every sentence, label and plural the page shows.
+    `record-text.ts` — `RecordText.titleOf`, a record's title in a sentence:
+    a Patient's or Practitioner's name, else the plan's title for it.
 - **`src/registry.ts`** — the React half of the closed format registry (above).
-- **`src/identity/`** — the identity map in the screen.
+- **`src/identity/`** — **Not mounted, awaiting #1466.** The identity map in the old review.
   The review of a batch is one hook composed of three, each in its own file:
   - `use-link-choice-review.ts` — `useLinkChoiceReview`
     discovers the batch's referents (`discoverReferents`) and memoizes the
@@ -211,7 +251,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   - `referent-text.ts` — the block's strings, which say "server", never
     "device": the importer can be pointed at any FHIR server.
 
-- **`src/run/`** — the two hooks that drive the flow's halves, held apart from
+- **`src/run/`** — **Not mounted, awaiting #1466.** The two hooks that drive the old review's halves, held apart from
   the view they feed: the read (`use-import-run.ts`) and the opt-in write
   (`use-confirm-import.ts`). The confirm hook is the write half and does not
   belong under `preview/`.
@@ -227,7 +267,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   `DecodeRequirements` there, `positioned-text-web`'s
   `positionedTextExtractorPdfjs` for the LifeLabs decode. Grouping, decoding,
   and folding outcomes all happen in the core.
-- **`src/preview/`** — the review view and the state it needs.
+- **`src/preview/`** — **Not mounted, awaiting #1466.** The old review's view and the state it needs.
   `use-server-diff.ts` pre-classifies every previewed resource against its
   stored copy (`new` / `unchanged` / `changed`) for the row badges and the "already
   there, so out by default" rule (`unchangedKeysOf`), keyed **by review group and then by resource
@@ -330,7 +370,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   `Schema.decodeUnknown(FhirResourceSchema)`, and refuses the edit unless it
   parses and preserves `resourceType` / `id`; `describe-resource.ts` is the
   pure one-line summary per resource type.
-- **`src/results/`** — the outcome. `import-outcome.ts` is the pure fold: the
+- **`src/results/`** — **Not mounted, awaiting #1466.** The old review's outcome. `import-outcome.ts` is the pure fold: the
   per-format `ImportOutcome` and the `FileImportResult`/`BatchOutcome`
   aggregate (`summarizeBatch`, `isPartialBatch`) — the `files` and, beside
   them, the `linked` records' results, counted as resources and never as
@@ -387,40 +427,53 @@ The importer has no HTTP wire union to derive, so there is no separate
   The continuation cursor comes out of a bundle's `next` link through
   `fhir-r4/clients`' `nextPageToken` (see the trap); `keys.ts` holds the
   query-key roots.
-- **The source file is a reviewed resource the import stage minted.** Every
-  pick's source file `DocumentReference` is minted by `importer-core`'s import
-  stage, which `readBatch` and `redecodeFormat` run over every format's
-  `decode`, under that format's constants, and arrives as its own
-  "Source file" section ahead of that file's extracted ones, keyed
-  `<pick id>/source-file/<fileName>`. The shell neither mints it nor
-  keys it, and dispatches on no format tag to get it: it reviews the row like
-  any other resource, so the reviewer can edit its JSON or skip it. A settings
-  re-decode re-mints it at the same deterministic id, so the review key and the
-  `meta.source` links survive — and so does re-picking the same file off the
-  server, which is why its row comes back `unchanged` from the diff and
-  out by default. The source-file list query is
-  invalidated once at end-of-batch (a fresh source file is a new
-  `DocumentReference` the picker should see next pick — cheap even when none
-  wrote).
+- **The source file is a record of the plan the import stage minted.**
+  Every pick's source file `DocumentReference` is minted by `importer-core`'s
+  import stage, which `readBatchCopies` runs over every format's `decode`,
+  under that format's constants, and is its file set's first copy, keyed
+  `<pick id>/source-file/<fileName>`. The shell neither mints it nor keys it,
+  and dispatches on no format tag to get it: the plan suggests a choice for it
+  like any other record. Its id is deterministic in the file, so the
+  `meta.source` links survive a re-read, and a file re-picked off the server
+  mints the source file it came from, which the plan links to rather than
+  writes again. The source-file list query is invalidated after every write
+  that was sent (a fresh source file is a new `DocumentReference` the picker
+  should see next pick).
 
 ## Traps
 
-- **The read half writes nothing, and the split is the whole product.** Reaching
-  a review issues no writes — `decode` requires no client, only the PDF
-  extractor, and is run for its data only, and the confirm writes exactly the reviewed objects
-  (`planWrite`'s `Included` decisions over the formats' decoded sections)
-  with no re-parse. A test pins this on the wire (zero writes to reach a review, and
-  the reads are the source list, one identifier search per referent, the diff
-  bundle and the stored resources per referent type); do
-  not add a write to the read path (e.g. an "auto-upload on pick") that would
-  collapse the opt-in seam. A settings change re-runs `decode` — still the
-  read half, still no writes.
+- **The read half writes nothing, and the split is the whole product.**
+  Reaching the import plan issues no writes — `decode` requires no client,
+  only the PDF extractor, and planning only searches and reads the store —
+  and Import writes exactly the resolution on screen (`ImportWrite.of`) with
+  no re-parse. A test pins this on the wire (no writes to reach the plan, and
+  the reads are the source list, one identifier search per type and one batch
+  reading what is stored under the ids the import would write); do not add a
+  write to the read path (e.g. an "auto-upload on pick") that would collapse
+  the opt-in seam.
+- **`resolvePlan` is impure, so it runs in actions, never in render.** It
+  reads the clock and mints ids, so a render or a `setState` updater must not
+  call it: every action that produces a plan resolves it in its handler or
+  continuation and commits the plan and its resolution together, and the
+  write sends exactly the resolution committed.
+- **The write lands whole or not at all, and a failed write keeps the
+  plan.** The plan is one `transaction` bundle, which the server lands every
+  entry of or none (`fhir-r4-rust`'s `batch_bundle_at_base.rs` pins HFS doing
+  so). `persistTransactionBundle`'s error channel is `never`, so a refusal is
+  every entry's outcome failing under the one cause, not a raised error: the
+  page goes back to `Reviewing` with `WriteFailure.Refused`, and the plan and
+  its resolution as they were, so Import can be pressed again. An outcome of
+  `NO_RESPONSE_STATUS` means no readable answer came back, so the
+  transaction may have landed: that, and a run that failed outright, is
+  `Unanswered`, and the page says it is not known whether the records were
+  written. Nothing offers a way off the page while the write is in flight,
+  since it lands whatever the page shows.
 - **`ServerSourceFileList` never writes.** The list is a search, a selection is
   a `DocumentReference` GET, and a preview is the same GET plus a bytes
   render. It is exported into the anonymizer shell's `serverSource` slot
   precisely because it is read-only; do not add a write to it — the preview
   modal is deliberately not editable, either.
-- **Selection state lives in the screen, not the panel.** `PreviewPanel` is
+- **Selection state lives in the screen, not the panel.** **Not mounted, awaiting #1466.** `PreviewPanel` is
   controlled — the screen passes `selectionFor` in and receives every change
   via `onSelectionChange`, holding the canonical
   `Map<FormatKind, Selection>` so it can hand the confirm the exact selection
@@ -430,7 +483,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   `useImportRun` owns the record and the re-decode. Don't move either down
   into the panel, or the shell and the view can disagree.
 - **The confirm is one `persistTransactionBundle`, and nothing is stamped at
-  confirm.** `planWrite` (in `importer-core`) turns the formats' decoded
+  confirm.** **Not mounted, awaiting #1466.** `planWrite` (in `importer-core`) turns the formats' decoded
   sections plus the reviewer's selections, and the batch's linked records,
   into a **`WriteDecision`** per reviewed resource — `Included`, `Excluded`,
   `Unchanged`, `Unreferenced` or `Superseded` — a set leading with its
@@ -452,6 +505,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   count) and the linked group's the linked records' results. `useConfirmImport`
   needs nothing from the registry — persistence is format-blind.
 - **The batch lands whole or not at all, and there is no upload-failed case.**
+  **Not mounted, awaiting #1466.**
   The batch is resolved as one: a format's resources point at the linked records
   and at referents another format holds, so a server holding half of it would
   hold references to records it does not. One `transaction` bundle, which
@@ -469,7 +523,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   result — a refused batch is its rows in the results, their cause the server's
   own response.
 - **The confirm affordance is gated on the batch having a resource to
-  write.** `PreviewPanel` shows the single confirm button only when
+  write.** **Not mounted, awaiting #1466.** `PreviewPanel` shows the single confirm button only when
   `planWrite`'s plan — over the **claimed** formats' rows and the linked
   records — has an `Included` decision; unreadable
   files and formats whose decode yielded nothing render their own section but
@@ -602,40 +656,40 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   `data` so a `Uint8Array` from jsdom's realm never has to satisfy the codec's
   `instanceof` check.
 - `importer-screen.test.tsx` is the end-to-end one: it replaces only the router
-  seam and drives the whole flow over a recording stub `HttpClient`, reading one
-  ordered write log back. It pins the opt-in seam (zero writes to reach a review),
-  the confirm (the source file and the extracted resources go out in one
-  bundle, every resource write carrying the `meta.source` the import stage set),
-  the re-picked server source file (its row present and pre-excluded, nothing
-  uploaded), the multi-file batch (the resources two files share under one
-  `Type/id` counted and written once), the per-file source file failure, the
-  partial-write fold,
-  that a single-format import reports no blank "nothing to import" rows, and
-  cancel. It re-wraps `TextEncoder` output through the ambient `Uint8Array` (a
-  jsdom single-realm workaround; the production encode stays `new
-  TextEncoder().encode(text)`). Its stub server holds what it is seeded with
-  and what is written to it, and answers identifier searches, the name stage's
-  `birthdate` and `name` searches (as HFS does: any of the dates; a name part
-  starting with any of the words, case and accents folded) and paged lists
-  from that, so it also
-  pins the identity map: the reads to reach a review, a confirm linked to a
-  stored Patient (only the stored one written, carrying the source's
-  identifier, every subject on it), a re-import that defaults the Patient to
-  an update of the copy it stored and is `unchanged` and left out, one referent for one identity two files name,
-  a resource naming no patient left out until one is assigned, a subject
-  picked onto the Patient redirected to the stored record the Patient is later
-  linked to, and an edit on a Patient's row dropped when that Patient is
-  linked to a stored one.
-  Its stub refuses a `transaction` one of whose entries fails as a whole, as
-  HFS does, which pins the confirm landing nothing and saying so.
-- `identity/referent-rows.test.tsx` drives `useLinkChoiceReview` and the rows over a
+  seam and drives the whole flow over the recording stub FHIR server in
+  `screen-server.test-helpers.ts`, reading one ordered request log back. It
+  pins the opt-in seam (no writes to reach the plan, and only searches and
+  reads), the summary of a capture, Import as one transaction holding every
+  record and its source file (each record's `meta.source` naming it), the
+  complete notice, a refused transaction keeping the plan and Import pressed
+  again, a re-import with nothing to import and no Import button, a source
+  file re-picked off the server linked rather than written, a Patient two
+  stored records carry the identifier of left open and blocking Import, the
+  red lines of an unreadable and an unrecognised file with no record read
+  from either, a failed search, a runner that rejects the read, no way to
+  leave while a held transaction is in flight, cancel, and a batch of
+  several files with a DICOM study among them. It
+  re-wraps `TextEncoder` output through the ambient `Uint8Array` (a jsdom
+  single-realm workaround; the production encode stays `new
+  TextEncoder().encode(text)`). The stub server holds what it is seeded with
+  and what is written to it, and answers identifier searches, the name
+  stage's `birthdate` and `name` searches (as HFS does: any of the dates; a
+  name part starting with any of the words, case and accents folded), paged
+  lists and batch reads from that; it refuses a `transaction` one of whose
+  entries fails as a whole, as HFS does, fails every typed search when told
+  to, and holds a transaction's answer until a promise it is given settles.
+- `plan/plan-text.test.ts` pins the page's sentences as whole values (both
+  write failures' among them), and as a property that a file set's line
+  leaves out exactly its zero parts and its parts sum to its records; `plan/record-text.test.ts` pins a record's title
+  in a sentence.
+- **Not mounted, awaiting #1466.** `identity/referent-rows.test.tsx` drives `useLinkChoiceReview` and the rows over a
   hand-built batch and a stub server answering the identifier searches, the
   name stage's `birthdate` and `name` searches as HFS does, and the stored
   list (one that continues for ever, cut off by the page limit): a line per referent, people before
   providers, `New` without a hit, a hit pre-selected, an update over the copy
   found under the decoded id, the demographics warning,
   and a changed select resolving the batch.
-- `preview/format-review-body.test.tsx` drives one format's body over its
+- **Not mounted, awaiting #1466.** `preview/format-review-body.test.tsx` drives one format's body over its
   rows resolved on the identity map: Needs a patient only when a subject is
   unlinked, a pick that is a mention link choice and includes the row, Don't
   link leaving it out again, a pick following its referent's later link,
@@ -646,7 +700,7 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   `identity/mention-link-options.test.ts` pins what a select offers: the
   plan's resolved resources, a record two referents are linked to once, as
   the choice of the referent whose record it is.
-- `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
+- **Not mounted, awaiting #1466.** `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a claimed format renders each decoded section under its own
   title with per-resource checkboxes, that an unreadable file renders its own
   alert, that a mixed batch sums to one confirm over every claimed format's
