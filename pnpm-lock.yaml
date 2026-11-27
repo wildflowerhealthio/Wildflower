@@ -5606,9 +5606,9 @@ importers:
       '@wildflowerhealthio/lifelabs-pdf-importer-core':
         specifier: workspace:*
         version: link:../lifelabs-pdf-importer-core
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.5
+      '@wildflowerhealthio/react-tundraish':
+        specifier: workspace:*
+        version: link:../../../global/react-tundraish
       jsdom:
         specifier: 'catalog:'
         version: 31.0.1(@napi-rs/canvas@1.1.0)

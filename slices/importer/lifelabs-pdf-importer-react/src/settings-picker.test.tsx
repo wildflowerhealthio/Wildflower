@@ -1,10 +1,11 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { LifeLabsPdfSettings } from '@wildflowerhealthio/lifelabs-pdf-importer-core'
+import { UNKNOWN_TIME_ZONE_MESSAGE } from '@wildflowerhealthio/react-tundraish'
 import { type JSX, useState } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import { LifeLabsPdfSettingsPicker, UNKNOWN_ZONE_MESSAGE } from './settings-picker.tsx'
+import { LifeLabsPdfSettingsPicker } from './settings-picker.tsx'
 
 const Harness = ({
   initial,
@@ -28,7 +29,7 @@ const Harness = ({
 describe('LifeLabsPdfSettingsPicker', () => {
   afterEach(cleanup)
 
-  it('shows the current zone and reports every keystroke up verbatim', async () => {
+  it('shows the current zone and reports a typed zone up once the field is left', async () => {
     const changes: LifeLabsPdfSettings[] = []
     render(
       <Harness
@@ -41,6 +42,7 @@ describe('LifeLabsPdfSettingsPicker', () => {
     expect(input.value).toBe('America/Toronto')
     await userEvent.clear(input)
     await userEvent.type(input, 'UTC')
+    await userEvent.tab()
 
     expect(changes.at(-1)).toEqual({ timeZone: 'UTC', healthCardProvince: 'ON' })
     expect(input.value).toBe('UTC')
@@ -58,7 +60,7 @@ describe('LifeLabsPdfSettingsPicker', () => {
     const input = screen.getByLabelText<HTMLInputElement>('Report time zone')
 
     expect(input.getAttribute('aria-invalid')).toBe('true')
-    expect(screen.getByRole('alert').textContent).toBe(UNKNOWN_ZONE_MESSAGE)
+    expect(screen.getByRole('alert').textContent).toContain(UNKNOWN_TIME_ZONE_MESSAGE)
 
     await userEvent.clear(input)
     await userEvent.type(input, 'America/Vancouver')

@@ -1,79 +1,62 @@
 import { HealthCardProvince } from '@wildflowerhealthio/fhir-ca-infoway'
 import type { SettingsPickerProps } from '@wildflowerhealthio/importer-fundamentals'
 import type { LifeLabsPdfSettings } from '@wildflowerhealthio/lifelabs-pdf-importer-core'
-import { DateTime, Option } from 'effect'
+import { Field, TimeZoneField } from '@wildflowerhealthio/react-tundraish'
 import { type JSX, useId } from 'react'
 
 import { SUGGESTED_TIME_ZONES } from './time-zones.ts'
-
-const UNKNOWN_ZONE_MESSAGE = 'Not an IANA time zone name (for example America/Toronto).'
-
-const isKnownTimeZone = (timeZone: string): boolean =>
-  Option.isSome(DateTime.zoneMakeNamed(timeZone))
 
 /**
  * The LifeLabs PDF format's settings picker: the IANA time zone the report's
  * printed clock is in, and the province that issued the health card it prints.
  *
  * @remarks
- * The zone is a free-text field with the two LifeLabs provinces' zones
- * suggested through a `datalist`, so any zone can be typed and the common ones
- * need no typing; a name the runtime does not know is flagged inline
- * (`aria-invalid`, a message) rather than swallowed, since the import's parse
- * fails on it. The province is a `<select>` of `fhir-ca-infoway`'s
- * `HealthCardProvince`s: Ontario, British Columbia, and "Other province" for
- * a card from anywhere else. Every change is reported up through
- * {@link SettingsPickerProps.onChange} verbatim — the shell owns the settings.
+ * The zone is a `react-tundraish` `TimeZoneField` over the two LifeLabs
+ * provinces' zones. It reports only a zone the runtime recognizes, after a
+ * short wait (flushed on blur or Enter): each report re-reads every LifeLabs
+ * file under the new settings, and a half-typed name would make each report
+ * unreadable, dropping its records from the import plan and the reviewer's
+ * choices on them. A zone set from outside while it is mounted replaces
+ * what it shows.
+ *
+ * The province is a `<select>` of `fhir-ca-infoway`'s `HealthCardProvince`s:
+ * Ontario, British Columbia, and "Other province" for a card from anywhere
+ * else, reported up as soon as it is picked. The picker is a fragment of the
+ * two fields, so the container it is placed in lays them out.
  */
 const LifeLabsPdfSettingsPicker = ({
   settings,
   onChange,
 }: SettingsPickerProps<LifeLabsPdfSettings>): JSX.Element => {
-  const inputId = useId()
-  const listId = useId()
-  const messageId = useId()
   const provinceId = useId()
-  const known = isKnownTimeZone(settings.timeZone)
   return (
-    <div>
-      <label htmlFor={inputId}>Report time zone</label>
-      <input
-        id={inputId}
-        type="text"
-        list={listId}
+    <>
+      <TimeZoneField
+        label="Report time zone"
         value={settings.timeZone}
-        aria-invalid={!known}
-        aria-describedby={known ? undefined : messageId}
-        onChange={(event) => onChange({ ...settings, timeZone: event.target.value })}
+        suggestions={SUGGESTED_TIME_ZONES}
+        onChange={(timeZone) => onChange({ ...settings, timeZone })}
       />
-      <datalist id={listId}>
-        {SUGGESTED_TIME_ZONES.map((zone) => (
-          <option key={zone} value={zone} />
-        ))}
-      </datalist>
-      {known ? null : (
-        <p id={messageId} role="alert">
-          {UNKNOWN_ZONE_MESSAGE}
-        </p>
-      )}
-      <label htmlFor={provinceId}>Health card province</label>
-      <select
-        id={provinceId}
-        value={settings.healthCardProvince}
-        onChange={(event) => {
-          const healthCardProvince = event.currentTarget.value
-          if (HealthCardProvince.is(healthCardProvince))
-            onChange({ ...settings, healthCardProvince })
-        }}
-      >
-        {HealthCardProvince.all.map((province) => (
-          <option key={province} value={province}>
-            {HealthCardProvince.names[province]}
-          </option>
-        ))}
-      </select>
-    </div>
+      <Field label="Health card province" htmlFor={provinceId}>
+        <select
+          id={provinceId}
+          className="input-3"
+          value={settings.healthCardProvince}
+          onChange={(event) => {
+            const healthCardProvince = event.currentTarget.value
+            if (HealthCardProvince.is(healthCardProvince))
+              onChange({ ...settings, healthCardProvince })
+          }}
+        >
+          {HealthCardProvince.all.map((province) => (
+            <option key={province} value={province}>
+              {HealthCardProvince.names[province]}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </>
   )
 }
 
-export { LifeLabsPdfSettingsPicker, UNKNOWN_ZONE_MESSAGE }
+export { LifeLabsPdfSettingsPicker }
