@@ -1,6 +1,6 @@
 /**
  * The import plan page's logic: read the picked files into an import plan,
- * resolve it, and write it as one transaction.
+ * resolve it, take the reviewer's choices, and write it as one transaction.
  *
  * @packageDocumentation
  */
@@ -21,11 +21,15 @@ import {
 } from '@wildflowerhealthio/importer-core'
 import {
   countTotals,
-  type ImportPlan,
+  ImportPlan,
   ImportWrite,
+  locateReferences,
   type PickedFile,
   type PlanResolution,
   type PlanTotals,
+  type RecordChoice,
+  type RecordKey,
+  type RecordReferences,
   resolvePlan,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { positionedTextExtractorPdfjs } from '@wildflowerhealthio/positioned-text-web'
@@ -34,17 +38,19 @@ import { useCallback, useRef, useState } from 'react'
 
 import { SOURCE_FILES_QUERY_KEY, STORED_RESOURCES_QUERY_KEY } from '../queries/keys.ts'
 import { formatRegistry } from '../registry.ts'
+import * as PlanDifferences from './plan-differences.ts'
 import * as WriteFailure from './write-failure.ts'
 
 /**
  * A plan under review: the picked files as read, the plan of their records,
- * its resolution with the resolution's totals and write, and the instant the
- * files were read at.
+ * its resolution with the resolution's totals and write, the differences the
+ * Needs a decision cards show, who references each record, and the instant
+ * the files were read at.
  *
  * @remarks
- * `resolution`, `totals` and `write` are always those of `plan`: every
- * action that changes the plan goes through {@link reviewOf}, which resolves
- * it and derives the rest, and commits them together.
+ * `resolution`, `totals`, `write` and `differences` are always those of
+ * `plan`: every action that changes the plan goes through {@link reviewOf},
+ * which resolves it and derives the rest, and commits them together.
  */
 interface Review {
   readonly batchCopies: BatchCopies
@@ -52,6 +58,13 @@ interface Review {
   readonly resolution: PlanResolution.Type
   readonly totals: PlanTotals.Type
   readonly write: ImportWrite.Type
+  /** What merging each record that needs a decision into each of its candidates would change. */
+  readonly differences: PlanDifferences.Type
+  /**
+   * Who references each record, located once when the files are read: a
+   * choice changes where a reference lands, never which record it names.
+   */
+  readonly recordReferences: RecordReferences.Type
   /**
    * When the files were read: the instant a person's name in use is judged
    * at, so the page names a person the same way however often the plan is
@@ -95,6 +108,11 @@ interface ImportPlanPage {
   readonly state: ImportPlanPageState
   /** Read `picks` into a plan to review; nothing for no picks. */
   readonly read: (picks: readonly PickedFile.NamedBytes[]) => void
+  /**
+   * Make `choice` the reviewer's choice for every record under one of
+   * `keys`, while reviewing, keeping the last write's failure.
+   */
+  readonly choose: (keys: Iterable<RecordKey.Type>, choice: RecordChoice.Type) => void
   /** Write the plan under review as one transaction, when it is ready to write. */
   readonly importPlan: () => void
   /** Drop whatever is read, planned or written, and go back to choosing files. */
@@ -102,12 +120,14 @@ interface ImportPlanPage {
 }
 
 /**
- * `plan` resolved, with its totals and write, beside the files it was read
- * from at `readAt`.
+ * `plan` resolved, with its totals, its write and its differences, beside
+ * the files it was read from at `readAt` and who references each of its
+ * records.
  */
 const reviewOf = (
   batchCopies: BatchCopies,
   readAt: DateTime.Utc,
+  recordReferences: RecordReferences.Type,
   plan: ImportPlan.Type
 ): Effect.Effect<Review> =>
   Effect.map(resolvePlan(plan), (resolution): Review => ({
@@ -116,6 +136,8 @@ const reviewOf = (
     resolution,
     totals: countTotals(resolution),
     write: ImportWrite.of(resolution),
+    differences: PlanDifferences.ofPlan(plan),
+    recordReferences,
     readAt,
   }))
 
@@ -135,7 +157,14 @@ const readReview = (
   }).pipe(
     Effect.flatMap(({ readAt, batchCopies }) =>
       planImport(copiesOf(batchCopies), findStoredMatch).pipe(
-        Effect.flatMap((plan) => reviewOf(batchCopies, readAt, plan))
+        Effect.flatMap((plan) =>
+          reviewOf(
+            batchCopies,
+            readAt,
+            locateReferences(plan.records.map(({ record }) => record)),
+            plan
+          )
+        )
       )
     )
   )
@@ -152,7 +181,10 @@ const logFailure = (action: string, failure: unknown): void => {
  * @remarks
  * The state lives in a ref beside the React state, written together, so an
  * action reads what the next action needs rather than what the last render
- * showed. One ticket drops a read or a write that a later action overtook.
+ * showed. A choice is only taken while reviewing, never while the write is
+ * in flight. It keeps the last write's failure on screen, since the reviewer
+ * reads it while fixing the plan and what it says stays true; pressing
+ * Import again or starting over clears it. One ticket drops a read or a write that a later action overtook.
  * A write that was sent invalidates the source-file list and the stored
  * records whether or not it is stale: it may have landed either way. A run
  * that fails, the runner's own rejection or a defect included, is logged:
@@ -190,6 +222,19 @@ const useImportPlanPage = (): ImportPlanPage => {
       )
     },
     [commit, runAuthed]
+  )
+
+  const choose = useCallback(
+    (keys: Iterable<RecordKey.Type>, choice: RecordChoice.Type): void => {
+      const pageState = current.current
+      if (pageState._tag !== 'Reviewing') return
+      const { batchCopies, readAt, recordReferences, plan } = pageState.review
+      const review = Effect.runSync(
+        reviewOf(batchCopies, readAt, recordReferences, ImportPlan.choose(plan, keys, choice))
+      )
+      commit(reviewing({ review, writeFailure: pageState.writeFailure }))
+    },
+    [commit]
   )
 
   const importPlan = useCallback((): void => {
@@ -232,7 +277,7 @@ const useImportPlanPage = (): ImportPlanPage => {
     commit(choosingFiles())
   }, [commit])
 
-  return { state, read, importPlan, startOver }
+  return { state, read, choose, importPlan, startOver }
 }
 
 export { ImportPlanPageState, useImportPlanPage }
