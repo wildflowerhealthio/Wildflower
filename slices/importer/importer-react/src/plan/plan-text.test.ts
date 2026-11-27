@@ -10,6 +10,21 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
+  createAllLabel,
+  decidedAutomaticallyLine,
+  identifierMatchTag,
+  patientDetail,
+  personReasonLine,
+  recordGroupHeading,
+  recordGroupLine,
+  recordReasonLine,
+  referencePart,
+  referencesDetail,
+  sameAsExistingLine,
+  setEveryLabel,
+  showMoreLabel,
+  useRecordLabel,
+  onImportLabel,
   completeLine,
   DecisionMatches,
   decisionMetaLine,
@@ -315,5 +330,94 @@ describe('writeFailureMessage', () => {
         'No answer came back, so it is not known whether the records were written. The import plan is kept.'
       ),
     ])
+  })
+})
+
+describe('decidedAutomaticallyLine', () => {
+  it('counts the records, singular for one, before what decided them', () => {
+    expect([decidedAutomaticallyLine(1), decidedAutomaticallyLine(47)]).toEqual([
+      '1 record. Matched by identifier, or with no similar existing record. Change any; changes are listed first.',
+      '47 records. Matched by identifier, or with no similar existing record. Change any; changes are listed first.',
+    ])
+  })
+})
+
+describe('a group’s text', () => {
+  it('heads, says its labels, names its menu and its items, and pages and folds its rows', () => {
+    expect([
+      recordGroupHeading('MedicationRequest', 9),
+      recordGroupLine(countsOf({ Create: 2, LinkToExisting: 7 })),
+      setEveryLabel('MedicationRequest'),
+      createAllLabel(9),
+      showMoreLabel(20),
+      sameAsExistingLine(12),
+    ]).toEqual([
+      'MedicationRequest · 9',
+      '2 new · 7 linked',
+      'Set every MedicationRequest',
+      'Create all 9',
+      'Show 20 more',
+      '12 same as existing',
+    ])
+  })
+})
+
+describe('a row’s text', () => {
+  it('names a merge into an existing record, updated when it writes to it, and the row’s choice', () => {
+    expect([
+      useRecordLabel({ title: 'Tyra Banks', updates: false }),
+      useRecordLabel({ title: 'Tyra Banks', updates: true }),
+      onImportLabel('Tyra Banks'),
+    ]).toEqual(['Use Tyra Banks', 'Use Tyra Banks, updated', 'On import: Tyra Banks'])
+  })
+
+  it('tags an identifier match the same as existing, or how many fields differ', () => {
+    expect([0, 1, 3].map(identifierMatchTag)).toEqual([
+      'Identifier match · same as existing',
+      'Identifier match · 1 field differs',
+      'Identifier match · 3 fields differ',
+    ])
+  })
+
+  it('says a record’s tag, a person’s file and referrers, and when either is not needed', () => {
+    expect([
+      recordReasonLine({ tag: 'New · no match', isUnneeded: false }),
+      recordReasonLine({ tag: 'New · no match', isUnneeded: true }),
+      personReasonLine({
+        fileTitle: 'a.har',
+        tag: 'New · no match',
+        referrers: 22,
+        isUnneeded: false,
+      }),
+      personReasonLine({
+        fileTitle: 'a.har',
+        tag: 'New · no match',
+        referrers: 0,
+        isUnneeded: true,
+      }),
+    ]).toEqual([
+      'New · no match',
+      'New · no match · Not written: no record written references it',
+      'a.har · New · no match · referenced by 22 records',
+      'a.har · New · no match · Not written: no record written references it',
+    ])
+  })
+
+  it('says a Patient’s birthDate and gender, and when it states no birthDate', () => {
+    expect([
+      patientDetail({ birthDate: Option.some('1990-01-02'), gender: Option.some('female') }),
+      patientDetail({ birthDate: Option.some('1990-01-02'), gender: Option.none() }),
+      patientDetail({ birthDate: Option.none(), gender: Option.some('female') }),
+    ]).toEqual(['1990-01-02 · female', '1990-01-02', 'No birthDate · female'])
+  })
+
+  it('says each reference by its field, display only when it names nothing, and when there is none', () => {
+    expect([
+      referencesDetail([
+        referencePart({ field: 'subject', display: 'Tyra Banks', isDisplayOnly: false }),
+        referencePart({ field: 'requester', display: 'Dr. Brown', isDisplayOnly: true }),
+      ]),
+      referencesDetail([]),
+    ]).toEqual(['subject: Tyra Banks · requester: Dr. Brown (display only)', 'No references'])
   })
 })

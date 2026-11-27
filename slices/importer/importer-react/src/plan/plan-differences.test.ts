@@ -8,7 +8,7 @@ import {
   StoredMatch,
   Suggestion,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { HashSet, Option } from 'effect'
+import { HashMap, HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as PlanDifferences from './plan-differences.ts'
@@ -83,7 +83,8 @@ describe('PlanDifferences.ofPlan', () => {
     ])
   })
 
-  it('compares no record that does not need a decision', () => {
+  it('compares a record that does not need a decision with its existing records too', () => {
+    // Arrange
     const planned = PlannedRecord.make({
       record: tyra,
       storedMatch: StoredMatch.makeEntry([probableMatch(withPhone)], Option.none()),
@@ -93,9 +94,33 @@ describe('PlanDifferences.ofPlan', () => {
       ),
     })
 
+    // Act
     const differences = PlanDifferences.ofPlan(planOf(planned))
 
-    expect(PlanDifferences.candidatesOf(differences, tyra.key)).toEqual([])
+    // Assert
+    expect(
+      PlanDifferences.candidatesOf(differences, tyra.key).map(({ inPlan }) => inPlan.differences)
+    ).toEqual([
+      [Difference.FillsGap({ field: 'gender' }), Difference.Overwrites({ field: 'telecom' })],
+    ])
+  })
+
+  it('works out nothing for a record with no existing record', () => {
+    // Arrange
+    const planned = PlannedRecord.make({
+      record: tyra,
+      storedMatch: StoredMatch.makeEntry([], Option.none()),
+      suggestion: Suggestion.make(
+        Option.some(RecordChoice.SaveAsNewRecord()),
+        Suggestion.NoMatch()
+      ),
+    })
+
+    // Act
+    const differences = PlanDifferences.ofPlan(planOf(planned))
+
+    // Assert
+    expect(HashMap.has(differences, tyra.key)).toBe(false)
   })
 })
 
