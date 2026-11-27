@@ -242,11 +242,13 @@ and persists them itself.
   choice of the record it names. The copies are each set's source files
   (`ImportedCopy.fromSourceFile`), then its records
   (`ImportedCopy.fromPlacedRow`). It never fails: its result,
-  **`FormatCopies`** `{ copies, notes, unreadableFiles }`, reports a set the
-  stage cannot finish (`finishEachFileSet`, as `importDecoded` does) (a source file that cannot be minted, an implied
-  record its schema rejects, `FileImporter.SourceFileNotFound` from a hook)
-  as an unreadable row per picked file of the set, after the decode's own,
-  and keeps the other sets' copies and notes.
+  **`FormatCopies<TFormat>`** `{ format, copies, notes, unreadableFiles }`,
+  its decode's format beside what it read, reports a set the stage cannot
+  finish (`finishEachFileSet`, as `importDecoded` does) (a source file that
+  cannot be minted, an implied record its schema rejects,
+  `FileImporter.SourceFileNotFound` from a hook) as an unreadable row per
+  picked file of the set, after the decode's own, and keeps the other sets'
+  copies and notes.
 - `src/find-stored-match.ts` — **`findStoredMatch(records, externalReferences)`** is
   a `StoredMatch`: one `ResourceMatch.findCandidates` over every record, by
   its resource (`ImportedRecord.resourceOf`), and every external reference,
@@ -287,11 +289,11 @@ and persists them itself.
   planning nothing: it claims the picks (`claimPicks`) and decodes each
   claimed format concurrently, reading it as copies (`decodeFormat` with
   `fileCopiesOf`). A **`BatchCopies`** holds each claimed format's
-  **`FormatRead`** (its `format` and its `FormatCopies`: the copies, the
-  decode's notes and the files it could not read) in registry order, and
-  the picks no format claimed (`unrecognizedFileOf`, as `readBatch` reports
-  them). **`copiesOf(batchCopies)`** is every format's copies, format by
-  format in registry order: the plan's order.
+  `FormatCopies<FormatKind>` (its format, copies, the decode's notes and
+  the files it could not read) in registry order, and the picks no format
+  claimed (`unrecognizedFileOf`, as `readBatch` reports them).
+  **`copiesOf(batchCopies)`** is every format's copies, format by format in
+  registry order: the plan's order.
 - `src/import-with-suggestions.ts` — **`importWithSuggestions(registry,
   settings, picks, findMatch)`**, an import with no reviewer: it reads the
   batch (`readBatchCopies`), plans its copies (`copiesOf`) with

@@ -446,12 +446,13 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     identifier. **`nameMatchesOf(entry)`** is the name matches
     `suggestRecord` counts: the stored records found by name graded
     `MatchGrade.mayNotNeedAdditionalReview`; a `possible` match is not one.
-    **`foundRecordsOf(entry)`** is every stored record found for the record,
-    each once with the grade it was found with, a **`FoundRecord`**
-    `{ existing, grade }`: the candidates found by identifier or by name, any
-    grade, `possible` included, best grade first, then the record under its
-    derived id (grade `None`) when no candidate is it. They are the stored
-    records a reviewer can pick for the record to merge into.
+  - **`ExistingRecord`** — an existing record an imported record could merge
+    into: **`Type`** `{ resource, knownBy }`, its stored resource and how the
+    plan knows of it, a **`KnownBy`**: **`MatchedBySearch`**
+    `{ grade, evidence }` (the matcher's grade and what it was found by),
+    **`StoredUnderDerivedId`** (stored under the id the import stage derived
+    for the record; no search found it) or **`ChosenByReviewer`** (nothing
+    the plan read from the store offered it).
   - **`Suggestion`** — **`Type`** `{ choice, reason }`, the choice `None`
     when the record is left undecided; **`Reason`**, a closed tagged enum
     with one reason per rule of `suggestRecord`, in rule order
@@ -505,8 +506,15 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     both merges, the label saying whether content is taken),
     **`needsDecision`**, **`isChanged`** (a choice that differs from the
     suggestion's), **`reviewedResourceOf`** (the reviewer's edit, else the
-    record's resource), and its transitions **`withChoice`**,
-    **`withChoiceCleared`** and **`withEdit`**.
+    record's resource), **`existingRecordsOf`** and its transitions
+    **`withChoice`**, **`withChoiceCleared`** and **`withEdit`**.
+    **`existingRecordsOf(planned)`** is every `ExistingRecord` the record
+    could merge into, each stored resource once (`sameStoredResource`, the
+    first kept): the entry's candidates in its order, best grade first,
+    `possible` ones included though no suggestion counts them; then the
+    record under its derived id when no candidate is it; then the existing
+    record the reviewer's own choice (`chosen`) merges into when none of
+    those is it, `ChosenByReviewer`.
   - **`ImportPlan`** — **`Type`** `{ records, storedMatch }`, the records in
     plan order beside the import's whole stored match, which a reference's
     candidates are read off (`StoredMatch.ofReference`). **`make`**,
