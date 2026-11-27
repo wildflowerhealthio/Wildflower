@@ -13,7 +13,7 @@ import {
 import { Effect, Either, Option, ParseResult, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { copiesOf, readBatchCopies } from './index.ts'
+import { copiesOf, type FileSetNotes, readBatchCopies } from './index.ts'
 import type { ReadRegistry } from './read-batch.ts'
 import { defaultFormatSettings, type FormatKind } from './registry.ts'
 
@@ -113,6 +113,10 @@ const pick = (fileName: string): PickedFile.NamedBytes => ({
 const unreadableOf = (unreadableFiles: readonly FormatDecode.UnreadableFile[]): readonly object[] =>
   unreadableFiles.map(({ title, error }) => ({ title, error: error._tag }))
 
+/** Each file set's notes beside the ids of its picked files. */
+const notesOf = (notes: readonly FileSetNotes[]): readonly object[] =>
+  notes.map(({ origin, notes: noted }) => [origin.pickedFiles.map(({ id }) => id).join(','), noted])
+
 describe('readBatchCopies', () => {
   it('should read a mixed batch into each claimed format’s copies, notes and unreadable files, in registry order, beside the picks no format claimed', async () => {
     // Arrange
@@ -123,10 +127,11 @@ describe('readBatchCopies', () => {
 
     // Assert
     expect({
-      formats: read.formats.map(({ format, copies, notes, unreadableFiles }) => ({
+      formats: read.formats.map(({ format, files, copies, notes, unreadableFiles }) => ({
         format,
+        files: files.map(({ fileName }) => fileName),
         copies: copies.map(({ reviewKey }) => reviewKey),
-        notes,
+        notes: notesOf(notes),
         unreadable: unreadableOf(unreadableFiles),
       })),
       unrecognized: read.unrecognizedFiles.map(({ title }) => title),
@@ -134,14 +139,16 @@ describe('readBatchCopies', () => {
       formats: [
         {
           format: 'har',
+          files: ['a.har', 'lost.har'],
           copies: ['1:a.har/source-file/a.har', '1:a.har/patient'],
-          notes: ['read a.har'],
+          notes: [['1:a.har', ['read a.har']]],
           unreadable: [{ title: 'lost.har', error: 'SourceFileNotFound' }],
         },
         {
           format: 'lifelabs-pdf',
+          files: ['r.pdf', 'bad.pdf'],
           copies: ['0:r.pdf/source-file/r.pdf', '0:r.pdf/patient'],
-          notes: ['read r.pdf'],
+          notes: [['0:r.pdf', ['read r.pdf']]],
           unreadable: [{ title: 'bad.pdf', error: 'ParseError' }],
         },
       ],

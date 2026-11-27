@@ -15,7 +15,7 @@ import {
   type PickedFile,
   SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, type ParseResult } from 'effect'
+import { Array as Arr, Effect, Option, type ParseResult } from 'effect'
 
 import {
   finishEachFileSet,
@@ -24,19 +24,38 @@ import {
   mintSourceFiles,
 } from './import-decoded.ts'
 
+/** The notes one file set's decode left, beside the file set (its `origin`). */
+interface FileSetNotes {
+  readonly origin: FileSetOrigin.Type
+  readonly notes: Arr.NonEmptyReadonlyArray<string>
+}
+
 /**
- * What one format's decode brings to an import: its format, every copy of
- * the file sets the import stage finished, in plan order, their notes, and
- * a row per picked file it could not read.
+ * What one format's decode brings to an import: its format, the picked
+ * files it claimed, every copy of the file sets the import stage finished,
+ * in plan order, the notes of each finished set that left any, and a row
+ * per picked file it could not read.
  *
  * @typeParam TFormat - The format's tag, as its decode's
  *   `FormatDecode.Decoded` carries it
+ *
+ * @remarks
+ * `files` are the picks the format's decode read (`FormatDecode.Decoded`'s
+ * `files`), every one of them whether it was read or not, so the format can
+ * be read again from them under other settings (`rereadFormatCopies`).
  */
 interface FormatCopies<TFormat extends string> {
   readonly format: TFormat
+  readonly files: readonly PickedFile.Type[]
   readonly copies: readonly ImportedCopy.Type[]
-  readonly notes: readonly string[]
+  readonly notes: readonly FileSetNotes[]
   readonly unreadableFiles: readonly FormatDecode.UnreadableFile[]
+}
+
+/** The copies and notes of one file set the import stage finished. */
+interface FinishedFileSet {
+  readonly copies: readonly ImportedCopy.Type[]
+  readonly notes: Option.Option<FileSetNotes>
 }
 
 /**
@@ -57,7 +76,7 @@ const fileSetCopiesOf = (
   format: string,
   fileSet: DecodedFileSet.Type
 ): Effect.Effect<
-  Pick<FormatCopies<string>, 'copies' | 'notes'>,
+  FinishedFileSet,
   ParseResult.ParseError | FileImporter.SourceFileNotFound,
   PickedFile.Format
 > =>
@@ -76,7 +95,10 @@ const fileSetCopiesOf = (
           ImportedCopy.fromPlacedRow(origin, row)
         ),
       ],
-      notes: records.notes,
+      notes: Option.map(
+        Option.liftPredicate(records.notes, Arr.isNonEmptyReadonlyArray),
+        (notes): FileSetNotes => ({ origin, notes })
+      ),
     }
   })
 
@@ -103,11 +125,12 @@ const fileCopiesOf = <TFormat extends string>(
     ),
     ({ finished, unreadableFiles }): FormatCopies<TFormat> => ({
       format: decoded.format,
+      files: decoded.files,
       copies: finished.flatMap(({ copies }) => copies),
-      notes: finished.flatMap(({ notes }) => notes),
+      notes: Arr.getSomes(finished.map(({ notes }) => notes)),
       unreadableFiles,
     })
   )
 
 export { fileCopiesOf }
-export type { FormatCopies }
+export type { FileSetNotes, FormatCopies }

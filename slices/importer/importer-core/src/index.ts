@@ -7,7 +7,8 @@
  * the batch's referents and resolve its mentions, say which rows the
  * referent links leave without a patient, and plan the batch's write from
  * its reviewed selections. For the import plan, a batch is read into copies
- * of records ({@link readBatchCopies}); with no reviewer, it is imported
+ * of records ({@link readBatchCopies}), and one format of it read again
+ * under new settings ({@link rereadFormatCopies}); with no reviewer, it is imported
  * through its plan, every suggestion taken, against the store the caller
  * names ({@link importWithSuggestions}).
  *
@@ -48,7 +49,7 @@ export {
   skipReasonFor,
   type WriteDecision,
 } from './plan-write.ts'
-export { fileCopiesOf, type FormatCopies } from './file-copies-of.ts'
+export { type FileSetNotes, fileCopiesOf, type FormatCopies } from './file-copies-of.ts'
 export {
   type FindStoredMatch,
   findStoredMatch,
@@ -56,7 +57,12 @@ export {
   type StoredMatchFailure,
 } from './find-stored-match.ts'
 export { planImport } from './plan-import.ts'
-export { type BatchCopies, copiesOf, readBatchCopies } from './read-batch-copies.ts'
+export {
+  type BatchCopies,
+  copiesOf,
+  readBatchCopies,
+  rereadFormatCopies,
+} from './read-batch-copies.ts'
 export {
   importWithSuggestions,
   type SuggestedImport,

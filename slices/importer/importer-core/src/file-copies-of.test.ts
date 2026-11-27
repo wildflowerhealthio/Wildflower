@@ -174,11 +174,13 @@ describe('fileCopiesOf', () => {
     // Assert
     expect({
       copies: result.copies.map(({ reviewKey }) => reviewKey),
+      files: result.files,
       notes: result.notes,
       unreadable: result.unreadableFiles.map(({ title, error }) => [title, error._tag]),
     }).toEqual({
       copies: ['0:good.test/source-file/good.test', '0:good.test/tyra'],
-      notes: ['good set'],
+      files: [goodFile, badFile],
+      notes: [{ origin: { format: 'test', pickedFiles: [goodFile] }, notes: ['good set'] }],
       unreadable: [['bad.test', 'SourceFileNotFound']],
     })
   })

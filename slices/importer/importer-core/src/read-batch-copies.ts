@@ -5,7 +5,7 @@
  * @packageDocumentation
  */
 import type { ImportedCopy, PickedFile } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect } from 'effect'
+import { Array as Arr, Effect, Option } from 'effect'
 
 import { fileCopiesOf, type FormatCopies } from './file-copies-of.ts'
 import {
@@ -61,9 +61,51 @@ const readBatchCopies = <R>(
   )
 }
 
+/**
+ * Read one format of `batchCopies` again under `settings`: its claimed
+ * picked files decoded again and finished as copies, every other format's
+ * entry passed back as it was.
+ *
+ * @param registry - The registered formats' `decode`s
+ * @param settings - Every format's settings, the changed one included
+ * @param format - The format to read again
+ * @param batchCopies - The batch as read
+ * @returns The batch with `format`'s entry replaced in its place, requiring
+ *   what the registry's decodes require; the batch itself when `format`
+ *   claimed nothing
+ *
+ * @remarks
+ * Decoding is the cost (a PDF's text, a DICOM study's headers), so nothing
+ * else is decoded. The format's entry holds the picked files it claimed
+ * (`FormatCopies.files`), so the same picks are decoded, under the ids
+ * `claimPicks` gave them, and each copy's review key and record key are
+ * built on them as before.
+ */
+const rereadFormatCopies = <R>(
+  registry: ReadRegistry<R>,
+  settings: FormatSettings,
+  format: FormatKind,
+  batchCopies: BatchCopies
+): Effect.Effect<BatchCopies, never, R> =>
+  Arr.findFirst(batchCopies.formats, (formatCopies) => formatCopies.format === format).pipe(
+    Option.match({
+      onNone: () => Effect.succeed(batchCopies),
+      onSome: ({ files }) =>
+        Effect.map(
+          decodeFormat(registry, settings, format, files, fileCopiesOf),
+          (reread): BatchCopies => ({
+            ...batchCopies,
+            formats: batchCopies.formats.map((formatCopies) =>
+              formatCopies.format === format ? reread : formatCopies
+            ),
+          })
+        ),
+    })
+  )
+
 /** Every copy `batchCopies` holds, format by format in registry order: the import plan's order. */
 const copiesOf = (batchCopies: BatchCopies): readonly ImportedCopy.Type[] =>
   batchCopies.formats.flatMap(({ copies }) => copies)
 
-export { copiesOf, readBatchCopies }
+export { copiesOf, readBatchCopies, rereadFormatCopies }
 export type { BatchCopies }
