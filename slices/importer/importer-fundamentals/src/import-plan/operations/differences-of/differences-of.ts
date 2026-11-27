@@ -11,12 +11,20 @@ import { HashSet, Option, type Record } from 'effect'
 import * as Difference from '../../entities/difference.ts'
 import * as ComparableReferences from './comparable-references.ts'
 
-/** The top-level wire keys that are never a difference: no field a reviewer takes. */
+/**
+ * The top-level wire keys that are never a difference: no field a reviewer
+ * takes.
+ *
+ * @remarks
+ * `text` is the narrative written for the resource it sits in. Taken into
+ * another record it would describe fields that record does not hold.
+ */
 const NEVER_A_DIFFERENCE: ReadonlySet<string> = new Set([
   'resourceType',
   'id',
   'meta',
   'identifier',
+  'text',
 ])
 
 /**
@@ -47,8 +55,8 @@ const hasValue = (value: unknown): boolean =>
  *   (`ComparableReferences`): by what they name, not by their literal
  *
  * @remarks
- * `resourceType`, `id`, `meta` and `identifier` are never a difference. The
- * identifiers a merge adds are those `kept` lacks
+ * `resourceType`, `id`, `meta`, `identifier` and `text` are never a
+ * difference. The identifiers a merge adds are those `kept` lacks
  * (`IdentifierUnion.missingFrom`), whatever the differences are.
  */
 const differencesOf = (
