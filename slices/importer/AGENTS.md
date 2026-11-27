@@ -123,7 +123,8 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `fileCopiesOf` reads a format's decode as copies of records, placed,
   linked and stamped by the import stage's own steps with no reference
   between a set's records resolved, and `readBatchCopies` reads a picked
-  batch into each claimed format's copies with it; `findStoredMatch`
+  batch into each claimed format's copies with it, `rereadFormatCopies` one
+  format of it again under new settings; `findStoredMatch`
   matches an import once against the store, `noStore` against none;
   `planImport` builds its `ImportPlan`; `importWithSuggestions` imports a
   picked batch with no reviewer, every suggestion taken, and gives back the
@@ -135,10 +136,12 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `ImporterScreen`, the whole flow a host app mounts: choose files, read them
   into an import plan against the existing records (`readBatchCopies`,
   `planImport` with `findStoredMatch`, `resolvePlan`), review the plan on the
-  import plan page (its summary, its Needs a decision cards and its import
-  bar), and write it as one transaction; plus the React half of the registry (each `importer-core`
-  importer spread with that format's `SettingsPicker`, for a format that has
-  settings). Also `ServerSourceFileList`, the uploaded-source-files pick
+  import plan page (its summary, its Needs a decision cards, its import
+  bar, the records decided automatically and each file's notes and
+  Settings, a settings change reading that format again), and write it as
+  one transaction; plus the React half of the registry (each `importer-core`
+  importer spread with that format's `SettingsPicker` and the line that
+  says what its settings are, for a format that has settings). Also `ServerSourceFileList`, the uploaded-source-files pick
   source the anonymizer slice's shell takes through its `serverSource` slot.
 
 A host that provides the FHIR write client and the authed runner sits above
@@ -182,11 +185,12 @@ sits above `http-extraction` and below every binding.
   only searches and reads the store (`findStoredMatch`). Writing is the
   shell's one `persistTransactionBundle` of the resolved plan's write
   (`ImportWrite.of`), sent only when the reviewer presses Import, with no
-  re-parse. This split is the whole point; do not collapse it. The import
-  plan reads every format under its default settings. **Not mounted, awaiting #1466.** In the old
-  review a settings change (the LifeLabs or DICOM time zone, the LifeLabs
-  health card province) re-runs `decode` from the retained bytes — still the
-  read half.
+  re-parse. This split is the whole point; do not collapse it. A settings
+  change on the import plan page (the LifeLabs or DICOM time zone, the
+  LifeLabs health card province) reads that format again from the picked
+  files its read kept (`rereadFormatCopies`), plans the batch again and
+  carries the reviewer's choices over (`carryChoices`) — still the read
+  half.
 - **Identity is decided by the import plan, never by a format.** The copies
   of one record that several files bring are one record of the plan, matched
   once against the store (`findStoredMatch`), with one choice per record
@@ -238,10 +242,10 @@ sits above `http-extraction` and below every binding.
 - **The registry is closed and compile-time.** The importer registry is
   `importer-core`'s literal `{ har, 'lifelabs-pdf', dicom }`, and
   `importer-react`'s registry spreads each entry with that format's
-  `SettingsPicker` — composition, not a subclass, so a field added to
+  `SettingsPicker` and `settingsLineOf` — composition, not a subclass, so a field added to
   `FileImporter` cannot be silently dropped on the way through. Every slot is a
   mapped or exhaustive type over `FormatKind`, so a format missing one part
-  fails to compile. The picker slot is conditional per format: forbidden for a
+  fails to compile. The settings slot is conditional per format: forbidden for a
   format whose settings are `null` (HAR), required for every other, so a
   format without one has no settings form.
   Dispatch over the registry is generic (`<K extends FormatKind>`), not a
