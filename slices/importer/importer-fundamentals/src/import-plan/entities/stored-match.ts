@@ -9,7 +9,7 @@
  *
  * @packageDocumentation
  */
-import type { ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
+import { MatchGrade, type ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import {
   type FhirResourceWithId,
   LogicalReference,
@@ -32,6 +32,15 @@ interface Entry {
   /** The stored records matching it, best grade first. */
   readonly candidates: readonly ResourceMatch.Candidate[]
   readonly storedUnderDerivedId: Option.Option<FhirResourceWithId>
+}
+
+/**
+ * A stored record found for a record, beside the grade it was found with;
+ * `None` for the record stored under its derived id that no search found.
+ */
+interface FoundRecord {
+  readonly existing: FhirResourceWithId
+  readonly grade: Option.Option<MatchGrade.Type>
 }
 
 /**
@@ -114,6 +123,44 @@ const storedCopiesOf = (entry: Entry): readonly FhirResourceWithId[] =>
   )
 
 /**
+ * The name matches a suggestion counts: the stored records found by name
+ * graded so they may not need more review
+ * (`MatchGrade.mayNotNeedAdditionalReview`), best grade first. A `possible`
+ * match is not one.
+ */
+const nameMatchesOf = (entry: Entry): readonly FhirResourceWithId[] =>
+  entry.candidates
+    .filter(({ by, grade }) => by === 'name' && MatchGrade.mayNotNeedAdditionalReview(grade))
+    .map(({ resource }) => resource)
+
+/**
+ * Every stored record found for the record, each once
+ * (`sameStoredResource`) with the grade it was found with: the candidates
+ * found by identifier or by name, any grade, `possible` included, best grade
+ * first, then the record under its derived id (grade `None`) when no
+ * candidate is that stored record.
+ *
+ * @remarks
+ * These are the stored records a reviewer can pick for the record to merge
+ * into: a `possible` match is among them though no suggestion counts it
+ * ({@link nameMatchesOf}), since the reviewer may know better.
+ */
+const foundRecordsOf = (entry: Entry): readonly FoundRecord[] =>
+  Arr.dedupeWith(
+    [
+      ...entry.candidates.map(({ resource, grade }): FoundRecord => ({
+        existing: resource,
+        grade: Option.some(grade),
+      })),
+      ...Option.toArray(entry.storedUnderDerivedId).map((existing): FoundRecord => ({
+        existing,
+        grade: Option.none(),
+      })),
+    ],
+    (left, right) => sameStoredResource(left.existing, right.existing)
+  )
+
+/**
  * The stored copies of the record `externalReference` names: its candidates
  * found by identifier ({@link ofReference}).
  */
@@ -122,5 +169,15 @@ const storedCopiesOfReference = (
   externalReference: LogicalReference.Type
 ): readonly FhirResourceWithId[] => foundByIdentifier(ofReference(storedMatch, externalReference))
 
-export { empty, make, makeEntry, ofRecord, ofReference, storedCopiesOf, storedCopiesOfReference }
-export type { Entry, Type }
+export {
+  empty,
+  foundRecordsOf,
+  make,
+  makeEntry,
+  nameMatchesOf,
+  ofRecord,
+  ofReference,
+  storedCopiesOf,
+  storedCopiesOfReference,
+}
+export type { Entry, FoundRecord, Type }

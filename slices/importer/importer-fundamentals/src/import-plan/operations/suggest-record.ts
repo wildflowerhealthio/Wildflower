@@ -4,7 +4,6 @@
  *
  * @packageDocumentation
  */
-import { MatchGrade, type ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
 import { Option } from 'effect'
@@ -33,18 +32,6 @@ interface SuggestionFacts {
   /** How the import's and the stored records' references are compared. */
   readonly comparableReferences: ComparableReferences.Type
 }
-
-/**
- * The stored records matching by name with a grade that may not need more
- * review (`MatchGrade.mayNotNeedAdditionalReview`). A `possible` match never
- * counts.
- */
-const countedNameMatches = (
-  candidates: readonly ResourceMatch.Candidate[]
-): readonly FhirResourceWithId[] =>
-  candidates
-    .filter(({ by, grade }) => by === 'name' && MatchGrade.mayNotNeedAdditionalReview(grade))
-    .map(({ resource }) => resource)
 
 /**
  * The differences of `facts.resource` from `existing` as merged once the
@@ -110,7 +97,7 @@ const suggestRecord = (facts: SuggestionFacts): Suggestion.Type => {
   }
   const storedCopy = onlyElement(storedCopies)
   if (Option.isSome(storedCopy)) return suggestIdentifierMatch(facts, storedCopy.value)
-  const nameMatches = countedNameMatches(facts.storedMatch.candidates)
+  const nameMatches = StoredMatch.nameMatchesOf(facts.storedMatch)
   if (nameMatches.length === 0) return saveAsNew(Suggestion.NoMatch())
   return facts.isReferenced
     ? suggestNameMatchReferenced(facts, nameMatches)
