@@ -471,6 +471,43 @@ describe('resolvePlan, what each choice writes', () => {
       written: Option.none(),
     })
   })
+  it('should name a record with no key identifier that is not added by its type and title, never by the literal nothing is written under', () => {
+    // Arrange
+    const report = copyOf(
+      detached({
+        resourceType: 'DocumentReference',
+        status: 'current',
+        content: [{ attachment: { contentType: 'application/pdf' } }],
+      }),
+      'report'
+    )
+    const observation = copyOf(
+      detached({
+        resourceType: 'Observation',
+        status: 'final',
+        code: { text: 'A1c' },
+        derivedFrom: [{ reference: ImportedCopy.stageLiteralOf(report) }],
+      }),
+      'observation'
+    )
+    const plan = planWith(
+      [report, observation],
+      [
+        [report, RecordChoice.DontAdd()],
+        [observation, RecordChoice.SaveAsNewRecord()],
+      ]
+    )
+
+    // Act
+    const written = writtenWireOf(plan, observation)
+
+    // Assert
+    expect(written).toMatchObject(
+      Option.some({
+        derivedFrom: [{ reference: undefined, type: 'DocumentReference', display: report.title }],
+      })
+    )
+  })
 })
 
 describe('resolvePlan, a stored record’s unlinked references', () => {

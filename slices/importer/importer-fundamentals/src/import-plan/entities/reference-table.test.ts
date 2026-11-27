@@ -18,6 +18,14 @@ const tyraReference = LogicalReference.make(
   Option.getOrThrow(DetachedResource.keyIdentifierOf(detached(tyraWire('tyra'))))
 )
 
+/** The stub of Tyra, by her key identifier, showing `display`. */
+const tyraStub = (display: Option.Option<string>): ReferenceTable.Target =>
+  ReferenceTable.Stub({
+    resourceType: 'Patient',
+    keyIdentifier: Option.some(tyraReference.identifier[0]),
+    display,
+  })
+
 /** A source file naming Tyra by her stage literal, its attachment by the source's URL, read from `source`. */
 const sourceFile = detached({
   resourceType: 'DocumentReference',
@@ -62,18 +70,22 @@ describe('ReferenceTable.resolve', () => {
     })
   })
 
-  it('should make a stage literal a stub by the record’s key, keep the literal of a record with no key identifier, and leave a source URL and meta.source with a stub target as they are', () => {
+  it('should make a stage literal a stub by the record’s type and key, by its type and display alone with no key identifier, and leave a source URL and meta.source with a stub target as they are', () => {
     // Arrange
-    const stub = (keyedBy: Option.Option<LogicalReference.Type>): ReferenceTable.Target =>
-      ReferenceTable.Stub({ display: Option.some('Tyra Ashford'), keyedBy })
+    const keylessStub = (resourceType: 'Binary' | 'DocumentReference'): ReferenceTable.Target =>
+      ReferenceTable.Stub({
+        resourceType,
+        keyIdentifier: Option.none(),
+        display: Option.some('Lab report'),
+      })
     const table = ReferenceTable.make({
       logicalReferences: [],
       stageLiterals: [
-        { stageLiteral: 'Patient/stage-tyra', target: stub(Option.some(tyraReference)) },
-        { stageLiteral: 'Binary/stage-binary', target: stub(Option.none()) },
-        { stageLiteral: 'DocumentReference/stage-file', target: stub(Option.none()) },
+        { stageLiteral: 'Patient/stage-tyra', target: tyraStub(Option.some('Tyra Ashford')) },
+        { stageLiteral: 'Binary/stage-binary', target: keylessStub('Binary') },
+        { stageLiteral: 'DocumentReference/stage-file', target: keylessStub('DocumentReference') },
       ],
-      sourceUrls: [{ sourceUrl: new URL(SOURCE_URL), target: stub(Option.none()) }],
+      sourceUrls: [{ sourceUrl: new URL(SOURCE_URL), target: keylessStub('Binary') }],
     })
 
     // Act
@@ -88,7 +100,7 @@ describe('ReferenceTable.resolve', () => {
         identifier: { value: 'tyra' },
         display: 'Tyra Ashford',
       },
-      author: [{ reference: 'Binary/stage-binary' }],
+      author: [{ reference: null, type: 'Binary', identifier: null, display: 'Lab report' }],
       content: [{ attachment: { url: SOURCE_URL } }],
     })
   })
@@ -99,10 +111,7 @@ describe('ReferenceTable.resolve', () => {
       logicalReferences: [
         {
           logicalReference: tyraReference,
-          target: ReferenceTable.Stub({
-            display: Option.some('Tyra Ashford'),
-            keyedBy: Option.some(tyraReference),
-          }),
+          target: tyraStub(Option.some('Tyra Ashford')),
         },
       ],
       stageLiterals: [],
@@ -129,10 +138,7 @@ describe('ReferenceTable.resolve', () => {
 
   it('should write no display on a stub that has none, by a logical reference or a stage literal', () => {
     // Arrange
-    const noDisplay = ReferenceTable.Stub({
-      display: Option.none(),
-      keyedBy: Option.some(tyraReference),
-    })
+    const noDisplay = tyraStub(Option.none())
     const table = ReferenceTable.make({
       logicalReferences: [{ logicalReference: tyraReference, target: noDisplay }],
       stageLiterals: [{ stageLiteral: 'Patient/stage-tyra', target: noDisplay }],

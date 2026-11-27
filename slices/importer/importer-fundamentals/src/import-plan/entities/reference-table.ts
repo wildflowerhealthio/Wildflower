@@ -6,11 +6,12 @@
  * @packageDocumentation
  */
 import { ReferencePlan, resolveReferences } from '@wildflowerhealthio/fhir-r4-adoption'
-import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { IdentifierAndReference, ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   type FhirResource,
   LogicalReference,
   ResourceReferences,
+  type ResourceType,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Data, HashMap, Match, Option, pipe } from 'effect'
 
@@ -23,17 +24,18 @@ import * as MetaSource from '../../meta-source.ts'
  * reference has no `display` of its own.
  *
  * @remarks
- * `keyedBy` is the logical reference a stub names the record by when a
- * reference spelled it by its stage literal; `None` for a record with no key
- * identifier, which has nothing to be named by, so such a reference keeps
- * its literal.
+ * A stub names the record by `resourceType` and, when it has one, its
+ * `keyIdentifier`, when a reference spelled it by its stage literal. A record
+ * with no key identifier is named by its type and display alone: nothing is
+ * written under its stage literal, so the literal is never kept.
  * A reference with no target in the table is left as it is.
  */
 type Target = Data.TaggedEnum<{
   Literal: { readonly literalReference: string }
   Stub: {
+    readonly resourceType: ResourceType.Type
+    readonly keyIdentifier: Option.Option<IdentifierAndReference.QualifiedIdentifierType>
     readonly display: Option.Option<string>
-    readonly keyedBy: Option.Option<LogicalReference.Type>
   }
 }>
 
@@ -106,24 +108,21 @@ const make = ({
 
 /**
  * `heldReference`, which names a record by its stage literal, landed on
- * `target`: the target's literal, or a stub by the record's key identifier;
- * the stub of a record with no key identifier keeps the literal.
+ * `target`: the target's literal, or a stub by the record's type, its key
+ * identifier when it has one, and its display, the reference's own `type`,
+ * `identifier` and `display` kept where it has them.
  */
 const stageLiteralLanded = (heldReference: ReferenceType, target: Target): ReferenceType =>
   Match.value(target).pipe(
     Match.tagsExhaustive({
       Literal: ({ literalReference }) => ({ ...heldReference, reference: literalReference }),
-      Stub: ({ display, keyedBy }) =>
-        Option.match(keyedBy, {
-          onNone: () => heldReference,
-          onSome: ({ resourceType, identifier: [identifier] }) => ({
-            ...heldReference,
-            reference: null,
-            type: heldReference.type ?? resourceType,
-            identifier: heldReference.identifier ?? identifier,
-            display: heldReference.display ?? Option.getOrNull(display),
-          }),
-        }),
+      Stub: ({ resourceType, keyIdentifier, display }) => ({
+        ...heldReference,
+        reference: null,
+        type: heldReference.type ?? resourceType,
+        identifier: heldReference.identifier ?? Option.getOrNull(keyIdentifier),
+        display: heldReference.display ?? Option.getOrNull(display),
+      }),
     })
   )
 

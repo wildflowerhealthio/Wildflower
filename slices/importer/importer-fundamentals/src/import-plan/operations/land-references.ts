@@ -20,14 +20,11 @@ import * as StoredMatch from '../entities/stored-match.ts'
 import { locateReferences } from './locate-references.ts'
 
 /**
- * What a stub to `record` shows when the reference has no `display` of its
- * own: for a Patient or a Practitioner, the name the person goes by at `now`
+ * The name a Patient or a Practitioner goes by at `now`
  * (`HumanName.displayName`); `None` for any other record, or a person with
- * no name. Never the record's title: the title of a record keyed by
- * identifier is the literal it would be written under, and a record not
- * added is never written there.
+ * no name.
  */
-const stubDisplayOf = (
+const personNameOf = (
   now: DateTime.DateTime,
   record: ImportedRecord.Type
 ): Option.Option<string> => {
@@ -36,6 +33,29 @@ const stubDisplayOf = (
     ? Option.fromNullable(HumanName.displayName(resource.name, now))
     : Option.none()
 }
+
+/**
+ * The record's title (`ImportedRecord.titleOf`) when it has no key
+ * identifier; `None` when it has one, since the title of a record keyed by
+ * identifier is the literal it would be written under, and a record not
+ * added is never written there.
+ */
+const keylessTitleOf = (record: ImportedRecord.Type): Option.Option<string> =>
+  Option.liftPredicate(ImportedRecord.titleOf(record), () =>
+    Option.isNone(ImportedRecord.keyIdentifierOf(record))
+  )
+
+/**
+ * What a stub to `record` shows when the reference has no `display` of its
+ * own: a person's name ({@link personNameOf}), else, for a record with no
+ * key identifier, its title ({@link keylessTitleOf}), so a stub that has no
+ * identifier to name the record by still shows what it was; `None`
+ * otherwise.
+ */
+const stubDisplayOf = (
+  now: DateTime.DateTime,
+  record: ImportedRecord.Type
+): Option.Option<string> => Option.orElse(personNameOf(now, record), () => keylessTitleOf(record))
 
 /**
  * Where a reference to `planned` lands, by its effective choice: a literal
@@ -54,8 +74,9 @@ const targetOf = (
         Match.tag('DontAdd', () =>
           Option.some(
             ReferenceTable.Stub({
+              resourceType: ImportedRecord.resourceTypeOf(planned.record),
+              keyIdentifier: ImportedRecord.keyIdentifierOf(planned.record),
               display: stubDisplayOf(now, planned.record),
-              keyedBy: ImportedRecord.logicalReferenceIfKeyedByIdentifier(planned.record),
             })
           )
         ),

@@ -405,8 +405,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `Derived`, where a stored copy from an earlier import sits, so a record
     keyed by its source URL, its ids minted, has none. What the record copy
     says of the record: **`stageIdOf`**, **`titleOf`**, **`sourceUrlOf`**,
-    **`isImplied`** (every copy implied) and
-    **`logicalReferenceIfKeyedByIdentifier`** (`RecordKey`'s, of its
+    **`isImplied`** (every copy implied), **`resourceTypeOf`** and
+    **`keyIdentifierOf`** (`DetachedResource.keyIdentifierOf` of its
     resource); and **`literalReferenceUnder(record, id)`**, `<Type>/<id>`.
   - **`RecordReferences`** — **`Type`** `{ referenced, named, external }`:
     the records another record references by a logical reference; `named`,
@@ -494,10 +494,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   - **`ReferenceTable`** — where a reference to each record lands, by every
     spelling the plan's copies name a record by. A **`Target`** is
     **`Literal`** `{ literalReference }` or a name-only **`Stub`**
-    `{ display, keyedBy }` (its `type`, `identifier` and `display`, no
-    literal; `display` is `None` when there is nothing to show, and
-    `keyedBy` is the record's key as a logical reference, `None` for a
-    record with no key identifier). **`make({ logicalReferences, stageLiterals,
+    `{ resourceType, keyIdentifier, display }` (its `type`, `identifier`
+    and `display`, no literal; `keyIdentifier` is `None` for a record with
+    no key identifier, and `display` is `None` when there is nothing to
+    show). **`make({ logicalReferences, stageLiterals,
     sourceUrls })`** builds the table from each spelling beside its target,
     as labelled entries (`{ logicalReference, target }`,
     `{ stageLiteral, target }`, `{ sourceUrl, target }`), the literal ones
@@ -506,8 +506,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     the literal a logical reference lands on, `None` for a stub or no
     target. **`resolve(table, resource)`**, a plain function: a
     reference by a record's stage literal lands on the target's literal, or
-    becomes a stub by the record's key (one with no key identifier keeps
-    its literal); a logical reference to a stub gets the stub's display, when
+    becomes a stub by the record's type and key identifier (by its type
+    and display alone when it has none, so no literal to a record not
+    written survives); a logical reference to a stub gets the stub's display, when
     there is one, if it has none of its own; a logical reference, an
     `Attachment.url` or a literal spelling a source URL with a literal target
     is made literal (`resolveReferences`); `meta.source`, read and stamped
@@ -559,8 +560,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     left, the record keyed by that identifier wins; else the only one left;
     else none), which gives `named`; groups the logical references the
     records hold so each distinct one appears once (its first-seen value,
-    beside the keys of every record holding it, in the order first held);
-    and gives each an outcome: **in the import** (one record named),
+    beside the keys of every record holding it, in the order first held,
+    as `kitchen-sink`'s `groupInOrder` groups); and gives each an outcome:
+    **in the import** (one record named),
     **ambiguous in the import** (several carry its identifier and none is
     named: linked to none, the store not asked; see Known gaps) or **not in
     the import** (no record carries its identifier: the store is asked). A
@@ -633,11 +635,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     not added on a stub, shown by the reference's own display, else, for a
     Patient or a Practitioner, the name the person goes by at `now`
     (`HumanName.displayName`; which records have a name to show is this
-    operation's rule, `stubDisplayOf`), else with no
-    display (never the record's title, which for a record keyed by
-    identifier is the literal it would be written under); one with no choice
-    nowhere, so its references stay logical. A stub names the record by
-    `ImportedRecord.logicalReferenceIfKeyedByIdentifier`. Each record's
+    operation's rule, `stubDisplayOf`), else, for a record with no key
+    identifier, its title, else with no display (never the title of a
+    record keyed by identifier, which is the literal it would be written
+    under); one with no choice nowhere, so its references stay logical. A
+    stub names the record by `ImportedRecord.resourceTypeOf` and
+    `ImportedRecord.keyIdentifierOf`. Each record's
     target is reached by a logical reference that names it
     (`RecordReferences`' `named`, from `locateReferences`; an ambiguous one
     lands nowhere), by the stage literal of each of its copies, and by the
