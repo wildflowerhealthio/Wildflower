@@ -9,6 +9,7 @@ import {
   keyByImporterAssignedKey,
   storedBrown,
   storedTyra,
+  storedTyraUnder,
   tyraA,
   tyraWire,
 } from '../import-plan.test-helpers.ts'
@@ -112,9 +113,6 @@ describe('StoredMatch.storedCopiesOfReference', () => {
     expect(storedCopies.map(literalReferenceOf)).toEqual(['Patient/p-1'])
   })
 })
-
-/** A stored Tyra under `id`, so several stored records match one imported one. */
-const storedTyraUnder = (id: string): typeof storedTyra => ({ ...storedTyra, id })
 
 describe('StoredMatch.nameMatchesOf', () => {
   it('should give the stored records found by name graded certain or probable, best first, and neither one found by identifier nor a possible one', () => {

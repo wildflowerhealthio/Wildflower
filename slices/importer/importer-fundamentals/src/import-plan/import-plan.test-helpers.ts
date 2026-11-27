@@ -1,7 +1,7 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import type { MatchGrade, ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
+import { MatchGrade, type ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import { FhirResourceSchema, type FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { Either, HashSet, Option } from 'effect'
+import { Array as Arr, Either, HashSet, Option, Order } from 'effect'
 import fc from 'fast-check'
 
 import type * as PickedFile from '../picked-file.ts'
@@ -204,6 +204,42 @@ const samplePlan = (): ImportPlan.Type =>
     sampleMatch()
   )
 
+/** Tyra as the store holds her under `id`, so several stored resources can match one imported record. */
+const storedTyraUnder = (id: string): FhirResourceWithId => ({ ...storedTyra, id })
+
+/** A candidate from a few stored Tyras, some under one id, found by either evidence at any grade a search gives. */
+const tyraCandidateArbitrary: fc.Arbitrary<ResourceMatch.Candidate> = fc
+  .record({
+    id: fc.constantFrom('p-1', 'p-2', 'p-3'),
+    grade: fc.constantFrom<MatchGrade.Type>('certain', 'probable', 'possible'),
+    by: fc.constantFrom<ResourceMatch.Evidence>('identifier', 'name'),
+  })
+  .map(({ id, grade, by }) => candidate(storedTyraUnder(id), grade, by))
+
+/**
+ * What the store holds of Tyra, any candidates of a few stored Tyras sorted
+ * best grade first, and maybe a stored Tyra under her derived id, one of the
+ * candidates' or another. It includes shapes no one search gives, such as
+ * one stored resource found twice by different evidence or grade, so a
+ * property holds over more than the matcher yields.
+ */
+const tyraEntryArbitrary: fc.Arbitrary<StoredMatch.Entry> = fc
+  .record({
+    candidates: fc.array(tyraCandidateArbitrary, { maxLength: 5 }),
+    storedUnderDerivedId: fc.option(fc.constantFrom('p-1', 'p-4').map(storedTyraUnder), {
+      nil: undefined,
+    }),
+  })
+  .map(({ candidates, storedUnderDerivedId }) =>
+    StoredMatch.makeEntry(
+      Arr.sort(
+        candidates,
+        Order.mapInput(MatchGrade.bestFirst, ({ grade }: ResourceMatch.Candidate) => grade)
+      ),
+      Option.fromNullable(storedUnderDerivedId)
+    )
+  )
+
 /** A reviewer's step: a choice for the record at `index`, or a reset of it by `null`. */
 interface ReviewerStep {
   readonly index: number
@@ -259,6 +295,8 @@ export {
   stored,
   storedBrown,
   storedTyra,
+  storedTyraUnder,
   tyraA,
+  tyraEntryArbitrary,
   tyraWire,
 }

@@ -3,15 +3,26 @@ import {
   type FhirResource,
   type FhirResourceWithId,
   literalReferenceOf,
+  sameStoredResource,
 } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { HashSet, Match, Option } from 'effect'
+import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as KeptRecord from '../entities/kept-record.ts'
 import * as KeptRecords from '../entities/kept-records.ts'
+import * as RecordChoice from '../entities/record-choice.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
-import { candidate, detached, drBrownWire, stored, tyraWire } from '../import-plan.test-helpers.ts'
+import {
+  candidate,
+  detached,
+  drBrownWire,
+  stored,
+  tyraEntryArbitrary,
+  tyraWire,
+} from '../import-plan.test-helpers.ts'
 import * as ComparableReferences from './differences-of/comparable-references.ts'
 import { type SuggestionFacts, suggestRecord } from './suggest-record.ts'
 
@@ -351,5 +362,36 @@ describe('suggestRecord, one reason per rule', () => {
 
     // Assert
     expect(reason).toEqual(Suggestion.NameMatchNotReferenced())
+  })
+})
+
+describe('suggestRecord, merging into an existing record', () => {
+  it('should only suggest merging into one of the entry’s candidates or its record under the derived id', () => {
+    fc.assert(
+      fc.property(tyraEntryArbitrary, fc.boolean(), (entry, isReferenced) => {
+        // Arrange
+        const facts = factsFor(tyra, entry.candidates, {
+          storedUnderDerivedId: entry.storedUnderDerivedId,
+          isReferenced,
+        })
+        const held = [
+          ...entry.candidates.map(({ resource }) => resource),
+          ...Option.toArray(entry.storedUnderDerivedId),
+        ]
+
+        // Act
+        const suggestion = suggestRecord(facts)
+
+        // Assert
+        expect(
+          Option.filter(suggestion.choice, RecordChoice.is('MergeIntoExistingRecord')).pipe(
+            Option.filter(
+              ({ existing }) => !held.some((resource) => sameStoredResource(resource, existing))
+            )
+          )
+        ).toEqual(Option.none())
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })
