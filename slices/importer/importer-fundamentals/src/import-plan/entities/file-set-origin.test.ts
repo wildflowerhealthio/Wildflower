@@ -42,6 +42,25 @@ describe('FileSetOrigin.fromFileSet', () => {
   })
 })
 
+describe('FileSetOrigin.fromPickedFiles', () => {
+  it('should be one set with the origin of the file set of the same picked files', () => {
+    // Arrange / Act
+    const origin = FileSetOrigin.fromPickedFiles('lifelabs-pdf', [FIRST_STUDY_FILE])
+
+    // Assert
+    expect({
+      origin,
+      sameSet: FileSetOrigin.equivalence(
+        origin,
+        FileSetOrigin.fromFileSet('lifelabs-pdf', fileSetOf([FIRST_STUDY_FILE]))
+      ),
+    }).toEqual({
+      origin: { format: 'lifelabs-pdf', pickedFiles: [FIRST_STUDY_FILE] },
+      sameSet: true,
+    })
+  })
+})
+
 describe('FileSetOrigin.equivalence', () => {
   it('should hold two origins one set when their format and picked files agree, in order', () => {
     // Arrange

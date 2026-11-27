@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
@@ -30,10 +30,14 @@ import {
   READ_FAILED_MESSAGE,
   READING_MESSAGE,
   REFUSED_MESSAGE,
+  settingsNotAppliedMessage,
+  TRY_AGAIN_LABEL,
+  REREADING_MESSAGE,
   RESET_TO_SUGGESTED_LABEL,
   sameAsExistingLine,
   SAVE_AS_NEW_LABEL,
   setEveryLabel,
+  SETTINGS_LABEL,
   SHOW_LABEL,
   UNREADABLE_LINE,
   USE_EXISTING_LABEL,
@@ -1034,9 +1038,352 @@ describe('ImporterScreen', () => {
     expect(new Set(instanceFileIds).size).toBe(3)
     expect(sourceFileIds).toEqual(expect.arrayContaining(instanceFileIds))
   })
+
+  describe('Settings', () => {
+    it('reads a DICOM study again when its time zone changes, Import waiting while it does, keeping the field, its focus and the capture’s choices, and writes the plan read again', async () => {
+      // Arrange — a capture and a study, Tyra Banks set to Don't add
+      currentRunAuthed = routingServer({})
+      let planRunner: RunAuthed = currentRunAuthed
+      currentRunPlan = (effect, options) => planRunner(effect, options)
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(screen.getByLabelText('Import file'), [
+        harOf(tyraBanksHar(SERVER_A), 'a.har'),
+        dicomFile('I1.dcm', STUDY_AT_NOON),
+      ])
+      const tyra = await findRowChoice('Tyra Banks')
+      await userEvent.selectOptions(tyra, DONT_ADD_LABEL)
+      const study = screen.getByRole('region', { name: 'DICOM image I1.dcm' })
+      const zoneInput = await openZoneField(study)
+      let releaseReread = (): void => {}
+      const rereadHeld = new Promise<void>((resolve) => {
+        releaseReread = resolve
+      })
+      planRunner = (effect, options) => rereadHeld.then(() => currentRunAuthed(effect, options))
+
+      // Act
+      await userEvent.clear(zoneInput)
+      await userEvent.type(zoneInput, `${CHATHAM}{Enter}`)
+
+      // Assert — the plan read before stays, Import waits, the field keeps its focus
+      expect(statusLine()).toBe(REREADING_MESSAGE)
+      expect(importButton().disabled).toBe(true)
+      expect(document.activeElement).toBe(zoneInput)
+      expect(settingsSummaryOf(study)).toBe(`${SETTINGS_LABEL}${CHATHAM}`)
+
+      // Act
+      releaseReread()
+
+      // Assert — the plan read again is up under the same field, still focused,
+      // and the capture's row keeps its element and its Don't add
+      await waitFor(() => {
+        expect(statusLine()).not.toBe(REREADING_MESSAGE)
+      })
+      expect(within(study).getByLabelText('Equipment time zone')).toBe(zoneInput)
+      expect(document.activeElement).toBe(zoneInput)
+      expect(zoneInput.value).toBe(CHATHAM)
+      expect(await findRowChoice('Tyra Banks')).toBe(tyra)
+      expect([rowTextOf(tyra)[0], tyra.value]).toEqual([`Tyra Banks${CHANGED_CHIP}`, 'dont-add'])
+      expect(importButton().disabled).toBe(false)
+
+      // Act
+      planRunner = currentRunAuthed
+      await userEvent.click(importButton())
+      await screen.findByRole('heading', { name: COMPLETE_HEADING })
+
+      // Assert — the study started at noon on Chatham's clock, and Tyra is not written
+      expect(writtenStudies().map(({ started }) => started)).toEqual([STARTED_AT_NOON_IN_CHATHAM])
+      expect(resourceWrites('Patient').map(({ identifier }) => identifier[0]?.value)).toEqual([
+        'P001',
+      ])
+    })
+
+    it('keeps a choice made while the files are read again', async () => {
+      // Arrange — a capture and a study, the study's read again held
+      currentRunAuthed = routingServer({})
+      let planRunner: RunAuthed = currentRunAuthed
+      currentRunPlan = (effect, options) => planRunner(effect, options)
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(screen.getByLabelText('Import file'), [
+        harOf(tyraBanksHar(SERVER_A), 'a.har'),
+        dicomFile('I1.dcm', STUDY_AT_NOON),
+      ])
+      const tyra = await findRowChoice('Tyra Banks')
+      const zoneInput = await openZoneField(
+        screen.getByRole('region', { name: 'DICOM image I1.dcm' })
+      )
+      let releaseReread = (): void => {}
+      const rereadHeld = new Promise<void>((resolve) => {
+        releaseReread = resolve
+      })
+      planRunner = (effect, options) => rereadHeld.then(() => currentRunAuthed(effect, options))
+      await userEvent.clear(zoneInput)
+      await userEvent.type(zoneInput, `${CHATHAM}{Enter}`)
+
+      // Act — Don't add Tyra Banks while the study is read again, then let it land
+      await userEvent.selectOptions(tyra, DONT_ADD_LABEL)
+      releaseReread()
+      await waitFor(() => {
+        expect(statusLine()).not.toBe(REREADING_MESSAGE)
+      })
+
+      // Assert
+      expect([rowTextOf(tyra)[0], tyra.value]).toEqual([`Tyra Banks${CHANGED_CHIP}`, 'dont-add'])
+    })
+
+    it('drops a field a merge took once it no longer differs from the existing record, and keeps the time zone for the next files', async () => {
+      // Arrange — the study imported once on Chatham's clock, then stored
+      // twice, so it needs a decision when it is picked again
+      currentRunAuthed = routingServer({})
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(
+        screen.getByLabelText('Import file'),
+        dicomFile('I1.dcm', STUDY_AT_NOON)
+      )
+      await setTimeZone('DICOM image I1.dcm', CHATHAM)
+      await userEvent.click(await findImportButton())
+      await screen.findByRole('heading', { name: COMPLETE_HEADING })
+      const written = writes()
+        .filter(({ method }) => method === 'PUT')
+        .map(({ body }): unknown => JSON.parse(body))
+      const [writtenStudy] = writtenStudies()
+      currentRunAuthed = routingServer({
+        stored: [...written, { ...writtenStudy?.wire, id: 'study-copy' }],
+      })
+      await userEvent.click(screen.getByRole('button', { name: IMPORT_MORE_FILES_LABEL }))
+      await userEvent.upload(
+        screen.getByLabelText('Import file'),
+        dicomFile('I1.dcm', STUDY_AT_NOON)
+      )
+      const card = await screen.findByRole('region', { name: /^Select an ImagingStudy record/u })
+      const summary = screen.getByRole('region', { name: 'Summary' })
+
+      // Assert — the next files were read on Chatham's clock
+      expect(settingsSummaryOf(screen.getByRole('region', { name: 'DICOM image I1.dcm' }))).toBe(
+        `${SETTINGS_LABEL}${CHATHAM}`
+      )
+
+      // Act — use the first stored study, read the study on another clock,
+      // and take its start
+      const [firstStored] = within(card).getAllByRole<HTMLInputElement>('radio', {
+        name: USE_EXISTING_LABEL,
+      })
+      await userEvent.click(firstStored ?? document.body)
+      await setTimeZone('DICOM image I1.dcm', OTHER_ZONE)
+      await userEvent.click(
+        within(card).getByRole('checkbox', { name: /^Update with import details/u })
+      )
+
+      // Assert
+      expect(countsIn(summary)['Update']).toEqual(['1'])
+
+      // Act — back on Chatham's clock, where the start is the stored one's
+      await setTimeZone('DICOM image I1.dcm', CHATHAM)
+
+      // Assert — the merge takes nothing: a link, written as nothing
+      expect(firstStored?.checked).toBe(true)
+      expect(
+        within(card).queryByRole('checkbox', { name: /^Update with import details/u })
+      ).toBeNull()
+      expect(countsIn(summary)['Update']).toEqual(['0'])
+    })
+
+    it('shows every DICOM study the time zone one changes, applying to each', async () => {
+      // Arrange — two studies
+      currentRunAuthed = routingServer({})
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(screen.getByLabelText('Import file'), [
+        dicomFile('I1.dcm', STUDY_AT_NOON),
+        dicomFile('J1.dcm', { ...STUDY_AT_NOON, StudyInstanceUID: '1.2.3.4.6' }),
+      ])
+      const first = await screen.findByRole('region', { name: 'DICOM image I1.dcm' })
+      const second = screen.getByRole('region', { name: 'DICOM image J1.dcm' })
+      const firstZone = await openZoneField(first)
+      const secondZone = await openZoneField(second)
+
+      // Act
+      await setTimeZone('DICOM image I1.dcm', CHATHAM)
+
+      // Assert — both sections say it, the second's field shows it, the first keeps its focus
+      expect([settingsSummaryOf(first), settingsSummaryOf(second)]).toEqual([
+        `${SETTINGS_LABEL}${CHATHAM} · for every DICOM image in this import`,
+        `${SETTINGS_LABEL}${CHATHAM} · for every DICOM image in this import`,
+      ])
+      expect(within(second).getByLabelText<HTMLInputElement>('Equipment time zone').value).toBe(
+        CHATHAM
+      )
+      expect(within(first).getByLabelText('Equipment time zone')).toBe(firstZone)
+      expect(document.activeElement).toBe(firstZone)
+      expect(secondZone.isConnected).toBe(false)
+    })
+
+    it('keeps the plan and says once, above the import bar, that the settings were not applied when the search of the read again fails', async () => {
+      // Arrange
+      currentRunAuthed = routingServer({})
+      let planRunner: RunAuthed = currentRunAuthed
+      currentRunPlan = (effect, options) => planRunner(effect, options)
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(
+        screen.getByLabelText('Import file'),
+        dicomFile('I1.dcm', STUDY_AT_NOON)
+      )
+      const study = await screen.findByRole('region', { name: 'DICOM image I1.dcm' })
+      const zoneInput = await openZoneField(study)
+      planRunner = routingServer({ failSearches: true })
+
+      // Act
+      await userEvent.clear(zoneInput)
+      await userEvent.type(zoneInput, `${CHATHAM}{Enter}`)
+
+      // Assert — one notice, above Import and not in the Settings, the field
+      // as typed and focused, Import back
+      const notice = await screen.findByRole('alert')
+      expect(notice.textContent).toBe(`⚠Error: ${NOT_APPLIED_TO_STUDY} ${TRY_AGAIN_LABEL}`)
+      expect(screen.getAllByRole('alert')).toEqual([notice])
+      expect(study.contains(notice)).toBe(false)
+      expect(notice.compareDocumentPosition(importButton())).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+      expect([zoneInput.value, document.activeElement]).toEqual([CHATHAM, zoneInput])
+      expect(importButton().disabled).toBe(false)
+
+      // Act
+      planRunner = currentRunAuthed
+      await userEvent.click(importButton())
+      await screen.findByRole('heading', { name: COMPLETE_HEADING })
+
+      // Assert — the plan read before is written
+      expect(writtenStudies().map(({ started }) => started)).not.toContain(
+        STARTED_AT_NOON_IN_CHATHAM
+      )
+      expect(writtenStudies()).toHaveLength(1)
+    })
+
+    it('still says the settings were not applied after a write fails, and reads again with Try again, writing the plan read again', async () => {
+      // Arrange — a read again that fails, then a write the server refuses
+      currentRunAuthed = routingServer({})
+      let planRunner: RunAuthed = currentRunAuthed
+      currentRunPlan = (effect, options) => planRunner(effect, options)
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(
+        screen.getByLabelText('Import file'),
+        dicomFile('I1.dcm', STUDY_AT_NOON)
+      )
+      const zoneInput = await openZoneField(
+        await screen.findByRole('region', { name: 'DICOM image I1.dcm' })
+      )
+      planRunner = routingServer({ failSearches: true })
+      await userEvent.clear(zoneInput)
+      await userEvent.type(zoneInput, `${CHATHAM}{Enter}`)
+      await screen.findByText(NOT_APPLIED_TO_STUDY)
+      planRunner = routingServer({ failWrite: () => true })
+
+      // Act
+      await userEvent.click(importButton())
+
+      // Assert — the refusal said, and the settings still not applied
+      expect(await screen.findByText(REFUSED_MESSAGE)).toBeDefined()
+      expect(screen.getByText(NOT_APPLIED_TO_STUDY)).toBeDefined()
+
+      // Act
+      planRunner = currentRunAuthed
+      await userEvent.click(screen.getByRole('button', { name: TRY_AGAIN_LABEL }))
+      await waitFor(() => {
+        expect(screen.queryByText(NOT_APPLIED_TO_STUDY)).toBeNull()
+      })
+      await userEvent.click(importButton())
+      await screen.findByRole('heading', { name: COMPLETE_HEADING })
+
+      // Assert — the plan read again is written
+      expect(writtenStudies().map(({ started }) => started)).toEqual([STARTED_AT_NOON_IN_CHATHAM])
+    })
+
+    it('shows a study’s decode notes in its section, before its Settings, and no Settings for a capture', async () => {
+      // Arrange
+      currentRunAuthed = routingServer({})
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+
+      // Act
+      await userEvent.upload(screen.getByLabelText('Import file'), [
+        harFile('a.har'),
+        dicomFile('I1.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I1' }),
+        dicomFile('I2.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I2' }),
+      ])
+
+      // Assert
+      const study = await screen.findByRole('region', { name: 'DICOM image I1.dcm, I2.dcm' })
+      const notes = within(study).getByText('I1.dcm: series 1, instance I1.').closest('ul')
+      expect([...(notes?.children ?? [])].map((note) => note.textContent)).toEqual([
+        'I1.dcm: series 1, instance I1.',
+        'I2.dcm: series 1, instance I2.',
+      ])
+      expect(
+        notes?.compareDocumentPosition(within(study).getByText(SETTINGS_LABEL)) ===
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBe(true)
+      const capture = screen.getByRole('region', { name: 'HAR archive a.har' })
+      expect(within(capture).queryByText(SETTINGS_LABEL)).toBeNull()
+    })
+  })
 })
 
 // Helpers
+
+/** The study's tags a DICOM file of the canonical study states: begun on 2 January 2026 at noon by its equipment's clock. */
+const STUDY_AT_NOON = {
+  SeriesInstanceUID: 'S1',
+  SeriesNumber: 1,
+  SOPInstanceUID: 'I1',
+  StudyDate: '20260102',
+  StudyTime: '120000',
+}
+
+/** What the page says when the DICOM study's new settings were not applied. */
+const NOT_APPLIED_TO_STUDY = settingsNotAppliedMessage(['DICOM image'])
+
+/** A time zone 13:45 ahead of UTC in January. */
+const CHATHAM = 'Pacific/Chatham'
+
+/** A time zone other than {@link CHATHAM}: any but it does. */
+const OTHER_ZONE = 'America/Toronto'
+
+/** When the study begun at noon by a clock set to {@link CHATHAM} began. */
+const STARTED_AT_NOON_IN_CHATHAM = '2026-01-01T22:15:00.000Z'
+
+/** Just enough of a written `ImagingStudy` to read when it started. */
+const StartedWire = Schema.Struct({ started: Schema.optional(Schema.String) })
+
+/** Each written `ImagingStudy`, its wire beside when it started. */
+const writtenStudies = (): readonly {
+  readonly wire: object
+  readonly started: string | undefined
+}[] =>
+  writes()
+    .filter((write) => write.url.includes('/ImagingStudy/'))
+    .map((write) => {
+      const wire = Schema.decodeUnknownSync(Schema.Object)(JSON.parse(write.body))
+      return { wire, started: Schema.decodeUnknownSync(StartedWire)(wire).started }
+    })
+
+/** The text of the summary of `section`'s Settings: "Settings" and what they say. */
+const settingsSummaryOf = (section: HTMLElement): string | null =>
+  within(section).getByText(SETTINGS_LABEL).closest('summary')?.textContent ?? null
+
+/** `section`'s Settings opened, and its equipment time zone field. */
+const openZoneField = async (section: HTMLElement): Promise<HTMLInputElement> => {
+  const details = within(section).getByText(SETTINGS_LABEL).closest('details')
+  if (details === null) throw new Error('Settings are a details element')
+  if (!details.open) await userEvent.click(within(section).getByText(SETTINGS_LABEL))
+  expect(details.open).toBe(true)
+  return within(section).getByLabelText<HTMLInputElement>('Equipment time zone')
+}
+
+/** The time zone of the section named `sectionName` set to `timeZone`, once the plan read again under it is up. */
+const setTimeZone = async (sectionName: string, timeZone: string): Promise<void> => {
+  const zoneInput = await openZoneField(screen.getByRole('region', { name: sectionName }))
+  await userEvent.clear(zoneInput)
+  await userEvent.type(zoneInput, `${timeZone}{Enter}`)
+  await waitFor(() => {
+    expect(statusLine()).not.toBe(REREADING_MESSAGE)
+  })
+}
 
 /** Just enough of a written `ImagingStudy` to assert its counts and instance links. */
 const ImagingStudyWire = Schema.Struct({

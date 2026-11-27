@@ -1,23 +1,26 @@
 import { FhirResourceSchema, type FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FormatKind, formatKinds } from '@wildflowerhealthio/importer-core'
 import {
   Difference,
   FileSetOrigin,
+  FormatDecode,
   type ImportedCopy,
   ImportedRecord,
   ImportPlan,
+  type PickedFile,
   PlannedRecord,
   RecordChoice,
   StoredMatch,
   Suggestion,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Array as Arr, Option, Schema } from 'effect'
+import { Array as Arr, Option, ParseResult, Schema } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { recordKeyText } from './decision-card-ids.ts'
 import * as PlanSections from './plan-sections.ts'
-import { reviewedPlanOf, storedOf } from './plan.test-helpers.ts'
+import { batchCopiesOf, reviewedPlanOf, storedOf } from './plan.test-helpers.ts'
 
 /** The types the arbitrary plans' records are of: the two people types and two others. */
 const RESOURCE_TYPES = ['Patient', 'Practitioner', 'Observation', 'MedicationRequest'] as const
@@ -330,6 +333,157 @@ describe('PlanSections.sectionsOf', () => {
       [1, 'Create', false],
       [2, 'Create', false],
       [4, 'Create', false],
+    ])
+  })
+})
+
+describe('PlanSections.sectionsOf, a file set’s notes and settings', () => {
+  /** A picked file of `fileName` at batch position `position`. */
+  const pickedFile = (position: number, fileName: string): PickedFile.Type => ({
+    id: `${position}:${fileName}`,
+    fileName,
+    bytes: new Uint8Array(),
+  })
+
+  /** An Observation of `file`, read by `format`, the plan's suggestion for it a decision or a new record. */
+  const observationOf = (
+    format: FormatKind,
+    file: PickedFile.Type,
+    reason: 'NameMatchReferenced' | 'NoMatch'
+  ): PlannedRecord.Type => {
+    const copy: ImportedCopy.Type = {
+      origin: FileSetOrigin.fromPickedFiles(format, [file]),
+      reviewKey: `${file.id}/observation`,
+      title: `Observation of ${file.fileName}`,
+      isImplied: false,
+      resource: {
+        ...Schema.decodeUnknownSync(FhirResourceSchema)({
+          ...wireOf('Observation', file.fileName),
+          id: 'stage',
+        }),
+        id: null,
+      },
+      sourceUrl: Option.none(),
+      stageId: { _tag: 'Minted', id: `stage-${file.id}` },
+    }
+    return PlannedRecord.make({
+      record: Option.getOrThrow(Arr.head(ImportedRecord.fromCopies([copy]))),
+      storedMatch: StoredMatch.makeEntry([], Option.none()),
+      suggestion:
+        reason === 'NoMatch'
+          ? Suggestion.make(Option.some(RecordChoice.SaveAsNewRecord()), Suggestion.NoMatch())
+          : Suggestion.make(Option.none(), Suggestion.NameMatchReferenced()),
+    })
+  }
+
+  const withRow = pickedFile(0, 'with-row.har')
+  const withNotes = pickedFile(1, 'with-notes.har')
+  const withNothing = pickedFile(2, 'with-nothing.har')
+  const report = pickedFile(3, 'report.pdf')
+  const unreadableReport = pickedFile(4, 'unreadable.pdf')
+  const unreadableHar = pickedFile(5, 'unreadable.har')
+
+  /**
+   * A HAR with a row, one whose only record needs a decision but whose
+   * decode noted something, one whose only record needs a decision, one
+   * unreadable; a LifeLabs report whose only record needs a decision, and
+   * one unreadable.
+   */
+  const review = (): PlanSections.ReviewedPlan => {
+    const plan = ImportPlan.make(
+      [
+        observationOf('har', withRow, 'NoMatch'),
+        observationOf('har', withNotes, 'NameMatchReferenced'),
+        observationOf('har', withNothing, 'NameMatchReferenced'),
+        observationOf('lifelabs-pdf', report, 'NameMatchReferenced'),
+      ],
+      StoredMatch.empty
+    )
+    const reviewed = reviewedPlanOf(plan)
+    const [har, lifeLabs] = batchCopiesOf(plan).formats
+    if (har === undefined || lifeLabs === undefined) throw new Error('Two formats are read')
+    const unreadable = (format: FormatKind, file: PickedFile.Type): FormatDecode.UnreadableFile =>
+      FormatDecode.makeUnreadableFile(
+        format,
+        file,
+        new ParseResult.ParseError({
+          issue: new ParseResult.Type(Schema.Unknown.ast, file.fileName, 'rejected'),
+        })
+      )
+    return {
+      ...reviewed,
+      batchCopies: {
+        formats: [
+          {
+            ...har,
+            files: [...har.files, unreadableHar],
+            notes: [
+              {
+                origin: FileSetOrigin.fromPickedFiles('har', [withNotes]),
+                notes: ['Matched no importer: https://example.test/a'],
+              },
+            ],
+            unreadableFiles: [unreadable('har', unreadableHar)],
+          },
+          {
+            ...lifeLabs,
+            files: [unreadableReport, ...lifeLabs.files],
+            unreadableFiles: [unreadable('lifelabs-pdf', unreadableReport)],
+          },
+        ],
+        unrecognizedFiles: [],
+      },
+    }
+  }
+
+  it('gives a file set a section when it has a row, when its decode noted something, or when its format has settings, unreadable files of such a format included, in the order of their files', () => {
+    // Arrange / Act
+    const sections = PlanSections.sectionsOf(review())
+
+    // Assert
+    expect(
+      sections.map((section) =>
+        section._tag === 'FileSet'
+          ? {
+              files: section.origin.pickedFiles.map(({ fileName }) => fileName),
+              format: section.format,
+              groups: section.groups.map(({ resourceType }) => resourceType),
+              notes: section.notes,
+              formatFileSets: section.formatFileSets,
+            }
+          : section._tag
+      )
+    ).toEqual([
+      {
+        files: ['with-row.har'],
+        format: 'har',
+        groups: ['Observation'],
+        notes: [],
+        formatFileSets: 3,
+      },
+      {
+        files: ['with-notes.har'],
+        format: 'har',
+        groups: [],
+        notes: ['Matched no importer: https://example.test/a'],
+        formatFileSets: 3,
+      },
+      {
+        files: ['unreadable.pdf'],
+        format: 'lifelabs-pdf',
+        groups: [],
+        notes: [],
+        formatFileSets: 2,
+      },
+      { files: ['report.pdf'], format: 'lifelabs-pdf', groups: [], notes: [], formatFileSets: 2 },
+    ])
+  })
+
+  it('says only a format with a settings picker has settings', () => {
+    expect(formatKinds.map((format) => [format, PlanSections.hasSettings(format)])).toEqual([
+      ['har', false],
+      ['lifelabs-pdf', true],
+      ['dicom', true],
     ])
   })
 })

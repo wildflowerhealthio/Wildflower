@@ -10,6 +10,14 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
+  dicomSettingsLine,
+  lifeLabsSettingsLine,
+  choicesNotKeptLine,
+  settingsNotAppliedMessage,
+  TRY_AGAIN_LABEL,
+  REREADING_MESSAGE,
+  SETTINGS_LABEL,
+  settingsSummaryLine,
   createAllLabel,
   decidedAutomaticallyLine,
   identifierMatchTag,
@@ -419,5 +427,57 @@ describe('a row’s text', () => {
       ]),
       referencesDetail([]),
     ]).toEqual(['subject: Tyra Banks · requester: Dr. Brown (display only)', 'No references'])
+  })
+})
+
+describe('a file’s settings’ text', () => {
+  it('says a DICOM image’s time zone, and a LifeLabs report’s time zone and health card province', () => {
+    expect([
+      dicomSettingsLine({ timeZone: 'Pacific/Chatham' }),
+      lifeLabsSettingsLine({ timeZone: 'America/Toronto', healthCardProvince: 'ON' }),
+      lifeLabsSettingsLine({ timeZone: 'America/Vancouver', healthCardProvince: 'Other' }),
+    ]).toEqual([
+      'Pacific/Chatham',
+      'America/Toronto · Ontario health card',
+      'America/Vancouver · Other province health card',
+    ])
+  })
+
+  it('says the settings are every file set’s of the format only when the import holds several', () => {
+    expect(
+      [1, 2].map((formatFileSets) =>
+        settingsSummaryLine({
+          statement: 'Pacific/Chatham',
+          formatTitle: 'DICOM image',
+          formatFileSets,
+        })
+      )
+    ).toEqual(['Pacific/Chatham', 'Pacific/Chatham · for every DICOM image in this import'])
+  })
+
+  it('says why Import waits while the files are read again', () => {
+    expect([SETTINGS_LABEL, REREADING_MESSAGE]).toEqual([
+      'Settings',
+      'Reading the files again under the new settings…',
+    ])
+  })
+
+  it('says which formats’ settings were not applied and what Import writes, with its action', () => {
+    expect([
+      settingsNotAppliedMessage(['DICOM image']),
+      settingsNotAppliedMessage(['LifeLabs report', 'DICOM image']),
+      TRY_AGAIN_LABEL,
+    ]).toEqual([
+      'The new DICOM image settings were not applied. The import plan shown was read under the settings before, and Import writes that plan.',
+      'The new LifeLabs report and DICOM image settings were not applied. The import plan shown was read under the settings before, and Import writes that plan.',
+      'Try again',
+    ])
+  })
+
+  it('says how many choices a read again could not keep, singular for one', () => {
+    expect([choicesNotKeptLine(1), choicesNotKeptLine(2)]).toEqual([
+      '1 choice was not kept: its record changed under the new settings.',
+      '2 choices were not kept: their records changed under the new settings.',
+    ])
   })
 })
