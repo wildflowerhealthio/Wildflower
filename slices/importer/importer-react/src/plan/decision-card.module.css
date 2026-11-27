@@ -1,0 +1,172 @@
+/*
+ * A record that needs a decision: a card holding its title and meta line
+ * over its options (react-tundraish's RadioCardGroup). Its edge is the
+ * warning colour while nothing is chosen. "Go to record" scrolls it into
+ * view with room above it, below the status bar.
+ */
+.decision-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-4);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--radius-4);
+  background: var(--card-color-background);
+  box-shadow: var(--card-box-shadow);
+  /* Clears the status bar and a sticky page header above the column. */
+  scroll-margin-top: calc(
+    var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--space-14)
+  );
+}
+
+.decision-card--open {
+  border-color: var(--color-warning-border);
+}
+
+.decision-card__heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.decision-card__title {
+  margin: 0;
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-3);
+  line-height: var(--line-height-4);
+  text-wrap: pretty;
+}
+
+.decision-card__code {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-1);
+  background: var(--color-sunken);
+  color: var(--color-neutral-1);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-2);
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.decision-card__kicker-part {
+  white-space: nowrap;
+}
+
+/* A file's title or an identifier in a kicker or a note keeps that line's size. */
+.decision-card__kicker .decision-card__code,
+.decision-card__note .decision-card__code {
+  font-size: var(--font-size-2);
+}
+
+/* Disables every control of the card while the write is in flight, and draws nothing itself. */
+.decision-card__options {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.decision-card__meta {
+  margin: 0;
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-2);
+  color: var(--color-neutral-5);
+}
+
+.decision-card__meta--open {
+  color: var(--color-warning-foreground);
+}
+
+.decision-card__option-heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Inline text, so a line breaks only between the kicker's parts. */
+.decision-card__kicker {
+  line-height: var(--line-height-4);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-neutral-4);
+}
+
+.decision-card__option-title {
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-2);
+  line-height: var(--line-height-3);
+}
+
+.decision-card__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.decision-card__field {
+  display: flex;
+  flex-direction: column;
+}
+
+.decision-card__field-name {
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}
+
+.decision-card__field-value {
+  margin: 0;
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-1);
+  overflow-wrap: anywhere;
+}
+
+.decision-card__field-value--mono {
+  font-family: var(--font-mono);
+}
+
+.decision-card__field-value--differs {
+  font-weight: var(--font-weight-3);
+}
+
+.decision-card__field-value--not-recorded {
+  font-family: inherit;
+  color: var(--color-neutral-5);
+}
+
+.decision-card__note {
+  margin: 0;
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-4);
+}
+
+/* Don't add: a full-width radio line in the same group, under the options. */
+.decision-card__dont-add {
+  flex-wrap: wrap;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-1);
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-2);
+  line-height: var(--line-height-4);
+}
+
+.decision-card__dont-add > input {
+  margin: 0;
+}
+
+.decision-card__dont-add-outcome {
+  font-weight: var(--font-weight-1);
+  color: var(--color-neutral-4);
+}
+
+@media (min-width: 768px) {
+  .decision-card {
+    padding: var(--space-7);
+  }
+
+  .decision-card__dont-add {
+    min-height: 0;
+  }
+}
