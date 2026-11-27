@@ -1,7 +1,7 @@
 .import-complete-notice {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-6);
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
@@ -13,14 +13,4 @@
   font-weight: var(--font-weight-3);
   letter-spacing: var(--letter-spacing-1);
   line-height: var(--line-height-2);
-}
-
-.import-complete-notice__line {
-  margin: 0;
-  color: var(--color-neutral-3);
-}
-
-.import-complete-notice__button {
-  align-self: flex-end;
-  margin-top: var(--space-8);
 }

@@ -1,3 +1,4 @@
+import { GateCard, Notice } from '@wildflowerhealthio/react-tundraish'
 import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 
@@ -28,26 +29,6 @@ import styles from './importer-screen.module.css'
 /** The registered formats' detectors, in registry (priority) order. */
 const registeredDetectors = Object.values(formatRegistry)
 
-/** Said when the files could not be planned, with a way back to choosing files. */
-const ReadFailedAlert = ({
-  onChooseOther,
-}: {
-  readonly onChooseOther: () => void
-}): JSX.Element => (
-  <>
-    <p role="alert" className={styles['importer-screen__error']}>
-      {READ_FAILED_MESSAGE}
-    </p>
-    <button
-      type="button"
-      className={`button-2 outline ${styles['importer-screen__choose-other']}`}
-      onClick={onChooseOther}
-    >
-      {CHOOSE_OTHER_FILES_LABEL}
-    </button>
-  </>
-)
-
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
   const page = useImportPlanPage()
@@ -55,12 +36,12 @@ const ImporterScreen = (): JSX.Element => {
     Match.tag('ChoosingFiles', () => (
       <SourcePicker detectors={registeredDetectors} onPick={page.read} />
     )),
-    Match.tag('Reading', () => (
-      <p role="status" className={styles['importer-screen__status']}>
-        {READING_MESSAGE}
-      </p>
+    Match.tag('Reading', () => <GateCard title={READING_MESSAGE} />),
+    Match.tag('ReadFailed', () => (
+      <Notice tone="danger" action={{ label: CHOOSE_OTHER_FILES_LABEL, onClick: page.startOver }}>
+        {READ_FAILED_MESSAGE}
+      </Notice>
     )),
-    Match.tag('ReadFailed', () => <ReadFailedAlert onChooseOther={page.startOver} />),
     Match.tag('Reviewing', ({ review, writeFailure }) => (
       <ImportPlanPage
         review={review}

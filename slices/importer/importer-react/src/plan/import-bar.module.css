@@ -25,12 +25,8 @@
   color: var(--color-warning-foreground);
 }
 
-.import-bar__action,
-.import-bar__failure {
-  border-radius: var(--radius-4);
-}
-
 .import-bar__action {
+  border-radius: var(--radius-4);
   /* Close to the sentence above it, which the page's section gap sets apart. */
   margin-top: calc(-1 * var(--space-7));
   position: sticky;
@@ -55,25 +51,10 @@
   white-space: nowrap;
 }
 
-.import-bar__failure {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--color-red-7);
-  background: var(--color-red-9);
-  color: var(--color-red-3);
-}
-
-.import-bar__failure-message {
-  margin: 0;
-  font-weight: var(--font-weight-2);
-}
-
-.import-bar__failure-issues {
+/* The write failure's refusals, under its message. */
+.import-bar__issues {
   margin: 0;
   padding-left: var(--space-7);
-  overflow-wrap: anywhere;
 }
 
 @media (min-width: 768px) {

@@ -6,6 +6,7 @@ import {
   PlanTotals,
   type RecordKey,
 } from '@wildflowerhealthio/importer-fundamentals'
+import { Notice } from '@wildflowerhealthio/react-tundraish'
 import { type DateTime, Match, Option } from 'effect'
 import { type JSX, useId } from 'react'
 
@@ -47,23 +48,25 @@ const undecidedLineOf = (
     })
   )
 
-/** Why the last write did not end in an import, above the bar. */
-const WriteFailureAlert = ({ failure }: { readonly failure: WriteFailure.Type }): JSX.Element => (
-  <div role="alert" className={styles['import-bar__failure']}>
-    <p className={styles['import-bar__failure-message']}>{writeFailureMessage(failure)}</p>
-    {Match.value(failure).pipe(
-      Match.tag('Refused', ({ outcomes }) => (
-        <ul className={styles['import-bar__failure-issues']}>
-          {refusalMessagesOf(outcomes).map((message) => (
-            <li key={message}>{message}</li>
-          ))}
-        </ul>
-      )),
-      Match.tag('Unanswered', () => null),
-      Match.exhaustive
-    )}
-  </div>
-)
+/** Why the last write did not end in an import, above the bar, with each distinct refusal. */
+const WriteFailureNotice = ({ failure }: { readonly failure: WriteFailure.Type }): JSX.Element => {
+  const issues = Match.value(failure).pipe(
+    Match.tag('Refused', ({ outcomes }) => (
+      <ul className={styles['import-bar__issues']}>
+        {refusalMessagesOf(outcomes).map((message) => (
+          <li key={message}>{message}</li>
+        ))}
+      </ul>
+    )),
+    Match.tag('Unanswered', () => undefined),
+    Match.exhaustive
+  )
+  return (
+    <Notice tone="danger" details={issues}>
+      {writeFailureMessage(failure)}
+    </Notice>
+  )
+}
 
 /** The Import button, described by the bar's sentence. */
 const ImportButton = ({
@@ -152,7 +155,7 @@ const ImportBar = ({ review, writeFailure, importing, onImport }: ImportBarProps
   return (
     <>
       {writeFailure.pipe(
-        Option.map((failure) => <WriteFailureAlert key="failure" failure={failure} />),
+        Option.map((failure) => <WriteFailureNotice key="failure" failure={failure} />),
         Option.getOrNull
       )}
       <div className={styles['import-bar']}>{content}</div>

@@ -146,7 +146,9 @@ describe('ImporterScreen', () => {
 
     // Assert
     await screen.findByRole('heading', { name: COMPLETE_HEADING })
-    expect(screen.getByRole('status').textContent).toBe('4 new, 0 updated, 0 linked.')
+    expect(screen.getByRole('status').textContent).toBe(
+      `✓Success: 4 new, 0 updated, 0 linked. ${IMPORT_MORE_FILES_LABEL}`
+    )
     expect(bundleTypes()).toEqual(['batch', 'transaction'])
     const sourceFiles = writes().filter((write) => write.url.includes('/DocumentReference/'))
     expect(sourceFiles).toHaveLength(1)
@@ -236,7 +238,9 @@ describe('ImporterScreen', () => {
     await screen.findByRole('heading', { name: COMPLETE_HEADING })
 
     // Assert — no source file written, and every record names the stored one
-    expect(screen.getByRole('status').textContent).toBe('3 new, 0 updated, 1 linked.')
+    expect(screen.getByRole('status').textContent).toBe(
+      `✓Success: 3 new, 0 updated, 1 linked. ${IMPORT_MORE_FILES_LABEL}`
+    )
     expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
     expect(
       writes()
@@ -313,7 +317,9 @@ describe('ImporterScreen', () => {
     await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
 
     // Assert
-    expect((await screen.findByRole('alert')).textContent).toBe(READ_FAILED_MESSAGE)
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      `⚠Error: ${READ_FAILED_MESSAGE} ${CHOOSE_OTHER_FILES_LABEL}`
+    )
     await userEvent.click(screen.getByRole('button', { name: CHOOSE_OTHER_FILES_LABEL }))
     expect(screen.getByRole('region', { name: 'File source' })).toBeDefined()
   })
@@ -352,7 +358,9 @@ describe('ImporterScreen', () => {
     await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
 
     // Assert
-    expect((await screen.findByRole('alert')).textContent).toBe(READ_FAILED_MESSAGE)
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      `⚠Error: ${READ_FAILED_MESSAGE} ${CHOOSE_OTHER_FILES_LABEL}`
+    )
 
     // Act
     await userEvent.click(screen.getByRole('button', { name: CHOOSE_OTHER_FILES_LABEL }))
