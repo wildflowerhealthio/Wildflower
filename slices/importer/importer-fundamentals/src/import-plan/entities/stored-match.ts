@@ -35,15 +35,6 @@ interface Entry {
 }
 
 /**
- * A stored record found for a record, beside the grade it was found with;
- * `None` for the record stored under its derived id that no search found.
- */
-interface FoundRecord {
-  readonly existing: FhirResourceWithId
-  readonly grade: Option.Option<MatchGrade.Type>
-}
-
-/**
  * Each record's {@link Entry} by its key, and the stored candidates of each
  * external reference's target, best grade first, by `LogicalReference.key`.
  */
@@ -134,33 +125,6 @@ const nameMatchesOf = (entry: Entry): readonly FhirResourceWithId[] =>
     .map(({ resource }) => resource)
 
 /**
- * Every stored record found for the record, each once
- * (`sameStoredResource`) with the grade it was found with: the candidates
- * found by identifier or by name, any grade, `possible` included, best grade
- * first, then the record under its derived id (grade `None`) when no
- * candidate is that stored record.
- *
- * @remarks
- * These are the stored records a reviewer can pick for the record to merge
- * into: a `possible` match is among them though no suggestion counts it
- * ({@link nameMatchesOf}), since the reviewer may know better.
- */
-const foundRecordsOf = (entry: Entry): readonly FoundRecord[] =>
-  Arr.dedupeWith(
-    [
-      ...entry.candidates.map(({ resource, grade }): FoundRecord => ({
-        existing: resource,
-        grade: Option.some(grade),
-      })),
-      ...Option.toArray(entry.storedUnderDerivedId).map((existing): FoundRecord => ({
-        existing,
-        grade: Option.none(),
-      })),
-    ],
-    (left, right) => sameStoredResource(left.existing, right.existing)
-  )
-
-/**
  * The stored copies of the record `externalReference` names: its candidates
  * found by identifier ({@link ofReference}).
  */
@@ -171,7 +135,6 @@ const storedCopiesOfReference = (
 
 export {
   empty,
-  foundRecordsOf,
   make,
   makeEntry,
   nameMatchesOf,
@@ -180,4 +143,4 @@ export {
   storedCopiesOf,
   storedCopiesOfReference,
 }
-export type { Entry, FoundRecord, Type }
+export type { Entry, Type }

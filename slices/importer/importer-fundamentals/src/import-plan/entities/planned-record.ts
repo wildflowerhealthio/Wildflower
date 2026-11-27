@@ -4,9 +4,10 @@
  *
  * @packageDocumentation
  */
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { Match, Option, Schema } from 'effect'
+import { type FhirResource, sameStoredResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { Array as Arr, Match, Option, Schema } from 'effect'
 
+import * as ExistingRecord from './existing-record.ts'
 import * as ImportedRecord from './imported-record.ts'
 import * as RecordChoice from './record-choice.ts'
 import type * as StoredMatch from './stored-match.ts'
@@ -73,6 +74,41 @@ const effectiveChoice = (planned: Type): Option.Option<RecordChoice.Type> =>
   Option.orElse(planned.chosen, () => planned.suggestion.choice)
 
 /**
+ * Every existing record `planned` could merge into, each stored resource once
+ * (`sameStoredResource`, the first kept): the search's candidates in the
+ * entry's order, best grade first, `possible` ones included; then the record
+ * stored under its derived id, when no candidate is that stored resource;
+ * then the existing record the reviewer's own choice merges into, when
+ * none of those is it.
+ *
+ * @remarks
+ * A `possible` match is listed though no suggestion counts it
+ * (`StoredMatch.nameMatchesOf`).
+ */
+const existingRecordsOf = (planned: Type): readonly ExistingRecord.Type[] =>
+  Arr.dedupeWith(
+    [
+      ...planned.storedMatch.candidates.map(({ resource, grade, by }): ExistingRecord.Type => ({
+        resource,
+        knownBy: ExistingRecord.MatchedBySearch({ grade, evidence: by }),
+      })),
+      ...Option.toArray(planned.storedMatch.storedUnderDerivedId).map(
+        (resource): ExistingRecord.Type => ({
+          resource,
+          knownBy: ExistingRecord.StoredUnderDerivedId(),
+        })
+      ),
+      ...Option.toArray(
+        Option.filter(planned.chosen, RecordChoice.is('MergeIntoExistingRecord'))
+      ).map(({ existing }): ExistingRecord.Type => ({
+        resource: existing,
+        knownBy: ExistingRecord.ChosenByReviewer(),
+      })),
+    ],
+    (left, right) => sameStoredResource(left.resource, right.resource)
+  )
+
+/**
  * `planned`'s label, by its effective choice: save as new is `Create`; merge
  * into existing is `Update` when it takes a field or the record is edited,
  * else `LinkToExisting`; don't add is `DontAdd`; no choice is `Open`.
@@ -114,6 +150,7 @@ const isChanged = (planned: Type): boolean =>
 
 export {
   effectiveChoice,
+  existingRecordsOf,
   isChanged,
   LabelSchema,
   labelOf,
