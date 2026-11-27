@@ -9,10 +9,13 @@ import { type SettingsPickerProps } from '@wildflowerhealthio/importer-fundament
 import { LifeLabsPdfSettingsPicker } from '@wildflowerhealthio/lifelabs-pdf-importer-react'
 import type { JSX } from 'react'
 
+import { dicomSettingsLine, lifeLabsSettingsLine } from './plan/plan-text.ts'
+
 /**
  * The shell's view of the closed format registry: each entry is the format's
  * core {@link FileImporter} plus the React parts a format contributes — its
- * `SettingsPicker`, when the format has settings. The single edit point for
+ * `SettingsPicker` and the line that says what its settings are
+ * (`settingsLineOf`), when the format has settings. The single edit point for
  * wiring a format's UI into the shell; the importer half is registered in
  * `importer-core`.
  *
@@ -25,17 +28,21 @@ type FormatSettingsPicker<K extends FormatKind> = (
 ) => JSX.Element
 
 /**
- * A format's settings picker slot: forbidden for a format whose settings are
- * `null`, required for every other, so a format with settings that is missing
- * its picker fails to compile.
+ * A format's settings slot, its picker and what its settings say on one line
+ * (`plan-text.ts`): forbidden for a format whose settings are `null`,
+ * required for every other, so a format with settings that is missing
+ * either fails to compile.
  */
-type SettingsPickerSlot<K extends FormatKind> = FormatSettings[K] extends null
-  ? { readonly SettingsPicker?: never }
-  : { readonly SettingsPicker: FormatSettingsPicker<K> }
+type SettingsSlot<K extends FormatKind> = FormatSettings[K] extends null
+  ? { readonly SettingsPicker?: never; readonly settingsLineOf?: never }
+  : {
+      readonly SettingsPicker: FormatSettingsPicker<K>
+      readonly settingsLineOf: (settings: FormatSettings[K]) => string
+    }
 
 /**
  * One registered format as the shell sees it: `importer-core`'s
- * {@link CoreBoundFormat} extended with its settings picker slot.
+ * {@link CoreBoundFormat} extended with its settings slot.
  *
  * @remarks
  * Named for what it adds, rather than reusing `importer-core`'s `BoundFormat`:
@@ -48,18 +55,18 @@ type SettingsPickerSlot<K extends FormatKind> = FormatSettings[K] extends null
  * added to `FileImporter` would have been dropped here with no type error
  * anywhere. `FileImporter` has no prototype, so the spread is total.
  */
-type FormatWithComponents<K extends FormatKind> = CoreBoundFormat<K> & SettingsPickerSlot<K>
+type FormatWithComponents<K extends FormatKind> = CoreBoundFormat<K> & SettingsSlot<K>
 
 /**
  * Attach a format's React slots to its core importer.
  *
  * @param importer - The format's entry in `importer-core`'s registry
- * @param componentSet - The format's settings form
+ * @param componentSet - The format's settings form and what its settings say
  * @returns The shell's registry entry for that format
  */
 const withComponents = <K extends FormatKind>(
   importer: CoreBoundFormat<K>,
-  componentSet: SettingsPickerSlot<K>
+  componentSet: SettingsSlot<K>
 ): FormatWithComponents<K> => ({ ...importer, ...componentSet })
 
 /**
@@ -70,9 +77,11 @@ const formatRegistry: { readonly [K in FormatKind]: FormatWithComponents<K> } = 
   har: coreRegistry.har,
   'lifelabs-pdf': withComponents(coreRegistry['lifelabs-pdf'], {
     SettingsPicker: LifeLabsPdfSettingsPicker,
+    settingsLineOf: lifeLabsSettingsLine,
   }),
   dicom: withComponents(coreRegistry.dicom, {
     SettingsPicker: DicomSettingsPicker,
+    settingsLineOf: dicomSettingsLine,
   }),
 }
 
@@ -81,4 +90,4 @@ const formatRegistry: { readonly [K in FormatKind]: FormatWithComponents<K> } = 
 // from there directly — re-exporting them here gave the package two routes to
 // the same symbol, and it used both.
 export { formatRegistry, withComponents }
-export type { FormatSettingsPicker, FormatWithComponents, SettingsPickerSlot }
+export type { FormatSettingsPicker, FormatWithComponents, SettingsSlot }

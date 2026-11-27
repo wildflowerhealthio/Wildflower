@@ -1,0 +1,77 @@
+/* A file's Settings: a summary line that opens a panel holding the format's settings picker. */
+.file-settings {
+  margin: 0;
+}
+
+/* "Settings" in the accent, then what the settings say, muted; the disclosure marker hidden, as the design draws it. */
+.file-settings__summary {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: 32px;
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-2);
+  color: var(--app-accent-text);
+  list-style: none;
+  cursor: pointer;
+}
+
+.file-settings__summary::-webkit-details-marker {
+  display: none;
+}
+
+.file-settings__line {
+  min-width: 0;
+  font-weight: var(--font-weight-1);
+  color: var(--color-neutral-5);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The panel the registered picker renders into. A picker is the format's
+ * own markup, its labels and fields unclassed, so the panel lays them out:
+ * each label over its field, a field as wide as the panel.
+ */
+.file-settings__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-top: var(--space-4);
+  padding: var(--space-6);
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--radius-4);
+}
+
+.file-settings__panel :where(label) {
+  display: block;
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-2);
+  color: var(--color-neutral-4);
+}
+
+.file-settings__panel :where(label):first-child {
+  margin-top: 0;
+}
+
+.file-settings__panel :where(input, select) {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  font-size: var(--font-size-3);
+  color: inherit;
+  background: var(--color-background);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-1);
+}
+
+.file-settings__panel :where(p[role='alert']) {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-2);
+  color: var(--color-red-3);
+}

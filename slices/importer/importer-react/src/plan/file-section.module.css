@@ -1,4 +1,4 @@
-/* One file set's records decided automatically: the format over the files' names, then one group per type. */
+/* One file set: the format over the files' names, a group per type of its records decided automatically, its notes and its Settings. */
 .file-section {
   display: flex;
   flex-direction: column;
@@ -26,4 +26,18 @@
   color: var(--color-neutral-4);
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* What the set's decode noted: information, one plain line each. */
+.file-section__notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+  color: var(--color-neutral-4);
+  list-style: none;
+  overflow-wrap: anywhere;
 }

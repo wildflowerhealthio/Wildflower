@@ -716,6 +716,7 @@ const settingsRegistry: SettingsRegistry = {
         change lifelabs settings
       </button>
     ),
+    settingsLineOf: ({ timeZone }) => timeZone,
   },
   dicom: {
     display: { title: 'DICOM image', description: 'DICOM' },
@@ -724,6 +725,7 @@ const settingsRegistry: SettingsRegistry = {
         change dicom settings
       </button>
     ),
+    settingsLineOf: ({ timeZone }) => timeZone,
   },
 }
 

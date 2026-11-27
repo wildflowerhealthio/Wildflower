@@ -5,7 +5,7 @@ import type { JSX } from 'react'
 import { ImportCompleteNotice } from './plan/import-complete-notice.tsx'
 import { ImportPlanPage } from './plan/import-plan-page.tsx'
 import { CHOOSE_OTHER_FILES_LABEL, READ_FAILED_MESSAGE, READING_MESSAGE } from './plan/plan-text.ts'
-import { useImportPlanPage } from './plan/use-import-plan-page.ts'
+import { settingsStatusOf, useImportPlanPage } from './plan/use-import-plan-page.ts'
 import { formatRegistry } from './registry.ts'
 import { SourcePicker } from './sources/source-picker.tsx'
 import styles from './importer-screen.module.css'
@@ -42,13 +42,18 @@ const ImporterScreen = (): JSX.Element => {
         {READ_FAILED_MESSAGE}
       </Notice>
     )),
-    Match.tag('Reviewing', ({ review, writeFailure }) => (
+    Match.tag('Reviewing', ({ review, writeFailure, isRereading, choicesNotKept }) => (
       <ImportPlanPage
         review={review}
         writeFailure={writeFailure}
         importing={false}
+        settings={page.settings}
+        settingsStatus={settingsStatusOf(review, isRereading, page.settings)}
+        choicesNotKept={choicesNotKept.length}
         onChoose={page.choose}
         onReset={page.reset}
+        onApplySettings={page.applySettings}
+        onApplySettingsAgain={page.applySettingsAgain}
         onImport={page.importPlan}
         onCancel={page.startOver}
       />
@@ -58,8 +63,13 @@ const ImporterScreen = (): JSX.Element => {
         review={review}
         writeFailure={Option.none()}
         importing
+        settings={page.settings}
+        settingsStatus={settingsStatusOf(review, false, page.settings)}
+        choicesNotKept={0}
         onChoose={page.choose}
         onReset={page.reset}
+        onApplySettings={page.applySettings}
+        onApplySettingsAgain={page.applySettingsAgain}
         onImport={page.importPlan}
         onCancel={page.startOver}
       />
