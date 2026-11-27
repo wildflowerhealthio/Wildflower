@@ -1,8 +1,15 @@
-import { useId, type JSX, type PropsWithChildren, type ReactNode } from 'react'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { useId, type ComponentProps, type JSX, type PropsWithChildren, type ReactNode } from 'react'
 
 import styles from './field.module.css'
 
-type FieldProps = PropsWithChildren<{
+/**
+ * Props for {@link Field}: its label, the control it labels and its content,
+ * and any other `<div>` prop (`id`, `aria-*`, `data-*`, `ref`, a `className`
+ * added to its own), which go to the root stack.
+ */
+interface FieldProps extends Omit<ComponentProps<'div'>, 'children'> {
+  readonly children?: ReactNode
   /** Sentence-case label rendered above the field's content. */
   readonly label: ReactNode
   /**
@@ -14,7 +21,7 @@ type FieldProps = PropsWithChildren<{
    * `<label>` can only bind to one control.
    */
   readonly htmlFor?: string
-}>
+}
 
 /**
  * Vertical label/value stack. Pair with `<FieldDescription>` for secondary
@@ -25,8 +32,8 @@ type FieldProps = PropsWithChildren<{
  * Pass `htmlFor` (the control's `id`) when the field wraps a single input
  * so the label is programmatically associated with it.
  */
-const Field = ({ label, htmlFor, children }: FieldProps): JSX.Element => (
-  <div className={styles['field']}>
+const Field = ({ label, htmlFor, children, className, ...rest }: FieldProps): JSX.Element => (
+  <div {...rest} className={cn(styles['field'], className)}>
     {htmlFor === undefined ? (
       <span className={styles['field__label']}>{label}</span>
     ) : (

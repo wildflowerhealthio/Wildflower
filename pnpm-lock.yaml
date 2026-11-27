@@ -5222,9 +5222,6 @@ importers:
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@testing-library/user-event':
-        specifier: 'catalog:'
-        version: 14.6.13(@testing-library/dom@10.4.2)
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
@@ -5243,6 +5240,9 @@ importers:
       '@wildflowerhealthio/react-kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/react-kitchen-sink
+      '@wildflowerhealthio/react-tundraish':
+        specifier: workspace:*
+        version: link:../../../global/react-tundraish
       effect:
         specifier: 'catalog:'
         version: 3.22.5
@@ -5582,9 +5582,6 @@ importers:
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@testing-library/user-event':
-        specifier: 'catalog:'
-        version: 14.6.13(@testing-library/dom@10.4.2)
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
@@ -5603,9 +5600,9 @@ importers:
       '@wildflowerhealthio/lifelabs-pdf-importer-core':
         specifier: workspace:*
         version: link:../lifelabs-pdf-importer-core
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.5
+      '@wildflowerhealthio/react-tundraish':
+        specifier: workspace:*
+        version: link:../../../global/react-tundraish
       jsdom:
         specifier: 'catalog:'
         version: 31.0.1(@napi-rs/canvas@1.1.0)

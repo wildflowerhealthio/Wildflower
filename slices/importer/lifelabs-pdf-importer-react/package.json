@@ -29,14 +29,13 @@
   "devDependencies": {
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
-    "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@wildflowerhealthio/fhir-ca-infoway": "workspace:*",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/lifelabs-pdf-importer-core": "workspace:*",
-    "effect": "catalog:",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -48,7 +47,7 @@
     "@wildflowerhealthio/fhir-ca-infoway": "workspace:*",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/lifelabs-pdf-importer-core": "workspace:*",
-    "effect": "catalog:",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "react": "catalog:"
   }
 }

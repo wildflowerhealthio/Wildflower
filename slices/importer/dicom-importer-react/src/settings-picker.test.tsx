@@ -1,18 +1,17 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { DicomSettings } from '@wildflowerhealthio/dicom-importer-core'
+import { TIME_ZONE_COMMIT_DELAY_MS } from '@wildflowerhealthio/react-tundraish'
 import { DateTime, Option } from 'effect'
 import { type JSX, useState } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { DicomSettingsPicker, UNKNOWN_ZONE_MESSAGE } from './settings-picker.tsx'
-import { NORTH_AMERICAN_TIME_ZONES, suggestedTimeZones } from './time-zones.ts'
+import { DicomSettingsPicker, NORTH_AMERICAN_TIME_ZONES, suggestedTimeZones } from './index.ts'
 
 const ZONE_FIELD = 'Equipment time zone'
 
 /**
  * The picker under a parent that owns the settings, the way the shell does —
- * so a commit round-trips back in as a prop and the test sees what the
+ * so a report round-trips back in as a prop and the test sees what the
  * reviewer would.
  */
 const Harness = ({
@@ -34,114 +33,42 @@ const Harness = ({
   )
 }
 
+/** Type `text` into the field one keystroke at a time, from empty. */
+const typeZone = (input: HTMLInputElement, text: string): void => {
+  fireEvent.change(input, { target: { value: '' } })
+  for (let end = 1; end <= text.length; end++) {
+    fireEvent.change(input, { target: { value: text.slice(0, end) } })
+  }
+}
+
+const wait = (ms: number): void => {
+  act(() => {
+    vi.advanceTimersByTime(ms)
+  })
+}
+
 describe('DicomSettingsPicker', () => {
-  afterEach(cleanup)
-
-  it('reports one committed zone for a typed name, not one per keystroke', async () => {
-    const changes: DicomSettings[] = []
-    render(<Harness initial={{ timeZone: 'UTC' }} onChange={(s) => changes.push(s)} />)
-    const input = screen.getByLabelText<HTMLInputElement>(ZONE_FIELD)
-
-    await userEvent.clear(input)
-    await userEvent.type(input, 'America/Vancouver')
-
-    // Every keystroke shows immediately — the field is never behind the typist.
-    expect(input.value).toBe('America/Vancouver')
-    // Each commit re-decodes the whole batch, so the intermediate prefixes
-    // ('A', 'Am', 'Ame', …) must not reach the shell.
-    await waitFor(() => {
-      expect(changes).toEqual([{ timeZone: 'America/Vancouver' }])
-    })
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
   })
 
-  it('never commits a prefix the runtime cannot resolve as a zone', async () => {
+  it('reports a recognized equipment zone a wait after the last keystroke, and no half-typed one', () => {
     const changes: DicomSettings[] = []
     render(<Harness initial={{ timeZone: 'UTC' }} onChange={(s) => changes.push(s)} />)
     const input = screen.getByLabelText<HTMLInputElement>(ZONE_FIELD)
 
-    await userEvent.clear(input)
-    await userEvent.type(input, 'America/Toron')
-    await userEvent.tab()
-
-    // A half-typed name would fail `decodeDicom`'s zone check and flip every
-    // DICOM file to "could not be read"; it is flagged inline instead.
-    expect(screen.getByRole('alert').textContent).toBe(UNKNOWN_ZONE_MESSAGE)
-    expect(input.getAttribute('aria-invalid')).toBe('true')
+    typeZone(input, 'America/Vancouver')
+    wait(TIME_ZONE_COMMIT_DELAY_MS - 1)
     expect(changes).toEqual([])
-  })
+    wait(1)
 
-  it('flushes the pending zone immediately on blur', async () => {
-    const onChange = vi.fn()
-    render(<Harness initial={{ timeZone: 'UTC' }} onChange={onChange} />)
-    const input = screen.getByLabelText<HTMLInputElement>(ZONE_FIELD)
-
-    await userEvent.clear(input)
-    await userEvent.type(input, 'America/Halifax')
-    await userEvent.tab()
-
-    expect(onChange).toHaveBeenCalledWith({ timeZone: 'America/Halifax' })
-  })
-
-  it('keeps the field focused and the caret placed while typing', async () => {
-    render(<Harness initial={{ timeZone: 'UTC' }} onChange={() => {}} />)
-    const input = screen.getByLabelText<HTMLInputElement>(ZONE_FIELD)
-
-    await userEvent.clear(input)
-    await userEvent.type(input, 'America/Denver')
-
-    expect(document.activeElement).toBe(input)
-    expect(input.selectionStart).toBe('America/Denver'.length)
-  })
-
-  it('keeps the draft the field’s own, so a commit echoing back cannot clobber it', async () => {
-    // The parent re-renders the picker with the committed zone; the field must
-    // go on showing what has been typed since, not rewind to the echo.
-    render(<Harness initial={{ timeZone: 'UTC' }} onChange={() => {}} />)
-    const input = screen.getByLabelText<HTMLInputElement>(ZONE_FIELD)
-
-    await userEvent.clear(input)
-    await userEvent.type(input, 'America/Denver')
-    await waitFor(() => {
-      expect(input.value).toBe('America/Denver')
-    })
-    await userEvent.type(input, 'X')
-
-    expect(input.value).toBe('America/DenverX')
-  })
-
-  it('resets to a caller-supplied zone when remounted under a new key', async () => {
-    // The documented way to reset the field: the draft is seeded on mount, so
-    // a caller that must force a zone in remounts rather than fighting it.
-    const Outer = (): JSX.Element => {
-      const [settings, setSettings] = useState<DicomSettings>({ timeZone: 'UTC' })
-      return (
-        <>
-          <button type="button" onClick={() => setSettings({ timeZone: 'America/Regina' })}>
-            reset
-          </button>
-          <DicomSettingsPicker key={settings.timeZone} settings={settings} onChange={setSettings} />
-        </>
-      )
-    }
-    render(<Outer />)
-
-    await userEvent.click(screen.getByRole('button', { name: 'reset' }))
-
-    expect(screen.getByLabelText<HTMLInputElement>(ZONE_FIELD).value).toBe('America/Regina')
-  })
-
-  it('clears the invalid flag once the name is complete', async () => {
-    render(<Harness initial={{ timeZone: 'Mars/Olympus' }} onChange={() => {}} />)
-    const input = screen.getByLabelText<HTMLInputElement>(ZONE_FIELD)
-
-    expect(input.getAttribute('aria-invalid')).toBe('true')
-    expect(screen.getByRole('alert').textContent).toBe(UNKNOWN_ZONE_MESSAGE)
-
-    await userEvent.clear(input)
-    await userEvent.type(input, 'America/Vancouver')
-
-    expect(input.getAttribute('aria-invalid')).toBe('false')
-    expect(screen.queryByRole('alert')).toBeNull()
+    // Each report re-decodes the whole batch, so the prefixes ('A', 'Am',
+    // 'Ame', …) never reach the shell.
+    expect(changes).toEqual([{ timeZone: 'America/Vancouver' }])
   })
 
   it('offers every suggestion as a datalist option', () => {
@@ -149,7 +76,6 @@ describe('DicomSettingsPicker', () => {
     const input = screen.getByLabelText<HTMLInputElement>(ZONE_FIELD)
     const list = document.getElementById(input.getAttribute('list') ?? '')
 
-    expect(list).not.toBeNull()
     const offered = [...(list?.querySelectorAll('option') ?? [])].map((option) => option.value)
     expect(offered).toEqual([...suggestedTimeZones()])
   })

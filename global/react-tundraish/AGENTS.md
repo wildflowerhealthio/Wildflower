@@ -27,8 +27,8 @@ while an `@import` would be inlined and ship twice. `tundra-css` and the two
 
 A component's props extend those of its outermost element, less the ones it
 sets itself, and it spreads the rest onto that element: `SettingsLink` takes
-`<Link>` props, `PageHeader` `<header>` props and `SegmentedToggle` `<div>`
-props, so a caller puts an `id`, `aria-*`, a `data-*` attribute (a
+`<Link>` props, `PageHeader` `<header>` props, and `SegmentedToggle`, `Field`
+and `TimeZoneField` `<div>` props, so a caller puts an `id`, `aria-*`, a `data-*` attribute (a
 `walkthroughAnchor(...)`), or a `ref` on it directly. The rest go first and
 the component's own attributes after, so a caller adds but never overrides;
 a caller's `className` joins the component's own through `cn`. Every prop the
@@ -52,6 +52,24 @@ message is `children`, `details` render under it, and an `action` is a
 message callout as a danger `Notice`, its **Show details** disclosure as the
 `details`, so a thrown error and a worded message cannot drift apart; its own
 module styles only the disclosure.
+
+## Time-zone field
+
+`TimeZoneField` is the one input for an IANA time zone: a `Field` over a
+free-text input with the caller's `suggestions` in a `datalist`. What is typed
+is its own draft, and `onChange` runs only with a zone `kitchen-sink`'s
+`isKnownTimeZone` accepts (the rule `checkTimeZone` applies), on a
+`TIME_ZONE_COMMIT_DELAY_MS` (400ms) wait after the last keystroke, or at once
+on blur or Enter. A recognized zone typed past (`UTC` on the way to `UTCx`) is
+dropped, not reported late. An unrecognized name is marked `aria-invalid` and
+described by a danger `Notice` saying `UNKNOWN_TIME_ZONE_MESSAGE`; the caller
+keeps the last zone that was recognized. A zone equal to `value` is not
+reported, so deleting a letter and typing it back sets off nothing. The field
+holds in state the zone it and its caller last agreed on (the one it last
+reported, or the `value` it last took in): a `value` that differs from it was
+set from outside, replaces the draft and drops any pending report, while a
+report echoing back equals it and leaves what has been typed since alone. Its
+tests drive the wait with fake timers.
 
 ## Testing a page around `RouteTabs`
 
