@@ -1,4 +1,4 @@
-import { HttpClient, HttpClientResponse } from '@effect/platform'
+import { HttpClient, type HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import {
@@ -6,7 +6,7 @@ import {
   WALKTHROUGH_ANCHOR_ATTRIBUTE,
   writeSeenWalkthrough,
 } from '@wildflowerhealthio/walkthrough-core'
-import { DateTime, Effect, Layer } from 'effect'
+import { DateTime, Effect, Layer, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
@@ -41,9 +41,21 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+/** Just enough of a submitted Bundle to answer each of its entries. */
+const SubmittedBundle = Schema.parseJson(
+  Schema.Struct({ entry: Schema.optionalWith(Schema.Array(Schema.Unknown), { default: () => [] }) })
+)
+
+/** How many entries the Bundle `request` carries. */
+const entriesIn = (request: HttpClientRequest.HttpClientRequest): number =>
+  request.body._tag === 'Uint8Array'
+    ? Schema.decodeUnknownSync(SubmittedBundle)(new TextDecoder().decode(request.body.body)).entry
+        .length
+    : 0
+
 /**
- * A FHIR server holding no uploaded source files: every search answers an
- * empty searchset, and every batch an empty batch response.
+ * A FHIR server holding nothing: every search answers an empty searchset,
+ * and every batch a `404 Not Found` for each of its entries.
  */
 const emptyServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
   HttpClient.HttpClient,
@@ -53,8 +65,14 @@ const emptyServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
         request,
         new Response(
           JSON.stringify(
-            request.method === 'POST'
-              ? { resourceType: 'Bundle', type: 'batch-response', entry: [] }
+            request.method === 'POST' && !request.url.endsWith('/_search')
+              ? {
+                  resourceType: 'Bundle',
+                  type: 'batch-response',
+                  entry: Array.from({ length: entriesIn(request) }, () => ({
+                    response: { status: '404 Not Found' },
+                  })),
+                }
               : { resourceType: 'Bundle', type: 'searchset', total: 0, entry: [] }
           ),
           { status: 200, headers: { 'content-type': 'application/json' } }
@@ -133,7 +151,7 @@ describe("the Importer's walkthrough", () => {
 
     // Act
     await userEvent.upload(await screen.findByLabelText('Import file'), emptyHar())
-    await screen.findByRole('button', { name: 'Cancel' })
+    await screen.findByRole('button', { name: 'Cancel import' })
 
     // Assert
     expect(anchorsOnPage()).toStrictEqual([

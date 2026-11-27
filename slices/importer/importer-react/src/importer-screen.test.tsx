@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
@@ -9,22 +9,29 @@ import { Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { REFERENTS_HEADING } from './identity/referent-text.ts'
-import { CHECKING_SERVER_MESSAGE, ImporterScreen } from './importer-screen.tsx'
+import { ImporterScreen } from './importer-screen.tsx'
+import {
+  CANCEL_IMPORT_LABEL,
+  CHOOSE_OTHER_FILES_LABEL,
+  COMPLETE_HEADING,
+  IMPORT_MORE_FILES_LABEL,
+  NO_RECORDS_READ_SENTENCE,
+  NOT_RECOGNISED_LINE,
+  NOTHING_TO_IMPORT_SENTENCE,
+  READ_FAILED_MESSAGE,
+  REFUSED_MESSAGE,
+  UNREADABLE_LINE,
+} from './plan/plan-text.ts'
 import { formatRegistry } from './registry.ts'
-import { SKIPPED_HEADING } from './results/import-results.tsx'
 import {
   dicomFile,
-  ID_LESS_OBSERVATIONS_HAR,
-  NAMED_NO_SUBJECT_HAR,
   NAMED_PATIENT_HAR,
-  NO_SUBJECT_HAR,
   RECOGNIZED_HAR,
   storedSourceFile,
 } from './screen-fixtures.ts'
 import {
+  bundleTypes,
   clearRecorded,
-  heldWireOf,
   idFromUrl,
   isResourceWrite,
   metaSourceOf,
@@ -34,35 +41,21 @@ import {
 } from './screen-server.test-helpers.ts'
 
 /**
- * The whole preview-then-confirm flow, driven end-to-end over the real
- * screen → hooks → FHIR-client → `HttpClient` path with a recording stub
- * transport. Only the runner seams (`useRunAuthed`, `useRunSmart`) are
- * replaced — the `documents-panel.test.tsx` pattern — so every request the flow
- * issues lands in one ordered log the tests read.
+ * The whole import flow, driven end to end over the real screen → page hook
+ * → FHIR client → `HttpClient` path with a recording stub server. Only the
+ * runner seams (`useRunAuthed`, `useRunSmart`) are replaced, so every request
+ * the flow sends lands in one ordered log the tests read.
  *
- * The load-bearing assertions are the opt-in seam itself:
- *
- * - **the preview issues no writes** — reaching a preview touches the server only
- *   for the source list; the source-file source file and every resource write appear
- *   only after an explicit confirm;
- * - **the source-file source file is a reviewed resource** — a local pick shows it in
- *   its own "Source file" section, and it is written in the *same* batch as the
- *   resources it stamps (its entry first in the bundle), each resource body
- *   carrying `meta.source` naming that source file (a server-sourced HAR shows no
- *   source file section, uploads nothing, and links to the document it was fetched
- *   from);
- * - **skipping the source file keeps `meta.source`** — unticking the "Source file"
- *   row writes no `DocumentReference`, and the resources still name it (the
- *   format stamped them at decode; the id is deterministic in the file, so a
- *   later upload of the same file resolves the link);
- * - **the batch is one transaction** — a rejected entry refuses the whole
- *   submission, nothing lands, and the results say so under the one cause;
- *   and **cancel discards with no writes**.
+ * The load-bearing assertions are the opt-in seam itself: reading files into
+ * their import plan sends searches and reads only, and Import sends the plan
+ * as one transaction, the source files among its records and every record
+ * naming its source file in `meta.source`; a refused transaction writes
+ * nothing and keeps the plan.
  */
 
 vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
   const actual = await importOriginal<typeof FhirR4React>()
-  return { ...actual, useRunAuthed: (): RunAuthed => currentRunAuthed }
+  return { ...actual, useRunAuthed: (): RunAuthed => currentRunPlan ?? currentRunAuthed }
 })
 
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
@@ -71,6 +64,8 @@ vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
 })
 
 let currentRunAuthed: RunSmart
+/** The runner the plan reads and writes through, when not the page's own. */
+let currentRunPlan: RunAuthed | undefined
 let queryClient: QueryClient
 
 /**
@@ -79,7 +74,7 @@ let queryClient: QueryClient
  * since a browser has one realm and a real capture's bytes always satisfy the
  * check. Re-wrapping the encoder's output through the ambient `Uint8Array` (the
  * one the schema is checked against, per `upload-har.test`) reproduces the
- * single-realm behaviour the confirm step's local-upload encode has in a browser.
+ * single-realm behaviour the source file mint's encode has in a browser.
  */
 const AmbientTextEncoder = globalThis.TextEncoder
 class RealmSafeTextEncoder extends AmbientTextEncoder {
@@ -88,36 +83,11 @@ class RealmSafeTextEncoder extends AmbientTextEncoder {
   }
 }
 
-// jsdom doesn't implement the native <dialog> element that `react-tundraish`'s
-// Dialog reaches for. Patch the two methods per-test and restore the original
-// descriptors after so the patches don't leak across files.
-const originalShowModalDescriptor = Object.getOwnPropertyDescriptor(
-  HTMLDialogElement.prototype,
-  'showModal'
-)
-const originalCloseDescriptor = Object.getOwnPropertyDescriptor(
-  HTMLDialogElement.prototype,
-  'close'
-)
-const restoreDialogMethod = (
-  key: 'showModal' | 'close',
-  descriptor: PropertyDescriptor | undefined
-): void => {
-  if (descriptor === undefined) Reflect.deleteProperty(HTMLDialogElement.prototype, key)
-  else Object.defineProperty(HTMLDialogElement.prototype, key, descriptor)
-}
-
 beforeEach(() => {
+  currentRunPlan = undefined
   clearRecorded()
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   vi.stubGlobal('TextEncoder', RealmSafeTextEncoder)
-  HTMLDialogElement.prototype.showModal = function showModal(): void {
-    this.setAttribute('open', '')
-  }
-  HTMLDialogElement.prototype.close = function close(): void {
-    this.removeAttribute('open')
-    this.dispatchEvent(new Event('close'))
-  }
 })
 
 afterEach(() => {
@@ -125,421 +95,33 @@ afterEach(() => {
   queryClient.clear()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
-  restoreDialogMethod('showModal', originalShowModalDescriptor)
-  restoreDialogMethod('close', originalCloseDescriptor)
 })
 
 describe('ImporterScreen', () => {
-  it('issues zero writes to reach a preview, and only writes after an explicit confirm', async () => {
-    // Arrange — an empty server list; the HAR is picked from a local file
-    currentRunAuthed = routingServer({})
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act — pick a recognized HAR through the OS picker
-    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
-
-    // Assert — the preview is up, and NOT ONE write went out to reach it
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
-    // The preview blocked on the server diff: badges are already resolved the
-    // instant it paints (all four probes 404 → New), never popping in later.
-    expect(screen.getAllByText('New').length).toBeGreaterThan(0)
-    expect(writes()).toHaveLength(0)
-    // The two recognized responses are named in the interactive review (per URL).
-    expect(screen.getByText(/\/Patient\/pat-7/)).toBeDefined()
-    expect(screen.getByText(/\/Observation\?/)).toBeDefined()
-    // The source file is its own reviewable section, above the extracted rows.
-    expect(screen.getByRole('checkbox', { name: 'Include all in Source file' })).toBeDefined()
-
-    // Act — confirm (one Patient + two Observations + the source-file source file)
-    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
-
-    // Assert — writes appear only now
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
-    })
-    expect(writes().length).toBeGreaterThan(0)
-    // The results name only the formats that claimed a file. The batch has one
-    // HAR and nothing else, so the "nothing to import" section must be absent
-    // entirely — a confirm that planned a write per *registered* format instead
-    // reported one titleless skipped row per unused format.
-    expect(screen.queryByRole('heading', { name: SKIPPED_HEADING })).toBeNull()
-    expect(screen.getByRole('status').textContent).toMatch(/Wrote 4 of 4 resources/)
-  })
-
-  it('writes the source-file source file in the same batch, first, and stamps every resource with it', async () => {
-    // Arrange
-    currentRunAuthed = routingServer({})
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act — pick locally, then confirm
-    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
-    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
-    })
-
-    // Assert — one HAR-source file write, its entry first in the batch (the "Source
-    // file" section is prepended), ahead of the first resource write
-    const sourceFileCreate = writes().findIndex((write) =>
-      write.url.includes('/DocumentReference/')
-    )
-    const firstResource = writes().findIndex((write) => isResourceWrite(write))
-    expect(sourceFileCreate).toBeGreaterThanOrEqual(0)
-    expect(firstResource).toBeGreaterThan(sourceFileCreate)
-
-    // …and every resource write points its `meta.source` at that fresh source file
-    const sourceFileId = idFromUrl(writes()[sourceFileCreate]?.url ?? '')
-    const expectedSource = `DocumentReference/${sourceFileId}`
-    const resourceWrites = writes().filter(isResourceWrite)
-    expect(resourceWrites).toHaveLength(3)
-    for (const write of resourceWrites) {
-      expect(JSON.parse(write.body)).toMatchObject({ meta: { source: expectedSource } })
-    }
-  })
-
-  it('lists a re-picked server source file as a pre-excluded row and uploads nothing', async () => {
-    // Arrange — one source file already on the server, minted from the recognized
-    // HAR exactly as the import stage would mint it
-    const stored = await storedSourceFile(
-      formatRegistry.har.sourceFileFormat,
-      'server-session.har',
-      RECOGNIZED_HAR
-    )
-    currentRunAuthed = routingServer({ sourceFiles: [stored] })
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act — select it in the server list and pick it as the batch's source
-    await userEvent.click(
-      await screen.findByRole('checkbox', { name: 'Select server-session.har' })
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
-
-    // Assert — the source file is a reviewed row like any other, but the server
-    // already holds exactly it, so the diff reads `unchanged` and the initial
-    // selection leaves it out: three of the four rows are selected.
-    const sourceFileRow = screen.getByRole('checkbox', { name: /Include DocumentReference/ })
-    expect(sourceFileRow.hasAttribute('checked')).toBe(false)
-    expect(screen.getByRole('button', { name: /Import 3 resources/ })).toBeDefined()
-
-    // Act — confirm
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
-    })
-
-    // Assert — no DocumentReference write (the source file is already there), and
-    // every resource links to the source file the re-pick minted, which is the one
-    // it came from.
-    expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
-    const resourceWrites = writes().filter(isResourceWrite)
-    expect(resourceWrites).toHaveLength(3)
-    for (const write of resourceWrites) {
-      expect(metaSourceOf(write.body)).toBe(`DocumentReference/${stored.id}`)
-    }
-  })
-
-  it('lands nothing when the server rejects one entry: the batch is one transaction, refused as a whole', async () => {
-    // Arrange — the store rejects the source file `DocumentReference` entry.
-    // It rides the same transaction as the resources it names, so the whole
-    // submission is refused: no resource lands without its source file.
-    currentRunAuthed = routingServer({
-      failWrite: (request) => request.url.includes('/DocumentReference/'),
-    })
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act — pick locally, then confirm
-    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
-    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
-
-    // Assert — nothing imported: every entry is reported under the server's
-    // refusal, its status and its reason, and the server holds none of them.
-    await waitFor(
-      () => {
-        expect(screen.getByRole('heading', { name: /Nothing was imported/ })).toBeDefined()
-      },
-      { timeout: 6000 }
-    )
-    expect(screen.getByText(/400 Bad Request · 4 resources/)).toBeDefined()
-    expect(screen.getAllByText(/Transaction failed at entry/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/DocumentReference\//).length).toBeGreaterThan(0)
-    expect(screen.getByRole('status').textContent).toMatch(/Wrote 0 of 4/)
-    expect(writes().filter(isResourceWrite)).toHaveLength(0)
-  })
-
-  it('imports several files at once as one batch, each stamped with its own source file', async () => {
-    // Arrange
-    currentRunAuthed = routingServer({})
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act — choose two recognized HARs in one dialog, preview them together
-    await userEvent.upload(screen.getByLabelText('Import file'), [
-      harFile('session-a.har'),
-      harFile('session-b.har'),
-    ])
-    await waitFor(() => {
-      // Two source files and the three resources both files hold under the
-      // same ids, each counted once, under one confirm.
-      expect(screen.getByRole('button', { name: /Import 5 resources/ })).toBeDefined()
-    })
-    expect(writes()).toHaveLength(0)
-
-    // Confirm the whole batch
-    await userEvent.click(screen.getByRole('button', { name: /Import 5 resources/ }))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
-    })
-
-    // Assert — one source file per file. The two files hold the same three
-    // resources under the same ids, so each is written once, pointing at one
-    // of the two fresh source files.
-    const sourceFileIds = writes()
-      .filter((write) => write.url.includes('/DocumentReference/'))
-      .map((write) => idFromUrl(write.url))
-    expect(new Set(sourceFileIds).size).toBe(2)
-    const sources = writes()
-      .filter(isResourceWrite)
-      .map((write) => metaSourceOf(write.body))
-    expect(sources).toHaveLength(3)
-    for (const source of sources) {
-      expect(sourceFileIds.map((id) => `DocumentReference/${id}`)).toContain(source)
-    }
-  })
-
-  it('imports a DICOM study of several files as one ImagingStudy with a source file per file', async () => {
-    // Arrange — three files of one study: two instances of one series, one of
-    // another. Decoded per file, this would be three ImagingStudys sharing an
-    // id, each overwriting the last's series list.
-    currentRunAuthed = routingServer({})
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act — pick the study's files together, as a folder pick yields them
-    await userEvent.upload(screen.getByLabelText('Import file'), [
-      dicomFile('I1.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I1' }),
-      dicomFile('I2.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I2' }),
-      dicomFile('I3.dcm', { SeriesInstanceUID: 'S2', SeriesNumber: 2, SOPInstanceUID: 'I3' }),
-    ])
-    // Three source files + one Patient + one ServiceRequest + one ImagingStudy.
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Import 6 resources/ })).toBeDefined()
-    })
-    await userEvent.click(screen.getByRole('button', { name: /Import 6 resources/ }))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
-    })
-
-    // Assert — one ImagingStudy carrying all three instances, and one source file
-    // per file, each named by the instance it stores
-    const studies = writes().filter((write) => write.url.includes('/ImagingStudy/'))
-    expect(studies).toHaveLength(1)
-    const study = Schema.decodeUnknownSync(ImagingStudyWire)(JSON.parse(studies[0].body))
-    expect(study.numberOfSeries).toBe(2)
-    expect(study.numberOfInstances).toBe(3)
-
-    const sourceFileIds = writes()
-      .filter((write) => write.url.includes('/DocumentReference/'))
-      .map((write) => idFromUrl(write.url))
-    expect(new Set(sourceFileIds).size).toBe(3)
-    const instanceFileIds = study.series.flatMap((series) =>
-      series.instance.map((instance) => instance.extension[0]?.valueString)
-    )
-    expect(new Set(instanceFileIds)).toEqual(new Set(sourceFileIds))
-  })
-
-  it('excludes an unchecked resource from the write set — the reviewer opt-out is honoured on the wire', async () => {
-    // Arrange
-    currentRunAuthed = routingServer({})
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act — pick locally so the preview parses to 1 Patient + 2 Observations
-    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
-    // Untick one Observation before confirm — the confirm count drops to 2.
-    const obsBoxes = screen.getAllByRole('checkbox', { name: /Include Observation/ })
-    expect(obsBoxes.length).toBeGreaterThanOrEqual(2)
-    const [first] = obsBoxes
-    if (first === undefined) throw new Error('unreachable: obsBoxes has at least two entries')
-    await userEvent.click(first)
-    await waitFor(() => {
-      // 1 Patient + 1 Observation + the source-file source file remain.
-      expect(screen.getByRole('button', { name: /Import 3 resources/ })).toBeDefined()
-    })
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
-    })
-
-    // Assert — only two resource writes on the wire (one Patient + one Observation),
-    // the opted-out Observation never left the browser.
-    expect(writes().filter(isResourceWrite)).toHaveLength(2)
-  })
-
-  it('writes an edited resource verbatim — the inline JSON edit is what reaches the wire', async () => {
-    // Arrange
-    currentRunAuthed = routingServer({})
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act — pick locally so the preview parses to 1 Patient + 2 Observations
-    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
-
-    // Open the editor for the Patient row, add a `gender` field to the
-    // parsed JSON (keeping the adopted id and resourceType), and Keep. The
-    // adopted id lives in the textarea already, so read the current text
-    // and edit in place rather than typing over it — an id change would be
-    // refused (and would in any case not travel across resource adoption).
-    const editButtons = screen.getAllByRole('button', { name: /Edit Patient/ })
-    expect(editButtons.length).toBeGreaterThanOrEqual(1)
-    const [editPatient] = editButtons
-    if (editPatient === undefined) throw new Error('unreachable: no Patient edit button')
-    await userEvent.click(editPatient)
-    const textarea = await screen.findByLabelText<HTMLTextAreaElement>('Resource JSON')
-    const originalParsed = Schema.decodeUnknownSync(
-      Schema.Record({ key: Schema.String, value: Schema.Unknown })
-    )(JSON.parse(textarea.value))
-    const edited = { ...originalParsed, gender: 'female' }
-    await userEvent.clear(textarea)
-    await userEvent.click(textarea)
-    await userEvent.paste(JSON.stringify(edited))
-    await userEvent.click(screen.getByRole('button', { name: 'Keep' }))
-    await waitFor(() => {
-      // The row now advertises its edit.
-      expect(screen.getByText('Edited')).toBeDefined()
-    })
-
-    // Confirm — the edit rides through as the value the wire carries
-    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
-    })
-
-    // Assert — the Patient write body reflects the edit (gender: female),
-    // not the parsed original from the HAR (no gender at all).
-    const patientWrites = writes().filter((write) => write.url.includes('/Patient/'))
-    expect(patientWrites).toHaveLength(1)
-    const [patientWrite] = patientWrites
-    if (patientWrite === undefined) throw new Error('unreachable: exactly one Patient write')
-    const body: unknown = JSON.parse(patientWrite.body)
-    expect(body).toMatchObject({ resourceType: 'Patient', gender: 'female' })
-  })
-
-  it('skips the source-file source file when unticked — resources still write with meta.source', async () => {
-    // Arrange
-    currentRunAuthed = routingServer({})
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act — pick locally (1 Patient + 2 Observations + the source-file source file)
-    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
-    // Untick the whole "Source file" section, dropping the source file from the batch.
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Include all in Source file' }))
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Import 3 resources/ })).toBeDefined()
-    })
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
-    })
-
-    // Assert — no source file `DocumentReference` write, and the three resources
-    // still name the sourceFile: the format stamped `meta.source` at decode, and
-    // skipping the row changes what is written, not what was decoded.
-    expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
-    const resourceWrites = writes().filter(isResourceWrite)
-    expect(resourceWrites).toHaveLength(3)
-    for (const write of resourceWrites) {
-      expect(metaSourceOf(write.body)).toMatch(/^DocumentReference\/.+/)
-    }
-  })
-
-  it('discards the preview with no writes when the user cancels', async () => {
-    // Arrange
-    currentRunAuthed = routingServer({})
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
-
-    // Act — cancel
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-
-    // Assert — back at the source picker, and nothing was written
-    await waitFor(() => {
-      expect(screen.getByRole('region', { name: 'File source' })).toBeDefined()
-    })
-    expect(writes()).toHaveLength(0)
-  })
-
-  it('keeps the preview painted and the settings control focused across a settings change', async () => {
-    // Arrange — reach a preview over a local DICOM pick
-    currentRunAuthed = routingServer({})
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-    await userEvent.upload(
-      screen.getByLabelText('Import file'),
-      dicomFile('I1.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I1' })
-    )
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
-
-    // Act — commit a new equipment time zone, which re-decodes and re-classifies
-    const zoneInput = screen.getByLabelText('Equipment time zone')
-    await userEvent.clear(zoneInput)
-    await userEvent.type(zoneInput, 'Pacific/Chatham{Enter}')
-
-    // Assert — the re-classification resolves *underneath* the panel. Blocking
-    // the preview on it would unmount the whole panel, dropping the focus of
-    // whatever settings control the reviewer was using — which is what made
-    // the time-zone text field eject the cursor on every keystroke.
-    expect(screen.queryByText(CHECKING_SERVER_MESSAGE)).toBeNull()
-    expect(screen.getByRole('heading', { name: /to import/i })).toBeDefined()
-    expect(document.activeElement).toBe(zoneInput)
-
-    await waitFor(() => {
-      expect(screen.getByLabelText('Equipment time zone')).toBe(zoneInput)
-    })
-    expect(document.activeElement).toBe(zoneInput)
-  })
-
-  it('reads only the source list, one identifier search per type, the stored list and the by-id bundle to reach a review', async () => {
+  it('reads a capture into its import plan, sending only searches and reads', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
     // Act
     await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
 
-    // Assert — no writes; the reads are the picker's source list, the
-    // match's one identifier search per type, one by-id bundle reading every
-    // row without a stored copy (the source file, which carries no
-    // identifier, and the Patient and Observations nothing was found for), and, once the review
-    // has painted, the first page of stored Patients its select offers. The
-    // Patient states no birth date, so the match sends no birth date search
-    // to grade it by name.
-    expect(writes()).toHaveLength(0)
-    await waitFor(() => {
-      expect(reads()).toContain('search Patient?_count')
+    // Assert — the source file, the Patient and two Observations, all new
+    const summary = await screen.findByRole('region', { name: 'Summary' })
+    expect(within(summary).getByRole('heading').textContent).toBe('4 records from 1 file')
+    expect(countsIn(summary)).toEqual({
+      Create: ['4'],
+      Update: ['0'],
+      'Link to existing': ['0'],
+      'Needs a decision': ['0'],
     })
+    expect(fileLinesIn(summary)).toEqual([['portal-session.har', '4 records · 4 new']])
+    expect(statusLine()).toBe('Written as one transaction: all records or none.')
+    expect(importButton().textContent).toBe('Import · 4 new, 0 updated, 0 linked')
+    // The picker's source list, one identifier search per type, and one
+    // batch reading the record under each id the import would write.
+    expect(writes()).toHaveLength(0)
+    expect(bundleTypes()).toEqual(['batch'])
     expect(reads().toSorted()).toEqual(
       [
         'search DocumentReference?_count&_sort&category',
@@ -549,269 +131,294 @@ describe('ImporterScreen', () => {
         'read Patient',
         'read Observation',
         'read Observation',
-        'search Patient?_count',
       ].toSorted()
     )
   })
 
-  it('links the Patient to the one stored resource her name and birth date match: the stored one is written, with every subject pointing at it', async () => {
-    // Arrange — the device already holds Tyra, under its own id and
-    // identifier, with her name and birth date
-    currentRunAuthed = routingServer({ stored: [STORED_TYRA] })
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act — the match finds her by her birth date, grades her probable and
-    // pre-selects her; confirm
-    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
-    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
-    expect(person.value).toBe('stored:Patient/s-1')
-    expect(reads()).toContain('search Patient?_count&birthdate')
-    expect(screen.getByText(/1 record on the server, 0 records from this import/)).toBeDefined()
-    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
-    })
-
-    // Assert — one Patient write, the stored one, carrying the source's
-    // identifier beside its own; no source Patient; every subject on it
-    const patientWrites = writes().filter((write) => write.url.includes('/Patient/'))
-    expect(patientWrites.map((write) => write.url)).toEqual(['/Patient/s-1'])
-    const identifiers = heldWireOf(JSON.parse(patientWrites[0]?.body ?? '')).identifier.map(
-      ({ system, value }) => `${system}|${value}`
-    )
-    expect(identifiers).toEqual([`${DEVICE}|s-1`, 'https://r4.example.org/baseR4/Patient|pat-7'])
-    const subjects = writes()
-      .filter((write) => write.url.includes('/Observation/'))
-      .map((write) => subjectOf(write.body))
-    expect(subjects).toEqual(['Patient/s-1', 'Patient/s-1'])
-  })
-
-  it('shows a re-import as unchanged and pre-excluded, the Patient written over the copy it stored', async () => {
-    // Arrange — import the file once
+  it('writes the plan as one transaction of every record and its source file, each record naming it', async () => {
+    // Arrange
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
-    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
-    await userEvent.click(await screen.findByRole('button', { name: /Import 4 resources/ }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Import another archive' }))
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+
+    // Act
+    await userEvent.click(await findImportButton())
+
+    // Assert
+    await screen.findByRole('heading', { name: COMPLETE_HEADING })
+    expect(screen.getByRole('status').textContent).toBe('4 new, 0 updated, 0 linked.')
+    expect(bundleTypes()).toEqual(['batch', 'transaction'])
+    const sourceFiles = writes().filter((write) => write.url.includes('/DocumentReference/'))
+    expect(sourceFiles).toHaveLength(1)
+    const sourceFile = `DocumentReference/${idFromUrl(sourceFiles[0]?.url ?? '')}`
+    const records = writes().filter(isResourceWrite)
+    expect(records).toHaveLength(3)
+    expect(records.map((write) => metaSourceOf(write.body))).toEqual([
+      sourceFile,
+      sourceFile,
+      sourceFile,
+    ])
+  })
+
+  it('keeps the plan when the server refuses the transaction, and writes it when Import is pressed again', async () => {
+    // Arrange — the server refuses the first transaction only
+    let refusals = 0
+    currentRunAuthed = routingServer({
+      failWrite: (request) => {
+        if (refusals > 0 || !request.url.includes('/DocumentReference/')) return false
+        refusals += 1
+        return true
+      },
+    })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+
+    // Act
+    await userEvent.click(await findImportButton())
+
+    // Assert — the refusal is said, the plan is still up, and nothing landed
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getByText(REFUSED_MESSAGE)).toBeDefined()
+    expect(
+      within(alert)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent)
+    ).toEqual(['Transaction failed at entry 0'])
+    expect(screen.getByRole('region', { name: 'Summary' })).toBeDefined()
+    expect(writes().filter(isResourceWrite)).toHaveLength(0)
+
+    // Act — import again
+    await userEvent.click(importButton())
+
+    // Assert
+    await screen.findByRole('heading', { name: COMPLETE_HEADING })
+    expect(bundleTypes()).toEqual(['batch', 'transaction', 'transaction'])
+    expect(writes().filter(isResourceWrite)).toHaveLength(3)
+  })
+
+  it('offers nothing to import for a capture already imported, and writes nothing', async () => {
+    // Arrange — import the capture once, then choose it again
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+    await userEvent.click(await findImportButton())
+    await userEvent.click(await screen.findByRole('button', { name: IMPORT_MORE_FILES_LABEL }))
     const written = writes().length
 
-    // Act — pick the same file again
-    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
+    // Act
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
 
-    // Assert — the search finds the Patient the first import wrote under the
-    // decoded id, so the decode is written over it; every row is unchanged and
-    // left out, and nothing is written
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Nothing to import/ })).toBeDefined()
-    })
-    const person = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
-    expect(person.value).toMatch(/^update:Patient\//)
-    expect(screen.getAllByText('Already on server')).toHaveLength(4)
-    for (const box of screen.getAllByRole<HTMLInputElement>('checkbox', { name: /^Include / })) {
-      expect(box.checked).toBe(false)
-    }
+    // Assert — every record links to the record the first import wrote
+    const summary = await screen.findByRole('region', { name: 'Summary' })
+    expect(fileLinesIn(summary)).toEqual([['portal-session.har', '4 records · 4 linked']])
+    expect(statusLine()).toBe(NOTHING_TO_IMPORT_SENTENCE)
+    expect(screen.queryByRole('button', { name: /^Import ·/ })).toBeNull()
     expect(writes()).toHaveLength(written)
   })
 
-  // Nothing names an Observation the server sent with no id, so each is
-  // stored under an id of its own, and a re-import of it is a new record.
-  it('writes Observations a server sent with no id under fresh ids, and writes them again on a re-import', async () => {
-    // Arrange
-    currentRunAuthed = routingServer({})
+  it('links a source file picked off the server to the stored one rather than writing it again', async () => {
+    // Arrange — one source file already on the server, minted from the
+    // capture exactly as the import stage would mint it
+    const stored = await storedSourceFile(
+      formatRegistry.har.sourceFileFormat,
+      'server-session.har',
+      RECOGNIZED_HAR
+    )
+    currentRunAuthed = routingServer({ sourceFiles: [stored] })
     render(<ImporterScreen />, { wrapper: withQueryClient })
-    const idLessHar = (): File =>
-      new File([ID_LESS_OBSERVATIONS_HAR], 'a.har', { type: 'application/json' })
 
-    // Act — import the capture once
-    await userEvent.upload(screen.getByLabelText('Import file'), idLessHar())
-    await userEvent.click(await screen.findByRole('button', { name: /Import 4 resources/ }))
-    await screen.findByRole('heading', { name: /Import complete/ })
+    // Act
+    await userEvent.click(
+      await screen.findByRole('checkbox', { name: 'Select server-session.har' })
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
+    await userEvent.click(await findImportButton())
+    await screen.findByRole('heading', { name: COMPLETE_HEADING })
 
-    // Assert — each Observation was written under an id minted for it, one apiece
-    const observationIdsOf = (): readonly string[] =>
+    // Assert — no source file written, and every record names the stored one
+    expect(screen.getByRole('status').textContent).toBe('3 new, 0 updated, 1 linked.')
+    expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
+    expect(
       writes()
-        .filter((write) => write.url.includes('/Observation/'))
-        .map((write) => idFromUrl(write.url))
-    const firstIds = observationIdsOf()
-    expect(firstIds).toHaveLength(2)
-    expect(new Set(firstIds).size).toBe(2)
-    for (const id of firstIds) {
-      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
-    }
-
-    // Act — pick the same capture again, and import it
-    await userEvent.click(screen.getByRole('button', { name: 'Import another archive' }))
-    await userEvent.upload(screen.getByLabelText('Import file'), idLessHar())
-    await userEvent.click(await screen.findByRole('button', { name: /Import 2 resources/ }))
-    await screen.findByRole('heading', { name: /Import complete/ })
-
-    // Assert — the keyed Patient and the source file are found unchanged, and
-    // the two Observations are written again, under ids of their own
-    const allIds = observationIdsOf()
-    expect(allIds).toHaveLength(4)
-    expect(new Set(allIds).size).toBe(4)
-  })
-
-  it("drops an edit made on a Patient's row when the Patient is linked to another record", async () => {
-    // Arrange — the device holds a resource the match grades only possible,
-    // so the Patient starts as new and the stored one is offered, not chosen
-    currentRunAuthed = routingServer({ stored: [POSSIBLE_TYRA] })
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
-    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
-    expect(person.value).toBe('create')
-    await within(person).findByRole('option', { name: POSSIBLE_TYRA_LABEL })
-
-    // Act — edit the source Patient's row, then link it to the stored one
-    await userEvent.click(screen.getByRole('button', { name: /^Edit Patient/ }))
-    const textarea = await screen.findByLabelText<HTMLTextAreaElement>('Resource JSON')
-    const source = Schema.decodeUnknownSync(
-      Schema.Record({ key: Schema.String, value: Schema.Unknown })
-    )(JSON.parse(textarea.value))
-    await userEvent.clear(textarea)
-    await userEvent.click(textarea)
-    await userEvent.paste(JSON.stringify({ ...source, gender: 'female' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Keep' }))
-    expect(await screen.findByText('Edited')).toBeDefined()
-    await userEvent.selectOptions(person, 'stored:Patient/s-1')
-
-    // Assert — the edit is gone, and the stored Patient is written as stored
-    await waitFor(() => {
-      expect(screen.queryByText('Edited')).toBeNull()
-    })
-    const confirm = await screen.findByRole<HTMLButtonElement>('button', {
-      name: /Import 4 resources/,
-    })
-    await waitFor(() => {
-      expect(confirm.disabled).toBe(false)
-    })
-    await userEvent.click(confirm)
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
-    })
-    const patientWrites = writes().filter((write) => write.url.includes('/Patient/'))
-    expect(patientWrites.map((write) => write.url)).toEqual(['/Patient/s-1'])
-    expect(JSON.parse(patientWrites[0]?.body ?? '{}')).not.toHaveProperty('gender')
-  })
-
-  it("drops an edit made on another file's copy of a Patient when the Patient is linked to another record", async () => {
-    // Arrange — two files decode one Patient, one referent with two rows
-    currentRunAuthed = routingServer({ stored: [POSSIBLE_TYRA] })
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-    await userEvent.upload(screen.getByLabelText('Import file'), [
-      namedPatientHar('a.har'),
-      namedPatientHar('b.har'),
+        .filter(isResourceWrite)
+        .map((write) => metaSourceOf(write.body))
+    ).toEqual([
+      `DocumentReference/${stored.id}`,
+      `DocumentReference/${stored.id}`,
+      `DocumentReference/${stored.id}`,
     ])
-    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
-    await within(person).findByRole('option', { name: POSSIBLE_TYRA_LABEL })
-
-    // Act — edit the second file's copy, then link the Patient to the stored one
-    const edits = screen.getAllByRole('button', { name: /^Edit Patient/ })
-    expect(edits).toHaveLength(2)
-    const [, secondCopy] = edits
-    if (secondCopy === undefined) throw new Error('unreachable: each file has a Patient row')
-    await userEvent.click(secondCopy)
-    const textarea = await screen.findByLabelText<HTMLTextAreaElement>('Resource JSON')
-    const source = Schema.decodeUnknownSync(
-      Schema.Record({ key: Schema.String, value: Schema.Unknown })
-    )(JSON.parse(textarea.value))
-    await userEvent.clear(textarea)
-    await userEvent.click(textarea)
-    await userEvent.paste(JSON.stringify({ ...source, gender: 'female' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Keep' }))
-    expect(await screen.findByText('Edited')).toBeDefined()
-    await userEvent.selectOptions(person, 'stored:Patient/s-1')
-
-    // Assert — the edit is gone from the copy it was made on
-    await waitFor(() => {
-      expect(screen.queryByText('Edited')).toBeNull()
-    })
   })
 
-  it('leaves out a resource that names no patient until one is assigned', async () => {
+  it('leaves a Patient two stored records carry the identifier of open, and blocks the import on it', async () => {
+    // Arrange — two stored Patients carrying the identifier the capture's Patient has
+    currentRunAuthed = routingServer({
+      stored: ['s-1', 's-2'].map((id) => ({
+        resourceType: 'Patient',
+        id,
+        identifier: [{ system: 'https://r4.example.org/baseR4/Patient', value: 'pat-7' }],
+      })),
+    })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act
+    await userEvent.upload(
+      screen.getByLabelText('Import file'),
+      new File([NAMED_PATIENT_HAR], 'a.har', { type: 'application/json' })
+    )
+
+    // Assert
+    const summary = await screen.findByRole('region', { name: 'Summary' })
+    expect(countsIn(summary)['Needs a decision']).toEqual(['1', '1 open'])
+    expect(fileLinesIn(summary)).toEqual([['a.har', '4 records · 3 new · 1 open']])
+    expect(statusLine()).toBe('Select a Patient record for Tyra Banks from a.har.')
+    expect(importButton().disabled).toBe(true)
+  })
+
+  it('says a file no format recognises and a file that could not be read, each on its own line', async () => {
+    // Arrange — two stored source files picked off the server: one no format
+    // recognises, and one named as a HAR that is not one
+    const notes = await storedSourceFile(formatRegistry.har.sourceFileFormat, 'notes.txt', 'words')
+    const broken = await storedSourceFile(
+      formatRegistry.har.sourceFileFormat,
+      'broken.har',
+      'words'
+    )
+    currentRunAuthed = routingServer({ sourceFiles: [notes, broken] })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Select notes.txt' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select broken.har' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
+
+    // Assert — no records, both files counted, and nothing to import
+    const summary = await screen.findByRole('region', { name: 'Summary' })
+    expect(within(summary).getByRole('heading').textContent).toBe('0 records from 2 files')
+    expect(fileLinesIn(summary)).toEqual([
+      ['broken.har', UNREADABLE_LINE],
+      ['notes.txt', NOT_RECOGNISED_LINE],
+    ])
+    expect(statusLine()).toBe(NO_RECORDS_READ_SENTENCE)
+    expect(screen.queryByRole('button', { name: /^Import ·/ })).toBeNull()
+  })
+
+  it('says the files could not be planned when the runner rejects the read, and goes back to the files', async () => {
+    // Arrange — the page's own runner lists the source files; the plan's
+    // runner rejects, as a sign-in that lapsed does
+    currentRunAuthed = routingServer({})
+    currentRunPlan = () => Promise.reject(new Error('Signed out'))
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+
+    // Assert
+    expect((await screen.findByRole('alert')).textContent).toBe(READ_FAILED_MESSAGE)
+    await userEvent.click(screen.getByRole('button', { name: CHOOSE_OTHER_FILES_LABEL }))
+    expect(screen.getByRole('region', { name: 'File source' })).toBeDefined()
+  })
+
+  it('offers no way to leave while the transaction is in flight, and completes once it lands', async () => {
+    // Arrange — the server holds the transaction until released
+    let release = (): void => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    currentRunAuthed = routingServer({ transactionsHeldUntil: held })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+
+    // Act
+    await userEvent.click(await findImportButton())
+
+    // Assert — the button is disabled and there is no Cancel import
+    expect(importButton().disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: CANCEL_IMPORT_LABEL })).toBeNull()
+
+    // Act
+    release()
+
+    // Assert
+    await screen.findByRole('heading', { name: COMPLETE_HEADING })
+    expect(writes().filter(isResourceWrite)).toHaveLength(3)
+  })
+
+  it('says the files could not be planned when a search fails, and goes back to the files', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({ failSearches: true })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+
+    // Assert
+    expect((await screen.findByRole('alert')).textContent).toBe(READ_FAILED_MESSAGE)
+
+    // Act
+    await userEvent.click(screen.getByRole('button', { name: CHOOSE_OTHER_FILES_LABEL }))
+
+    // Assert
+    expect(screen.getByRole('region', { name: 'File source' })).toBeDefined()
+  })
+
+  it('goes back to choosing files with nothing written when the import is cancelled', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
 
-    // Act — two Observations that name no one, beside the Patient they came with
-    await userEvent.upload(
-      screen.getByLabelText('Import file'),
-      new File([NO_SUBJECT_HAR], 'a.har', { type: 'application/json' })
-    )
+    // Act
+    await userEvent.click(await screen.findByRole('button', { name: CANCEL_IMPORT_LABEL }))
 
-    // Assert — both listed and left out; the source file is not listed
-    // The heading is `preview-text.ts`' NEEDS_A_PATIENT_HEADING, spelled out to
-    // keep this file under its dependency cap.
-    const group = await screen.findByRole('region', { name: 'Needs a patient' })
-    const [first] = within(group).getAllByRole<HTMLSelectElement>('combobox')
-    expect(within(group).getAllByRole('listitem')).toHaveLength(2)
-    expect(screen.getByRole('button', { name: 'Import 2 resources (2 excluded)' })).toBeDefined()
-
-    // Act — assign the Patient, the one record offered, to one of them
-    if (first === undefined) throw new Error('unreachable: each listed row has a subject select')
-    const [patient] = within(first).getAllByRole<HTMLOptionElement>('option')
-    if (patient === undefined) throw new Error('unreachable: the Patient is offered')
-    await userEvent.selectOptions(first, patient)
-
-    // Assert — it is back in
-    expect(screen.getByRole('button', { name: 'Import 3 resources (1 excluded)' })).toBeDefined()
+    // Assert
+    expect(screen.getByRole('region', { name: 'File source' })).toBeDefined()
+    expect(writes()).toHaveLength(0)
   })
 
-  it('redirects a subject picked onto the Patient to the stored record the Patient is later linked to', async () => {
-    // Arrange — the device holds a resource the match grades only possible,
-    // so the Patient starts as new and the stored one is offered, not chosen
-    currentRunAuthed = routingServer({ stored: [POSSIBLE_TYRA] })
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-    await userEvent.upload(
-      screen.getByLabelText('Import file'),
-      new File([NAMED_NO_SUBJECT_HAR], 'a.har', { type: 'application/json' })
-    )
-    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
-    await within(person).findByRole('option', { name: POSSIBLE_TYRA_LABEL })
-    const group = screen.getByRole('region', { name: 'Needs a patient' })
-    const [first] = within(group).getAllByRole<HTMLSelectElement>('combobox')
-    if (first === undefined) throw new Error('unreachable: each listed row has a subject select')
-
-    // Act — pick the Patient for one Observation, then link the Patient to the stored one
-    await userEvent.selectOptions(first, TYRA)
-    expect(screen.queryByText('Edited')).toBeNull()
-    await userEvent.selectOptions(person, 'stored:Patient/s-1')
-
-    // Assert — the pick followed the Patient: the subject is the stored record
-    await waitFor(() => {
-      expect(first.value).toBe('stored:Patient/s-1')
-    })
-    const confirm = await screen.findByRole<HTMLButtonElement>('button', {
-      name: /Import 3 resources/,
-    })
-    await waitFor(() => {
-      expect(confirm.disabled).toBe(false)
-    })
-    await userEvent.click(confirm)
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
-    })
-    const subjects = writes()
-      .filter((write) => write.url.includes('/Observation/'))
-      .map((write) => subjectOf(write.body))
-    expect(subjects).toEqual(['Patient/s-1'])
-  })
-
-  it('shows one referent for one identity two files name', async () => {
-    // Arrange
+  it('imports several files, a DICOM study among them, as one plan in one transaction', async () => {
+    // Arrange — a capture, and three files of one study: two instances of one
+    // series, one of another
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
     // Act
     await userEvent.upload(screen.getByLabelText('Import file'), [
-      namedPatientHar('a.har'),
-      namedPatientHar('b.har'),
+      harFile('a.har'),
+      dicomFile('I1.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I1' }),
+      dicomFile('I2.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I2' }),
+      dicomFile('I3.dcm', { SeriesInstanceUID: 'S2', SeriesNumber: 2, SOPInstanceUID: 'I3' }),
     ])
 
-    // Assert
-    const referents = await screen.findByRole('region', { name: REFERENTS_HEADING })
-    expect(within(referents).getAllByRole('combobox')).toHaveLength(1)
-    expect(within(referents).getByRole('combobox', { name: TYRA })).toBeDefined()
+    // Assert — the capture's four records, and the study's three source
+    // files, Patient, ServiceRequest and one ImagingStudy
+    const summary = await screen.findByRole('region', { name: 'Summary' })
+    expect(within(summary).getByRole('heading').textContent).toBe('10 records from 4 files')
+    expect(fileLinesIn(summary)).toEqual([
+      ['a.har', '4 records · 4 new'],
+      ['I1.dcm, I2.dcm, I3.dcm', '6 records · 6 new'],
+    ])
+
+    // Act
+    await userEvent.click(importButton())
+    await screen.findByRole('heading', { name: COMPLETE_HEADING })
+
+    // Assert — one transaction, one ImagingStudy carrying all three
+    // instances, each instance naming its own file's source file
+    expect(bundleTypes()).toEqual(['batch', 'transaction'])
+    const studies = writes().filter((write) => write.url.includes('/ImagingStudy/'))
+    expect(studies).toHaveLength(1)
+    const study = Schema.decodeUnknownSync(ImagingStudyWire)(JSON.parse(studies[0]?.body ?? ''))
+    expect(study.numberOfSeries).toBe(2)
+    expect(study.numberOfInstances).toBe(3)
+    const sourceFileIds = writes()
+      .filter((write) => write.url.includes('/DocumentReference/'))
+      .map((write) => idFromUrl(write.url))
+    expect(new Set(sourceFileIds).size).toBe(4)
+    const instanceFileIds = study.series.flatMap((series) =>
+      series.instance.map((instance) => instance.extension[0]?.valueString)
+    )
+    expect(new Set(instanceFileIds).size).toBe(3)
+    expect(sourceFileIds).toEqual(expect.arrayContaining(instanceFileIds))
   })
 })
 
@@ -835,48 +442,38 @@ const ImagingStudyWire = Schema.Struct({
   ),
 })
 
-/** The Patient {@link NAMED_PATIENT_HAR} reads, as its referent line is labelled. */
-const TYRA = 'Tyra Banks · 1990-01-02'
-
-/** The system the stored Patient's own identifier is under. */
-const DEVICE = 'https://device.example/id'
-
-/** Tyra as the server already holds her: her own id under the server's own system, her name and birth date. */
-const STORED_TYRA = {
-  resourceType: 'Patient',
-  id: 's-1',
-  identifier: [{ system: DEVICE, value: 's-1' }],
-  name: [{ family: 'Banks', given: ['Tyra'] }],
-  birthDate: '1990-01-02',
-}
-
-/**
- * A stored resource that may be Tyra: her family name and birth date with only
- * an initial for a given name, under no identifier the import carries, so the
- * match grades it `possible` and the referent defaults to New.
- */
-const POSSIBLE_TYRA = {
-  resourceType: 'Patient',
-  id: 's-1',
-  name: [{ family: 'Banks', given: ['T'] }],
-  birthDate: '1990-01-02',
-}
-
-/** {@link POSSIBLE_TYRA} as the stored option is labelled. */
-const POSSIBLE_TYRA_LABEL = 'T Banks · 1990-01-02'
-
-/** A {@link NAMED_PATIENT_HAR} `File`, for the OS-picker path. */
-const namedPatientHar = (name: string): File =>
-  new File([NAMED_PATIENT_HAR], name, { type: 'application/json' })
-
-/** The `subject.reference` a written resource carries. */
-const SubjectWire = Schema.Struct({ subject: Schema.Struct({ reference: Schema.String }) })
-const subjectOf = (body: string): string =>
-  Schema.decodeUnknownSync(SubjectWire)(JSON.parse(body)).subject.reference
-
 /** A recognized-HAR `File`, for the OS-picker (`upload`) path. */
 const harFile = (name: string): File =>
   new File([RECOGNIZED_HAR], name, { type: 'application/json' })
+
+/** The summary card's counts: each label beside the texts under it, the number first. */
+const countsIn = (summary: HTMLElement): Readonly<Record<string, readonly string[]>> =>
+  Object.fromEntries(
+    within(summary)
+      .getAllByRole('term')
+      .map((term) => [
+        term.textContent,
+        [...(term.parentElement?.querySelectorAll('dd') ?? [])].map((dd) => dd.textContent),
+      ])
+  )
+
+/** The summary card's file lines, each its title and its line. */
+const fileLinesIn = (summary: HTMLElement): readonly (readonly string[])[] =>
+  within(summary)
+    .getAllByRole('listitem')
+    .map((item) => [...item.children].map((child) => child.textContent))
+
+/** The import bar's sentence. */
+const statusLine = (): string | null =>
+  within(screen.getByRole('region', { name: 'Import plan' })).getByRole('status').textContent
+
+/** The Import button, once the plan is up. */
+const findImportButton = (): Promise<HTMLButtonElement> =>
+  screen.findByRole<HTMLButtonElement>('button', { name: /^Import ·/ })
+
+/** The Import button. */
+const importButton = (): HTMLButtonElement =>
+  screen.getByRole<HTMLButtonElement>('button', { name: /^Import ·/ })
 
 const withQueryClient = ({ children }: { readonly children: ReactNode }): JSX.Element => (
   <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

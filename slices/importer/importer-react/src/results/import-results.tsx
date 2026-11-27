@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 
+import { COMPLETE_HEADING } from '../plan/plan-text.ts'
 import {
   type BatchOutcome,
   type BatchSummary,
@@ -41,9 +42,6 @@ interface ImportResultsProps {
   /** Called to discard the results and return to the source picker. */
   readonly onStartOver: () => void
 }
-
-/** Heading when every file's resources wrote. */
-const COMPLETE_HEADING = 'Import complete'
 
 /** Heading when at least one resource write failed. */
 const PARTIAL_HEADING = 'Imported with some failures'
@@ -188,11 +186,4 @@ const ImportResults = ({ batch, onStartOver }: ImportResultsProps): JSX.Element 
   )
 }
 
-export {
-  COMPLETE_HEADING,
-  FAILED_HEADING,
-  ImportResults,
-  type ImportResultsProps,
-  PARTIAL_HEADING,
-  SKIPPED_HEADING,
-}
+export { FAILED_HEADING, ImportResults, type ImportResultsProps, PARTIAL_HEADING, SKIPPED_HEADING }

@@ -23,10 +23,17 @@ import type { StoredSourceFile } from './screen-fixtures.ts'
 /** Every request the stub server has seen since {@link clearRecorded}, in order. */
 const recorded: RecordedRequest[] = []
 
-/** Empty the request log. */
+/** The `type` of every Bundle `POST`ed to the base since {@link clearRecorded}, in order. */
+const submittedBundles: string[] = []
+
+/** Empty the request log and the submitted bundles. */
 const clearRecorded = (): void => {
   recorded.length = 0
+  submittedBundles.length = 0
 }
+
+/** The `type` of every Bundle submitted so far, in order: `batch` for a read, `transaction` for a write. */
+const bundleTypes = (): readonly string[] => [...submittedBundles]
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(body === null ? '' : JSON.stringify(body), {
@@ -138,6 +145,10 @@ const urlWithParams = (request: HttpClientRequest.HttpClientRequest): string => 
   return `${request.url}${request.url.includes('?') ? '&' : '?'}${params}`
 }
 
+/** Whether `request` submits a `transaction` Bundle. */
+const isTransaction = (request: HttpClientRequest.HttpClientRequest): boolean =>
+  request.method === 'POST' && safeParseBundle(decodeBody(request.body))?.type === 'transaction'
+
 /**
  * A stub server that records every request and holds what it is given and
  * what is written to it: a `category` search answers with the configured
@@ -150,13 +161,17 @@ const urlWithParams = (request: HttpClientRequest.HttpClientRequest): string => 
  * stores and echoes its body (or a 503 when `failWrite` says so). A
  * `transaction` bundle one of whose entries `failWrite` rejects is refused
  * as a whole, as HFS refuses one: a 400 with an OperationOutcome, nothing
- * stored and no entry recorded as written. Enough to drive the whole flow
- * twice over and read the log back.
+ * stored and no entry recorded as written. With `failSearches`, every typed
+ * search answers 500; with `transactionsHeldUntil`, a transaction is answered
+ * once that promise settles. Enough to drive the whole flow twice over and read the
+ * log back.
  */
 const routingServer = (config: {
   readonly sourceFiles?: readonly StoredSourceFile[]
   readonly stored?: readonly unknown[]
   readonly failWrite?: (request: { readonly method: string; readonly url: string }) => boolean
+  readonly failSearches?: boolean
+  readonly transactionsHeldUntil?: Promise<void>
 }): RunSmart => {
   const sourceFiles = config.sourceFiles ?? []
   const held = new Map<string, unknown>([
@@ -168,139 +183,153 @@ const routingServer = (config: {
   ])
   const heldOfType = (resourceType: string): readonly unknown[] =>
     [...held.values()].filter((wire) => heldWireOf(wire).resourceType === resourceType)
-  const httpLayer = Layer.succeed(
-    HttpClient.HttpClient,
-    HttpClient.make((request) => {
-      const body = decodeBody(request.body)
-      // The SMART reader's source list carries its search in the URL; the
-      // typed client's requests carry theirs as `urlParams`.
-      const [path = '', query = ''] = request.url.split('?')
-      const params = {
-        ...Object.fromEntries(new URLSearchParams(query)),
-        ...Object.fromEntries(request.urlParams),
-      }
+  const respond = (
+    request: HttpClientRequest.HttpClientRequest
+  ): Effect.Effect<HttpClientResponse.HttpClientResponse> => {
+    const body = decodeBody(request.body)
+    // The SMART reader's source list carries its search in the URL; the
+    // typed client's requests carry theirs as `urlParams`.
+    const [path = '', query = ''] = request.url.split('?')
+    const params = {
+      ...Object.fromEntries(new URLSearchParams(query)),
+      ...Object.fromEntries(request.urlParams),
+    }
 
-      // A `POST /` at the FHIR base with a Bundle body is `fhir-r4`'s
-      // bundle-submit — a batch of PUT entries (persistBatchBundle) or GET
-      // entries (classifyAgainstServer). Unwrap it: record each entry as its
-      // own request (method + url from `entry.request`), and mirror the
-      // batch-response bundle. That keeps `writes()` / `isResourceWrite`
-      // seeing one recorded request per resource operation.
-      if (request.method === 'POST' && (request.url === '/' || request.url.endsWith('/'))) {
-        const parsed = safeParseBundle(body)
-        if (parsed !== undefined) {
-          const entries = parsed.entry ?? []
-          const refusedEntry = entries.find(
-            (entry) =>
-              entry.request?.method === 'PUT' &&
-              config.failWrite?.({ method: 'PUT', url: `/${entry.request.url}` }) === true
-          )
-          if (parsed.type === 'transaction' && refusedEntry !== undefined) {
-            recorded.push({ method: request.method, url: request.url, body })
-            return Effect.succeed(
-              HttpClientResponse.fromWeb(
-                request,
-                jsonResponse(
-                  {
-                    resourceType: 'OperationOutcome',
-                    issue: [
-                      {
-                        severity: 'error',
-                        code: 'processing',
-                        diagnostics: `Transaction failed at entry ${entries.indexOf(refusedEntry)}`,
-                      },
-                    ],
-                  },
-                  400
-                )
-              )
-            )
-          }
-          const responseEntries: unknown[] = []
-          for (const entry of entries) {
-            const entryReq = entry.request
-            if (entryReq === undefined) {
-              responseEntries.push({ response: { status: '400 Bad Request' } })
-              continue
-            }
-            const entryUrl = `/${entryReq.url}`
-            const entryBody = entry.resource === undefined ? '' : JSON.stringify(entry.resource)
-            recorded.push({ method: entryReq.method, url: entryUrl, body: entryBody })
-            if (
-              entryReq.method === 'PUT' &&
-              config.failWrite?.({ method: entryReq.method, url: entryUrl }) === true
-            ) {
-              responseEntries.push({ response: { status: '503 Service Unavailable' } })
-              continue
-            }
-            if (entryReq.method === 'GET') {
-              const stored = held.get(entryReq.url)
-              responseEntries.push(
-                stored === undefined
-                  ? { response: { status: '404 Not Found' } }
-                  : { response: { status: '200 OK' }, resource: stored }
-              )
-              continue
-            }
-            if (entry.resource !== undefined) held.set(entryReq.url, entry.resource)
-            responseEntries.push({
-              response: { status: '200 OK' },
-              ...(entry.resource !== undefined ? { resource: entry.resource } : {}),
-            })
-          }
+    // A `POST /` at the FHIR base with a Bundle body is `fhir-r4`'s
+    // bundle-submit — a batch of PUT entries (persistBatchBundle) or GET
+    // entries (classifyAgainstServer). Unwrap it: record each entry as its
+    // own request (method + url from `entry.request`), and mirror the
+    // batch-response bundle. That keeps `writes()` / `isResourceWrite`
+    // seeing one recorded request per resource operation.
+    if (request.method === 'POST' && (request.url === '/' || request.url.endsWith('/'))) {
+      const parsed = safeParseBundle(body)
+      if (parsed !== undefined) {
+        submittedBundles.push(parsed.type ?? '')
+        const entries = parsed.entry ?? []
+        const refusedEntry = entries.find(
+          (entry) =>
+            entry.request?.method === 'PUT' &&
+            config.failWrite?.({ method: 'PUT', url: `/${entry.request.url}` }) === true
+        )
+        if (parsed.type === 'transaction' && refusedEntry !== undefined) {
+          recorded.push({ method: request.method, url: request.url, body })
           return Effect.succeed(
             HttpClientResponse.fromWeb(
               request,
-              jsonResponse({
-                resourceType: 'Bundle',
-                type: 'batch-response',
-                entry: responseEntries,
-              })
+              jsonResponse(
+                {
+                  resourceType: 'OperationOutcome',
+                  issue: [
+                    {
+                      severity: 'error',
+                      code: 'processing',
+                      diagnostics: `Transaction failed at entry ${entries.indexOf(refusedEntry)}`,
+                    },
+                  ],
+                },
+                400
+              )
             )
           )
         }
-      }
-
-      const segments = path.split('/').filter((segment) => segment !== '')
-      // A `POST <Type>/_search` is the typed client's search, its parameters
-      // a form body: the matcher's identifier and name-stage searches, and
-      // the referent rows' stored lists. Recorded as a read, its parameters
-      // in its URL.
-      if (request.method === 'POST' && segments.at(-1) === '_search') {
-        const form = new URLSearchParams(body)
-        recorded.push({ method: 'SEARCH', url: `${path}?${form.toString()}`, body: '' })
-        const hits = heldOfType(segments.at(-2) ?? '').filter((wire) => passesSearch(wire, form))
-        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(hits))))
-      }
-      recorded.push({ method: request.method, url: urlWithParams(request), body })
-      if (request.method === 'GET' && params['category'] !== undefined) {
-        const wires = sourceFiles.map((one) => one.wire)
-        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(wires))))
-      }
-      if (request.method === 'GET' && params['_count'] !== undefined) {
-        const tokens = params['identifier']?.split(',')
-        const hits = heldOfType(segments.at(-1) ?? '').filter(
-          (wire) =>
-            tokens === undefined ||
-            heldWireOf(wire).identifier.some(({ system, value }) =>
-              tokens.includes(`${system}|${value}`)
+        const responseEntries: unknown[] = []
+        for (const entry of entries) {
+          const entryReq = entry.request
+          if (entryReq === undefined) {
+            responseEntries.push({ response: { status: '400 Bad Request' } })
+            continue
+          }
+          const entryUrl = `/${entryReq.url}`
+          const entryBody = entry.resource === undefined ? '' : JSON.stringify(entry.resource)
+          recorded.push({ method: entryReq.method, url: entryUrl, body: entryBody })
+          if (
+            entryReq.method === 'PUT' &&
+            config.failWrite?.({ method: entryReq.method, url: entryUrl }) === true
+          ) {
+            responseEntries.push({ response: { status: '503 Service Unavailable' } })
+            continue
+          }
+          if (entryReq.method === 'GET') {
+            const stored = held.get(entryReq.url)
+            responseEntries.push(
+              stored === undefined
+                ? { response: { status: '404 Not Found' } }
+                : { response: { status: '200 OK' }, resource: stored }
             )
-        )
-        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(hits))))
-      }
-      if (request.method === 'GET') {
-        const stored = held.get(segments.slice(-2).join('/'))
+            continue
+          }
+          if (entry.resource !== undefined) held.set(entryReq.url, entry.resource)
+          responseEntries.push({
+            response: { status: '200 OK' },
+            ...(entry.resource !== undefined ? { resource: entry.resource } : {}),
+          })
+        }
         return Effect.succeed(
-          HttpClientResponse.fromWeb(request, jsonResponse(stored ?? null, stored ? 200 : 404))
+          HttpClientResponse.fromWeb(
+            request,
+            jsonResponse({
+              resourceType: 'Bundle',
+              type: 'batch-response',
+              entry: responseEntries,
+            })
+          )
         )
       }
-      if (config.failWrite?.({ method: request.method, url: request.url }) === true) {
-        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 503)))
+    }
+
+    const segments = path.split('/').filter((segment) => segment !== '')
+    // A `POST <Type>/_search` is the typed client's search, its parameters
+    // a form body: the matcher's identifier and name-stage searches, and
+    // the referent rows' stored lists. Recorded as a read, its parameters
+    // in its URL.
+    if (request.method === 'POST' && segments.at(-1) === '_search') {
+      const form = new URLSearchParams(body)
+      recorded.push({ method: 'SEARCH', url: `${path}?${form.toString()}`, body: '' })
+      if (config.failSearches === true) {
+        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 500)))
       }
-      // Echo the written wire back as a 200 so the client decodes it and succeeds.
-      const written: unknown = body === '' ? {} : JSON.parse(body)
-      return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(written)))
-    })
+      const hits = heldOfType(segments.at(-2) ?? '').filter((wire) => passesSearch(wire, form))
+      return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(hits))))
+    }
+    recorded.push({ method: request.method, url: urlWithParams(request), body })
+    if (request.method === 'GET' && params['category'] !== undefined) {
+      const wires = sourceFiles.map((one) => one.wire)
+      return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(wires))))
+    }
+    if (request.method === 'GET' && params['_count'] !== undefined) {
+      const tokens = params['identifier']?.split(',')
+      const hits = heldOfType(segments.at(-1) ?? '').filter(
+        (wire) =>
+          tokens === undefined ||
+          heldWireOf(wire).identifier.some(({ system, value }) =>
+            tokens.includes(`${system}|${value}`)
+          )
+      )
+      return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(hits))))
+    }
+    if (request.method === 'GET') {
+      const stored = held.get(segments.slice(-2).join('/'))
+      return Effect.succeed(
+        HttpClientResponse.fromWeb(request, jsonResponse(stored ?? null, stored ? 200 : 404))
+      )
+    }
+    if (config.failWrite?.({ method: request.method, url: request.url }) === true) {
+      return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 503)))
+    }
+    // Echo the written wire back as a 200 so the client decodes it and succeeds.
+    const written: unknown = body === '' ? {} : JSON.parse(body)
+    return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(written)))
+  }
+  const httpLayer = Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) =>
+      Effect.zipRight(
+        isTransaction(request) && config.transactionsHeldUntil !== undefined
+          ? Effect.promise(() => config.transactionsHeldUntil ?? Promise.resolve())
+          : Effect.void,
+        Effect.suspend(() => respond(request))
+      )
+    )
   )
   // An empty FHIR base leaves every request the path it was made with, as the
   // log records it.
@@ -350,6 +379,7 @@ const safeParseBundle = (body: string): RecordedBundleShape | undefined => {
 }
 
 export {
+  bundleTypes,
   clearRecorded,
   heldWireOf,
   idFromUrl,
