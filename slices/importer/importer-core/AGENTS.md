@@ -110,7 +110,7 @@ and persists them itself.
   `FormatDetector.claiming`), `claimPicks`, and `decodeFormat` (generic in
   `K` so `registry[kind]` and `settings[kind]` stay correlated with no
   per-format `Match` branch, then the import step it is handed: `importDecoded`
-  here, `fileCopiesOf` in `importWithSuggestions`) — are module-level exports
+  here, `fileCopiesOf` in `readBatchCopies`) — are module-level exports
   for this package's own steps and tests and are **not** re-exported from
   `index.ts`: the shell drives the whole read, never a leg of it.
 - `src/resolve-mentions.ts` — a batch's mentions resolved (a resolved batch
@@ -242,11 +242,13 @@ and persists them itself.
   choice of the record it names. The copies are each set's source files
   (`ImportedCopy.fromSourceFile`), then its records
   (`ImportedCopy.fromPlacedRow`). It never fails: its result,
-  **`FormatCopies`** `{ copies, notes, unreadableFiles }`, reports a set the
-  stage cannot finish (`finishEachFileSet`, as `importDecoded` does) (a source file that cannot be minted, an implied
-  record its schema rejects, `FileImporter.SourceFileNotFound` from a hook)
-  as an unreadable row per picked file of the set, after the decode's own,
-  and keeps the other sets' copies and notes.
+  **`FormatCopies<TFormat>`** `{ format, copies, notes, unreadableFiles }`,
+  its decode's format beside what it read, reports a set the stage cannot
+  finish (`finishEachFileSet`, as `importDecoded` does) (a source file that
+  cannot be minted, an implied record its schema rejects,
+  `FileImporter.SourceFileNotFound` from a hook) as an unreadable row per
+  picked file of the set, after the decode's own, and keeps the other sets'
+  copies and notes.
 - `src/find-stored-match.ts` — **`findStoredMatch(records, externalReferences)`** is
   a `StoredMatch`: one `ResourceMatch.findCandidates` over every record, by
   its resource (`ImportedRecord.resourceOf`), and every external reference,
@@ -282,19 +284,28 @@ and persists them itself.
   unlinked (a stub for a record not added, or a reference to a record in no
   file) is linked when the second brings its target, and the referrer reads
   `Update`.
+- `src/read-batch-copies.ts` — **`readBatchCopies(registry, settings,
+  picks)`** reads a picked batch as copies of records for the import plan,
+  planning nothing: it claims the picks (`claimPicks`) and decodes each
+  claimed format concurrently, reading it as copies (`decodeFormat` with
+  `fileCopiesOf`). A **`BatchCopies`** holds each claimed format's
+  `FormatCopies<FormatKind>` (its format, copies, the decode's notes and
+  the files it could not read) in registry order, and the picks no format
+  claimed (`unrecognizedFileOf`, as `readBatch` reports them).
+  **`copiesOf(batchCopies)`** is every format's copies, format by format in
+  registry order: the plan's order.
 - `src/import-with-suggestions.ts` — **`importWithSuggestions(registry,
-  settings, picks, findMatch)`**, an import with no reviewer: it claims the
-  picks (`claimPicks`), decodes each claimed format and reads it as copies
-  (`decodeFormat` with `fileCopiesOf`), plans them with `planImport` against the store
-  `findMatch` names, takes every suggestion, resolves the plan
-  (`resolvePlan`) and writes it (`ImportWrite.of`). It sends nothing: a
-  **`SuggestedImport`** holds the resolution, the transaction's resources in
-  plan order, each claimed format's **`FormatRead`** (its notes and
-  unreadable files) in registry order, and the picks no format claimed
-  (`unrecognizedFileOf`, as `readBatch` reports them); the caller persists
-  the resources. A plan with records only a reviewer can decide fails it
-  with **`UndecidedRecords`**, naming each **`UndecidedRecord`** by its key
-  and title. A second run against a store holding the first run's writes
+  settings, picks, findMatch)`**, an import with no reviewer: it reads the
+  batch (`readBatchCopies`), plans its copies (`copiesOf`) with
+  `planImport` against the store `findMatch` names, takes every
+  suggestion, resolves the plan (`resolvePlan`) and writes it
+  (`ImportWrite.of`). It sends nothing: a **`SuggestedImport`** is the
+  `BatchCopies` it read beside the resolution and the transaction's
+  resources in plan order, so its `formats[].copies` are the copies the plan
+  was built from, the same resources the resolution's records hold; the
+  caller persists the resources. A plan with records only a reviewer can
+  decide fails it with **`UndecidedRecords`**, naming each
+  **`UndecidedRecord`** by its key and title. A second run against a store holding the first run's writes
   has nothing to import, but for a `Binary`, which has no key identifier
   and is new on every import; its tests pin that the second run's every
   record is `OneIdentifierMatch` with no difference (`differencesInPlan`)

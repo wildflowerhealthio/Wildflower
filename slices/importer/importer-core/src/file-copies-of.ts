@@ -25,11 +25,15 @@ import {
 } from './import-decoded.ts'
 
 /**
- * What one format's decode brings to an import: every copy of the file sets
- * the import stage finished, in plan order, their notes, and a row per
- * picked file it could not read.
+ * What one format's decode brings to an import: its format, every copy of
+ * the file sets the import stage finished, in plan order, their notes, and
+ * a row per picked file it could not read.
+ *
+ * @typeParam TFormat - The format's tag, as its decode's
+ *   `FormatDecode.Decoded` carries it
  */
-interface FormatCopies {
+interface FormatCopies<TFormat extends string> {
+  readonly format: TFormat
   readonly copies: readonly ImportedCopy.Type[]
   readonly notes: readonly string[]
   readonly unreadableFiles: readonly FormatDecode.UnreadableFile[]
@@ -53,7 +57,7 @@ const fileSetCopiesOf = (
   format: string,
   fileSet: DecodedFileSet.Type
 ): Effect.Effect<
-  Pick<FormatCopies, 'copies' | 'notes'>,
+  Pick<FormatCopies<string>, 'copies' | 'notes'>,
   ParseResult.ParseError | FileImporter.SourceFileNotFound,
   PickedFile.Format
 > =>
@@ -92,12 +96,13 @@ const fileSetCopiesOf = (
 const fileCopiesOf = <TFormat extends string>(
   importer: ImportingFormat,
   decoded: FormatDecode.Decoded<TFormat>
-): Effect.Effect<FormatCopies> =>
+): Effect.Effect<FormatCopies<TFormat>> =>
   Effect.map(
     finishEachFileSet(importer, decoded, (fileSet) =>
       fileSetCopiesOf(importer, decoded.format, fileSet)
     ),
-    ({ finished, unreadableFiles }): FormatCopies => ({
+    ({ finished, unreadableFiles }): FormatCopies<TFormat> => ({
+      format: decoded.format,
       copies: finished.flatMap(({ copies }) => copies),
       notes: finished.flatMap(({ notes }) => notes),
       unreadableFiles,

@@ -17,18 +17,11 @@ import {
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Data, Effect, Option } from 'effect'
 
-import { fileCopiesOf, type FormatCopies } from './file-copies-of.ts'
 import type { FindStoredMatch } from './find-stored-match.ts'
 import { planImport } from './plan-import.ts'
-import {
-  claimedEntries,
-  claimPicks,
-  decodeFormat,
-  type ReadRegistry,
-  type UnrecognizedFile,
-  unrecognizedFileOf,
-} from './read-batch.ts'
-import type { FormatKind, FormatSettings } from './registry.ts'
+import { type BatchCopies, copiesOf, readBatchCopies } from './read-batch-copies.ts'
+import type { ReadRegistry } from './read-batch.ts'
+import type { FormatSettings } from './registry.ts'
 
 /** One record with no choice, as a failure names it: its key and its title. */
 interface UndecidedRecord {
@@ -49,22 +42,18 @@ class UndecidedRecords extends Data.TaggedError('UndecidedRecords')<{
   }
 }
 
-/** What one claimed format read: its decode's notes and the files it could not read. */
-interface FormatRead extends Omit<FormatCopies, 'copies'> {
-  readonly format: FormatKind
-}
-
 /**
- * A run's result: the plan resolved, the resources of the one transaction
- * that writes it, what each claimed format read, in registry order, and the
- * picks no format claimed.
+ * A run's result: the batch as read (`readBatchCopies`), each claimed
+ * format's `FormatCopies` (its format, copies, notes and unreadable files)
+ * in registry order and the picks no format claimed, beside the plan
+ * resolved and the resources of the one transaction that writes it.
+ * `formats[].copies` are the copies the plan was built from, the same
+ * resources the resolution's records hold.
  */
-interface SuggestedImport {
+interface SuggestedImport extends BatchCopies {
   readonly resolution: PlanResolution.Type
   /** The transaction's resources, each once, in plan order (`ImportWrite.Ready`). */
   readonly resources: readonly FhirResourceWithId[]
-  readonly formats: readonly FormatRead[]
-  readonly unrecognizedFiles: readonly UnrecognizedFile[]
 }
 
 /** The records of `plan` under `keys`, each named by its key and its title. */
@@ -80,10 +69,10 @@ const undecidedRecordsOf = (
   )
 
 /**
- * Read `picks` and import them with every suggestion taken: each format that
- * claims a pick decodes it and reads it as copies of records, the copies are
- * matched by `findMatch` and planned (`planImport`), resolved
- * (`resolvePlan`) and written (`ImportWrite.of`).
+ * Read `picks` and import them with every suggestion taken: the batch is
+ * read as copies of records (`readBatchCopies`), the copies are matched by
+ * `findMatch` and planned (`planImport`), resolved (`resolvePlan`) and
+ * written (`ImportWrite.of`).
  *
  * @param registry - The registered formats
  * @param settings - Every format's settings
@@ -106,36 +95,16 @@ const importWithSuggestions = <E, R, RMatch>(
   findMatch: FindStoredMatch<E, RMatch>
 ): Effect.Effect<SuggestedImport, E | UndecidedRecords, R | RMatch> =>
   Effect.gen(function* () {
-    const { claimed, unrecognized } = claimPicks(registry, picks)
-    const formats = yield* Effect.forEach(
-      claimedEntries(claimed),
-      ([kind, files]) =>
-        Effect.map(
-          decodeFormat(registry, settings, kind, files, fileCopiesOf),
-          ({ copies, ...read }) => ({
-            copies,
-            read: { format: kind, ...read },
-          })
-        ),
-      { concurrency: 'unbounded' }
-    )
-    const plan = yield* planImport(
-      formats.flatMap(({ copies }) => copies),
-      findMatch
-    )
+    const batchCopies = yield* readBatchCopies(registry, settings, picks)
+    const plan = yield* planImport(copiesOf(batchCopies), findMatch)
     const resolution = yield* resolvePlan(plan)
     const resources = yield* ImportWrite.match(ImportWrite.of(resolution), {
       Ready: ({ resources: ready }) => Effect.succeed(ready),
       Blocked: ({ undecided }) =>
         Effect.fail(new UndecidedRecords({ records: undecidedRecordsOf(plan, undecided) })),
     })
-    return {
-      resolution,
-      resources,
-      formats: formats.map(({ read }): FormatRead => read),
-      unrecognizedFiles: unrecognized.map(unrecognizedFileOf),
-    }
+    return { ...batchCopies, resolution, resources }
   })
 
 export { importWithSuggestions, UndecidedRecords }
-export type { FormatRead, SuggestedImport, UndecidedRecord }
+export type { SuggestedImport, UndecidedRecord }

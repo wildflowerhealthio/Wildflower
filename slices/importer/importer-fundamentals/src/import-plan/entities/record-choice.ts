@@ -6,6 +6,8 @@
 import { type FhirResourceWithId, sameStoredResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { Data, Equal, type Equivalence, HashSet } from 'effect'
 
+import * as Difference from './difference.ts'
+
 /**
  * Merge the record into an existing record, taking `fieldsTaken` from the
  * import, save the record as a new one, or don't add it.
@@ -31,6 +33,29 @@ type Type = Data.TaggedEnum<{
 
 const { MergeIntoExistingRecord, SaveAsNewRecord, DontAdd, $is: is } = Data.taggedEnum<Type>()
 
+/**
+ * Merge into `existing`, taking the field of every one of `differences`,
+ * whether it fills a gap or overwrites a value.
+ */
+const mergeTakingEveryField = (
+  existing: FhirResourceWithId,
+  differences: readonly Difference.Type[]
+): Type =>
+  MergeIntoExistingRecord({
+    existing,
+    fieldsTaken: HashSet.fromIterable(differences.map(({ field }) => field)),
+  })
+
+/** Merge into `existing`, taking the fields of those of `differences` that fill one of its gaps. */
+const mergeFillingGaps = (
+  existing: FhirResourceWithId,
+  differences: readonly Difference.Type[]
+): Type => mergeTakingEveryField(existing, differences.filter(Difference.is('FillsGap')))
+
+/** Merge into `existing`, taking none of the import's fields: a link, unless the reviewer edits the record. */
+const mergeTakingNoField = (existing: FhirResourceWithId): Type =>
+  MergeIntoExistingRecord({ existing, fieldsTaken: HashSet.empty() })
+
 /** Whether `choice` merges into an existing record and takes none of the import's fields. */
 const takesNoField = (choice: Type): boolean =>
   is('MergeIntoExistingRecord')(choice) && HashSet.size(choice.fieldsTaken) === 0
@@ -46,5 +71,15 @@ const equivalence: Equivalence.Equivalence<Type> = (left, right) =>
       Equal.equals(left.fieldsTaken, right.fieldsTaken)
     : left._tag === right._tag
 
-export { DontAdd, equivalence, is, MergeIntoExistingRecord, SaveAsNewRecord, takesNoField }
+export {
+  DontAdd,
+  equivalence,
+  is,
+  MergeIntoExistingRecord,
+  mergeFillingGaps,
+  mergeTakingEveryField,
+  mergeTakingNoField,
+  SaveAsNewRecord,
+  takesNoField,
+}
 export type { Type }

@@ -1,10 +1,14 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
-import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
-import { HashSet, Option } from 'effect'
+import { MatchQuery } from '@wildflowerhealthio/fhir-r4/clients'
+import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { Array as Arr, Equal, HashMap, Option, Order } from 'effect'
+import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ImportedCopy from '../entities/imported-copy.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
+import type * as RecordKey from '../entities/record-key.ts'
 import * as RecordReferences from '../entities/record-references.ts'
 import {
   copyOf,
@@ -80,7 +84,7 @@ describe('locateReferences', () => {
 
     // Assert
     expect({
-      referenced: [...HashSet.values(references.referenced)],
+      referenced: [...HashMap.keys(references.referrers)],
       external: references.external.map(LogicalReference.key),
     }).toEqual({
       referenced: [ImportedCopy.recordKeyOf(drBrown)],
@@ -106,7 +110,7 @@ describe('locateReferences', () => {
     const references = locateReferences(ImportedRecord.fromCopies([byLicence, brownByLicence]))
 
     // Assert
-    expect([...HashSet.values(references.referenced)]).toEqual([
+    expect([...HashMap.keys(references.referrers)]).toEqual([
       ImportedCopy.recordKeyOf(brownByLicence),
     ])
   })
@@ -233,7 +237,7 @@ describe('locateReferences', () => {
 
     // Assert
     expect({
-      referenced: HashSet.size(references.referenced),
+      referenced: HashMap.size(references.referrers),
       external: references.external.length,
     }).toEqual({ referenced: 0, external: 0 })
   })
@@ -274,7 +278,7 @@ describe('locateReferences, by outcome', () => {
 
     // Assert
     expect({
-      referenced: [...HashSet.values(references.referenced)],
+      referenced: [...HashMap.keys(references.referrers)],
       external: references.external.map(({ identifier: [{ value }] }) => value),
     }).toEqual({ referenced: [ImportedCopy.recordKeyOf(ehrTyra)], external: ['someone-else'] })
   })
@@ -334,5 +338,172 @@ describe('locateReferences, its rules', () => {
     expect(external.map(({ identifier: [{ value, use }] }) => ({ value, use }))).toEqual([
       { value: 'someone', use: 'official' },
     ])
+  })
+})
+
+/** Tyra naming herself by her own key identifier, in a `link`. */
+const selfNamingTyra = copyOf(
+  detached(
+    tyraWire('tyra', {
+      link: [
+        {
+          type: 'seealso',
+          other: { type: 'Patient', identifier: { system: SOURCE, value: 'tyra' } },
+        },
+      ],
+    })
+  ),
+  'tyra'
+)
+
+/** Each qualified identifier a copy of `record` carries, under its type, as a `LogicalReference.key`. */
+const carriedKeysOf = (record: ImportedRecord.Type): ReadonlySet<string> =>
+  new Set(
+    record.copies.flatMap(({ resource }) =>
+      MatchQuery.qualifiedIdentifiersOf(resource).map((identifier) =>
+        LogicalReference.key(LogicalReference.make(resource.resourceType, identifier))
+      )
+    )
+  )
+
+/** Each unlinked reference a copy of `record` holds, as a `LogicalReference.key`. */
+const heldKeysOf = (record: ImportedRecord.Type): readonly string[] =>
+  record.copies.flatMap(({ resource }) =>
+    Arr.filterMap(ResourceReferences.collect(resource), ({ reference }) =>
+      Option.map(LogicalReference.tryFromReference(reference), LogicalReference.key)
+    )
+  )
+
+/**
+ * Whether `holder` holds an unlinked reference whose identifier, under its
+ * type, a copy of `named` carries: what naming a record takes, read without
+ * the naming rule.
+ */
+const holdsReferenceTo = (holder: ImportedRecord.Type, named: ImportedRecord.Type): boolean => {
+  const carried = carriedKeysOf(named)
+  return heldKeysOf(holder).some((key) => carried.has(key))
+}
+
+/**
+ * Whether `holder` holds an unlinked reference whose identifier `named`
+ * carries and no other of `records` does, so it names `named` whatever the
+ * naming rule decides between several carriers.
+ */
+const holdsUnambiguousReferenceTo = (
+  records: readonly ImportedRecord.Type[],
+  holder: ImportedRecord.Type,
+  named: ImportedRecord.Type
+): boolean => {
+  const carried = carriedKeysOf(named)
+  const carriedByOthers = new Set(
+    records
+      .filter((record) => !Equal.equals(record.key, named.key))
+      .flatMap((record) => [...carriedKeysOf(record)])
+  )
+  return heldKeysOf(holder).some((key) => carried.has(key) && !carriedByOthers.has(key))
+}
+
+/** Copies an import may hold: Tyra naming herself, results, a prescription and the Dr. Brown it implies. */
+const REFERRING_COPIES: readonly ImportedCopy.Type[] = [
+  selfNamingTyra,
+  observationAbout('a1c-1', { system: SOURCE, value: 'tyra' }),
+  observationAbout('a1c-1', { system: SOURCE, value: 'tyra' }, 'b.har'),
+  observationAbout('a1c-2', { system: SOURCE, value: 'tyra' }, 'b.har'),
+  observationAbout('other', { system: SOURCE, value: 'someone-else' }),
+  prescription,
+  drBrown,
+  labObservation,
+  ehrTyra,
+]
+
+describe('locateReferences, referrers', () => {
+  it('should give each record’s referrers in plan order, each once, and never the record itself', () => {
+    // Arrange
+    const records = ImportedRecord.fromCopies([
+      observationAbout('a1c-2', { system: SOURCE, value: 'tyra' }, 'b.har'),
+      selfNamingTyra,
+      observationAbout('a1c-1', { system: SOURCE, value: 'tyra' }),
+      prescription,
+      observationAbout('a1c-1', { system: SOURCE, value: 'tyra' }, 'c.har'),
+    ])
+
+    // Act
+    const references = locateReferences(records)
+
+    // Assert
+    expect(records.map(({ key }) => RecordReferences.referrersOf(references, key))).toEqual([
+      [],
+      [records[0]?.key, records[2]?.key, records[3]?.key],
+      [],
+      [],
+    ])
+  })
+
+  it('should make every referrer another record holding a reference that names the record, and a record referenced exactly when it has one', () => {
+    fc.assert(
+      fc.property(fc.shuffledSubarray([...REFERRING_COPIES]), (copies) => {
+        // Arrange
+        const records = ImportedRecord.fromCopies(copies)
+        const planIndexOf = (key: RecordKey.Type): number =>
+          records.findIndex((record) => Equal.equals(record.key, key))
+
+        // Act
+        const references = locateReferences(records)
+
+        // Assert
+        expect(
+          records.map((record) => {
+            const referrers = RecordReferences.referrersOf(references, record.key)
+            const indices = referrers.map(planIndexOf)
+            return {
+              isReferenced: RecordReferences.isReferenced(references, record.key),
+              selfReferring: referrers.some((key) => Equal.equals(key, record.key)),
+              indices,
+              holdingAReferenceToIt: Arr.filterMap(indices, (index) =>
+                Option.fromNullable(records[index])
+              ).filter((referrer) => holdsReferenceTo(referrer, record)).length,
+            }
+          })
+        ).toEqual(
+          records.map((record) => {
+            const indices = RecordReferences.referrersOf(references, record.key).map(planIndexOf)
+            return {
+              isReferenced: indices.length > 0,
+              selfReferring: false,
+              indices: Arr.sort(Arr.dedupe(indices), Order.number),
+              holdingAReferenceToIt: indices.length,
+            }
+          })
+        )
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  it('should make every other record holding a reference that names the record unambiguously one of its referrers', () => {
+    fc.assert(
+      fc.property(fc.shuffledSubarray([...REFERRING_COPIES]), (copies) => {
+        // Arrange
+        const records = ImportedRecord.fromCopies(copies)
+
+        // Act
+        const references = locateReferences(records)
+
+        // Assert
+        const missingReferrers = records.map((record) => {
+          const referrers = RecordReferences.referrersOf(references, record.key)
+          return records
+            .filter(
+              (holder) =>
+                !Equal.equals(holder.key, record.key) &&
+                holdsUnambiguousReferenceTo(records, holder, record) &&
+                !referrers.some((key) => Equal.equals(key, holder.key))
+            )
+            .map(({ key }) => key)
+        })
+        expect(missingReferrers).toEqual(records.map(() => []))
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
   })
 })

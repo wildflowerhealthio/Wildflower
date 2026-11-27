@@ -31,6 +31,20 @@ import { defaultFormatSettings, formatRegistry } from './registry.ts'
  */
 
 describe('fileCopiesOf', () => {
+  it('should carry its decode’s format, the format every copy’s file set came from', async () => {
+    // Arrange
+    const decoded = decodedOf([['tyra', detached(tyraWire)]])
+
+    // Act
+    const { format, copies } = await Effect.runPromise(fileCopiesOf({ sourceFileFormat }, decoded))
+
+    // Assert
+    expect({ format, origins: copies.map(({ origin }) => origin.format) }).toEqual({
+      format: 'test',
+      origins: ['test', 'test'],
+    })
+  })
+
   it('should read a file set as its source file, then its records, then the records they imply, all detached', async () => {
     // Arrange
     const decoded = decodedOf([

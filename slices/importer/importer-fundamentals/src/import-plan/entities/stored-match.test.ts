@@ -9,6 +9,7 @@ import {
   keyByImporterAssignedKey,
   storedBrown,
   storedTyra,
+  storedTyraUnder,
   tyraA,
   tyraWire,
 } from '../import-plan.test-helpers.ts'
@@ -17,8 +18,8 @@ import * as StoredMatch from './stored-match.ts'
 
 /**
  * Covers a stored match: built from pairs, read by record and by reference
- * with nothing found where there is no entry, and the stored copies of a
- * record.
+ * with nothing found where there is no entry, the stored copies of a
+ * record and the name matches a suggestion counts.
  */
 
 const tyraKey = ImportedCopy.recordKeyOf(tyraA)
@@ -110,5 +111,26 @@ describe('StoredMatch.storedCopiesOfReference', () => {
 
     // Assert
     expect(storedCopies.map(literalReferenceOf)).toEqual(['Patient/p-1'])
+  })
+})
+
+describe('StoredMatch.nameMatchesOf', () => {
+  it('should give the stored records found by name graded certain or probable, best first, and neither one found by identifier nor a possible one', () => {
+    // Arrange
+    const entry = StoredMatch.makeEntry(
+      [
+        candidate(storedTyra, 'certain', 'identifier'),
+        candidate(storedTyraUnder('p-2'), 'certain', 'name'),
+        candidate(storedTyraUnder('p-3'), 'probable', 'name'),
+        candidate(storedTyraUnder('p-4'), 'possible', 'name'),
+      ],
+      Option.none()
+    )
+
+    // Act
+    const nameMatches = StoredMatch.nameMatchesOf(entry)
+
+    // Assert
+    expect(nameMatches.map(literalReferenceOf)).toEqual(['Patient/p-2', 'Patient/p-3'])
   })
 })

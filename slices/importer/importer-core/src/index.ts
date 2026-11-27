@@ -6,9 +6,10 @@
  * decoded the device's own, re-decode one format under new settings, find
  * the batch's referents and resolve its mentions, say which rows the
  * referent links leave without a patient, and plan the batch's write from
- * its reviewed selections. With no reviewer, a batch is imported through its
- * import plan, every suggestion taken, against the store the caller names
- * ({@link importWithSuggestions}).
+ * its reviewed selections. For the import plan, a batch is read into copies
+ * of records ({@link readBatchCopies}); with no reviewer, it is imported
+ * through its plan, every suggestion taken, against the store the caller
+ * names ({@link importWithSuggestions}).
  *
  * @remarks
  * Sits between the format bindings (`har-importer-core`,
@@ -28,7 +29,7 @@
 export { defaultFormatSettings, formatKinds, formatRegistry } from './registry.ts'
 export type { BoundFormat, DecodeRequirements, FormatKind, FormatSettings } from './registry.ts'
 // `identifyPick`, `claimPicks` and `decodeFormat` are steps of `readBatch`
-// and `importWithSuggestions`, not a surface: the shell drives the whole read,
+// and `readBatchCopies`, not a surface: the shell drives the whole read,
 // never a leg of it. They stay module-level exports for those and for
 // `read-batch.test.ts` and are not re-exported here.
 export { importDecoded, type ImportingFormat } from './import-decoded.ts'
@@ -55,8 +56,8 @@ export {
   type StoredMatchFailure,
 } from './find-stored-match.ts'
 export { planImport } from './plan-import.ts'
+export { type BatchCopies, copiesOf, readBatchCopies } from './read-batch-copies.ts'
 export {
-  type FormatRead,
   importWithSuggestions,
   type SuggestedImport,
   type UndecidedRecord,

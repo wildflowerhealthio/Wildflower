@@ -5,7 +5,7 @@
  * @packageDocumentation
  */
 import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
-import { HashSet } from 'effect'
+import { type Array as Arr, HashMap, Option } from 'effect'
 
 import type * as RecordKey from './record-key.ts'
 
@@ -16,12 +16,16 @@ interface NamedRecord {
 }
 
 /**
- * The records of an import that another of its records references, the
- * logical references that name a record of the import, and the import's
- * external references.
+ * Who references each record of an import, the logical references that name
+ * a record of the import, and the import's external references.
  */
 interface Type {
-  readonly referenced: HashSet.HashSet<RecordKey.Type>
+  /**
+   * Each record another record of the import references, beside its
+   * referrers: the records holding a logical reference that names it, in
+   * plan order, each once. A record is never its own referrer.
+   */
+  readonly referrers: HashMap.HashMap<RecordKey.Type, Arr.NonEmptyReadonlyArray<RecordKey.Type>>
   /**
    * Each logical reference by a qualified identifier a record of the import
    * carries that names one of them, beside its key: one per identifier, in
@@ -36,16 +40,23 @@ interface Type {
   readonly external: readonly LogicalReference.Type[]
 }
 
-/** The record references of `referenced` records, `named` records and `external` references. */
-const make = ({ referenced, named, external }: Type): Type => ({
-  referenced,
+/** The record references of each record's `referrers`, `named` records and `external` references. */
+const make = ({ referrers, named, external }: Type): Type => ({
+  referrers,
   named,
   external,
 })
 
 /** Whether another record of the import references the record under `key`. */
 const isReferenced = (recordReferences: Type, key: RecordKey.Type): boolean =>
-  HashSet.has(recordReferences.referenced, key)
+  HashMap.has(recordReferences.referrers, key)
 
-export { isReferenced, make }
+/**
+ * The records holding a logical reference that names the record under
+ * `key`, in plan order, each once; none when nothing else references it.
+ */
+const referrersOf = (recordReferences: Type, key: RecordKey.Type): readonly RecordKey.Type[] =>
+  HashMap.get(recordReferences.referrers, key).pipe(Option.getOrElse(() => []))
+
+export { isReferenced, make, referrersOf }
 export type { NamedRecord, Type }

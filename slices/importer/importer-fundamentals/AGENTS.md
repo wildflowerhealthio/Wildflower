@@ -357,12 +357,22 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     has a key identifier); **`logicalReferenceIfKeyedByIdentifier(resource)`**,
     the logical reference a record keyed by identifier is keyed by, `None`
     for one with no key identifier.
+  - **`Difference`** — one top-level field where an incoming record says
+    something other than the kept record: **`FillsGap`** `{ field }` (the
+    kept record has no value) or **`Overwrites`** `{ field }`, with **`is`**.
+    It carries no value: callers read values from the two records by field
+    name. `differencesOf` computes them.
   - **`RecordChoice`** — **`MergeIntoExistingRecord`** `{ existing,
     fieldsTaken }` (the top-level fields taken from the import; none taken
     links), **`SaveAsNewRecord`** or **`DontAdd`**; **`takesNoField`** (a
     merge taking no field; an edit can still replace the content) and an
     **`equivalence`** (one stored record by `fhir-r4`'s `sameStoredResource`,
-    the same fields). Undecided is the absence of a choice.
+    the same fields). Undecided is the absence of a choice. The three merges
+    a reviewer moves between, from a record's `Difference`s with `existing`:
+    **`mergeFillingGaps(existing, differences)`** (the fields that fill a
+    gap, as `suggestRecord` suggests), **`mergeTakingEveryField(existing,
+    differences)`** (every differing field) and
+    **`mergeTakingNoField(existing)`** (a link).
   - **`FileSetOrigin`** — `{ format, pickedFiles }`, the file set a copy came
     from. **`fromFileSet(format, fileSet)`**; **`equivalence`**, two origins
     being one set when `FormatDecode.makeId` gives their format and picked
@@ -405,18 +415,22 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `Derived`, where a stored copy from an earlier import sits, so a record
     keyed by its source URL, its ids minted, has none. What the record copy
     says of the record: **`stageIdOf`**, **`titleOf`**, **`sourceUrlOf`**,
-    **`isImplied`** (every copy implied), **`resourceTypeOf`** and
+    **`isImplied`** (every copy implied), **`originOf`** (the
+    `FileSetOrigin` the record is listed under), **`resourceTypeOf`** and
     **`keyIdentifierOf`** (`DetachedResource.keyIdentifierOf` of its
     resource); and **`literalReferenceUnder(record, id)`**, `<Type>/<id>`.
-  - **`RecordReferences`** — **`Type`** `{ referenced, named, external }`:
-    the records another record references by a logical reference; `named`,
+  - **`RecordReferences`** — **`Type`** `{ referrers, named, external }`:
+    `referrers`, each record another record references by a logical
+    reference beside the records holding one that names it, in plan order,
+    each once, never the record itself; `named`,
     each logical reference by a qualified identifier a record carries that
     names a record of the import, beside its key (**`NamedRecord`**), one per
     identifier in the order the identifiers are first carried; and
     `external`, the distinct external references in record order: the
     unlinked references that point outside the import, since no record of it
     carries their identifier, which the store is asked about.
-    **`make`**; **`isReferenced`**. `locateReferences` computes it.
+    **`make`**; **`isReferenced`** (it has a referrer) and **`referrersOf`**
+    (none when nothing references it). `locateReferences` computes it.
   - **`StoredMatch`** — what the store holds of an import. An **`Entry`** per
     record: its `candidates`, best grade first, and the stored record
     `storedUnderDerivedId`, read for every record whose stage id is derived.
@@ -429,7 +443,16 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     the record: those found by identifier and the one under its derived id,
     each once (`sameStoredResource`); **`storedCopiesOfReference`** is the
     same answer for an external reference, its candidates found by
-    identifier.
+    identifier. **`nameMatchesOf(entry)`** is the name matches
+    `suggestRecord` counts: the stored records found by name graded
+    `MatchGrade.mayNotNeedAdditionalReview`; a `possible` match is not one.
+  - **`ExistingRecord`** — an existing record an imported record could merge
+    into: **`Type`** `{ resource, knownBy }`, its stored resource and how the
+    plan knows of it, a **`KnownBy`**: **`MatchedBySearch`**
+    `{ grade, evidence }` (the matcher's grade and what it was found by),
+    **`StoredUnderDerivedId`** (stored under the id the import stage derived
+    for the record; no search found it) or **`ChosenByReviewer`** (nothing
+    the plan read from the store offered it).
   - **`Suggestion`** — **`Type`** `{ choice, reason }`, the choice `None`
     when the record is left undecided; **`Reason`**, a closed tagged enum
     with one reason per rule of `suggestRecord`, in rule order
@@ -483,8 +506,15 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     both merges, the label saying whether content is taken),
     **`needsDecision`**, **`isChanged`** (a choice that differs from the
     suggestion's), **`reviewedResourceOf`** (the reviewer's edit, else the
-    record's resource), and its transitions **`withChoice`**,
-    **`withChoiceCleared`** and **`withEdit`**.
+    record's resource), **`existingRecordsOf`** and its transitions
+    **`withChoice`**, **`withChoiceCleared`** and **`withEdit`**.
+    **`existingRecordsOf(planned)`** is every `ExistingRecord` the record
+    could merge into, each stored resource once (`sameStoredResource`, the
+    first kept): the entry's candidates in its order, best grade first,
+    `possible` ones included though no suggestion counts them; then the
+    record under its derived id when no candidate is it; then the existing
+    record the reviewer's own choice (`chosen`) merges into when none of
+    those is it, `ChosenByReviewer`.
   - **`ImportPlan`** — **`Type`** `{ records, storedMatch }`, the records in
     plan order beside the import's whole stored match, which a reference's
     candidates are read off (`StoredMatch.ofReference`). **`make`**,
@@ -560,24 +590,23 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     left, the record keyed by that identifier wins; else the only one left;
     else none), which gives `named`; groups the logical references the
     records hold so each distinct one appears once (its first-seen value,
-    beside the keys of every record holding it, in the order first held,
     as `kitchen-sink`'s `groupInOrder` groups); and gives each an outcome:
     **in the import** (one record named),
     **ambiguous in the import** (several carry its identifier and none is
     named: linked to none, the store not asked; see Known gaps) or **not in
     the import** (no record carries its identifier: the store is asked). A
-    record is referenced when any holder of a reference naming it is another
-    record, so one that only names itself is not.
+    record's referrers are the records holding a reference that names it,
+    other than itself, in plan order, each once, so one that only names
+    itself is not referenced.
   - **`differencesOf(incoming, kept, comparable)`**
     (`operations/differences-of/`) — the gap rule over two plain resources,
     the incoming record's and the kept record as it stands; it knows
-    nothing of plan order. A **`Difference`**, defined beside it, is
-    **`FillsGap`** `{ field }` (the kept record has no value) or
-    **`Overwrites`** `{ field }`, and carries no value: callers read values
-    from the two records by field name. The differences are one list, in the
-    incoming record's field order as `normalizedFieldsOf` writes it, of the
-    top-level names in `diffJson`'s paths over both sides' normalized fields
-    that the incoming record has a value for (an empty list is none).
+    nothing of plan order. Each `Difference` fills a gap when the kept
+    record has no value for its field and overwrites one otherwise. The
+    differences are one list, in the incoming record's field order as
+    `normalizedFieldsOf` writes it, of the top-level names in `diffJson`'s
+    paths over both sides' normalized fields that the incoming record has a
+    value for (an empty list is none).
     `resourceType`, `id`, `meta` and `identifier` are never a difference; the
     identifiers a merge adds are `IdentifierUnion.missingFrom`. Beside it,
     **`ComparableReferences`** makes references compare by what they name:
@@ -595,12 +624,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     whether it is referenced, the kept records merged into so far and the
     comparable references) reads as the rule list: several stored copies
     leave it undecided (`SeveralIdentifierMatches`); one is merged into
-    (`OneIdentifierMatch`), taking the fields whose difference fills a gap;
-    no name match graded
-    `MatchGrade.mayNotNeedAdditionalReview` saves it as new (a `possible`
-    match never counts); name matches on a record another imported record
-    references pre-select the one match, or leave several undecided; name
-    matches on one nothing references save it as new.
+    (`OneIdentifierMatch`), taking the fields whose difference fills a gap
+    (`RecordChoice.mergeFillingGaps`); no name match
+    (`StoredMatch.nameMatchesOf`, so a `possible` match never counts) saves
+    it as new; name matches on a record another imported record references
+    pre-select the one match, or leave several undecided; name matches on
+    one nothing references save it as new.
   - **`suggestPlan(records, recordReferences, storedMatch)`**
     (`operations/suggest-plan.ts`) suggests every record in merge order
     (`ImportedRecord.inMergeOrder`: `mergeOrder`, then plan order) and returns the planned

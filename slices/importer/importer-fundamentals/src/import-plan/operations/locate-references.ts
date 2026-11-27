@@ -7,7 +7,7 @@
 import { MatchQuery } from '@wildflowerhealthio/fhir-r4/clients'
 import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
 import { groupInOrder, onlyElement } from '@wildflowerhealthio/kitchen-sink'
-import { Array as Arr, Data, Equal, HashMap, HashSet, Option, pipe } from 'effect'
+import { Array as Arr, Data, Equal, HashMap, Option, pipe } from 'effect'
 
 import * as ImportedRecord from '../entities/imported-record.ts'
 import * as RecordKey from '../entities/record-key.ts'
@@ -46,6 +46,12 @@ interface Held {
   readonly unlinkedReference: LogicalReference.Type
 }
 
+/** One record holding a logical reference that names another record of the import. */
+interface Referral {
+  readonly referenced: RecordKey.Type
+  readonly referrer: RecordKey.Type
+}
+
 /**
  * One identifier records of the import carry: the first logical reference
  * that names it, and the key of the record it names, `None` when it names
@@ -56,10 +62,9 @@ interface Identified {
   readonly named: Option.Option<RecordKey.Type>
 }
 
-/** One distinct logical reference, beside the keys of every record holding it and where it points. */
+/** One distinct logical reference, its first-held value, and where it points. */
 interface Located {
   readonly unlinkedReference: LogicalReference.Type
-  readonly holders: Arr.NonEmptyReadonlyArray<RecordKey.Type>
   readonly outcome: Outcome
 }
 
@@ -128,23 +133,24 @@ const heldBy = (record: ImportedRecord.Type): readonly Held[] =>
 
 /**
  * Where each distinct unlinked reference `records` hold points, and so which
- * records another references and which references are external, for the
+ * records reference each record and which references are external, for the
  * server to be asked about.
  *
  * @param records - The import's records, in plan order (`ImportedRecord.fromCopies`)
  *
  * @remarks
- * One pass, in four steps, each grouping in the order its items first come
+ * One pass, in three steps, each grouping in the order its items first come
  * (`groupInOrder`): decide once per identifier which record it names
  * ({@link namedRecordKeyOf}), which gives `named`, each identifier that
  * names a record by its first-seen logical reference, in the order the
  * identifiers are first carried; group the references the records hold, so
- * each distinct one appears once, its first-seen value beside the keys of
- * every record holding it, in the order first held; give each its
- * {@link Outcome} by its identifier; and read `referenced` and `external`
- * off that list. A record is referenced when any holder of a reference
- * pointing at it is another record, so a record that only names itself is
- * not referenced.
+ * each distinct one appears once, its first-seen value beside its
+ * {@link Outcome} by its identifier, which gives `external`; and group the
+ * references held that name another record of the import by the record
+ * they name, which gives `referrers`, each record's holders in plan order,
+ * each once. A record's referrers are the holders of a reference pointing at
+ * it other than itself, so a record that only names itself is not
+ * referenced.
  */
 const locateReferences = (records: readonly ImportedRecord.Type[]): RecordReferences.Type => {
   const identified = groupInOrder(records.flatMap(carriedBy), ({ logicalReference }) =>
@@ -169,23 +175,24 @@ const locateReferences = (records: readonly ImportedRecord.Type[]): RecordRefere
           onSome: (key) => InImport({ key }),
         }),
     })
-  const located = groupInOrder(records.flatMap(heldBy), ({ unlinkedReference }) =>
+  const held = records.flatMap(heldBy)
+  const referralOf = ({ holder, unlinkedReference }: Held): Option.Option<Referral> => {
+    const outcome = outcomeOf(unlinkedReference)
+    return isOutcome('InImport')(outcome) && !Equal.equals(holder, outcome.key)
+      ? Option.some({ referenced: outcome.key, referrer: holder })
+      : Option.none()
+  }
+  const located = groupInOrder(held, ({ unlinkedReference }) =>
     LogicalReference.key(unlinkedReference)
-  ).map(({ items: held }): Located => {
-    const { unlinkedReference } = Arr.headNonEmpty(held)
-    return {
-      unlinkedReference,
-      holders: Arr.map(held, ({ holder }) => holder),
-      outcome: outcomeOf(unlinkedReference),
-    }
+  ).map(({ items }): Located => {
+    const { unlinkedReference } = Arr.headNonEmpty(items)
+    return { unlinkedReference, outcome: outcomeOf(unlinkedReference) }
   })
   return RecordReferences.make({
-    referenced: HashSet.fromIterable(
-      Arr.filterMap(located, ({ holders, outcome }) =>
-        isOutcome('InImport')(outcome) &&
-        holders.some((holder) => !Equal.equals(holder, outcome.key))
-          ? Option.some(outcome.key)
-          : Option.none()
+    referrers: HashMap.fromIterable(
+      groupInOrder(Arr.filterMap(held, referralOf), ({ referenced }) => referenced).map(
+        ({ key, items: referrals }) =>
+          [key, Arr.dedupe(Arr.map(referrals, ({ referrer }) => referrer))] as const
       )
     ),
     named: Arr.filterMap(identified, ([, { logicalReference, named }]) =>

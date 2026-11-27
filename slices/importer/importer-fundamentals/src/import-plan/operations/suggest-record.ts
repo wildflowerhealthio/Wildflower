@@ -4,17 +4,17 @@
  *
  * @packageDocumentation
  */
-import { MatchGrade, type ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
-import { HashSet, Option } from 'effect'
+import { Option } from 'effect'
 
+import type * as Difference from '../entities/difference.ts'
 import * as KeptRecords from '../entities/kept-records.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
 import type * as ComparableReferences from './differences-of/comparable-references.ts'
-import { type Difference, differencesOf, isDifference } from './differences-of/differences-of.ts'
+import { differencesOf } from './differences-of/differences-of.ts'
 
 /** The facts a record's suggestion is read from. */
 interface SuggestionFacts {
@@ -34,42 +34,18 @@ interface SuggestionFacts {
 }
 
 /**
- * The stored records matching by name with a grade that may not need more
- * review (`MatchGrade.mayNotNeedAdditionalReview`). A `possible` match never
- * counts.
- */
-const countedNameMatches = (
-  candidates: readonly ResourceMatch.Candidate[]
-): readonly FhirResourceWithId[] =>
-  candidates
-    .filter(({ by, grade }) => by === 'name' && MatchGrade.mayNotNeedAdditionalReview(grade))
-    .map(({ resource }) => resource)
-
-/**
  * The differences of `facts.resource` from `existing` as merged once the
  * records ahead of it merged into it (`KeptRecords.asMergedIn`).
  */
 const differencesFor = (
   facts: SuggestionFacts,
   existing: FhirResourceWithId
-): readonly Difference[] =>
+): readonly Difference.Type[] =>
   differencesOf(
     facts.resource,
     KeptRecords.asMergedIn(facts.mergedSoFar, existing),
     facts.comparableReferences
   )
-
-/** Merge into `existing`, taking the fields that fill one of its gaps (`differences`). */
-const gapFillingChoice = (
-  existing: FhirResourceWithId,
-  differences: readonly Difference[]
-): RecordChoice.Type =>
-  RecordChoice.MergeIntoExistingRecord({
-    existing,
-    fieldsTaken: HashSet.fromIterable(
-      differences.filter(isDifference('FillsGap')).map(({ field }) => field)
-    ),
-  })
 
 /** Merge into `existing`, the stored record that is the record, taking only the fields that fill a gap. */
 const suggestIdentifierMatch = (
@@ -77,7 +53,7 @@ const suggestIdentifierMatch = (
   existing: FhirResourceWithId
 ): Suggestion.Type =>
   Suggestion.make(
-    Option.some(gapFillingChoice(existing, differencesFor(facts, existing))),
+    Option.some(RecordChoice.mergeFillingGaps(existing, differencesFor(facts, existing))),
     Suggestion.OneIdentifierMatch()
   )
 
@@ -88,7 +64,7 @@ const suggestNameMatchReferenced = (
 ): Suggestion.Type =>
   Suggestion.make(
     Option.map(onlyElement(nameMatches), (existing) =>
-      gapFillingChoice(existing, differencesFor(facts, existing))
+      RecordChoice.mergeFillingGaps(existing, differencesFor(facts, existing))
     ),
     Suggestion.NameMatchReferenced()
   )
@@ -121,7 +97,7 @@ const suggestRecord = (facts: SuggestionFacts): Suggestion.Type => {
   }
   const storedCopy = onlyElement(storedCopies)
   if (Option.isSome(storedCopy)) return suggestIdentifierMatch(facts, storedCopy.value)
-  const nameMatches = countedNameMatches(facts.storedMatch.candidates)
+  const nameMatches = StoredMatch.nameMatchesOf(facts.storedMatch)
   if (nameMatches.length === 0) return saveAsNew(Suggestion.NoMatch())
   return facts.isReferenced
     ? suggestNameMatchReferenced(facts, nameMatches)

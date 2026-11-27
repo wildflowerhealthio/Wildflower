@@ -9,7 +9,7 @@
  *
  * @packageDocumentation
  */
-import type { ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
+import { MatchGrade, type ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import {
   type FhirResourceWithId,
   LogicalReference,
@@ -114,6 +114,17 @@ const storedCopiesOf = (entry: Entry): readonly FhirResourceWithId[] =>
   )
 
 /**
+ * The name matches a suggestion counts: the stored records found by name
+ * graded so they may not need more review
+ * (`MatchGrade.mayNotNeedAdditionalReview`), best grade first. A `possible`
+ * match is not one.
+ */
+const nameMatchesOf = (entry: Entry): readonly FhirResourceWithId[] =>
+  entry.candidates
+    .filter(({ by, grade }) => by === 'name' && MatchGrade.mayNotNeedAdditionalReview(grade))
+    .map(({ resource }) => resource)
+
+/**
  * The stored copies of the record `externalReference` names: its candidates
  * found by identifier ({@link ofReference}).
  */
@@ -122,5 +133,14 @@ const storedCopiesOfReference = (
   externalReference: LogicalReference.Type
 ): readonly FhirResourceWithId[] => foundByIdentifier(ofReference(storedMatch, externalReference))
 
-export { empty, make, makeEntry, ofRecord, ofReference, storedCopiesOf, storedCopiesOfReference }
+export {
+  empty,
+  make,
+  makeEntry,
+  nameMatchesOf,
+  ofRecord,
+  ofReference,
+  storedCopiesOf,
+  storedCopiesOfReference,
+}
 export type { Entry, Type }
