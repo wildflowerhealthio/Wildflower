@@ -7,14 +7,15 @@
 import { MatchGrade, type ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
-import { HashSet, Option } from 'effect'
+import { Option } from 'effect'
 
+import type * as Difference from '../entities/difference.ts'
 import * as KeptRecords from '../entities/kept-records.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
 import type * as ComparableReferences from './differences-of/comparable-references.ts'
-import { type Difference, differencesOf, isDifference } from './differences-of/differences-of.ts'
+import { differencesOf } from './differences-of/differences-of.ts'
 
 /** The facts a record's suggestion is read from. */
 interface SuggestionFacts {
@@ -52,24 +53,12 @@ const countedNameMatches = (
 const differencesFor = (
   facts: SuggestionFacts,
   existing: FhirResourceWithId
-): readonly Difference[] =>
+): readonly Difference.Type[] =>
   differencesOf(
     facts.resource,
     KeptRecords.asMergedIn(facts.mergedSoFar, existing),
     facts.comparableReferences
   )
-
-/** Merge into `existing`, taking the fields that fill one of its gaps (`differences`). */
-const gapFillingChoice = (
-  existing: FhirResourceWithId,
-  differences: readonly Difference[]
-): RecordChoice.Type =>
-  RecordChoice.MergeIntoExistingRecord({
-    existing,
-    fieldsTaken: HashSet.fromIterable(
-      differences.filter(isDifference('FillsGap')).map(({ field }) => field)
-    ),
-  })
 
 /** Merge into `existing`, the stored record that is the record, taking only the fields that fill a gap. */
 const suggestIdentifierMatch = (
@@ -77,7 +66,7 @@ const suggestIdentifierMatch = (
   existing: FhirResourceWithId
 ): Suggestion.Type =>
   Suggestion.make(
-    Option.some(gapFillingChoice(existing, differencesFor(facts, existing))),
+    Option.some(RecordChoice.mergeFillingGaps(existing, differencesFor(facts, existing))),
     Suggestion.OneIdentifierMatch()
   )
 
@@ -88,7 +77,7 @@ const suggestNameMatchReferenced = (
 ): Suggestion.Type =>
   Suggestion.make(
     Option.map(onlyElement(nameMatches), (existing) =>
-      gapFillingChoice(existing, differencesFor(facts, existing))
+      RecordChoice.mergeFillingGaps(existing, differencesFor(facts, existing))
     ),
     Suggestion.NameMatchReferenced()
   )

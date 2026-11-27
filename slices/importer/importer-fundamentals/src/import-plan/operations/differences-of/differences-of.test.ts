@@ -2,6 +2,7 @@ import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-
 import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as Difference from '../../entities/difference.ts'
 import * as ImportedRecord from '../../entities/imported-record.ts'
 import * as KeptRecord from '../../entities/kept-record.ts'
 import * as StoredMatch from '../../entities/stored-match.ts'
@@ -17,7 +18,7 @@ import {
   tyraWire,
 } from '../../import-plan.test-helpers.ts'
 import * as ComparableReferences from './comparable-references.ts'
-import { type Difference, differencesOf, FillsGap, Overwrites } from './differences-of.ts'
+import { differencesOf } from './differences-of.ts'
 
 /** The differences' fields, those that fill a gap and those that overwrite one, for a whole-value assertion. */
 interface DifferencesSummary {
@@ -38,7 +39,7 @@ const asMergedAfter = (
 /** No record of an import to compare references by: each compared as it is, or by its identifier. */
 const NO_RECORDS = ComparableReferences.of([], StoredMatch.empty)
 
-const summaryOf = (differences: readonly Difference[]): DifferencesSummary => ({
+const summaryOf = (differences: readonly Difference.Type[]): DifferencesSummary => ({
   gapFilling: differences.filter(({ _tag }) => _tag === 'FillsGap').map(({ field }) => field),
   overwriting: differences.filter(({ _tag }) => _tag === 'Overwrites').map(({ field }) => field),
 })
@@ -333,9 +334,9 @@ describe('differencesOf, as one list', () => {
 
     // Assert
     expect(differences).toEqual([
-      Overwrites({ field: 'birthDate' }),
-      FillsGap({ field: 'gender' }),
-      Overwrites({ field: 'name' }),
+      Difference.Overwrites({ field: 'birthDate' }),
+      Difference.FillsGap({ field: 'gender' }),
+      Difference.Overwrites({ field: 'name' }),
     ])
   })
 

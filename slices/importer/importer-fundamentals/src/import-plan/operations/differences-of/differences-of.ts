@@ -6,25 +6,10 @@
  */
 import { diffJson, normalizedFieldsOf } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { Data, HashSet, Option, type Record } from 'effect'
+import { HashSet, Option, type Record } from 'effect'
 
+import * as Difference from '../../entities/difference.ts'
 import * as ComparableReferences from './comparable-references.ts'
-
-/**
- * One top-level field where the incoming record has a value that differs
- * from the kept record's: it fills a gap when the kept record has no value
- * for it, and overwrites one otherwise.
- *
- * @remarks
- * A difference names its field and carries no value: callers read the
- * values from the two records by field name.
- */
-type Difference = Data.TaggedEnum<{
-  FillsGap: { readonly field: string }
-  Overwrites: { readonly field: string }
-}>
-
-const { FillsGap, Overwrites, $is: isDifference } = Data.taggedEnum<Difference>()
 
 /** The top-level wire keys that are never a difference: no field a reviewer takes. */
 const NEVER_A_DIFFERENCE: ReadonlySet<string> = new Set([
@@ -70,7 +55,7 @@ const differencesOf = (
   incoming: FhirResource,
   kept: FhirResource,
   comparable: ComparableReferences.Type
-): readonly Difference[] => {
+): readonly Difference.Type[] => {
   const incomingFields = fieldsOf(ComparableReferences.comparableResourceOf(comparable, incoming))
   const keptFields = fieldsOf(ComparableReferences.comparableResourceOf(comparable, kept))
   const differing = HashSet.fromIterable(
@@ -85,8 +70,11 @@ const differencesOf = (
         !NEVER_A_DIFFERENCE.has(field) &&
         hasValue(incomingFields[field])
     )
-    .map((field) => (hasValue(keptFields[field]) ? Overwrites({ field }) : FillsGap({ field })))
+    .map((field) =>
+      hasValue(keptFields[field])
+        ? Difference.Overwrites({ field })
+        : Difference.FillsGap({ field })
+    )
 }
 
-export { differencesOf, FillsGap, isDifference, Overwrites }
-export type { Difference }
+export { differencesOf }

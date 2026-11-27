@@ -6,6 +6,7 @@
  * @packageDocumentation
  */
 export * as RecordKey from './entities/record-key.ts'
+export * as Difference from './entities/difference.ts'
 export * as RecordChoice from './entities/record-choice.ts'
 export * as Suggestion from './entities/suggestion.ts'
 export * as FileSetOrigin from './entities/file-set-origin.ts'

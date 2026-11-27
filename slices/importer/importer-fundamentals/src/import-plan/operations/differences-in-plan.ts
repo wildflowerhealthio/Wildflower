@@ -7,12 +7,13 @@
 import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Equal } from 'effect'
 
+import type * as Difference from '../entities/difference.ts'
 import type * as ImportPlan from '../entities/import-plan.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
 import * as KeptRecords from '../entities/kept-records.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import * as ComparableReferences from './differences-of/comparable-references.ts'
-import { type Difference, differencesOf } from './differences-of/differences-of.ts'
+import { differencesOf } from './differences-of/differences-of.ts'
 
 /**
  * The two records a merge would compare, as they are, beside their
@@ -29,7 +30,7 @@ interface DifferencesInPlan {
   readonly incoming: FhirResource
   /** The existing record as the records ahead of it in merge order leave it. */
   readonly kept: FhirResourceWithId
-  readonly differences: readonly Difference[]
+  readonly differences: readonly Difference.Type[]
 }
 
 /**

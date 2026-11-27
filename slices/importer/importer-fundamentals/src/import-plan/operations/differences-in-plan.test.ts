@@ -2,6 +2,7 @@ import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as Difference from '../entities/difference.ts'
 import * as ImportPlan from '../entities/import-plan.ts'
 import * as ImportedCopy from '../entities/imported-copy.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
@@ -16,7 +17,6 @@ import {
   tyraWire,
 } from '../import-plan.test-helpers.ts'
 import { differencesInPlan, type DifferencesInPlan } from './differences-in-plan.ts'
-import { FillsGap, Overwrites } from './differences-of/differences-of.ts'
 import { planOf } from './resolve-plan.test-helpers.ts'
 
 /**
@@ -88,7 +88,10 @@ describe('differencesInPlan', () => {
     expect({ incoming, kept, differences }).toEqual({
       incoming: tyra.resource,
       kept: storedTyra,
-      differences: [Overwrites({ field: 'birthDate' }), FillsGap({ field: 'gender' })],
+      differences: [
+        Difference.Overwrites({ field: 'birthDate' }),
+        Difference.FillsGap({ field: 'gender' }),
+      ],
     })
   })
 
@@ -107,7 +110,7 @@ describe('differencesInPlan', () => {
       differences,
     }).toEqual({
       choice: Option.some(RecordChoice.SaveAsNewRecord()),
-      differences: [FillsGap({ field: 'gender' })],
+      differences: [Difference.FillsGap({ field: 'gender' })],
     })
   })
 
@@ -127,8 +130,8 @@ describe('differencesInPlan', () => {
 
     // Assert
     expect({ afterMerge, afterDontAdd }).toEqual({
-      afterMerge: [Overwrites({ field: 'gender' })],
-      afterDontAdd: [FillsGap({ field: 'gender' })],
+      afterMerge: [Difference.Overwrites({ field: 'gender' })],
+      afterDontAdd: [Difference.FillsGap({ field: 'gender' })],
     })
   })
 
@@ -153,7 +156,7 @@ describe('differencesInPlan', () => {
     // Assert
     expect({ incoming, differences }).toEqual({
       incoming: edit,
-      differences: [Overwrites({ field: 'birthDate' })],
+      differences: [Difference.Overwrites({ field: 'birthDate' })],
     })
   })
 
@@ -174,7 +177,7 @@ describe('differencesInPlan', () => {
     // Assert
     expect({ kept, differences }).toEqual({
       kept: sharedStored,
-      differences: [FillsGap({ field: 'gender' })],
+      differences: [Difference.FillsGap({ field: 'gender' })],
     })
   })
 })
