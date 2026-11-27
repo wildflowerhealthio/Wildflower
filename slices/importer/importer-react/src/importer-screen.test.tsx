@@ -19,6 +19,7 @@ import {
   NOT_RECOGNISED_LINE,
   NOTHING_TO_IMPORT_SENTENCE,
   READ_FAILED_MESSAGE,
+  READING_MESSAGE,
   REFUSED_MESSAGE,
   UNREADABLE_LINE,
 } from './plan/plan-text.ts'
@@ -322,6 +323,19 @@ describe('ImporterScreen', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: CHOOSE_OTHER_FILES_LABEL }))
     expect(screen.getByRole('region', { name: 'File source' })).toBeDefined()
+  })
+
+  it('shows the loader card while the files are read', async () => {
+    // Arrange — the plan's runner never answers, so the read stays in flight
+    currentRunAuthed = routingServer({})
+    currentRunPlan = () => new Promise<never>(() => {})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+
+    // Assert
+    expect(within(await screen.findByRole('status')).getByText(READING_MESSAGE)).toBeDefined()
   })
 
   it('offers no way to leave while the transaction is in flight, and completes once it lands', async () => {
