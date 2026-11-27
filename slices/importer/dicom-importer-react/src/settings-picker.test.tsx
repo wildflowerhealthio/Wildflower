@@ -1,11 +1,12 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { DicomSettings } from '@wildflowerhealthio/dicom-importer-core'
+import { UNKNOWN_TIME_ZONE_MESSAGE } from '@wildflowerhealthio/react-tundraish'
 import { DateTime, Option } from 'effect'
 import { type JSX, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { DicomSettingsPicker, UNKNOWN_ZONE_MESSAGE } from './settings-picker.tsx'
+import { DicomSettingsPicker } from './settings-picker.tsx'
 import { NORTH_AMERICAN_TIME_ZONES, suggestedTimeZones } from './time-zones.ts'
 
 const ZONE_FIELD = 'Equipment time zone'
@@ -65,7 +66,7 @@ describe('DicomSettingsPicker', () => {
 
     // A half-typed name would fail `decodeDicom`'s zone check and flip every
     // DICOM file to "could not be read"; it is flagged inline instead.
-    expect(screen.getByRole('alert').textContent).toBe(UNKNOWN_ZONE_MESSAGE)
+    expect(screen.getByRole('alert').textContent).toContain(UNKNOWN_TIME_ZONE_MESSAGE)
     expect(input.getAttribute('aria-invalid')).toBe('true')
     expect(changes).toEqual([])
   })
@@ -135,7 +136,7 @@ describe('DicomSettingsPicker', () => {
     const input = screen.getByLabelText<HTMLInputElement>(ZONE_FIELD)
 
     expect(input.getAttribute('aria-invalid')).toBe('true')
-    expect(screen.getByRole('alert').textContent).toBe(UNKNOWN_ZONE_MESSAGE)
+    expect(screen.getByRole('alert').textContent).toContain(UNKNOWN_TIME_ZONE_MESSAGE)
 
     await userEvent.clear(input)
     await userEvent.type(input, 'America/Vancouver')

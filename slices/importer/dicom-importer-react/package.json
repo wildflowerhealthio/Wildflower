@@ -36,6 +36,7 @@
     "@wildflowerhealthio/dicom-react": "workspace:*",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "effect": "catalog:",
     "jsdom": "catalog:",
     "react": "catalog:",
@@ -49,6 +50,7 @@
     "@wildflowerhealthio/dicom-react": "workspace:*",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:"
   }
