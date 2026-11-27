@@ -41,6 +41,10 @@ const makeFileId = (format: string, file: PickedFile.Type): string => `${format}
 /** The namespace every review key decoded out of one file set carries — see the module remarks. */
 const keyPrefix = (file: PickedFile.Type): string => `${file.id}/`
 
+/** The review key of a picked file's source file row, stable across a settings re-decode. */
+const sourceFileKey = (file: PickedFile.Type): string =>
+  `${keyPrefix(file)}source-file/${file.fileName}`
+
 /**
  * One format's decode, file set by file set, as its `decode` returns it:
  * `importer-core`'s import stage (`importDecoded`) makes it the format's
@@ -77,5 +81,5 @@ const makeUnreadableFile = (
   error,
 })
 
-export { keyPrefix, makeFileId, makeId, makeUnreadableFile, titleOf }
+export { keyPrefix, makeFileId, makeId, makeUnreadableFile, sourceFileKey, titleOf }
 export type { Decoded, UnreadableFile }

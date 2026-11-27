@@ -10,9 +10,12 @@ import * as SectionedList from './sectioned-list.ts'
 /**
  * One file set's rows, each record with an id to be written under, in
  * sections, beside its notes.
+ *
+ * @typeParam TRow - The rows: review rows, or rows carrying more beside
+ *   what a review row holds (`DecodedFileSet.PlacedRow`)
  */
-interface Type {
-  readonly sectionedList: SectionedList.Type<ReviewRow.Type>
+interface Type<TRow extends ReviewRow.Type = ReviewRow.Type> {
+  readonly sectionedList: SectionedList.Type<TRow>
   readonly notes: readonly string[]
 }
 

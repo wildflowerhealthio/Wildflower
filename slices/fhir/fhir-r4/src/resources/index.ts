@@ -4,6 +4,7 @@ export {
   type FhirResourceWithId,
   hasId,
   literalReferenceOf,
+  sameStoredResource,
   StoredResourceSchema,
 } from './fhir-resource-with-id.ts'
 export * as LogicalReference from './logical-reference.ts'
