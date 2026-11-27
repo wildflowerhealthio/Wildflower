@@ -69,7 +69,16 @@ const targetOf = (
   })
 
 /** A record of the plan beside the target a reference to it lands on. */
-type RecordTarget = readonly [ImportedRecord.Type, ReferenceTable.Target]
+interface RecordTarget {
+  readonly record: ImportedRecord.Type
+  readonly target: ReferenceTable.Target
+}
+
+/** A logical reference beside the target it lands on. */
+interface LogicalReferenceTarget {
+  readonly logicalReference: LogicalReference.Type
+  readonly target: ReferenceTable.Target
+}
 
 /**
  * The target of each logical reference naming a record of the import
@@ -78,12 +87,12 @@ type RecordTarget = readonly [ImportedRecord.Type, ReferenceTable.Target]
 const namedTargetsOf = (
   recordReferences: RecordReferences.Type,
   recordTargets: readonly RecordTarget[]
-): readonly (readonly [LogicalReference.Type, ReferenceTable.Target])[] => {
+): readonly LogicalReferenceTarget[] => {
   const targetsByKey = HashMap.fromIterable(
-    recordTargets.map(([record, target]) => [record.key, target] as const)
+    recordTargets.map(({ record, target }) => [record.key, target] as const)
   )
   return Arr.filterMap(recordReferences.named, ({ logicalReference, key }) =>
-    Option.map(HashMap.get(targetsByKey, key), (target) => [logicalReference, target] as const)
+    Option.map(HashMap.get(targetsByKey, key), (target) => ({ logicalReference, target }))
   )
 }
 
@@ -97,15 +106,14 @@ const namedTargetsOf = (
 const notInImportTargetsOf = (
   recordReferences: RecordReferences.Type,
   storedMatch: StoredMatch.Type
-): readonly (readonly [LogicalReference.Type, ReferenceTable.Target])[] =>
+): readonly LogicalReferenceTarget[] =>
   Arr.filterMap(recordReferences.notInImport, (logicalReference) =>
     Option.map(
       onlyElement(StoredMatch.storedCopiesOfReference(storedMatch, logicalReference)),
-      (stored) =>
-        [
-          logicalReference,
-          ReferenceTable.Literal({ literalReference: literalReferenceOf(stored) }),
-        ] as const
+      (stored) => ({
+        logicalReference,
+        target: ReferenceTable.Literal({ literalReference: literalReferenceOf(stored) }),
+      })
     )
   )
 
@@ -137,7 +145,7 @@ const landReferences = (
     Effect.forEach(plan.records, (planned) =>
       Effect.map(
         targetOf(planned, ids),
-        Option.map((target): RecordTarget => [planned.record, target])
+        Option.map((target): RecordTarget => ({ record: planned.record, target }))
       )
     ),
     (targets) => {
@@ -148,14 +156,11 @@ const landReferences = (
           ...namedTargetsOf(recordReferences, recordTargets),
           ...notInImportTargetsOf(recordReferences, plan.storedMatch),
         ],
-        stageLiterals: recordTargets.flatMap(([record, target]) =>
-          record.copies.map((copy) => [ImportedCopy.stageLiteralOf(copy), target] as const)
+        stageLiterals: recordTargets.flatMap(({ record, target }) =>
+          record.copies.map((copy) => ({ stageLiteral: ImportedCopy.stageLiteralOf(copy), target }))
         ),
-        sourceUrls: Arr.filterMap(recordTargets, ([record, target]) =>
-          Option.map(
-            ImportedRecord.sourceUrlOf(record),
-            (sourceUrl) => [sourceUrl, target] as const
-          )
+        sourceUrls: Arr.filterMap(recordTargets, ({ record, target }) =>
+          Option.map(ImportedRecord.sourceUrlOf(record), (sourceUrl) => ({ sourceUrl, target }))
         ),
       })
     }

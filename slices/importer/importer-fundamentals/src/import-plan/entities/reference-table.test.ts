@@ -34,14 +34,20 @@ describe('ReferenceTable.resolve', () => {
     const table = ReferenceTable.make({
       logicalReferences: [],
       stageLiterals: [
-        ['Patient/stage-tyra', ReferenceTable.Literal({ literalReference: 'Patient/p-1' })],
-        [
-          'DocumentReference/stage-file',
-          ReferenceTable.Literal({ literalReference: 'DocumentReference/f-1' }),
-        ],
+        {
+          stageLiteral: 'Patient/stage-tyra',
+          target: ReferenceTable.Literal({ literalReference: 'Patient/p-1' }),
+        },
+        {
+          stageLiteral: 'DocumentReference/stage-file',
+          target: ReferenceTable.Literal({ literalReference: 'DocumentReference/f-1' }),
+        },
       ],
       sourceUrls: [
-        [new URL(SOURCE_URL), ReferenceTable.Literal({ literalReference: 'Binary/b-new' })],
+        {
+          sourceUrl: new URL(SOURCE_URL),
+          target: ReferenceTable.Literal({ literalReference: 'Binary/b-new' }),
+        },
       ],
     })
 
@@ -63,11 +69,11 @@ describe('ReferenceTable.resolve', () => {
     const table = ReferenceTable.make({
       logicalReferences: [],
       stageLiterals: [
-        ['Patient/stage-tyra', stub(Option.some(tyraReference))],
-        ['Binary/stage-binary', stub(Option.none())],
-        ['DocumentReference/stage-file', stub(Option.none())],
+        { stageLiteral: 'Patient/stage-tyra', target: stub(Option.some(tyraReference)) },
+        { stageLiteral: 'Binary/stage-binary', target: stub(Option.none()) },
+        { stageLiteral: 'DocumentReference/stage-file', target: stub(Option.none()) },
       ],
-      sourceUrls: [[new URL(SOURCE_URL), stub(Option.none())]],
+      sourceUrls: [{ sourceUrl: new URL(SOURCE_URL), target: stub(Option.none()) }],
     })
 
     // Act
@@ -91,13 +97,13 @@ describe('ReferenceTable.resolve', () => {
     // Arrange
     const table = ReferenceTable.make({
       logicalReferences: [
-        [
-          tyraReference,
-          ReferenceTable.Stub({
+        {
+          logicalReference: tyraReference,
+          target: ReferenceTable.Stub({
             display: Option.some('Tyra Ashford'),
             keyedBy: Option.some(tyraReference),
           }),
-        ],
+        },
       ],
       stageLiterals: [],
       sourceUrls: [],
@@ -128,8 +134,8 @@ describe('ReferenceTable.resolve', () => {
       keyedBy: Option.some(tyraReference),
     })
     const table = ReferenceTable.make({
-      logicalReferences: [[tyraReference, noDisplay]],
-      stageLiterals: [['Patient/stage-tyra', noDisplay]],
+      logicalReferences: [{ logicalReference: tyraReference, target: noDisplay }],
+      stageLiterals: [{ stageLiteral: 'Patient/stage-tyra', target: noDisplay }],
       sourceUrls: [],
     })
     const naming = (subject: object): DetachedResource.Type =>

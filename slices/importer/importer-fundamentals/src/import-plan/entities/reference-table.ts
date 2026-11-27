@@ -55,6 +55,10 @@ interface Type {
 const literalReferenceIfLiteral = (target: Target): Option.Option<string> =>
   target._tag === 'Literal' ? Option.some(target.literalReference) : Option.none()
 
+/** What `target` shows when it is a stub with something to show; `None` for a literal. */
+const displayIfStub = (target: Target): Option.Option<string> =>
+  target._tag === 'Stub' ? target.display : Option.none()
+
 /**
  * The table of the targets of `logicalReferences`, of `stageLiterals` and of
  * `sourceUrls`, each spelling beside the target a reference spelling it
@@ -69,24 +73,29 @@ const make = ({
   stageLiterals,
   sourceUrls,
 }: {
-  readonly logicalReferences: readonly (readonly [LogicalReference.Type, Target])[]
-  readonly stageLiterals: readonly (readonly [string, Target])[]
-  readonly sourceUrls: readonly (readonly [URL, Target])[]
+  readonly logicalReferences: readonly {
+    readonly logicalReference: LogicalReference.Type
+    readonly target: Target
+  }[]
+  readonly stageLiterals: readonly { readonly stageLiteral: string; readonly target: Target }[]
+  readonly sourceUrls: readonly { readonly sourceUrl: URL; readonly target: Target }[]
 }): Type => ({
   byLogicalReference: HashMap.fromIterable(
     logicalReferences.map(
-      ([logicalReference, target]) => [LogicalReference.key(logicalReference), target] as const
+      ({ logicalReference, target }) => [LogicalReference.key(logicalReference), target] as const
     )
   ),
-  byStageLiteral: HashMap.fromIterable(stageLiterals),
+  byStageLiteral: HashMap.fromIterable(
+    stageLiterals.map(({ stageLiteral, target }) => [stageLiteral, target] as const)
+  ),
   referencePlan: ReferencePlan.of(
-    Arr.filterMap(logicalReferences, ([logicalReference, target]) =>
+    Arr.filterMap(logicalReferences, ({ logicalReference, target }) =>
       Option.map(literalReferenceIfLiteral(target), (literalReference) => ({
         logicalReference,
         literalReference,
       }))
     ),
-    Arr.filterMap(sourceUrls, ([sourceUrl, target]) =>
+    Arr.filterMap(sourceUrls, ({ sourceUrl, target }) =>
       Option.map(literalReferenceIfLiteral(target), (literalReference) => ({
         sourceUrl,
         literalReference,
@@ -145,15 +154,13 @@ const withStubDisplays = <TResource extends FhirResource>(
 ): TResource =>
   ResourceReferences.mapReferences(resource, (reference) =>
     pipe(
-      LogicalReference.tryFromReference(reference),
+      Option.liftPredicate(reference, ({ display }) => display === null),
+      Option.flatMap(LogicalReference.tryFromReference),
       Option.flatMap((logicalReference) =>
         HashMap.get(table.byLogicalReference, LogicalReference.key(logicalReference))
       ),
-      Option.flatMap((target) =>
-        target._tag === 'Stub' && reference.display === null
-          ? Option.map(target.display, (display) => ({ ...reference, display }))
-          : Option.none()
-      ),
+      Option.flatMap(displayIfStub),
+      Option.map((display) => ({ ...reference, display })),
       Option.getOrElse(() => reference)
     )
   )
