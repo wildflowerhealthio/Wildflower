@@ -1,0 +1,27 @@
+/* The Needs a decision section: its heading and line, then one card per record. */
+.needs-a-decision {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.needs-a-decision__heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.needs-a-decision__title {
+  margin: 0;
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-3);
+  letter-spacing: var(--letter-spacing-2);
+  line-height: var(--line-height-3);
+}
+
+.needs-a-decision__line {
+  margin: 0;
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-4);
+  color: var(--color-neutral-3);
+}

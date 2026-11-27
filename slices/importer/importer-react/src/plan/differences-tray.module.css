@@ -1,0 +1,54 @@
+/*
+ * An existing record's differences, in its option's tray: a heading or the
+ * update checkbox over one line per difference. A value the import gives a
+ * field the existing record has no value for is green; one it overwrites
+ * stays plain.
+ */
+.differences-tray__heading {
+  margin: 0;
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-neutral-4);
+}
+
+.differences-tray__update {
+  align-items: flex-start;
+  font-weight: var(--font-weight-2);
+}
+
+.differences-tray__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Under the checkbox, as the per-field children it stands for. */
+.differences-tray__list--under-update {
+  padding-inline-start: var(--space-9);
+}
+
+.differences-tray__difference {
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+  color: var(--color-neutral-2);
+  overflow-wrap: anywhere;
+}
+
+.differences-tray__field,
+.differences-tray__value--mono {
+  font-family: var(--font-mono);
+}
+
+.differences-tray__gain {
+  font-weight: var(--font-weight-3);
+  color: var(--color-success-foreground);
+}
+
+.differences-tray__overwrite {
+  font-weight: var(--font-weight-2);
+  color: var(--color-neutral-1);
+}

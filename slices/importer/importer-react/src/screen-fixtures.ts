@@ -1,6 +1,7 @@
 /**
  * The files the screen tests pick: the canonical DICOM study, the HAR the
- * FHIR pool recognizes, and the source file wire the server list serves.
+ * FHIR pool recognizes, captures of one person off two FHIR servers, and the
+ * source file wire the server list serves.
  *
  * @remarks
  * Their own module rather than inline in `importer-screen.test.tsx`: building
@@ -67,29 +68,56 @@ const searchsetOf = (...resources: readonly unknown[]): Record<string, unknown> 
 })
 
 /**
+ * A FHIR server a capture is taken off: its base URL, which the identifier
+ * systems of the records read off it derive from, and the id it serves its
+ * Patient under.
+ */
+interface CapturedServer {
+  readonly baseUrl: string
+  readonly patientId: string
+}
+
+/** The server most captures here are taken off. */
+const SERVER_A: CapturedServer = {
+  baseUrl: 'https://r4.example.org/baseR4',
+  patientId: 'pat-7',
+}
+
+/** Another server, serving the same person under another id. */
+const SERVER_B: CapturedServer = {
+  baseUrl: 'https://fhir.clinic.example/r4',
+  patientId: 'tb-42',
+}
+
+/**
  * A HAR the `fhir-r4` importer recognizes: a Patient read and an Observation
  * searchset off one server, built through `web-trace-core`'s own `emitHar` so it
  * is shaped exactly like a real capture. Previews to 1 Patient + 2 Observations.
  *
+ * @param server - The server it is taken off
  * @param patient - What the Patient read answers with, beyond its type and id
  * @param observation - What each Observation carries, beyond its type, id,
  *   status and code
  */
-const recognizedHar = (patient: object, observation: object): string =>
+const recognizedHar = (
+  { baseUrl, patientId }: CapturedServer,
+  patient: object,
+  observation: object
+): string =>
   Effect.runSync(
     Schema.encode(HarFromJson)(
       emitHar(
         [
           traceExchange({
             requestId: 'req-0',
-            url: 'https://r4.example.org/baseR4/Patient/pat-7?_format=json',
+            url: `${baseUrl}/Patient/${patientId}?_format=json`,
             headers: [['content-type', 'application/fhir+json']],
-            body: storedJson({ resourceType: 'Patient', id: 'pat-7', ...patient }),
+            body: storedJson({ resourceType: 'Patient', id: patientId, ...patient }),
             startedAtMillis: CAPTURE_FLOOR,
           }),
           traceExchange({
             requestId: 'req-1',
-            url: 'https://r4.example.org/baseR4/Observation?subject%3APatient=pat-7&_count=250',
+            url: `${baseUrl}/Observation?subject%3APatient=${patientId}&_count=250`,
             headers: [['content-type', 'application/fhir+json']],
             body: storedJson(
               searchsetOf(
@@ -122,35 +150,48 @@ const recognizedHar = (patient: object, observation: object): string =>
   ).replaceAll('"method":"UNKNOWN"', '"method":"GET"')
 
 /** The recognized HAR with a bare Patient and Observations whose `subject` is that Patient. */
-const RECOGNIZED_HAR: string = recognizedHar({}, { subject: { reference: 'Patient/pat-7' } })
+const RECOGNIZED_HAR: string = recognizedHar(
+  SERVER_A,
+  {},
+  { subject: { reference: 'Patient/pat-7' } }
+)
 
 /** The recognized HAR with a bare Patient and Observations that name no subject. */
-const NO_SUBJECT_HAR: string = recognizedHar({}, {})
+const NO_SUBJECT_HAR: string = recognizedHar(SERVER_A, {}, {})
+
+/** What every capture of Tyra Banks says of her. */
+const TYRA_BANKS = { name: [{ family: 'Banks', given: ['Tyra'] }], birthDate: '1990-01-02' }
+
+/**
+ * A capture of Tyra Banks, born 1990-01-02, off `server`: her Patient, with
+ * whatever `patient` adds, and Observations whose `subject` is that Patient,
+ * shown as her name.
+ */
+const tyraBanksHar = (server: CapturedServer, patient: object = {}): string =>
+  recognizedHar(
+    server,
+    { ...TYRA_BANKS, ...patient },
+    { subject: { reference: `Patient/${server.patientId}`, display: 'Tyra Banks' } }
+  )
 
 /**
  * The recognized HAR with a named, dated Patient — so its demographics derive
  * an identifier — and Observations whose `subject` is that Patient.
  */
-const NAMED_PATIENT_HAR: string = recognizedHar(
-  { name: [{ family: 'Banks', given: ['Tyra'] }], birthDate: '1990-01-02' },
-  { subject: { reference: 'Patient/pat-7' } }
-)
+const NAMED_PATIENT_HAR: string = tyraBanksHar(SERVER_A)
 
 /** The recognized HAR with a named, dated Patient and Observations that name no subject. */
-const NAMED_NO_SUBJECT_HAR: string = recognizedHar(
-  { name: [{ family: 'Banks', given: ['Tyra'] }], birthDate: '1990-01-02' },
-  {}
-)
+const NAMED_NO_SUBJECT_HAR: string = recognizedHar(SERVER_A, TYRA_BANKS, {})
 
 /**
  * {@link NAMED_PATIENT_HAR} with Observations that carry no `id`, as a FHIR
  * server may send a searchset's entries: each detaches keyless, and the import
  * stage stores it under an id minted for it.
  */
-const ID_LESS_OBSERVATIONS_HAR: string = recognizedHar(
-  { name: [{ family: 'Banks', given: ['Tyra'] }], birthDate: '1990-01-02' },
-  { id: undefined, subject: { reference: 'Patient/pat-7' } }
-)
+const ID_LESS_OBSERVATIONS_HAR: string = recognizedHar(SERVER_A, TYRA_BANKS, {
+  id: undefined,
+  subject: { reference: 'Patient/pat-7' },
+})
 
 /** One source file already on the server: its minted id and the wire it is served as. */
 interface StoredSourceFile {
@@ -196,6 +237,9 @@ export {
   NAMED_PATIENT_HAR,
   NO_SUBJECT_HAR,
   RECOGNIZED_HAR,
+  SERVER_A,
+  SERVER_B,
   storedSourceFile,
+  tyraBanksHar,
 }
-export type { DicomTagMap, StoredSourceFile }
+export type { CapturedServer, DicomTagMap, StoredSourceFile }

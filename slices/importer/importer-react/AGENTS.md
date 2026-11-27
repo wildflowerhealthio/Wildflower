@@ -36,13 +36,15 @@ It depends on `importer-core` (the importer registry, `readBatchCopies`,
 `planImport` and `findStoredMatch`, and the `readBatch` / `redecodeFormat` /
 `planWrite` the unmounted review runs), `importer-fundamentals` (the
 `PickedFile` vocabulary, `FormatDecode`, and the import plan: `ImportPlan`,
-`resolvePlan`, `countTotals`, `PlanTotals`, `ImportWrite`, `ImportedRecord`),
+`resolvePlan`, `countTotals`, `PlanTotals`, `ImportWrite`, `ImportedRecord`,
+`RecordChoice`, `locateReferences`, `differencesInPlan`),
 each format's React package for its settings picker only
 (`lifelabs-pdf-importer-react`, `dicom-importer-react`; HAR has no settings and
 no React package), `fhir-r4` (the typed client, `persistTransactionBundle`,
 `HumanName`), `fhir-r4-react` (the authed runner and the slice runtime layer),
 `positioned-text-web` (the pdfjs `PositionedTextExtractor` layer the read runs
-under), and `react-tundraish`. It names no format's core package and no
+under), `react-kitchen-sink` (`cn`, `prefersReducedMotion`) and
+`react-tundraish`. It names no format's core package and no
 `web-trace-core` at runtime — HAR fixtures in `screen-fixtures.ts` are the
 only place `http-archive` and `web-trace-core` appear at all.
 
@@ -104,53 +106,137 @@ The importer has no HTTP wire union to derive, so there is no separate
     `Reading`, `ReadFailed`, `Reviewing { review, writeFailure }`,
     `Importing { review }` and `Imported { review }`. A `Review` is the batch
     as read (`BatchCopies`), its `plan`, the plan's `resolution` with its
-    `totals` (`countTotals`) and its `write` (`ImportWrite.of`), and `readAt`,
-    the instant the files were read, at which a person's name in use is
-    judged. `reviewOf` builds one from a plan and is the one way a plan
-    becomes a `Review`, so the hook owns the totals and the write and the
-    components only read them. `read(picks)` runs `readBatchCopies` under
-    the default format settings, `planImport` with `findStoredMatch`, and
-    `reviewOf`, through `useRunAuthed`. `importPlan()` writes the review's
-    `ImportWrite.Ready` resources as one `persistTransactionBundle`: every
-    outcome ok is `Imported`; otherwise it is `Reviewing` again with its
-    `writeFailure` (`write-failure.ts`: `Refused`, or `Unanswered` when an
-    outcome got no readable answer) and the plan untouched. `startOver()`
-    goes back to `ChoosingFiles`. The state lives in a ref beside the React
-    state, written together, so an action reads what the next action needs;
-    one ticket drops a stale read or write. Any failure of a run, a failed
-    search, a defect or the runner's own rejection, is logged
-    (`Effect.logError`): a read ends in `ReadFailed`, which holds nothing,
-    since nothing in a failure is worth showing a reviewer, and a write goes
-    back to `Reviewing` with `Unanswered`. A write that was sent invalidates
-    the source-file list and the stored records before the stale check,
-    since it may have landed either way.
+    `totals` (`countTotals`) and its `write` (`ImportWrite.of`), its
+    `differences` (`plan-differences.ts`), its `recordReferences`
+    (`locateReferences`, located once when the files are read, since a
+    choice changes where a reference lands, never which record it names),
+    and `readAt`, the instant the files were read, at which a person's name
+    in use is judged. `reviewOf` builds one from a plan and is the one way a
+    plan becomes a `Review`, so the hook owns the totals, the write and the
+    differences, and the components only read them. `read(picks)` runs
+    `readBatchCopies` under the default format settings, `planImport` with
+    `findStoredMatch`, and `reviewOf`, through `useRunAuthed`.
+    `choose(keys, choice)` makes `choice` the reviewer's for every record
+    under one of `keys` (`ImportPlan.choose`), only while `Reviewing`: it
+    runs `reviewOf` synchronously in the handler and commits the new review
+    keeping the last `writeFailure`, since the reviewer reads it while fixing
+    the plan and what it says stays true; Import pressed again, or starting
+    over, clears it.
+    `importPlan()` writes the review's `ImportWrite.Ready` resources as one
+    `persistTransactionBundle`: every outcome ok is `Imported`; otherwise it
+    is `Reviewing` again with its `writeFailure` (`write-failure.ts`:
+    `Refused`, or `Unanswered` when an outcome got no readable answer) and
+    the plan untouched. `startOver()` goes back to `ChoosingFiles`. The state
+    lives in a ref beside the React state, written together, so an action
+    reads what the next action needs; one ticket drops a stale read or write.
+    Any failure of a run, a failed search, a defect or the runner's own
+    rejection, is logged (`Effect.logError`): a read ends in `ReadFailed`,
+    which holds nothing, since nothing in a failure is worth showing a
+    reviewer, and a write goes back to `Reviewing` with `Unanswered`. A write
+    that was sent invalidates the source-file list and the stored records
+    before the stale check, since it may have landed either way.
+  - `plan-differences.ts` — the `PlanDifferences` namespace: each record's
+    **candidates**, the existing records it could merge into, worked out
+    once per plan by `ofPlan` (since `differencesInPlan` reads the whole
+    plan on every call). A `Candidate` is the stored resource a choice
+    names (`existing`), how the plan knows of it (`knownBy`, an
+    `ExistingRecord.KnownBy`), and `inPlan`, `differencesInPlan`'s
+    `incoming`, `kept` and `differences`. The candidates of a record are its
+    existing records (`PlannedRecord.existingRecordsOf`): the search's
+    matches, best grade first, then the record under its derived id, then
+    the one the reviewer chose when it is none of those. Only records
+    that need a decision are worked out, once per plan value: every choice
+    makes a new plan and computes them again (making that cheaper is #1566).
+    It also reads, off candidates, whether one differs on a field, the fields
+    they differ on, the identity fields none differs on, the fields a choice
+    takes into one, how much of its differences a merge takes
+    (`takenShareOf`: `Every`, `Some` or `None`, over its current differences
+    only), and the identifiers a merge into one adds
+    (`IdentifierUnion.missingFrom`).
   - `write-failure.ts` — the `WriteFailure` namespace: why a write did not
     end in an import, read off its outcomes (`fromOutcomes`).
   - `import-plan-page.tsx` — the `Reviewing` / `Importing` view: one column
-    at most 720px wide holding the summary, the import bar and a centred
-    **Cancel import**, which is gone while the write is in flight.
+    at most 720px wide holding the summary, the records that need a
+    decision, the import bar and a centred **Cancel import**, which is gone
+    while the write is in flight.
   - `summary-card.tsx` — the kicker, "N records from M files" (M counts every
     picked file, those nothing was read from included), the four counts
     (Create, Update, Link to existing, Needs a decision, the last
     warning-coloured with "N open" while any record has no choice; two
     columns below 768px, four from it), one line per file set, and one red
     line per unreadable or unrecognised file.
+  - `needs-a-decision.tsx` — the **Needs a decision** section, only when a
+    record needs one (`PlannedRecord.needsDecision`, read off its
+    suggestion, so a decided record stays listed): the heading, why these
+    records are asked about, and one `DecisionCard` per record in plan
+    order, each given how many records reference it
+    (`RecordReferences.referrersOf`), its candidates, its DOM id (its index
+    in the plan's records, which a choice never changes;
+    `decision-card-ids.ts`, which also gives its React key, its record key
+    as text) and whether the write is in flight.
+  - `decision-card.tsx` — one record that needs a decision: "Select a
+    Patient record for Tyra Banks from `b.har`", a meta line ("Not
+    selected" while nothing is chosen; "N identifier matches" for a record
+    several existing records carry the identifier of, else "N possible
+    matches" and the identity fields no match differs on; the referrers),
+    and one
+    react-tundraish `RadioCardGroup` named by the title: the imported
+    record's dashed option (Save as a new record), one raised option per
+    candidate (Use this existing record: its kicker's parts, each kept
+    whole, its last-updated date and grade,
+    each identifier the merge adds, and a `DifferencesTray` when it has
+    differences), then a full-width Don't add line. Each option shows the
+    fields any candidate differs on (never `name`, the option's title), its
+    own value, "Not recorded" when it has none, an existing record's bold
+    where the field is one of its differences, and as JSON where it would
+    read alike with the imported record's though it differs; the selected
+    option says what the choice does. Using an existing record takes the
+    fields that fill a gap and none that overwrite one
+    (`RecordChoice.mergeFillingGaps`). Its edge is the warning colour while
+    nothing is chosen. While the write is in flight one `<fieldset
+    disabled>` disables every control in it, and react-tundraish's
+    `RadioCard` picks nothing for a click on a card whose radio is
+    disabled.
+  - `differences-tray.tsx` — an existing record's differences, in its
+    option's tray: "Differences" over one line per difference (`field gains
+    value` for a gap, green; `field kept → incoming` for an overwrite, each
+    side as JSON where the two would read alike) while
+    the option is not selected; once it is, one "Update with import details
+    · K of N" checkbox over the same list (the count only when more than one
+    field differs), checked when every differing field is taken, empty when
+    none is, partly checked otherwise. A click
+    takes none when every one is taken (a link), else every one. It is the
+    parent of the per-field list #1469 adds.
   - `import-bar.tsx` — the sticky bar: the sentence and the Import button
     ("Import · 47 new, 2 updated, 65 linked", described by the sentence), or
-    a warning line naming the first record with no choice and the button
+    a warning line naming the first record with no choice, **Go to record**
+    (which scrolls that record's card into view, smoothly unless the reader
+    asked for reduced motion, and focuses its first radio) and the button
     disabled, or, when nothing would be written, a sentence alone (one for a
     plan whose records are all the same as existing ones, one for files no
     record could be read from). Why the last write did not end in an import
     is said above it, in a danger `Notice` listing each distinct refusal. Below 768px the bar's own box goes (`display:
     contents`), so the sentence scrolls with the page and only the action's
-    box sticks; the warning line sits inside the action, so it sticks with
-    the button it disables.
+    box sticks; the warning line and Go to record sit inside the action, so
+    they stick with the button it disables.
   - `import-complete-notice.tsx` — a section labelled by its heading,
     **Import complete**, then a success `Notice` of what was created,
     updated and linked, with **Import more files** as its action.
   - `plan-text.ts` — every sentence, label and plural the page shows.
-    `record-text.ts` — `RecordText.titleOf`, a record's title in a sentence:
-    a Patient's or Practitioner's name, else the plan's title for it.
+    `record-text.ts` — how a record or resource is named in a sentence:
+    `titleOf` (a record: a Patient's or Practitioner's name, else the plan's
+    title for it), `titleOfResource` (a stored resource: a person's name,
+    else its literal reference), `fileTitleOf` (the file set it is listed
+    under) and `statedIdentityFieldsOf` (name, birthDate, gender for a
+    Patient; name for a Practitioner). `field-value-text.ts` — a top-level
+    field's value as text: each name as shown, an address as its lines,
+    each contact point as its system and value, each with its `use`;
+    identifiers as their values (in mono); `extension` as how many; the
+    common FHIR shapes by what they say (a Narrative as "Narrative", a
+    CodeableConcept, Coding, Reference, Period or Quantity as its text);
+    anything else as compact JSON cut short at 80 characters, the whole in a
+    tooltip (`field-value.tsx`). `differenceTextsOf` shows two values that
+    differ but would read alike as JSON.
 - **`src/registry.ts`** — the React half of the closed format registry (above).
 - **`src/identity/`** — **Not mounted, awaiting #1466.** The identity map in the old review.
   The review of a batch is one hook composed of three, each in its own file:
@@ -669,6 +755,16 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   again, a re-import with nothing to import and no Import button, a source
   file re-picked off the server linked rather than written, a Patient two
   stored records carry the identifier of left open and blocking Import, the
+  Needs a decision cards (a capture of one person off a second FHIR server,
+  `screen-fixtures.ts`' `tyraBanksHar` over `SERVER_A` and `SERVER_B`,
+  offered the stored Patient already selected and written as one Patient
+  carrying both servers' identifiers that both subjects name; two stored
+  namesakes left not selected, blocking Import, with Go to record focusing
+  the card's first radio, and each of the namesake chosen, Save as a new
+  record and Don't add written as chosen; the update checkbox partly
+  checked, then taking every field, then none; every control of a card
+  disabled while a held transaction is in flight; a refused write still
+  said after a choice, and gone once Import lands), the
   red lines of an unreadable and an unrecognised file with no record read
   from either, the loader card while a read is in flight, a failed search,
   a runner that rejects the read, no way to
@@ -688,8 +784,20 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   through to the other routes.
 - `plan/plan-text.test.ts` pins the page's sentences as whole values (both
   write failures' among them), and as a property that a file set's line
-  leaves out exactly its zero parts and its parts sum to its records; `plan/record-text.test.ts` pins a record's title
-  in a sentence.
+  leaves out exactly its zero parts and its parts sum to its records; `plan/record-text.test.ts` pins a record's
+  and a stored resource's title in a sentence and the identity fields it
+  states; `plan/field-value-text.test.ts` pins each field's text, and as
+  properties that a scalar reads as itself and a value of no common shape as
+  compact JSON cut short at 80 characters, and the two sides of a difference
+  that would read alike shown as JSON;
+  `plan/plan-differences.test.ts` pins a record's candidates (a second
+  record into one existing record compared with it as the first's merge
+  leaves it) and what is read off them (a field taken that no longer
+  differs counting for nothing); `plan/decision-card.test.tsx` renders a
+  card not selected, with an existing record selected, with Don't add
+  selected, and for a record several existing records carry the identifier
+  of. They build
+  records and plans with `plan/plan.test-helpers.ts`.
 - **Not mounted, awaiting #1466.** `identity/referent-rows.test.tsx` drives `useLinkChoiceReview` and the rows over a
   hand-built batch and a stub server answering the identifier searches, the
   name stage's `birthdate` and `name` searches as HFS does, and the stored

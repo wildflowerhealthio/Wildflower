@@ -135,8 +135,8 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `ImporterScreen`, the whole flow a host app mounts: choose files, read them
   into an import plan against the existing records (`readBatchCopies`,
   `planImport` with `findStoredMatch`, `resolvePlan`), review the plan on the
-  import plan page (its summary and its import bar), and write it as one
-  transaction; plus the React half of the registry (each `importer-core`
+  import plan page (its summary, its Needs a decision cards and its import
+  bar), and write it as one transaction; plus the React half of the registry (each `importer-core`
   importer spread with that format's `SettingsPicker`, for a format that has
   settings). Also `ServerSourceFileList`, the uploaded-source-files pick
   source the anonymizer slice's shell takes through its `serverSource` slot.

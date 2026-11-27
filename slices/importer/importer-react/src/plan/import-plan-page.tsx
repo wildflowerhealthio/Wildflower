@@ -1,8 +1,10 @@
+import type { RecordChoice, RecordKey } from '@wildflowerhealthio/importer-fundamentals'
 import { LinkButton } from '@wildflowerhealthio/react-tundraish'
 import type { Option } from 'effect'
 import type { JSX } from 'react'
 
 import { ImportBar } from './import-bar.tsx'
+import { NeedsADecision } from './needs-a-decision.tsx'
 import { CANCEL_IMPORT_LABEL } from './plan-text.ts'
 import { SummaryCard } from './summary-card.tsx'
 import type { Review } from './use-import-plan-page.ts'
@@ -16,24 +18,29 @@ interface ImportPlanPageProps {
   readonly writeFailure: Option.Option<WriteFailure.Type>
   /** Whether the write is in flight: there is no way to leave the page until it settles. */
   readonly importing: boolean
+  /** Make `choice` the reviewer's choice for every record under one of `keys`. */
+  readonly onChoose: (keys: Iterable<RecordKey.Type>, choice: RecordChoice.Type) => void
   readonly onImport: () => void
   readonly onCancel: () => void
 }
 
 /**
- * The import plan under review: the summary, the import bar and a way to
- * cancel, in one column. While the write is in flight there is no Cancel
- * import, since the write lands whatever the page shows.
+ * The import plan under review: the summary, the records that need a
+ * decision, the import bar and a way to cancel, in one column. While the
+ * write is in flight there is no Cancel import, since the write lands
+ * whatever the page shows.
  */
 const ImportPlanPage = ({
   review,
   writeFailure,
   importing,
+  onChoose,
   onImport,
   onCancel,
 }: ImportPlanPageProps): JSX.Element => (
   <section aria-label="Import plan" className={styles['import-plan-page']}>
     <SummaryCard totals={review.totals} batchCopies={review.batchCopies} />
+    <NeedsADecision review={review} importing={importing} onChoose={onChoose} />
     <ImportBar
       review={review}
       writeFailure={writeFailure}

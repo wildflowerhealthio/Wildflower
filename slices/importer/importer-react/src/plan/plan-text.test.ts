@@ -1,5 +1,9 @@
 import { type BatchEntryOutcome, NO_RESPONSE_STATUS } from '@wildflowerhealthio/fhir-r4/clients'
-import { PlanResolution, PlanTotals } from '@wildflowerhealthio/importer-fundamentals'
+import {
+  ExistingRecord,
+  PlanResolution,
+  PlanTotals,
+} from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'
@@ -7,12 +11,21 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import {
   completeLine,
+  DecisionMatches,
+  decisionMetaLine,
+  dontAddOutcome,
+  existingKicker,
+  existingRecordOutcome,
   fileSetLine,
   importButtonLabel,
   readySentence,
   refusalMessagesOf,
+  saveAsNewOutcome,
+  selectRecordLead,
+  selectRecordTitle,
   summaryTitle,
   undecidedRecordLine,
+  updateWithImportLabel,
   writeFailureMessage,
 } from './plan-text.ts'
 import * as WriteFailure from './write-failure.ts'
@@ -122,6 +135,146 @@ describe('undecidedRecordLine', () => {
     ]).toEqual([
       'Select a Patient record for Tyra Banks from a.har.',
       'Select an Organization record for Rexall #4012 from rexall.har.',
+    ])
+  })
+})
+
+describe('selectRecordTitle', () => {
+  it("is the card's lead, then the file's title", () => {
+    const record = { resourceType: 'Practitioner', title: 'Dr. Brown', fileTitle: 'b.har' }
+
+    expect([selectRecordLead(record), selectRecordTitle(record)]).toEqual([
+      'Select a Practitioner record for Dr. Brown from',
+      'Select a Practitioner record for Dr. Brown from b.har',
+    ])
+  })
+})
+
+describe('decisionMetaLine', () => {
+  it('says a name match is not selected, its matches, its referrers and the fields they agree on', () => {
+    expect(
+      decisionMetaLine({
+        isOpen: true,
+        matches: DecisionMatches.NameMatches({ count: 2, sameFields: ['name', 'birthDate'] }),
+        referrers: 22,
+      })
+    ).toBe('Not selected · 2 possible matches · referenced by 22 records · same name, birthDate')
+  })
+
+  it('counts identifier matches, with no fields agreed on', () => {
+    expect([
+      decisionMetaLine({
+        isOpen: true,
+        matches: DecisionMatches.IdentifierMatches({ count: 2 }),
+        referrers: 0,
+      }),
+      decisionMetaLine({
+        isOpen: false,
+        matches: DecisionMatches.IdentifierMatches({ count: 3 }),
+        referrers: 1,
+      }),
+    ]).toEqual([
+      'Not selected · 2 identifier matches',
+      '3 identifier matches · referenced by 1 record',
+    ])
+  })
+
+  it('leaves out what does not apply, singular for one', () => {
+    expect([
+      decisionMetaLine({
+        isOpen: false,
+        matches: DecisionMatches.NameMatches({ count: 1, sameFields: [] }),
+        referrers: 1,
+      }),
+      decisionMetaLine({
+        isOpen: false,
+        matches: DecisionMatches.NameMatches({ count: 3, sameFields: ['name'] }),
+        referrers: 0,
+      }),
+    ]).toEqual(['1 possible match · referenced by 1 record', '3 possible matches · same name'])
+  })
+})
+
+describe('existingKicker', () => {
+  it('gives the parts that say when the record was updated and how well it matches, each when known', () => {
+    expect([
+      existingKicker({
+        updatedOn: Option.some('2026-06-02'),
+        knownBy: ExistingRecord.MatchedBySearch({ grade: 'probable', evidence: 'name' }),
+      }),
+      existingKicker({
+        updatedOn: Option.none(),
+        knownBy: ExistingRecord.MatchedBySearch({ grade: 'possible', evidence: 'name' }),
+      }),
+      existingKicker({
+        updatedOn: Option.some('2025-02-11'),
+        knownBy: ExistingRecord.StoredUnderDerivedId(),
+      }),
+      existingKicker({ updatedOn: Option.none(), knownBy: ExistingRecord.ChosenByReviewer() }),
+    ]).toEqual([
+      ['Existing', 'updated 2026-06-02', 'probable match'],
+      ['Existing', 'possible match'],
+      ['Existing', 'updated 2025-02-11'],
+      ['Existing'],
+    ])
+  })
+})
+
+describe('saveAsNewOutcome', () => {
+  it('says how many records will reference the new record, and nothing when none will', () => {
+    expect([saveAsNewOutcome(22), saveAsNewOutcome(1), saveAsNewOutcome(0)]).toEqual([
+      Option.some('22 records will reference the new record.'),
+      Option.some('1 record will reference the new record.'),
+      Option.none(),
+    ])
+  })
+})
+
+describe('existingRecordOutcome', () => {
+  it('says how many records will reference the existing record, and how many fields it takes', () => {
+    expect([
+      existingRecordOutcome({ referrers: 22, fieldsUpdated: 1 }),
+      existingRecordOutcome({ referrers: 1, fieldsUpdated: 2 }),
+      existingRecordOutcome({ referrers: 2, fieldsUpdated: 0 }),
+    ]).toEqual([
+      Option.some('22 records will reference this record instead, with 1 field updated.'),
+      Option.some('1 record will reference this record instead, with 2 fields updated.'),
+      Option.some('2 records will reference this record instead.'),
+    ])
+  })
+
+  it('says only the fields taken when no record references it, and nothing when none is taken', () => {
+    expect([
+      existingRecordOutcome({ referrers: 0, fieldsUpdated: 2 }),
+      existingRecordOutcome({ referrers: 0, fieldsUpdated: 0 }),
+    ]).toEqual([Option.some('This record will have 2 fields updated.'), Option.none()])
+  })
+})
+
+describe('dontAddOutcome', () => {
+  it('says how many records keep the display with no reference, and nothing when none does', () => {
+    expect([
+      dontAddOutcome({ referrers: 22, title: 'Tyra Banks' }),
+      dontAddOutcome({ referrers: 1, title: 'Tyra Banks' }),
+      dontAddOutcome({ referrers: 0, title: 'Tyra Banks' }),
+    ]).toEqual([
+      Option.some('22 records keep the display “Tyra Banks” with no reference'),
+      Option.some('1 record keeps the display “Tyra Banks” with no reference'),
+      Option.none(),
+    ])
+  })
+})
+
+describe('updateWithImportLabel', () => {
+  it('counts the fields taken of those that differ, when more than one differs', () => {
+    expect([
+      updateWithImportLabel({ taken: 1, differing: 2 }),
+      updateWithImportLabel({ taken: 0, differing: 3 }),
+      updateWithImportLabel({ taken: 1, differing: 1 }),
+    ]).toEqual([
+      'Update with import details · 1 of 2',
+      'Update with import details · 0 of 3',
+      'Update with import details',
     ])
   })
 })

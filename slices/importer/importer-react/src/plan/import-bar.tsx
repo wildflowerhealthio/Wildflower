@@ -1,16 +1,18 @@
 import {
-  FormatDecode,
   ImportedRecord,
   ImportPlan,
   ImportWrite,
   PlanTotals,
   type RecordKey,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Notice } from '@wildflowerhealthio/react-tundraish'
+import { prefersReducedMotion } from '@wildflowerhealthio/react-kitchen-sink'
+import { LinkButton, Notice } from '@wildflowerhealthio/react-tundraish'
 import { type DateTime, Match, Option } from 'effect'
 import { type JSX, useId } from 'react'
 
+import { decisionCardDomIdOf } from './decision-card-ids.ts'
 import {
+  GO_TO_RECORD_LABEL,
   importButtonLabel,
   NO_RECORDS_READ_SENTENCE,
   NOTHING_TO_IMPORT_SENTENCE,
@@ -44,9 +46,41 @@ const undecidedLineOf = (
     undecidedRecordLine({
       resourceType: ImportedRecord.resourceTypeOf(record),
       title: RecordText.titleOf(readAt, record),
-      fileTitle: FormatDecode.titleOf(ImportedRecord.originOf(record).pickedFiles),
+      fileTitle: RecordText.fileTitleOf(record),
     })
   )
+
+/**
+ * "Go to record": scrolls the card of the record under `recordKey` into
+ * view, smoothly unless the reader asked for reduced motion, and focuses its
+ * first radio without a second scroll.
+ */
+const GoToRecordButton = ({
+  plan,
+  recordKey,
+}: {
+  readonly plan: ImportPlan.Type
+  readonly recordKey: RecordKey.Type
+}): JSX.Element => {
+  const handleClick = (): void => {
+    const card = Option.flatMapNullable(decisionCardDomIdOf(plan, recordKey), (domId) =>
+      document.getElementById(domId)
+    )
+    if (Option.isNone(card)) return
+    card.value.scrollIntoView({
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      block: 'start',
+    })
+    card.value
+      .querySelector<HTMLInputElement>('input[type="radio"]')
+      ?.focus({ preventScroll: true })
+  }
+  return (
+    <LinkButton className={styles['import-bar__go-to-record']} onClick={handleClick}>
+      {GO_TO_RECORD_LABEL}
+    </LinkButton>
+  )
+}
 
 /** Why the last write did not end in an import, above the bar, with each distinct refusal. */
 const WriteFailureNotice = ({ failure }: { readonly failure: WriteFailure.Type }): JSX.Element => {
@@ -94,7 +128,8 @@ const ImportButton = ({
 /**
  * The bar that writes the plan, stuck to the top of the page as it scrolls:
  * a sentence saying what the write does and the Import button, or, while a
- * record has no choice, a warning line naming it and the button disabled, or,
+ * record has no choice, a warning line naming it, a way to go to its card
+ * and the button disabled, or,
  * when nothing would be written, only the sentence saying so. Why the last
  * write did not end in an import is said above it.
  *
@@ -124,6 +159,7 @@ const ImportBar = ({ review, writeFailure, importing, onImport }: ImportBarProps
           )),
           Option.getOrNull
         )}
+        <GoToRecordButton plan={review.plan} recordKey={undecided[0]} />
         <ImportButton label={label} disabled sentenceId={sentenceId} onImport={onImport} />
       </div>
     )),

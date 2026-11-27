@@ -106,6 +106,25 @@ describe('RadioCard', () => {
     expect(getRadio('Use this existing record').checked).toBe(true)
   })
 
+  it('picks nothing for a click on a card in a disabled fieldset', async () => {
+    // Arrange
+    const onSelect = vi.fn<(value: string) => void>()
+    const user = userEvent.setup()
+    render(
+      <fieldset disabled>
+        <Harness onSelect={onSelect} />
+      </fieldset>
+    )
+
+    // Act
+    await user.click(screen.getByText('Tyra A. Ashford'))
+
+    // Assert
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(getRadio('Use this existing record').checked).toBe(false)
+    expect(getRadio('Use this existing record').matches(':disabled')).toBe(true)
+  })
+
   it('picks the card once when the reader clicks its radio label', async () => {
     // Arrange
     const onSelect = vi.fn<(value: string) => void>()
