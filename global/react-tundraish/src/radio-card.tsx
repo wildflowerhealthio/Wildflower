@@ -59,7 +59,9 @@ interface RadioCardProps extends Omit<ComponentProps<'div'>, 'children' | 'onCli
  * action, over the evidence for it, with an optional tray docked at the foot.
  * The picked card wears the accent edge and fill. A click anywhere on the card
  * that no control inside answers picks it, as does a change in its tray, and
- * the radio keeps the native group's arrow keys. The radio is described by the
+ * the radio keeps the native group's arrow keys. While its radio is
+ * disabled (a `<fieldset disabled>` around the group disables every control
+ * in it), a click on the card picks nothing. The radio is described by the
  * evidence, outcome and tray, so cards with the same label still read apart.
  */
 const RadioCard = ({
@@ -89,6 +91,9 @@ const RadioCard = ({
     .join(' ')
   const handleCardClick = (event: MouseEvent<HTMLDivElement>): void => {
     if (checked || !(event.target instanceof Element)) return
+    // A radio disabled, by itself or by a `<fieldset disabled>` around the
+    // group, cannot be picked, so neither can its card.
+    if (event.currentTarget.querySelector('input[type="radio"]:disabled') !== null) return
     // A click from a portal bubbles through React but lands outside the card.
     if (!event.currentTarget.contains(event.target)) return
     const control = event.target.closest(OWN_CLICK_TARGETS)
