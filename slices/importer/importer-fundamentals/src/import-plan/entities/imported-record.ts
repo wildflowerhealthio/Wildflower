@@ -11,6 +11,7 @@ import type { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import { groupInOrder } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Option, Order } from 'effect'
 
+import type * as FileSetOrigin from './file-set-origin.ts'
 import * as ImportedCopy from './imported-copy.ts'
 import type * as RecordKey from './record-key.ts'
 
@@ -78,6 +79,9 @@ const titleOf = (record: Type): string => recordCopyOf(record).title
 /** The URL a source served the record at: its record copy's (`ImportedCopy.Type`'s `sourceUrl`). */
 const sourceUrlOf = (record: Type): Option.Option<URL> => recordCopyOf(record).sourceUrl
 
+/** The file set the record is listed under: its record copy's origin. */
+const originOf = (record: Type): FileSetOrigin.Type => recordCopyOf(record).origin
+
 /** The record's resource type: its record copy's. */
 const resourceTypeOf = (record: Type): ResourceType.Type =>
   recordCopyOf(record).resource.resourceType
@@ -142,6 +146,7 @@ export {
   literalReferenceUnder,
   keyIdentifierOf,
   mergeOrder,
+  originOf,
   resourceOf,
   resourceTypeOf,
   sourceUrlOf,
