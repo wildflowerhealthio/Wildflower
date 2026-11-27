@@ -6,8 +6,8 @@
  */
 import { MatchQuery } from '@wildflowerhealthio/fhir-r4/clients'
 import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
-import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
-import { Array as Arr, Data, Equal, HashSet, Option, pipe, Record as EffectRecord } from 'effect'
+import { groupInOrder, onlyElement } from '@wildflowerhealthio/kitchen-sink'
+import { Array as Arr, Data, Equal, HashMap, HashSet, Option, pipe } from 'effect'
 
 import * as ImportedRecord from '../entities/imported-record.ts'
 import * as RecordKey from '../entities/record-key.ts'
@@ -134,7 +134,8 @@ const heldBy = (record: ImportedRecord.Type): readonly Held[] =>
  * @param records - The import's records, in plan order (`ImportedRecord.fromCopies`)
  *
  * @remarks
- * One pass, in four steps: decide once per identifier which record it names
+ * One pass, in four steps, each grouping in the order its items first come
+ * (`groupInOrder`): decide once per identifier which record it names
  * ({@link namedRecordKeyOf}), which gives `named`, each identifier that
  * names a record by its first-seen logical reference, in the order the
  * identifiers are first carried; group the references the records hold, so
@@ -146,16 +147,21 @@ const heldBy = (record: ImportedRecord.Type): readonly Held[] =>
  * not referenced.
  */
 const locateReferences = (records: readonly ImportedRecord.Type[]): RecordReferences.Type => {
-  const byIdentifier = pipe(
-    records.flatMap(carriedBy),
-    Arr.groupBy(({ logicalReference }) => LogicalReference.key(logicalReference)),
-    EffectRecord.map((carrying): Identified => ({
-      logicalReference: Arr.headNonEmpty(carrying).logicalReference,
-      named: namedRecordKeyOf(carrying),
-    }))
+  const identified = groupInOrder(records.flatMap(carriedBy), ({ logicalReference }) =>
+    LogicalReference.key(logicalReference)
+  ).map(
+    ({ key, items: carrying }) =>
+      [
+        key,
+        {
+          logicalReference: Arr.headNonEmpty(carrying).logicalReference,
+          named: namedRecordKeyOf(carrying),
+        } satisfies Identified,
+      ] as const
   )
+  const byIdentifier = HashMap.fromIterable(identified)
   const outcomeOf = (unlinkedReference: LogicalReference.Type): Outcome =>
-    Option.match(EffectRecord.get(byIdentifier, LogicalReference.key(unlinkedReference)), {
+    Option.match(HashMap.get(byIdentifier, LogicalReference.key(unlinkedReference)), {
       onNone: () => External(),
       onSome: ({ named }) =>
         Option.match(named, {
@@ -163,19 +169,16 @@ const locateReferences = (records: readonly ImportedRecord.Type[]): RecordRefere
           onSome: (key) => InImport({ key }),
         }),
     })
-  const located = pipe(
-    records.flatMap(heldBy),
-    Arr.groupBy(({ unlinkedReference }) => LogicalReference.key(unlinkedReference)),
-    EffectRecord.values,
-    Arr.map((held): Located => {
-      const { unlinkedReference } = Arr.headNonEmpty(held)
-      return {
-        unlinkedReference,
-        holders: Arr.map(held, ({ holder }) => holder),
-        outcome: outcomeOf(unlinkedReference),
-      }
-    })
-  )
+  const located = groupInOrder(records.flatMap(heldBy), ({ unlinkedReference }) =>
+    LogicalReference.key(unlinkedReference)
+  ).map(({ items: held }): Located => {
+    const { unlinkedReference } = Arr.headNonEmpty(held)
+    return {
+      unlinkedReference,
+      holders: Arr.map(held, ({ holder }) => holder),
+      outcome: outcomeOf(unlinkedReference),
+    }
+  })
   return RecordReferences.make({
     referenced: HashSet.fromIterable(
       Arr.filterMap(located, ({ holders, outcome }) =>
@@ -185,7 +188,7 @@ const locateReferences = (records: readonly ImportedRecord.Type[]): RecordRefere
           : Option.none()
       )
     ),
-    named: Arr.filterMap(EffectRecord.values(byIdentifier), ({ logicalReference, named }) =>
+    named: Arr.filterMap(identified, ([, { logicalReference, named }]) =>
       Option.map(named, (key): RecordReferences.NamedRecord => ({ logicalReference, key }))
     ),
     external: located

@@ -560,8 +560,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     left, the record keyed by that identifier wins; else the only one left;
     else none), which gives `named`; groups the logical references the
     records hold so each distinct one appears once (its first-seen value,
-    beside the keys of every record holding it, in the order first held);
-    and gives each an outcome: **in the import** (one record named),
+    beside the keys of every record holding it, in the order first held,
+    as `kitchen-sink`'s `groupInOrder` groups); and gives each an outcome:
+    **in the import** (one record named),
     **ambiguous in the import** (several carry its identifier and none is
     named: linked to none, the store not asked; see Known gaps) or **not in
     the import** (no record carries its identifier: the store is asked). A
