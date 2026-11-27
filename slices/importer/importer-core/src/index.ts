@@ -56,12 +56,7 @@ export {
   type StoredMatchFailure,
 } from './find-stored-match.ts'
 export { planImport } from './plan-import.ts'
-export {
-  type BatchCopies,
-  copiesOf,
-  type FormatRead,
-  readBatchCopies,
-} from './read-batch-copies.ts'
+export { type BatchCopies, copiesOf, readBatchCopies } from './read-batch-copies.ts'
 export {
   importWithSuggestions,
   type SuggestedImport,

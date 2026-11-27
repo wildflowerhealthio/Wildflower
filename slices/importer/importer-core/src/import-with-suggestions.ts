@@ -43,9 +43,10 @@ class UndecidedRecords extends Data.TaggedError('UndecidedRecords')<{
 }
 
 /**
- * A run's result: the batch as read (`readBatchCopies`), what each claimed
- * format read, in registry order, and the picks no format claimed, beside
- * the plan resolved and the resources of the one transaction that writes it.
+ * A run's result: the batch as read (`readBatchCopies`), each claimed
+ * format's `FormatCopies` (its format, copies, notes and unreadable files)
+ * in registry order and the picks no format claimed, beside the plan
+ * resolved and the resources of the one transaction that writes it.
  * `formats[].copies` are the copies the plan was built from, the same
  * resources the resolution's records hold.
  */

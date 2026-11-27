@@ -18,15 +18,10 @@ import {
 } from './read-batch.ts'
 import type { FormatKind, FormatSettings } from './registry.ts'
 
-/** What one claimed format read: its copies, its decode's notes and the files it could not read. */
-interface FormatRead extends FormatCopies {
-  readonly format: FormatKind
-}
-
 /** A picked batch read as copies: what each claimed format read, and the picks no format claimed. */
 interface BatchCopies {
   /** What each claimed format read, in registry order. */
-  readonly formats: readonly FormatRead[]
+  readonly formats: readonly FormatCopies<FormatKind>[]
   /** The picks no registered format claimed, in pick order. */
   readonly unrecognizedFiles: readonly UnrecognizedFile[]
 }
@@ -56,11 +51,7 @@ const readBatchCopies = <R>(
   return Effect.map(
     Effect.forEach(
       claimedEntries(claimed),
-      ([format, files]) =>
-        Effect.map(
-          decodeFormat(registry, settings, format, files, fileCopiesOf),
-          (copies): FormatRead => ({ format, ...copies })
-        ),
+      ([format, files]) => decodeFormat(registry, settings, format, files, fileCopiesOf),
       { concurrency: 'unbounded' }
     ),
     (formats): BatchCopies => ({
@@ -75,4 +66,4 @@ const copiesOf = (batchCopies: BatchCopies): readonly ImportedCopy.Type[] =>
   batchCopies.formats.flatMap(({ copies }) => copies)
 
 export { copiesOf, readBatchCopies }
-export type { BatchCopies, FormatRead }
+export type { BatchCopies }
