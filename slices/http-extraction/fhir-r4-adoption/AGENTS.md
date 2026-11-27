@@ -95,9 +95,10 @@ vocabulary) stays FHIR-free and below it.
   `ReferencePlan.literalReferenceForSourceUrl` gives it; a logical reference
   the plan does not resolve stays logical, for the importer's identity map,
   and a literal one or an attachment URL keeps its spelling, the server's URL
-  for its target. `resolveReferences(resource)` is that pass alone, the
-  resource kept as it is otherwise, for a caller that resolves a resource it does not
-  adopt (the importer's `ReferenceTable`).
+  for its target. `resolveReferences(referencePlan, resource)` is that pass alone,
+  a plain function of the plan it is given, the resource kept as it is
+  otherwise, for a caller that resolves a resource it does not adopt (the
+  importer's `ReferenceTable`).
   `adoptedReferenceOf(system, Type, id)` is the literal reference the
   import stores the record with that key under, for a resource written
   outside that source; `originalIdOf(system, resource)` reads the value of a
