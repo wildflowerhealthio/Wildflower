@@ -122,11 +122,12 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   reviewed resource, the `Included` ones exactly the resources to write.
   `fileCopiesOf` reads a format's decode as copies of records, placed,
   linked and stamped by the import stage's own steps with no reference
-  between a set's records resolved; `findStoredMatch` matches an import
-  once against the store, `noStore` against none; `planImport` builds its
-  `ImportPlan`; `importWithSuggestions` imports a picked batch with no
-  reviewer, every suggestion taken, and gives back the resources of one
-  transaction for the caller to persist. No DOM and no React; the one
+  between a set's records resolved, and `readBatchCopies` reads a picked
+  batch into each claimed format's copies with it; `findStoredMatch`
+  matches an import once against the store, `noStore` against none;
+  `planImport` builds its `ImportPlan`; `importWithSuggestions` imports a
+  picked batch with no reviewer, every suggestion taken, and gives back the
+  resources of one transaction for the caller to persist. No DOM and no React; the one
   client it asks is the store's (`FhirR4ResourcesHttpApiClient`), which
   `findStoredMatch` requires, and `planImport` and `importWithSuggestions`
   when handed it.
