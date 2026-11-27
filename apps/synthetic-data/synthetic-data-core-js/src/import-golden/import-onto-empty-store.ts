@@ -154,7 +154,12 @@ const importOntoEmptyStore = (
         .toSorted(Order.mapInput(Order.string, literalReferenceOf))
         .map((resource) => encodeResource(resource)),
       plan: plannedRowsOf(imported),
-      notes: Object.fromEntries(imported.formats.map(({ format, notes }) => [format, notes])),
+      notes: Object.fromEntries(
+        imported.formats.map(({ format, notes }) => [
+          format,
+          notes.flatMap((fileSet) => fileSet.notes),
+        ])
+      ),
       sourceFileRePicks,
     }
   })

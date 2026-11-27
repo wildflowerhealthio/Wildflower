@@ -10,12 +10,18 @@ import {
   Section,
   SectionedList,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, Either, Option, ParseResult, Schema } from 'effect'
+import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { copiesOf, readBatchCopies } from './index.ts'
+import {
+  type BatchCopies,
+  copiesOf,
+  type FileSetNotes,
+  readBatchCopies,
+  rereadFormatCopies,
+} from './index.ts'
 import type { ReadRegistry } from './read-batch.ts'
-import { defaultFormatSettings, type FormatKind } from './registry.ts'
+import { defaultFormatSettings, type FormatKind, type FormatSettings } from './registry.ts'
 
 /**
  * Covers a batch read into copies of records over a fake registry: what each
@@ -113,6 +119,54 @@ const pick = (fileName: string): PickedFile.NamedBytes => ({
 const unreadableOf = (unreadableFiles: readonly FormatDecode.UnreadableFile[]): readonly object[] =>
   unreadableFiles.map(({ title, error }) => ({ title, error: error._tag }))
 
+/** Each file set's notes beside the ids of its picked files. */
+const notesOf = (notes: readonly FileSetNotes[]): readonly object[] =>
+  notes.map(({ origin, notes: noted }) => [origin.pickedFiles.map(({ id }) => id).join(','), noted])
+
+/** A LifeLabs settings' time zone that no report can be read in. */
+const NOWHERE = 'Nowhere/At_All'
+
+/**
+ * A fake LifeLabs decode that reads its settings: each file one Patient
+ * keyed by its name, noting the time zone it was read in; a file is
+ * rejected in {@link NOWHERE}.
+ */
+const decodeInZone = DecodeFunction.make({
+  format: 'lifelabs-pdf',
+  decodeFileSet: ([file], settings: FormatSettings['lifelabs-pdf']) =>
+    settings.timeZone === NOWHERE
+      ? Effect.fail(
+          new ParseResult.ParseError({
+            issue: new ParseResult.Type(Schema.Unknown.ast, settings.timeZone, 'unknown zone'),
+          })
+        )
+      : Effect.succeed({
+          pickedFiles: [DecodedFileSet.unidentified(file)],
+          sectionedList: SectionedList.make([
+            Section.make('records', [
+              {
+                localKey: 'patient',
+                resource: patientKeyedBy(file.fileName),
+                sourceUrl: Option.none(),
+              },
+            ]),
+          ]),
+          notes: [`read ${file.fileName} in ${settings.timeZone}`],
+        }),
+})
+
+/** {@link registry} with a LifeLabs decode that reads its settings. */
+const zonedRegistry: ReadRegistry<never> = {
+  ...registry,
+  'lifelabs-pdf': { ...registry['lifelabs-pdf'], decode: decodeInZone },
+}
+
+/** Every format's default settings, LifeLabs' time zone `timeZone`. */
+const settingsInZone = (timeZone: string): FormatSettings => ({
+  ...defaultFormatSettings,
+  'lifelabs-pdf': { ...defaultFormatSettings['lifelabs-pdf'], timeZone },
+})
+
 describe('readBatchCopies', () => {
   it('should read a mixed batch into each claimed format’s copies, notes and unreadable files, in registry order, beside the picks no format claimed', async () => {
     // Arrange
@@ -123,10 +177,11 @@ describe('readBatchCopies', () => {
 
     // Assert
     expect({
-      formats: read.formats.map(({ format, copies, notes, unreadableFiles }) => ({
+      formats: read.formats.map(({ format, files, copies, notes, unreadableFiles }) => ({
         format,
+        files: files.map(({ fileName }) => fileName),
         copies: copies.map(({ reviewKey }) => reviewKey),
-        notes,
+        notes: notesOf(notes),
         unreadable: unreadableOf(unreadableFiles),
       })),
       unrecognized: read.unrecognizedFiles.map(({ title }) => title),
@@ -134,14 +189,16 @@ describe('readBatchCopies', () => {
       formats: [
         {
           format: 'har',
+          files: ['a.har', 'lost.har'],
           copies: ['1:a.har/source-file/a.har', '1:a.har/patient'],
-          notes: ['read a.har'],
+          notes: [['1:a.har', ['read a.har']]],
           unreadable: [{ title: 'lost.har', error: 'SourceFileNotFound' }],
         },
         {
           format: 'lifelabs-pdf',
+          files: ['r.pdf', 'bad.pdf'],
           copies: ['0:r.pdf/source-file/r.pdf', '0:r.pdf/patient'],
-          notes: ['read r.pdf'],
+          notes: [['0:r.pdf', ['read r.pdf']]],
           unreadable: [{ title: 'bad.pdf', error: 'ParseError' }],
         },
       ],
@@ -179,5 +236,117 @@ describe('readBatchCopies', () => {
       copies: copiesOf(read),
       unrecognized: read.unrecognizedFiles.map(({ title }) => title),
     }).toEqual({ formats: [], copies: [], unrecognized: ['notes.txt'] })
+  })
+})
+
+describe('rereadFormatCopies', () => {
+  it('should read one format again under new settings, its copies, notes and unreadable files changing with them', async () => {
+    // Arrange
+    const picks = ['r.pdf', 'a.har', 's.pdf'].map(pick)
+    const read = await Effect.runPromise(
+      readBatchCopies(zonedRegistry, settingsInZone('America/Toronto'), picks)
+    )
+
+    // Act
+    const [inVancouver, nowhere] = await Effect.runPromise(
+      Effect.all(
+        [settingsInZone('America/Vancouver'), settingsInZone(NOWHERE)].map((settings) =>
+          rereadFormatCopies(zonedRegistry, settings, 'lifelabs-pdf', read)
+        )
+      )
+    )
+
+    // Assert
+    const lifeLabsOf = (batchCopies: BatchCopies): object =>
+      Option.getOrThrow(
+        Arr.findFirst(batchCopies.formats, ({ format }) => format === 'lifelabs-pdf').pipe(
+          Option.map(({ copies, notes, unreadableFiles }) => ({
+            copies: copies.map(({ reviewKey }) => reviewKey),
+            notes: notesOf(notes),
+            unreadable: unreadableOf(unreadableFiles),
+          }))
+        )
+      )
+    expect({
+      read: lifeLabsOf(read),
+      inVancouver: lifeLabsOf(inVancouver),
+      nowhere: lifeLabsOf(nowhere),
+    }).toEqual({
+      read: {
+        copies: [
+          '0:r.pdf/source-file/r.pdf',
+          '0:r.pdf/patient',
+          '2:s.pdf/source-file/s.pdf',
+          '2:s.pdf/patient',
+        ],
+        notes: [
+          ['0:r.pdf', ['read r.pdf in America/Toronto']],
+          ['2:s.pdf', ['read s.pdf in America/Toronto']],
+        ],
+        unreadable: [],
+      },
+      inVancouver: {
+        copies: [
+          '0:r.pdf/source-file/r.pdf',
+          '0:r.pdf/patient',
+          '2:s.pdf/source-file/s.pdf',
+          '2:s.pdf/patient',
+        ],
+        notes: [
+          ['0:r.pdf', ['read r.pdf in America/Vancouver']],
+          ['2:s.pdf', ['read s.pdf in America/Vancouver']],
+        ],
+        unreadable: [],
+      },
+      nowhere: {
+        copies: [],
+        notes: [],
+        unreadable: [
+          { title: 'r.pdf', error: 'ParseError' },
+          { title: 's.pdf', error: 'ParseError' },
+        ],
+      },
+    })
+  })
+
+  it('should pass every other format’s entry back as it was, in registry order, beside the unrecognized picks', async () => {
+    // Arrange
+    const picks = ['r.pdf', 'a.har', 'notes.txt'].map(pick)
+    const read = await Effect.runPromise(
+      readBatchCopies(zonedRegistry, settingsInZone('America/Toronto'), picks)
+    )
+
+    // Act
+    const reread = await Effect.runPromise(
+      rereadFormatCopies(zonedRegistry, settingsInZone('America/Vancouver'), 'lifelabs-pdf', read)
+    )
+
+    // Assert
+    expect({
+      formats: reread.formats.map(({ format }) => format),
+      harIsAsRead: reread.formats[0] === read.formats[0],
+      lifeLabsIsAsRead: reread.formats[1] === read.formats[1],
+      unrecognizedIsAsRead: reread.unrecognizedFiles === read.unrecognizedFiles,
+    }).toEqual({
+      formats: ['har', 'lifelabs-pdf'],
+      harIsAsRead: true,
+      lifeLabsIsAsRead: false,
+      unrecognizedIsAsRead: true,
+    })
+  })
+
+  it('should give back the batch as read for a format that claimed nothing', async () => {
+    // Arrange
+    const read = await Effect.runPromise(
+      readBatchCopies(zonedRegistry, defaultFormatSettings, [pick('a.har')])
+    )
+
+    // Act
+    const reread = await Effect.runPromise(
+      rereadFormatCopies(zonedRegistry, settingsInZone('America/Vancouver'), 'lifelabs-pdf', read)
+    )
+
+    // Assert
+    expect(reread).toBe(read)
   })
 })

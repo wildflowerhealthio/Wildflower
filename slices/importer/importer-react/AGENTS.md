@@ -33,14 +33,16 @@ walkthrough itself is the host's.
 `importer-react` is an adapter and follows the rule in
 [slices/AGENTS.md](../../../slices/AGENTS.md): it depends on its sources, never the reverse.
 It depends on `importer-core` (the importer registry, `readBatchCopies`,
-`planImport` and `findStoredMatch`, and the `readBatch` / `redecodeFormat` /
+`rereadFormatCopies`, `planImport` and `findStoredMatch`, and the `readBatch` / `redecodeFormat` /
 `planWrite` the unmounted review runs), `importer-fundamentals` (the
 `PickedFile` vocabulary, `FormatDecode`, and the import plan: `ImportPlan`,
 `resolvePlan`, `countTotals`, `PlanTotals`, `ImportWrite`, `ImportedRecord`,
-`RecordChoice`, `locateReferences`, `differencesInPlan`),
+`RecordChoice`, `locateReferences`, `differencesInPlan`, `carryChoices`),
 each format's React package for its settings picker only
 (`lifelabs-pdf-importer-react`, `dicom-importer-react`; HAR has no settings and
-no React package), `fhir-r4` (the typed client, `persistTransactionBundle`,
+no React package), the settings types of `lifelabs-pdf-importer-core` and
+`dicom-importer-core` and `fhir-ca-infoway`'s province names, which the line
+beside a file's Settings words, `fhir-r4` (the typed client, `persistTransactionBundle`,
 `HumanName`), `fhir-r4-react` (the authed runner and the slice runtime layer),
 `positioned-text-web` (the pdfjs `PositionedTextExtractor` layer the read runs
 under), `react-kitchen-sink` (`cn`, `prefersReducedMotion`) and
@@ -66,20 +68,20 @@ reimplements none.
 ## The registry
 
 `src/registry.ts` is `importer-core`'s closed `format → FileImporter` registry
-with the React part a format contributes — its `SettingsPicker`, for a format
-that has settings — attached to each entry by `withComponents`, a
+with the React part a format contributes — its `SettingsPicker` and
+`settingsLineOf`, what its settings say on one line (worded in
+`plan/plan-text.ts`), for a format that has settings — attached to each entry by `withComponents`, a
 **spread**, not a subclass: a
 `FileImporter` is a plain record with no prototype, so the spread is total and
 a field added to it cannot be silently dropped on the way through. The importer
 half is registered in `importer-core/src/registry.ts`; this file is the single
 edit point for a format's UI. **`FormatWithComponents<K>`** — named for what it
-adds, and defined as `importer-core`'s `BoundFormat<K>` intersected with the
-picker slot rather than restating it — keeps per-format concrete types against
+adds, and defined as `importer-core`'s `BoundFormat<K>` intersected with the settings slot rather than restating it — keeps per-format concrete types against
 `FormatSettings[K]`, so a picker typed against another format's settings fails
-to compile here. The slot is conditional per format (`SettingsPickerSlot<K>`):
+to compile here. The slot is conditional per format (`SettingsSlot<K>`):
 forbidden for a format whose `FormatSettings` entry is `null`, required for
-every other, so a format with settings that is missing its picker fails to
-compile too. `har`, `lifelabs-pdf`, and `dicom` are registered; `har` has no
+every other, so a format with settings that is missing its picker or its line
+fails to compile too. `har`, `lifelabs-pdf`, and `dicom` are registered; `har` has no
 settings, so its entry is `importer-core`'s importer as it is.
 This module exports **only what it adds**: `defaultFormatSettings`,
 `formatKinds`, `FormatKind` and `FormatSettings` are `importer-core`'s and are
@@ -103,18 +105,29 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/plan/`** — the import plan page.
   - `use-import-plan-page.ts` — `useImportPlanPage`, the page's logic. Its
     state is `ImportPlanPageState`, a `Data.TaggedEnum`: `ChoosingFiles`,
-    `Reading`, `ReadFailed`, `Reviewing { review, writeFailure }`,
-    `Importing { review }` and `Imported { review }`. A `Review` is the batch
-    as read (`BatchCopies`), its `plan`, the plan's `resolution` with its
+    `Reading`, `ReadFailed`, `Reviewing { review, writeFailure, isRereading,
+    choicesNotKept }`, `Importing { review }` and `Imported { review }`.
+    `Reviewing` keeps only what cannot be read off the review and the
+    settings: why the last write did not end in an import, whether the files
+    are being read again, and the keys of the choices the last read again
+    could not keep (`CarriedChoices.notCarried`). Whether the plan shown was
+    read under the reviewer's settings is derived, never kept:
+    `settingsStatusOf(review, isRereading, settings)` is a `SettingsStatus`,
+    `Rereading`, `Applied`, or `NotApplied { formats }` for the formats
+    whose settings differ from those the review was read under, whichever
+    way the page got there (a read again that failed, a write that failed
+    after one, a settings report while the write was in flight). A `Review` is the batch
+    as read (`BatchCopies`) and the `settings` it was read under, its `plan`, the plan's `resolution` with its
     `totals` (`countTotals`) and its `write` (`ImportWrite.of`), its
     `differences` (`plan-differences.ts`), its `recordReferences`
-    (`locateReferences`, located once when the files are read, since a
+    (`locateReferences`, located when the files are read, since a
     choice changes where a reference lands, never which record it names),
-    and `readAt`, the instant the files were read, at which a person's name
+    and `readAt`, the instant the files were first read, at which a person's name
     in use is judged. `reviewOf` builds one from a plan and is the one way a
     plan becomes a `Review`, so the hook owns the totals, the write and the
-    differences, and the components only read them. `read(picks)` runs
-    `readBatchCopies` under the default format settings, `planImport` with
+    differences, and the components only read them. The hook holds the format `settings`, from `defaultFormatSettings`, as the
+    reviewer last set them. `read(picks)` runs
+    `readBatchCopies` under them, `planImport` with
     `findStoredMatch`, and `reviewOf`, through `useRunAuthed`.
     `choose(keys, choice)` makes `choice` the reviewer's for every record
     under one of `keys` (`ImportPlan.choose`), and `reset(keys)` clears the
@@ -122,18 +135,38 @@ The importer has no HTTP wire union to derive, so there is no separate
     both only while `Reviewing`: each runs `reviewOf` synchronously in the
     handler and commits the new review keeping the last `writeFailure`,
     since the reviewer reads it while fixing the plan and what it says stays
-    true; Import pressed again, or starting over, clears it.
+    true (a read again keeps it too); Import pressed again, or starting
+    over, clears it. A choice or reset clears the choices not kept.
     `importPlan()` writes the review's `ImportWrite.Ready` resources as one
     `persistTransactionBundle`: every outcome ok is `Imported`; otherwise it
     is `Reviewing` again with its `writeFailure` (`write-failure.ts`:
     `Refused`, or `Unanswered` when an outcome got no readable answer) and
-    the plan untouched. `startOver()` goes back to `ChoosingFiles`. The state
-    lives in a ref beside the React state, written together, so an action
-    reads what the next action needs; one ticket drops a stale read or write.
+    the plan untouched, nothing being read again and no choice not kept. `startOver()` goes back
+    to `ChoosingFiles` and keeps the settings for the next files read.
+    `applySettings(format, formatSettings)` makes them that format's
+    settings and, while `Reviewing`, reads again every format whose settings
+    differ from those the review was read under (`rereadFormatCopies`, so a
+    change made while another read is in flight is not lost), with the pdfjs
+    layer as `read` has it, plans the whole batch again (`planImport` with
+    `findStoredMatch`, since a setting can change a record's identifier,
+    the LifeLabs health card province, and so its matches), locates the
+    references again, carries the reviewer's choices over from the plan under
+    review when the read lands (`carryChoices`, so a choice made meanwhile
+    is kept) and commits it through `reviewOf`, keeping the last
+    `writeFailure`, with the keys of the choices it could not carry;
+    `applySettingsAgain()` (the not-applied notice's Try again) reads again
+    under the settings as they are. While it runs the review is
+    `isRereading`, the plan shown stays and Import is disabled, and the page is never unmounted, so the
+    settings field being typed in keeps its element and focus. The state
+    and the settings live in a ref beside the React state, written together,
+    so an action reads what the next action needs (two settings changes in
+    one tick compose); one ticket drops a stale read, read again or write.
     Any failure of a run, a failed search, a defect or the runner's own
     rejection, is logged (`Effect.logError`): a read ends in `ReadFailed`,
     which holds nothing, since nothing in a failure is worth showing a
-    reviewer, and a write goes back to `Reviewing` with `Unanswered`. A write
+    reviewer, a read again keeps the review it started from, the settings
+    staying as set, so they read as not applied, and a write goes back to
+    `Reviewing` with `Unanswered`. A write
     that was sent invalidates the source-file list and the stored records
     before the stale check, since it may have landed either way.
   - `plan-differences.ts` — the `PlanDifferences` namespace: each record's
@@ -163,8 +196,11 @@ The importer has no HTTP wire union to derive, so there is no separate
     end in an import, read off its outcomes (`fromOutcomes`).
   - `import-plan-page.tsx` — the `Reviewing` / `Importing` view: one column
     at most 720px wide holding the summary, the records that need a
-    decision, the import bar, the records decided automatically and a
-    centred **Cancel import**, which is gone while the write is in flight.
+    decision, the import bar, the records decided automatically with each
+    file's notes and Settings, and a centred **Cancel import**, which is
+    gone while the write is in flight. It hands the import bar the settings status, the choices not kept and
+    `applySettingsAgain`, and the records decided automatically the settings
+    and `applySettings`.
   - `summary-card.tsx` — the kicker, "N records from M files" (M counts every
     picked file, those nothing was read from included), the four counts
     (Create, Update, Link to existing, Needs a decision, the last
@@ -220,34 +256,71 @@ The importer has no HTTP wire union to derive, so there is no separate
     asked for reduced motion, and focuses its first radio) and the button
     disabled, or, when nothing would be written, a sentence alone (one for a
     plan whose records are all the same as existing ones, one for files no
-    record could be read from). Why the last write did not end in an import
-    is said above it, in a danger `Notice` listing each distinct refusal. Below 768px the bar's own box goes (`display:
+    record could be read from). While the files are read again under changed
+    settings the ready sentence is "Reading the files again under the new
+    settings…" and the button is disabled. Above it, full width: why the last
+    write did not end in an import, in a danger `Notice` listing each
+    distinct refusal; settings not applied to the plan shown, by format,
+    once, in a danger `Notice` ("The new DICOM image settings were not
+    applied. The import plan shown was read under the settings before, and
+    Import writes that plan.") with **Try again**; and the choices the last
+    read again could not keep, as a plain muted line ("2 choices were not
+    kept: their records changed under the new settings."). Below 768px the bar's own box goes (`display:
     contents`), so the sentence scrolls with the page and only the action's
     box sticks; the warning line and Go to record sit inside the action, so
     they stick with the button it disables.
   - `decided-automatically.tsx` — the **Decided automatically** section,
-    only when a record needs no decision: a divider, the kicker "Optional",
+    only when it has a section: a divider, the kicker "Optional",
     the heading, "N records. Matched by identifier, or with no similar
-    existing record. Change any; changes are listed first.", then its
+    existing record. Change any; changes are listed first." when it lists a
+    record, then its
     sections (`plan-sections.ts`, worked out once per review), all in one
     `<fieldset disabled>`, named by the heading, while the write is in
-    flight, so every select, menu, Reset, Show more and fold line is
-    disabled. Each section is a region named by its visible heading
+    flight, so every select, menu, Reset, Show more, fold line and settings
+    field is disabled. Each section is a region named by its visible heading
     (`aria-labelledby`); a file set's by the format and the files' title.
     `people-section.tsx` is the Patients and
     Practitioners, wherever they come from ("Patient and Practitioner",
     "Other records reference these.", a group per type, no menu);
-    `file-section.tsx` is one file set's other records, under the format's
-    `display.title` from the registry and the set's title in mono, a group
-    per type.
+    `file-section.tsx` is one file set, under the format's
+    `display.title` from the registry and the set's title in mono: a group
+    per type of its other records, then what its decode noted, one plain
+    line each (information, not a `Notice`), then its format's Settings.
+    A section is keyed by its set's id (`FormatDecode.makeId`), which a
+    read again under other settings keeps, so it and its groups' paging,
+    folds and open Settings survive one.
+  - `file-settings.tsx` — a file's Settings, at the end of its section, for
+    a format with a settings picker in the registry: a `<details>`, its
+    marker hidden, whose summary reads "Settings" in the accent and, muted,
+    what the settings say (the registry's `settingsLineOf`: a DICOM image's
+    time zone, a LifeLabs report's time zone and health card province),
+    with " · for every DICOM image in this import" when the format brings
+    several file sets, since settings are a format's while sections are
+    file sets'; its panel holds the format's registered picker, wired to
+    `applySettings`. The summary says the settings as the reviewer set them;
+    whether the plan shown was read under them is said once, above the import
+    bar. Whether it is open is the element's own state. A
+    picker holding a draft of its own (DICOM's) is remounted, by its key,
+    when the format's settings change other than through it, so every
+    section of the format shows a change made in one, while the picker being
+    typed in keeps its element, focus and draft. The panel lays the
+    picker's unclassed labels and fields out (`file-settings.module.css`).
   - `plan-sections.ts` — the `PlanSections` namespace, pure: the sections of
     Decided automatically read off a review (`sectionsOf`), every record
     that does not need a decision in exactly one group, so a card's record
-    is never also a row. A `Section` is `People` or a `FileSet` (by its
-    origin, in the order the sets first bring such a record; a record
-    several sets bring is under its record copy's, `ImportedRecord.originOf`),
-    each holding `Group`s by type in the order the types first come
-    (people: Patient, then Practitioner). A `Row` is the resolved record, its
+    is never also a row. A `Section` is `People`, when a Patient or
+    Practitioner needs no decision, or a `FileSet` (by its origin and
+    format, its notes, and how many file sets its format brings), each
+    holding `Group`s by type in the order the types first come (people:
+    Patient, then Practitioner). The file sets are the batch's as read,
+    format by format in registry order, each format's in the order of their
+    first picked files among those it claimed (so a section keeps its place
+    when a format is read again): each set the import stage finished and,
+    for a format with settings (`hasSettings`), each file it could not read
+    as a set of its own, since a setting may be why and its settings are
+    where that is put right. A set has a section when it has a row, notes or
+    settings. A record several sets bring is under its record copy's
+    (`ImportedRecord.originOf`). A `Row` is the resolved record, its
     label (`RowLabel`, never `Open`, since a record decided automatically
     always has a choice), its suggestion's reason narrowed to a
     `DecidedReason`, the differences of the merge its suggestion makes
@@ -870,8 +943,19 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   match whose field differs, its update selected and written; a folded
   row's select keeping focus when it is changed, and getting it back on
   Reset; every select and menu disabled while a held transaction is in
-  flight), the
-  red lines of an unreadable and an unrecognised file with no record read
+  flight), a file's Settings (a DICOM study read again when its time zone
+  changes, the plan read before kept on screen and Import disabled until
+  the read lands, the settings field keeping its element and focus, a
+  capture's row keeping its Don't add, a choice made while the read is in
+  flight kept, and the plan read again written; a field a merge took that
+  no longer differs dropped, so the update becomes a link, and the time
+  zone kept for the next files; a second study's field showing a change
+  made in the first's, both summaries saying it is every study's; a read
+  again whose search fails keeping the plan and saying so once, above
+  Import; still saying so after a refused write, and Try again reading
+  again and writing the plan read again;
+  a study's decode notes before its Settings, and no Settings for a
+  capture), the red lines of an unreadable and an unrecognised file with no record read
   from either, the loader card while a read is in flight, a failed search,
   a runner that rejects the read, no way to
   leave while a held transaction is in flight, cancel, and a batch of
@@ -888,8 +972,12 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   It reads a `POST`ed body with `tryParseBundle`, a Schema decode that is
   `None` for a body that is not a Bundle, so a non-bundle `POST /` falls
   through to the other routes.
-- `plan/plan-text.test.ts` pins the page's sentences as whole values (both
-  write failures' among them), and as a property that a file set's line
+- `importer-screen.settings-keys.test.tsx` replaces the DICOM decode with
+  one that keys each file's Patient by the equipment time zone (no format a
+  jsdom test can read changes a key with a setting), and pins that a time
+  zone change says the choice it could not keep above the import bar, keeps
+  the other, and stops saying so at the next choice.
+- `plan/plan-text.test.ts` pins the page's sentences as whole values (both write failures' and a file's settings' among them), and as a property that a file set's line
   leaves out exactly its zero parts and its parts sum to its records; `plan/record-text.test.ts` pins a record's
   and a stored resource's title in a sentence and the identity fields it
   states; `plan/field-value-text.test.ts` pins each field's text, and as
@@ -906,9 +994,10 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   fills gaps) that every record that needs no decision is in exactly one
   group and none that needs one is, that the people's section holds
   exactly the Patients and Practitioners and each file set's section its
-  own records, and that changed rows come first and the fold holds exactly
-  the unchanged identifier matches with nothing to merge, and as examples
-  the order by label and the pages; `plan/reason-tag.test.ts` and
+  own records, and that changed rows come first and the fold holds exactly the unchanged identifier matches with nothing to merge, and as examples the order by label and the pages, and a file set
+  with a row, with notes alone, or of a format with settings (an unreadable
+  file of one included) getting a section, in the order of its files, and
+  one with none of them not; `plan/reason-tag.test.ts` and
   `plan/row-text.test.ts` pin the tags, titles and details whole (a
   reference to a record with no choice yet titled by that record);
   `plan/row-options.test.ts` pins the option each choice selects, ", updated"

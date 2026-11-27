@@ -1,13 +1,15 @@
 /**
  * Plan sections: the records of an import plan that need no decision, as
  * the Decided automatically section lists them: the people first, then one
- * section per file set, each in groups by FHIR resource type.
+ * section per file set, each in groups by FHIR resource type, with what the
+ * set's decode noted.
  *
  * @packageDocumentation
  */
+import type { FormatCopies, FormatKind } from '@wildflowerhealthio/importer-core'
 import {
   type Difference,
-  type FileSetOrigin,
+  FileSetOrigin,
   FormatDecode,
   ImportedRecord,
   type PlanResolution,
@@ -18,8 +20,9 @@ import {
   RecordReferences,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { groupInOrder } from '@wildflowerhealthio/kitchen-sink'
-import { Array as Arr, Data, Number as Num, Option, Order } from 'effect'
+import { Array as Arr, Data, HashMap, Number as Num, Option, Order } from 'effect'
 
+import { formatRegistry } from '../registry.ts'
 import * as PlanDifferences from './plan-differences.ts'
 import { personReasonLine, recordReasonLine } from './plan-text.ts'
 import * as ReasonTag from './reason-tag.ts'
@@ -75,14 +78,21 @@ interface Group {
 
 /**
  * A section of Decided automatically: the `People` (Patient and
- * Practitioner, whichever file set brought them), or the other records one
- * file set brought (`FileSet`, by its `origin`), each in groups by type.
+ * Practitioner, whichever file set brought them), or one file set
+ * (`FileSet`, by its `origin`): the other records it brought, in groups by
+ * type, and what its decode noted.
  */
 type Section = Data.TaggedEnum<{
   People: { readonly groups: readonly Group[] }
   FileSet: {
     readonly origin: FileSetOrigin.Type
+    /** The registered format that read it: `origin`'s. */
+    readonly format: FormatKind
     readonly groups: readonly Group[]
+    /** What its decode noted, in the order noted. */
+    readonly notes: readonly string[]
+    /** How many file sets of its format the import holds, its own included: its format's settings are each one's. */
+    readonly formatFileSets: number
   }
 }>
 
@@ -161,8 +171,14 @@ const suggestedDifferencesOf = (
     Option.getOrElse((): readonly Difference.Type[] => [])
   )
 
-/** What the sections are read from: a review's resolution, differences and record references, and when it was read. */
-type ReviewedPlan = Pick<Review, 'resolution' | 'differences' | 'recordReferences' | 'readAt'>
+/**
+ * What the sections are read from: a review's files as read, its
+ * resolution, differences and record references, and when it was read.
+ */
+type ReviewedPlan = Pick<
+  Review,
+  'batchCopies' | 'resolution' | 'differences' | 'recordReferences' | 'readAt'
+>
 
 /**
  * `label` as a row's.
@@ -205,10 +221,41 @@ const rowsOf = (review: ReviewedPlan): readonly Row[] => {
 /** Whether a row shows a Patient or a Practitioner. */
 const isPerson = (row: Row): boolean => PEOPLE_TYPES.includes(resourceTypeOf(row))
 
-/** The file set a row's record is listed under, by its id over the format and its files. */
-const fileSetIdOf = (row: Row): string => {
-  const { format, pickedFiles } = ImportedRecord.originOf(plannedOf(row).record)
-  return FormatDecode.makeId(format, pickedFiles)
+/** A file set's id over its format and its files (`FormatDecode.makeId`). */
+const idOfOrigin = ({ format, pickedFiles }: FileSetOrigin.Type): string =>
+  FormatDecode.makeId(format, pickedFiles)
+
+/** The file set a row's record is listed under, by its id. */
+const fileSetIdOf = (row: Row): string => idOfOrigin(ImportedRecord.originOf(plannedOf(row).record))
+
+/** Whether `format` has settings a reviewer can change: a settings picker in the registry. */
+const hasSettings = (format: FormatKind): boolean =>
+  formatRegistry[format].SettingsPicker !== undefined
+
+/**
+ * Every file set of one format's read, in the order of its first picked
+ * file among the files the format claimed: each set the import stage
+ * finished, and, when the format has settings, each file it could not read
+ * as a set of its own, since a setting may be why and its settings are
+ * where that is put right.
+ */
+const fileSetsOfFormat = (
+  formatCopies: FormatCopies<FormatKind>
+): readonly FileSetOrigin.Type[] => {
+  const finished = groupInOrder(formatCopies.copies, ({ origin }) => idOfOrigin(origin)).map(
+    ({ items }) => Arr.headNonEmpty(items).origin
+  )
+  const unreadable = hasSettings(formatCopies.format)
+    ? formatCopies.unreadableFiles.map(({ pickedFile }) =>
+        FileSetOrigin.fromPickedFiles(formatCopies.format, [pickedFile])
+      )
+    : []
+  const positionOf = (origin: FileSetOrigin.Type): number =>
+    formatCopies.files.findIndex(({ id }) => id === Arr.headNonEmpty(origin.pickedFiles).id)
+  return Arr.sort(
+    Arr.dedupeWith([...finished, ...unreadable], FileSetOrigin.equivalence),
+    Order.mapInput(Order.number, positionOf)
+  )
 }
 
 /**
@@ -218,11 +265,15 @@ const fileSetIdOf = (row: Row): string => {
  *
  * @remarks
  * The people come first, one group per type of {@link PEOPLE_TYPES} that
- * has one, wherever they come from. Then one section per file set, in the
- * order the sets first bring such a record, each in groups by type in the
- * order the types first come. A record several file sets bring is listed
- * under its record copy's (`ImportedRecord.originOf`). A section with no
- * record is left out.
+ * has one, wherever they come from, and only when there is one. Then one
+ * section per file set as the files were read: format by format in registry
+ * order, each format's sets in the order of their first picked files
+ * ({@link fileSetsOfFormat}), so a section keeps its place when a format is
+ * read again. A set's records are in groups by type in the order the types
+ * first come; a record several file sets bring is listed under its record
+ * copy's (`ImportedRecord.originOf`). A set has a section when it has a
+ * record, when its decode noted something, or when its format has settings,
+ * so its notes and its settings have a home.
  */
 const sectionsOf = (review: ReviewedPlan): readonly Section[] => {
   const [others, people] = Arr.partition(rowsOf(review), isPerson)
@@ -230,16 +281,41 @@ const sectionsOf = (review: ReviewedPlan): readonly Section[] => {
     groupInOrder(people, resourceTypeOf).map(({ key, items }) => groupOf(key, items)),
     Order.mapInput(Order.number, ({ resourceType }: Group) => PEOPLE_TYPES.indexOf(resourceType))
   )
+  const rowsByFileSet = HashMap.fromIterable(
+    groupInOrder(others, fileSetIdOf).map(({ key, items }) => [key, items] as const)
+  )
+  const notesByFileSet = HashMap.fromIterable(
+    review.batchCopies.formats.flatMap(({ notes }) =>
+      notes.map(({ origin, notes: noted }) => [idOfOrigin(origin), noted] as const)
+    )
+  )
+  const fileSetSections = review.batchCopies.formats.flatMap((formatCopies) => {
+    const origins = fileSetsOfFormat(formatCopies)
+    return Arr.filterMap(origins, (origin) => {
+      const id = idOfOrigin(origin)
+      const rows = HashMap.get(rowsByFileSet, id).pipe(Option.getOrElse((): readonly Row[] => []))
+      const notes = HashMap.get(notesByFileSet, id).pipe(
+        Option.getOrElse((): readonly string[] => [])
+      )
+      const hasSomethingToShow =
+        rows.length > 0 || notes.length > 0 || hasSettings(formatCopies.format)
+      return Option.liftPredicate(
+        Section.FileSet({
+          origin,
+          format: formatCopies.format,
+          groups: Arr.map(groupInOrder(rows, resourceTypeOf), ({ key, items }) =>
+            groupOf(key, items)
+          ),
+          notes,
+          formatFileSets: origins.length,
+        }),
+        () => hasSomethingToShow
+      )
+    })
+  })
   return [
     ...(peopleGroups.length === 0 ? [] : [Section.People({ groups: peopleGroups })]),
-    ...groupInOrder(others, fileSetIdOf).map(({ items }) =>
-      Section.FileSet({
-        origin: ImportedRecord.originOf(plannedOf(Arr.headNonEmpty(items)).record),
-        groups: Arr.map(groupInOrder(items, resourceTypeOf), ({ key, items: rows }) =>
-          groupOf(key, rows)
-        ),
-      })
-    ),
+    ...fileSetSections,
   ]
 }
 
@@ -289,6 +365,7 @@ const listedPageOf = (group: Group, shown: number): ListedPage => ({
 
 export {
   FIRST_PAGE_SIZE,
+  hasSettings,
   isChanged,
   isSameAsExisting,
   keysOf,

@@ -10,6 +10,7 @@ import {
   type FhirResourceWithId,
   StoredResourceSchema,
 } from '@wildflowerhealthio/fhir-r4/resources'
+import { type BatchCopies, type FormatKind, formatKinds } from '@wildflowerhealthio/importer-core'
 import {
   type ImportedCopy,
   ImportedRecord,
@@ -21,6 +22,7 @@ import {
   StoredMatch,
   Suggestion,
 } from '@wildflowerhealthio/importer-fundamentals'
+import { groupInOrder } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, DateTime, Effect, Option, Schema } from 'effect'
 
 import * as PlanDifferences from './plan-differences.ts'
@@ -88,8 +90,35 @@ const tyraWire = (fields: object = {}): object => ({
 /** When the tests' plans are read: the instant a person's name in use is judged at. */
 const READ_AT = DateTime.unsafeMake('2026-11-27T12:00:00Z')
 
-/** `plan` resolved now and reviewed as the page hook reviews it, read at {@link READ_AT}. */
+/** The registered format named `format`; a test's copies are only ever of one. */
+const formatKindOf = (format: string): FormatKind =>
+  Option.getOrThrow(Arr.findFirst(formatKinds, (kind) => kind === format))
+
+/**
+ * The batch `plan`'s copies were read from: each format its copies' origins
+ * name, in the order they first come, holding those copies, the files of
+ * their sets, and nothing noted or unreadable.
+ */
+const batchCopiesOf = (plan: ImportPlan.Type): BatchCopies => ({
+  formats: groupInOrder(
+    plan.records.flatMap(({ record }) => record.copies),
+    ({ origin }) => origin.format
+  ).map(({ key, items }) => ({
+    format: formatKindOf(key),
+    files: Arr.dedupeWith(
+      items.flatMap(({ origin }) => origin.pickedFiles),
+      (left, right) => left.id === right.id
+    ),
+    copies: items,
+    notes: [],
+    unreadableFiles: [],
+  })),
+  unrecognizedFiles: [],
+})
+
+/** `plan` resolved now and reviewed as the page hook reviews it, read at {@link READ_AT} from {@link batchCopiesOf}. */
 const reviewedPlanOf = (plan: ImportPlan.Type): PlanSections.ReviewedPlan => ({
+  batchCopies: batchCopiesOf(plan),
   resolution: Effect.runSync(resolvePlan(plan)),
   differences: PlanDifferences.ofPlan(plan),
   recordReferences: locateReferences(plan.records.map(({ record }) => record)),
@@ -97,6 +126,7 @@ const reviewedPlanOf = (plan: ImportPlan.Type): PlanSections.ReviewedPlan => ({
 })
 
 export {
+  batchCopiesOf,
   importedRecordOf,
   needingDecision,
   probableMatch,

@@ -421,22 +421,25 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
 
 **The UI half, in `importer-react/src/registry.ts`.** For a format with
 settings, add the `*-importer-react` package as a dependency of
-`importer-react`, run `vp install`, and add its settings picker:
+`importer-react`, run `vp install`, and add its settings picker and the
+line that says what its settings are, worded in `plan/plan-text.ts`, which
+the import plan page shows beside a file's Settings:
 
 ```ts
 const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
   …,
   'my-format': withComponents(coreRegistry['my-format'], {
-    SettingsPicker: MySettingsPicker,
+        SettingsPicker: MySettingsPicker,
+    settingsLineOf: mySettingsLine,
   }),
 }
 ```
 
 A format with no settings takes its core importer as it is
-(`har: coreRegistry.har`). The picker slot is conditional on the format's
+(`har: coreRegistry.har`). The settings slot is conditional on the format's
 `FormatSettings` entry: forbidden where it is `null`, required and typed
 against it everywhere else, so a format with settings that is missing its
-settings picker **fails to compile** rather than at runtime. The read and write
+settings picker or its line **fails to compile** rather than at runtime. The read and write
 halves need no new branch: `importer-core` dispatches generically
 (`<K extends FormatKind>(kind: K)` keeps `registry[kind]` and `settings[kind]` correlated),
 and the confirm is format-blind.

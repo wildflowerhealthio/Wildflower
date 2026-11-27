@@ -374,7 +374,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     differences)`** (every differing field) and
     **`mergeTakingNoField(existing)`** (a link).
   - **`FileSetOrigin`** — `{ format, pickedFiles }`, the file set a copy came
-    from. **`fromFileSet(format, fileSet)`**; **`equivalence`**, two origins
+    from. **`fromFileSet(format, fileSet)`** and
+    **`fromPickedFiles(format, pickedFiles)`** (the origin of the set of
+    those picked files, which the import plan page gives a file its format
+    could not read); **`equivalence`**, two origins
     being one set when `FormatDecode.makeId` gives their format and picked
     files one id; **`keyPrefixOf`**, the prefix every review key of the set
     starts with (`FormatDecode.keyPrefix` of its first picked file).
@@ -580,8 +583,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     built by **`make`**.
 
   Operations (the folder's index exports the verbs a caller outside it uses,
-  `locateReferences`, `suggestPlan`, `differencesInPlan`, `resolvePlan` and
-  `countTotals`;
+  `locateReferences`, `suggestPlan`, `differencesInPlan`, `carryChoices`,
+  `resolvePlan` and `countTotals`;
   `differencesOf`, `suggestRecord` and `landReferences` are steps of those):
   - **`locateReferences(records)`** (`operations/locate-references.ts`) —
     the `RecordReferences` of an import, in one pass. It decides once per
@@ -659,6 +662,33 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     the merge would add (`IdentifierUnion.missingFrom`), from them. It
     rebuilds the comparable references on each call, so a caller showing
     many rows caches.
+  - **`carryChoices(previous, next)`** (`operations/carry-choices.ts`) — the
+    reviewer's choices on `previous` carried onto `next`, a plan of the same
+    batch read again under other settings, as **`CarriedChoices`** `{ plan,
+    notCarried }`. Only a reviewer's choice (`PlannedRecord.chosen`)
+    carries, by record key: a record `previous` has no choice for, or only
+    `next` has, keeps its suggestion, and a choice for a record only
+    `previous` has is not carried, its key in `notCarried` (a setting that
+    changes a record's key, a health card province changing a Patient's
+    identifier, makes it another record). Save as new and don't add carry as
+    they are; a merge carries its stored record as `next` found it, when
+    `next` lists the same stored record for the record
+    (`sameStoredResource` over `PlannedRecord.existingRecordsOf`: its
+    candidates and the record under its derived id), else the reviewer's own,
+    which stays a `ChosenByReviewer` existing record, and, of its fields
+    taken, only those still differences from that stored record in the
+    carried plan (`differencesInPlan`), so a field that no longer differs
+    never turns a link into an update. A record's differences depend on the
+    records ahead of it in merge order, so the choices carry in merge order
+    (`ImportedRecord.inMergeOrder`, a fold over a named step): each
+    record's differences are then those of the plan returned. A reviewer's
+    edit does not carry. Its tests pin, as properties, that a plan whose
+    merges take only their differences carried onto itself is unchanged,
+    that every carried merge takes only fields that differ, that only choices carry and gone records' choices are named in
+    `notCarried`, and that a record stays
+    changed or unchanged when its suggestion and choice carry as they were;
+    and, as examples, a key that changes, a merge rebound to the stored
+    record as read again, and a hand-picked stored record kept.
   - **`landReferences(now, plan, ids)`** (`operations/land-references.ts`) —
     where a reference lands for each choice, as a `ReferenceTable`; a plain
     function of the instant it is given. A record saved as new or merged

@@ -110,7 +110,7 @@ and persists them itself.
   `FormatDetector.claiming`), `claimPicks`, and `decodeFormat` (generic in
   `K` so `registry[kind]` and `settings[kind]` stay correlated with no
   per-format `Match` branch, then the import step it is handed: `importDecoded`
-  here, `fileCopiesOf` in `readBatchCopies`) — are module-level exports
+  here, `fileCopiesOf` in `readBatchCopies` and `rereadFormatCopies`) — are module-level exports
   for this package's own steps and tests and are **not** re-exported from
   `index.ts`: the shell drives the whole read, never a leg of it.
 - `src/resolve-mentions.ts` — a batch's mentions resolved (a resolved batch
@@ -242,8 +242,14 @@ and persists them itself.
   choice of the record it names. The copies are each set's source files
   (`ImportedCopy.fromSourceFile`), then its records
   (`ImportedCopy.fromPlacedRow`). It never fails: its result,
-  **`FormatCopies<TFormat>`** `{ format, copies, notes, unreadableFiles }`,
-  its decode's format beside what it read, reports a set the stage cannot
+  **`FormatCopies<TFormat>`** `{ format, files, copies, notes,
+  unreadableFiles }`, its decode's format beside what it read, holds the
+  picked files the format claimed (`files`, as its decode's
+  `FormatDecode.Decoded` has them, every one whether it was read or not),
+  which reading the format again decodes, and its notes file set by file
+  set (**`FileSetNotes`** `{ origin, notes }`, one per set whose decode
+  noted something), so the page shows each set's notes in its own
+  section. It reports a set the stage cannot
   finish (`finishEachFileSet`, as `importDecoded` does) (a source file that
   cannot be minted, an implied record its schema rejects,
   `FileImporter.SourceFileNotFound` from a hook) as an unreadable row per
@@ -293,7 +299,18 @@ and persists them itself.
   the files it could not read) in registry order, and the picks no format
   claimed (`unrecognizedFileOf`, as `readBatch` reports them).
   **`copiesOf(batchCopies)`** is every format's copies, format by format in
-  registry order: the plan's order.
+  registry order: the plan's order. **`rereadFormatCopies(registry,
+  settings, format, batchCopies)`** reads one format of a read batch again
+  under new settings: the picked files its entry holds (`files`) decoded
+  again and read as copies (`decodeFormat` with `fileCopiesOf`), that
+  entry replaced in its place and every other format's passed back as it
+  was, since decoding a PDF's text or a study's headers is the cost; the
+  batch as it was for a format that claimed nothing. The picks keep the ids
+  `claimPicks` gave them, so every review key, and every record key built
+  on one, comes out as before. The files live on the entry, as a review
+  group's do, because it is the one value that says what the format read:
+  a caller re-claiming them from the original picks would hold the picks
+  beside the batch and claim them a second time.
 - `src/import-with-suggestions.ts` — **`importWithSuggestions(registry,
   settings, picks, findMatch)`**, an import with no reviewer: it reads the
   batch (`readBatchCopies`), plans its copies (`copiesOf`) with

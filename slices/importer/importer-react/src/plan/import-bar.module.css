@@ -108,3 +108,11 @@
     min-height: 0;
   }
 }
+
+/* How many of the reviewer's choices the last read again could not keep: information, muted. */
+.import-bar__not-kept {
+  margin: 0;
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+  color: var(--color-neutral-4);
+}

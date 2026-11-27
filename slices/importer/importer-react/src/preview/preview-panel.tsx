@@ -16,7 +16,7 @@ import {
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
 import { describeResource } from '../plan/describe-resource.ts'
-import type { FormatSettingsPicker, FormatWithComponents, SettingsPickerSlot } from '../registry.ts'
+import type { FormatSettingsPicker, FormatWithComponents, SettingsSlot } from '../registry.ts'
 import { DiffBadge } from './diff-badge.tsx'
 import { type ChooseMention, FormatReviewBody } from './format-review-body.tsx'
 import {
@@ -67,7 +67,7 @@ import panelStyles from './preview-panel.module.css'
  * `SettingsPicker` for its form.
  */
 type SettingsRegistry = {
-  readonly [K in FormatKind]: Pick<FormatWithComponents<K>, 'display'> & SettingsPickerSlot<K>
+  readonly [K in FormatKind]: Pick<FormatWithComponents<K>, 'display'> & SettingsSlot<K>
 }
 
 type SettingsChangeHandler<K extends FormatKind> = (format: K, settings: FormatSettings[K]) => void

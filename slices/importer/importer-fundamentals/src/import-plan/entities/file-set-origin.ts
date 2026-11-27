@@ -16,11 +16,18 @@ interface Type {
   readonly pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>
 }
 
+/** The origin of the file set of `pickedFiles`, in pick order, decoded by `format`. */
+const fromPickedFiles = (
+  format: string,
+  pickedFiles: Arr.NonEmptyReadonlyArray<PickedFile.Type>
+): Type => ({ format, pickedFiles })
+
 /** The origin of `fileSet`, decoded by `format`. */
-const fromFileSet = (format: string, fileSet: DecodedFileSet.Type): Type => ({
-  format,
-  pickedFiles: Arr.map(fileSet.pickedFiles, ({ pickedFile }) => pickedFile),
-})
+const fromFileSet = (format: string, fileSet: DecodedFileSet.Type): Type =>
+  fromPickedFiles(
+    format,
+    Arr.map(fileSet.pickedFiles, ({ pickedFile }) => pickedFile)
+  )
 
 /**
  * Whether two origins are one file set: the same id over the format and every
@@ -38,5 +45,5 @@ const equivalence: Equivalence.Equivalence<Type> = Equivalence.mapInput(
 const keyPrefixOf = ({ pickedFiles }: Type): string =>
   FormatDecode.keyPrefix(Arr.headNonEmpty(pickedFiles))
 
-export { equivalence, fromFileSet, keyPrefixOf }
+export { equivalence, fromFileSet, fromPickedFiles, keyPrefixOf }
 export type { Type }

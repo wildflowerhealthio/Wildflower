@@ -10,6 +10,9 @@ import { LinkButton, Notice } from '@wildflowerhealthio/react-tundraish'
 import { type DateTime, Match, Option } from 'effect'
 import { type JSX, useId } from 'react'
 
+import type { FormatKind } from '@wildflowerhealthio/importer-core'
+
+import { formatRegistry } from '../registry.ts'
 import { decisionCardDomIdOf } from './decision-card-ids.ts'
 import {
   GO_TO_RECORD_LABEL,
@@ -18,11 +21,15 @@ import {
   NOTHING_TO_IMPORT_SENTENCE,
   readySentence,
   refusalMessagesOf,
+  REREADING_MESSAGE,
+  settingsNotAppliedMessage,
+  TRY_AGAIN_LABEL,
+  choicesNotKeptLine,
   undecidedRecordLine,
   writeFailureMessage,
 } from './plan-text.ts'
 import * as RecordText from './record-text.ts'
-import type { Review } from './use-import-plan-page.ts'
+import type { Review, SettingsStatus } from './use-import-plan-page.ts'
 import type * as WriteFailure from './write-failure.ts'
 import styles from './import-bar.module.css'
 
@@ -33,6 +40,15 @@ interface ImportBarProps {
   readonly writeFailure: Option.Option<WriteFailure.Type>
   /** Whether the write is in flight. */
   readonly importing: boolean
+  /**
+   * Whether the plan shown was read under the reviewer's settings: while it
+   * is read again Import waits, and settings not applied are said above it.
+   */
+  readonly settingsStatus: SettingsStatus
+  /** How many of the reviewer's choices the last read again could not keep, said above it. */
+  readonly choicesNotKept: number
+  /** Read again every format whose settings were not applied. */
+  readonly onApplySettingsAgain: () => void
   readonly onImport: () => void
 }
 
@@ -82,6 +98,12 @@ const GoToRecordButton = ({
   )
 }
 
+/** The formats whose settings were not applied to the plan shown, when there are any. */
+const notAppliedFormatsOf = (
+  settingsStatus: SettingsStatus
+): Option.Option<readonly FormatKind[]> =>
+  settingsStatus._tag === 'NotApplied' ? Option.some(settingsStatus.formats) : Option.none()
+
 /** Why the last write did not end in an import, above the bar, with each distinct refusal. */
 const WriteFailureNotice = ({ failure }: { readonly failure: WriteFailure.Type }): JSX.Element => {
   const issues = Match.value(failure).pipe(
@@ -130,8 +152,12 @@ const ImportButton = ({
  * a sentence saying what the write does and the Import button, or, while a
  * record has no choice, a warning line naming it, a way to go to its card
  * and the button disabled, or,
- * when nothing would be written, only the sentence saying so. Why the last
- * write did not end in an import is said above it.
+ * when nothing would be written, only the sentence saying so. While the
+ * files are read again under changed settings the sentence says so and the
+ * button is disabled. Above it, full width: why the last write did not end
+ * in an import; settings that were not applied, by format, in a danger
+ * `Notice` whose Try again reads those formats again; and, as a plain line,
+ * how many choices the last read again could not keep.
  *
  * @remarks
  * Below 768px the bar's own box goes (`display: contents`), so the sentence
@@ -139,7 +165,16 @@ const ImportButton = ({
  * warning line sits inside the action, so it stays with the button it
  * disables.
  */
-const ImportBar = ({ review, writeFailure, importing, onImport }: ImportBarProps): JSX.Element => {
+const ImportBar = ({
+  review,
+  writeFailure,
+  importing,
+  settingsStatus,
+  choicesNotKept,
+  onApplySettingsAgain,
+  onImport,
+}: ImportBarProps): JSX.Element => {
+  const rereading = settingsStatus._tag === 'Rereading'
   const sentenceId = useId()
   const { overall } = review.totals
   const label = importButtonLabel(overall)
@@ -173,12 +208,12 @@ const ImportBar = ({ review, writeFailure, importing, onImport }: ImportBarProps
       ) : (
         <>
           <p id={sentenceId} role="status" className={styles['import-bar__sentence']}>
-            {readySentence(overall)}
+            {rereading ? REREADING_MESSAGE : readySentence(overall)}
           </p>
           <div className={styles['import-bar__action']}>
             <ImportButton
               label={label}
-              disabled={importing}
+              disabled={importing || rereading}
               sentenceId={sentenceId}
               onImport={onImport}
             />
@@ -193,6 +228,23 @@ const ImportBar = ({ review, writeFailure, importing, onImport }: ImportBarProps
       {writeFailure.pipe(
         Option.map((failure) => <WriteFailureNotice key="failure" failure={failure} />),
         Option.getOrNull
+      )}
+      {notAppliedFormatsOf(settingsStatus).pipe(
+        Option.map((formats) => (
+          <Notice
+            key="settings-not-applied"
+            tone="danger"
+            action={{ label: TRY_AGAIN_LABEL, onClick: onApplySettingsAgain }}
+          >
+            {settingsNotAppliedMessage(
+              formats.map((format) => formatRegistry[format].display.title)
+            )}
+          </Notice>
+        )),
+        Option.getOrNull
+      )}
+      {choicesNotKept === 0 ? null : (
+        <p className={styles['import-bar__not-kept']}>{choicesNotKeptLine(choicesNotKept)}</p>
       )}
       <div className={styles['import-bar']}>{content}</div>
     </>
