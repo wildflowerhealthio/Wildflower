@@ -14,6 +14,8 @@ import {
   CANCEL_IMPORT_LABEL,
   CHOOSE_OTHER_FILES_LABEL,
   COMPLETE_HEADING,
+  DONT_ADD_LABEL,
+  GO_TO_RECORD_LABEL,
   IMPORT_MORE_FILES_LABEL,
   NO_RECORDS_READ_SENTENCE,
   NOT_RECOGNISED_LINE,
@@ -21,22 +23,30 @@ import {
   READ_FAILED_MESSAGE,
   READING_MESSAGE,
   REFUSED_MESSAGE,
+  SAVE_AS_NEW_LABEL,
   UNREADABLE_LINE,
+  USE_EXISTING_LABEL,
 } from './plan/plan-text.ts'
 import { formatRegistry } from './registry.ts'
 import {
+  type CapturedServer,
   dicomFile,
   NAMED_PATIENT_HAR,
   RECOGNIZED_HAR,
+  SERVER_A,
+  SERVER_B,
   storedSourceFile,
+  tyraBanksHar,
 } from './screen-fixtures.ts'
 import {
   bundleTypes,
   clearRecorded,
+  heldWireOf,
   idFromUrl,
   isResourceWrite,
   metaSourceOf,
   reads,
+  type RecordedRequest,
   routingServer,
   writes,
 } from './screen-server.test-helpers.ts'
@@ -65,6 +75,8 @@ vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
 })
 
 let currentRunAuthed: RunSmart
+/** The stubbed `scrollIntoView` (jsdom has none), re-armed each test. */
+let scrollIntoView = vi.fn()
 /** The runner the plan reads and writes through, when not the page's own. */
 let currentRunPlan: RunAuthed | undefined
 let queryClient: QueryClient
@@ -89,6 +101,8 @@ beforeEach(() => {
   clearRecorded()
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   vi.stubGlobal('TextEncoder', RealmSafeTextEncoder)
+  scrollIntoView = vi.fn()
+  Element.prototype.scrollIntoView = scrollIntoView
 })
 
 afterEach(() => {
@@ -96,6 +110,8 @@ afterEach(() => {
   queryClient.clear()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  // jsdom has no `scrollIntoView` of its own to put back.
+  Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
 })
 
 describe('ImporterScreen', () => {
@@ -277,6 +293,327 @@ describe('ImporterScreen', () => {
     expect(fileLinesIn(summary)).toEqual([['a.har', '4 records · 3 new · 1 open']])
     expect(statusLine()).toBe('Select a Patient record for Tyra Banks from a.har.')
     expect(importButton().disabled).toBe(true)
+  })
+
+  it('offers the stored Patient a capture off another server names, already selected, and writes one Patient', async () => {
+    // Arrange — Tyra Banks imported off server A
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(
+      screen.getByLabelText('Import file'),
+      harOf(tyraBanksHar(SERVER_A), 'a.har')
+    )
+    await userEvent.click(await findImportButton())
+    await userEvent.click(await screen.findByRole('button', { name: IMPORT_MORE_FILES_LABEL }))
+    const [storedPatient] = resourceWrites('Patient')
+    const firstImport = writes().length
+
+    // Act — her capture off server B, which names her under another id
+    await userEvent.upload(
+      screen.getByLabelText('Import file'),
+      harOf(tyraBanksHar(SERVER_B), 'b.har')
+    )
+
+    // Assert — the stored Patient is a probable match, already selected
+    const card = await findDecisionCard('Select a Patient record for Tyra Banks from b.har')
+    expect(
+      within(card).getByText('1 possible match · referenced by 2 records · same name, birthDate')
+    ).toBeDefined()
+    const useStored = within(card).getByRole<HTMLInputElement>('radio', {
+      name: USE_EXISTING_LABEL,
+    })
+    expect(useStored.checked).toBe(true)
+    expect(within(card).getByText('probable match')).toBeDefined()
+    expect(within(card).getByText('2 records will reference this record instead.')).toBeDefined()
+
+    // Act
+    await userEvent.click(importButton())
+    await screen.findByRole('heading', { name: COMPLETE_HEADING })
+
+    // Assert — one Patient, the stored one, carrying both servers' identifiers,
+    // and both of B's Observations naming it
+    const written = writes().slice(firstImport).filter(isResourceWrite)
+    const patients = written.filter((write) => write.url.includes('/Patient/'))
+    expect(patients.map((write) => write.url)).toEqual([`/Patient/${storedPatient?.id ?? ''}`])
+    expect(heldWireOf(JSON.parse(patients[0]?.body ?? '')).identifier).toEqual([
+      { system: `${SERVER_A.baseUrl}/Patient`, value: SERVER_A.patientId },
+      { system: `${SERVER_B.baseUrl}/Patient`, value: SERVER_B.patientId },
+    ])
+    expect(subjectsOf(written)).toEqual([
+      subjectNaming(SERVER_B, `Patient/${storedPatient?.id ?? ''}`),
+      subjectNaming(SERVER_B, `Patient/${storedPatient?.id ?? ''}`),
+    ])
+  })
+
+  describe('with two stored namesakes', () => {
+    beforeEach(() => {
+      currentRunAuthed = routingServer({
+        stored: [namesake('s-1', '2025-02-11T09:30:00Z'), namesake('s-2', '2026-06-02T14:00:00Z')],
+      })
+    })
+
+    it('leaves the Patient not selected, blocks the import, and goes to its card', async () => {
+      // Arrange
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+
+      // Act
+      await userEvent.upload(
+        screen.getByLabelText('Import file'),
+        harOf(tyraBanksHar(SERVER_A), 'a.har')
+      )
+
+      // Assert
+      const card = await findDecisionCard('Select a Patient record for Tyra Banks from a.har')
+      expect(
+        within(card).getByText(
+          'Not selected · 2 possible matches · referenced by 2 records · same name, birthDate'
+        )
+      ).toBeDefined()
+      expect(
+        within(card)
+          .getAllByRole<HTMLInputElement>('radio')
+          .map((radio) => radio.checked)
+      ).toEqual([false, false, false, false])
+      expect(importButton().disabled).toBe(true)
+
+      // Act
+      await userEvent.click(screen.getByRole('button', { name: GO_TO_RECORD_LABEL }))
+
+      // Assert — the card scrolled to, its first radio focused
+      expect(scrollIntoView.mock.contexts).toEqual([card])
+      expect(document.activeElement).toBe(
+        within(card).getByRole('radio', { name: SAVE_AS_NEW_LABEL })
+      )
+    })
+
+    it('writes the import onto the namesake chosen', async () => {
+      // Arrange
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(
+        screen.getByLabelText('Import file'),
+        harOf(tyraBanksHar(SERVER_A), 'a.har')
+      )
+      const card = await findDecisionCard('Select a Patient record for Tyra Banks from a.har')
+
+      // Act
+      await userEvent.click(
+        within(card).getByRole('radio', {
+          name: USE_EXISTING_LABEL,
+          description: /updated 2026-06-02/u,
+        })
+      )
+
+      // Assert
+      expect(importButton().disabled).toBe(false)
+
+      // Act
+      await userEvent.click(importButton())
+      await screen.findByRole('heading', { name: COMPLETE_HEADING })
+
+      // Assert
+      const written = writes().filter(isResourceWrite)
+      expect(
+        written.filter((write) => write.url.includes('/Patient/')).map((write) => write.url)
+      ).toEqual(['/Patient/s-2'])
+      expect(subjectsOf(written)).toEqual([
+        subjectNaming(SERVER_A, 'Patient/s-2'),
+        subjectNaming(SERVER_A, 'Patient/s-2'),
+      ])
+    })
+
+    it('writes a new Patient when it is saved as a new record', async () => {
+      // Arrange
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(
+        screen.getByLabelText('Import file'),
+        harOf(tyraBanksHar(SERVER_A), 'a.har')
+      )
+      const card = await findDecisionCard('Select a Patient record for Tyra Banks from a.har')
+
+      // Act
+      await userEvent.click(within(card).getByRole('radio', { name: SAVE_AS_NEW_LABEL }))
+      await userEvent.click(importButton())
+      await screen.findByRole('heading', { name: COMPLETE_HEADING })
+
+      // Assert — one Patient under neither namesake's id, both Observations naming it
+      const written = writes().filter(isResourceWrite)
+      const patients = written.filter((write) => write.url.includes('/Patient/'))
+      expect(patients).toHaveLength(1)
+      const newPatient = `Patient/${idFromUrl(patients[0]?.url ?? '')}`
+      expect(['Patient/s-1', 'Patient/s-2']).not.toContain(newPatient)
+      expect(subjectsOf(written)).toEqual([
+        subjectNaming(SERVER_A, newPatient),
+        subjectNaming(SERVER_A, newPatient),
+      ])
+    })
+
+    it('writes no Patient when it is not added, and its Observations keep her name with no reference', async () => {
+      // Arrange
+      render(<ImporterScreen />, { wrapper: withQueryClient })
+      await userEvent.upload(
+        screen.getByLabelText('Import file'),
+        harOf(tyraBanksHar(SERVER_A), 'a.har')
+      )
+      const card = await findDecisionCard('Select a Patient record for Tyra Banks from a.har')
+
+      // Act
+      await userEvent.click(within(card).getByRole('radio', { name: DONT_ADD_LABEL }))
+
+      // Assert
+      expect(
+        within(card).getByText('· 2 records keep the display “Tyra Banks” with no reference')
+      ).toBeDefined()
+
+      // Act
+      await userEvent.click(importButton())
+      await screen.findByRole('heading', { name: COMPLETE_HEADING })
+
+      // Assert — the Observations alone, each naming her by display and identifier only
+      const written = writes().filter(isResourceWrite)
+      expect(written.map((write) => write.url.split('/')[1])).toEqual([
+        'Observation',
+        'Observation',
+      ])
+      const { reference: _reference, ...unlinked } = subjectNaming(SERVER_A, '')
+      expect(subjectsOf(written)).toEqual([unlinked, unlinked])
+    })
+  })
+
+  it('takes every differing field, then none, with the stored Patient’s update checkbox', async () => {
+    // Arrange — a stored Tyra Banks with a phone number and no gender; the
+    // capture gives her a gender (a gap) and another phone number (an overwrite)
+    currentRunAuthed = routingServer({
+      stored: [
+        {
+          ...namesake('s-1', '2026-06-02T14:00:00Z'),
+          telecom: [{ system: 'phone', value: '555-0100' }],
+        },
+      ],
+    })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(
+      screen.getByLabelText('Import file'),
+      harOf(
+        tyraBanksHar(SERVER_A, {
+          gender: 'female',
+          telecom: [{ system: 'phone', value: '555-0199' }],
+        }),
+        'a.har'
+      )
+    )
+    const card = await findDecisionCard('Select a Patient record for Tyra Banks from a.har')
+
+    // Assert — the gap is filled and the overwrite is not: partly checked
+    const update = (): HTMLInputElement =>
+      within(card).getByRole<HTMLInputElement>('checkbox', { name: /^Update with import details/u })
+    expect(update().labels?.[0]?.textContent).toBe('Update with import details · 1 of 2')
+    expect([update().checked, update().indeterminate]).toEqual([false, true])
+    expect(
+      within(card).getByText('2 records will reference this record instead, with 1 field updated.')
+    ).toBeDefined()
+
+    // Act
+    await userEvent.click(update())
+
+    // Assert — every field taken
+    expect(update().labels?.[0]?.textContent).toBe('Update with import details · 2 of 2')
+    expect([update().checked, update().indeterminate]).toEqual([true, false])
+    expect(
+      within(card).getByText('2 records will reference this record instead, with 2 fields updated.')
+    ).toBeDefined()
+
+    // Act
+    await userEvent.click(update())
+
+    // Assert — none taken: a link
+    expect(update().labels?.[0]?.textContent).toBe('Update with import details · 0 of 2')
+    expect([update().checked, update().indeterminate]).toEqual([false, false])
+    expect(within(card).getByText('2 records will reference this record instead.')).toBeDefined()
+  })
+
+  it('disables every choice on a card while the transaction is in flight', async () => {
+    // Arrange — a stored Tyra Banks the capture differs from, and a server
+    // that holds the transaction until released
+    let release = (): void => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    currentRunAuthed = routingServer({
+      stored: [
+        {
+          ...namesake('s-1', '2026-06-02T14:00:00Z'),
+          telecom: [{ system: 'phone', value: '555-0100' }],
+        },
+      ],
+      transactionsHeldUntil: held,
+    })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(
+      screen.getByLabelText('Import file'),
+      harOf(tyraBanksHar(SERVER_A, { gender: 'female' }), 'a.har')
+    )
+    const card = await findDecisionCard('Select a Patient record for Tyra Banks from a.har')
+
+    // Act
+    await userEvent.click(importButton())
+
+    // Assert — every radio and the checkbox disabled, and a click changes nothing
+    const controls = [
+      ...within(card).getAllByRole<HTMLInputElement>('radio'),
+      within(card).getByRole<HTMLInputElement>('checkbox'),
+    ]
+    expect(controls.map((control) => control.matches(':disabled'))).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ])
+    await userEvent.click(within(card).getByText('Save as a new record'))
+    expect(
+      within(card)
+        .getAllByRole<HTMLInputElement>('radio')
+        .map((radio) => radio.checked)
+    ).toEqual([false, true, false])
+
+    // Act
+    release()
+
+    // Assert
+    await screen.findByRole('heading', { name: COMPLETE_HEADING })
+  })
+
+  it('keeps a refused write said while the reviewer changes a choice', async () => {
+    // Arrange — a stored Tyra Banks, and a server that refuses the first transaction
+    let refusals = 0
+    currentRunAuthed = routingServer({
+      stored: [namesake('s-1', '2026-06-02T14:00:00Z')],
+      failWrite: (request) => {
+        if (refusals > 0 || !request.url.includes('/DocumentReference/')) return false
+        refusals += 1
+        return true
+      },
+    })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(
+      screen.getByLabelText('Import file'),
+      harOf(tyraBanksHar(SERVER_A), 'a.har')
+    )
+    const card = await findDecisionCard('Select a Patient record for Tyra Banks from a.har')
+    await userEvent.click(importButton())
+    await screen.findByRole('alert')
+
+    // Act
+    await userEvent.click(within(card).getByRole('radio', { name: SAVE_AS_NEW_LABEL }))
+
+    // Assert
+    expect(within(screen.getByRole('alert')).getByText(REFUSED_MESSAGE)).toBeDefined()
+
+    // Act — import again
+    await userEvent.click(importButton())
+
+    // Assert
+    await screen.findByRole('heading', { name: COMPLETE_HEADING })
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('says a file no format recognises and a file that could not be read, each on its own line', async () => {
@@ -467,6 +804,62 @@ const ImagingStudyWire = Schema.Struct({
 /** A recognized-HAR `File`, for the OS-picker (`upload`) path. */
 const harFile = (name: string): File =>
   new File([RECOGNIZED_HAR], name, { type: 'application/json' })
+
+/** `har` as a `File` named `name`, for the OS-picker (`upload`) path. */
+const harOf = (har: string, name: string): File =>
+  new File([har], name, { type: 'application/json' })
+
+/** A stored Tyra Banks, born 1990-01-02, under `id`, last updated at `lastUpdated`. */
+const namesake = (id: string, lastUpdated: string): Record<string, unknown> => ({
+  resourceType: 'Patient',
+  id,
+  meta: { lastUpdated },
+  name: [{ family: 'Banks', given: ['Tyra'] }],
+  birthDate: '1990-01-02',
+})
+
+/** The Needs a decision card titled `title`, once the plan is up. */
+const findDecisionCard = (title: string): Promise<HTMLElement> =>
+  screen.findByRole('region', { name: title })
+
+/** Just enough of a written resource to read its `subject`. */
+const SubjectWire = Schema.Struct({
+  subject: Schema.Struct({
+    reference: Schema.optional(Schema.String),
+    display: Schema.optional(Schema.String),
+    type: Schema.optional(Schema.String),
+    identifier: Schema.optional(Schema.Struct({ system: Schema.String, value: Schema.String })),
+  }),
+})
+
+/** The `subject` of each written Observation of `written`, in order. */
+const subjectsOf = (
+  written: readonly RecordedRequest[]
+): readonly (typeof SubjectWire.Type)['subject'][] =>
+  written
+    .filter((write) => write.url.includes('/Observation/'))
+    .map((write) => Schema.decodeUnknownSync(SubjectWire)(JSON.parse(write.body)).subject)
+
+/**
+ * The `subject` an Observation of Tyra Banks's capture off `server` is
+ * written with once it lands on `reference`: her name, the identifier the
+ * capture names her by, and the literal reference.
+ */
+const subjectNaming = (
+  server: CapturedServer,
+  reference: string
+): (typeof SubjectWire.Type)['subject'] => ({
+  reference,
+  display: 'Tyra Banks',
+  type: 'Patient',
+  identifier: { system: `${server.baseUrl}/Patient`, value: server.patientId },
+})
+
+/** The stored resources of `resourceType` written so far, each its id and identifiers. */
+const resourceWrites = (resourceType: string): readonly ReturnType<typeof heldWireOf>[] =>
+  writes()
+    .filter((write) => write.url.includes(`/${resourceType}/`))
+    .map((write) => heldWireOf(JSON.parse(write.body)))
 
 /** The summary card's counts: each label beside the texts under it, the number first. */
 const countsIn = (summary: HTMLElement): Readonly<Record<string, readonly string[]>> =>
