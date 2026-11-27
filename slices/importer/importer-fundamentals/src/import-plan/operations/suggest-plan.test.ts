@@ -215,7 +215,10 @@ describe('suggestPlan', () => {
     // Act
     const plan = planOf(
       [prescription],
-      StoredMatch.make({ records: [], references: [[tyraReference, candidates]] })
+      StoredMatch.make({
+        records: [],
+        externalReferences: [{ externalReference: tyraReference, candidates }],
+      })
     )
 
     // Assert

@@ -14,22 +14,44 @@ import * as ReferencePlan from './reference-plan.ts'
 const randomResourceId = (): string => crypto.randomUUID()
 
 /**
- * `record` with each `Attachment.url` that is the source URL of a record of
+ * `resource` with each `Attachment.url` that is the source URL of a record of
  * the set (`ReferencePlan.literalReferenceForSourceUrl`) pointed at the
  * literal reference that record is stored under; every other URL as it is.
  */
 const adoptAttachmentUrls = <TResource extends FhirResource>(
-  record: TResource,
+  resource: TResource,
   referencePlan: ReferencePlan.Type
 ): TResource =>
-  ResourceAttachments.mapUrls(record, (url) =>
+  ResourceAttachments.mapUrls(resource, (url) =>
     Option.getOrElse(ReferencePlan.literalReferenceForSourceUrl(referencePlan, url), () => url)
+  )
+
+/**
+ * `resource` with each of its references and attachment URLs that
+ * `referencePlan` resolves made literal, still detached.
+ *
+ * @remarks
+ * Every reference the resource carries, at any depth, is rewritten by the
+ * plan's rewrite (`ReferencePlan.toRewrite`): a reference the plan resolves
+ * gets the literal reference the plan gives it, `type` and `identifier`
+ * kept. A logical one it does not resolve stays logical; a literal one keeps
+ * its literal. Every `Attachment.url` resolves the same way
+ * ({@link adoptAttachmentUrls}). Nothing else changes.
+ */
+const resolveReferences = <TResource extends FhirResource>(
+  referencePlan: ReferencePlan.Type,
+  resource: TResource
+): TResource =>
+  adoptAttachmentUrls(
+    ReferenceRewrite.apply(resource, ReferencePlan.toRewrite(referencePlan)),
+    referencePlan
   )
 
 /**
  * Adopt a detached record into the store: give it the id it is stored under,
  * and resolve each of its references and attachment URLs the file set's
- * reference plan (`ReferencePlan.InForce`) resolves to a literal reference.
+ * reference plan (`ReferencePlan.InForce`) resolves to a literal reference
+ * ({@link resolveReferences}).
  *
  * @param record - The detached record
  * @param id - The id it is stored under
@@ -38,17 +60,13 @@ const adoptAttachmentUrls = <TResource extends FhirResource>(
  * @remarks
  * The id and the reference plan are decided before adoption, by the import
  * stage: the id a keyed record's key derives, so a re-import lands on the
- * same id, or a minted one for a keyless record. Every reference the
- * record carries, at any depth, is rewritten by the plan's rewrite
- * (`ReferencePlan.toRewrite`): a reference the plan resolves gets the
- * literal reference the plan gives it, `type` and `identifier` kept. A
- * logical one it does not resolve — a target the source never served, an
- * account number, a provider's printed name — stays logical, for the
- * importer's identity map; a literal one (a server's absolute URL for a
- * `Binary` the set does not hold) keeps its literal, which points at the
- * server's record. Every `Attachment.url` resolves the same way
- * ({@link adoptAttachmentUrls}). Nothing else changes: the record's
- * identifiers, its key first, are written as they are.
+ * same id, or a minted one for a keyless record. A logical reference the
+ * plan does not resolve (a target the source never served, an account
+ * number, a provider's printed name) stays logical, for the importer's
+ * identity map. A literal one (a server's absolute URL for a `Binary` the
+ * set does not hold) keeps its literal, which points at the server's
+ * record. Nothing else changes: the record's identifiers, its key first, are
+ * written as they are.
  *
  * Takes no base URL: everything it needs is on the records.
  */
@@ -57,10 +75,7 @@ const adopt = (
   id: string
 ): Effect.Effect<FhirResourceWithId, never, ReferencePlan.InForce> =>
   Effect.map(ReferencePlan.InForce, (referencePlan) => ({
-    ...adoptAttachmentUrls(
-      ReferenceRewrite.apply(record, ReferencePlan.toRewrite(referencePlan)),
-      referencePlan
-    ),
+    ...resolveReferences(referencePlan, record),
     id,
   }))
 
@@ -112,4 +127,4 @@ const adoptedReferenceOf = (
   identifier: DetachedResource.keyIdentifier(new URL(system), originalId),
 })
 
-export { adopt, adoptedReferenceOf, originalIdOf, randomResourceId }
+export { adopt, adoptedReferenceOf, originalIdOf, randomResourceId, resolveReferences }

@@ -41,9 +41,21 @@ const fromLogicalReference = (logicalReference: LogicalReference.Type): Type =>
   ByIdentifier({ logicalReferenceKey: LogicalReference.key(logicalReference) })
 
 /**
- * The key of the record `resource` is a copy of: by identifier, its key
- * identifier (`DetachedResource.keyIdentifierOf`), else by source URL, else
- * by `importerAssignedKey`.
+ * The logical reference the record `resource` is a copy of is keyed by:
+ * its key identifier (`DetachedResource.keyIdentifierOf`) under its type;
+ * `None` when it has no key identifier.
+ */
+const logicalReferenceIfKeyedByIdentifier = (
+  resource: DetachedResource.Type
+): Option.Option<LogicalReference.Type> =>
+  Option.map(DetachedResource.keyIdentifierOf(resource), (identifier) =>
+    LogicalReference.make(resource.resourceType, identifier)
+  )
+
+/**
+ * The key of the record `resource` is a copy of: by identifier, the logical
+ * reference it is keyed by ({@link logicalReferenceIfKeyedByIdentifier}),
+ * else by source URL, else by `importerAssignedKey`.
  */
 const make = ({
   resource,
@@ -57,9 +69,8 @@ const make = ({
   /** The key the importer assigned that copy, unique within the batch. */
   readonly importerAssignedKey: string
 }): Type =>
-  Option.match(DetachedResource.keyIdentifierOf(resource), {
-    onSome: (identifier) =>
-      fromLogicalReference(LogicalReference.make(resource.resourceType, identifier)),
+  Option.match(logicalReferenceIfKeyedByIdentifier(resource), {
+    onSome: fromLogicalReference,
     onNone: () =>
       Option.match(sourceUrl, {
         onSome: ({ href }) => BySourceUrl({ sourceUrl: href }),
@@ -67,5 +78,5 @@ const make = ({
       }),
   })
 
-export { fromLogicalReference, isKeyedByIdentifier, make }
+export { fromLogicalReference, isKeyedByIdentifier, logicalReferenceIfKeyedByIdentifier, make }
 export type { Type }

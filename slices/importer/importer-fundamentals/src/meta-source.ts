@@ -1,7 +1,8 @@
 /**
- * Stamping `meta.source` onto FHIR resources: the typed {@link Reference} a
- * stamp names, the single-resource {@link stamp}, and
- * {@link stampAdopted} that walks every resource in an adopted file set's sections.
+ * Stamping `meta.source` onto FHIR resources and reading it back: the typed
+ * {@link Reference} a stamp names, the single-resource {@link stamp},
+ * {@link stampAdopted} that walks every resource in an adopted file set's
+ * sections, and {@link sourceOf}, the source file a resource names.
  *
  * @remarks
  * Both stamps take a {@link Reference} rather than a bare `string` — the
@@ -14,6 +15,7 @@
  */
 
 import type { Meta } from '@wildflowerhealthio/fhir-r4/data-types'
+import { Option, pipe } from 'effect'
 
 import type * as AdoptedFileSet from './adopted-file-set.ts'
 import type * as ReviewRow from './review-row.ts'
@@ -29,6 +31,9 @@ type Reference = `DocumentReference/${string}`
 
 /** The reference a resource stamped with this source file names. */
 const makeReference = (id: string): Reference => `${REFERENCE_PREFIX}${id}`
+
+/** Whether `literal` is a {@link Reference}: a literal reference to a `DocumentReference`. */
+const isReference = (literal: string): literal is Reference => literal.startsWith(REFERENCE_PREFIX)
 
 interface Sourceable {
   readonly meta: typeof Meta.Schema.Type | null
@@ -61,5 +66,13 @@ const stampAdopted = <TRow extends ReviewRow.Type>(
   })),
 })
 
-export { makeReference, stamp, stampAdopted }
+/** The source file `resource`'s `meta.source` names; `None` when it names none. */
+const sourceOf = (resource: Sourceable): Option.Option<Reference> =>
+  pipe(
+    Option.fromNullable(resource.meta),
+    Option.flatMap((meta) => Option.fromNullable(meta.source)),
+    Option.filter(isReference)
+  )
+
+export { isReference, makeReference, sourceOf, stamp, stampAdopted }
 export type { Reference, Sourceable }

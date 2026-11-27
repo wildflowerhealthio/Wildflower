@@ -2,7 +2,9 @@ import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
+  detached,
   drBrown,
+  drBrownWire,
   plannedOf,
   prescription,
   samplePlan,
@@ -10,6 +12,7 @@ import {
 } from '../import-plan.test-helpers.ts'
 import * as ImportPlan from './import-plan.ts'
 import * as ImportedCopy from './imported-copy.ts'
+import * as ImportedRecord from './imported-record.ts'
 import * as PlannedRecord from './planned-record.ts'
 import * as RecordChoice from './record-choice.ts'
 import type * as RecordKey from './record-key.ts'
@@ -129,5 +132,21 @@ describe('PlannedRecord.withChoice, withChoiceCleared and withEdit', () => {
     // Assert
     expect([edited.edit, edited.chosen]).toEqual([Option.some(drBrown.resource), chosen.chosen])
     expect(unedited).toEqual(chosen)
+  })
+})
+
+describe('PlannedRecord.reviewedResourceOf', () => {
+  it('should be the reviewer’s edit when there is one, else the record’s resource', () => {
+    // Arrange
+    const suggested = recordOf(samplePlan(), drBrownKey)
+    const edit = detached({ ...drBrownWire, name: [{ text: 'Dr. J. Brown' }] })
+
+    // Act
+    const reviewed = [suggested, PlannedRecord.withEdit(suggested, Option.some(edit))].map(
+      PlannedRecord.reviewedResourceOf
+    )
+
+    // Assert
+    expect(reviewed).toEqual([ImportedRecord.resourceOf(suggested.record), edit])
   })
 })

@@ -245,11 +245,11 @@ that provides those.
   record its schema rejects, `FileImporter.SourceFileNotFound` from a hook)
   as an unreadable row per picked file of the set, after the decode's own,
   and keeps the other sets' copies and notes.
-- `src/find-stored-match.ts` — **`findStoredMatch(records, notInImport)`** is
+- `src/find-stored-match.ts` — **`findStoredMatch(records, externalReferences)`** is
   a `StoredMatch`: one `ResourceMatch.findCandidates` over every record, by
-  its resource (`ImportedRecord.resourceOf`), and every logical reference no
-  record of the import carries the identifier of (`RecordReferences.Type`'s
-  `notInImport`, each by `MatchQuery.fromLogicalReference`), every grade;
+  its resource (`ImportedRecord.resourceOf`), and every external reference,
+  one that points outside the import (`RecordReferences.Type`'s
+  `external`, each by `MatchQuery.fromLogicalReference`), every grade;
   then one `readInBatch` of the derived stage id of every record that
   has one (`ImportedRecord.literalReferenceIfDerived`), whatever was found
   by identifier. It knows only the order it asked in and builds the match
@@ -261,6 +261,23 @@ that provides those.
   URL, plan it once), finds the references between
   them (`locateReferences`), finds their stored match, and suggests the
   plan (`suggestPlan`).
+  Its tests pin that a re-import is the same as existing: every record's
+  reason is `OneIdentifierMatch` and `differencesInPlan` finds no
+  difference from the stored record it merges into.
+  `import-write-equivalence.test.ts` holds the plan's write
+  (`resolvePlan`, then `ImportWrite.of`) on an empty store, every suggestion
+  taken, to the review screen's import (`importDecoded`, `resolveMentions`
+  on its defaults, `planWrite`'s `Included`). Its batch steers clear of the
+  two places they differ: the review screen's import writes a Patient or
+  Practitioner from its first mention where the plan writes its last decoded
+  copy, and it leaves out a record that names no Patient where the plan
+  saves it as new.
+  `import-write-links.test.ts` runs two imports through `fileCopiesOf`,
+  `planImport`, `resolvePlan` and `ImportWrite.of`, the second against the
+  store the first wrote: a stored record's reference the first left
+  unlinked (a stub for a record not added, or a reference to a record in no
+  file) is linked when the second brings its target, and the referrer reads
+  `Update`.
 
 ## Layering
 

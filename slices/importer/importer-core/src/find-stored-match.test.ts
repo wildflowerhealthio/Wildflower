@@ -23,14 +23,14 @@ import {
 
 /**
  * Covers matching an import once against an in-memory server: one batch of
- * searches for its records and its references not in the import, and one batch of reads
+ * searches for its records and its external references, and one batch of reads
  * of its records' derived ids.
  */
 
-/** A stored match's entries for `records` and `notInImport`, in their order, as literal references, for a whole-value assertion. */
+/** A stored match's entries for `records` and `externalReferences`, in their order, as literal references, for a whole-value assertion. */
 const summaryOf = (
   records: readonly ImportedRecord.Type[],
-  notInImport: readonly LogicalReference.Type[],
+  externalReferences: readonly LogicalReference.Type[],
   storedMatch: StoredMatch.Type
 ): unknown => ({
   records: records.map(({ key }) => {
@@ -44,15 +44,15 @@ const summaryOf = (
       storedUnderDerivedId: Option.map(entry.storedUnderDerivedId, literalReferenceOf),
     }
   }),
-  references: notInImport.map((reference) =>
-    StoredMatch.ofReference(storedMatch, reference).map(({ resource }) =>
+  externalReferences: externalReferences.map((externalReference) =>
+    StoredMatch.ofReference(storedMatch, externalReference).map(({ resource }) =>
       literalReferenceOf(resource)
     )
   ),
 })
 
 describe('findStoredMatch', () => {
-  it('should match every record and every reference not in the import in one batch of searches, then read every derived id in one batch', async () => {
+  it('should match every record and every external reference in one batch of searches, then read every derived id in one batch', async () => {
     // Arrange
     const records = ImportedRecord.fromCopies([
       copyOf(detached(tyraWire), 'tyra'),
@@ -69,18 +69,18 @@ describe('findStoredMatch', () => {
       }),
     ]
 
-    const { notInImport } = locateReferences(records)
+    const { external } = locateReferences(records)
 
     // Act
     const { result, requests } = await runAgainst(
-      findStoredMatch(records, notInImport),
+      findStoredMatch(records, external),
       storedResources
     )
 
     // Assert
     expect({
       requests: [...requests].toSorted(),
-      match: summaryOf(records, notInImport, result),
+      match: summaryOf(records, external, result),
     }).toEqual({
       requests: [
         `MedicationRequest ${SOURCE}|rx-1`,
@@ -101,7 +101,7 @@ describe('findStoredMatch', () => {
           },
           { candidates: [], storedUnderDerivedId: Option.none() },
         ],
-        references: [['Practitioner/pr-1']],
+        externalReferences: [['Practitioner/pr-1']],
       },
     })
   })
@@ -134,7 +134,10 @@ describe('findStoredMatch', () => {
     // Assert
     expect({ requests, match: summaryOf(records, [], result) }).toEqual({
       requests: [],
-      match: { records: [{ candidates: [], storedUnderDerivedId: Option.none() }], references: [] },
+      match: {
+        records: [{ candidates: [], storedUnderDerivedId: Option.none() }],
+        externalReferences: [],
+      },
     })
   })
 })

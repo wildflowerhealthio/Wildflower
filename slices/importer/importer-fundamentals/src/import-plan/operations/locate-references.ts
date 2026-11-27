@@ -21,18 +21,18 @@ import * as RecordReferences from '../entities/record-references.ts'
  * - `AmbiguousInImport`: several records of the import carry its identifier
  *   and the naming rule ({@link namedRecordKeyOf}) picks none. It is linked
  *   to none and stays as it is, and the server is not asked about it.
- * - `NotInImport`: no record of the import carries its identifier. These are
- *   the references the server is asked about.
+ * - `External`: outside the import, since no record of the import carries its
+ *   identifier. These are the references the server is asked about.
  */
 type Outcome = Data.TaggedEnum<{
   InImport: { readonly key: RecordKey.Type }
   // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
   AmbiguousInImport: Record<never, never>
   // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
-  NotInImport: Record<never, never>
+  External: Record<never, never>
 }>
 
-const { InImport, AmbiguousInImport, NotInImport, $is: isOutcome } = Data.taggedEnum<Outcome>()
+const { InImport, AmbiguousInImport, External, $is: isOutcome } = Data.taggedEnum<Outcome>()
 
 /** One qualified identifier a record keyed by identifier carries, as the logical reference that names it. */
 interface Carried {
@@ -40,15 +40,25 @@ interface Carried {
   readonly record: ImportedRecord.Type
 }
 
-/** One logical reference a record holds, beside the key of the record holding it. */
+/** One unlinked reference a record holds, beside the key of the record holding it. */
 interface Held {
   readonly holder: RecordKey.Type
+  readonly unlinkedReference: LogicalReference.Type
+}
+
+/**
+ * One identifier records of the import carry: the first logical reference
+ * that names it, and the key of the record it names, `None` when it names
+ * none ({@link namedRecordKeyOf}).
+ */
+interface Identified {
   readonly logicalReference: LogicalReference.Type
+  readonly named: Option.Option<RecordKey.Type>
 }
 
 /** One distinct logical reference, beside the keys of every record holding it and where it points. */
 interface Located {
-  readonly logicalReference: LogicalReference.Type
+  readonly unlinkedReference: LogicalReference.Type
   readonly holders: Arr.NonEmptyReadonlyArray<RecordKey.Type>
   readonly outcome: Outcome
 }
@@ -105,56 +115,64 @@ const namedRecordKeyOf = (
   )
 }
 
-/** Every logical reference the copies of `record` hold, at any depth, beside the record's key. */
+/** Every unlinked reference the copies of `record` hold, at any depth, beside the record's key. */
 const heldBy = (record: ImportedRecord.Type): readonly Held[] =>
   record.copies.flatMap(({ resource }) =>
-    Arr.filterMap(ResourceReferences.collect(resource), ({ reference }) =>
-      Option.map(LogicalReference.tryFromReference(reference), (logicalReference): Held => ({
+    Arr.filterMap(ResourceReferences.collect(resource), ({ reference: heldReference }) =>
+      Option.map(LogicalReference.tryFromReference(heldReference), (unlinkedReference): Held => ({
         holder: record.key,
-        logicalReference,
+        unlinkedReference,
       }))
     )
   )
 
 /**
- * Where each distinct logical reference `records` hold points, and so which
- * records another references and which references the server is asked about.
+ * Where each distinct unlinked reference `records` hold points, and so which
+ * records another references and which references are external, for the
+ * server to be asked about.
  *
  * @param records - The import's records, in plan order (`ImportedRecord.fromCopies`)
  *
  * @remarks
  * One pass, in four steps: decide once per identifier which record it names
- * ({@link namedRecordKeyOf}); group the references the records hold, so each
- * distinct one appears once, its first-seen value beside the keys of every
- * record holding it, in the order first held; give each its {@link Outcome}
- * by its identifier; and read the result off that list. A record is
- * referenced when any holder of a reference pointing at it is another
- * record, so a record that only names itself is not referenced.
+ * ({@link namedRecordKeyOf}), which gives `named`, each identifier that
+ * names a record by its first-seen logical reference, in the order the
+ * identifiers are first carried; group the references the records hold, so
+ * each distinct one appears once, its first-seen value beside the keys of
+ * every record holding it, in the order first held; give each its
+ * {@link Outcome} by its identifier; and read `referenced` and `external`
+ * off that list. A record is referenced when any holder of a reference
+ * pointing at it is another record, so a record that only names itself is
+ * not referenced.
  */
 const locateReferences = (records: readonly ImportedRecord.Type[]): RecordReferences.Type => {
-  const namedByIdentifier = pipe(
+  const byIdentifier = pipe(
     records.flatMap(carriedBy),
     Arr.groupBy(({ logicalReference }) => LogicalReference.key(logicalReference)),
-    EffectRecord.map(namedRecordKeyOf)
+    EffectRecord.map((carrying): Identified => ({
+      logicalReference: Arr.headNonEmpty(carrying).logicalReference,
+      named: namedRecordKeyOf(carrying),
+    }))
   )
-  const outcomeOf = (logicalReference: LogicalReference.Type): Outcome =>
-    Option.match(EffectRecord.get(namedByIdentifier, LogicalReference.key(logicalReference)), {
-      onNone: () => NotInImport(),
-      onSome: Option.match({
-        onNone: () => AmbiguousInImport(),
-        onSome: (key) => InImport({ key }),
-      }),
+  const outcomeOf = (unlinkedReference: LogicalReference.Type): Outcome =>
+    Option.match(EffectRecord.get(byIdentifier, LogicalReference.key(unlinkedReference)), {
+      onNone: () => External(),
+      onSome: ({ named }) =>
+        Option.match(named, {
+          onNone: () => AmbiguousInImport(),
+          onSome: (key) => InImport({ key }),
+        }),
     })
   const located = pipe(
     records.flatMap(heldBy),
-    Arr.groupBy(({ logicalReference }) => LogicalReference.key(logicalReference)),
+    Arr.groupBy(({ unlinkedReference }) => LogicalReference.key(unlinkedReference)),
     EffectRecord.values,
     Arr.map((held): Located => {
-      const { logicalReference } = Arr.headNonEmpty(held)
+      const { unlinkedReference } = Arr.headNonEmpty(held)
       return {
-        logicalReference,
+        unlinkedReference,
         holders: Arr.map(held, ({ holder }) => holder),
-        outcome: outcomeOf(logicalReference),
+        outcome: outcomeOf(unlinkedReference),
       }
     })
   )
@@ -167,9 +185,12 @@ const locateReferences = (records: readonly ImportedRecord.Type[]): RecordRefere
           : Option.none()
       )
     ),
-    notInImport: located
-      .filter(({ outcome }) => isOutcome('NotInImport')(outcome))
-      .map(({ logicalReference }) => logicalReference),
+    named: Arr.filterMap(EffectRecord.values(byIdentifier), ({ logicalReference, named }) =>
+      Option.map(named, (key): RecordReferences.NamedRecord => ({ logicalReference, key }))
+    ),
+    external: located
+      .filter(({ outcome }) => isOutcome('External')(outcome))
+      .map(({ unlinkedReference }) => unlinkedReference),
   })
 }
 
