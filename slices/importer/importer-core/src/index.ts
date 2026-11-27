@@ -6,7 +6,9 @@
  * decoded the device's own, re-decode one format under new settings, find
  * the batch's referents and resolve its mentions, say which rows the
  * referent links leave without a patient, and plan the batch's write from
- * its reviewed selections.
+ * its reviewed selections. With no reviewer, a batch is imported through its
+ * import plan, every suggestion taken, against the store the caller names
+ * ({@link importWithSuggestions}).
  *
  * @remarks
  * Sits between the format bindings (`har-importer-core`,
@@ -16,16 +18,19 @@
  * hooks. No DOM, no `fs`, no React. Every export is a value or an Effect whose only
  * requirement is what a registered format's decode needs to read its bytes
  * ({@link DecodeRequirements}), which the host provides, but for
- * `findStoredMatch` and `planImport`, which ask the store and so also
- * require the FHIR client (`FhirR4ResourcesHttpApiClient`).
+ * `findStoredMatch`, which asks the store and so also requires the FHIR
+ * client (`FhirR4ResourcesHttpApiClient`), and for `planImport` and
+ * {@link importWithSuggestions}, which also require what the
+ * `FindStoredMatch` they are handed requires (nothing for `noStore`).
  *
  * @packageDocumentation
  */
 export { defaultFormatSettings, formatKinds, formatRegistry } from './registry.ts'
 export type { BoundFormat, DecodeRequirements, FormatKind, FormatSettings } from './registry.ts'
-// `identifyPick`, `claimPicks` and `decodeFormat` are steps of `readBatch`,
-// not a surface: the shell drives the whole read, never a leg of it. They stay
-// module-level exports for `read-batch.test.ts` and are not re-exported here.
+// `identifyPick`, `claimPicks` and `decodeFormat` are steps of `readBatch`
+// and `importWithSuggestions`, not a surface: the shell drives the whole read,
+// never a leg of it. They stay module-level exports for those and for
+// `read-batch.test.ts` and are not re-exported here.
 export { importDecoded, type ImportingFormat } from './import-decoded.ts'
 export {
   type DecodedBatch,
@@ -43,8 +48,20 @@ export {
   type WriteDecision,
 } from './plan-write.ts'
 export { fileCopiesOf, type FormatCopies } from './file-copies-of.ts'
-export { findStoredMatch, type StoredMatchFailure } from './find-stored-match.ts'
+export {
+  type FindStoredMatch,
+  findStoredMatch,
+  noStore,
+  type StoredMatchFailure,
+} from './find-stored-match.ts'
 export { planImport } from './plan-import.ts'
+export {
+  type FormatRead,
+  importWithSuggestions,
+  type SuggestedImport,
+  type UndecidedRecord,
+  UndecidedRecords,
+} from './import-with-suggestions.ts'
 export * as ReviewGroup from './review-group.ts'
 export {
   decodedRowsOf,

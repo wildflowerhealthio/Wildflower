@@ -111,10 +111,15 @@ through the real importers, and serves a snapshot's files from memory as a
 `src/import-golden/` is the **import golden pin**: fixed picks of every source
 kind (the committed HAR and Rexall fixtures, a FHIR server's document and its
 `Binary`, and one hand-written person run through each generator at a fixed
-as-of), imported headless through
-`importer-core` with every default accepted, and compared byte for byte with
-the goldens in `__golden__/` (sorted keys, two-space indent, a trailing
-newline; `vp fmt` leaves them alone). A LifeLabs pick is `%PDF-` and the
+as-of), imported headless onto an empty store (`import-onto-empty-store.ts`:
+`importer-core`'s `importWithSuggestions` with `noStore`, so every record is
+saved as new), and compared byte for byte with the goldens in `__golden__/`
+(sorted keys, two-space indent, a trailing newline; `vp fmt` leaves them
+alone). A golden holds what the transaction writes (`written`), the plan it
+is written from (`plan`: each record's copies' review keys, its title, its
+suggestion's reason, its resolved label, whether it is implied, and what is
+written for it), each format's decode notes, and each written source file's
+id beside the ids it mints when picked again. A LifeLabs pick is `%PDF-` and the
 positioned text it prints, as JSON, which the test's fake
 `PositionedTextExtractor` reads back. A keyless record's id is random outside
 tests, so the test mints them in order (`crypto.randomUUID` replaced); only
