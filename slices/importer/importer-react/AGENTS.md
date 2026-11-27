@@ -117,11 +117,12 @@ The importer has no HTTP wire union to derive, so there is no separate
     `readBatchCopies` under the default format settings, `planImport` with
     `findStoredMatch`, and `reviewOf`, through `useRunAuthed`.
     `choose(keys, choice)` makes `choice` the reviewer's for every record
-    under one of `keys` (`ImportPlan.choose`), only while `Reviewing`: it
-    runs `reviewOf` synchronously in the handler and commits the new review
-    keeping the last `writeFailure`, since the reviewer reads it while fixing
-    the plan and what it says stays true; Import pressed again, or starting
-    over, clears it.
+    under one of `keys` (`ImportPlan.choose`), and `reset(keys)` clears the
+    reviewer's choice for each, back to its suggestion (`ImportPlan.reset`),
+    both only while `Reviewing`: each runs `reviewOf` synchronously in the
+    handler and commits the new review keeping the last `writeFailure`,
+    since the reviewer reads it while fixing the plan and what it says stays
+    true; Import pressed again, or starting over, clears it.
     `importPlan()` writes the review's `ImportWrite.Ready` resources as one
     `persistTransactionBundle`: every outcome ok is `Imported`; otherwise it
     is `Reviewing` again with its `writeFailure` (`write-failure.ts`:
@@ -144,9 +145,14 @@ The importer has no HTTP wire union to derive, so there is no separate
     `incoming`, `kept` and `differences`. The candidates of a record are its
     existing records (`PlannedRecord.existingRecordsOf`): the search's
     matches, best grade first, then the record under its derived id, then
-    the one the reviewer chose when it is none of those. Only records
-    that need a decision are worked out, once per plan value: every choice
-    makes a new plan and computes them again (making that cheaper is #1566).
+    the one the reviewer chose when it is none of those. Every record that
+    has an existing record is worked out, since a card's options and a row's
+    reason tag, fold and options all read them, once per plan value: every
+    choice makes a new plan and computes them again. Each candidate is a pass
+    over the whole plan (`differencesInPlan`), so a choice costs the records
+    with an existing record times their candidates times the plan, which on
+    a re-import, where every record has one, is quadratic in the plan's size;
+    making it cheaper is #1566.
     It also reads, off candidates, whether one differs on a field, the fields
     they differ on, the identity fields none differs on, the fields a choice
     takes into one, how much of its differences a merge takes
@@ -157,8 +163,8 @@ The importer has no HTTP wire union to derive, so there is no separate
     end in an import, read off its outcomes (`fromOutcomes`).
   - `import-plan-page.tsx` — the `Reviewing` / `Importing` view: one column
     at most 720px wide holding the summary, the records that need a
-    decision, the import bar and a centred **Cancel import**, which is gone
-    while the write is in flight.
+    decision, the import bar, the records decided automatically and a
+    centred **Cancel import**, which is gone while the write is in flight.
   - `summary-card.tsx` — the kicker, "N records from M files" (M counts every
     picked file, those nothing was read from included), the four counts
     (Create, Update, Link to existing, Needs a decision, the last
@@ -219,6 +225,97 @@ The importer has no HTTP wire union to derive, so there is no separate
     contents`), so the sentence scrolls with the page and only the action's
     box sticks; the warning line and Go to record sit inside the action, so
     they stick with the button it disables.
+  - `decided-automatically.tsx` — the **Decided automatically** section,
+    only when a record needs no decision: a divider, the kicker "Optional",
+    the heading, "N records. Matched by identifier, or with no similar
+    existing record. Change any; changes are listed first.", then its
+    sections (`plan-sections.ts`, worked out once per review), all in one
+    `<fieldset disabled>`, named by the heading, while the write is in
+    flight, so every select, menu, Reset, Show more and fold line is
+    disabled. Each section is a region named by its visible heading
+    (`aria-labelledby`); a file set's by the format and the files' title.
+    `people-section.tsx` is the Patients and
+    Practitioners, wherever they come from ("Patient and Practitioner",
+    "Other records reference these.", a group per type, no menu);
+    `file-section.tsx` is one file set's other records, under the format's
+    `display.title` from the registry and the set's title in mono, a group
+    per type.
+  - `plan-sections.ts` — the `PlanSections` namespace, pure: the sections of
+    Decided automatically read off a review (`sectionsOf`), every record
+    that does not need a decision in exactly one group, so a card's record
+    is never also a row. A `Section` is `People` or a `FileSet` (by its
+    origin, in the order the sets first bring such a record; a record
+    several sets bring is under its record copy's, `ImportedRecord.originOf`),
+    each holding `Group`s by type in the order the types first come
+    (people: Patient, then Practitioner). A `Row` is the resolved record, its
+    label (`RowLabel`, never `Open`, since a record decided automatically
+    always has a choice), its suggestion's reason narrowed to a
+    `DecidedReason`, the differences of the merge its suggestion makes
+    (`suggestedDifferences`, from the review's differences), its title and
+    detail (`row-text.ts`, every record of the plan titled once per review),
+    how many records reference it, and its candidates, each with the title
+    its option names it by. A group's `listed` rows run changed first, then by
+    label (Update, Create, Don't add and not needed, Link to existing), plan
+    order among equals (`rowOrder`); its `folded` rows are those the same as
+    existing (`isSameAsExisting`: one identifier match, no differences from
+    the record it merges into, linked, not changed). It also gives a group's
+    keys (its menu acts on every record, folded ones included), and holds
+    its counts by label; it gives a page of its listed rows
+    (`listedPageOf`: the first `FIRST_PAGE_SIZE`, 6, then `PAGE_SIZE`, 20,
+    more per "Show more") and a row's last line (`reasonLineOf`). Long
+    groups page with "Show 20 more" where the style guide prefers infinite
+    scroll: the design and the maintainer chose it for these groups
+    (2026-11-27).
+  - `record-group.tsx` — one type's rows, no landmark of its own:
+    "MedicationRequest · 9" (every row, folded ones included), its status line ("2 new · 7 linked"), in a
+    file set's section a `Menu` "Set every MedicationRequest" (Create all N,
+    Reset to suggested, Don't add any, the last destructive), the listed
+    rows a page at a time, "Show N more", then "N same as existing ·
+    Show/Hide" over the folded rows. The rows, "Show N more" and the fold
+    line are one keyed list, so a row keeps its element, and its select its
+    focus, when a choice moves it between the folded and the listed rows.
+    How many rows are shown and whether the fold is open are its own state,
+    kept across a choice since the group is keyed by its type within its
+    section.
+  - `plan-record-row.tsx` — one row: react-tundraish's `RecordRow` with the
+    row's title, a Changed `Chip` and Reset (the hook's `reset`) only when
+    the reviewer changed its choice (`PlannedRecord.isChanged`; Reset takes
+    itself away, so it commits the reset and moves focus to the row's
+    select), its detail
+    and its last line, and a select named "On import: {title}" of
+    `row-options.ts`' options: one "Use {title}" per existing record
+    (choosing it merges taking the fields that fill a gap,
+    `RecordChoice.mergeFillingGaps` over its current differences; ", updated"
+    and the success tone exactly when the merge the option stands for, the
+    record's own when it merges into that record, else the one picking it
+    makes, takes at least one of that candidate's current differences, the
+    neutral tone otherwise), then Save
+    as a new record (accent) and Don't add (muted). The selected option is
+    the record's choice: a merge selects its existing record's option
+    whatever fields it takes.
+  - `reason-tag.ts` — a row's tag, the suggestion's whatever the reviewer
+    chose since: "Identifier match · same as existing", "Identifier match ·
+    N field(s) differ" (`suggestedDifferences`), or, with no field differing
+    but the record counted an `Update` (an identifier or a link it adds),
+    "Identifier match · adds an identifier or a link"; "New · no match",
+    "New · not referenced". `DecidedReason` is a suggestion's reason that
+    `Suggestion.needsDecision` does not list under Needs a decision, so a
+    row's tag is exhaustive over what a row can have. A person's last line adds its file and its
+    referrers; a record that is `Unneeded` adds that it is not written.
+  - `row-text.ts` — a row's title (a person's name, else the resource's
+    one-line summary, `describe-resource.ts`' `summaryIfDescribed`, else
+    the plan's title for it), an existing record's title in an option (the
+    same, else its literal reference), and its detail (`RowDetail`): a
+    Patient's birthDate and gender ("No birthDate"), a Practitioner's key
+    identifier in mono ("No identifier"), any other record's resolved
+    references as `field: display` ("No references" for none), the display
+    being the title of the record of the import a reference names by
+    literal (where it is written or linked, or a stage literal a reference
+    to a record with no choice yet keeps) or by identifier, whatever its
+    choice, with " (display only)" for a record not added or a reference
+    that names nothing, else the reference's own display, else its literal.
+  - `describe-resource.ts` — a resource's one-line summary per type, read in
+    its wire form; also the old review's (below).
   - `import-complete-notice.tsx` — a section labelled by its heading,
     **Import complete**, then a success `Notice` of what was created,
     updated and linked, with **Import more files** as its action.
@@ -435,9 +532,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   resource without one takes it in, Don't link leaves it out again, and
   Revert leaves one out again when the resolved resource has no patient
   either, unless the reviewer ticked or unticked it themselves.
-  `describe-resource.ts` reads a decoded resource in its wire form and names
-  its subject by the label of the resource it is redirected to, else its `display`,
-  never by its `Patient/<id>`. A section's tri-state heading toggle is
+  `plan/describe-resource.ts` reads a decoded resource in its wire form and
+  names its subject by the label of the resource it is redirected to, else
+  its `display`, never by its `Patient/<id>`. A section's tri-state heading toggle is
   `section-toggle.tsx` — `{ title, keys, isIncluded, onSetIncluded }`, the
   `indeterminate`-via-ref pattern — shared with the server source-file list's
   study sections, which passes its own selected-id set where the review body
@@ -458,8 +555,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   `resource-editor.tsx` (+ `resource-editor-helpers.ts`) is the inline JSON
   editor: **Keep** parses the text, decodes through
   `Schema.decodeUnknown(FhirResourceSchema)`, and refuses the edit unless it
-  parses and preserves `resourceType` / `id`; `describe-resource.ts` is the
-  pure one-line summary per resource type.
+  parses and preserves `resourceType` / `id`; `plan/describe-resource.ts`
+  is the pure one-line summary per resource type.
 - **`src/results/`** — **Not mounted, awaiting #1466.** The old review's outcome. `import-outcome.ts` is the pure fold: the
   per-format `ImportOutcome` and the `FileImportResult`/`BatchOutcome`
   aggregate (`summarizeBatch`, `isPartialBatch`) — the `files` and, beside
@@ -764,7 +861,16 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   record and Don't add written as chosen; the update checkbox partly
   checked, then taking every field, then none; every control of a card
   disabled while a held transaction is in flight; a refused write still
-  said after a choice, and gone once Import lands), the
+  said after a choice, and gone once Import lands), the Decided
+  automatically rows (a re-import with every row folded behind "N same as
+  existing", each tagged the same as existing once shown, nothing written;
+  a person changed to Don't add, its Changed chip, the counts moving, its
+  referrers' detail "(display only)", and Reset; a group's Don't add any,
+  Reset to suggested, and Create all writing new records; an identifier
+  match whose field differs, its update selected and written; a folded
+  row's select keeping focus when it is changed, and getting it back on
+  Reset; every select and menu disabled while a held transaction is in
+  flight), the
   red lines of an unreadable and an unrecognised file with no record read
   from either, the loader card while a read is in flight, a failed search,
   a runner that rejects the read, no way to
@@ -792,8 +898,27 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   that would read alike shown as JSON;
   `plan/plan-differences.test.ts` pins a record's candidates (a second
   record into one existing record compared with it as the first's merge
-  leaves it) and what is read off them (a field taken that no longer
-  differs counting for nothing); `plan/decision-card.test.tsx` renders a
+  leaves it, a record that needs no decision compared too, none for one
+  with no existing record) and what is read off them (a field taken that
+  no longer differs counting for nothing); `plan/plan-sections.test.ts`
+  pins as properties over arbitrary plans (records two file sets bring,
+  implied copies, records not needed, identifier matches whose suggestion
+  fills gaps) that every record that needs no decision is in exactly one
+  group and none that needs one is, that the people's section holds
+  exactly the Patients and Practitioners and each file set's section its
+  own records, and that changed rows come first and the fold holds exactly
+  the unchanged identifier matches with nothing to merge, and as examples
+  the order by label and the pages; `plan/reason-tag.test.ts` and
+  `plan/row-text.test.ts` pin the tags, titles and details whole (a
+  reference to a record with no choice yet titled by that record);
+  `plan/row-options.test.ts` pins the option each choice selects, ", updated"
+  exactly when the merge an option stands for takes a current difference,
+  and an option's merge filling that candidate's gaps;
+  `plan/record-group.test.tsx` sets every record of a group from its menu,
+  the rows not shown and those folded included;
+  `plan/plan-record-row.test.tsx` renders a row suggested new, an
+  identifier match's update, and a changed row reset;
+  `plan/decision-card.test.tsx` renders a
   card not selected, with an existing record selected, with Don't add
   selected, and for a record several existing records carry the identifier
   of. They build
