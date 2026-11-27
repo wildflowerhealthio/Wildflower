@@ -1,3 +1,4 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { HashSet } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
@@ -113,7 +114,8 @@ describe('RecordChoice.mergeFillingGaps, mergeTakingEveryField and mergeTakingNo
             { existing: storedTyra, fieldsTaken: [] },
           ])
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 

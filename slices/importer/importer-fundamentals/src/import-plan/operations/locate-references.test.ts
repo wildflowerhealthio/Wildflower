@@ -1,6 +1,7 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { MatchQuery } from '@wildflowerhealthio/fhir-r4/clients'
 import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Array as Arr, Equal, HashMap, Option, Order } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
@@ -474,7 +475,8 @@ describe('locateReferences, referrers', () => {
             }
           })
         )
-      })
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 
@@ -500,7 +502,8 @@ describe('locateReferences, referrers', () => {
             .map(({ key }) => key)
         })
         expect(missingReferrers).toEqual(records.map(() => []))
-      })
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 })

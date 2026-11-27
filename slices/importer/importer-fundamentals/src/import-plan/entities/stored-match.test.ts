@@ -1,6 +1,7 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { MatchGrade, type ResourceMatch } from '@wildflowerhealthio/fhir-r4/clients'
 import { LogicalReference, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Array as Arr, Option, Order } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
@@ -231,7 +232,8 @@ describe('StoredMatch.foundRecordsOf', () => {
             grade: Option.none(),
           })),
         ])
-      })
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 })
