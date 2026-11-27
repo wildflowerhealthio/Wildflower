@@ -2,6 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import type { BatchEntryOutcome, WriteIssue } from '@wildflowerhealthio/fhir-r4/clients'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { COMPLETE_HEADING } from '../plan/plan-text.ts'
 import {
   type BatchOutcome,
   type FileImportResult,
@@ -9,7 +10,6 @@ import {
   type ResourceResult,
 } from './import-outcome.ts'
 import {
-  COMPLETE_HEADING,
   FAILED_HEADING,
   ImportResults,
   PARTIAL_HEADING,

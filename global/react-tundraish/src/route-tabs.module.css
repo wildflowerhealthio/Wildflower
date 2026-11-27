@@ -30,7 +30,11 @@
   border: 1px solid var(--card-color-border);
   border-radius: var(--radius-3);
   background: var(--card-color-background);
-  overflow: hidden;
+  /*
+   * Clips the tabs and panel to the card's corners without making the card a
+   * scroll container, so a sticky element inside the panel sticks to the page.
+   */
+  overflow: clip;
 }
 
 /*

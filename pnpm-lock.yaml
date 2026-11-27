@@ -5477,6 +5477,9 @@ importers:
       '@wildflowerhealthio/importer-fundamentals':
         specifier: workspace:*
         version: link:../importer-fundamentals
+      '@wildflowerhealthio/kitchen-sink':
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
       '@wildflowerhealthio/lifelabs-pdf-importer-core':
         specifier: workspace:*
         version: link:../lifelabs-pdf-importer-core

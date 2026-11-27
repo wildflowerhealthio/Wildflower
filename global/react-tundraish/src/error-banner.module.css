@@ -1,57 +1,16 @@
 /*
- * ErrorBanner skin — an inline danger callout for a failed action whose screen
- * stays usable (the mutation counterpart to the page-body `.error`). A leading
- * warning glyph + the message in a faint-red tinted, rounded container. Reads the
- * scheme-aware `--color-red-*` ramp (same tokens as page-layout's `.error`), so
- * it flips with the surface palette without a dark override.
+ * ErrorBanner skin — only its Show details disclosure. The callout around it
+ * is a danger `Notice`'s, which also colours the disclosure's summary.
  */
 
-.banner {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  margin: 0;
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--color-red-7);
-  border-radius: var(--radius-3);
-  background: var(--color-red-9);
-}
-
-.icon {
-  flex: 0 0 auto;
-  font-size: var(--font-size-3);
-  line-height: var(--line-height-3);
-  color: var(--color-red-5);
-}
-
-.body {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
-.message {
-  margin: 0;
-  color: var(--color-red-3);
-  /* A long unbroken token (an id, a URL) wraps rather than forcing the banner
-   * to scroll or overflow its row. */
-  overflow-wrap: anywhere;
-}
-
-.details {
-  color: var(--color-red-3);
-}
-
-.summary {
+.error-banner__summary {
   cursor: pointer;
   /* A native `<summary>` renders inline-flow with the disclosure marker; a
    * block gets the marker in the gutter with the label aligned to it. */
   display: list-item;
 }
 
-.pre {
+.error-banner__pre {
   margin: var(--space-3) 0 0;
   padding: var(--space-4) var(--space-5);
   background: var(--color-neutral-9);

@@ -1,0 +1,64 @@
+/*
+ * Notice skin — an inline callout whose tone says what happened: a leading
+ * glyph beside the message (and its details) in a tinted, rounded container.
+ * Each tone sets four custom properties off scheme-aware tokens, so the
+ * callout flips with the surface palette without a dark override:
+ *
+ * - danger reads the `--color-red-*` ramp (the same tokens as page-layout's
+ *   `.error`);
+ * - success reads the `--color-success-*` semantic tokens, the green
+ *   `StatusBadge`'s, on the faint `--color-success-tint` wash.
+ */
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--notice-border);
+  border-radius: var(--radius-3);
+  background: var(--notice-background);
+}
+
+.notice--danger {
+  --notice-background: var(--color-red-9);
+  --notice-border: var(--color-red-7);
+  --notice-glyph: var(--color-red-5);
+  --notice-foreground: var(--color-red-3);
+}
+
+.notice--success {
+  --notice-background: var(--color-success-tint);
+  --notice-border: var(--color-success-border);
+  --notice-glyph: var(--color-success);
+  --notice-foreground: var(--color-success-foreground);
+}
+
+.notice__glyph {
+  flex: 0 0 auto;
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-3);
+  color: var(--notice-glyph);
+}
+
+.notice__body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.notice__message {
+  margin: 0;
+  color: var(--notice-foreground);
+  /* A long unbroken token (an id, a URL) wraps rather than forcing the
+   * notice to scroll or overflow its row. */
+  overflow-wrap: anywhere;
+}
+
+.notice__details {
+  color: var(--notice-foreground);
+  overflow-wrap: anywhere;
+}

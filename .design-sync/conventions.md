@@ -48,7 +48,8 @@ ad-hoc inline styles:
   `Dialog` directly only for a richer body.
 - A failed action on a still-usable screen is `ErrorBanner
   error={mutation.error}` (renders nothing when `null`); a failed *body* is
-  `PageBodyError`.
+  `PageBodyError`. A message the screen words itself — a failure, or a step
+  that finished — is a `Notice` with a `tone` (`danger`, `success`).
 - A body waiting on data it can't render without is `GateCard`; incomplete
   data shown anyway gets a `PartialBanner` above it.
 - An action inside prose or a compact surface is a `LinkButton`, not a

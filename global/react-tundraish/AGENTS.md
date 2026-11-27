@@ -35,6 +35,24 @@ a caller's `className` joins the component's own through `cn`. Every prop the
 component sets is `Omit`ted from the type, so TypeScript rejects it rather
 than the component dropping it.
 
+## Notices
+
+`Notice` is the one inline callout for a message: its `tone` (`danger` or
+`success`, a union that takes a new tone by adding a row to `toneLook` and
+a `.notice--<tone>` rule to its CSS module) sets
+the live-region role (`alert` for danger, `status` for success), the leading
+`aria-hidden` glyph (⚠, ✓), the screen-reader-only word before the message
+("Error: ", "Success: ", the words `StatusBadge` uses), and four custom
+properties in `notice.module.css` that the skin reads. Danger reads the
+`--color-red-*` ramp; success reads `--color-success-tint` (the fill),
+`--color-success-border`, `--color-success` (the glyph) and
+`--color-success-foreground` (the text), all of which follow the scheme. The
+message is `children`, `details` render under it, and an `action` is a
+`LinkButton` inline after it, as `PartialBanner`'s is. `ErrorBanner` draws its
+message callout as a danger `Notice`, its **Show details** disclosure as the
+`details`, so a thrown error and a worded message cannot drift apart; its own
+module styles only the disclosure.
+
 ## Testing a page around `RouteTabs`
 
 `RouteTabs` observes its strip with a `ResizeObserver`, asks `matchMedia`

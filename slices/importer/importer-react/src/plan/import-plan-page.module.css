@@ -1,0 +1,18 @@
+/*
+ * The import plan's column: at most 720px wide, its sections spaced apart.
+ * The sections run summary, Needs a decision, the import bar, Decided
+ * automatically, then Cancel import, centred.
+ */
+.import-plan-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding-bottom: var(--space-10);
+}
+
+.import-plan-page__cancel {
+  align-self: center;
+}

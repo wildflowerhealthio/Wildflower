@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 
 import { useErrorBodyRenderer, type ErrorBodyRenderer } from './error-body-renderer.ts'
 import { formatErrorDetails } from './error-details.ts'
+import { Notice } from './notice.tsx'
 import styles from './error-banner.module.css'
 
 /** An `Error`'s message, or a best-effort string for any other thrown value. */
@@ -38,7 +39,9 @@ interface ErrorBannerProps {
  * - defers to the ambient (or prop) {@link ErrorBodyRenderer} when it recognises
  *   the error — e.g. a `403 InsufficientScope` shows its authorization-failure
  *   surface in place of a bare message; and
- * - otherwise renders the error's message in a danger-toned `role="alert"` callout.
+ * - otherwise renders the error's message in a danger {@link Notice} (a
+ *   `role="alert"` callout), with a **Show details** disclosure under it when
+ *   {@link formatErrorDetails} has more to say.
  *
  * The renderer consult is the same one {@link PageBodyError} uses, so a query
  * error (surfaced by a boundary) and a mutation error (surfaced by this banner)
@@ -55,26 +58,24 @@ const ErrorBanner = ({ error, renderError, className }: ErrorBannerProps): JSX.E
   // replaces the message callout rather than nesting inside it.
   if (surface !== null) return <>{surface}</>
 
-  const message = messageOf(error)
   const details = formatErrorDetails(error)
   return (
-    <div className={cn(styles['banner'], className)} role="alert">
-      <span aria-hidden="true" className={styles['icon']}>
-        ⚠
-      </span>
-      <div className={styles['body']}>
-        <p className={cn(styles['message'], 'text-body-3')}>
-          <span className="sr-only">Error: </span>
-          {message}
-        </p>
-        {details === null ? null : (
-          <details className={styles['details']}>
-            <summary className={cn(styles['summary'], 'text-label-3')}>Show details</summary>
-            <pre className={cn(styles['pre'], 'text-body-3')}>{details}</pre>
+    <Notice
+      tone="danger"
+      className={className}
+      details={
+        details === null ? undefined : (
+          <details>
+            <summary className={cn(styles['error-banner__summary'], 'text-label-3')}>
+              Show details
+            </summary>
+            <pre className={cn(styles['error-banner__pre'], 'text-body-3')}>{details}</pre>
           </details>
-        )}
-      </div>
-    </div>
+        )
+      }
+    >
+      {messageOf(error)}
+    </Notice>
   )
 }
 

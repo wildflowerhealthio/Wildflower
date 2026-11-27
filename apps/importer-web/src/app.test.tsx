@@ -6,7 +6,7 @@ import {
   WEB_TRACE_CODE_SYSTEM,
 } from '@wildflowerhealthio/har-importer-core/source-file'
 import { emitHar, HarFromJson } from '@wildflowerhealthio/http-archive'
-import { COMPLETE_HEADING, PREVIEW_HEADING } from '@wildflowerhealthio/importer-react'
+import { COMPLETE_HEADING, IMPORT_PLAN_KICKER } from '@wildflowerhealthio/importer-react'
 import type { TraceBody } from '@wildflowerhealthio/web-trace-core'
 import {
   CAPTURE_FLOOR,
@@ -43,7 +43,7 @@ import {
  *   the recorded write log names exactly the resource types that string (and the
  *   authorization server seed beside it) allows.
  *
- * The opt-in seam itself — zero writes to reach a preview, source file before
+ * The opt-in seam itself — zero writes to reach the import plan, source file before
  * resources, `meta.source` on each write — is `importer-react`'s
  * `importer-screen.test.tsx`. What is re-asserted here is only the ordering that
  * the app's own transport makes observable.
@@ -81,7 +81,7 @@ afterEach(() => {
 })
 
 describe('ImporterApp', () => {
-  it('should import a picked source file end to end, writing nothing before the confirm', async () => {
+  it('should import a picked source file end to end, writing nothing before Import', async () => {
     // Arrange — nothing on the server yet; the HAR comes off the local disk
     mount({})
 
@@ -91,14 +91,16 @@ describe('ImporterApp', () => {
       harFile('portal-session.har')
     )
 
-    // Assert — the preview is up and NOT ONE write went out to reach it
+    // Assert — the import plan is up and NOT ONE write went out to reach it
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
+      expect(screen.getByText(IMPORT_PLAN_KICKER)).toBeDefined()
     })
     expect(writes()).toHaveLength(0)
 
-    // Act — confirm (one Patient + two Observations + the source-file source file)
-    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
+    // Act — import (the source file, one Patient and two Observations)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Import · 4 new, 0 updated, 0 linked' })
+    )
 
     // Assert — the import completes, and the source file create lands before the
     // first resource write, so every written resource can name it
@@ -150,15 +152,17 @@ describe('ImporterApp', () => {
     mount({ sourceFiles: [{ id: 'archive-1', fileName: 'server-session.har' }] })
 
     // Act — select it in the server list, pick it as the batch's source,
-    // then confirm
+    // then import
     await userEvent.click(
       await screen.findByRole('checkbox', { name: 'Select server-session.har' })
     )
     await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
+      expect(screen.getByText(IMPORT_PLAN_KICKER)).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Import · 4 new, 0 updated, 0 linked' })
+    )
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
     })
@@ -360,8 +364,8 @@ const searchsetOf = (...resources: readonly unknown[]): Record<string, unknown> 
 /**
  * A HAR the `fhir-r4` source recognizes: a Patient read and an Observation
  * searchset off one server, built through `web-trace-core`'s own `emitHar` so it
- * is shaped exactly like a real capture. Previews to 1 Patient + 2 Observations
- * about that Patient, so none is left out as naming no patient.
+ * is shaped exactly like a real capture. Reads into 1 Patient + 2 Observations
+ * about that Patient.
  */
 const RECOGNIZED_HAR: string = Effect.runSync(
   Schema.encode(HarFromJson)(
@@ -465,11 +469,11 @@ const recordingServer = (
       const authorization = request.headers['authorization']
 
       // A `POST /` at the FHIR base with a Bundle body is `fhir-r4`'s
-      // bundle-submit (a batch of PUT entries from persistBatchBundle, or a
-      // batch of GET entries from classifyAgainstServer). Unwrap: record each
-      // entry as its own request, mirror the batch-response. This keeps
-      // `writes()` / `isResourceWrite` seeing one recorded request per
-      // resource operation.
+      // bundle-submit (the import's transaction of PUT entries, or the batch
+      // of GET entries reading what is stored under the ids it would write).
+      // Unwrap: record each entry as its own request, mirror the
+      // batch-response. This keeps `writes()` / `isResourceWrite` seeing one
+      // recorded request per resource operation.
       if (
         request.method === 'POST' &&
         (request.url === `${SERVER_URL}/` || request.url === SERVER_URL)
@@ -622,12 +626,10 @@ const importOneSourceFile = async (): Promise<void> => {
   mount({})
   await userEvent.upload(await screen.findByLabelText('Import file'), harFile('portal-session.har'))
   await waitFor(() => {
-    expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
+    expect(screen.getByText(IMPORT_PLAN_KICKER)).toBeDefined()
   })
-  // One Patient + two Observations + the source-file source file (a local pick
-  // creates its own DocumentReference; a server-sourced HAR reuses the existing
-  // one and previews only the three extracted resources).
-  await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
+  // The source file, one Patient and two Observations, all new.
+  await userEvent.click(screen.getByRole('button', { name: 'Import · 4 new, 0 updated, 0 linked' }))
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
   })

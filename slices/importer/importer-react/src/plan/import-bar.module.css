@@ -1,0 +1,101 @@
+/*
+ * The import bar. Below 768px the bar's own box goes (`display: contents`),
+ * so the sentence sits above in the page's flow and only the action, holding
+ * the full-width button, sticks; a warning line that disables the button
+ * sits inside the action, so it sticks with it. From 768px the bar is one stuck box with the
+ * sentence and the button side by side.
+ *
+ * It sticks below the status bar, read through `--safe-area-inset-top` as
+ * the page header reads it.
+ */
+.import-bar {
+  display: contents;
+}
+
+.import-bar__sentence {
+  margin: 0;
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-4);
+  color: var(--color-neutral-2);
+  text-wrap: pretty;
+}
+
+.import-bar__sentence--blocked {
+  font-weight: var(--font-weight-2);
+  color: var(--color-warning-foreground);
+}
+
+.import-bar__action {
+  border-radius: var(--radius-4);
+  /* Close to the sentence above it, which the page's section gap sets apart. */
+  margin-top: calc(-1 * var(--space-7));
+  position: sticky;
+  top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  z-index: 5;
+  display: flex;
+  padding: var(--space-6) var(--space-7);
+  border: 1px solid var(--card-color-border);
+  background: var(--color-background);
+  box-shadow: var(--card-box-shadow);
+}
+
+.import-bar__action--blocked {
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: 0;
+}
+
+.import-bar__button {
+  flex: 1 1 auto;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+/* The write failure's refusals, under its message. */
+.import-bar__issues {
+  margin: 0;
+  padding-left: var(--space-7);
+}
+
+@media (min-width: 768px) {
+  .import-bar {
+    position: sticky;
+    top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: var(--space-5) var(--space-8);
+    padding: var(--space-6) var(--space-7);
+    border: 1px solid var(--card-color-border);
+    border-radius: var(--radius-4);
+    background: var(--color-background);
+    box-shadow: var(--card-box-shadow);
+  }
+
+  .import-bar__sentence {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .import-bar__action {
+    margin-top: 0;
+    position: static;
+    flex: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  .import-bar__action--blocked {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-5) var(--space-8);
+  }
+
+  .import-bar__button {
+    flex: none;
+    min-height: 0;
+  }
+}

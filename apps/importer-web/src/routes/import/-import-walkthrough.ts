@@ -24,7 +24,7 @@ const ImporterPageWalkthroughAnchor = {
 /**
  * The Importer's walkthrough, in page order, over the Import tab's first
  * screen, the source picker. Once files are picked, the picker gives way to
- * the preview, and only the tabs and Show walkthrough again are left to show.
+ * the import plan, and only the tabs and Show walkthrough again are left to show.
  */
 const IMPORTER_WALKTHROUGH_STEPS: ReadonlyArray<WalkthroughStep> = [
   {
