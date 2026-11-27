@@ -241,3 +241,22 @@ describe('ImportedRecord, what its record copy says of it', () => {
     })
   })
 })
+
+describe('ImportedRecord.originOf', () => {
+  it('should list a record under the file set of its last decoded copy, else of its last copy when every copy is implied', () => {
+    // Arrange
+    const impliedIn = (fileName: string): ReturnType<typeof copyOf> =>
+      copyOf(detached(tyraWire('tyra')), 'rx-1#implied', fileName, { isImplied: true })
+    const fromA = copyOf(detached(tyraWire('tyra')), 'tyra', 'a.har')
+    const fromB = copyOf(detached(tyraWire('tyra')), 'tyra', 'b.pdf')
+
+    // Act
+    const origins = {
+      decoded: ImportedRecord.originOf(recordOf([fromA, fromB, impliedIn('c.har')])),
+      implied: ImportedRecord.originOf(recordOf([impliedIn('c.har'), impliedIn('d.har')])),
+    }
+
+    // Assert
+    expect(origins).toEqual({ decoded: fromB.origin, implied: impliedIn('d.har').origin })
+  })
+})
