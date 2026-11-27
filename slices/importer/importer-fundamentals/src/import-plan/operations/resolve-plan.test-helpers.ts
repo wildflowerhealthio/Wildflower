@@ -25,16 +25,18 @@ const planOf = (
   return suggestPlan(records, locateReferences(records), storedMatch)
 }
 
-/** {@link planOf} `copies`, the record of each copy of `choices` given its choice. */
+/** `plan` with the record of `copy` given `choice`. */
+const withChoiceFor = (
+  plan: ImportPlan.Type,
+  [copy, choice]: readonly [ImportedCopy.Type, RecordChoice.Type]
+): ImportPlan.Type => ImportPlan.choose(plan, [ImportedCopy.recordKeyOf(copy)], choice)
+
+/** {@link planOf} `copies`, the record of each copy of `choices` given its choice ({@link withChoiceFor}). */
 const planWith = (
   copies: readonly ImportedCopy.Type[],
   choices: readonly (readonly [ImportedCopy.Type, RecordChoice.Type])[] = [],
   storedMatch: StoredMatch.Type = StoredMatch.empty
-): ImportPlan.Type =>
-  choices.reduce(
-    (plan, [copy, choice]) => ImportPlan.choose(plan, [ImportedCopy.recordKeyOf(copy)], choice),
-    planOf(copies, storedMatch)
-  )
+): ImportPlan.Type => choices.reduce(withChoiceFor, planOf(copies, storedMatch))
 
 /** A minter that counts: `minted-1`, `minted-2`, …. */
 const countingMinter = (): (() => string) => {

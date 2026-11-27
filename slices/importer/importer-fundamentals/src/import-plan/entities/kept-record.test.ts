@@ -1,4 +1,10 @@
-import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
+import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
+import {
+  type FhirResourceWithId,
+  literalReferenceOf,
+  LogicalReference,
+  ResourceReferences,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -161,4 +167,78 @@ describe('KeptRecord.writtenOf', () => {
       )
     }
   )
+})
+
+describe('KeptRecord.writtenOf, an unlinked reference of the kept record', () => {
+  /** Tyra as the store holds her, her general practitioner named by identifier alone. */
+  const storedWithUnlinked = stored({
+    ...tyraWire('tyra'),
+    id: 'p-1',
+    generalPractitioner: [
+      { type: 'Practitioner', identifier: { system: SOURCE, value: 'dr-brown' }, display: 'Dr. B' },
+    ],
+  })
+  const drBrownReference = LogicalReference.make(
+    'Practitioner',
+    Option.getOrThrow(
+      DetachedResource.keyIdentifierOf(
+        detached({
+          resourceType: 'Practitioner',
+          identifier: [{ system: SOURCE, value: 'dr-brown' }],
+        })
+      )
+    )
+  )
+  /** A merge that takes nothing and adds no identifier, so only a link can cause a write. */
+  const mergingNothing = KeptRecord.make(storedWithUnlinked, [
+    { incoming: detached(tyraWire('tyra')), fieldsTaken: HashSet.empty(), isEdit: false },
+  ])
+  const tableLanding = (target: ReferenceTable.Target): ReferenceTable.Type =>
+    ReferenceTable.make({
+      logicalReferences: [{ logicalReference: drBrownReference, target }],
+      stageLiterals: [],
+      sourceUrls: [],
+    })
+
+  it('should write the kept record with the reference linked, its type, identifier and display kept, when the table lands it on a literal', () => {
+    // Arrange
+    const table = tableLanding(ReferenceTable.Literal({ literalReference: 'Practitioner/pr-1' }))
+
+    // Act
+    const written = KeptRecord.writtenOf(table, mergingNothing)
+
+    // Assert
+    expect(
+      Option.map(written, (resource) =>
+        ResourceReferences.collect(resource).map(({ reference }) => ({
+          reference: reference.reference,
+          type: reference.type,
+          identifier: reference.identifier?.value,
+          display: reference.display,
+        }))
+      )
+    ).toEqual(
+      Option.some([
+        {
+          reference: 'Practitioner/pr-1',
+          type: 'Practitioner',
+          identifier: 'dr-brown',
+          display: 'Dr. B',
+        },
+      ])
+    )
+  })
+
+  it('should write nothing when the table lands the reference on a stub', () => {
+    // Arrange
+    const table = tableLanding(
+      ReferenceTable.Stub({ display: Option.some('Dr. Brown'), keyedBy: Option.none() })
+    )
+
+    // Act
+    const written = KeptRecord.writtenOf(table, mergingNothing)
+
+    // Assert
+    expect(written).toEqual(Option.none())
+  })
 })

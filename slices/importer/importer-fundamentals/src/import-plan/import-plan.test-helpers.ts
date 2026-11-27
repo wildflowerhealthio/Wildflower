@@ -226,14 +226,15 @@ const reviewerStepArbitrary: fc.Arbitrary<ReviewerStep> = fc.record({
   ),
 })
 
-/** `plan` after the reviewer's `steps`, each choosing for or resetting one record. */
+/** `plan` after one reviewer's step: a choice for the record at its index, or a reset of it. */
+const afterStep = (plan: ImportPlan.Type, { index, choice }: ReviewerStep): ImportPlan.Type => {
+  const keys = plan.records.slice(index, index + 1).map(({ record }) => record.key)
+  return choice === null ? ImportPlan.reset(plan, keys) : ImportPlan.choose(plan, keys, choice)
+}
+
+/** `plan` after the reviewer's `steps`, each choosing for or resetting one record ({@link afterStep}). */
 const afterSteps = (plan: ImportPlan.Type, steps: readonly ReviewerStep[]): ImportPlan.Type =>
-  steps.reduce((reviewed, { index, choice }) => {
-    const keys = reviewed.records.slice(index, index + 1).map(({ record }) => record.key)
-    return choice === null
-      ? ImportPlan.reset(reviewed, keys)
-      : ImportPlan.choose(reviewed, keys, choice)
-  }, plan)
+  steps.reduce(afterStep, plan)
 
 export {
   afterSteps,
