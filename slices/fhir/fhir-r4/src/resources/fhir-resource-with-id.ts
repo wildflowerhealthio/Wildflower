@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Equivalence, Schema } from 'effect'
 
 import type { WithMandatoryId } from '../data-types/with-mandatory-id.ts'
 import { type FhirResource, FhirResourceSchema } from './fhir-resource.ts'
@@ -36,5 +36,11 @@ const StoredResourceSchema = FhirResourceSchema.pipe(
 const literalReferenceOf = (resource: FhirResourceWithId): string =>
   `${resource.resourceType}/${resource.id}`
 
-export { hasId, literalReferenceOf, StoredResourceSchema }
+/** Two stored resources are one when they have one literal reference. */
+const sameStoredResource: Equivalence.Equivalence<FhirResourceWithId> = Equivalence.mapInput(
+  Equivalence.string,
+  literalReferenceOf
+)
+
+export { hasId, literalReferenceOf, sameStoredResource, StoredResourceSchema }
 export type { FhirResourceWithId }
