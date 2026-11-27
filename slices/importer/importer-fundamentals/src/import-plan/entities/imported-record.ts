@@ -7,7 +7,8 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierUnion } from '@wildflowerhealthio/fhir-r4/clients'
 import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, HashMap, Option, Order, pipe } from 'effect'
+import { groupInOrder } from '@wildflowerhealthio/kitchen-sink'
+import { Array as Arr, Option, Order } from 'effect'
 
 import * as ImportedCopy from './imported-copy.ts'
 import * as RecordKey from './record-key.ts'
@@ -18,44 +19,15 @@ interface Type {
   readonly copies: Arr.NonEmptyReadonlyArray<ImportedCopy.Type>
 }
 
-/** One record's copies so far, beside the position of its first copy. */
-interface Group {
-  readonly firstPosition: number
-  readonly copies: Arr.NonEmptyReadonlyArray<ImportedCopy.Type>
-}
-
-/** The group `copy` at `position` joins: a new one, or `existing` with it appended. */
-const withCopy = (
-  existing: Option.Option<Group>,
-  copy: ImportedCopy.Type,
-  position: number
-): Group =>
-  Option.match(existing, {
-    onNone: (): Group => ({ firstPosition: position, copies: Arr.of(copy) }),
-    onSome: (group): Group => ({ ...group, copies: Arr.append(group.copies, copy) }),
-  })
-
-/** Groups in the order of their first copies. */
-const byFirstPosition = Order.mapInput(
-  Order.number,
-  ([, { firstPosition }]: readonly [RecordKey.Type, Group]) => firstPosition
-)
-
 /**
  * The records `copies` are copies of, each where its first copy is, each
  * record's copies in the order of `copies`.
  */
 const fromCopies = (copies: readonly ImportedCopy.Type[]): readonly Type[] =>
-  pipe(
-    Arr.reduce(copies, HashMap.empty<RecordKey.Type, Group>(), (grouped, copy, position) =>
-      HashMap.modifyAt(grouped, ImportedCopy.recordKeyOf(copy), (existing) =>
-        Option.some(withCopy(existing, copy, position))
-      )
-    ),
-    HashMap.toEntries,
-    Arr.sortBy(byFirstPosition),
-    Arr.map(([key, { copies: grouped }]): Type => ({ key, copies: grouped }))
-  )
+  groupInOrder(copies, ImportedCopy.recordKeyOf).map(({ key, items }): Type => ({
+    key,
+    copies: items,
+  }))
 
 /**
  * The copy that is the record: the last decoded copy in plan order, else,
