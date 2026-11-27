@@ -2,7 +2,7 @@
  * The import bar. Below 768px the bar's own box goes (`display: contents`),
  * so the sentence sits above in the page's flow and only the action, holding
  * the full-width button, sticks; a warning line that disables the button
- * sits inside the action, so it sticks with it. From 768px the bar is one stuck box with the
+ * sits inside the action with its "Go to record" link, so they stick with it. From 768px the bar is one stuck box with the
  * sentence and the button side by side.
  *
  * It sticks below the status bar, read through `--safe-area-inset-top` as
@@ -43,6 +43,10 @@
   flex-direction: column;
   gap: var(--space-4);
   margin-top: 0;
+}
+
+.import-bar__go-to-record {
+  align-self: flex-start;
 }
 
 .import-bar__button {
@@ -92,6 +96,11 @@
     flex-direction: row;
     align-items: center;
     gap: var(--space-5) var(--space-8);
+  }
+
+  .import-bar__go-to-record {
+    align-self: center;
+    flex: none;
   }
 
   .import-bar__button {
