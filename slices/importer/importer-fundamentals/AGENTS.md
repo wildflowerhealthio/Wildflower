@@ -408,25 +408,27 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     **`isImplied`** (every copy implied) and
     **`logicalReferenceIfKeyedByIdentifier`** (`RecordKey`'s, of its
     resource); and **`literalReferenceUnder(record, id)`**, `<Type>/<id>`.
-  - **`RecordReferences`** — **`Type`** `{ referenced, named, notInImport }`:
+  - **`RecordReferences`** — **`Type`** `{ referenced, named, external }`:
     the records another record references by a logical reference; `named`,
     each logical reference by a qualified identifier a record carries that
     names a record of the import, beside its key (**`NamedRecord`**), one per
-    identifier in the order the identifiers are first carried; and the
-    distinct logical references no record of the import carries the
-    identifier of, in record order, which the store is asked about.
+    identifier in the order the identifiers are first carried; and
+    `external`, the distinct external references in record order: the
+    unlinked references that point outside the import, since no record of it
+    carries their identifier, which the store is asked about.
     **`make`**; **`isReferenced`**. `locateReferences` computes it.
   - **`StoredMatch`** — what the store holds of an import. An **`Entry`** per
     record: its `candidates`, best grade first, and the stored record
     `storedUnderDerivedId`, read for every record whose stage id is derived.
-    **`make({ records, references })`** builds the match from pairs, each
-    record key with its entry (**`makeEntry`**) and each logical reference
-    not in the import with its candidates; **`ofRecord`** and **`ofReference`** read
-    it, nothing found when there is no entry; **`empty`**.
+    **`make({ records, externalReferences })`** builds the match from
+    labelled entries, `{ key, entry }` for each record (**`makeEntry`**) and
+    `{ externalReference, candidates }` for each external reference;
+    **`ofRecord`** and **`ofReference`** read it, nothing found when there
+    is no entry; **`empty`**.
     **`storedCopiesOf(entry)`** is the one answer to which stored records are
     the record: those found by identifier and the one under its derived id,
     each once (`sameStoredResource`); **`storedCopiesOfReference`** is the
-    same answer for a reference not in the import, its candidates found by
+    same answer for an external reference, its candidates found by
     identifier.
   - **`Suggestion`** — **`Type`** `{ choice, reason }`, the choice `None`
     when the record is left undecided; **`Reason`**, a closed tagged enum
@@ -640,7 +642,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     (`RecordReferences`' `named`, from `locateReferences`; an ambiguous one
     lands nowhere), by the stage literal of each of its copies, and by the
     URL a source served it at, so a `Binary` not added goes back to its
-    source URL. A logical reference not in the import lands on the one
+    source URL. An external reference lands on the one
     stored record found for it by identifier
     (`StoredMatch.storedCopiesOfReference`).
   - **`resolvePlan(plan, mintId?)`** (`operations/resolve-plan.ts`) — the

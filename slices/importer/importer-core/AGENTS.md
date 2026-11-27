@@ -245,11 +245,11 @@ that provides those.
   record its schema rejects, `FileImporter.SourceFileNotFound` from a hook)
   as an unreadable row per picked file of the set, after the decode's own,
   and keeps the other sets' copies and notes.
-- `src/find-stored-match.ts` — **`findStoredMatch(records, notInImport)`** is
+- `src/find-stored-match.ts` — **`findStoredMatch(records, externalReferences)`** is
   a `StoredMatch`: one `ResourceMatch.findCandidates` over every record, by
-  its resource (`ImportedRecord.resourceOf`), and every logical reference no
-  record of the import carries the identifier of (`RecordReferences.Type`'s
-  `notInImport`, each by `MatchQuery.fromLogicalReference`), every grade;
+  its resource (`ImportedRecord.resourceOf`), and every external reference,
+  one that points outside the import (`RecordReferences.Type`'s
+  `external`, each by `MatchQuery.fromLogicalReference`), every grade;
   then one `readInBatch` of the derived stage id of every record that
   has one (`ImportedRecord.literalReferenceIfDerived`), whatever was found
   by identifier. It knows only the order it asked in and builds the match
