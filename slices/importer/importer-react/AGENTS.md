@@ -91,9 +91,12 @@ The importer has no HTTP wire union to derive, so there is no separate
 
 - **`src/importer-screen.tsx`** — the flow, top to bottom: one exhaustive
   `Match` over the page hook's state (`useImportPlanPage`), one component per
-  case. Choosing files is the `SourcePicker`; reading is a status line; a
-  failed search is an alert with **Choose other files**; reviewing and
-  importing are the `ImportPlanPage`; imported is the `ImportCompleteNotice`.
+  case. Choosing files is the `SourcePicker`; reading is react-tundraish's
+  `GateCard`, the loader card; a failed read is a danger `Notice` with
+  **Choose other files** as its action; reviewing and importing are the
+  `ImportPlanPage`; imported is the `ImportCompleteNotice`. Every message
+  of the flow that is a notice is react-tundraish's `Notice`, so it looks
+  and announces as an `ErrorBanner` does.
   It reads everything from router context (no props).
 - **`src/plan/`** — the import plan page.
   - `use-import-plan-page.ts` — `useImportPlanPage`, the page's logic. Its
@@ -138,12 +141,13 @@ The importer has no HTTP wire union to derive, so there is no separate
     disabled, or, when nothing would be written, a sentence alone (one for a
     plan whose records are all the same as existing ones, one for files no
     record could be read from). Why the last write did not end in an import
-    is said above it. Below 768px the bar's own box goes (`display:
+    is said above it, in a danger `Notice` listing each distinct refusal. Below 768px the bar's own box goes (`display:
     contents`), so the sentence scrolls with the page and only the action's
     box sticks; the warning line sits inside the action, so it sticks with
     the button it disables.
-  - `import-complete-notice.tsx` — the heading, one line of what was
-    created, updated and linked, and **Import more files**.
+  - `import-complete-notice.tsx` — a section labelled by its heading,
+    **Import complete**, then a success `Notice` of what was created,
+    updated and linked, with **Import more files** as its action.
   - `plan-text.ts` — every sentence, label and plural the page shows.
     `record-text.ts` — `RecordText.titleOf`, a record's title in a sentence:
     a Patient's or Practitioner's name, else the plan's title for it.
@@ -666,7 +670,8 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   file re-picked off the server linked rather than written, a Patient two
   stored records carry the identifier of left open and blocking Import, the
   red lines of an unreadable and an unrecognised file with no record read
-  from either, a failed search, a runner that rejects the read, no way to
+  from either, the loader card while a read is in flight, a failed search,
+  a runner that rejects the read, no way to
   leave while a held transaction is in flight, cancel, and a batch of
   several files with a DICOM study among them. It
   re-wraps `TextEncoder` output through the ambient `Uint8Array` (a jsdom
@@ -678,6 +683,9 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   lists and batch reads from that; it refuses a `transaction` one of whose
   entries fails as a whole, as HFS does, fails every typed search when told
   to, and holds a transaction's answer until a promise it is given settles.
+  It reads a `POST`ed body with `tryParseBundle`, a Schema decode that is
+  `None` for a body that is not a Bundle, so a non-bundle `POST /` falls
+  through to the other routes.
 - `plan/plan-text.test.ts` pins the page's sentences as whole values (both
   write failures' among them), and as a property that a file set's line
   leaves out exactly its zero parts and its parts sum to its records; `plan/record-text.test.ts` pins a record's title
