@@ -61,6 +61,22 @@ describe('Field', () => {
     if (!(input instanceof HTMLInputElement)) throw new Error('expected an <input>')
     expect(input.value).toBe('example.com')
   })
+
+  it('passes root props through to its stack, joining a className to its own', () => {
+    // Arrange / Act
+    render(
+      <Field label="Name" id="name-field" className="extra" data-anchor="name">
+        value
+      </Field>
+    )
+
+    // Assert
+    const root = document.getElementById('name-field')
+    expect(root?.dataset['anchor']).toBe('name')
+    expect(root?.className).toMatch(/field/)
+    expect(root?.classList.contains('extra')).toBe(true)
+    expect(root?.textContent).toBe('Namevalue')
+  })
 })
 
 describe('FieldGroup', () => {
