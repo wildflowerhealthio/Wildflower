@@ -115,19 +115,22 @@ const asMergedIn = (keptRecords: Type, existing: FhirResourceWithId): FhirResour
     onSome: KeptRecord.asMerged,
   })
 
-/**
- * What is written for `existing` once the records of `keptRecords` that
- * merge into it have, its links landed by `table` (`KeptRecord.writtenOf`);
- * `None` when no record merges into it or nothing is written.
- */
-const writtenIn = (
-  table: ReferenceTable.Type,
-  keptRecords: Type,
-  existing: FhirResourceWithId
-): Option.Option<FhirResourceWithId> =>
-  Option.flatMap(Record.get(keptRecords, literalReferenceOf(existing)), (keptRecord) =>
-    KeptRecord.writtenOf(table, keptRecord)
-  )
+/** What is written for each kept record that is written, by its literal reference. */
+type Writes = Record.ReadonlyRecord<string, FhirResourceWithId>
 
-export { asMergedIn, asReviewed, empty, fromRecordChoices, withRecordChoice, writtenIn }
-export type { IncomingRecord, Type }
+/**
+ * What is written for each of `keptRecords`, its links landed by `table`
+ * (`KeptRecord.writtenOf`); a kept record nothing is written for has no
+ * entry.
+ */
+const writesOf = (table: ReferenceTable.Type, keptRecords: Type): Writes =>
+  Record.filterMap(keptRecords, (keptRecord) => KeptRecord.writtenOf(table, keptRecord))
+
+/** What `writes` holds for `existing`; `None` when nothing is written for it. */
+const writeFor = (
+  writes: Writes,
+  existing: FhirResourceWithId
+): Option.Option<FhirResourceWithId> => Record.get(writes, literalReferenceOf(existing))
+
+export { asMergedIn, asReviewed, empty, fromRecordChoices, withRecordChoice, writeFor, writesOf }
+export type { IncomingRecord, Type, Writes }

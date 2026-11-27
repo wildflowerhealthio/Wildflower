@@ -67,7 +67,7 @@ describe('KeptRecords.fromRecordChoices', () => {
       kept: Object.keys(keptRecords),
       gender: genderOf(KeptRecords.asMergedIn(keptRecords, storedTyra)),
       written: Option.map(
-        KeptRecords.writtenIn(NO_LINKS, keptRecords, storedTyra),
+        KeptRecords.writeFor(KeptRecords.writesOf(NO_LINKS, keptRecords), storedTyra),
         literalReferenceOf
       ),
       untouched: KeptRecords.asMergedIn(keptRecords, stored({ ...tyraWire('tyra'), id: 'p-2' })).id,

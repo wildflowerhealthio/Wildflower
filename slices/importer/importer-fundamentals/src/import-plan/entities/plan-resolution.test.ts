@@ -45,7 +45,7 @@ describe('PlanResolution.makeRecord and makeUnneededRecord', () => {
     const [tyra, , drBrown] = samplePlan().records
     if (tyra === undefined || drBrown === undefined)
       throw new Error('The sample plan has three records')
-    const factsOf = (planned: PlannedRecord.Type): PlanResolution.RecordFacts => ({
+    const factsOf = (planned: PlannedRecord.Type): PlanResolution.LandedRecord => ({
       planned,
       id: Option.some('x'),
       resolved: ImportedRecord.resourceOf(planned.record),

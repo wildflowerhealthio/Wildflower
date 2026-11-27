@@ -54,8 +54,12 @@ interface Type {
   readonly records: readonly ResolvedRecord[]
 }
 
-/** What a record is resolved from: the record, its id, its resource as reviewed once resolved. */
-interface RecordFacts {
+/**
+ * A record of the plan once its references have landed: the record, the id
+ * it is written under or links to, and its resource as reviewed (its edit,
+ * else its resource) with its references resolved.
+ */
+interface LandedRecord {
   readonly planned: PlannedRecord.Type
   readonly id: Option.Option<string>
   readonly resolved: FhirResource
@@ -85,7 +89,7 @@ const labelOf = (
 
 /** `planned` resolved, labelled by what happens to it ({@link labelOf}), `written` written for it. */
 const makeRecord = (
-  { planned, id, resolved }: RecordFacts,
+  { planned, id, resolved }: LandedRecord,
   written: Option.Option<FhirResourceWithId>
 ): ResolvedRecord => ({
   planned,
@@ -96,7 +100,7 @@ const makeRecord = (
 })
 
 /** `planned` resolved as unneeded: its choice would write something, but nothing written names it, so nothing is written for it. */
-const makeUnneededRecord = ({ planned, id, resolved }: RecordFacts): ResolvedRecord => ({
+const makeUnneededRecord = ({ planned, id, resolved }: LandedRecord): ResolvedRecord => ({
   planned,
   label: 'Unneeded',
   id,
@@ -108,4 +112,4 @@ const makeUnneededRecord = ({ planned, id, resolved }: RecordFacts): ResolvedRec
 const make = (records: readonly ResolvedRecord[]): Type => ({ records })
 
 export { LabelSchema, labels, make, makeRecord, makeUnneededRecord }
-export type { Label, RecordFacts, ResolvedRecord, Type }
+export type { Label, LandedRecord, ResolvedRecord, Type }
