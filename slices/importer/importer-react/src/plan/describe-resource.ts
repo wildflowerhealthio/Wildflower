@@ -228,11 +228,25 @@ const subjectOf = (
   )
 }
 
-/** The type and summary of a resource read in its wire form. */
-const typeAndSummaryOf = (resource: unknown): Omit<ResourceDescription, 'subject'> => {
+/** `text`; `None` when it is empty. */
+const nonEmpty = (text: string): Option.Option<string> =>
+  Option.liftPredicate(text, (summary) => summary.length > 0)
+
+/** What a resource read in its wire form is listed under when nothing summarises it: `resourceType/id`. */
+const literalOrUnknownOf = (resource: unknown): string => {
+  const header = decode(ResourceHeader, resource) ?? {}
+  return `${header.resourceType ?? 'Unknown'}/${idOrUnknown(header.id)}`
+}
+
+/**
+ * The type of a resource read in its wire form, and its summary; `None` for
+ * a type with no summary, or one whose summary fields say nothing.
+ */
+const typeAndSummaryOf = (
+  resource: unknown
+): { readonly type: string; readonly summary: Option.Option<string> } => {
   const header = decode(ResourceHeader, resource) ?? {}
   const resourceType = header.resourceType ?? 'Unknown'
-  const fallback = `${resourceType}/${idOrUnknown(header.id)}`
   switch (resourceType) {
     case 'Patient': {
       const patient = decode(PatientSummary, resource)
@@ -241,7 +255,7 @@ const typeAndSummaryOf = (resource: unknown): Omit<ResourceDescription, 'subject
       const summary = joinSummary([primary, birthDate])
       return {
         type: 'Patient',
-        summary: summary.length > 0 ? summary : fallback,
+        summary: nonEmpty(summary),
       }
     }
     case 'MedicationRequest': {
@@ -251,7 +265,7 @@ const typeAndSummaryOf = (resource: unknown): Omit<ResourceDescription, 'subject
       const summary = joinSummary([medicationText, status])
       return {
         type: 'MedicationRequest',
-        summary: summary.length > 0 ? summary : fallback,
+        summary: nonEmpty(summary),
       }
     }
     case 'MedicationDispense': {
@@ -261,7 +275,7 @@ const typeAndSummaryOf = (resource: unknown): Omit<ResourceDescription, 'subject
       const summary = joinSummary([medicationText, status])
       return {
         type: 'MedicationDispense',
-        summary: summary.length > 0 ? summary : fallback,
+        summary: nonEmpty(summary),
       }
     }
     case 'Observation': {
@@ -275,7 +289,7 @@ const typeAndSummaryOf = (resource: unknown): Omit<ResourceDescription, 'subject
       const summary = joinSummary([code, value])
       return {
         type: 'Observation',
-        summary: summary.length > 0 ? summary : fallback,
+        summary: nonEmpty(summary),
       }
     }
     case 'DiagnosticReport': {
@@ -301,7 +315,7 @@ const typeAndSummaryOf = (resource: unknown): Omit<ResourceDescription, 'subject
       const summary = joinSummary([code, effective, resultCount, status])
       return {
         type: 'DiagnosticReport',
-        summary: summary.length > 0 ? summary : fallback,
+        summary: nonEmpty(summary),
       }
     }
     case 'Practitioner': {
@@ -309,11 +323,11 @@ const typeAndSummaryOf = (resource: unknown): Omit<ResourceDescription, 'subject
       const primary = HumanName.displayName(practitioner?.name ?? []) ?? ''
       return {
         type: 'Practitioner',
-        summary: primary.length > 0 ? primary : fallback,
+        summary: nonEmpty(primary),
       }
     }
     default:
-      return { type: resourceType, summary: fallback }
+      return { type: resourceType, summary: Option.none() }
   }
 }
 
@@ -332,7 +346,20 @@ const describeResource = (
   labels: ReadonlyMap<string, string>
 ): ResourceDescription => {
   const wire = wireOf(resource)
-  return { ...typeAndSummaryOf(wire), subject: subjectOf(wire, labels) }
+  const { type, summary } = typeAndSummaryOf(wire)
+  return {
+    type,
+    summary: Option.getOrElse(summary, () => literalOrUnknownOf(wire)),
+    subject: subjectOf(wire, labels),
+  }
 }
 
-export { describeResource, resourceTypeOf, type ResourceDescription }
+/**
+ * `resource`'s one-line summary ({@link describeResource}); `None` for a type
+ * with no summary, or one whose summary fields say nothing, where
+ * `describeResource` falls back to `resourceType/id`.
+ */
+const summaryIfDescribed = (resource: FhirResource): Option.Option<string> =>
+  typeAndSummaryOf(wireOf(resource)).summary
+
+export { describeResource, resourceTypeOf, summaryIfDescribed, type ResourceDescription }
