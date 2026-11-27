@@ -12,7 +12,7 @@ import {
   LogicalReference,
   ResourceReferences,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Data, Effect, HashMap, Match, Option, pipe } from 'effect'
+import { Array as Arr, Data, HashMap, Match, Option, pipe } from 'effect'
 
 import * as MetaSource from '../../meta-source.ts'
 
@@ -179,6 +179,16 @@ const withSourceLanded = <TResource extends FhirResource>(
   )
 
 /**
+ * The literal reference `table` lands `logicalReference` on: `None` when it
+ * lands on a stub or nowhere, or on several literals that disagree
+ * (`ReferencePlan.literalReferenceFor`).
+ */
+const literalReferenceFor = (
+  table: Type,
+  logicalReference: LogicalReference.Type
+): Option.Option<string> => ReferencePlan.literalReferenceFor(table.referencePlan, logicalReference)
+
+/**
  * `resource` with its references resolved by `table`: each by a record's
  * stage literal landed where the record's target says; each logical one to
  * a stub given its display; each logical one with a literal target made
@@ -187,14 +197,14 @@ const withSourceLanded = <TResource extends FhirResource>(
  * is adopted by); its `meta.source` landed with its source file; every other
  * reference as it is.
  */
-const resolve = <TResource extends FhirResource>(
-  table: Type,
-  resource: TResource
-): Effect.Effect<TResource> =>
-  resolveReferences(withStubDisplays(table, withStageLiteralsLanded(table, resource))).pipe(
-    Effect.map((resolved) => withSourceLanded(table, resolved)),
-    Effect.provideService(ReferencePlan.InForce, table.referencePlan)
+const resolve = <TResource extends FhirResource>(table: Type, resource: TResource): TResource =>
+  withSourceLanded(
+    table,
+    resolveReferences(
+      table.referencePlan,
+      withStubDisplays(table, withStageLiteralsLanded(table, resource))
+    )
   )
 
-export { Literal, make, resolve, Stub }
+export { Literal, literalReferenceFor, make, resolve, Stub }
 export type { Target, Type }

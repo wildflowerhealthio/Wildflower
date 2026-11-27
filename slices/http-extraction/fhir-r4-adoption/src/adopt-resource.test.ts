@@ -1657,11 +1657,7 @@ describe('resolveReferences', () => {
       ],
       []
     )
-    const resolved = Effect.runSync(
-      resolveReferences(observation).pipe(
-        Effect.provideService(ReferencePlan.InForce, referencePlan)
-      )
-    )
+    const resolved = resolveReferences(referencePlan, observation)
     expect({ id: resolved.id, subject: asObservation(resolved).subject?.reference }).toEqual({
       id: null,
       subject: 'Patient/p-1',

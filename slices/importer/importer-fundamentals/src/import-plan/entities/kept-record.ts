@@ -15,7 +15,7 @@ import {
   ResourceReferences,
   StoredResourceSchema,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Effect, HashMap, HashSet, Option, pipe, Record, Schema } from 'effect'
+import { Array as Arr, HashMap, HashSet, Option, Record, Schema } from 'effect'
 
 import * as RecordChoice from './record-choice.ts'
 import * as ReferenceTable from './reference-table.ts'
@@ -130,53 +130,43 @@ const asMerged = (keptRecord: Type): FhirResourceWithId => {
 }
 
 /** Whether a merge writes anything into the kept record: an edit, a taken field, or an identifier it lacks. */
-const writesSomething = (keptRecord: Type): boolean =>
+const mergesWriteSomething = (keptRecord: Type): boolean =>
   keptRecord.merges.some(({ isEdit, fieldsTaken }) => isEdit || HashSet.size(fieldsTaken) > 0) ||
   identifiersOf(keptRecord).length > ownIdentifiersOf(keptRecord).length
 
-/** Whether `reference` names its target by a type and a qualified identifier alone, with no literal. */
-const isUnlinked = (reference: ReferenceType): boolean =>
-  Option.isSome(LogicalReference.tryFromReference(reference))
+/**
+ * The literal `table` lands `reference` on when `reference` is unlinked: it
+ * names its target by a type and a qualified identifier alone, with no
+ * literal (`LogicalReference.tryFromReference`). `None` for any other
+ * reference, and for an unlinked one the table lands on a stub or nowhere.
+ */
+const linkFor = (table: ReferenceTable.Type, reference: ReferenceType): Option.Option<string> =>
+  Option.flatMap(LogicalReference.tryFromReference(reference), (logicalReference) =>
+    ReferenceTable.literalReferenceFor(table, logicalReference)
+  )
+
+/** Whether `table` links a reference of `resource`: one of its unlinked references lands on a literal ({@link linkFor}). */
+const gainsLink = (table: ReferenceTable.Type, resource: FhirResourceWithId): boolean =>
+  ResourceReferences.collect(resource).some(({ reference }) =>
+    Option.isSome(linkFor(table, reference))
+  )
 
 /**
- * `stored` with each of its unlinked references ({@link isUnlinked}) given
- * the literal `table` lands it on (`ReferenceTable.resolve`), keeping its
- * `type`, `identifier` and `display`; every other reference, and a reference
- * the table lands on a stub or nowhere, as it is. So the links are completed
- * and nothing the stored record says is replaced.
+ * `resource` with each of its unlinked references given the literal `table`
+ * lands it on ({@link linkFor}), keeping its `type`, `identifier` and
+ * `display`; every other reference as it is. So the links are completed and
+ * nothing the stored record says is replaced.
  */
 const withLinksLanded = (
   table: ReferenceTable.Type,
-  stored: FhirResourceWithId
-): Effect.Effect<FhirResourceWithId> =>
-  Effect.map(ReferenceTable.resolve(table, stored), (resolved) => {
-    const resolvedByPath = new Map(
-      ResourceReferences.collect(resolved).map(({ path, reference }) => [path, reference] as const)
-    )
-    return ResourceReferences.mapReferences(stored, (reference, path) =>
-      isUnlinked(reference)
-        ? pipe(
-            Option.fromNullable(resolvedByPath.get(path)?.reference),
-            Option.match({
-              onNone: () => reference,
-              onSome: (literal) => ({ ...reference, reference: literal }),
-            })
-          )
-        : reference
-    )
-  })
-
-/** Whether `linked` gained a link `stored` lacks: a reference at some path that is unlinked in `stored` and literal in `linked`. */
-const gainsLink = (stored: FhirResourceWithId, linked: FhirResourceWithId): boolean => {
-  const unlinkedPaths = new Set(
-    ResourceReferences.collect(stored)
-      .filter(({ reference }) => isUnlinked(reference))
-      .map(({ path }) => path)
+  resource: FhirResourceWithId
+): FhirResourceWithId =>
+  ResourceReferences.mapReferences(resource, (reference) =>
+    Option.match(linkFor(table, reference), {
+      onNone: () => reference,
+      onSome: (literalReference) => ({ ...reference, reference: literalReference }),
+    })
   )
-  return ResourceReferences.collect(linked).some(
-    ({ path, reference }) => unlinkedPaths.has(path) && reference.reference !== null
-  )
-}
 
 /**
  * What is written for the kept record: the record as merged
@@ -192,11 +182,10 @@ const gainsLink = (stored: FhirResourceWithId, linked: FhirResourceWithId): bool
 const writtenOf = (
   table: ReferenceTable.Type,
   keptRecord: Type
-): Effect.Effect<Option.Option<FhirResourceWithId>> => {
-  const standing = asMerged(keptRecord)
-  return Effect.map(withLinksLanded(table, standing), (linked) =>
-    Option.liftPredicate(linked, () => writesSomething(keptRecord) || gainsLink(standing, linked))
-  )
+): Option.Option<FhirResourceWithId> => {
+  const merged = asMerged(keptRecord)
+  const isWritten = mergesWriteSomething(keptRecord) || gainsLink(table, merged)
+  return isWritten ? Option.some(withLinksLanded(table, merged)) : Option.none()
 }
 
 /**
@@ -255,11 +244,10 @@ const writtenIn = (
   byKeptRecord: ByKeptRecord,
   existing: FhirResourceWithId,
   table: ReferenceTable.Type
-): Effect.Effect<Option.Option<FhirResourceWithId>> =>
-  Option.match(HashMap.get(byKeptRecord, literalReferenceOf(existing)), {
-    onNone: () => Effect.succeed(Option.none()),
-    onSome: (keptRecord) => writtenOf(table, keptRecord),
-  })
+): Option.Option<FhirResourceWithId> =>
+  Option.flatMap(HashMap.get(byKeptRecord, literalReferenceOf(existing)), (keptRecord) =>
+    writtenOf(table, keptRecord)
+  )
 
 export { asMergedIn, noneMerged, withRecordChoice, writtenIn }
 export type { ByKeptRecord, Merge, Type }

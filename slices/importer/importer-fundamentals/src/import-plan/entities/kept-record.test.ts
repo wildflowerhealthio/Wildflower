@@ -1,5 +1,5 @@
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, HashSet, Option } from 'effect'
+import { HashSet, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { detached, OTHER_SOURCE, SOURCE, stored, tyraWire } from '../import-plan.test-helpers.ts'
@@ -170,7 +170,7 @@ describe('KeptRecord.writtenIn', () => {
       const keptRecords = mergedInto(storedTyra, Option.toArray(merge))
 
       // Act
-      const writtenForm = Effect.runSync(KeptRecord.writtenIn(keptRecords, storedTyra, NO_LINKS))
+      const writtenForm = KeptRecord.writtenIn(keptRecords, storedTyra, NO_LINKS)
 
       // Assert
       expect(Option.map(writtenForm, literalReferenceOf)).toEqual(
@@ -211,7 +211,7 @@ describe('KeptRecord.withRecordChoice', () => {
     expect({
       asMerged: demographicsOf(KeptRecord.asMergedIn(byKeptRecord, storedTyra)),
       written: Option.map(
-        Effect.runSync(KeptRecord.writtenIn(byKeptRecord, storedTyra, NO_LINKS)),
+        KeptRecord.writtenIn(byKeptRecord, storedTyra, NO_LINKS),
         literalReferenceOf
       ),
       untouched: KeptRecord.asMergedIn(byKeptRecord, { ...storedTyra, id: 'p-2' }).id,

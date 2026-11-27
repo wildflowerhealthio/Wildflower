@@ -1,6 +1,6 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { LogicalReference, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, Option } from 'effect'
+import { Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { detached, SOURCE, tyraWire } from '../import-plan.test-helpers.ts'
@@ -28,11 +28,6 @@ const sourceFile = detached({
   content: [{ attachment: { contentType: 'text/plain', url: SOURCE_URL } }],
 })
 
-const resolve = <TResource extends DetachedResource.Type>(
-  table: ReferenceTable.Type,
-  resource: TResource
-): TResource => Effect.runSync(ReferenceTable.resolve(table, resource))
-
 describe('ReferenceTable.resolve', () => {
   it('should land each spelling of a record with a literal target on its literal', () => {
     // Arrange
@@ -51,7 +46,7 @@ describe('ReferenceTable.resolve', () => {
     })
 
     // Act
-    const resolved = resolve(table, sourceFile)
+    const resolved = ReferenceTable.resolve(table, sourceFile)
 
     // Assert
     expect(resolved).toMatchObject({
@@ -76,7 +71,7 @@ describe('ReferenceTable.resolve', () => {
     })
 
     // Act
-    const resolved = resolve(table, sourceFile)
+    const resolved = ReferenceTable.resolve(table, sourceFile)
 
     // Assert
     expect(resolved).toMatchObject({
@@ -117,7 +112,9 @@ describe('ReferenceTable.resolve', () => {
 
     // Act
     const displays = [named(null), named('T. Ashford')].map((resource) =>
-      ResourceReferences.collect(resolve(table, resource)).map(({ reference }) => reference.display)
+      ResourceReferences.collect(ReferenceTable.resolve(table, resource)).map(
+        ({ reference }) => reference.display
+      )
     )
 
     // Assert
@@ -143,7 +140,7 @@ describe('ReferenceTable.resolve', () => {
       naming({ type: 'Patient', identifier: { system: SOURCE, value: 'tyra' } }),
       naming({ reference: 'Patient/stage-tyra' }),
     ].map((resource) =>
-      ResourceReferences.collect(resolve(table, resource)).map(({ reference }) => ({
+      ResourceReferences.collect(ReferenceTable.resolve(table, resource)).map(({ reference }) => ({
         reference: reference.reference,
         display: reference.display,
       }))

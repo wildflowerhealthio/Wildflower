@@ -42,12 +42,7 @@ const resolvedBy = <TResource extends DetachedResource.Type>(
   plan: ImportPlan.Type,
   ids: Ids,
   resource: TResource
-): TResource =>
-  Effect.runSync(
-    Effect.flatMap(landReferences(plan, idsOf(ids)), (table) =>
-      ReferenceTable.resolve(table, resource)
-    )
-  )
+): TResource => ReferenceTable.resolve(Effect.runSync(landReferences(plan, idsOf(ids))), resource)
 
 /** The reference `resource` holds at `path` once resolved by the table `plan` lands. */
 const landedAt = (

@@ -27,9 +27,8 @@ const adoptAttachmentUrls = <TResource extends FhirResource>(
   )
 
 /**
- * `resource` with each of its references and attachment URLs the reference
- * plan in force (`ReferencePlan.InForce`) resolves made literal, still
- * detached.
+ * `resource` with each of its references and attachment URLs that
+ * `referencePlan` resolves made literal, still detached.
  *
  * @remarks
  * Every reference the resource carries, at any depth, is rewritten by the
@@ -40,13 +39,12 @@ const adoptAttachmentUrls = <TResource extends FhirResource>(
  * ({@link adoptAttachmentUrls}). Nothing else changes.
  */
 const resolveReferences = <TResource extends FhirResource>(
+  referencePlan: ReferencePlan.Type,
   resource: TResource
-): Effect.Effect<TResource, never, ReferencePlan.InForce> =>
-  Effect.map(ReferencePlan.InForce, (referencePlan) =>
-    adoptAttachmentUrls(
-      ReferenceRewrite.apply(resource, ReferencePlan.toRewrite(referencePlan)),
-      referencePlan
-    )
+): TResource =>
+  adoptAttachmentUrls(
+    ReferenceRewrite.apply(resource, ReferencePlan.toRewrite(referencePlan)),
+    referencePlan
   )
 
 /**
@@ -76,7 +74,10 @@ const adopt = (
   record: DetachedResource.Type,
   id: string
 ): Effect.Effect<FhirResourceWithId, never, ReferencePlan.InForce> =>
-  Effect.map(resolveReferences(record), (resolved) => ({ ...resolved, id }))
+  Effect.map(ReferencePlan.InForce, (referencePlan) => ({
+    ...resolveReferences(referencePlan, record),
+    id,
+  }))
 
 /**
  * The id a source gave an adopted resource: the value of its identifier in
