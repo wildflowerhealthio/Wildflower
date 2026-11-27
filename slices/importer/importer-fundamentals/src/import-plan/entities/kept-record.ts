@@ -1,6 +1,6 @@
 /**
  * A kept record: a stored record an import merges its records into, with
- * those merges in the order they are made (`ImportedRecord.mergeOrder`).
+ * those merges in the order they are made.
  *
  * @packageDocumentation
  */
@@ -10,14 +10,12 @@ import { IdentifierAndReference, type ReferenceType } from '@wildflowerhealthio/
 import {
   type FhirResource,
   type FhirResourceWithId,
-  literalReferenceOf,
   LogicalReference,
   ResourceReferences,
   StoredResourceSchema,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, HashMap, HashSet, Option, Record, Schema } from 'effect'
+import { Array as Arr, HashSet, Option, Record, Schema } from 'effect'
 
-import * as RecordChoice from './record-choice.ts'
 import * as ReferenceTable from './reference-table.ts'
 
 /**
@@ -43,8 +41,8 @@ interface Type {
   readonly merges: readonly Merge[]
 }
 
-/** `kept` with nothing merged into it yet. */
-const of = (kept: FhirResourceWithId): Type => ({ kept, merges: [] })
+/** `kept` beside `merges`, the merges into it in the order they are made. */
+const make = (kept: FhirResourceWithId, merges: readonly Merge[]): Type => ({ kept, merges })
 
 /** `keptRecord` with `merge` made after its merges. */
 const withMerge = (keptRecord: Type, merge: Merge): Type => ({
@@ -101,12 +99,22 @@ const identifiersOf = (keptRecord: Type): readonly IdentifierAndReference.Identi
 const encodeIdentifier = Schema.encodeSync(IdentifierAndReference.IdentifierSchema)
 const decodeStored = Schema.decodeUnknownSync(StoredResourceSchema)
 
+/** The fields `merge` takes from its incoming record, as that record's schema encodes them. */
+const takenFieldsOf = ({ incoming, fieldsTaken }: Merge): Record.ReadonlyRecord<string, unknown> =>
+  Record.filter(fieldsOf(incoming), (_, field) => HashSet.has(fieldsTaken, field))
+
+/** `fields` with the fields `merge` takes laid over them ({@link takenFieldsOf}). */
+const withTakenFields = (
+  fields: Record.ReadonlyRecord<string, unknown>,
+  merge: Merge
+): Record.ReadonlyRecord<string, unknown> => ({ ...fields, ...takenFieldsOf(merge) })
+
 /**
  * The kept record once its merges are made, under its own id: the last
  * edit's fields, else its own, with the taken fields of each merge after
- * that laid over them in order, later ones winning, and its identifiers
- * joined with every qualified identifier an incoming record carries that it
- * lacks.
+ * that laid over them in order, later ones winning
+ * ({@link withTakenFields}), and its identifiers joined with every qualified
+ * identifier an incoming record carries that it lacks.
  *
  * @throws When the result does not decode as a stored resource. It is built
  *   from decoded resources of one type, so that is a defect.
@@ -115,13 +123,7 @@ const asMerged = (keptRecord: Type): FhirResourceWithId => {
   if (keptRecord.merges.length === 0) return keptRecord.kept
   const { base, fieldMerges } = baseOf(keptRecord)
   return decodeStored({
-    ...fieldMerges.reduce(
-      (fields, { incoming, fieldsTaken }) => ({
-        ...fields,
-        ...Record.filter(fieldsOf(incoming), (_, field) => HashSet.has(fieldsTaken, field)),
-      }),
-      fieldsOf(base)
-    ),
+    ...Arr.reduce(fieldMerges, fieldsOf(base), withTakenFields),
     ...(DetachedResource.hasIdentifier(keptRecord.kept)
       ? { identifier: identifiersOf(keptRecord).map((identifier) => encodeIdentifier(identifier)) }
       : {}),
@@ -188,66 +190,5 @@ const writtenOf = (
   return isWritten ? Option.some(withLinksLanded(table, merged)) : Option.none()
 }
 
-/**
- * Each stored record the import's records merge into, as a kept record with
- * their merges so far, by its literal reference.
- */
-type ByKeptRecord = HashMap.HashMap<string, Type>
-
-/** No stored record merged into yet. */
-const noneMerged: ByKeptRecord = HashMap.empty()
-
-/**
- * `byKeptRecord` with the merge one record of the import makes after the
- * records before it, when `choice` merges into a stored record: `incoming`,
- * the record as reviewed, the fields the choice takes from it laid over that
- * kept record, or, when it is the reviewer's edit, replacing its content
- * whole. Any other choice, or none, merges nothing.
- *
- * @remarks
- * The one fold of "the records that merge into one kept record do so in
- * merge order" (`ImportedRecord.mergeOrder`): suggesting a plan folds each
- * suggestion through it, and resolving one each effective choice, both in
- * that order.
- */
-const withRecordChoice = (
-  byKeptRecord: ByKeptRecord,
-  choice: Option.Option<RecordChoice.Type>,
-  { incoming, isEdit }: Omit<Merge, 'fieldsTaken'>
-): ByKeptRecord =>
-  Option.match(Option.filter(choice, RecordChoice.is('MergeIntoExistingRecord')), {
-    onNone: () => byKeptRecord,
-    onSome: ({ existing, fieldsTaken }) =>
-      HashMap.modifyAt(byKeptRecord, literalReferenceOf(existing), (keptRecord) =>
-        Option.some(
-          withMerge(
-            Option.getOrElse(keptRecord, () => of(existing)),
-            { incoming, fieldsTaken, isEdit }
-          )
-        )
-      ),
-  })
-
-/** `existing` as merged once the records of `byKeptRecord` that merge into it have ({@link asMerged}). */
-const asMergedIn = (byKeptRecord: ByKeptRecord, existing: FhirResourceWithId): FhirResourceWithId =>
-  Option.match(HashMap.get(byKeptRecord, literalReferenceOf(existing)), {
-    onNone: () => existing,
-    onSome: asMerged,
-  })
-
-/**
- * What is written for `existing` once the records of `byKeptRecord` that
- * merge into it have, its links landed by `table` ({@link writtenOf}); `None`
- * when no record merges into it or nothing is written.
- */
-const writtenIn = (
-  byKeptRecord: ByKeptRecord,
-  existing: FhirResourceWithId,
-  table: ReferenceTable.Type
-): Option.Option<FhirResourceWithId> =>
-  Option.flatMap(HashMap.get(byKeptRecord, literalReferenceOf(existing)), (keptRecord) =>
-    writtenOf(table, keptRecord)
-  )
-
-export { asMergedIn, noneMerged, withRecordChoice, writtenIn }
-export type { ByKeptRecord, Merge, Type }
+export { asMerged, make, withMerge, writtenOf }
+export type { Merge, Type }

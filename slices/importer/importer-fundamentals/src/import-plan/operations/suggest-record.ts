@@ -9,7 +9,7 @@ import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-
 import { onlyElement } from '@wildflowerhealthio/kitchen-sink'
 import { HashSet, Option } from 'effect'
 
-import * as KeptRecord from '../entities/kept-record.ts'
+import * as KeptRecords from '../entities/kept-records.ts'
 import * as RecordChoice from '../entities/record-choice.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
@@ -28,7 +28,7 @@ interface SuggestionFacts {
    * Each kept record the records ahead of this one in merge order merge
    * into, with their merges, by the kept record's literal reference.
    */
-  readonly mergedSoFar: KeptRecord.ByKeptRecord
+  readonly mergedSoFar: KeptRecords.Type
   /** How the import's and the stored records' references are compared. */
   readonly comparableReferences: ComparableReferences.Type
 }
@@ -47,7 +47,7 @@ const countedNameMatches = (
 
 /**
  * The differences of `facts.resource` from `existing` as merged once the
- * records ahead of it merged into it (`KeptRecord.asMergedIn`).
+ * records ahead of it merged into it (`KeptRecords.asMergedIn`).
  */
 const differencesFor = (
   facts: SuggestionFacts,
@@ -55,7 +55,7 @@ const differencesFor = (
 ): readonly Difference[] =>
   differencesOf(
     facts.resource,
-    KeptRecord.asMergedIn(facts.mergedSoFar, existing),
+    KeptRecords.asMergedIn(facts.mergedSoFar, existing),
     facts.comparableReferences
   )
 

@@ -5,11 +5,11 @@
  * @packageDocumentation
  */
 import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Equal, Option } from 'effect'
+import { Array as Arr, Equal } from 'effect'
 
 import type * as ImportPlan from '../entities/import-plan.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
-import * as KeptRecord from '../entities/kept-record.ts'
+import * as KeptRecords from '../entities/kept-records.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import * as ComparableReferences from './differences-of/comparable-references.ts'
 import { type Difference, differencesOf } from './differences-of/differences-of.ts'
@@ -48,21 +48,16 @@ const aheadOf = (
 
 /**
  * `existing` as the records of `plan` ahead of `planned` leave it, each
- * merging into it by its effective choice (`PlannedRecord.effectiveChoice`)
- * with its reviewed resource, through `KeptRecord.withRecordChoice`.
+ * merging into it by its effective choice with its reviewed resource
+ * (`KeptRecords.fromRecordChoices` of them as reviewed).
  */
 const keptAhead = (
   plan: ImportPlan.Type,
   planned: PlannedRecord.Type,
   existing: FhirResourceWithId
 ): FhirResourceWithId =>
-  KeptRecord.asMergedIn(
-    Arr.reduce(aheadOf(plan, planned), KeptRecord.noneMerged, (byKeptRecord, ahead) =>
-      KeptRecord.withRecordChoice(byKeptRecord, PlannedRecord.effectiveChoice(ahead), {
-        incoming: PlannedRecord.reviewedResourceOf(ahead),
-        isEdit: Option.isSome(ahead.edit),
-      })
-    ),
+  KeptRecords.asMergedIn(
+    KeptRecords.fromRecordChoices(aheadOf(plan, planned).map(KeptRecords.asReviewed)),
     existing
   )
 

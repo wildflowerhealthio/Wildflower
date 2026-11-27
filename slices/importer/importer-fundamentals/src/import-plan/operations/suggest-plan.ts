@@ -8,22 +8,12 @@ import { Array as Arr, Order } from 'effect'
 
 import * as ImportPlan from '../entities/import-plan.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
-import * as KeptRecord from '../entities/kept-record.ts'
+import * as KeptRecords from '../entities/kept-records.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import * as RecordReferences from '../entities/record-references.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as ComparableReferences from './differences-of/comparable-references.ts'
 import { suggestRecord } from './suggest-record.ts'
-
-/** `mergedSoFar` with `planned`'s suggested merge made, when its suggestion merges into a stored record. */
-const withSuggestedMerge = (
-  mergedSoFar: KeptRecord.ByKeptRecord,
-  planned: PlannedRecord.Type
-): KeptRecord.ByKeptRecord =>
-  KeptRecord.withRecordChoice(mergedSoFar, planned.suggestion.choice, {
-    incoming: ImportedRecord.resourceOf(planned.record),
-    isEdit: false,
-  })
 
 /**
  * One record of the plan: what the store holds of it and its suggestion, its
@@ -34,7 +24,7 @@ const planRecord = (
   storedMatch: StoredMatch.Type,
   recordReferences: RecordReferences.Type,
   comparableReferences: ComparableReferences.Type,
-  mergedSoFar: KeptRecord.ByKeptRecord,
+  mergedSoFar: KeptRecords.Type,
   record: ImportedRecord.Type
 ): PlannedRecord.Type => {
   const recordMatch = StoredMatch.ofRecord(storedMatch, record.key)
@@ -74,7 +64,7 @@ const byPosition = Order.mapInput(Order.number, ({ position }: PlacedInPlan<unkn
  * `ImportedRecord.mergeOrder`, then plan order): decoded records first,
  * implied ones after. A record suggested to merge into a stored record a record ahead of
  * it is suggested to merge into has its differences measured against that
- * kept record as the earlier merge leaves it (`KeptRecord.asMergedIn`), so two
+ * kept record as the earlier merge leaves it (`KeptRecords.asMergedIn`), so two
  * suggestions never take one field twice, and a decoded record never leaves
  * a field to an implied record the write may drop. References compare by
  * what they name (`ComparableReferences`), not by their literal.
@@ -89,23 +79,24 @@ const suggestPlan = (
     Arr.map(records, (value, position): PlacedInPlan<ImportedRecord.Type> => ({ position, value })),
     ({ value }) => value
   )
-  const [, planned] = Arr.mapAccum(
-    inMergeOrder,
-    KeptRecord.noneMerged,
-    (
+  /** The next record suggested against the merges suggested so far, and those merges with its own. */
+  const suggestNext = (
+    mergedSoFar: KeptRecords.Type,
+    { position, value: record }: PlacedInPlan<ImportedRecord.Type>
+  ): [KeptRecords.Type, PlacedInPlan<PlannedRecord.Type>] => {
+    const planned = planRecord(
+      storedMatch,
+      recordReferences,
+      comparableReferences,
       mergedSoFar,
-      { position, value: record }
-    ): [KeptRecord.ByKeptRecord, PlacedInPlan<PlannedRecord.Type>] => {
-      const plannedRecord = planRecord(
-        storedMatch,
-        recordReferences,
-        comparableReferences,
-        mergedSoFar,
-        record
-      )
-      return [withSuggestedMerge(mergedSoFar, plannedRecord), { position, value: plannedRecord }]
-    }
-  )
+      record
+    )
+    return [
+      KeptRecords.withRecordChoice(mergedSoFar, KeptRecords.asReviewed(planned)),
+      { position, value: planned },
+    ]
+  }
+  const [, planned] = Arr.mapAccum(inMergeOrder, KeptRecords.empty, suggestNext)
   return ImportPlan.make(
     Arr.map(Arr.sort(planned, byPosition), ({ value }) => value),
     storedMatch

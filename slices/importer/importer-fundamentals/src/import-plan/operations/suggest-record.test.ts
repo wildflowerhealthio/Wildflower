@@ -8,7 +8,7 @@ import { HashSet, Match, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as KeptRecord from '../entities/kept-record.ts'
-import * as RecordChoice from '../entities/record-choice.ts'
+import * as KeptRecords from '../entities/kept-records.ts'
 import * as StoredMatch from '../entities/stored-match.ts'
 import * as Suggestion from '../entities/suggestion.ts'
 import { candidate, detached, drBrownWire, stored, tyraWire } from '../import-plan.test-helpers.ts'
@@ -29,7 +29,7 @@ const factsFor = (
   resource,
   storedMatch: StoredMatch.makeEntry(candidates, storedUnderDerivedId),
   isReferenced: false,
-  mergedSoFar: KeptRecord.noneMerged,
+  mergedSoFar: KeptRecords.empty,
   comparableReferences: ComparableReferences.of([], StoredMatch.empty),
   ...overrides,
 })
@@ -265,16 +265,11 @@ describe('suggestRecord', () => {
   it('should leave the fields an earlier record takes out of the gaps it fills', () => {
     // Arrange
     const earlier = detached(tyraWire('tyra-copy', { gender: 'female' }))
-    const mergedSoFar = KeptRecord.withRecordChoice(
-      KeptRecord.noneMerged,
-      Option.some(
-        RecordChoice.MergeIntoExistingRecord({
-          existing: storedTyra,
-          fieldsTaken: HashSet.make('gender'),
-        })
-      ),
-      { incoming: earlier, isEdit: false }
-    )
+    const mergedSoFar: KeptRecords.Type = {
+      [literalReferenceOf(storedTyra)]: KeptRecord.make(storedTyra, [
+        { incoming: earlier, fieldsTaken: HashSet.make('gender'), isEdit: false },
+      ]),
+    }
 
     // Act
     const suggestion = suggestRecord(

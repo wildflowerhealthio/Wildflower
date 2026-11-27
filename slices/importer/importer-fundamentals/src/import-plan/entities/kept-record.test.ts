@@ -4,36 +4,19 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { detached, OTHER_SOURCE, SOURCE, stored, tyraWire } from '../import-plan.test-helpers.ts'
 import * as KeptRecord from './kept-record.ts'
-import * as RecordChoice from './record-choice.ts'
 import * as ReferenceTable from './reference-table.ts'
 
 /**
  * Covers a kept record as merged once the import's records merge into it, in
- * order, an edit among them; what is written for it; and the one fold of
- * records' choices over the stored records they merge into.
+ * order, an edit among them, and what is written for it.
  */
 
 const storedTyra = stored({ ...tyraWire('tyra'), id: 'p-1' })
 
-/** The kept records, `existing` among them, once records merging into it make `merges` in order. */
-const mergedInto = (
-  existing: FhirResourceWithId,
-  merges: readonly KeptRecord.Merge[]
-): KeptRecord.ByKeptRecord =>
-  merges.reduce(
-    (byKeptRecord, { incoming, fieldsTaken, isEdit }) =>
-      KeptRecord.withRecordChoice(
-        byKeptRecord,
-        Option.some(RecordChoice.MergeIntoExistingRecord({ existing, fieldsTaken })),
-        { incoming, isEdit }
-      ),
-    KeptRecord.noneMerged
-  )
-
-describe('KeptRecord.asMergedIn', () => {
+describe('KeptRecord.asMerged', () => {
   it('should be the kept record itself while nothing merges into it', () => {
     // Arrange / Act
-    const asMerged = KeptRecord.asMergedIn(mergedInto(storedTyra, []), storedTyra)
+    const asMerged = KeptRecord.asMerged(KeptRecord.make(storedTyra, []))
 
     // Assert
     expect(asMerged).toBe(storedTyra)
@@ -52,13 +35,13 @@ describe('KeptRecord.asMergedIn', () => {
       })
     )
     const second = detached(tyraWire('tyra', { gender: 'female' }))
-    const keptRecords = mergedInto(storedTyra, [
+    const keptRecord = KeptRecord.make(storedTyra, [
       { incoming: first, fieldsTaken: HashSet.make('gender'), isEdit: false },
       { incoming: second, fieldsTaken: HashSet.make('gender'), isEdit: false },
     ])
 
     // Act
-    const asMerged = KeptRecord.asMergedIn(keptRecords, storedTyra)
+    const asMerged = KeptRecord.asMerged(keptRecord)
 
     // Assert
     expect(
@@ -90,7 +73,7 @@ const demographicsOf = (resource: FhirResourceWithId): unknown =>
       }
     : null
 
-describe('KeptRecord.asMergedIn, an edit among the merges', () => {
+describe('KeptRecord.asMerged, an edit among the merges', () => {
   it('should replace the kept record’s content with the last edit, lay later taken fields over it, and keep every identifier', () => {
     // Arrange
     const storedWithOther = stored({
@@ -103,13 +86,13 @@ describe('KeptRecord.asMergedIn, an edit among the merges', () => {
     })
     const edit = detached(tyraWire('tyra', { gender: 'other', birthDate: '1991-01-01' }))
     const later = detached(tyraWire('tyra', { gender: 'female' }))
-    const keptRecords = mergedInto(storedWithOther, [
+    const keptRecord = KeptRecord.make(storedWithOther, [
       { incoming: edit, fieldsTaken: HashSet.make('birthDate'), isEdit: true },
       { incoming: later, fieldsTaken: HashSet.make('gender'), isEdit: false },
     ])
 
     // Act
-    const asMerged = KeptRecord.asMergedIn(keptRecords, storedWithOther)
+    const asMerged = KeptRecord.asMerged(keptRecord)
 
     // Assert
     expect(demographicsOf(asMerged)).toEqual({
@@ -124,7 +107,7 @@ describe('KeptRecord.asMergedIn, an edit among the merges', () => {
 /** A reference table landing nothing, so no reference gains a link. */
 const NO_LINKS = ReferenceTable.make({ logicalReferences: [], stageLiterals: [], sourceUrls: [] })
 
-describe('KeptRecord.writtenIn', () => {
+describe('KeptRecord.writtenOf', () => {
   it.each([
     { name: 'nothing merges into it', merge: Option.none(), written: false },
     {
@@ -167,10 +150,10 @@ describe('KeptRecord.writtenIn', () => {
     'should write the kept record only when a merge writes something: $name',
     ({ merge, written }) => {
       // Arrange
-      const keptRecords = mergedInto(storedTyra, Option.toArray(merge))
+      const keptRecord = KeptRecord.make(storedTyra, Option.toArray(merge))
 
       // Act
-      const writtenForm = KeptRecord.writtenIn(keptRecords, storedTyra, NO_LINKS)
+      const writtenForm = KeptRecord.writtenOf(NO_LINKS, keptRecord)
 
       // Assert
       expect(Option.map(writtenForm, literalReferenceOf)).toEqual(
@@ -178,52 +161,4 @@ describe('KeptRecord.writtenIn', () => {
       )
     }
   )
-})
-
-describe('KeptRecord.withRecordChoice', () => {
-  it('should fold each choice that merges into a stored record into it in order, and merge nothing for any other choice', () => {
-    // Arrange
-    const mergeIntoStored = RecordChoice.MergeIntoExistingRecord({
-      existing: storedTyra,
-      fieldsTaken: HashSet.make('gender'),
-    })
-    const steps = [
-      {
-        choice: Option.some(mergeIntoStored),
-        incoming: detached(tyraWire('tyra', { gender: 'male' })),
-      },
-      { choice: Option.some(RecordChoice.SaveAsNewRecord()), incoming: detached(tyraWire('x')) },
-      { choice: Option.none(), incoming: detached(tyraWire('y')) },
-      {
-        choice: Option.some(mergeIntoStored),
-        incoming: detached(tyraWire('tyra', { gender: 'female' })),
-      },
-    ]
-
-    // Act
-    const byKeptRecord = steps.reduce(
-      (keptRecords, { choice, incoming }) =>
-        KeptRecord.withRecordChoice(keptRecords, choice, { incoming, isEdit: false }),
-      KeptRecord.noneMerged
-    )
-
-    // Assert
-    expect({
-      asMerged: demographicsOf(KeptRecord.asMergedIn(byKeptRecord, storedTyra)),
-      written: Option.map(
-        KeptRecord.writtenIn(byKeptRecord, storedTyra, NO_LINKS),
-        literalReferenceOf
-      ),
-      untouched: KeptRecord.asMergedIn(byKeptRecord, { ...storedTyra, id: 'p-2' }).id,
-    }).toEqual({
-      asMerged: {
-        id: 'p-1',
-        gender: 'female',
-        birthDate: '1990-01-02',
-        identifiers: ['tyra'],
-      },
-      written: Option.some('Patient/p-1'),
-      untouched: 'p-2',
-    })
-  })
 })

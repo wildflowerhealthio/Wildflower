@@ -7,11 +7,11 @@
  */
 import { randomResourceId } from '@wildflowerhealthio/fhir-r4-adoption'
 import { type FhirResourceWithId, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, DateTime, Effect, HashMap, HashSet, Match, Option, Order } from 'effect'
+import { Array as Arr, DateTime, Effect, HashMap, HashSet, Match, Option } from 'effect'
 
 import type * as ImportPlan from '../entities/import-plan.ts'
 import * as ImportedRecord from '../entities/imported-record.ts'
-import * as KeptRecord from '../entities/kept-record.ts'
+import * as KeptRecords from '../entities/kept-records.ts'
 import * as PlanResolution from '../entities/plan-resolution.ts'
 import * as PlannedRecord from '../entities/planned-record.ts'
 import type * as RecordKey from '../entities/record-key.ts'
@@ -51,39 +51,25 @@ const idsOf = (
     )
   )
 
-/** Records' facts in the order they merge into a kept record (`ImportedRecord.mergeOrder`). */
-const byMergeOrder = Order.mapInput(
-  ImportedRecord.mergeOrder,
-  ({ planned }: PlanResolution.RecordFacts) => planned.record
-)
-
 /**
- * Each stored record `records` merge into, with every one of their merges made in
- * merge order (`ImportedRecord.mergeOrder`, then plan order, as suggesting
- * the plan made them; `KeptRecord.withRecordChoice`).
- *
- * @param records - The records' facts, in plan order
+ * Each stored record `records` merge into, with every one of their merges
+ * (`KeptRecords.fromRecordChoices`), each record bringing its resolved
+ * resource.
  */
-const keptRecordsOf = (records: readonly PlanResolution.RecordFacts[]): KeptRecord.ByKeptRecord =>
-  Arr.reduce(
-    Arr.sort(records, byMergeOrder),
-    KeptRecord.noneMerged,
-    (keptRecords, { planned, resolved }) =>
-      KeptRecord.withRecordChoice(keptRecords, PlannedRecord.effectiveChoice(planned), {
-        incoming: resolved,
-        isEdit: Option.isSome(planned.edit),
-      })
+const keptRecordsOf = (records: readonly PlanResolution.RecordFacts[]): KeptRecords.Type =>
+  KeptRecords.fromRecordChoices(
+    records.map(({ planned, resolved }) => ({ planned, incoming: resolved }))
   )
 
 /**
  * What is written for `record`, by its effective choice: save as new writes
  * its resolved resource under its id; merge into existing writes the kept
  * record with the merges `keptRecords` holds for it and its links landed by
- * `table` (`KeptRecord.writtenIn`); don't add, or no choice, writes nothing.
+ * `table` (`KeptRecords.writtenIn`); don't add, or no choice, writes nothing.
  */
 const writtenOf = (
   { planned, id, resolved }: PlanResolution.RecordFacts,
-  keptRecords: KeptRecord.ByKeptRecord,
+  keptRecords: KeptRecords.Type,
   table: ReferenceTable.Type
 ): Option.Option<FhirResourceWithId> =>
   Option.flatMap(
@@ -93,7 +79,7 @@ const writtenOf = (
         Match.tagsExhaustive({
           SaveAsNewRecord: () => Option.map(id, (writtenId) => ({ ...resolved, id: writtenId })),
           MergeIntoExistingRecord: ({ existing }) =>
-            KeptRecord.writtenIn(keptRecords, existing, table),
+            KeptRecords.writtenIn(table, keptRecords, existing),
           DontAdd: () => Option.none(),
         })
       )

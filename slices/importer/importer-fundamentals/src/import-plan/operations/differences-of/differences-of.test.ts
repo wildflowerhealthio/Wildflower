@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import * as ImportedRecord from '../../entities/imported-record.ts'
 import * as KeptRecord from '../../entities/kept-record.ts'
-import * as RecordChoice from '../../entities/record-choice.ts'
 import * as StoredMatch from '../../entities/stored-match.ts'
 import {
   candidate,
@@ -32,13 +31,8 @@ const asMergedAfter = (
   earlier: FhirResource,
   fieldsTaken: HashSet.HashSet<string>
 ): FhirResourceWithId =>
-  KeptRecord.asMergedIn(
-    KeptRecord.withRecordChoice(
-      KeptRecord.noneMerged,
-      Option.some(RecordChoice.MergeIntoExistingRecord({ existing, fieldsTaken })),
-      { incoming: earlier, isEdit: false }
-    ),
-    existing
+  KeptRecord.asMerged(
+    KeptRecord.make(existing, [{ incoming: earlier, fieldsTaken, isEdit: false }])
   )
 
 /** No record of an import to compare references by: each compared as it is, or by its identifier. */
