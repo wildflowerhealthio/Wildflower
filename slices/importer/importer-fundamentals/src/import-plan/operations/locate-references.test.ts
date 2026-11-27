@@ -1,6 +1,6 @@
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
-import { HashSet, Option } from 'effect'
+import { HashMap, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ImportedCopy from '../entities/imported-copy.ts'
@@ -80,7 +80,7 @@ describe('locateReferences', () => {
 
     // Assert
     expect({
-      referenced: [...HashSet.values(references.referenced)],
+      referenced: [...HashMap.keys(references.referrers)],
       external: references.external.map(LogicalReference.key),
     }).toEqual({
       referenced: [ImportedCopy.recordKeyOf(drBrown)],
@@ -106,7 +106,7 @@ describe('locateReferences', () => {
     const references = locateReferences(ImportedRecord.fromCopies([byLicence, brownByLicence]))
 
     // Assert
-    expect([...HashSet.values(references.referenced)]).toEqual([
+    expect([...HashMap.keys(references.referrers)]).toEqual([
       ImportedCopy.recordKeyOf(brownByLicence),
     ])
   })
@@ -233,7 +233,7 @@ describe('locateReferences', () => {
 
     // Assert
     expect({
-      referenced: HashSet.size(references.referenced),
+      referenced: HashMap.size(references.referrers),
       external: references.external.length,
     }).toEqual({ referenced: 0, external: 0 })
   })
@@ -274,7 +274,7 @@ describe('locateReferences, by outcome', () => {
 
     // Assert
     expect({
-      referenced: [...HashSet.values(references.referenced)],
+      referenced: [...HashMap.keys(references.referrers)],
       external: references.external.map(({ identifier: [{ value }] }) => value),
     }).toEqual({ referenced: [ImportedCopy.recordKeyOf(ehrTyra)], external: ['someone-else'] })
   })
