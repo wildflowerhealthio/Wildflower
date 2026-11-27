@@ -147,7 +147,10 @@ const urlWithParams = (request: HttpClientRequest.HttpClientRequest): string => 
 
 /** Whether `request` submits a `transaction` Bundle. */
 const isTransaction = (request: HttpClientRequest.HttpClientRequest): boolean =>
-  request.method === 'POST' && safeParseBundle(decodeBody(request.body))?.type === 'transaction'
+  request.method === 'POST' &&
+  tryParseBundle(decodeBody(request.body)).pipe(
+    Option.exists((bundle) => bundle.type === 'transaction')
+  )
 
 /**
  * A stub server that records every request and holds what it is given and
@@ -202,16 +205,16 @@ const routingServer = (config: {
     // batch-response bundle. That keeps `writes()` / `isResourceWrite`
     // seeing one recorded request per resource operation.
     if (request.method === 'POST' && (request.url === '/' || request.url.endsWith('/'))) {
-      const parsed = safeParseBundle(body)
-      if (parsed !== undefined) {
-        submittedBundles.push(parsed.type ?? '')
-        const entries = parsed.entry ?? []
+      const bundle = tryParseBundle(body)
+      if (Option.isSome(bundle)) {
+        const { type = '', entry: entries = [] } = bundle.value
+        submittedBundles.push(type)
         const refusedEntry = entries.find(
           (entry) =>
             entry.request?.method === 'PUT' &&
             config.failWrite?.({ method: 'PUT', url: `/${entry.request.url}` }) === true
         )
-        if (parsed.type === 'transaction' && refusedEntry !== undefined) {
+        if (type === 'transaction' && refusedEntry !== undefined) {
           recorded.push({ method: request.method, url: request.url, body })
           return Effect.succeed(
             HttpClientResponse.fromWeb(
@@ -351,32 +354,25 @@ const searchset = (resources: readonly unknown[]): unknown => ({
   link: [],
 })
 
-/** Minimal shape read from the request body of a `POST /` bundle. */
-interface RecordedBundleShape {
-  readonly type?: string
-  readonly entry?: readonly {
-    readonly request?: { readonly method: string; readonly url: string }
-    readonly resource?: unknown
-  }[]
-}
+/** What the stub server reads off a `POST`ed Bundle: its `type` and each entry's request and resource. */
+const RecordedBundleShape = Schema.Struct({
+  resourceType: Schema.Literal('Bundle'),
+  type: Schema.optional(Schema.String),
+  entry: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        request: Schema.optional(Schema.Struct({ method: Schema.String, url: Schema.String })),
+        resource: Schema.optional(Schema.Unknown),
+      })
+    )
+  ),
+})
 
 /**
- * Best-effort parse of a `POST /` body as a batch Bundle — `undefined` when
- * the body isn't a bundle so a non-bundle POST at `/` falls through.
+ * A request body read as a Bundle, or `None` when it is not one: empty, not
+ * JSON, or JSON that is not a Bundle — so a non-bundle `POST /` falls through.
  */
-const safeParseBundle = (body: string): RecordedBundleShape | undefined => {
-  if (body === '') return undefined
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(body) as unknown
-  } catch {
-    return undefined
-  }
-  if (parsed === null || typeof parsed !== 'object') return undefined
-  const record = parsed as { readonly resourceType?: unknown }
-  if (record.resourceType !== 'Bundle') return undefined
-  return parsed
-}
+const tryParseBundle = Schema.decodeOption(Schema.parseJson(RecordedBundleShape))
 
 export {
   bundleTypes,
