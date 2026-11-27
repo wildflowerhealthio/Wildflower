@@ -1,80 +1,4 @@
 {
-  "excluded": [
-    {
-      "basedOn": [],
-      "category": [],
-      "code": {
-        "coding": [],
-        "extension": [],
-        "text": "Heart rate"
-      },
-      "component": [],
-      "contained": [],
-      "derivedFrom": [],
-      "extension": [],
-      "focus": [],
-      "hasMember": [],
-      "id": "wf-ccf71e528bb55d1c13c768c66c5ded7f",
-      "identifier": [
-        {
-          "extension": [],
-          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Observation",
-          "value": "obs-b"
-        }
-      ],
-      "interpretation": [],
-      "meta": {
-        "profile": [],
-        "security": [],
-        "source": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
-        "tag": []
-      },
-      "modifierExtension": [],
-      "note": [],
-      "partOf": [],
-      "performer": [],
-      "referenceRange": [],
-      "resourceType": "Observation",
-      "status": "final"
-    },
-    {
-      "basedOn": [],
-      "category": [],
-      "code": {
-        "coding": [],
-        "extension": [],
-        "text": "Body Weight"
-      },
-      "component": [],
-      "contained": [],
-      "derivedFrom": [],
-      "extension": [],
-      "focus": [],
-      "hasMember": [],
-      "id": "wf-ccf721528bb5623513c769c66c5def32",
-      "identifier": [
-        {
-          "extension": [],
-          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Observation",
-          "value": "obs-a"
-        }
-      ],
-      "interpretation": [],
-      "meta": {
-        "profile": [],
-        "security": [],
-        "source": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
-        "tag": []
-      },
-      "modifierExtension": [],
-      "note": [],
-      "partOf": [],
-      "performer": [],
-      "referenceRange": [],
-      "resourceType": "Observation",
-      "status": "final"
-    }
-  ],
   "notes": {
     "dicom": [],
     "har": [
@@ -88,251 +12,284 @@
     ],
     "lifelabs-pdf": []
   },
-  "review": [
+  "plan": [
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:rexall.har/source-file/rexall.har",
-      "resource": "DocumentReference/wf-6f43dede19e181c370562894bdb79370",
-      "title": "rexall.har"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/source-file/rexall.har"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "rexall.har",
+      "written": "DocumentReference/wf-6f43dede19e181c370562894bdb79370"
     },
     {
-      "disposition": "Superseded",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-2:0",
-      "resource": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
-      "title": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-2:0",
+        "1:rexall-later.har/har-entry-2:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
+      "written": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63"
     },
     {
-      "disposition": "Superseded",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:0",
-      "resource": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6",
-      "title": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:0",
+        "1:rexall-later.har/har-entry-3:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6",
+      "written": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6"
     },
     {
-      "disposition": "Superseded",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:1",
-      "resource": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7",
-      "title": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:1",
+        "1:rexall-later.har/har-entry-3:1"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7",
+      "written": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7"
     },
     {
-      "disposition": "Superseded",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:2",
-      "resource": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5",
-      "title": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:2",
+        "1:rexall-later.har/har-entry-3:2"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5",
+      "written": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5"
     },
     {
-      "disposition": "Superseded",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:3",
-      "resource": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c",
-      "title": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:3",
+        "1:rexall-later.har/har-entry-3:3"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c",
+      "written": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c"
     },
     {
-      "disposition": "Superseded",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:4",
-      "resource": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d",
-      "title": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:4",
+        "1:rexall-later.har/har-entry-3:4"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d",
+      "written": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d"
     },
     {
-      "disposition": "Superseded",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:5",
-      "resource": "MedicationDispense/wf-42402150c21db460736ca3b9469713db",
-      "title": "MedicationDispense/wf-42402150c21db460736ca3b9469713db"
+      "isImplied": false,
+      "keys": [
+        "0:rexall.har/har-entry-3:5",
+        "1:rexall-later.har/har-entry-3:5"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-42402150c21db460736ca3b9469713db",
+      "written": "MedicationDispense/wf-42402150c21db460736ca3b9469713db"
     },
     {
-      "disposition": "Superseded",
-      "group": "har",
-      "key": "0:rexall.har/har-entry-3:0#implied:Practitioner|https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner|257ba733-6479-4c16-ac63-40dab75b75c5",
-      "resource": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b",
-      "title": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b"
+      "isImplied": true,
+      "keys": [
+        "0:rexall.har/har-entry-3:0#implied:Practitioner|https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner|257ba733-6479-4c16-ac63-40dab75b75c5",
+        "1:rexall-later.har/har-entry-3:0#implied:Practitioner|https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner|257ba733-6479-4c16-ac63-40dab75b75c5"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b",
+      "written": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "1:rexall-later.har/source-file/rexall-later.har",
-      "resource": "DocumentReference/wf-ddca32cb38435ccf51b3f9ffa194acbc",
-      "title": "rexall-later.har"
+      "isImplied": false,
+      "keys": [
+        "1:rexall-later.har/source-file/rexall-later.har"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "rexall-later.har",
+      "written": "DocumentReference/wf-ddca32cb38435ccf51b3f9ffa194acbc"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "1:rexall-later.har/har-entry-2:0",
-      "resource": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63",
-      "title": "Patient/wf-1cff30d9a05e8302ed25a3a2f466ce63"
+      "isImplied": false,
+      "keys": [
+        "2:chrome-fhir-capture.har/source-file/chrome-fhir-capture.har"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "chrome-fhir-capture.har",
+      "written": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "1:rexall-later.har/har-entry-3:0",
-      "resource": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6",
-      "title": "MedicationRequest/wf-522e02b6a9336219dd71d9d54c32d9e6"
+      "isImplied": false,
+      "keys": [
+        "2:chrome-fhir-capture.har/har-entry-2:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Patient/wf-62d4dc847caeb8995ccfe531f36957c4",
+      "written": "Patient/wf-62d4dc847caeb8995ccfe531f36957c4"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "1:rexall-later.har/har-entry-3:1",
-      "resource": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7",
-      "title": "MedicationRequest/wf-efcc018fbef8bb2c57a6dad7598132d7"
+      "isImplied": false,
+      "keys": [
+        "2:chrome-fhir-capture.har/har-entry-3:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Observation/wf-ccf721528bb5623513c769c66c5def32",
+      "written": "Observation/wf-ccf721528bb5623513c769c66c5def32"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "1:rexall-later.har/har-entry-3:2",
-      "resource": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5",
-      "title": "MedicationRequest/wf-ec1eb2f83df5ebca00522ea9a5cd2fd5"
+      "isImplied": false,
+      "keys": [
+        "2:chrome-fhir-capture.har/har-entry-3:1"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Observation/wf-ccf71e528bb55d1c13c768c66c5ded7f",
+      "written": "Observation/wf-ccf71e528bb55d1c13c768c66c5ded7f"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "1:rexall-later.har/har-entry-3:3",
-      "resource": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c",
-      "title": "MedicationDispense/wf-eaacc6398e039cd717b811357fc3742c"
+      "isImplied": false,
+      "keys": [
+        "3:lifelabs-report.pdf/source-file/lifelabs-report.pdf"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "lifelabs-report.pdf",
+      "written": "DocumentReference/wf-ec282d1c84b38036e5abf9eb3e58296b"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "1:rexall-later.har/har-entry-3:4",
-      "resource": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d",
-      "title": "MedicationDispense/wf-d7d96e9b5617945a72bdf5b6e894391d"
+      "isImplied": false,
+      "keys": [
+        "3:lifelabs-report.pdf/Patient/3648223849"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Patient/wf-e228b627f40a6955c6e07aa14f07612a",
+      "written": "Patient/wf-e228b627f40a6955c6e07aa14f07612a"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "1:rexall-later.har/har-entry-3:5",
-      "resource": "MedicationDispense/wf-42402150c21db460736ca3b9469713db",
-      "title": "MedicationDispense/wf-42402150c21db460736ca3b9469713db"
+      "isImplied": false,
+      "keys": [
+        "3:lifelabs-report.pdf/Observation/2026-PF2780400/Chemistry/Sodium/0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Observation/wf-55898962516ff63010257b19082a04f9",
+      "written": "Observation/wf-55898962516ff63010257b19082a04f9"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "1:rexall-later.har/har-entry-3:0#implied:Practitioner|https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/Practitioner|257ba733-6479-4c16-ac63-40dab75b75c5",
-      "resource": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b",
-      "title": "Practitioner/wf-bda3382b2ab055707707d45a06f3c42b"
+      "isImplied": false,
+      "keys": [
+        "3:lifelabs-report.pdf/Observation/2026-PF2780400/Chemistry/Potassium/1"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Observation/wf-ff37617ab308f3a4c8df60851d8112bb",
+      "written": "Observation/wf-ff37617ab308f3a4c8df60851d8112bb"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "2:chrome-fhir-capture.har/source-file/chrome-fhir-capture.har",
-      "resource": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
-      "title": "chrome-fhir-capture.har"
+      "isImplied": false,
+      "keys": [
+        "3:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "DiagnosticReport/wf-489d0b0ef4d940bf67ed10a1ca5bc3ac",
+      "written": "DiagnosticReport/wf-489d0b0ef4d940bf67ed10a1ca5bc3ac"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "2:chrome-fhir-capture.har/har-entry-2:0",
-      "resource": "Patient/wf-62d4dc847caeb8995ccfe531f36957c4",
-      "title": "Patient/wf-62d4dc847caeb8995ccfe531f36957c4"
+      "isImplied": false,
+      "keys": [
+        "3:lifelabs-report.pdf/Observation/2026-NN6198463/Chemistry/ALT/0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Observation/wf-475d03604c043bab5175cc5795e53040",
+      "written": "Observation/wf-475d03604c043bab5175cc5795e53040"
     },
     {
-      "disposition": "Excluded",
-      "group": "har",
-      "key": "2:chrome-fhir-capture.har/har-entry-3:0",
-      "resource": "Observation/wf-ccf721528bb5623513c769c66c5def32",
-      "title": "Observation/wf-ccf721528bb5623513c769c66c5def32"
+      "isImplied": false,
+      "keys": [
+        "3:lifelabs-report.pdf/DiagnosticReport/2026-NN6198463"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "DiagnosticReport/wf-6e6d2d373433481f7c09b7c537483184",
+      "written": "DiagnosticReport/wf-6e6d2d373433481f7c09b7c537483184"
     },
     {
-      "disposition": "Excluded",
-      "group": "har",
-      "key": "2:chrome-fhir-capture.har/har-entry-3:1",
-      "resource": "Observation/wf-ccf71e528bb55d1c13c768c66c5ded7f",
-      "title": "Observation/wf-ccf71e528bb55d1c13c768c66c5ded7f"
+      "isImplied": true,
+      "keys": [
+        "3:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400#implied:Practitioner|https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name|ROY DR. ANNE"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba",
+      "written": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba"
     },
     {
-      "disposition": "Included",
-      "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/source-file/lifelabs-report.pdf",
-      "resource": "DocumentReference/wf-ec282d1c84b38036e5abf9eb3e58296b",
-      "title": "lifelabs-report.pdf"
+      "isImplied": true,
+      "keys": [
+        "3:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400#implied:Practitioner|https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name|OSEI DR. KWAME"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77",
+      "written": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77"
     },
     {
-      "disposition": "Included",
-      "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Patient/3648223849",
-      "resource": "Patient/wf-e228b627f40a6955c6e07aa14f07612a",
-      "title": "Patient/wf-e228b627f40a6955c6e07aa14f07612a"
+      "isImplied": false,
+      "keys": [
+        "4:chest-x-ray.dcm/source-file/chest-x-ray.dcm"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "chest-x-ray.dcm",
+      "written": "DocumentReference/wf-11213b67ef664dc2deed2557c3585185"
     },
     {
-      "disposition": "Included",
-      "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Observation/2026-PF2780400/Chemistry/Sodium/0",
-      "resource": "Observation/wf-55898962516ff63010257b19082a04f9",
-      "title": "Observation/wf-55898962516ff63010257b19082a04f9"
+      "isImplied": false,
+      "keys": [
+        "4:chest-x-ray.dcm/patient"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524",
+      "written": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524"
     },
     {
-      "disposition": "Included",
-      "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Observation/2026-PF2780400/Chemistry/Potassium/1",
-      "resource": "Observation/wf-ff37617ab308f3a4c8df60851d8112bb",
-      "title": "Observation/wf-ff37617ab308f3a4c8df60851d8112bb"
+      "isImplied": false,
+      "keys": [
+        "4:chest-x-ray.dcm/service-request"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "ServiceRequest/wf-b00c3a0ae723d30921e15d659e32746a",
+      "written": "ServiceRequest/wf-b00c3a0ae723d30921e15d659e32746a"
     },
     {
-      "disposition": "Included",
-      "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400",
-      "resource": "DiagnosticReport/wf-489d0b0ef4d940bf67ed10a1ca5bc3ac",
-      "title": "DiagnosticReport/wf-489d0b0ef4d940bf67ed10a1ca5bc3ac"
-    },
-    {
-      "disposition": "Included",
-      "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/Observation/2026-NN6198463/Chemistry/ALT/0",
-      "resource": "Observation/wf-475d03604c043bab5175cc5795e53040",
-      "title": "Observation/wf-475d03604c043bab5175cc5795e53040"
-    },
-    {
-      "disposition": "Included",
-      "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/DiagnosticReport/2026-NN6198463",
-      "resource": "DiagnosticReport/wf-6e6d2d373433481f7c09b7c537483184",
-      "title": "DiagnosticReport/wf-6e6d2d373433481f7c09b7c537483184"
-    },
-    {
-      "disposition": "Included",
-      "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400#implied:Practitioner|https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name|ROY DR. ANNE",
-      "resource": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba",
-      "title": "Practitioner/wf-80ba24ff7137298b01b47eb3d87d11ba"
-    },
-    {
-      "disposition": "Included",
-      "group": "lifelabs-pdf",
-      "key": "3:lifelabs-report.pdf/DiagnosticReport/2026-PF2780400#implied:Practitioner|https://wildflowerhealth.io/fhir/sid/lifelabs/practitioner-name|OSEI DR. KWAME",
-      "resource": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77",
-      "title": "Practitioner/wf-73e25200c0e79e7282a9d7a406660c77"
-    },
-    {
-      "disposition": "Included",
-      "group": "dicom",
-      "key": "4:chest-x-ray.dcm/source-file/chest-x-ray.dcm",
-      "resource": "DocumentReference/wf-11213b67ef664dc2deed2557c3585185",
-      "title": "chest-x-ray.dcm"
-    },
-    {
-      "disposition": "Included",
-      "group": "dicom",
-      "key": "4:chest-x-ray.dcm/patient",
-      "resource": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524",
-      "title": "Patient/wf-1663f041018c0f6bb4bbdc67ce94f524"
-    },
-    {
-      "disposition": "Included",
-      "group": "dicom",
-      "key": "4:chest-x-ray.dcm/service-request",
-      "resource": "ServiceRequest/wf-b00c3a0ae723d30921e15d659e32746a",
-      "title": "ServiceRequest/wf-b00c3a0ae723d30921e15d659e32746a"
-    },
-    {
-      "disposition": "Included",
-      "group": "dicom",
-      "key": "4:chest-x-ray.dcm/imaging-study",
-      "resource": "ImagingStudy/wf-f3ba3c309dbf22d6a316d589b1e9968b",
-      "title": "ImagingStudy/wf-f3ba3c309dbf22d6a316d589b1e9968b"
+      "isImplied": false,
+      "keys": [
+        "4:chest-x-ray.dcm/imaging-study"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "ImagingStudy/wf-f3ba3c309dbf22d6a316d589b1e9968b",
+      "written": "ImagingStudy/wf-f3ba3c309dbf22d6a316d589b1e9968b"
     }
   ],
   "sourceFileRePicks": [
@@ -2296,6 +2253,80 @@
     },
     {
       "basedOn": [],
+      "category": [],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "Heart rate"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-ccf71e528bb55d1c13c768c66c5ded7f",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Observation",
+          "value": "obs-b"
+        }
+      ],
+      "interpretation": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "referenceRange": [],
+      "resourceType": "Observation",
+      "status": "final"
+    },
+    {
+      "basedOn": [],
+      "category": [],
+      "code": {
+        "coding": [],
+        "extension": [],
+        "text": "Body Weight"
+      },
+      "component": [],
+      "contained": [],
+      "derivedFrom": [],
+      "extension": [],
+      "focus": [],
+      "hasMember": [],
+      "id": "wf-ccf721528bb5623513c769c66c5def32",
+      "identifier": [
+        {
+          "extension": [],
+          "system": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Observation",
+          "value": "obs-a"
+        }
+      ],
+      "interpretation": [],
+      "meta": {
+        "profile": [],
+        "security": [],
+        "source": "DocumentReference/wf-31d311a979ecdac25e81908e76f46aff",
+        "tag": []
+      },
+      "modifierExtension": [],
+      "note": [],
+      "partOf": [],
+      "performer": [],
+      "referenceRange": [],
+      "resourceType": "Observation",
+      "status": "final"
+    },
+    {
+      "basedOn": [],
       "category": [
         {
           "coding": [
@@ -2456,7 +2487,7 @@
           "postalCode": "K7L 2V4"
         }
       ],
-      "birthDate": "1974-09-21",
+      "birthDate": "1974-10-21",
       "communication": [],
       "contact": [],
       "contained": [],
@@ -2474,7 +2505,7 @@
       "meta": {
         "profile": [],
         "security": [],
-        "source": "DocumentReference/wf-6f43dede19e181c370562894bdb79370",
+        "source": "DocumentReference/wf-ddca32cb38435ccf51b3f9ffa194acbc",
         "tag": []
       },
       "modifierExtension": [],
@@ -2679,7 +2710,7 @@
       "meta": {
         "profile": [],
         "security": [],
-        "source": "DocumentReference/wf-6f43dede19e181c370562894bdb79370",
+        "source": "DocumentReference/wf-ddca32cb38435ccf51b3f9ffa194acbc",
         "tag": []
       },
       "modifierExtension": [],

@@ -1,5 +1,4 @@
 {
-  "excluded": [],
   "notes": {
     "har": [
       "Matched no importer: https://mypharmacy.shoppersdrugmart.ca/en/login",
@@ -8,125 +7,176 @@
       "Matched no importer: https://mypharmacy.shoppersdrugmart.ca/en/prescription-history"
     ]
   },
-  "review": [
+  "plan": [
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/source-file/shoppers.har",
-      "resource": "DocumentReference/wf-0e1e698b827b1113735d4b7a0d260788",
-      "title": "shoppers.har"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/source-file/shoppers.har"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "shoppers.har",
+      "written": "DocumentReference/wf-0e1e698b827b1113735d4b7a0d260788"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-3:0",
-      "resource": "MedicationRequest/wf-894a2cb76071d22b5a607debd3a504a2",
-      "title": "MedicationRequest/wf-894a2cb76071d22b5a607debd3a504a2"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-3:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationRequest/wf-894a2cb76071d22b5a607debd3a504a2",
+      "written": "MedicationRequest/wf-894a2cb76071d22b5a607debd3a504a2"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-3:1",
-      "resource": "MedicationDispense/wf-c991be6fac6003d98aab57fb15739a2a",
-      "title": "MedicationDispense/wf-c991be6fac6003d98aab57fb15739a2a"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-3:1"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-c991be6fac6003d98aab57fb15739a2a",
+      "written": "MedicationDispense/wf-c991be6fac6003d98aab57fb15739a2a"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-4:0",
-      "resource": "MedicationRequest/wf-895b547b10f50cd1127bf7eb44946980",
-      "title": "MedicationRequest/wf-895b547b10f50cd1127bf7eb44946980"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-4:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationRequest/wf-895b547b10f50cd1127bf7eb44946980",
+      "written": "MedicationRequest/wf-895b547b10f50cd1127bf7eb44946980"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-4:1",
-      "resource": "MedicationDispense/wf-76534491d6f470e9db6510108fb798da",
-      "title": "MedicationDispense/wf-76534491d6f470e9db6510108fb798da"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-4:1"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-76534491d6f470e9db6510108fb798da",
+      "written": "MedicationDispense/wf-76534491d6f470e9db6510108fb798da"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-5:0",
-      "resource": "MedicationRequest/wf-5dcc5db37af85538ca6feb3ae2f0bebd",
-      "title": "MedicationRequest/wf-5dcc5db37af85538ca6feb3ae2f0bebd"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-5:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationRequest/wf-5dcc5db37af85538ca6feb3ae2f0bebd",
+      "written": "MedicationRequest/wf-5dcc5db37af85538ca6feb3ae2f0bebd"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-5:1",
-      "resource": "MedicationDispense/wf-7e3738209bd0038e115c6204114a9031",
-      "title": "MedicationDispense/wf-7e3738209bd0038e115c6204114a9031"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-5:1"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-7e3738209bd0038e115c6204114a9031",
+      "written": "MedicationDispense/wf-7e3738209bd0038e115c6204114a9031"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-7:2",
-      "resource": "MedicationDispense/wf-71a9fd54b27cdbc7da4c36ea58315f7c",
-      "title": "MedicationDispense/wf-71a9fd54b27cdbc7da4c36ea58315f7c"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-7:2"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-71a9fd54b27cdbc7da4c36ea58315f7c",
+      "written": "MedicationDispense/wf-71a9fd54b27cdbc7da4c36ea58315f7c"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-7:3",
-      "resource": "MedicationDispense/wf-c5743dbe6262e44241a26b7bcc076c4d",
-      "title": "MedicationDispense/wf-c5743dbe6262e44241a26b7bcc076c4d"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-7:3"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-c5743dbe6262e44241a26b7bcc076c4d",
+      "written": "MedicationDispense/wf-c5743dbe6262e44241a26b7bcc076c4d"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-7:4",
-      "resource": "MedicationDispense/wf-f6746200efd6198f1869bb923b931af0",
-      "title": "MedicationDispense/wf-f6746200efd6198f1869bb923b931af0"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-7:4"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-f6746200efd6198f1869bb923b931af0",
+      "written": "MedicationDispense/wf-f6746200efd6198f1869bb923b931af0"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-7:5",
-      "resource": "MedicationDispense/wf-e658bb38865a221cbc8deb148dfa802f",
-      "title": "MedicationDispense/wf-e658bb38865a221cbc8deb148dfa802f"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-7:5"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-e658bb38865a221cbc8deb148dfa802f",
+      "written": "MedicationDispense/wf-e658bb38865a221cbc8deb148dfa802f"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-7:6",
-      "resource": "MedicationDispense/wf-0e417791d5d74cdeb30700b70c6f6421",
-      "title": "MedicationDispense/wf-0e417791d5d74cdeb30700b70c6f6421"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-7:6"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-0e417791d5d74cdeb30700b70c6f6421",
+      "written": "MedicationDispense/wf-0e417791d5d74cdeb30700b70c6f6421"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-7:8",
-      "resource": "MedicationDispense/wf-66b9ed6ca118c41d3e698628eb8cd7b6",
-      "title": "MedicationDispense/wf-66b9ed6ca118c41d3e698628eb8cd7b6"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-7:8"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-66b9ed6ca118c41d3e698628eb8cd7b6",
+      "written": "MedicationDispense/wf-66b9ed6ca118c41d3e698628eb8cd7b6"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-7:9",
-      "resource": "MedicationDispense/wf-961f6d6eb5e9d872f4741c0ba64e0509",
-      "title": "MedicationDispense/wf-961f6d6eb5e9d872f4741c0ba64e0509"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-7:9"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-961f6d6eb5e9d872f4741c0ba64e0509",
+      "written": "MedicationDispense/wf-961f6d6eb5e9d872f4741c0ba64e0509"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-7:10",
-      "resource": "MedicationDispense/wf-7b2dafddd386d49e9f23335e2c3e8225",
-      "title": "MedicationDispense/wf-7b2dafddd386d49e9f23335e2c3e8225"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-7:10"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "MedicationDispense/wf-7b2dafddd386d49e9f23335e2c3e8225",
+      "written": "MedicationDispense/wf-7b2dafddd386d49e9f23335e2c3e8225"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-8:0",
-      "resource": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209",
-      "title": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209"
+      "isImplied": false,
+      "keys": [
+        "0:shoppers.har/har-entry-8:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209",
+      "written": "Patient/wf-ccb700654cb9cf0ca2fab03a4b96b209"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:shoppers.har/har-entry-3:0#implied:Practitioner|https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/practitioner-name|Dr. Lee Nguyen",
-      "resource": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6",
-      "title": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6"
+      "isImplied": true,
+      "keys": [
+        "0:shoppers.har/har-entry-3:0#implied:Practitioner|https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/practitioner-name|Dr. Lee Nguyen"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6",
+      "written": "Practitioner/wf-a9dfcfafef24c975c196ce750003dfe6"
     }
   ],
   "sourceFileRePicks": [

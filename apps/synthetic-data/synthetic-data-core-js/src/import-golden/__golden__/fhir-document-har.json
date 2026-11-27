@@ -1,39 +1,50 @@
 {
-  "excluded": [],
   "notes": {
     "har": [
       "Duplicate of an earlier response — not imported: https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Binary/bin-served?_format=json",
       "A Binary served as its raw content, not as FHIR JSON — not imported: https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Binary/bin-raw"
     ]
   },
-  "review": [
+  "plan": [
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:fhir-document.har/source-file/fhir-document.har",
-      "resource": "DocumentReference/wf-9fe79100ae845ce5faba6e2f55420050",
-      "title": "fhir-document.har"
+      "isImplied": false,
+      "keys": [
+        "0:fhir-document.har/source-file/fhir-document.har"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "fhir-document.har",
+      "written": "DocumentReference/wf-9fe79100ae845ce5faba6e2f55420050"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:fhir-document.har/har-entry-0:0",
-      "resource": "Patient/wf-62d4dc847caeb8995ccfe531f36957c4",
-      "title": "Patient/wf-62d4dc847caeb8995ccfe531f36957c4"
+      "isImplied": false,
+      "keys": [
+        "0:fhir-document.har/har-entry-0:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Patient/wf-62d4dc847caeb8995ccfe531f36957c4",
+      "written": "Patient/wf-62d4dc847caeb8995ccfe531f36957c4"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:fhir-document.har/har-entry-1:0",
-      "resource": "DocumentReference/wf-98ea55ef151d5d918d63fb4e78c976ea",
-      "title": "DocumentReference/wf-98ea55ef151d5d918d63fb4e78c976ea"
+      "isImplied": false,
+      "keys": [
+        "0:fhir-document.har/har-entry-1:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "DocumentReference/wf-98ea55ef151d5d918d63fb4e78c976ea",
+      "written": "DocumentReference/wf-98ea55ef151d5d918d63fb4e78c976ea"
     },
     {
-      "disposition": "Included",
-      "group": "har",
-      "key": "0:fhir-document.har/har-entry-2:0",
-      "resource": "Binary/00000000-0000-4000-8000-000000000001",
-      "title": "Binary (0:fhir-document.har/har-entry-2:0)"
+      "isImplied": false,
+      "keys": [
+        "0:fhir-document.har/har-entry-2:0"
+      ],
+      "label": "Create",
+      "reason": "NoMatch",
+      "title": "Binary (0:fhir-document.har/har-entry-2:0)",
+      "written": "Binary/00000000-0000-4000-8000-000000000001"
     }
   ],
   "sourceFileRePicks": [

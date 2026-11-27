@@ -10,10 +10,13 @@ from its hooks.
 No DOM, no `fs`, no React. Every export is a value or an Effect whose only
 requirement is **`DecodeRequirements`**, what the registered formats' decodes
 need to read their bytes (LifeLabs' `PositionedTextExtractor`), but for
-`findStoredMatch` and `planImport`, which ask the store and so also require
-the FHIR client, `FhirR4ResourcesHttpApiClient`. A headless host could run
-an import to the point of a write plan with this package alone and a layer
-that provides those.
+`findStoredMatch`, which asks the store and so also requires the FHIR
+client, `FhirR4ResourcesHttpApiClient`, and for `planImport` and
+`importWithSuggestions`, which also require what the `FindStoredMatch` they
+are handed requires (nothing for `noStore`). A headless host can run a
+whole import with this package alone and a layer that provides those
+(`importWithSuggestions`): it gets back the resources of one transaction
+and persists them itself.
 
 ## Shape
 
@@ -106,9 +109,10 @@ that provides those.
   Its three internal steps — `identifyPick` (the first claiming detector, via
   `FormatDetector.claiming`), `claimPicks`, and `decodeFormat` (generic in
   `K` so `registry[kind]` and `settings[kind]` stay correlated with no
-  per-format `Match` branch, then the import stage) — are module-level exports for this package's own
-  tests and are **not** re-exported from `index.ts`: the shell drives the whole
-  read, never a leg of it.
+  per-format `Match` branch, then the import step it is handed: `importDecoded`
+  here, `fileCopiesOf` in `importWithSuggestions`) — are module-level exports
+  for this package's own steps and tests and are **not** re-exported from
+  `index.ts`: the shell drives the whole read, never a leg of it.
 - `src/resolve-mentions.ts` — a batch's mentions resolved (a resolved batch
   is one whose mentions are resolved), service-free Effects on the clock. The
   batch goes from **decoded** (`DecodedBatch`, as `readBatch` read it) to
@@ -169,9 +173,7 @@ that provides those.
   `subject`). **`keysWithoutPatientOf(plan, kind, group, selection)`** names
   the rows of a format's resolved group left without a patient as they will be written (each row's edit,
   else its resolved resource): the half of the review's default exclusion
-  that is not the server diff. `importer-react`'s screen and the import
-  golden pin in `synthetic-data-core-js` both read it, so a headless import
-  with every default accepted excludes what the screen does.
+  that is not the server diff. `importer-react`'s screen reads it.
 - `src/review-group.ts` — **`ReviewGroup`**, the groups a batch's reviewed
   records fall into. A **`Key`** is a `FormatKind`, or **`LINKED`** for the
   batch's linked records, which no format holds; **`keys`** is review order,
@@ -254,18 +256,20 @@ that provides those.
   has one (`ImportedRecord.literalReferenceIfDerived`), whatever was found
   by identifier. It knows only the order it asked in and builds the match
   with `StoredMatch.make`. A failed search or read fails it
-  (**`StoredMatchFailure`**).
-- `src/plan-import.ts` — **`planImport(copies)`** groups the copies into
-  records once (`ImportedRecord.fromCopies`, by `RecordKey`: so two file sets
-  bringing one record by its key identifier, or one `Binary` at one source
-  URL, plan it once), finds the references between
-  them (`locateReferences`), finds their stored match, and suggests the
-  plan (`suggestPlan`).
+  (**`StoredMatchFailure`**). **`noStore`** is the match of an import with no
+  store: nothing stored matches, and nothing is sent. Both are a
+  **`FindStoredMatch`**, how an import finds what the store holds.
+- `src/plan-import.ts` — **`planImport(copies, findMatch)`** groups the
+  copies into records once (`ImportedRecord.fromCopies`, by `RecordKey`: so
+  two file sets bringing one record by its key identifier, or one `Binary`
+  at one source URL, plan it once), finds the references between them
+  (`locateReferences`), finds their stored match with `findMatch`
+  (`findStoredMatch` or `noStore`), and suggests the plan (`suggestPlan`).
   Its tests pin that a re-import is the same as existing: every record's
   reason is `OneIdentifierMatch` and `differencesInPlan` finds no
   difference from the stored record it merges into.
   `import-write-equivalence.test.ts` holds the plan's write
-  (`resolvePlan`, then `ImportWrite.of`) on an empty store, every suggestion
+  (`resolvePlan`, then `ImportWrite.of`) with no store, every suggestion
   taken, to the review screen's import (`importDecoded`, `resolveMentions`
   on its defaults, `planWrite`'s `Included`). Its batch steers clear of the
   two places they differ: the review screen's import writes a Patient or
@@ -278,6 +282,24 @@ that provides those.
   unlinked (a stub for a record not added, or a reference to a record in no
   file) is linked when the second brings its target, and the referrer reads
   `Update`.
+- `src/import-with-suggestions.ts` — **`importWithSuggestions(registry,
+  settings, picks, findMatch)`**, an import with no reviewer: it claims the
+  picks (`claimPicks`), decodes each claimed format and reads it as copies
+  (`decodeFormat` with `fileCopiesOf`), plans them with `planImport` against the store
+  `findMatch` names, takes every suggestion, resolves the plan
+  (`resolvePlan`) and writes it (`ImportWrite.of`). It sends nothing: a
+  **`SuggestedImport`** holds the resolution, the transaction's resources in
+  plan order, each claimed format's **`FormatRead`** (its notes and
+  unreadable files) in registry order, and the picks no format claimed
+  (`unrecognizedFileOf`, as `readBatch` reports them); the caller persists
+  the resources. A plan with records only a reviewer can decide fails it
+  with **`UndecidedRecords`**, naming each **`UndecidedRecord`** by its key
+  and title. A second run against a store holding the first run's writes
+  has nothing to import, but for a `Binary`, which has no key identifier
+  and is new on every import; its tests pin that the second run's every
+  record is `OneIdentifierMatch` with no difference (`differencesInPlan`)
+  from the stored record it merges into. The import golden pin in
+  `synthetic-data-core-js` runs it with `noStore`.
 
 ## Layering
 
@@ -285,7 +307,7 @@ Depends on `importer-fundamentals` (the contract, `PickedFile`, `StagedImport`,
 the identity map), the three `*-importer-core` bindings (the importers the
 registry lists), `fhir-r4` (the `FhirResource` type), and `effect`. Depended on by
 `importer-react` and by `apps/synthetic-data`, which imports what it generates
-through the same stage. Imports no `*-importer-react` and no `web-trace-core`.
+through `importWithSuggestions`. Imports no `*-importer-react` and no `web-trace-core`.
 
 ## Guardrails
 
