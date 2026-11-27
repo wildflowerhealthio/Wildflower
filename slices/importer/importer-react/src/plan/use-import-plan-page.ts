@@ -44,8 +44,8 @@ import * as WriteFailure from './write-failure.ts'
 /**
  * A plan under review: the picked files as read, the plan of their records,
  * its resolution with the resolution's totals and write, the differences the
- * Needs a decision cards show, who references each record, and the instant
- * the files were read at.
+ * cards and rows show, who references each record, and the instant the files
+ * were read at.
  *
  * @remarks
  * `resolution`, `totals`, `write` and `differences` are always those of
@@ -58,7 +58,7 @@ interface Review {
   readonly resolution: PlanResolution.Type
   readonly totals: PlanTotals.Type
   readonly write: ImportWrite.Type
-  /** What merging each record that needs a decision into each of its candidates would change. */
+  /** What merging each record that has an existing record into each of its candidates would change. */
   readonly differences: PlanDifferences.Type
   /**
    * Who references each record, located once when the files are read: a
@@ -113,6 +113,11 @@ interface ImportPlanPage {
    * `keys`, while reviewing, keeping the last write's failure.
    */
   readonly choose: (keys: Iterable<RecordKey.Type>, choice: RecordChoice.Type) => void
+  /**
+   * Clear the reviewer's choice for every record under one of `keys`, back
+   * to its suggestion, while reviewing, keeping the last write's failure.
+   */
+  readonly reset: (keys: Iterable<RecordKey.Type>) => void
   /** Write the plan under review as one transaction, when it is ready to write. */
   readonly importPlan: () => void
   /** Drop whatever is read, planned or written, and go back to choosing files. */
@@ -181,8 +186,8 @@ const logFailure = (action: string, failure: unknown): void => {
  * @remarks
  * The state lives in a ref beside the React state, written together, so an
  * action reads what the next action needs rather than what the last render
- * showed. A choice is only taken while reviewing, never while the write is
- * in flight. It keeps the last write's failure on screen, since the reviewer
+ * showed. A choice, or a reset back to the suggestion, is only taken while
+ * reviewing, never while the write is in flight. It keeps the last write's failure on screen, since the reviewer
  * reads it while fixing the plan and what it says stays true; pressing
  * Import again or starting over clears it. One ticket drops a read or a write that a later action overtook.
  * A write that was sent invalidates the source-file list and the stored
@@ -224,17 +229,31 @@ const useImportPlanPage = (): ImportPlanPage => {
     [commit, runAuthed]
   )
 
-  const choose = useCallback(
-    (keys: Iterable<RecordKey.Type>, choice: RecordChoice.Type): void => {
+  const revise = useCallback(
+    (revisePlan: (plan: ImportPlan.Type) => ImportPlan.Type): void => {
       const pageState = current.current
       if (pageState._tag !== 'Reviewing') return
       const { batchCopies, readAt, recordReferences, plan } = pageState.review
       const review = Effect.runSync(
-        reviewOf(batchCopies, readAt, recordReferences, ImportPlan.choose(plan, keys, choice))
+        reviewOf(batchCopies, readAt, recordReferences, revisePlan(plan))
       )
       commit(reviewing({ review, writeFailure: pageState.writeFailure }))
     },
     [commit]
+  )
+
+  const choose = useCallback(
+    (keys: Iterable<RecordKey.Type>, choice: RecordChoice.Type): void => {
+      revise((plan) => ImportPlan.choose(plan, keys, choice))
+    },
+    [revise]
+  )
+
+  const reset = useCallback(
+    (keys: Iterable<RecordKey.Type>): void => {
+      revise((plan) => ImportPlan.reset(plan, keys))
+    },
+    [revise]
   )
 
   const importPlan = useCallback((): void => {
@@ -277,7 +296,7 @@ const useImportPlanPage = (): ImportPlanPage => {
     commit(choosingFiles())
   }, [commit])
 
-  return { state, read, choose, importPlan, startOver }
+  return { state, read, choose, reset, importPlan, startOver }
 }
 
 export { ImportPlanPageState, useImportPlanPage }

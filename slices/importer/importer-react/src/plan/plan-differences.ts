@@ -34,29 +34,33 @@ interface Candidate {
 type Type = HashMap.HashMap<RecordKey.Type, readonly Candidate[]>
 
 /**
- * The candidates of each record of `plan` that needs a decision
- * (`PlannedRecord.needsDecision`): each existing record it could merge into
- * (`PlannedRecord.existingRecordsOf`), with the differences merging into it would
- * make given the plan's choices (`differencesInPlan`).
+ * The candidates of each record of `plan` that has an existing record:
+ * each existing record it could merge into
+ * (`PlannedRecord.existingRecordsOf`), with the differences merging into it
+ * would make given the plan's choices (`differencesInPlan`). A record with
+ * no existing record has none worked out.
  *
  * @remarks
  * Computed once per plan value, synchronously: every choice makes a new
  * plan, so every choice computes it again, at a cost of the records that
- * need a decision, times their candidates, times a pass over the whole plan
- * (`differencesInPlan`). Making that cheaper is #1566.
+ * have an existing record, times their candidates, times a pass over the
+ * whole plan (`differencesInPlan`). Making that cheaper is #1566.
  */
 const ofPlan = (plan: ImportPlan.Type): Type =>
   HashMap.fromIterable(
-    plan.records.filter(PlannedRecord.needsDecision).map(
-      (planned) =>
-        [
-          planned.record.key,
-          PlannedRecord.existingRecordsOf(planned).map(({ resource, knownBy }): Candidate => ({
-            existing: resource,
-            knownBy,
-            inPlan: differencesInPlan(plan, planned, resource),
-          })),
-        ] as const
+    Arr.filterMap(plan.records, (planned) =>
+      Option.map(
+        Option.liftPredicate(PlannedRecord.existingRecordsOf(planned), Arr.isNonEmptyReadonlyArray),
+        (existingRecords) =>
+          [
+            planned.record.key,
+            existingRecords.map(({ resource, knownBy }): Candidate => ({
+              existing: resource,
+              knownBy,
+              inPlan: differencesInPlan(plan, planned, resource),
+            })),
+          ] as const
+      )
     )
   )
 
