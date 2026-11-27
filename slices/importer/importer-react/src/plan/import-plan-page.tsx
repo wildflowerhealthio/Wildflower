@@ -3,6 +3,7 @@ import { LinkButton } from '@wildflowerhealthio/react-tundraish'
 import type { Option } from 'effect'
 import type { JSX } from 'react'
 
+import { DecidedAutomatically } from './decided-automatically.tsx'
 import { ImportBar } from './import-bar.tsx'
 import { NeedsADecision } from './needs-a-decision.tsx'
 import { CANCEL_IMPORT_LABEL } from './plan-text.ts'
@@ -20,13 +21,16 @@ interface ImportPlanPageProps {
   readonly importing: boolean
   /** Make `choice` the reviewer's choice for every record under one of `keys`. */
   readonly onChoose: (keys: Iterable<RecordKey.Type>, choice: RecordChoice.Type) => void
+  /** Clear the reviewer's choice for every record under one of `keys`, back to its suggestion. */
+  readonly onReset: (keys: Iterable<RecordKey.Type>) => void
   readonly onImport: () => void
   readonly onCancel: () => void
 }
 
 /**
  * The import plan under review: the summary, the records that need a
- * decision, the import bar and a way to cancel, in one column. While the
+ * decision, the import bar, the records decided automatically and a way to
+ * cancel, in one column. While the
  * write is in flight there is no Cancel import, since the write lands
  * whatever the page shows.
  */
@@ -35,6 +39,7 @@ const ImportPlanPage = ({
   writeFailure,
   importing,
   onChoose,
+  onReset,
   onImport,
   onCancel,
 }: ImportPlanPageProps): JSX.Element => (
@@ -46,6 +51,12 @@ const ImportPlanPage = ({
       writeFailure={writeFailure}
       importing={importing}
       onImport={onImport}
+    />
+    <DecidedAutomatically
+      review={review}
+      importing={importing}
+      onChoose={onChoose}
+      onReset={onReset}
     />
     {importing ? null : (
       <LinkButton className={styles['import-plan-page__cancel']} onClick={onCancel}>

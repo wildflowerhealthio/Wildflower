@@ -48,6 +48,7 @@ const ImporterScreen = (): JSX.Element => {
         writeFailure={writeFailure}
         importing={false}
         onChoose={page.choose}
+        onReset={page.reset}
         onImport={page.importPlan}
         onCancel={page.startOver}
       />
@@ -58,6 +59,7 @@ const ImporterScreen = (): JSX.Element => {
         writeFailure={Option.none()}
         importing
         onChoose={page.choose}
+        onReset={page.reset}
         onImport={page.importPlan}
         onCancel={page.startOver}
       />
