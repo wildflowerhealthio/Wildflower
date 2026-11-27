@@ -1,0 +1,126 @@
+/*
+ * The import plan's summary: a card holding the title, four counts in a grid
+ * (two columns, four from 768px) and one line per file. Tokens only, so dark
+ * mode needs nothing here.
+ */
+.summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-9);
+  padding: var(--space-7);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--card-border-radius);
+  background: var(--card-color-background);
+  box-shadow: var(--card-box-shadow);
+}
+
+.summary-card__heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.summary-card__kicker {
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-neutral-4);
+}
+
+.summary-card__title {
+  margin: 0;
+  font-size: var(--font-size-6);
+  font-weight: var(--font-weight-3);
+  letter-spacing: var(--letter-spacing-2);
+  line-height: var(--line-height-3);
+}
+
+.summary-card__counts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8) var(--space-5);
+}
+
+.summary-card__count {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.summary-card__number {
+  order: -1;
+  margin: 0;
+  font-size: var(--font-size-7);
+  font-weight: var(--font-weight-3);
+  letter-spacing: var(--letter-spacing-1);
+  line-height: var(--line-height-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-card__label {
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-neutral-4);
+}
+
+.summary-card__count--open .summary-card__number,
+.summary-card__open {
+  color: var(--color-warning-foreground);
+}
+
+.summary-card__open {
+  margin: 0;
+  margin-top: calc(-1 * var(--space-2));
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+}
+
+.summary-card__files {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-5) 0 0;
+  border-top: 1px solid var(--color-divider);
+  list-style: none;
+}
+
+.summary-card__file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-5);
+  font-size: var(--font-size-2);
+}
+
+.summary-card__file-title {
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  color: var(--color-neutral-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-card__file-line {
+  color: var(--color-neutral-5);
+  overflow-wrap: anywhere;
+}
+
+.summary-card__file--failed .summary-card__file-title,
+.summary-card__file--failed .summary-card__file-line {
+  color: var(--color-red-3);
+}
+
+@media (min-width: 768px) {
+  .summary-card {
+    padding: var(--space-9);
+  }
+
+  .summary-card__counts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
