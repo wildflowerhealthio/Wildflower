@@ -405,8 +405,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `Derived`, where a stored copy from an earlier import sits, so a record
     keyed by its source URL, its ids minted, has none. What the record copy
     says of the record: **`stageIdOf`**, **`titleOf`**, **`sourceUrlOf`**,
-    **`isImplied`** (every copy implied) and
-    **`logicalReferenceIfKeyedByIdentifier`** (`RecordKey`'s, of its
+    **`isImplied`** (every copy implied), **`resourceTypeOf`** and
+    **`keyIdentifierOf`** (`DetachedResource.keyIdentifierOf` of its
     resource); and **`literalReferenceUnder(record, id)`**, `<Type>/<id>`.
   - **`RecordReferences`** — **`Type`** `{ referenced, named, external }`:
     the records another record references by a logical reference; `named`,
@@ -494,10 +494,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   - **`ReferenceTable`** — where a reference to each record lands, by every
     spelling the plan's copies name a record by. A **`Target`** is
     **`Literal`** `{ literalReference }` or a name-only **`Stub`**
-    `{ display, keyedBy }` (its `type`, `identifier` and `display`, no
-    literal; `display` is `None` when there is nothing to show, and
-    `keyedBy` is the record's key as a logical reference, `None` for a
-    record with no key identifier). **`make({ logicalReferences, stageLiterals,
+    `{ resourceType, keyIdentifier, display }` (its `type`, `identifier`
+    and `display`, no literal; `keyIdentifier` is `None` for a record with
+    no key identifier, and `display` is `None` when there is nothing to
+    show). **`make({ logicalReferences, stageLiterals,
     sourceUrls })`** builds the table from each spelling beside its target,
     as labelled entries (`{ logicalReference, target }`,
     `{ stageLiteral, target }`, `{ sourceUrl, target }`), the literal ones
@@ -506,8 +506,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     the literal a logical reference lands on, `None` for a stub or no
     target. **`resolve(table, resource)`**, a plain function: a
     reference by a record's stage literal lands on the target's literal, or
-    becomes a stub by the record's key (one with no key identifier keeps
-    its literal); a logical reference to a stub gets the stub's display, when
+    becomes a stub by the record's type and key identifier (by its type
+    and display alone when it has none, so no literal to a record not
+    written survives); a logical reference to a stub gets the stub's display, when
     there is one, if it has none of its own; a logical reference, an
     `Attachment.url` or a literal spelling a source URL with a literal target
     is made literal (`resolveReferences`); `meta.source`, read and stamped

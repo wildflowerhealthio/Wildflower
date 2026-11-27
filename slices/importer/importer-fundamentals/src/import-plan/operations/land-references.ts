@@ -54,8 +54,9 @@ const targetOf = (
         Match.tag('DontAdd', () =>
           Option.some(
             ReferenceTable.Stub({
+              resourceType: ImportedRecord.resourceTypeOf(planned.record),
+              keyIdentifier: ImportedRecord.keyIdentifierOf(planned.record),
               display: stubDisplayOf(now, planned.record),
-              keyedBy: ImportedRecord.logicalReferenceIfKeyedByIdentifier(planned.record),
             })
           )
         ),

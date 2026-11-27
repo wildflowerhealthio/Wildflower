@@ -6,12 +6,13 @@
  */
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierUnion } from '@wildflowerhealthio/fhir-r4/clients'
-import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
+import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { ResourceType } from '@wildflowerhealthio/fhir-r4/resources'
 import { groupInOrder } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Option, Order } from 'effect'
 
 import * as ImportedCopy from './imported-copy.ts'
-import * as RecordKey from './record-key.ts'
+import type * as RecordKey from './record-key.ts'
 
 /** One record's key beside every copy of it, in plan order. */
 interface Type {
@@ -77,9 +78,13 @@ const titleOf = (record: Type): string => recordCopyOf(record).title
 /** The URL a source served the record at: its record copy's (`ImportedCopy.Type`'s `sourceUrl`). */
 const sourceUrlOf = (record: Type): Option.Option<URL> => recordCopyOf(record).sourceUrl
 
+/** The record's resource type: its record copy's. */
+const resourceTypeOf = (record: Type): ResourceType.Type =>
+  recordCopyOf(record).resource.resourceType
+
 /** The literal reference to the record under `id`: `<Type>/<id>`. */
 const literalReferenceUnder = (record: Type, id: string): string =>
-  `${recordCopyOf(record).resource.resourceType}/${id}`
+  `${resourceTypeOf(record)}/${id}`
 
 /**
  * The literal reference the import stage gives the record, `<Type>/<id>`
@@ -103,12 +108,13 @@ const literalReferenceIfDerived = (record: Type): Option.Option<string> =>
   )
 
 /**
- * The logical reference the record is keyed by, when it is keyed by
- * identifier: its record copy's (`RecordKey.logicalReferenceIfKeyedByIdentifier`);
- * `None` when it has no key identifier.
+ * The record's key identifier: its record copy's
+ * (`DetachedResource.keyIdentifierOf`); `None` when it has none.
  */
-const logicalReferenceIfKeyedByIdentifier = (record: Type): Option.Option<LogicalReference.Type> =>
-  RecordKey.logicalReferenceIfKeyedByIdentifier(recordCopyOf(record).resource)
+const keyIdentifierOf = (
+  record: Type
+): Option.Option<IdentifierAndReference.QualifiedIdentifierType> =>
+  DetachedResource.keyIdentifierOf(recordCopyOf(record).resource)
 
 /**
  * The record's resource: its record copy's ({@link recordCopyOf}), carrying
@@ -134,9 +140,10 @@ export {
   isImplied,
   literalReferenceIfDerived,
   literalReferenceUnder,
-  logicalReferenceIfKeyedByIdentifier,
+  keyIdentifierOf,
   mergeOrder,
   resourceOf,
+  resourceTypeOf,
   sourceUrlOf,
   stageIdOf,
   stageLiteralOf,

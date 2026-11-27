@@ -232,7 +232,11 @@ describe('KeptRecord.writtenOf, an unlinked reference of the kept record', () =>
   it('should write nothing when the table lands the reference on a stub', () => {
     // Arrange
     const table = tableLanding(
-      ReferenceTable.Stub({ display: Option.some('Dr. Brown'), keyedBy: Option.none() })
+      ReferenceTable.Stub({
+        resourceType: 'Practitioner',
+        keyIdentifier: Option.some(drBrownReference.identifier[0]),
+        display: Option.some('Dr. Brown'),
+      })
     )
 
     // Act
