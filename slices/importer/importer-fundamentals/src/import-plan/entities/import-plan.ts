@@ -15,7 +15,7 @@ import type * as StoredMatch from './stored-match.ts'
 
 /**
  * Every record of an import, in plan order, and what the store holds of the
- * import: of each record, and of each logical reference not in the import
+ * import: of each record, and of each external reference's target
  * (`StoredMatch.ofReference`).
  *
  * @remarks

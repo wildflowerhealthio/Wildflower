@@ -59,52 +59,53 @@ const of = (records: readonly ImportedRecord.Type[], storedMatch: StoredMatch.Ty
     (recordLiterals) => ({ recordLiterals })
   )
 
-/** Whether `reference` names its target by a type and a qualified identifier. */
-const namesByIdentifier = (reference: ReferenceType): boolean =>
-  Option.isSome(LogicalReference.tryFromReference({ ...reference, reference: null }))
+/** Whether `heldReference` names its target by a type and a qualified identifier. */
+const namesByIdentifier = (heldReference: ReferenceType): boolean =>
+  Option.isSome(LogicalReference.tryFromReference({ ...heldReference, reference: null }))
 
 /**
- * `reference` with its literal as it is compared: one naming its target by a
- * type and a qualified identifier without its literal, so a stored copy's and
- * an import record's agree; one naming a record of the import by a literal
- * alone, by the record's literal ({@link Type}); any other as it is.
+ * `heldReference` with its literal as it is compared: one naming its target
+ * by a type and a qualified identifier without its literal, so a stored
+ * copy's and an import record's agree; one naming a record of the import by
+ * a literal alone, by the record's literal ({@link Type}); any other as it
+ * is.
  */
-const comparableTargetOf = (comparable: Type, reference: ReferenceType): ReferenceType =>
-  namesByIdentifier(reference)
-    ? { ...reference, reference: null }
+const comparableTargetOf = (comparable: Type, heldReference: ReferenceType): ReferenceType =>
+  namesByIdentifier(heldReference)
+    ? { ...heldReference, reference: null }
     : pipe(
-        Option.fromNullable(reference.reference),
+        Option.fromNullable(heldReference.reference),
         Option.flatMap((literal) => HashMap.get(comparable.recordLiterals, literal)),
         Option.match({
-          onNone: () => reference,
-          onSome: (recordLiteral) => ({ ...reference, reference: recordLiteral }),
+          onNone: () => heldReference,
+          onSome: (recordLiteral) => ({ ...heldReference, reference: recordLiteral }),
         })
       )
 
 /**
- * `reference` as it is compared: its target as {@link comparableTargetOf}
- * reads it, without its `display` when it names its target by a literal or by
- * a type and a qualified identifier.
+ * `heldReference` as it is compared: its target as
+ * {@link comparableTargetOf} reads it, without its `display` when it names
+ * its target by a literal or by a type and a qualified identifier.
  *
  * @remarks
  * FHIR's `display` is a text alternative to the reference, not what it points
  * at, so a stub written with a display the import's copy lacks is the same
  * reference. A reference that is only a display is compared by it.
  */
-const comparableReferenceOf = (comparable: Type, reference: ReferenceType): ReferenceType => {
-  const target = comparableTargetOf(comparable, reference)
-  return target.reference !== null || namesByIdentifier(reference)
+const comparableReferenceOf = (comparable: Type, heldReference: ReferenceType): ReferenceType => {
+  const target = comparableTargetOf(comparable, heldReference)
+  return target.reference !== null || namesByIdentifier(heldReference)
     ? { ...target, display: null }
     : target
 }
 
-/** `resource` with every reference as it is compared ({@link comparableReferenceOf}). */
+/** `resource` with every reference it holds as it is compared ({@link comparableReferenceOf}). */
 const comparableResourceOf = <TResource extends FhirResource>(
   comparable: Type,
   resource: TResource
 ): TResource =>
-  ResourceReferences.mapReferences(resource, (reference) =>
-    comparableReferenceOf(comparable, reference)
+  ResourceReferences.mapReferences(resource, (heldReference) =>
+    comparableReferenceOf(comparable, heldReference)
   )
 
 export { comparableResourceOf, of }

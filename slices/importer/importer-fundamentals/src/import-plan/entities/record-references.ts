@@ -17,8 +17,8 @@ interface NamedRecord {
 
 /**
  * The records of an import that another of its records references, the
- * logical references that name a record of the import, and the logical
- * references no record of the import carries the identifier of.
+ * logical references that name a record of the import, and the import's
+ * external references.
  */
 interface Type {
   readonly referenced: HashSet.HashSet<RecordKey.Type>
@@ -28,15 +28,19 @@ interface Type {
    * the order the identifiers are first carried.
    */
   readonly named: readonly NamedRecord[]
-  /** Each distinct logical reference no record of the import carries the identifier of, in record order. */
-  readonly notInImport: readonly LogicalReference.Type[]
+  /**
+   * Each distinct external reference, in record order: an unlinked reference
+   * a record holds that points outside the import, since no record of the
+   * import carries its identifier.
+   */
+  readonly external: readonly LogicalReference.Type[]
 }
 
-/** The record references of `referenced` records, `named` records and `notInImport` references. */
-const make = ({ referenced, named, notInImport }: Type): Type => ({
+/** The record references of `referenced` records, `named` records and `external` references. */
+const make = ({ referenced, named, external }: Type): Type => ({
   referenced,
   named,
-  notInImport,
+  external,
 })
 
 /** Whether another record of the import references the record under `key`. */

@@ -147,18 +147,18 @@ describe('landReferences, a logical reference to a record of the import', () => 
       [],
       StoredMatch.make({
         records: [
-          [
-            ImportedCopy.recordKeyOf(drBrown),
-            StoredMatch.makeEntry(
+          {
+            key: ImportedCopy.recordKeyOf(drBrown),
+            entry: StoredMatch.makeEntry(
               [
                 candidate(storedBrown, 'probable', 'name'),
                 candidate({ ...storedBrown, id: 'pr-2' }, 'probable', 'name'),
               ],
               Option.none()
             ),
-          ],
+          },
         ],
-        references: [],
+        externalReferences: [],
       })
     )
 
@@ -247,7 +247,10 @@ describe('landReferences, a logical reference naming no record of the import', (
     const plan = planWith(
       [prescription],
       [],
-      StoredMatch.make({ records: [], references: [[tyraReference, candidates]] })
+      StoredMatch.make({
+        records: [],
+        externalReferences: [{ externalReference: tyraReference, candidates }],
+      })
     )
 
     // Act

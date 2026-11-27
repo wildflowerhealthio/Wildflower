@@ -103,8 +103,8 @@ const writesOf = (
 const literalReferencesIn = (resources: readonly FhirResourceWithId[]): HashSet.HashSet<string> =>
   HashSet.fromIterable(
     resources.flatMap((resource) =>
-      Arr.filterMap(ResourceReferences.collect(resource), ({ reference }) =>
-        Option.fromNullable(reference.reference)
+      Arr.filterMap(ResourceReferences.collect(resource), ({ reference: heldReference }) =>
+        Option.fromNullable(heldReference.reference)
       )
     )
   )

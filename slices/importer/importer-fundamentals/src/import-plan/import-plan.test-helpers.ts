@@ -105,15 +105,16 @@ const prescriptionWire = (
   requester: { type: 'Practitioner', identifier: requester, display: 'Dr. Brown' },
 })
 
-/** A stored match giving each key its candidates and nothing under its derived id, no reference any. */
+/** A stored match giving each key its candidates and nothing under its derived id, no external reference any. */
 const matchOf = (
   entries: readonly (readonly [RecordKey.Type, readonly ResourceMatch.Candidate[]])[]
 ): StoredMatch.Type =>
   StoredMatch.make({
-    records: entries.map(
-      ([key, candidates]) => [key, StoredMatch.makeEntry(candidates, Option.none())] as const
-    ),
-    references: [],
+    records: entries.map(([key, candidates]) => ({
+      key,
+      entry: StoredMatch.makeEntry(candidates, Option.none()),
+    })),
+    externalReferences: [],
   })
 
 /** Tyra's Patient from `a.har`, as the sample import's first file holds her. */

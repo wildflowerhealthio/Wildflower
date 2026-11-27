@@ -233,17 +233,14 @@ describe('differencesOf', () => {
     const comparable = ComparableReferences.of(
       records,
       StoredMatch.make({
-        records: records.map(
-          ({ key }) =>
-            [
-              key,
-              StoredMatch.makeEntry(
-                [candidate(storedTyra, 'certain', 'identifier')],
-                Option.none()
-              ),
-            ] as const
-        ),
-        references: [],
+        records: records.map(({ key }) => ({
+          key,
+          entry: StoredMatch.makeEntry(
+            [candidate(storedTyra, 'certain', 'identifier')],
+            Option.none()
+          ),
+        })),
+        externalReferences: [],
       })
     )
     const observationWire = {

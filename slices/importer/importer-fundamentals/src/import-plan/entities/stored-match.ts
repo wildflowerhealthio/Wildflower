@@ -1,7 +1,11 @@
 /**
- * A stored match: what the store holds of an import's records and of the
- * logical references not in the import (no record of it carries their
- * identifier), found before the plan is built.
+ * A stored match: what the store holds of an import's records and of its
+ * external references, found before the plan is built.
+ *
+ * @remarks
+ * An external reference points outside the import: it names its target by
+ * an identifier no record of the import carries, so the store is asked
+ * whether it holds that target.
  *
  * @packageDocumentation
  */
@@ -31,20 +35,22 @@ interface Entry {
 }
 
 /**
- * Each record's {@link Entry} by its key, and each logical reference not in
- * the import beside its stored candidates, best grade first, by
- * `LogicalReference.key`.
+ * Each record's {@link Entry} by its key, and the stored candidates of each
+ * external reference's target, best grade first, by `LogicalReference.key`.
  */
 interface Type {
   readonly byRecord: HashMap.HashMap<RecordKey.Type, Entry>
-  readonly byReference: HashMap.HashMap<LogicalReference.Key, readonly ResourceMatch.Candidate[]>
+  readonly byExternalReference: HashMap.HashMap<
+    LogicalReference.Key,
+    readonly ResourceMatch.Candidate[]
+  >
 }
 
 /** What the store holds of a record it holds nothing of. */
 const NOTHING_FOUND: Entry = { candidates: [], storedUnderDerivedId: Option.none() }
 
 /** Nothing stored matches. */
-const empty: Type = { byRecord: HashMap.empty(), byReference: HashMap.empty() }
+const empty: Type = { byRecord: HashMap.empty(), byExternalReference: HashMap.empty() }
 
 /** One record's entry: its `candidates` and what is stored under its derived id. */
 const makeEntry = (
@@ -54,22 +60,24 @@ const makeEntry = (
 
 /**
  * The stored match of `records`, each record's key beside its entry, and of
- * `references`, each logical reference not in the import beside its
- * candidates.
+ * `externalReferences`, each beside the stored candidates of its target.
  */
 const make = ({
   records,
-  references,
+  externalReferences,
 }: {
-  readonly records: Iterable<readonly [RecordKey.Type, Entry]>
-  readonly references: Iterable<
-    readonly [LogicalReference.Type, readonly ResourceMatch.Candidate[]]
-  >
+  readonly records: Iterable<{ readonly key: RecordKey.Type; readonly entry: Entry }>
+  readonly externalReferences: Iterable<{
+    readonly externalReference: LogicalReference.Type
+    readonly candidates: readonly ResourceMatch.Candidate[]
+  }>
 }): Type => ({
-  byRecord: HashMap.fromIterable(records),
-  byReference: HashMap.fromIterable(
-    Arr.map(Arr.fromIterable(references), ([reference, candidates]) => [
-      LogicalReference.key(reference),
+  byRecord: HashMap.fromIterable(
+    Arr.map(Arr.fromIterable(records), ({ key, entry }) => [key, entry])
+  ),
+  byExternalReference: HashMap.fromIterable(
+    Arr.map(Arr.fromIterable(externalReferences), ({ externalReference, candidates }) => [
+      LogicalReference.key(externalReference),
       candidates,
     ])
   ),
@@ -79,12 +87,12 @@ const make = ({
 const ofRecord = (storedMatch: Type, key: RecordKey.Type): Entry =>
   HashMap.get(storedMatch.byRecord, key).pipe(Option.getOrElse(() => NOTHING_FOUND))
 
-/** The stored candidates of `reference`, not in the import, best grade first; none when it has no entry. */
+/** The stored candidates of `externalReference`'s target, best grade first; none when it has no entry. */
 const ofReference = (
   storedMatch: Type,
-  reference: LogicalReference.Type
+  externalReference: LogicalReference.Type
 ): readonly ResourceMatch.Candidate[] =>
-  HashMap.get(storedMatch.byReference, LogicalReference.key(reference)).pipe(
+  HashMap.get(storedMatch.byExternalReference, LogicalReference.key(externalReference)).pipe(
     Option.getOrElse(() => [])
   )
 
@@ -106,13 +114,13 @@ const storedCopiesOf = (entry: Entry): readonly FhirResourceWithId[] =>
   )
 
 /**
- * The stored copies of the record `reference`, not in the import, names: its
- * candidates found by identifier ({@link ofReference}).
+ * The stored copies of the record `externalReference` names: its candidates
+ * found by identifier ({@link ofReference}).
  */
 const storedCopiesOfReference = (
   storedMatch: Type,
-  reference: LogicalReference.Type
-): readonly FhirResourceWithId[] => foundByIdentifier(ofReference(storedMatch, reference))
+  externalReference: LogicalReference.Type
+): readonly FhirResourceWithId[] => foundByIdentifier(ofReference(storedMatch, externalReference))
 
 export { empty, make, makeEntry, ofRecord, ofReference, storedCopiesOf, storedCopiesOfReference }
 export type { Entry, Type }

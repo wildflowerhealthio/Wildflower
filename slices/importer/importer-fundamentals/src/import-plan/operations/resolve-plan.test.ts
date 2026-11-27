@@ -46,12 +46,12 @@ const storedUnder = (
 ): StoredMatch.Type =>
   StoredMatch.make({
     records: [
-      [
-        ImportedCopy.recordKeyOf(copy),
-        StoredMatch.makeEntry(candidates, Option.some(underDerivedId)),
-      ],
+      {
+        key: ImportedCopy.recordKeyOf(copy),
+        entry: StoredMatch.makeEntry(candidates, Option.some(underDerivedId)),
+      },
     ],
-    references: [],
+    externalReferences: [],
   })
 
 /** The written form of `copy`'s record in `plan` as wire JSON, or `None`. */

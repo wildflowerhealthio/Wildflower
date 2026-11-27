@@ -98,21 +98,20 @@ const namedTargetsOf = (
 }
 
 /**
- * The target of each logical reference not in the import (no record of it
- * carries its identifier): a literal to the one stored copy of the record it
- * names
+ * The target of each external reference (`RecordReferences.Type`'s
+ * `external`): a literal to the one stored copy of the record it names
  * (`StoredMatch.storedCopiesOfReference`), none when there are several or
  * none.
  */
-const notInImportTargetsOf = (
+const externalTargetsOf = (
   recordReferences: RecordReferences.Type,
   storedMatch: StoredMatch.Type
 ): readonly LogicalReferenceTarget[] =>
-  Arr.filterMap(recordReferences.notInImport, (logicalReference) =>
+  Arr.filterMap(recordReferences.external, (externalReference) =>
     Option.map(
-      onlyElement(StoredMatch.storedCopiesOfReference(storedMatch, logicalReference)),
+      onlyElement(StoredMatch.storedCopiesOfReference(storedMatch, externalReference)),
       (stored) => ({
-        logicalReference,
+        logicalReference: externalReference,
         target: ReferenceTable.Literal({ literalReference: literalReferenceOf(stored) }),
       })
     )
@@ -135,8 +134,8 @@ const notInImportTargetsOf = (
  *   spells, for a record a source served (a `Binary`); a record not added
  *   keeps the source's URL.
  *
- * A logical reference not in the import lands on the one stored record
- * found for it by identifier.
+ * An external reference lands on the one stored record found for it by
+ * identifier.
  */
 const landReferences = (
   now: DateTime.DateTime,
@@ -153,7 +152,7 @@ const landReferences = (
   return ReferenceTable.make({
     logicalReferences: [
       ...namedTargetsOf(recordReferences, recordTargets),
-      ...notInImportTargetsOf(recordReferences, plan.storedMatch),
+      ...externalTargetsOf(recordReferences, plan.storedMatch),
     ],
     stageLiterals: recordTargets.flatMap(({ record, target }) =>
       record.copies.map((copy) => ({ stageLiteral: ImportedCopy.stageLiteralOf(copy), target }))

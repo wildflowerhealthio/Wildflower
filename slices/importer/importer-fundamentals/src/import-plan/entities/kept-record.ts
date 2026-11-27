@@ -137,36 +137,37 @@ const mergesWriteSomething = (keptRecord: Type): boolean =>
   identifiersOf(keptRecord).length > ownIdentifiersOf(keptRecord).length
 
 /**
- * The literal `table` lands `reference` on when `reference` is unlinked: it
- * names its target by a type and a qualified identifier alone, with no
- * literal (`LogicalReference.tryFromReference`). `None` for any other
- * reference, and for an unlinked one the table lands on a stub or nowhere.
+ * The link `heldReference` gains: the literal `table` lands it on, when it
+ * is unlinked, naming its target by a type and a qualified identifier alone
+ * with no literal (`LogicalReference.tryFromReference`). `None` for any
+ * other reference, and for an unlinked one the table lands on a stub or
+ * nowhere.
  */
-const linkFor = (table: ReferenceTable.Type, reference: ReferenceType): Option.Option<string> =>
-  Option.flatMap(LogicalReference.tryFromReference(reference), (logicalReference) =>
-    ReferenceTable.literalReferenceFor(table, logicalReference)
+const linkFor = (table: ReferenceTable.Type, heldReference: ReferenceType): Option.Option<string> =>
+  Option.flatMap(LogicalReference.tryFromReference(heldReference), (unlinkedReference) =>
+    ReferenceTable.literalReferenceFor(table, unlinkedReference)
   )
 
-/** Whether `table` links a reference of `resource`: one of its unlinked references lands on a literal ({@link linkFor}). */
+/** Whether `table` links a reference of `resource`: one of its unlinked references gains a link ({@link linkFor}). */
 const gainsLink = (table: ReferenceTable.Type, resource: FhirResourceWithId): boolean =>
-  ResourceReferences.collect(resource).some(({ reference }) =>
-    Option.isSome(linkFor(table, reference))
+  ResourceReferences.collect(resource).some(({ reference: heldReference }) =>
+    Option.isSome(linkFor(table, heldReference))
   )
 
 /**
- * `resource` with each of its unlinked references given the literal `table`
- * lands it on ({@link linkFor}), keeping its `type`, `identifier` and
- * `display`; every other reference as it is. So the links are completed and
+ * `resource` with each of its unlinked references given its link
+ * ({@link linkFor}), keeping its `type`, `identifier` and `display`; every
+ * other reference as it is. So the links are completed and
  * nothing the stored record says is replaced.
  */
 const withLinksLanded = (
   table: ReferenceTable.Type,
   resource: FhirResourceWithId
 ): FhirResourceWithId =>
-  ResourceReferences.mapReferences(resource, (reference) =>
-    Option.match(linkFor(table, reference), {
-      onNone: () => reference,
-      onSome: (literalReference) => ({ ...reference, reference: literalReference }),
+  ResourceReferences.mapReferences(resource, (heldReference) =>
+    Option.match(linkFor(table, heldReference), {
+      onNone: () => heldReference,
+      onSome: (link) => ({ ...heldReference, reference: link }),
     })
   )
 

@@ -18,7 +18,7 @@ import * as PlannedRecord from './planned-record.ts'
 import * as RecordChoice from './record-choice.ts'
 import type * as ReferenceTable from './reference-table.ts'
 
-/** Each kept record, by its literal reference. */
+/** Each kept record, by its stored literal: the `Type/id` it is stored under. */
 type Type = Record.ReadonlyRecord<string, KeptRecord.Type>
 
 /** No stored record merged into yet. */
@@ -100,11 +100,11 @@ const withRecordChoice = (keptRecords: Type, incomingRecord: IncomingRecord): Ty
   Option.match(mergeOf(incomingRecord), {
     onNone: () => keptRecords,
     onSome: ({ existing, merge }) => {
-      const literalReference = literalReferenceOf(existing)
-      const mergedSoFar = Option.getOrElse(Record.get(keptRecords, literalReference), () =>
+      const storedLiteral = literalReferenceOf(existing)
+      const mergedSoFar = Option.getOrElse(Record.get(keptRecords, storedLiteral), () =>
         KeptRecord.make(existing, [])
       )
-      return Record.set(keptRecords, literalReference, KeptRecord.withMerge(mergedSoFar, merge))
+      return Record.set(keptRecords, storedLiteral, KeptRecord.withMerge(mergedSoFar, merge))
     },
   })
 
@@ -115,7 +115,7 @@ const asMergedIn = (keptRecords: Type, existing: FhirResourceWithId): FhirResour
     onSome: KeptRecord.asMerged,
   })
 
-/** What is written for each kept record that is written, by its literal reference. */
+/** What is written for each kept record that is written, by its stored literal. */
 type Writes = Record.ReadonlyRecord<string, FhirResourceWithId>
 
 /**

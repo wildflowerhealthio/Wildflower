@@ -105,23 +105,23 @@ const make = ({
 })
 
 /**
- * `reference`, which names a record by its stage literal, landed on
+ * `heldReference`, which names a record by its stage literal, landed on
  * `target`: the target's literal, or a stub by the record's key identifier;
  * the stub of a record with no key identifier keeps the literal.
  */
-const stageLiteralLanded = (reference: ReferenceType, target: Target): ReferenceType =>
+const stageLiteralLanded = (heldReference: ReferenceType, target: Target): ReferenceType =>
   Match.value(target).pipe(
     Match.tagsExhaustive({
-      Literal: ({ literalReference }) => ({ ...reference, reference: literalReference }),
+      Literal: ({ literalReference }) => ({ ...heldReference, reference: literalReference }),
       Stub: ({ display, keyedBy }) =>
         Option.match(keyedBy, {
-          onNone: () => reference,
+          onNone: () => heldReference,
           onSome: ({ resourceType, identifier: [identifier] }) => ({
-            ...reference,
+            ...heldReference,
             reference: null,
-            type: reference.type ?? resourceType,
-            identifier: reference.identifier ?? identifier,
-            display: reference.display ?? Option.getOrNull(display),
+            type: heldReference.type ?? resourceType,
+            identifier: heldReference.identifier ?? identifier,
+            display: heldReference.display ?? Option.getOrNull(display),
           }),
         }),
     })
@@ -132,13 +132,13 @@ const withStageLiteralsLanded = <TResource extends FhirResource>(
   table: Type,
   resource: TResource
 ): TResource =>
-  ResourceReferences.mapReferences(resource, (reference) =>
+  ResourceReferences.mapReferences(resource, (heldReference) =>
     pipe(
-      Option.fromNullable(reference.reference),
-      Option.flatMap((literal) => HashMap.get(table.byStageLiteral, literal)),
+      Option.fromNullable(heldReference.reference),
+      Option.flatMap((stageLiteral) => HashMap.get(table.byStageLiteral, stageLiteral)),
       Option.match({
-        onNone: () => reference,
-        onSome: (target) => stageLiteralLanded(reference, target),
+        onNone: () => heldReference,
+        onSome: (target) => stageLiteralLanded(heldReference, target),
       })
     )
   )
@@ -152,16 +152,16 @@ const withStubDisplays = <TResource extends FhirResource>(
   table: Type,
   resource: TResource
 ): TResource =>
-  ResourceReferences.mapReferences(resource, (reference) =>
+  ResourceReferences.mapReferences(resource, (heldReference) =>
     pipe(
-      Option.liftPredicate(reference, ({ display }) => display === null),
+      Option.liftPredicate(heldReference, ({ display }) => display === null),
       Option.flatMap(LogicalReference.tryFromReference),
-      Option.flatMap((logicalReference) =>
-        HashMap.get(table.byLogicalReference, LogicalReference.key(logicalReference))
+      Option.flatMap((unlinkedReference) =>
+        HashMap.get(table.byLogicalReference, LogicalReference.key(unlinkedReference))
       ),
       Option.flatMap(displayIfStub),
-      Option.map((display) => ({ ...reference, display })),
-      Option.getOrElse(() => reference)
+      Option.map((display) => ({ ...heldReference, display })),
+      Option.getOrElse(() => heldReference)
     )
   )
 

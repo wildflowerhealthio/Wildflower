@@ -28,7 +28,7 @@ const planImport = (
 ): Effect.Effect<ImportPlan.Type, StoredMatchFailure, FhirR4ResourcesHttpApiClient> => {
   const records = ImportedRecord.fromCopies(copies)
   const recordReferences = locateReferences(records)
-  return Effect.map(findStoredMatch(records, recordReferences.notInImport), (storedMatch) =>
+  return Effect.map(findStoredMatch(records, recordReferences.external), (storedMatch) =>
     suggestPlan(records, recordReferences, storedMatch)
   )
 }

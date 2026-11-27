@@ -38,8 +38,8 @@ describe('StoredMatch.make, ofRecord and ofReference', () => {
 
     // Act
     const match = StoredMatch.make({
-      records: [[tyraKey, entry]],
-      references: [[TYRA_REFERENCE, referenceCandidates]],
+      records: [{ key: tyraKey, entry }],
+      externalReferences: [{ externalReference: TYRA_REFERENCE, candidates: referenceCandidates }],
     })
 
     // Assert
@@ -90,18 +90,18 @@ describe('StoredMatch.storedCopiesOf', () => {
 })
 
 describe('StoredMatch.storedCopiesOfReference', () => {
-  it('should give the stored records found by identifier for a reference not in the import, and no name match', () => {
+  it('should give the stored records found by identifier for an external reference, and no name match', () => {
     // Arrange
     const match = StoredMatch.make({
       records: [],
-      references: [
-        [
-          TYRA_REFERENCE,
-          [
+      externalReferences: [
+        {
+          externalReference: TYRA_REFERENCE,
+          candidates: [
             candidate(storedTyra, 'certain', 'identifier'),
             candidate(storedBrown, 'probable', 'name'),
           ],
-        ],
+        },
       ],
     })
 
