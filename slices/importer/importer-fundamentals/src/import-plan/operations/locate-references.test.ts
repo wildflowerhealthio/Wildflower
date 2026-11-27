@@ -52,17 +52,17 @@ const labObservation = copyOf(
 /** The EHR file's Tyra: keyed in the source's system, carrying her health card number too. */
 const ehrTyra = tyraCarrying([{ system: SOURCE, value: 'tyra' }, hcn], 'tyra', 'ehr.har')
 
-/** What `copies` reference: the review keys of the referenced records' first copies, and how many references are not in the import. */
+/** What `copies` reference: the review keys of the referenced records' first copies, and how many references are external. */
 const referencesOf = (
   copies: readonly ImportedCopy.Type[]
-): { readonly referenced: readonly string[]; readonly notInImport: number } => {
+): { readonly referenced: readonly string[]; readonly external: number } => {
   const records = ImportedRecord.fromCopies(copies)
   const references = locateReferences(records)
   return {
     referenced: records
       .filter(({ key }) => RecordReferences.isReferenced(references, key))
       .map(({ copies: [first] }) => first.reviewKey),
-    notInImport: references.notInImport.length,
+    external: references.external.length,
   }
 }
 
@@ -81,10 +81,10 @@ describe('locateReferences', () => {
     // Assert
     expect({
       referenced: [...HashSet.values(references.referenced)],
-      notInImport: references.notInImport.map(LogicalReference.key),
+      external: references.external.map(LogicalReference.key),
     }).toEqual({
       referenced: [ImportedCopy.recordKeyOf(drBrown)],
-      notInImport: [LogicalReference.key(tyraReference)],
+      external: [LogicalReference.key(tyraReference)],
     })
   })
 
@@ -119,7 +119,7 @@ describe('locateReferences', () => {
     const references = referencesOf([ehrTyra, labTyra, labObservation])
 
     // Assert
-    expect(references).toEqual({ referenced: ['lab.pdf/patient'], notInImport: 0 })
+    expect(references).toEqual({ referenced: ['lab.pdf/patient'], external: 0 })
   })
 
   it('should name the decoded record carrying a reference’s identifier over the record the reference implied', () => {
@@ -135,7 +135,7 @@ describe('locateReferences', () => {
     const references = referencesOf([ehrTyra, labObservation, impliedTyra])
 
     // Assert
-    expect(references).toEqual({ referenced: ['ehr.har/tyra'], notInImport: 0 })
+    expect(references).toEqual({ referenced: ['ehr.har/tyra'], external: 0 })
   })
 
   it('should name the record keyed by a reference’s identifier among several decoded records carrying it', () => {
@@ -151,10 +151,10 @@ describe('locateReferences', () => {
     const references = referencesOf([ehrTyra, pharmacyTyra, labTyra, labObservation])
 
     // Assert
-    expect(references).toEqual({ referenced: ['lab.pdf/patient'], notInImport: 0 })
+    expect(references).toEqual({ referenced: ['lab.pdf/patient'], external: 0 })
   })
 
-  it('should name none of several decoded records carrying an identifier that is no record’s key, and not count it as not in the import', () => {
+  it('should name none of several decoded records carrying an identifier that is no record’s key, and not count it as external', () => {
     // Arrange
     const pharmacyTyra = tyraCarrying(
       [{ system: OTHER_SOURCE, value: 'tyra' }, hcn],
@@ -166,7 +166,7 @@ describe('locateReferences', () => {
     const references = referencesOf([ehrTyra, pharmacyTyra, labObservation])
 
     // Assert
-    expect(references).toEqual({ referenced: [], notInImport: 0 })
+    expect(references).toEqual({ referenced: [], external: 0 })
   })
 
   it('should not count a record as referenced by itself when the rule names it among several', () => {
@@ -179,7 +179,37 @@ describe('locateReferences', () => {
     const references = referencesOf([ehrTyra, selfNamingLabTyra])
 
     // Assert
-    expect(references).toEqual({ referenced: [], notInImport: 0 })
+    expect(references).toEqual({ referenced: [], external: 0 })
+  })
+
+  it('should name each record by every qualified identifier its copies carry, a shared one the record keyed by it', () => {
+    // Arrange
+    const tyra = copyOf(detached(tyraWire('tyra')), 'tyra')
+    const twin = copyOf(
+      detached(
+        tyraWire('twin', {
+          identifier: [
+            { system: OTHER_SOURCE, value: 'twin' },
+            { system: SOURCE, value: 'tyra' },
+          ],
+        })
+      ),
+      'twin'
+    )
+
+    // Act
+    const references = locateReferences(ImportedRecord.fromCopies([tyra, twin]))
+
+    // Assert
+    expect(
+      references.named.map(({ logicalReference, key }) => ({
+        value: logicalReference.identifier[0].value,
+        key,
+      }))
+    ).toEqual([
+      { value: 'tyra', key: ImportedCopy.recordKeyOf(tyra) },
+      { value: 'twin', key: ImportedCopy.recordKeyOf(twin) },
+    ])
   })
 
   it('should not count a record naming itself as referenced', () => {
@@ -204,8 +234,8 @@ describe('locateReferences', () => {
     // Assert
     expect({
       referenced: HashSet.size(references.referenced),
-      notInImport: references.notInImport.length,
-    }).toEqual({ referenced: 0, notInImport: 0 })
+      external: references.external.length,
+    }).toEqual({ referenced: 0, external: 0 })
   })
 })
 
@@ -224,7 +254,7 @@ const observationAbout = (value: string, subject: object, fileName = 'a.har'): I
   )
 
 describe('locateReferences, by outcome', () => {
-  it('should link a reference in the import, leave an ambiguous one alone, and ask about one not in the import', () => {
+  it('should link a reference in the import, leave an ambiguous one alone, and ask about an external one', () => {
     // Arrange
     const pharmacyTyra = tyraCarrying(
       [{ system: OTHER_SOURCE, value: 'tyra' }, hcn],
@@ -245,13 +275,13 @@ describe('locateReferences, by outcome', () => {
     // Assert
     expect({
       referenced: [...HashSet.values(references.referenced)],
-      notInImport: references.notInImport.map(({ identifier: [{ value }] }) => value),
-    }).toEqual({ referenced: [ImportedCopy.recordKeyOf(ehrTyra)], notInImport: ['someone-else'] })
+      external: references.external.map(({ identifier: [{ value }] }) => value),
+    }).toEqual({ referenced: [ImportedCopy.recordKeyOf(ehrTyra)], external: ['someone-else'] })
   })
 })
 
 describe('locateReferences, its rules', () => {
-  it('should list each reference not in the import once, in record order of its first holder', () => {
+  it('should list each external reference once, in record order of its first holder', () => {
     // Arrange
     const copies = [
       observationAbout('first', { system: SOURCE, value: 'b' }),
@@ -260,10 +290,10 @@ describe('locateReferences, its rules', () => {
     ]
 
     // Act
-    const { notInImport } = locateReferences(ImportedRecord.fromCopies(copies))
+    const { external } = locateReferences(ImportedRecord.fromCopies(copies))
 
     // Assert
-    expect(notInImport.map(({ identifier: [{ value }] }) => value)).toEqual(['b', 'a'])
+    expect(external.map(({ identifier: [{ value }] }) => value)).toEqual(['b', 'a'])
   })
 
   it('should count a record named by itself and by another record as referenced', () => {
@@ -287,7 +317,7 @@ describe('locateReferences, its rules', () => {
     const references = referencesOf(copies)
 
     // Assert
-    expect(references).toEqual({ referenced: ['a.har/tyra'], notInImport: 0 })
+    expect(references).toEqual({ referenced: ['a.har/tyra'], external: 0 })
   })
 
   it('should keep the first-seen value of a reference several records hold', () => {
@@ -298,10 +328,10 @@ describe('locateReferences, its rules', () => {
     ]
 
     // Act
-    const { notInImport } = locateReferences(ImportedRecord.fromCopies(copies))
+    const { external } = locateReferences(ImportedRecord.fromCopies(copies))
 
     // Assert
-    expect(notInImport.map(({ identifier: [{ value, use }] }) => ({ value, use }))).toEqual([
+    expect(external.map(({ identifier: [{ value, use }] }) => ({ value, use }))).toEqual([
       { value: 'someone', use: 'official' },
     ])
   })

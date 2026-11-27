@@ -1,11 +1,14 @@
 import {
   DecodedFileSet,
+  differencesInPlan,
   type FileSetRecord,
   type FormatDecode,
+  type ImportPlan,
   ImportedRecord,
   locateReferences,
   PickedFile,
   PlannedRecord,
+  RecordChoice,
   RecordReferences,
   Section,
   SectionedList,
@@ -32,6 +35,23 @@ import { planImport } from './plan-import.ts'
 import * as ReviewGroup from './review-group.ts'
 
 /** Covers building an import's plan: its copies grouped into records, matched once, and suggested. */
+
+/**
+ * Each record of `plan` as its reason, and its differences from the
+ * existing record its effective choice merges it into (`differencesInPlan`);
+ * `None` for a record that merges into none.
+ */
+const reasonsAndDifferencesOf = (plan: ImportPlan.Type): readonly unknown[] =>
+  plan.records.map((planned) => ({
+    reason: planned.suggestion.reason._tag,
+    differences: Option.map(
+      Option.filter(
+        PlannedRecord.effectiveChoice(planned),
+        RecordChoice.is('MergeIntoExistingRecord')
+      ),
+      ({ existing }) => differencesInPlan(plan, planned, existing).differences
+    ),
+  }))
 
 const BINARY_URL = new URL('https://fhir.example/r4/Binary/report-1')
 
@@ -137,15 +157,16 @@ describe('planImport', () => {
     const { result } = await runAgainst(planImport(copies), [storedSourceFile, storedTyra])
 
     // Assert
-    expect(
-      result.records.map((planned) => ({
-        reason: planned.suggestion.reason._tag,
-        label: PlannedRecord.labelOf(planned),
-      }))
-    ).toEqual([
-      { reason: 'OneIdentifierMatch', label: 'LinkToExisting' },
-      { reason: 'OneIdentifierMatch', label: 'LinkToExisting' },
-    ])
+    expect({
+      labels: result.records.map(PlannedRecord.labelOf),
+      records: reasonsAndDifferencesOf(result),
+    }).toEqual({
+      labels: ['LinkToExisting', 'LinkToExisting'],
+      records: Array.from({ length: 2 }, () => ({
+        reason: 'OneIdentifierMatch',
+        differences: Option.some([]),
+      })),
+    })
   })
 
   it('should plan one Binary record, not two, when two file sets bring the same DocumentReference and the same Binary at one URL', async () => {
@@ -213,10 +234,13 @@ describe('planImport', () => {
     // Assert
     expect({
       written: written.length,
-      reasons: result.records.map((planned) => planned.suggestion.reason._tag),
+      records: reasonsAndDifferencesOf(result),
     }).toEqual({
       written: 4,
-      reasons: Array.from({ length: 4 }, () => 'OneIdentifierMatch'),
+      records: Array.from({ length: 4 }, () => ({
+        reason: 'OneIdentifierMatch',
+        differences: Option.some([]),
+      })),
     })
   })
 })

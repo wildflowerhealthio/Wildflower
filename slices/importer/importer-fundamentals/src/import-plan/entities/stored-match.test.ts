@@ -38,8 +38,8 @@ describe('StoredMatch.make, ofRecord and ofReference', () => {
 
     // Act
     const match = StoredMatch.make({
-      records: [[tyraKey, entry]],
-      references: [[TYRA_REFERENCE, referenceCandidates]],
+      records: [{ key: tyraKey, entry }],
+      externalReferences: [{ externalReference: TYRA_REFERENCE, candidates: referenceCandidates }],
     })
 
     // Assert
@@ -86,5 +86,29 @@ describe('StoredMatch.storedCopiesOf', () => {
       sameRecordTwice: ['Patient/p-1'],
       anotherUnderDerivedId: ['Patient/p-1', 'Patient/p-2'],
     })
+  })
+})
+
+describe('StoredMatch.storedCopiesOfReference', () => {
+  it('should give the stored records found by identifier for an external reference, and no name match', () => {
+    // Arrange
+    const match = StoredMatch.make({
+      records: [],
+      externalReferences: [
+        {
+          externalReference: TYRA_REFERENCE,
+          candidates: [
+            candidate(storedTyra, 'certain', 'identifier'),
+            candidate(storedBrown, 'probable', 'name'),
+          ],
+        },
+      ],
+    })
+
+    // Act
+    const storedCopies = StoredMatch.storedCopiesOfReference(match, TYRA_REFERENCE)
+
+    // Assert
+    expect(storedCopies.map(literalReferenceOf)).toEqual(['Patient/p-1'])
   })
 })

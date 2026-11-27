@@ -1,6 +1,6 @@
 /**
- * An import's stored match: its records and its references not in the
- * import matched against the store, once, for the plan's suggestions.
+ * An import's stored match: its records and its external references
+ * matched against the store, once, for the plan's suggestions.
  *
  * @packageDocumentation
  */
@@ -54,15 +54,15 @@ const storedUnderDerivedIdsOf = (
 }
 
 /**
- * What the store holds of `records` and of `notInImport`: one
+ * What the store holds of `records` and of `externalReferences`: one
  * `ResourceMatch.findCandidates` over every record, by its resource
- * (`ImportedRecord.resourceOf`), and every logical reference not in the import,
+ * (`ImportedRecord.resourceOf`), and every external reference,
  * every grade; then one batch of reads for the stored records under the
  * derived stage ids of every record that has one.
  *
  * @param records - The import's records, each with its copies
- * @param notInImport - The logical references no record of the import
- *   carries the identifier of (`RecordReferences.Type`'s `notInImport`)
+ * @param externalReferences - The references that point outside the import
+ *   (`RecordReferences.Type`'s `external`)
  * @returns The stored match; fails when any search or read fails, since a
  *   failed search is not "no match"
  *
@@ -72,27 +72,39 @@ const storedUnderDerivedIdsOf = (
  */
 const findStoredMatch = (
   records: readonly ImportedRecord.Type[],
-  notInImport: readonly LogicalReference.Type[]
+  externalReferences: readonly LogicalReference.Type[]
 ): Effect.Effect<StoredMatch.Type, StoredMatchFailure, FhirR4ResourcesHttpApiClient> =>
   Effect.gen(function* () {
     const queries: readonly MatchQuery.Type[] = [
       ...records.map((record) => MatchQuery.fromResource(ImportedRecord.resourceOf(record))),
-      ...notInImport.map(MatchQuery.fromLogicalReference),
+      ...externalReferences.map(MatchQuery.fromLogicalReference),
     ]
     const candidates = yield* ResourceMatch.findCandidates(queries, {
       onlyCertainMatches: false,
       count: Option.none(),
     })
-    const [candidatesOfRecords, candidatesOfReferences] = Arr.splitAt(candidates, records.length)
+    const [candidatesOfRecords, candidatesOfExternalReferences] = Arr.splitAt(
+      candidates,
+      records.length
+    )
     const storedUnderDerivedIds = yield* storedUnderDerivedIdsOf(records)
     return StoredMatch.make({
       records: Arr.zipWith(
         records,
         Arr.zip(candidatesOfRecords, storedUnderDerivedIds),
-        ({ key }, [recordCandidates, storedUnderDerivedId]) =>
-          [key, StoredMatch.makeEntry(recordCandidates, storedUnderDerivedId)] as const
+        ({ key }, [recordCandidates, storedUnderDerivedId]) => ({
+          key,
+          entry: StoredMatch.makeEntry(recordCandidates, storedUnderDerivedId),
+        })
       ),
-      references: Arr.zip(notInImport, candidatesOfReferences),
+      externalReferences: Arr.zipWith(
+        externalReferences,
+        candidatesOfExternalReferences,
+        (externalReference, referenceCandidates) => ({
+          externalReference,
+          candidates: referenceCandidates,
+        })
+      ),
     })
   })
 

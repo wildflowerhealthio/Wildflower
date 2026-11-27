@@ -6,10 +6,12 @@
  */
 import { DetachedResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierUnion } from '@wildflowerhealthio/fhir-r4/clients'
-import { Array as Arr, HashMap, Option, Order, pipe } from 'effect'
+import type { LogicalReference } from '@wildflowerhealthio/fhir-r4/resources'
+import { groupInOrder } from '@wildflowerhealthio/kitchen-sink'
+import { Array as Arr, Option, Order } from 'effect'
 
 import * as ImportedCopy from './imported-copy.ts'
-import type * as RecordKey from './record-key.ts'
+import * as RecordKey from './record-key.ts'
 
 /** One record's key beside every copy of it, in plan order. */
 interface Type {
@@ -17,44 +19,15 @@ interface Type {
   readonly copies: Arr.NonEmptyReadonlyArray<ImportedCopy.Type>
 }
 
-/** One record's copies so far, beside the position of its first copy. */
-interface Group {
-  readonly firstPosition: number
-  readonly copies: Arr.NonEmptyReadonlyArray<ImportedCopy.Type>
-}
-
-/** The group `copy` at `position` joins: a new one, or `existing` with it appended. */
-const withCopy = (
-  existing: Option.Option<Group>,
-  copy: ImportedCopy.Type,
-  position: number
-): Group =>
-  Option.match(existing, {
-    onNone: (): Group => ({ firstPosition: position, copies: Arr.of(copy) }),
-    onSome: (group): Group => ({ ...group, copies: Arr.append(group.copies, copy) }),
-  })
-
-/** Groups in the order of their first copies. */
-const byFirstPosition = Order.mapInput(
-  Order.number,
-  ([, { firstPosition }]: readonly [RecordKey.Type, Group]) => firstPosition
-)
-
 /**
  * The records `copies` are copies of, each where its first copy is, each
  * record's copies in the order of `copies`.
  */
 const fromCopies = (copies: readonly ImportedCopy.Type[]): readonly Type[] =>
-  pipe(
-    Arr.reduce(copies, HashMap.empty<RecordKey.Type, Group>(), (grouped, copy, position) =>
-      HashMap.modifyAt(grouped, ImportedCopy.recordKeyOf(copy), (existing) =>
-        Option.some(withCopy(existing, copy, position))
-      )
-    ),
-    HashMap.toEntries,
-    Arr.sortBy(byFirstPosition),
-    Arr.map(([key, { copies: grouped }]): Type => ({ key, copies: grouped }))
-  )
+  groupInOrder(copies, ImportedCopy.recordKeyOf).map(({ key, items }): Type => ({
+    key,
+    copies: items,
+  }))
 
 /**
  * The copy that is the record: the last decoded copy in plan order, else,
@@ -69,6 +42,9 @@ const recordCopyOf = ({ copies }: Type): ImportedCopy.Type =>
     Arr.findLast(copies, (copy) => !copy.isImplied),
     () => Arr.lastNonEmpty(copies)
   )
+
+/** The id the import stage gave the record: its record copy's ({@link recordCopyOf}). */
+const stageIdOf = (record: Type): ImportedCopy.StageId => recordCopyOf(record).stageId
 
 /** Whether every copy of the record is implied: no file decoded it, a reference only named it. */
 const isImplied = (record: Type): boolean => recordCopyOf(record).isImplied
@@ -88,8 +64,27 @@ const isImplied = (record: Type): boolean => recordCopyOf(record).isImplied
 const mergeOrder: Order.Order<Type> = Order.mapInput(Order.boolean, isImplied)
 
 /**
+ * `values` in merge order ({@link mergeOrder}), each read as its record by
+ * `recordOf`: decoded records first, implied ones after, each group in the
+ * order `values` came in, which for values in plan order is plan order.
+ */
+const inMergeOrder = <A>(values: readonly A[], recordOf: (value: A) => Type): readonly A[] =>
+  Arr.sort(values, Order.mapInput(mergeOrder, recordOf))
+
+/** The title the plan shows the record under: its record copy's. */
+const titleOf = (record: Type): string => recordCopyOf(record).title
+
+/** The URL a source served the record at: its record copy's (`ImportedCopy.Type`'s `sourceUrl`). */
+const sourceUrlOf = (record: Type): Option.Option<URL> => recordCopyOf(record).sourceUrl
+
+/** The literal reference to the record under `id`: `<Type>/<id>`. */
+const literalReferenceUnder = (record: Type, id: string): string =>
+  `${recordCopyOf(record).resource.resourceType}/${id}`
+
+/**
  * The literal reference the import stage gives the record, `<Type>/<id>`
- * under its record copy's stage id: how a format's hooks name it.
+ * under its record copy's stage id ({@link stageIdOf}): how a format's hooks
+ * and `meta.source` name it.
  *
  * @remarks
  * The copies of a record keyed by its source URL each have the id minted in
@@ -106,6 +101,14 @@ const literalReferenceIfDerived = (record: Type): Option.Option<string> =>
   Option.liftPredicate(stageLiteralOf(record), () =>
     ImportedCopy.hasDerivedStageId(recordCopyOf(record))
   )
+
+/**
+ * The logical reference the record is keyed by, when it is keyed by
+ * identifier: its record copy's (`RecordKey.logicalReferenceIfKeyedByIdentifier`);
+ * `None` when it has no key identifier.
+ */
+const logicalReferenceIfKeyedByIdentifier = (record: Type): Option.Option<LogicalReference.Type> =>
+  RecordKey.logicalReferenceIfKeyedByIdentifier(recordCopyOf(record).resource)
 
 /**
  * The record's resource: its record copy's ({@link recordCopyOf}), carrying
@@ -125,5 +128,18 @@ const resourceOf = (record: Type): DetachedResource.Type => {
     : resource
 }
 
-export { fromCopies, isImplied, literalReferenceIfDerived, mergeOrder, resourceOf, stageLiteralOf }
+export {
+  fromCopies,
+  inMergeOrder,
+  isImplied,
+  literalReferenceIfDerived,
+  literalReferenceUnder,
+  logicalReferenceIfKeyedByIdentifier,
+  mergeOrder,
+  resourceOf,
+  sourceUrlOf,
+  stageIdOf,
+  stageLiteralOf,
+  titleOf,
+}
 export type { Type }
