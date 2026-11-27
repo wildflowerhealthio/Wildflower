@@ -635,11 +635,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     not added on a stub, shown by the reference's own display, else, for a
     Patient or a Practitioner, the name the person goes by at `now`
     (`HumanName.displayName`; which records have a name to show is this
-    operation's rule, `stubDisplayOf`), else with no
-    display (never the record's title, which for a record keyed by
-    identifier is the literal it would be written under); one with no choice
-    nowhere, so its references stay logical. A stub names the record by
-    `ImportedRecord.logicalReferenceIfKeyedByIdentifier`. Each record's
+    operation's rule, `stubDisplayOf`), else, for a record with no key
+    identifier, its title, else with no display (never the title of a
+    record keyed by identifier, which is the literal it would be written
+    under); one with no choice nowhere, so its references stay logical. A
+    stub names the record by `ImportedRecord.resourceTypeOf` and
+    `ImportedRecord.keyIdentifierOf`. Each record's
     target is reached by a logical reference that names it
     (`RecordReferences`' `named`, from `locateReferences`; an ambiguous one
     lands nowhere), by the stage literal of each of its copies, and by the

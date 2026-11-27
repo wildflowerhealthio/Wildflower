@@ -471,7 +471,7 @@ describe('resolvePlan, what each choice writes', () => {
       written: Option.none(),
     })
   })
-  it('should name a record with no key identifier that is not added by its type alone, never by the literal nothing is written under', () => {
+  it('should name a record with no key identifier that is not added by its type and title, never by the literal nothing is written under', () => {
     // Arrange
     const report = copyOf(
       detached({
@@ -503,7 +503,9 @@ describe('resolvePlan, what each choice writes', () => {
 
     // Assert
     expect(written).toMatchObject(
-      Option.some({ derivedFrom: [{ reference: undefined, type: 'DocumentReference' }] })
+      Option.some({
+        derivedFrom: [{ reference: undefined, type: 'DocumentReference', display: report.title }],
+      })
     )
   })
 })

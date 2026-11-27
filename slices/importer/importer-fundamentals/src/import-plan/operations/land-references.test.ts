@@ -129,6 +129,38 @@ describe('landReferences, a logical reference to a record of the import', () => 
     })
   })
 
+  it('should show the title of a record with no key identifier on its stub, which has no identifier to name it by', () => {
+    // Arrange
+    const report = copyOf(
+      detached({
+        resourceType: 'DocumentReference',
+        status: 'current',
+        content: [{ attachment: { contentType: 'application/pdf' } }],
+      }),
+      'report',
+      'a.har',
+      { title: 'lab-report.pdf' }
+    )
+    const observation = detached({
+      resourceType: 'Observation',
+      status: 'final',
+      code: { text: 'A1c' },
+      derivedFrom: [{ reference: ImportedCopy.stageLiteralOf(report) }],
+    })
+    const plan = planWith([report], [[report, RecordChoice.DontAdd()]])
+
+    // Act
+    const derivedFrom = landedAt(plan, [], observation, 'derivedFrom[0]')
+
+    // Assert
+    expect(derivedFrom).toMatchObject({
+      reference: null,
+      type: 'DocumentReference',
+      identifier: null,
+      display: 'lab-report.pdf',
+    })
+  })
+
   it('should keep the reference’s own display on the stub of a record that is not added', () => {
     // Arrange
     const plan = planWith([prescription, drBrown], [[drBrown, RecordChoice.DontAdd()]])
